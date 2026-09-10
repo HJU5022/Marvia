@@ -1,0 +1,25 @@
+# 필수 조건 2 — `docker compose up` 한 줄로 전체 서비스가 떠야 합니다.
+# 필요 없는 서비스는 지우고, 필요한 것(redis 등)은 추가하세요.
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+    # Apple Silicon에서 이미지가 안 뜨면 아래 주석을 해제해 보세요
+    # platform: linux/amd64
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
