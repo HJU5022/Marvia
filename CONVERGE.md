@@ -107,4 +107,3 @@ SDD 1절이 가리키지만 아직 안 만든 파일. 만들면 여기서 지운
 - `finetune/`: `gen_dataset.py`, `data/finetune_dataset.jsonl` (Info/에 있음, 아직 안 옮김)
 - `scripts/gen_types.sh`
 - `backend/tests/` 테스트 파일
-- `README.md` Converge 내용 (지금은 스캐폴딩 그대로)
