@@ -27,3 +27,7 @@ build/
 
 # 로그
 *.log
+
+# 모델 가중치 (HF에 두고 빌드 시 받는다)
+*.gguf
+*.safetensors
