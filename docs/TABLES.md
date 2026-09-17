@@ -1,6 +1,6 @@
 # Converge 테이블 정의서
 
-DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 도메인)
+DB: Postgres — 로컬 `postgres:16`(compose) / 운영 Supabase, SQL 한 벌(`backend/db/001_init.sql`) 양쪽 실행 · 작성: 2026.09.17 · v2.1 (함정 정비 / SI 배포 도메인)
 
 ## 원칙
 
@@ -9,6 +9,8 @@ DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 �
 - 개인정보가 들어가는 행은 만료 시각(expires_at)을 반드시 두고, 만료 시 배치로 삭제한다
 - 카톡 캡처 이미지 원본, 프롬프트 본문, API 키는 저장하지 않는다
 - 로그·캐시·피드백 테이블에는 이름·주소 같은 식별 정보를 넣지 않는다. 좌표는 해시나 암호화로만 둔다
+- 주선자든 참석자든 모두 구글 로그인(Supabase Auth)으로 들어온다. 공유 링크를 열 때도 로그인이 필요하다. 이메일·이름 같은 사용자 정보는 `auth.users`에만 있고 우리 표에는 주선자의 `user_id`(uuid)만 둔다. 참석자의 user_id는 표에 두지 않는다(참석자 ↔ 로그인 계정 연결은 미결)
+- FK는 `results.session_id → sessions.id`(CASCADE) 하나만 건다. 로그·피드백은 세션이 지워진 뒤에도 집계에 남아야 하므로 FK 없이 ID만 둔다
 
 ---
 
@@ -20,23 +22,23 @@ DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 �
 |---|---|---|---|---|
 | id | uuid | N | gen_random_uuid() | 세션 ID. 공유 링크 경로에 그대로 쓰므로 추측 불가해야 함 |
 | preset | text | N | 'si_deploy' | ship_maintenance / si_deploy |
-| meet_at | timestamptz | Y | | 모임 시각. 미정이면 NULL |
+| meet_at | timestamptz | Y | | 모임 시각. 미정이면 NULL. 오늘+30일 이내만 등록 가능(초과는 코드에서 need_info로 되돌림) |
 | purpose | text | Y | | 저녁 식사, 미팅 등 |
 | destination_name | text | Y | | 장소 확정 모드일 때 장소명 |
 | destination_lng, destination_lat | double precision | Y | | 장소 확정 모드일 때 좌표 |
-| participants_enc | bytea | N | | 참석자 목록 JSON을 암호화한 값 (암호화 처리). 평문 구조: [{name, origin_text, lng, lat, transport, pickup, unfamiliar, role, confirmed}] |
+| participants_enc | bytea | N | | 참석자 목록 JSON을 암호화한 값 (암호화 처리). 평문 구조: [{name, origin_text, lng, lat, transport, pickup, unfamiliar, role, confirmed, origin_set_by, self_edited_at}]. `confirmed`는 주선자가 핀 확인 단계에서 찍음. `origin_set_by`는 "organizer"/"self"(참석자가 공유 링크에서 직접 출발지를 고치면 "self"), `self_edited_at`은 그 시각(없으면 null) |
 | participant_count | smallint | N | | 참석자 수. 통계·로그용으로 평문 보관 |
 | rendezvous_enc | bytea | Y | | 집결지 {name, lng, lat, transport_after} 암호화 값 (암호화 처리). 없으면 NULL |
 | access | jsonb | Y | | {required, applied, lead_min}. 절차 정보. 부대·고객사 식별 없음 |
 | schedule_confirmed | boolean | Y | | 입항·배포 시각 확정 여부 |
 | constraints | jsonb | N | '[]' | ["max_minutes_car:30", "no_transfer", ...] |
 | status | text | N | 'draft' | draft / pins_confirmed / computed / failed |
-| user_key | text | Y | | 로그인 없이 브라우저별 익명 식별자. Langfuse user_id와 동일 값 |
+| user_id | uuid | N | | 주선자의 Supabase Auth `auth.users.id`. FK 없음 — 로컬 Postgres에는 auth 스키마가 없어 SQL 한 벌을 양쪽에 돌리려면 걸 수 없다. Langfuse user_id와 동일 값 |
 | created_at | timestamptz | N | now() | |
 | updated_at | timestamptz | N | now() | |
-| expires_at | timestamptz | N | now() + 7 days | 만료 후 삭제 |
+| expires_at | timestamptz | N | | 삭제 시각. meet_at 있으면 meet_at + 30일, 없으면(임시 세션) created_at + 7일. 나중에 meet_at이 들어오면 다시 계산. DB 기본값 없이 코드가 계산해 넣는다 |
 
-인덱스: (expires_at), (user_key, created_at desc)
+인덱스: (expires_at), (user_id, created_at desc)
 
 ---
 
@@ -47,7 +49,7 @@ DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 �
 | 컬럼 | 타입 | NULL | 기본값 | 설명 |
 |---|---|---|---|---|
 | id | uuid | N | gen_random_uuid() | |
-| session_id | uuid | N | | sessions.id 참조, 세션 삭제 시 함께 삭제 |
+| session_id | uuid | N | | FK → sessions.id ON DELETE CASCADE. 세션 삭제 시 함께 삭제 |
 | candidates_enc | bytea | N | | 집결 후보 JSON 암호화 값 (암호화 처리). 평문 구조: [{name, kind, address, lng, lat, rank, access_ok, switched_from, reason, rejected_reason}]. 부대 위병소·고객사 로비 좌표가 포함되므로 암호화 |
 | per_participant_enc | bytea | N | | 참석자별 결과 JSON 암호화 값 (암호화 처리). 평문 구조: [{participant_idx, candidate_rank, transport, duration_min, buffer_min, departure_time, arrive_by, transfer_count, first_train, last_train, polyline, via_rendezvous}] |
 | model_small | text | Y | | 슬롯 추출에 쓴 모델 |
@@ -72,7 +74,7 @@ DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 �
 |---|---|---|---|---|
 | id | bigserial | N | | |
 | request_id | uuid | N | | 요청 한 건의 ID. 응답 헤더로도 반환 |
-| session_id | uuid | Y | | |
+| session_id | uuid | Y | | FK 없음. 세션 삭제 후에도 집계용으로 남는다 |
 | stage | text | N | | slot_extract / vision / geocode / search_places / route_car / route_transit / vessel_schedule / first_last_train / judge / validate |
 | provider | text | N | | openrouter / local_gguf / kakao_local / kakao_mobility / tmap |
 | model_or_api | text | Y | | 모델 ID 또는 API 이름 |
@@ -118,8 +120,8 @@ DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 �
 | 컬럼 | 타입 | NULL | 기본값 | 설명 |
 |---|---|---|---|---|
 | id | bigserial | N | | |
-| session_id | uuid | N | | |
-| result_id | uuid | N | | |
+| session_id | uuid | N | | FK 없음. 세션 삭제 후에도 집계용으로 남는다 |
+| result_id | uuid | N | | FK 없음. 같은 이유 |
 | chosen_rank | smallint | Y | | 사용자가 최종 선택한 후보 순위. 1이 아니면 규칙 점검 신호 |
 | edited_pin_count | smallint | N | 0 | 핀 확인 단계에서 수정한 참석자 수. 지오코딩 정확도 지표 |
 | re_ask_count | smallint | N | 0 | 조건 바꿔 재질문한 횟수 |
@@ -133,10 +135,14 @@ DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 �
 
 | 테이블 | 보관 | 삭제 방식 |
 |---|---|---|
-| sessions, results | 7일 | expires_at 지난 행을 하루 1회 배치 삭제. results는 sessions 삭제 시 연쇄 삭제 |
+| sessions, results | 약속+30일. 임시 세션(meet_at 없음)은 생성+7일 | expires_at 지난 행을 하루 1회 배치 삭제. 주선자가 직접 삭제(`DELETE /api/session/{id}`, 본인만)하면 즉시 삭제. results는 sessions 삭제 시 연쇄 삭제 |
 | route_cache | 24시간 / 30일 | expires_at 기준 배치 삭제 |
 | request_logs | 90일 | 식별 정보 없음. 지표 산출 후 배치 삭제 |
 | feedback | 90일 | 세션 삭제 후에도 집계용으로 유지, 세션 ID만 남음 |
+
+세션 일생: 등록은 약속이 오늘+30일 안일 때만 받고, 약속 당일까지 수정할 수 있으며, 다음날부터 잠긴다(수정 요청은 LLM 호출 전에 409). 잠긴 세션도 공유 링크로 열람은 되고, 약속+30일에 삭제된다.
+
+임시 세션: 약속 시각(meet_at)이 아직 없는 세션. 계산을 못 하므로 status는 draft에 머문다. 잠금 없음(잠글 약속이 없다). 생성+7일에 삭제되고, 그 안에 시각이 들어오면 보통 세션이 되어 expires_at을 meet_at+30일로 다시 계산한다.
 
 배치는 Cloud Scheduler가 하루 1회 /internal/cleanup을 호출한다. 이 호출이 Supabase 무료 티어의 7일 미사용 정지도 막는다.
 
@@ -153,4 +159,4 @@ DB: Supabase Postgres · 작성: 2026.09.17 · v2.0 (함정 정비 / SI 배포 �
 
 방식: 애플리케이션 단 AES-256-GCM, 키는 Cloud Run 환경변수(Secret Manager), 행마다 nonce 12바이트를 값 앞에 붙여 저장. DB 관리자 화면에서는 암호문만 보인다.
 
-공유 링크는 세션 ID만으로 열리므로, ID는 uuid v4로 생성하고 7일 만료를 지킨다. 링크를 아는 사람은 참석자 이름·출발지·집결지(부대·고객사 위치)를 볼 수 있다는 점을 화면에 안내한다. 부대명·고객사명은 사용자가 입력한 텍스트 그대로만 저장하고 시스템이 보강하지 않는다.
+공유 링크는 홈페이지 주소에 세션 ID를 붙인 것(`/s/{id}`) 그대로다. 매직링크·임시 토큰·단축 URL로 바꾸지 않는다. 열려면 로그인이 필요하다. ID는 uuid v4로 생성하고 약속+30일 만료를 지킨다. 세션을 만들고 고치고 지우는 건 주선자(`user_id` 일치)만 할 수 있고, 링크를 연 참석자는 열람과 본인 출발지 수정만 한다. 링크를 알고 로그인한 사람은 참석자 이름·출발지·집결지(부대·고객사 위치)를 볼 수 있다는 점을 화면에 안내한다. 부대명·고객사명은 사용자가 입력한 텍스트 그대로만 저장하고 시스템이 보강하지 않는다.

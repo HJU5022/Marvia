@@ -1,6 +1,6 @@
 # SDD · Converge 구현 명세
 
-버전 2.0 · 2026.09.17 · 5조 김승욱, 하정운 · 도메인: 현장이 움직이는 유지보수·배포 작업의 집결 조율 (함정 정비 / SI 배포)
+버전 2.1 · 2026.09.17 · 5조 김승욱, 하정운 · 도메인: 현장이 움직이는 유지보수·배포 작업의 집결 조율 (함정 정비 / SI 배포)
 
 이 문서는 코드를 쓰는 사람과 Claude Code가 따르는 기준이다. 여기 없는 결정은 만들지 말고 물어본다. 스키마·엔드포인트·규칙값을 바꾸려면 이 문서를 먼저 고친다.
 
@@ -19,8 +19,8 @@ proj2-5/
   EVAL_REPORT.md              제출물. 스캐폴딩 자리(루트) 유지
   Dockerfile                  루트. 빌드 컨텍스트가 skills/, mcp_server/를 포함해야 하므로
                               빌드 시 HF에서 GGUF를 받아 이미지에 넣는다 (git, LFS 미사용)
-  docker-compose.yml
-  .env.example
+  docker-compose.yml          api + db(postgres:16). backend/db/를 initdb에 마운트, db healthcheck 후 api 기동
+  .env.example                backend용 (9절)
   docs/
     PRD.md  SDD.md  TABLES.md
     evidence/                 제출 증거물
@@ -34,7 +34,9 @@ proj2-5/
       routers/
         agent.py              POST /api/agent
         health.py             GET /health
-        session.py            GET /api/session/{id}  (공유 링크용 읽기)
+        session.py            GET /api/session/{id}  (공유 링크용 읽기, 로그인 필수)
+                              DELETE /api/session/{id}  (주선자 본인만, 즉시 삭제)
+                              PATCH /api/session/{id}/participants/{idx}  (참석자 본인 출발지 수정, 자리만. 2절)
         internal.py           POST /internal/cleanup (Cloud Scheduler 전용, 토큰)
       schemas/
         slots.py              슬롯 추출 결과 (LLM 출력 계약 1)
@@ -47,7 +49,8 @@ proj2-5/
         routes.py             경로·소요시간 (MCP 클라이언트 경유), 캐시
         judge.py              후보 판정 프롬프트 조립, 대형 모델 호출
         pipeline.py           단계 오케스트레이션 (루프 없음, 순차)
-        store.py              Supabase 접근, 암호화
+        store.py              Postgres 접근(asyncpg, DATABASE_URL), 암호화, expires_at 계산
+        auth.py               Supabase JWT 검증 → user_id. 로그인 필수 엔드포인트의 의존성
       domain/                 계산만. 네트워크·LLM 호출 없음. API 키 없이 테스트된다
         CLAUDE.md             난간. 이 폴더 파일을 열면 자동 로드
         rules.py              Skill 규칙 로드, 계산식 (절차 소요·여유·역산·전환 조건)
@@ -55,6 +58,8 @@ proj2-5/
       observability/
         langfuse.py           트레이스·span·프롬프트 조회
       models/                 slot_extractor.gguf 자리. 빌드 시 채워짐. git에 없음
+    db/
+      001_init.sql          TABLES.md의 표 5개. 로컬(compose initdb)과 Supabase(SQL Editor)에 같은 파일을 실행
     tests/
       TEST_GUIDE.md
       fixtures/               spike 샘플 응답 (실제 API 응답 원문)
@@ -66,10 +71,11 @@ proj2-5/
       geocode.py  search_places.py  route_car.py  route_transit.py  first_last_train.py  vessel_schedule.py  departure_calc.py
   frontend/                   Next.js (Vercel)
     FRONTEND_GUIDE.md
+    .env.example              frontend용 (9절). 브라우저에 노출되는 값만
     app/
       page.tsx                지도 + 채팅
       about/page.tsx          소개 페이지 (필수 조건 6, 서비스 화면과 별도)
-      s/[id]/page.tsx         공유 링크 읽기 전용
+      s/[id]/page.tsx         공유 링크 페이지. 링크는 이 주소 그대로(별도 토큰·단축 없음), 로그인 필요
       api/agent/route.ts      Cloud Run 프록시 (키 숨김)
     components/
       MapView.tsx  ChatPanel.tsx  ParticipantPins.tsx  ResultTable.tsx  Progress.tsx
@@ -100,6 +106,8 @@ proj2-5/
 
 ### POST /api/agent
 
+**로그인 필수.** /health를 뺀 모든 엔드포인트가 같다. 헤더 `Authorization: Bearer {Supabase access token}`. services/auth.py가 SUPABASE_JWT_SECRET으로 검증해 user_id를 꺼낸다. 없거나 틀리면 401 — LLM을 호출하지 않는다 (비용 방어).
+
 요청 (backend/app/schemas/request.py)
 
 ```python
@@ -109,8 +117,9 @@ class AgentRequest(BaseModel):
     image_base64: str | None        # 카톡 캡처 (jpeg/png)
     preset: Literal["ship_maintenance", "si_deploy"] | None   # 사용자가 고른 경우
     confirmed_participants: list[ParticipantInput] | None  # 핀 확인 단계에서 수정한 좌표
-    user_key: str                   # 브라우저 익명 ID (Langfuse user_id)
 ```
+
+user_id는 본문이 아니라 토큰에서 나온다. Langfuse user_id도 같은 값.
 
 text와 image_base64 중 하나는 필수. confirmed_participants가 오면 슬롯 추출을 건너뛰고 계산부터 시작한다.
 
@@ -135,11 +144,19 @@ class AgentResponse(BaseModel):
 
 ### GET /health
 
-`{"status":"ok","model_loaded":true,"version":"..."}`
+로그인 없음. `{"status":"ok","model_loaded":true,"version":"..."}`
 
 ### GET /api/session/{id}
 
-공유 링크용. 세션이 있고 만료 전이면 마지막 result를 복호화해 반환. 없으면 404.
+공유 링크용. 링크는 프론트 `/s/{id}` 주소 그대로이고 매직링크·임시 토큰으로 바꾸지 않는다. 로그인 필수(주선자·참석자 누구든 구글 계정으로). 세션이 있고 만료 전이면 마지막 result를 복호화해 반환. 없으면 404. 로그인한 사람이 그 세션의 참석자인지는 확인하지 않는다(참석자 ↔ 계정 연결은 미결, 11절).
+
+### DELETE /api/session/{id}
+
+로그인 필수. 세션의 user_id와 토큰의 user_id가 다르면 403. 즉시 삭제, results는 cascade. 204.
+
+### PATCH /api/session/{id}/participants/{idx}
+
+**자리만 잡아 둔다. 설계는 별도 세션.** 참석자가 공유 링크에서 본인 출발지를 고친다 (로그인 필수, PRD v2.1에서 허용). participants_enc의 해당 항목에 origin_set_by="self", self_edited_at을 찍는다. 재계산은 경로만 다시 하고 LLM은 부르지 않는 방향(미결, 11절). 잠긴 세션이면 409.
 
 ### /mcp
 
@@ -246,6 +263,7 @@ LLM(대형)이 만드는 건 candidates의 rank·reason·rejected_reason과 전�
 | 1 | llm.extract_slots | 텍스트(+이전 슬롯) → Slots | 스키마 위반 시 재시도 1회 → 대형 모델 승격 → 실패면 failed |
 | 1-1 | 범위 판정 | slots.out_of_scope → out_of_scope 응답 | |
 | 1-2 | 누락 판정 | slots.missing 비어 있지 않으면 need_info | |
+| 1-3 | 기간 판정 | slots.datetime을 시각으로 바꿔 오늘+30일을 넘으면 need_info("30일 안의 약속만 잡을 수 있습니다"). 30은 skills/converge/rules/의 값 | 코드라 실패 없음 |
 | 2 | geo.geocode_all | 참석자·집결지·목적지 지명 → 좌표, confidence | 한 명이라도 confidence < 0.8 → need_confirm |
 | 2-1 | 핀 확인 | 사용자가 confirmed_participants 반환 | |
 | 3 | geo.candidates | 집결 후보 생성: 절차 시작점(위병소·고객사 1층·본사) + 도착 어긋남 시 랜드마크(항만 입구·역) | 후보 0곳이면 목적지 좌표 자체를 후보로 |
@@ -253,7 +271,7 @@ LLM(대형)이 만드는 건 candidates의 rank·reason·rejected_reason과 전�
 | 5 | rules.apply | 절차 소요 반영, 출입조치 상태별 후보 가능 여부(access_ok), 도착 어긋남 전환 조건, 을 관례, 업체 순회 | 코드라 실패 없음 |
 | 6 | judge.rank | 후보 표 + 프리셋 규칙 문서 → rank·reason·switched_from | 스키마 위반 재시도 1회 → 실패면 rules.apply 순으로 rank, reason은 규칙 문구 그대로 |
 | 7 | rules.departure | (도착 기한 − 절차 소요) − 소요시간 − 여유 = 출발 시각, 집결지면 2단 역산, 야간이면 첫차 조회, 시각 미확정이면 provisional | |
-| 8 | store.save + 응답 | | |
+| 8 | store.save + 응답 | expires_at을 여기서 계산해 넣는다: meet_at 있으면 meet_at+30일, 없으면(임시 세션) created_at+7일. DB 기본값 없음 | |
 
 ### 라우팅 (services/router.py)
 
@@ -268,7 +286,7 @@ large: 그 외 전부 → 6단계에서 대형 모델이 rank·reason 생성
 
 ### 재질문
 
-session_id가 있으면 이전 Slots를 1단계 프롬프트에 넣고 "바뀐 것만 갱신"을 지시. 결과는 새 results 행.
+session_id가 있으면 먼저 잠금 검사: 세션의 user_id가 토큰과 다르면 403, meet_at 다음날 0시가 지났으면 409 (LLM 호출 전). meet_at이 없는 임시 세션은 잠기지 않고, 이번 재질문으로 시각이 들어오면 8단계에서 expires_at을 meet_at+30일로 다시 계산한다. 통과하면 이전 Slots를 1단계 프롬프트에 넣고 "바뀐 것만 갱신"을 지시. 결과는 새 results 행.
 
 ---
 
@@ -341,16 +359,17 @@ Langfuse Prompt 이름과 역할. 코드에 문자열로 두지 않는다.
 
 ---
 
-## 9. 환경변수 (.env.example)
+## 9. 환경변수
+
+루트 `.env.example` (backend, compose)
 
 ```
 OPENROUTER_API_KEY=      # OpenRouter 대시보드
 KAKAO_REST_KEY=          # 카카오 개발자 콘솔
-KAKAO_JS_KEY=            # frontend
 TMAP_APP_KEY=            # SK오픈API
 DATA_GO_KR_KEY=          # 첫차·막차, 선박 입출항
-SUPABASE_URL=            # Supabase 프로젝트 설정
-SUPABASE_SERVICE_KEY=    # Supabase 프로젝트 설정
+DATABASE_URL=postgresql://app:app@db:5432/app   # 로컬 compose 기본값. 운영은 Supabase 연결 문자열
+SUPABASE_JWT_SECRET=     # Supabase 프로젝트 설정 > API > JWT Secret. 토큰 검증용
 ENCRYPTION_KEY=          # 32바이트 base64, AES-256-GCM
 LANGFUSE_PUBLIC_KEY=     # Langfuse Cloud
 LANGFUSE_SECRET_KEY=     # Langfuse Cloud
@@ -364,13 +383,24 @@ MODEL_EVAL_JUDGE=openai/gpt-5.6-luna
 COST_LIMIT_USD_PER_REQUEST=0.05
 ```
 
+`frontend/.env.example` (브라우저에 노출되는 값만)
+
+```
+NEXT_PUBLIC_SUPABASE_URL=       # Supabase 프로젝트 URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon key (공개 가능, RLS 전제)
+NEXT_PUBLIC_API_BASE=http://localhost:8080
+KAKAO_JS_KEY=            # 카카오 지도 SDK
+```
+
+supabase-py는 쓰지 않는다. 백엔드는 DATABASE_URL로 Postgres에 직접 붙고, Supabase는 운영 DB와 로그인(Auth)으로만 쓴다.
+
 ---
 
 ## 10. 실행
 
 ```
 cp .env.example .env
-docker compose up          # backend:8080 (/api/agent, /health, /mcp 모두 여기)
+docker compose up          # backend:8080 (/api/agent, /health, /mcp 모두 여기) + db:5432 (postgres:16, backend/db/ 자동 실행)
 cd frontend && npm run dev # :3000, NEXT_PUBLIC_API_BASE=http://localhost:8080
 ```
 
@@ -388,8 +418,14 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | 소형 모델 최종 선택 | 미정 | 새 도메인 데이터로 재학습 후 compare.md로 결정 |
 | 선박 입출항 데이터에 군함 포함 여부 | 미확인 | 공공데이터포털 파일 열어 확인 (하정운). 없으면 vessel_schedule 도구 제외 |
 | 규칙값 "(확인)" 항목 | 미확정 | 착수일 조원 확정 |
-| compose db healthcheck | 미적용 | api가 Postgres보다 먼저 뜰 수 있음. DB 붙일 때 depends_on condition 추가 (09-17 검증 중 발견) |
-| requirements.txt asyncpg | 주석 상태 | DATABASE_URL 실제 사용 시 주석 해제 (09-17 검증 중 발견) |
+| compose db healthcheck | 결정됨, 미적용 | db 서비스에 pg_isready healthcheck, api에 depends_on condition: service_healthy. 001_init.sql 만들 때 같이 |
+| requirements.txt asyncpg | 결정됨, 주석 상태 | store.py 구현 시 주석 해제. SQLAlchemy를 쓸지(그러면 postgresql+asyncpg://)는 그때 결정 |
+| 채점자 로컬 재현 시 LLM·카카오·TMAP 키 | 미확인 | .env.example만으로는 못 돈다. 1차 때 어떻게 전달했는지 확인 후 README에 방식 명시 |
+| Supabase 새 프로젝트 | 미확인 | 조직 HJU5022 free 플랜에 프로젝트 2개 있음. 세 번째 생성 가능한지 확인 (하정운) |
+| 구글 OAuth 동의 화면 | 미설정 | 테스트 모드면 등록한 테스트 사용자만 로그인됨. 채점자 계정 처리 방법 + Supabase 리디렉트 허용 URL(localhost:3000, Vercel) |
+| Langfuse 트레이스의 참석자 이름·출발지 | 미검토 | 평문으로 들어간다. 마스킹 여부 (김승욱, observability) |
+| 참석자 출발지 수정 API | 미설계 | 2절 PATCH 자리만. 얕은 재계산(경로만, LLM 없음) 권장. 별도 세션 |
+| 참석자 ↔ 로그인 계정 연결 | 미결 | 모두 로그인하므로 "본인" 참석자를 계정으로 알 수 있다. participants_enc에 user_id를 넣을지, 넣으면 PATCH에서 본인 행만 고치게 막을지 |
 
 ---
 
@@ -400,5 +436,6 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | backend/, mcp_server/, skills/ (si_deploy 규칙) | 김승욱 | AgentRequest / AgentResponse 스키마 |
 | frontend/, finetune/, skills/ (ship_maintenance 규칙) | 하정운 | 같은 스키마, GGUF 파일 경로 |
 | evals/, docs/ | 공동 | 함정 문항은 하정운, SI 문항은 김승욱이 판정. 상대 문항은 검토만 |
+| backend/db/, services/store.py, services/auth.py (DB·인증) | 하정운 | TABLES.md, 9절 환경변수 |
 
 서로의 폴더를 고칠 때는 PR로 하고, 스키마 변경은 이 문서 3·4절을 먼저 고친 뒤 양쪽에 알린다.
