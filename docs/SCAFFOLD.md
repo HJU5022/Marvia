@@ -24,9 +24,9 @@ Dockerfile            컨테이너 이미지            ← 필수 2
 docker-compose.yml    `docker compose up` 한 줄  ← 필수 2
 .env.example          필요한 키 목록
 docs/                 기획·설계 문서
-  PRD_Converge_v2.0.md        기획서 (PRD)
-  SDD_Converge_v2.0.md        구현 명세 (SDD)
-  테이블정의서_Converge_v2.0.md  DB 테이블 정의
+  PRD.md                      기획서 (PRD)
+  SDD.md                      구현 명세 (SDD)
+  TABLES.md                   DB 테이블 정의
   planning/                   계획서 보완 제출본 (도메인 경험·평가 질문 10개)
   specs/                      기능별 Spec
 ```
@@ -153,9 +153,9 @@ Converge에서 쓰는 키는 다섯 묶음입니다.
 
 | 파일 | 역할 |
 |---|---|
-| `PRD_Converge_v2.0.md` | 기획서. 문제 정의, 해결 범위, 아키텍처, LLM 제어 설계, 일정 |
-| `SDD_Converge_v2.0.md` | 구현 명세. 폴더 구조, 엔드포인트, LLM 출력 계약, 파이프라인, MCP 도구, 환경변수 |
-| `테이블정의서_Converge_v2.0.md` | DB 테이블 5개(sessions·results·request_logs·route_cache·feedback), 삭제·암호화 정책 |
+| `PRD.md` | 기획서. 문제 정의, 해결 범위, 아키텍처, LLM 제어 설계, 일정 |
+| `SDD.md` | 구현 명세. 폴더 구조, 엔드포인트, LLM 출력 계약, 파이프라인, MCP 도구, 환경변수 |
+| `TABLES.md` | DB 테이블 5개(sessions·results·request_logs·route_cache·feedback), 삭제·암호화 정책 |
 | `planning/proj2-5_계획보완.md` | 계획서 보완 제출본. 조원 도메인 경험과 평가 질문 10개(정상 3·경계 4·실패 유도 3). `evals/` 작성의 출발점 |
 | `specs/` | 기능별 Spec (`_example.md` 형식) |
 
