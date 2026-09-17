@@ -389,7 +389,7 @@ COST_LIMIT_USD_PER_REQUEST=0.05
 ```
 NEXT_PUBLIC_SUPABASE_URL=       # Supabase 프로젝트 URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon key (공개 가능, RLS 전제)
-NEXT_PUBLIC_API_BASE=http://localhost:8080
+NEXT_PUBLIC_API_BASE=http://localhost:8000
 NEXT_PUBLIC_KAKAO_JS_KEY=       # 카카오 지도 SDK (NEXT_PUBLIC_ 없으면 브라우저에 안 넘어감)
 ```
 
@@ -401,8 +401,8 @@ supabase-py는 쓰지 않는다. 백엔드는 DATABASE_URL로 Postgres에 직접
 
 ```
 cp .env.example .env
-docker compose up          # backend:8080 (/api/agent, /health, /mcp 모두 여기) + db:5432 (postgres:16, backend/db/ 자동 실행)
-cd frontend && npm run dev # :3000, NEXT_PUBLIC_API_BASE=http://localhost:8080
+docker compose up          # backend:8000 (/api/agent, /health, /mcp 모두 여기) + db:5432 (postgres:16, backend/db/ 자동 실행)
+cd frontend && npm run dev # :3000, NEXT_PUBLIC_API_BASE=http://localhost:8000
 ```
 
 Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel. 카카오 콘솔에 Vercel 도메인과 localhost:3000을 등록한다.
