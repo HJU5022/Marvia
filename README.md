@@ -6,8 +6,8 @@
 
 | 항목 | 내용 |
 |---|---|
-| 프로젝트 | proj{N} — {프로젝트명} |
-| 조 | {A~G} |
+| 프로젝트 | proj2 — Converge |
+| 조 | 5조 |
 
 ## 조원 소개 — 🏁 첫 과제
 
@@ -16,7 +16,8 @@
 
 | 이름 | GitHub | 역할 | 한마디 |
 |---|---|---|---|
-| 홍길동(예시) | @octocat | 백엔드 | 잘 부탁드립니다 |
+| 김승욱 | @seungwook-kim | 조장 · 풀스택 · SI 배포 도메인 | 눈 뜨면 코딩하기. |
+| 하정운 | @HJU5022 | 풀스택 · 함정 정비 도메인 | 눈 감아도 코딩하기. |
 
 ## 협업 규칙 (필독)
 
@@ -84,7 +85,8 @@ git push                             # PR이 자동 갱신됨
 
 ## 폴더 구조
 
-- `docs/` — 기획서·회의록·발표자료
+- `docs/` — 기획서·회의록·발표자료 (PRD·SDD·테이블정의서)
+- `docs/planning/` — 계획서 보완 제출본 (도메인 경험·평가 질문 10개)
 - `docs/specs/` — 기능별 Spec 문서 (`_example.md` 형식 참고, AI 에이전트에게 구현을 시키기 전 여기에 먼저 작성)
 - `AGENTS.md` / `CLAUDE.md` — AI 에이전트(Claude Code·Codex 등) 공통 작업 지침
 - 소스 코드 구조는 조에서 자율 결정 (README에 실행 방법 필수 기재)
@@ -92,3 +94,65 @@ git push                             # PR이 자동 갱신됨
 ## 질문
 
 강사 확인이 필요한 질문은 이 저장소의 **Issues**에 남기고 강사를 멘션하세요.
+
+---
+
+## 프로젝트 소개 — Converge
+
+**현장이 움직이는 유지보수·배포 작업에서, 담당자가 업체·고객사와 "어디서 몇 시에 만날지" 정하는 일을 문장 하나로 끝내는 에이전트**
+
+함정 정비 미팅과 SI 야간 배포 집결. 두 현장 모두 출입조치·인솔 같은 절차가 집결지와 시각을 가르는데, 기존 지도 앱은 그 절차를 모릅니다. 전화와 카톡으로 30분에서 한 시간을 쓰던 조율을, 절차와 경로를 함께 계산해 지도 위에 답으로 내놓습니다.
+
+| | |
+|---|---|
+| 서비스 | (Vercel URL) |
+| Agent API | (Cloud Run URL) · `GET /health` · `POST /api/agent` |
+| 기획 | [docs/PRD_Converge_v2.0.md](./docs/PRD_Converge_v2.0.md) |
+| 설계 | [docs/SDD_Converge_v2.0.md](./docs/SDD_Converge_v2.0.md) · [docs/테이블정의서_Converge_v2.0.md](./docs/테이블정의서_Converge_v2.0.md) |
+| 지표 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
+
+### 무엇을 하나
+
+```
+입력   "저녁 10시 여의도 고객사 야간 배포. 부장님 강서구, 나 송파구, 둘 다 지하철.
+        담당자가 1층에서 보안서류 받고 인솔함. 부장님이 여의도역에서 먼저 만나자는데?"
+
+출력   합류 지점은 여의도역이 아니라 인솔이 시작되는 고객사 1층입니다.
+        부장님  21:05 출발 · 지하철 45분 · 1층 도착 21:50
+        나      21:15 출발 · 지하철 35분 · 1층 도착 21:50
+        인솔 22:00 시작, 10분 전 도착 기준. 작업 종료 후 첫차 05:30
+        → 지도에 집결지 핀과 두 사람 경로선
+```
+
+| 프리셋 | 현장 | 다루는 절차 |
+|---|---|---|
+| `ship_maintenance` | 함정 정비 미팅 | 입항 일정, 접안 부두, 출입조치와 위병소 집결, 도착 지연 시 부두 밖 전환, 업체 당일 순회 |
+| `si_deploy` | SI 야간 배포·고객사 미팅 | 배포 창, 출입증·보안서류·인솔 지점, 작업 후 첫차 귀가, 고객사 방문 관례 |
+
+LLM은 입구(문장 → 슬롯)와 출구(집결지 판정·근거)에만 있습니다. 소요시간, 출발 시각, 절차 소요 반영은 전부 코드가 계산합니다.
+
+### 지표
+
+10/8 측정 결과로 채웁니다.
+
+| 항목 | 개선 전 | 개선 후 |
+|---|---|---|
+| 슬롯 추출 정확도 | | |
+| 집결지 판정 정확도 | | |
+| 출력 계약 준수율 | | |
+| p50 / p95 지연 | | |
+| 요청당 비용 | | |
+
+### 실행
+
+```bash
+git clone <repo> && cd <repo>
+cp .env.example .env     # 키만 채우고
+docker compose up        # backend:8080 (/api/agent, /health, /mcp)
+
+cd frontend && npm install && npm run dev   # :3000
+```
+
+필요한 키는 `.env.example` 참고. Kakao Local·Kakao Mobility·TMAP·OpenRouter·Langfuse·Supabase.
+
+**스택** FastAPI · Docker · Cloud Run · Next.js · Vercel · Supabase · Langfuse · OpenRouter · Kakao Local/Mobility · TMAP
