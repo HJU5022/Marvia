@@ -93,3 +93,15 @@ CREATE TABLE IF NOT EXISTS feedback (
   created_at        timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS feedback_session_idx ON feedback (session_id);
+
+-- 6. Row Level Security (RLS) — 표 5개 전부 켠다. 정책은 만들지 않는다.
+-- Supabase에는 문이 두 개다. 웹 정문(SUPABASE_URL + anon 키, 브라우저에 공개됨)과 DB 뒷문(DATABASE_URL).
+-- RLS를 안 켜면 anon 키를 가진 누구나 정문으로 모든 행을 읽고 지울 수 있다 (Supabase 보안 경고).
+-- 켜고 정책을 안 두면 정문으로는 아무 행도 안 보이고, 뒷문으로 붙는 우리 백엔드(표 소유자 역할)는
+-- RLS를 무시하므로 그대로 동작한다. 우리 설계는 프론트가 DB에 직접 안 붙는다 (결정 1, SDD 9절).
+-- 로컬 postgres:16에서도 같은 문법이 되고, app 사용자가 표 소유자라 영향 없다.
+ALTER TABLE sessions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE results      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE request_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE route_cache  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feedback     ENABLE ROW LEVEL SECURITY;
