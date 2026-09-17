@@ -22,10 +22,11 @@ proj2-5/
   docker-compose.yml          api + db(postgres:16). backend/db/를 initdb에 마운트, db healthcheck 후 api 기동
   .env.example                backend용 (9절)
   docs/
-    PRD.md  SDD.md  TABLES.md
+    PRD.md  SDD.md  테이블정의서.md
     evidence/                 제출 증거물
       langfuse/               대시보드 스크린샷 3장 이상, 트레이스 상세 1장
       mcp/                    연결 스크린샷, tool 목록, 호출 결과
+    planning/                 계획서 보완 제출본 (proj2-5_계획보완.md)
     SCAFFOLD.md  specs/       강사 스캐폴딩. specs/는 쓰지 않는다 (SDD가 그 역할)
   backend/                    FastAPI (Cloud Run)
     BACKEND_GUIDE.md          이 폴더의 경계와 지킬 것
@@ -59,7 +60,7 @@ proj2-5/
         langfuse.py           트레이스·span·프롬프트 조회
       models/                 slot_extractor.gguf 자리. 빌드 시 채워짐. git에 없음
     db/
-      001_init.sql          TABLES.md의 표 5개. 로컬(compose initdb)과 Supabase(SQL Editor)에 같은 파일을 실행
+      001_init.sql          테이블정의서.md의 표 5개. 로컬(compose initdb)과 Supabase(SQL Editor)에 같은 파일을 실행
     tests/
       TEST_GUIDE.md
       fixtures/               spike 샘플 응답 (실제 API 응답 원문)
@@ -436,6 +437,6 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | backend/, mcp_server/, skills/ (si_deploy 규칙) | 김승욱 | AgentRequest / AgentResponse 스키마 |
 | frontend/, finetune/, skills/ (ship_maintenance 규칙) | 하정운 | 같은 스키마, GGUF 파일 경로 |
 | evals/, docs/ | 공동 | 함정 문항은 하정운, SI 문항은 김승욱이 판정. 상대 문항은 검토만 |
-| backend/db/, services/store.py, services/auth.py (DB·인증) | 하정운 | TABLES.md, 9절 환경변수 |
+| backend/db/, services/store.py, services/auth.py (DB·인증) | 하정운 | 테이블정의서.md, 9절 환경변수 |
 
 서로의 폴더를 고칠 때는 PR로 하고, 스키마 변경은 이 문서 3·4절을 먼저 고친 뒤 양쪽에 알린다.

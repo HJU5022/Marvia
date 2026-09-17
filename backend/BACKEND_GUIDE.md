@@ -23,8 +23,8 @@ FastAPI 서버. Cloud Run 서비스 하나에 API와 MCP(/mcp)가 같이 뜬다.
 - LLM 호출은 `services/llm.py`에만. 외부 API 호출은 `services/geo.py`, `routes.py`에만
 - 프롬프트를 코드에 문자열로 두지 않는다. Langfuse Prompt 이름으로 가져온다 (SDD 8절)
 - 규칙값을 코드에 적지 않는다. `domain/rules.py`가 `skills/converge/rules/`의 프론트매터를 읽는다 (SDD 7절)
-- 참석자 이름·출발지·좌표·경로를 평문으로 DB에 넣지 않는다 (docs/TABLES.md 7절)
-- 로그에 요청 ID, 모델, 토큰, 지연을 남긴다 (TABLES.md 3절 request_logs)
+- 참석자 이름·출발지·좌표·경로를 평문으로 DB에 넣지 않는다 (docs/테이블정의서.md 7절)
+- 로그에 요청 ID, 모델, 토큰, 지연을 남긴다 (테이블정의서.md 3절 request_logs)
 - `/health`를 지우지 않는다
 
 ## 고쳤으면

@@ -108,7 +108,7 @@ git push                             # PR이 자동 갱신됨
 | 서비스 | (Vercel URL) |
 | Agent API | (Cloud Run URL) · `GET /health` · `POST /api/agent` |
 | 기획 | [docs/PRD.md](./docs/PRD.md) |
-| 설계 | [docs/SDD.md](./docs/SDD.md) · [docs/TABLES.md](./docs/TABLES.md) |
+| 설계 | [docs/SDD.md](./docs/SDD.md) · [docs/테이블정의서.md](./docs/테이블정의서.md) |
 | 지표 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
 
 ### 무엇을 하나
