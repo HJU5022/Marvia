@@ -24,7 +24,7 @@ backend/app/         FastAPI. POST /api/agent
   │    7 departure   출발 시각 역산                  [domain/, 계산]
   │    8 store       암호화 저장
   │
-  ├─ services/       바깥과 통신 (LLM, 카카오, TMAP, Supabase)
+  ├─ services/       바깥과 통신 (LLM, 카카오, TMAP, Postgres)
   ├─ domain/         계산만. 네트워크·LLM 없음
   └─ mcp_server/     같은 프로세스에 /mcp 로 마운트. 2·3·4단계가 쓰는 도구
   │
@@ -99,7 +99,7 @@ LLM은 0·1·6단계에만 있다. 나머지는 코드다. 이것이 이 프로�
 
 SDD 1절이 가리키지만 아직 안 만든 파일. 만들면 여기서 지운다.
 
-- `backend/app/`: `routers/` `schemas/` `observability/` 안의 `.py`, `services/`의 vision·geo·routes·judge·pipeline·store, `domain/`의 rules·router
+- `backend/app/`: `routers/` `schemas/` `observability/` 안의 `.py`, `services/`의 vision·geo·routes·judge·pipeline·store·auth, `domain/`의 rules·router
 - `mcp_server/tools/` 7개
 - `frontend/` 전부 (`app/` `components/` `lib/`)
 - `skills/converge/`: `failures.md` `output-contract.md` `rules/` 5개 `presets/` 2개
