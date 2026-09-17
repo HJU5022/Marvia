@@ -16,7 +16,7 @@
 - 규칙값이 필요하다 → skills/converge/rules/ (SDD 7절은 목록만)
 - 프롬프트를 만진다 → SDD 8절
 - 환경변수가 필요하다 → SDD 9절
-- DB 컬럼·암호화 → docs/TABLES.md
+- DB 컬럼·암호화 → docs/테이블정의서.md
 - 왜 만드나, 하지 않을 것 → docs/PRD.md 2·3절
 - 새 결정을 해야 한다 → 만들지 않는다. 물어보고, 정해지면 SDD를 먼저 고친다
 
@@ -34,7 +34,7 @@
 - LLM 호출은 backend/app/services/llm.py, 외부 API 호출은 services/geo.py와 routes.py에만 둔다. 라우터·프론트가 직접 부르지 않는다
 - backend/app/domain/에 네트워크 호출이나 LLM 호출을 넣지 않는다. 계산만 둔다
 - frontend/lib/api-types.ts를 손으로 고치지 않는다. scripts/gen_types.sh가 만드는 생성물이다
-- 참석자 이름·출발지·좌표·경로를 평문으로 DB에 넣지 않는다 (docs/TABLES.md 7절)
+- 참석자 이름·출발지·좌표·경로를 평문으로 DB에 넣지 않는다 (docs/테이블정의서.md 7절)
 - .env, 키, 카톡 캡처 원본을 커밋하지 않는다
 - 평가셋(evals/dataset.jsonl)의 입력과 정답을 LLM으로 생성하거나 고치지 않는다. 사람이 쓴다
 - 실행하지 않은 결과 숫자를 문서에 적지 않는다
