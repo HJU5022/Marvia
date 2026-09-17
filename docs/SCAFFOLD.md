@@ -23,6 +23,12 @@ EVAL_REPORT.md        개선 전후 지표            ← 제출물
 Dockerfile            컨테이너 이미지            ← 필수 2
 docker-compose.yml    `docker compose up` 한 줄  ← 필수 2
 .env.example          필요한 키 목록
+docs/                 기획·설계 문서
+  PRD_Converge_v2.0.md        기획서 (PRD)
+  SDD_Converge_v2.0.md        구현 명세 (SDD)
+  테이블정의서_Converge_v2.0.md  DB 테이블 정의
+  planning/                   계획서 보완 제출본 (도메인 경험·평가 질문 10개)
+  specs/                      기능별 Spec
 ```
 
 ---
@@ -130,6 +136,28 @@ docker compose up      # 한 줄
 **필요한 키 목록만** 공유하는 파일입니다. 실제 값은 `.env`에 적고, 그건 `.gitignore`에 있어 커밋되지 않습니다.
 
 OpenRouter를 권장하는 이유는 키 하나로 여러 회사 모델을 같은 코드로 부를 수 있어서예요. 축 ②가 요구하는 "2개 이상 모델 비교"가 훨씬 쉬워집니다.
+
+Converge에서 쓰는 키는 다섯 묶음입니다.
+
+| 묶음 | 키 |
+|---|---|
+| LLM | `OPENROUTER_API_KEY`, `MODEL_SMALL_PATH`·`MODEL_LARGE`·`MODEL_VISION`·`MODEL_EVAL_JUDGE`, `COST_LIMIT_USD_PER_REQUEST` |
+| 외부 API | `KAKAO_REST_KEY`, `KAKAO_JS_KEY`(프론트), `TMAP_APP_KEY`, `DATA_GO_KR_KEY`(첫차·막차, 선박 입출항 — 일단 제외) |
+| Langfuse | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` |
+| DB | `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` |
+| 보안·내부 | `ENCRYPTION_KEY`(AES-256-GCM, 32바이트 base64), `MCP_TOKEN`, `INTERNAL_TOKEN`(`/internal/cleanup`) |
+
+### `docs/`
+
+기획·설계 문서를 두는 곳입니다.
+
+| 파일 | 역할 |
+|---|---|
+| `PRD_Converge_v2.0.md` | 기획서. 문제 정의, 해결 범위, 아키텍처, LLM 제어 설계, 일정 |
+| `SDD_Converge_v2.0.md` | 구현 명세. 폴더 구조, 엔드포인트, LLM 출력 계약, 파이프라인, MCP 도구, 환경변수 |
+| `테이블정의서_Converge_v2.0.md` | DB 테이블 5개(sessions·results·request_logs·route_cache·feedback), 삭제·암호화 정책 |
+| `planning/proj2-5_계획보완.md` | 계획서 보완 제출본. 조원 도메인 경험과 평가 질문 10개(정상 3·경계 4·실패 유도 3). `evals/` 작성의 출발점 |
+| `specs/` | 기능별 Spec (`_example.md` 형식) |
 
 ---
 
