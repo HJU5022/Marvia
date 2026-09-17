@@ -389,13 +389,8 @@ COST_LIMIT_USD_PER_REQUEST=0.05
 ```
 NEXT_PUBLIC_SUPABASE_URL=       # Supabase 프로젝트 URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon key (공개 가능, RLS 전제)
-<<<<<<< Updated upstream
-NEXT_PUBLIC_API_BASE=http://localhost:8080
-NEXT_PUBLIC_KAKAO_JS_KEY=       # 카카오 지도 SDK (NEXT_PUBLIC_ 없으면 브라우저에 안 넘어감)
-=======
 NEXT_PUBLIC_API_BASE=http://localhost:8000
-KAKAO_JS_KEY=            # 카카오 지도 SDK
->>>>>>> Stashed changes
+NEXT_PUBLIC_KAKAO_JS_KEY=       # 카카오 지도 SDK (NEXT_PUBLIC_ 없으면 브라우저에 안 넘어감)
 ```
 
 supabase-py는 쓰지 않는다. 백엔드는 DATABASE_URL로 Postgres에 직접 붙고, Supabase는 운영 DB와 로그인(Auth)으로만 쓴다.
