@@ -48,7 +48,7 @@ LLM은 0·1·6단계에만 있다. 나머지는 코드다. 이것이 이 프로�
 | `mcp_server/` | 지도·경로·시각표 API를 MCP 도구 7개로 | `mcp_server/MCP_GUIDE.md` | 6절 |
 | `frontend/` | 화면, 백엔드 프록시, 소개 페이지, 공유 링크 | `frontend/FRONTEND_GUIDE.md` | 2절 |
 | `skills/converge/` | 현장 규칙과 규칙값의 원본, 프리셋 2개 | `skills/converge/SKILL.md` | 7절 |
-| `evals/` | 평가셋 30건, 실행 | `evals/EVAL_GUIDE.md` | 8절 |
+| `evals/` | 평가셋 30건, 실행 | `evals/EVAL_GUIDE.md` | (PRD 7절) |
 | `finetune/` | 소형 모델 학습. 배포 이미지에 안 들어감 | `finetune/FINETUNE_GUIDE.md` | |
 | `docs/` | PRD·SDD·테이블정의서, 제출 증거물(`evidence/`) | `docs/SDD.md` | |
 | `scripts/` | 손으로 돌리는 것. 타입 생성 등 | 파일 상단 주석 | |
