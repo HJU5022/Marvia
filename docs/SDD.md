@@ -390,7 +390,7 @@ COST_LIMIT_USD_PER_REQUEST=0.05
 NEXT_PUBLIC_SUPABASE_URL=       # Supabase 프로젝트 URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon key (공개 가능, RLS 전제)
 NEXT_PUBLIC_API_BASE=http://localhost:8080
-KAKAO_JS_KEY=            # 카카오 지도 SDK
+NEXT_PUBLIC_KAKAO_JS_KEY=       # 카카오 지도 SDK (NEXT_PUBLIC_ 없으면 브라우저에 안 넘어감)
 ```
 
 supabase-py는 쓰지 않는다. 백엔드는 DATABASE_URL로 Postgres에 직접 붙고, Supabase는 운영 DB와 로그인(Auth)으로만 쓴다.
@@ -419,8 +419,8 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | 소형 모델 최종 선택 | 미정 | 새 도메인 데이터로 재학습 후 compare.md로 결정 |
 | 선박 입출항 데이터에 군함 포함 여부 | 미확인 | 공공데이터포털 파일 열어 확인 (하정운). 없으면 vessel_schedule 도구 제외 |
 | 규칙값 "(확인)" 항목 | 미확정 | 착수일 조원 확정 |
-| compose db healthcheck | 결정됨, 미적용 | db 서비스에 pg_isready healthcheck, api에 depends_on condition: service_healthy. 001_init.sql 만들 때 같이 |
-| requirements.txt asyncpg | 결정됨, 주석 상태 | store.py 구현 시 주석 해제. SQLAlchemy를 쓸지(그러면 postgresql+asyncpg://)는 그때 결정 |
+| compose db healthcheck | 적용됨 (09-17) | pg_isready healthcheck + depends_on condition: service_healthy. backend/db/를 initdb에 마운트 |
+| requirements.txt asyncpg | 적용됨 (09-17) | 주석 해제. SQLAlchemy 안 씀, asyncpg 직접. DATABASE_URL은 postgresql:// |
 | 채점자 로컬 재현 시 LLM·카카오·TMAP 키 | 미확인 | .env.example만으로는 못 돈다. 1차 때 어떻게 전달했는지 확인 후 README에 방식 명시 |
 | Supabase 새 프로젝트 | 미확인 | 조직 HJU5022 free 플랜에 프로젝트 2개 있음. 세 번째 생성 가능한지 확인 (하정운) |
 | 구글 OAuth 동의 화면 | 미설정 | 테스트 모드면 등록한 테스트 사용자만 로그인됨. 채점자 계정 처리 방법 + Supabase 리디렉트 허용 URL(localhost:3000, Vercel) |

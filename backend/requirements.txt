@@ -5,4 +5,4 @@ python-dotenv>=1.0
 openai>=1.60          # OpenRouter도 이 SDK로 부릅니다(base_url만 교체)
 langfuse>=2.50        # 필수 조건 4
 mcp>=1.29             # 필수 조건 5 — FastMCP
-# asyncpg>=0.30       # Postgres를 쓴다면
+asyncpg>=0.30       # Postgres 접속 (services/store.py). DATABASE_URL
