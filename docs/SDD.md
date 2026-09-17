@@ -8,54 +8,74 @@
 
 ## 1. 폴더 구조
 
+2026-09-17 갱신. 하정운·김승욱 합의분 반영 (domain 분리, GGUF 빌드 시 다운로드, 소개 페이지, 증거물 폴더).
+
 ```
-converge/
-  CLAUDE.md
-  README.md
+proj2-5/
+  CLAUDE.md                   AI 진입점. 언제 무엇을 열지
+  CONVERGE.md                 구조 지도. 폴더별 책임과 SDD 절 안내
+  AGENTS.md                   CLAUDE.md를 따른다 (Codex·Cursor용)
+  README.md                   채점자용. 소개, 실행법, 배포 URL
+  EVAL_REPORT.md              제출물. 스캐폴딩 자리(루트) 유지
+  Dockerfile                  루트. 빌드 컨텍스트가 skills/, mcp_server/를 포함해야 하므로
+                              빌드 시 HF에서 GGUF를 받아 이미지에 넣는다 (git, LFS 미사용)
   docker-compose.yml
   .env.example
   docs/
-    PRD.md  SDD.md  TABLES.md  EVAL_REPORT.md
-  backend/                      FastAPI (Cloud Run)
+    PRD.md  SDD.md  TABLES.md
+    evidence/                 제출 증거물
+      langfuse/               대시보드 스크린샷 3장 이상, 트레이스 상세 1장
+      mcp/                    연결 스크린샷, tool 목록, 호출 결과
+    SCAFFOLD.md  specs/       강사 스캐폴딩. specs/는 쓰지 않는다 (SDD가 그 역할)
+  backend/                    FastAPI (Cloud Run)
+    BACKEND_GUIDE.md          이 폴더의 경계와 지킬 것
     app/
-      main.py                   앱 생성, 라우터 등록, 미들웨어(request_id)
+      main.py                 앱 생성, 라우터 등록, 미들웨어(request_id), /mcp 마운트
       routers/
-        agent.py                POST /api/agent
-        health.py               GET /health
-        session.py              GET /api/session/{id}  (공유 링크용 읽기)
-        internal.py             POST /internal/cleanup (Cloud Scheduler 전용, 토큰)
+        agent.py              POST /api/agent
+        health.py             GET /health
+        session.py            GET /api/session/{id}  (공유 링크용 읽기)
+        internal.py           POST /internal/cleanup (Cloud Scheduler 전용, 토큰)
       schemas/
-        slots.py                슬롯 추출 결과 (LLM 출력 계약 1)
-        result.py               최종 결과 (LLM 출력 계약 2, API 응답)
-        request.py              API 요청
-      services/
-        llm.py                  모든 LLM 호출은 여기만. OpenRouter + 로컬 GGUF
-        vision.py               캡처 → 텍스트
-        router.py               소형/대형 선택 규칙
-        geo.py                  지오코딩·장소 검색 (MCP 클라이언트 경유)
-        routes.py               경로·소요시간 (MCP 클라이언트 경유), 캐시
-        rules.py                Skill 규칙 로드, 계산식 (절차 소요·여유·역산·전환 조건)
-        judge.py                후보 판정 프롬프트 조립, 대형 모델 호출
-        pipeline.py             단계 오케스트레이션 (루프 없음, 순차)
-        store.py                Supabase 접근, 암호화
+        slots.py              슬롯 추출 결과 (LLM 출력 계약 1)
+        result.py             최종 결과 (LLM 출력 계약 2, API 응답)
+        request.py            API 요청
+      services/               바깥과 통신하는 것만 둔다
+        llm.py                모든 LLM 호출은 여기만. OpenRouter + 로컬 GGUF
+        vision.py             캡처 → 텍스트
+        geo.py                지오코딩·장소 검색 (MCP 클라이언트 경유)
+        routes.py             경로·소요시간 (MCP 클라이언트 경유), 캐시
+        judge.py              후보 판정 프롬프트 조립, 대형 모델 호출
+        pipeline.py           단계 오케스트레이션 (루프 없음, 순차)
+        store.py              Supabase 접근, 암호화
+      domain/                 계산만. 네트워크·LLM 호출 없음. API 키 없이 테스트된다
+        CLAUDE.md             난간. 이 폴더 파일을 열면 자동 로드
+        rules.py              Skill 규칙 로드, 계산식 (절차 소요·여유·역산·전환 조건)
+        router.py             소형/대형 선택 규칙
       observability/
-        langfuse.py             트레이스·span·프롬프트 조회
-      models/
-        slot_extractor.gguf     파인튜닝 소형 모델 (git LFS 또는 빌드 시 다운로드)
+        langfuse.py           트레이스·span·프롬프트 조회
+      models/                 slot_extractor.gguf 자리. 빌드 시 채워짐. git에 없음
     tests/
-    Dockerfile
+      TEST_GUIDE.md
+      fixtures/               spike 샘플 응답 (실제 API 응답 원문)
     requirements.txt
-  mcp_server/                   FastMCP. backend/app/main.py에 ASGI로 마운트해 같은 프로세스에서 /mcp 제공
-    server.py                   FastMCP 인스턴스, Bearer 토큰
+  mcp_server/                 FastMCP. backend/app/main.py에 ASGI로 마운트해 같은 프로세스에서 /mcp 제공
+    MCP_GUIDE.md
+    server.py                 FastMCP 인스턴스, Bearer 토큰
     tools/
       geocode.py  search_places.py  route_car.py  route_transit.py  first_last_train.py  vessel_schedule.py  departure_calc.py
-  frontend/                     Next.js (Vercel)
+  frontend/                   Next.js (Vercel)
+    FRONTEND_GUIDE.md
     app/
-      page.tsx                  지도 + 채팅
-      s/[id]/page.tsx           공유 링크 읽기 전용
-      api/agent/route.ts        Cloud Run 프록시 (키 숨김)
+      page.tsx                지도 + 채팅
+      about/page.tsx          소개 페이지 (필수 조건 6, 서비스 화면과 별도)
+      s/[id]/page.tsx         공유 링크 읽기 전용
+      api/agent/route.ts      Cloud Run 프록시 (키 숨김)
     components/
       MapView.tsx  ChatPanel.tsx  ParticipantPins.tsx  ResultTable.tsx  Progress.tsx
+    lib/
+      kakao.ts                지도 SDK 로더
+      api-types.ts            backend/app/schemas/에서 생성. 손으로 고치지 않는다
   skills/converge/
     SKILL.md
     rules/  access.md  schedule.md  convention.md  transport.md  vendor.md
@@ -63,9 +83,15 @@ converge/
     failures.md
     output-contract.md
   evals/
-    dataset.jsonl               30건
-    run_eval.py                 Langfuse Dataset 실행·score 기록
-  finetune/                     학습 파이프라인 (별도 README)
+    EVAL_GUIDE.md
+    dataset.jsonl             30건
+    run_eval.py               Langfuse Dataset 실행·score 기록
+  finetune/                   학습 파이프라인
+    FINETUNE_GUIDE.md
+    data/                     finetune_dataset.jsonl
+    gen_dataset.py
+  scripts/
+    gen_types.sh              schemas/ → frontend/lib/api-types.ts. CI가 어긋남을 검사
 ```
 
 ---
@@ -362,6 +388,8 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | 소형 모델 최종 선택 | 미정 | 새 도메인 데이터로 재학습 후 compare.md로 결정 |
 | 선박 입출항 데이터에 군함 포함 여부 | 미확인 | 공공데이터포털 파일 열어 확인 (하정운). 없으면 vessel_schedule 도구 제외 |
 | 규칙값 "(확인)" 항목 | 미확정 | 착수일 조원 확정 |
+| compose db healthcheck | 미적용 | api가 Postgres보다 먼저 뜰 수 있음. DB 붙일 때 depends_on condition 추가 (09-17 검증 중 발견) |
+| requirements.txt asyncpg | 주석 상태 | DATABASE_URL 실제 사용 시 주석 해제 (09-17 검증 중 발견) |
 
 ---
 
