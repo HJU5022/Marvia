@@ -388,7 +388,7 @@ COST_LIMIT_USD_PER_REQUEST=0.05
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=       # Supabase 프로젝트 URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon key (공개 가능, RLS 전제)
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=  # sb_publishable_... (공개 가능, RLS 전제). 옛 anon 키는 2026년 말까지만
 NEXT_PUBLIC_API_BASE=http://localhost:8000
 NEXT_PUBLIC_KAKAO_JS_KEY=       # 카카오 지도 SDK (NEXT_PUBLIC_ 없으면 브라우저에 안 넘어감)
 ```
@@ -422,8 +422,8 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | compose db healthcheck | 적용됨 (09-17) | pg_isready healthcheck + depends_on condition: service_healthy. backend/db/를 initdb에 마운트 |
 | requirements.txt asyncpg | 적용됨 (09-17) | 주석 해제. SQLAlchemy 안 씀, asyncpg 직접. DATABASE_URL은 postgresql:// |
 | 채점자 로컬 재현 시 LLM·카카오·TMAP 키 | 미확인 | .env.example만으로는 못 돈다. 1차 때 어떻게 전달했는지 확인 후 README에 방식 명시 |
-| Supabase 새 프로젝트 | 미확인 | 조직 HJU5022 free 플랜에 프로젝트 2개 있음. 세 번째 생성 가능한지 확인 (하정운) |
-| 구글 OAuth 동의 화면 | 미설정 | 테스트 모드면 등록한 테스트 사용자만 로그인됨. 채점자 계정 처리 방법 + Supabase 리디렉트 허용 URL(localhost:3000, Vercel) |
+| Supabase 새 프로젝트 | 해결 (09-18) | 팀 구글 계정으로 새 조직 Converge2-5에 `converge_agent` 생성. 표 5개·RLS 마이그레이션 완료 |
+| 구글 OAuth 동의 화면 | 설정됨, 테스트 모드 (09-18) | 테스트 사용자 조원 2명 등록, 리디렉트 localhost:3000/**. 브라우저 로그인→토큰→백엔드 검증 실측. **남음:** 채점자 계정 처리(테스트 사용자 추가 또는 프로덕션 전환), Vercel 주소 추가 — 배포 때 |
 | Langfuse 트레이스의 참석자 이름·출발지 | 미검토 | 평문으로 들어간다. 마스킹 여부 (김승욱, observability) |
 | 참석자 출발지 수정 API | 미설계 | 2절 PATCH 자리만. 얕은 재계산(경로만, LLM 없음) 권장. 별도 세션 |
 | 참석자 ↔ 로그인 계정 연결 | 미결 | 모두 로그인하므로 "본인" 참석자를 계정으로 알 수 있다. participants_enc에 user_id를 넣을지, 넣으면 PATCH에서 본인 행만 고치게 막을지 |
