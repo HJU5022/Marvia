@@ -87,7 +87,7 @@ LLM은 0·1·6단계에만 있다. 나머지는 코드다. 이것이 이 프로�
 
 | 하려는 것 | 지나가는 곳 |
 |---|---|
-| 응답 필드 추가·변경 | SDD 3·4절 → `schemas/` → `scripts/gen_types.sh` → `frontend/components/` |
+| 응답 필드 추가·변경 | SDD 2·3·4절 → `schemas/` → `scripts/gen_types.sh` → `frontend/types/agent.ts`(생성 전까지 손으로) → `frontend/components/` |
 | 규칙값 바꾸기 | `skills/converge/rules/*.md` 프론트매터 → `backend/tests/` (domain 테스트) |
 | 새 외부 API | `services/`에 함수 → `mcp_server/tools/`에 도구 → `MCP_GUIDE.md` 표 |
 | 파이프라인 단계 | SDD 5절 표 → `services/pipeline.py` → `backend/tests/` |

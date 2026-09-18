@@ -6,6 +6,8 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 
 | 경로 | 무엇 |
 |---|---|
+| `app/layout.tsx` | html/body와 전역 CSS 로드 |
+| `app/globals.css` | 전역 스타일. 핀 커서 규칙(드래그 가능·수정 불가)도 여기 |
 | `app/page.tsx` | 주선자 화면. 왼쪽 카카오맵, 오른쪽 채팅창과 캡처 업로드, 결과 표, 공유 링크 (docs/PRD.md 4절) |
 | `app/about/page.tsx` | 소개 페이지. 필수 조건 6. 서비스 화면과 별도 (아직 없음) |
 | `app/s/[id]/page.tsx` | 공유 링크. 로그인해야 보인다. 참석자 목록에서 자기를 고르면(claim) 자기 핀을 옮길 수 있다 |
@@ -44,6 +46,7 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 - 주선자 재계산 때 `confirmed_participants`에는 주선자가 고칠 수 있는 핀만 담는다
 - 공유 링크에서 자기 이름을 고르면 PATCH `claim: true`, 핀을 옮기면 `claim: false`. 403은 "본인 핀만 수정할 수 있습니다", 409는 "이미 다른 사람이 등록했습니다"
 - 경로선 색은 이동수단(car·transit·walk) 세 가지. 사람마다 색을 바꾸지 않는다
+- 선이 겹치면 도보, 대중교통, 자동차 순으로 위에 온다. 자동차 선이 길고 굵어 나머지를 덮기 때문이다
 - 참석자 4명 이하면 경로선 기본 켬, 5명 이상이면 기본 끔. 꺼져 있을 때 참석자 핀을 누르면 그 사람 것만 보인다
 - `via_pickup`이 true인 참석자는 선을 그리지 않고 픽업 지점에 핀만 찍는다. 좌표는 `geocoded`의 `kind: "pickup"`, 없으면 그 사람 `polyline[0]`(탑승 지점)
 - 핀 구성이 바뀌면(새 응답) bounds를 맞춘다. 드래그로는 다시 맞추지 않는다
@@ -59,6 +62,12 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 - 즉각 피드백, 오류 안내, 입력 가이드 세 가지가 화면에 있어야 한다 (가이드 8-3). 실패 화면은 데모 영상에 필요하다
 - 부대명·고객사명을 예시 문구에 쓰지 않는다
 - `next.config.ts`의 `agentRules: false`를 지우지 않는다. 지우면 `next dev`가 이 폴더에 AGENTS.md, CLAUDE.md를 만든다
+
+## 설정 파일
+
+- `package.json`, `tsconfig.json`: Next 16, React 19, TypeScript. 지도 외 UI 라이브러리를 넣지 않는다
+- `next.config.ts`: `agentRules: false`
+- `.env.example`: 브라우저에 나가는 값만. 실제 값은 `.env.local`(커밋 금지). 값을 비웠을 때 어떻게 도는지는 그 파일 주석에 있다
 
 ## 실행
 

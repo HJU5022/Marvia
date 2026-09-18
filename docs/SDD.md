@@ -73,7 +73,11 @@ proj2-5/
   frontend/                   Next.js (Vercel)
     FRONTEND_GUIDE.md
     .env.example              frontend용 (9절). 브라우저에 노출되는 값만
+    package.json  tsconfig.json       Next 16, React 19, TypeScript. 지도 외 UI 라이브러리 없음
+    next.config.ts            agentRules: false (next dev 가 이 폴더에 AGENTS.md·CLAUDE.md 를 만들지 않게)
     app/
+      layout.tsx              html/body, 전역 CSS 로드
+      globals.css             전역 스타일. 핀 커서 규칙(핀 소유권)도 여기
       page.tsx                지도 + 채팅
       about/page.tsx          소개 페이지 (필수 조건 6, 서비스 화면과 별도)
       s/[id]/page.tsx         공유 링크 페이지. 링크는 이 주소 그대로(별도 토큰·단축 없음), 로그인 필요
@@ -354,6 +358,8 @@ session_id가 있으면 먼저 잠금 검사: 세션의 user_id가 토큰과 다
 | first_last_train | station_name: str, city: "seoul" or "busan", weekday: "weekday" or "sat" or "holiday", direction | {first: "05:30", last: "23:40", line} | 서울: 서울교통공사 첫차·막차 API (1~9호선, 역명→역코드 API 선행). 부산: 부산교통공사 열차시각표 API에서 첫차(0400부터 1건)·막차(2300부터 마지막) 계산, 역외부코드는 레포 CSV |
 | vessel_schedule | port: str, date: str | [{vessel, arrival, departure, pier}] | 해양수산부 선박 입출항 기록(PORT-MIS, 공공데이터포털). 군함 포함 여부 확인 필요, 없으면 사용자 입력으로 |
 | departure_calc | arrive_by: "HH:MM", duration_sec, buffer_min, access_lead_min | {depart_at: "HH:MM", arrive_by_adjusted: "HH:MM"} | 계산 |
+
+route_transit 이 부르는 TMAP 대중교통은 초당 호출 제한이 있어 연속 호출 시 429 THROTTLED 가 온다 (scripts/fetch_mock_routes.py 에서 확인). 간격을 두거나 재시도로 처리한다.
 
 description은 "언제 쓰는 도구인지"가 한 문장에 드러나게 쓴다. 예: vessel_schedule은 "함정 프리셋에서 입항·출항 시각이 확정됐는지 확인할 때 쓴다. 기록에 없으면 미확정으로 본다".
 
