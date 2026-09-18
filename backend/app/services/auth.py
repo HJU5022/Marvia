@@ -16,10 +16,16 @@
   current_user를 먼저 실행하고 통과한 user_id만 함수에 넣어준다. 막히면 함수는 실행되지 않는다.
   /health 를 뺀 모든 엔드포인트에 붙인다 (결정 4).
 
+AUTH_REQUIRED=false (SDD 2절·9절, 김승욱 09-18):
+  로컬 채점용 스위치. false면 토큰 검사를 건너뛰고 고정 user_id "local-grader"를 돌려준다.
+  채점자가 우리 Supabase·구글 OAuth 없이 compose up 만으로 돌려볼 수 있게 하기 위한 것.
+  배포 환경에서는 항상 true. 실수로 false가 들어가면 누구나 LLM을 쓸 수 있으므로 기동 시 경고를 남긴다.
+
 이 파일은 DB를 건드리지 않는다. user_id를 받아 저장하는 건 services/store.py.
 """
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 
@@ -31,6 +37,17 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 # auto_error=False → 헤더가 없어도 FastAPI가 알아서 403을 내지 않고 None을 준다.
 # 우리는 아래에서 직접 401로 통일한다 (SDD 2절: "없거나 틀리면 401").
 _bearer = HTTPBearer(auto_error=False)
+
+_log = logging.getLogger(__name__)
+
+
+def auth_required() -> bool:
+    """AUTH_REQUIRED 환경변수. 기본 true. "false"(대소문자 무관)일 때만 검사를 건너뛴다."""
+    return os.environ.get("AUTH_REQUIRED", "true").strip().lower() != "false"
+
+
+if not auth_required():
+    _log.warning("AUTH_REQUIRED=false — 로그인 검사를 건너뜁니다. 로컬 채점 전용. 배포 환경에서는 true여야 합니다.")
 
 
 @lru_cache(maxsize=1)
@@ -78,6 +95,8 @@ async def current_user(
     공격자에게 힌트가 되므로 이유는 서버 로그에만 남기고 응답은 같게 한다.
     401을 내면 LLM 호출까지 가지 않는다 (결정 4, 비용 방어).
     """
+    if not auth_required():
+        return "local-grader"  # 로컬 채점 모드. 세션이 이 user_id로 남아 실제 사용자와 구분된다
     if cred is None or cred.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="로그인이 필요합니다")
     try:
