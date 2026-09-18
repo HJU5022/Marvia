@@ -113,6 +113,7 @@ proj2-5/
   scripts/
     gen_types.sh              schemas/ → frontend/lib/api-types.ts. CI가 어긋남을 검사
     fetch_mock_routes.py      프론트 mock 경로를 카카오모빌리티·TMAP 에서 한 번 받아 저장
+    mcp_check.py              /mcp 에 MCP 클라이언트로 붙어 도구 목록·호출 결과를 찍는다. 컨테이너 안에서 stdin 으로 실행
 ```
 
 ---
