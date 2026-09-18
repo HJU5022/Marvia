@@ -4,10 +4,12 @@
   브라우저가 구글 로그인 → Supabase가 액세스 토큰(JWT) 발급 → 브라우저가 우리 API를 부를 때
   헤더 `Authorization: Bearer <토큰>` 을 붙임 → 이 파일이 토큰을 검사 → 통과하면 user_id 반환.
 
-검사 방식 (결정 09-17, 원안 유지):
-  Supabase가 토큰에 찍은 서명을 우리 서버가 SUPABASE_JWT_SECRET(같은 비밀값)으로 직접 대조한다.
-  네트워크를 타지 않아 요청마다 Supabase에 물어볼 필요가 없다. 실무에서 가장 흔한 방식.
-  비밀값은 Supabase 대시보드 > 프로젝트 설정 > API > JWT Secret.
+검사 방식 (결정 09-18, 공개키):
+  Supabase는 토큰에 비대칭 키(ES256)로 서명하고, 그 공개키를 누구나 볼 수 있는 주소에 올려 둔다.
+    GET {SUPABASE_URL}/auth/v1/.well-known/jwks.json
+  우리 서버는 그 공개키로 서명을 대조한다. 비밀값이 우리 쪽에 없으므로 유출될 것이 없고,
+  Supabase가 키를 바꿔도(회전) 공개키만 다시 받으면 되어 재배포가 필요 없다.
+  옛 방식(공유 비밀 SUPABASE_JWT_SECRET, HS256)은 Supabase 문서가 "이점이 거의 없고 취약"이라 하여 쓰지 않는다.
 
 쓰는 법:
   라우터 함수 인자에 `user_id: str = Depends(current_user)` 한 줄을 붙이면, FastAPI가 요청마다
@@ -19,6 +21,7 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 
 import jwt  # PyJWT
 from fastapi import Depends, HTTPException
@@ -30,26 +33,37 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 _bearer = HTTPBearer(auto_error=False)
 
 
-def _secret() -> str:
-    """SUPABASE_JWT_SECRET. 없으면 서버가 뜨자마자 실패하는 게 낫다 — 검사를 건너뛴 채 돌면 안 되므로."""
-    return os.environ["SUPABASE_JWT_SECRET"]
+@lru_cache(maxsize=1)
+def _jwks_client() -> jwt.PyJWKClient:
+    """공개키를 받아 오는 클라이언트. 한 번 만들어 재사용한다.
+
+    PyJWKClient가 하는 일:
+      - 처음 요청 때 jwks.json을 받아 메모리에 캐시 (기본 5분)
+      - 토큰 헤더의 kid(키 id)에 맞는 공개키를 골라 준다
+      - 모르는 kid가 오면(키 회전 직후) 다시 받아 온다
+    SUPABASE_URL이 없으면 첫 요청에서 KeyError로 실패한다. 검사를 건너뛴 채 돌면 안 되므로 그대로 둔다.
+    """
+    url = os.environ["SUPABASE_URL"].rstrip("/") + "/auth/v1/.well-known/jwks.json"
+    return jwt.PyJWKClient(url, cache_keys=True)
 
 
 def verify_token(token: str) -> str:
     """토큰 문자열 → user_id. 틀리면 jwt 예외를 그대로 낸다 (current_user가 401로 바꿈).
 
     검사하는 것 (PyJWT가 한 번에):
-      - 서명이 비밀값과 맞는가 (위조 여부)
+      - 서명이 Supabase 공개키와 맞는가 (위조 여부)
       - exp(만료 시각)가 지나지 않았는가 — Supabase 기본 1시간. 프론트 라이브러리가 만료 전에 자동 갱신한다
       - aud가 "authenticated"인가 — Supabase가 로그인 사용자 토큰에 넣는 값. 다른 용도 토큰 차단
-    Supabase는 HS256으로 서명한다. 알고리즘을 고정해 두는 이유는 "alg: none" 같은 우회를 막기 위해서다.
+    알고리즘을 ES256으로 고정하는 이유는 "alg: none" 같은 우회를 막기 위해서다.
+    옛 HS256 토큰(anon 키 등)은 여기서 거부된다 — 로그인 사용자 토큰만 받는 것이 맞다.
 
     user_id는 토큰의 sub 필드. auth.users.id 와 같은 uuid. sessions.user_id 에 들어가는 값 (테이블정의서 1절).
     """
+    signing_key = _jwks_client().get_signing_key_from_jwt(token)  # 헤더의 kid로 공개키 선택
     payload = jwt.decode(
         token,
-        _secret(),
-        algorithms=["HS256"],
+        signing_key.key,
+        algorithms=["ES256"],
         audience="authenticated",
     )
     return payload["sub"]
@@ -69,5 +83,5 @@ async def current_user(
     try:
         return verify_token(cred.credentials)
     except jwt.PyJWTError:
-        # ExpiredSignatureError, InvalidSignatureError, InvalidAudienceError 등 전부 여기로
+        # ExpiredSignatureError, InvalidSignatureError, InvalidAudienceError, PyJWKClientError 등 전부 여기로
         raise HTTPException(status_code=401, detail="로그인이 필요합니다")

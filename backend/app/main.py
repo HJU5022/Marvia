@@ -11,9 +11,11 @@ LLM 호출은 여기가 아니라 services/llm.py 에, DB 접근은 services/sto
 """
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.routers import session
 from backend.app.services import store
@@ -32,6 +34,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Converge API", lifespan=lifespan)
+
+# CORS: 브라우저는 다른 주소(프론트 :3000)에서 이 API(:8000)를 부를 때 서버가 "그 주소 허용"이라고
+# 답해야만 응답을 넘겨준다. curl·서버 간 호출에는 없는 브라우저 전용 규칙.
+# 허용 주소는 FRONTEND_ORIGIN 환경변수. 로컬은 http://localhost:3000, 배포는 Vercel 주소. 쉼표로 여러 개.
+# allow_credentials=True: Authorization 헤더(로그인 토큰)를 실어 보낼 수 있게.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000").split(",")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(session.router)
 
