@@ -101,7 +101,7 @@ SDD 1절이 가리키지만 아직 안 만든 파일. 만들면 여기서 지운
 
 - `backend/app/`: `routers/` `schemas/` `observability/` 안의 `.py`, `services/`의 vision·geo·routes·judge·pipeline·store·auth, `domain/`의 rules·router
 - `mcp_server/tools/` 7개
-- `frontend/` 전부 (`app/` `components/` `lib/`)
+- `frontend/`: `app/about/page.tsx`, `components/Progress.tsx`. `lib/api-types.ts`(생성물, 지금은 `types/agent.ts`가 대신함)
 - `skills/converge/`: `failures.md` `output-contract.md` `rules/` 5개 `presets/` 2개
 - `evals/run_eval.py`
 - `finetune/`: `gen_dataset.py`, `data/finetune_dataset.jsonl` (Info/에 있음, 아직 안 옮김)
