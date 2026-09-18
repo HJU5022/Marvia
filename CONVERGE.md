@@ -105,5 +105,4 @@ SDD 1절이 가리키지만 아직 안 만든 파일. 만들면 여기서 지운
 - `skills/converge/`: `failures.md` `output-contract.md` `rules/` 5개 `presets/` 2개
 - `evals/run_eval.py`
 - `finetune/`: `gen_dataset.py`, `data/finetune_dataset.jsonl` (Info/에 있음, 아직 안 옮김)
-- `scripts/gen_types.sh`
 - `backend/tests/` 테스트 파일
