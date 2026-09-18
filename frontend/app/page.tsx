@@ -178,7 +178,7 @@ function Organizer({ headers }: { headers: Record<string, string> }) {
           <>
             <ResultTable
               result={response.result}
-              participants={response.slots.participants}
+              participants={response.slots?.participants ?? []}
               selectedRank={selectedRank}
               onSelectRank={setSelectedRank}
             />

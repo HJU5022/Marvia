@@ -270,16 +270,18 @@ export function mockAgent(req: AgentRequest): AgentResponse {
 
   if (text.includes("실시간")) {
     const res = base("out_of_scope", sid, []);
-    res.slots = { ...res.slots, preset: null, participants: [], out_of_scope: true };
+    res.slots = { ...slotsOf(sid, [], false), preset: null, participants: [], out_of_scope: true };
     res.message = "출발 후 실시간 상황(지연·교통 정보)은 도와드릴 수 없습니다. 출발 전 집결 계획만 잡습니다.";
     return res;
   }
   if (text.includes("모름")) {
     const res = base("need_info", sid, list);
-    const second = res.slots.participants[1];
-    res.slots.participants[1] = { ...second, transport: null };
-    res.slots.missing = ["participants[1].transport", "datetime"];
-    res.slots.datetime = null;
+    const slots = slotsOf(sid, list, false);
+    const second = slots.participants[1];
+    slots.participants[1] = { ...second, transport: null };
+    slots.missing = ["participants[1].transport", "datetime"];
+    slots.datetime = null;
+    res.slots = slots;
     res.questions = [`${second.name} 님은 차로 오시나요, 대중교통으로 오시나요?`, "작업은 몇 시에 시작하나요?"];
     res.message = "계산하려면 두 가지가 더 필요합니다.";
     return res;
@@ -339,5 +341,6 @@ export function mockPatch(id: string, userId: string, body: ParticipantPatchRequ
   };
   const next = done(state.scenario, list, current.result?.provisional ?? false);
   remember(state.scenario, list, next);
-  return { status: 200, body: { slots: next.slots, result: next.result } };
+  // done 응답에는 슬롯이 반드시 있다 (AgentResponse 계약)
+  return { status: 200, body: { slots: next.slots!, result: next.result } };
 }
