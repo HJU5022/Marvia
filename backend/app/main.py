@@ -4,7 +4,6 @@ LLM 호출은 여기가 아니라 services/llm.py 에, DB 접근은 services/sto
 3차 프로젝트에서 그 자리에 RAG 그래프가 들어온다 — 호출부가 흩어져 있으면 그때 전부 뜯어야 한다.
 
 아직 없는 것 (SDD 1절 순서대로 붙일 예정):
-  routers/agent.py    POST /api/agent — 파이프라인
   routers/internal.py POST /internal/cleanup — Cloud Scheduler가 하루 1회, store.cleanup_expired
   /mcp 마운트         mcp_server/server.py 를 ASGI로
   request_id 미들웨어 요청마다 uuid를 만들어 응답 헤더와 request_logs 에 (SDD 1절 main.py 설명)
@@ -17,7 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.routers import session
+from backend.app.routers import agent, session
 from backend.app.services import store
 
 
@@ -47,6 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(agent.router)
 app.include_router(session.router)
 
 

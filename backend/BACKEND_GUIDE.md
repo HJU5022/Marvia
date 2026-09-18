@@ -17,6 +17,11 @@ FastAPI 서버. Cloud Run 서비스 하나에 API와 MCP(/mcp)가 같이 뜬다.
 `services/pipeline.py`가 0~8단계를 순서대로 부른다. 루프 없음. 단계마다 Langfuse span 하나.
 단계 표와 실패 경로는 docs/SDD.md 5절이 기준이다.
 
+`pipeline.run(req, user_id, deps)` 의 `deps`(Deps)는 단계가 부르는 바깥 함수들이다. 기본값은 진짜 서비스,
+테스트는 가짜 함수를 넣는다. 아직 없는 단계를 부르면 NotImplementedError 로 그 자리에서 실패한다. 조용히 건너뛰지 않는다.
+Langfuse 는 키가 없으면 스스로 꺼진다 (`app/observability/langfuse.py`). 프롬프트만은 예외로, 못 가져오면 실패한다.
+코드에 프롬프트를 숨겨 두는 우회를 막기 위해서다 (SDD 8절).
+
 ## 지킬 것
 
 - 출력은 `app/schemas/`의 모델로 검증한다. 필드는 거기서만 정의한다 (SDD 3·4절)
