@@ -357,7 +357,7 @@ session_id가 있으면 먼저 잠금 검사: 세션의 user_id가 토큰과 다
 | route_transit | origin, destination | {duration_sec, transfer_count, walk_m, fare, polyline[], legs[]} | TMAP 대중교통 |
 | first_last_train | station_name: str, city: "seoul" or "busan", weekday: "weekday" or "sat" or "holiday", direction | {first: "05:30", last: "23:40", line} | 서울: 서울교통공사 첫차·막차 API (1~9호선, 역명→역코드 API 선행). 부산: 부산교통공사 열차시각표 API에서 첫차(0400부터 1건)·막차(2300부터 마지막) 계산, 역외부코드는 레포 CSV |
 | vessel_schedule | port: str, date: str | [{vessel, arrival, departure, pier}] | 해양수산부 선박 입출항 기록(PORT-MIS, 공공데이터포털). 군함 포함 여부 확인 필요, 없으면 사용자 입력으로 |
-| departure_calc | arrive_by: "HH:MM", duration_sec, buffer_min, access_lead_min | {depart_at: "HH:MM", arrive_by_adjusted: "HH:MM"} | 계산 |
+| departure_calc | arrive_by: "HH:MM", duration_sec, buffer_min, access_lead_min | {depart_at: "HH:MM", arrive_by_adjusted: "HH:MM", day_offset: int} | 계산. day_offset은 출발이 전날이면 -1 (야간 배포에서 생김, 09-18 추가) |
 
 route_transit 이 부르는 TMAP 대중교통은 초당 호출 제한이 있어 연속 호출 시 429 THROTTLED 가 온다 (scripts/fetch_mock_routes.py 에서 확인). 간격을 두거나 재시도로 처리한다.
 
