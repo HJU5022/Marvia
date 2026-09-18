@@ -134,6 +134,10 @@ cd frontend && npm install && npm run dev   # :3000
 
 필요한 키는 `.env.example`을 참고하세요. Kakao Local·Kakao Mobility·TMAP·OpenRouter·Langfuse·Supabase.
 
+로컬 실행은 AUTH_REQUIRED=false 로 인증 없이 동작합니다. 배포된 서비스는 구글 로그인이 필요합니다.
+
+백엔드 없이 화면만 보려면 `frontend/.env.local`에 `NEXT_PUBLIC_KAKAO_JS_KEY`만 넣고 `npm run dev`를 하면 됩니다. `NEXT_PUBLIC_API_BASE`가 없으면 `frontend/lib/mock.ts`의 고정 응답으로 지도·경로선·결과 표가 그려집니다.
+
 ### 테스트
 
 ```bash
@@ -172,8 +176,8 @@ python evals/run_eval.py --dataset evals/dataset.jsonl   # 평가셋
 
 | 이름 | GitHub | 역할 | 담당 영역 | 한마디 |
 |---|---|---|---|---|
-| 김승욱 | @seungwook-kim | 조장 · 풀스택 · SI 배포 도메인 | backend/, mcp_server/, skills/ (si_deploy) | 눈 뜨면 코딩하기. |
-| 하정운 | @HJU5022 | 풀스택 · 함정 정비 도메인 | frontend/, finetune/, skills/ (ship_maintenance), DB·인증 | 눈 감아도 코딩하기. |
+| 김승욱 | @seungwook-kim | 조장 · 풀스택 · SI 배포 도메인 | backend/, mcp_server/, frontend/, skills/ (si_deploy) | 눈 뜨면 코딩하기. |
+| 하정운 | @HJU5022 | 풀스택 · 함정 정비 도메인 | finetune/, skills/ (ship_maintenance), DB·인증 | 눈 감아도 코딩하기. |
 
 - `evals/`, `docs/`는 공동 담당입니다. 평가셋은 함정 문항을 하정운, SI 문항을 김승욱이 판정하고 상대 문항은 검토만 합니다.
 - 두 영역이 만나는 지점은 `AgentRequest` / `AgentResponse` 스키마 하나입니다. 역할 경계는 [docs/SDD.md](./docs/SDD.md) 12절을 따릅니다.

@@ -1,6 +1,6 @@
 # SDD · Converge 구현 명세
 
-버전 2.1 · 2026.09.17 · 5조 김승욱, 하정운 · 도메인: 현장이 움직이는 유지보수·배포 작업의 집결 조율 (함정 정비 / SI 배포)
+버전 2.2 · 2026.09.17 · 5조 김승욱, 하정운 · 도메인: 현장이 움직이는 유지보수·배포 작업의 집결 조율 (함정 정비 / SI 배포)
 
 이 문서는 코드를 쓰는 사람과 Claude Code가 따르는 기준이다. 여기 없는 결정은 만들지 말고 물어본다. 스키마·엔드포인트·규칙값을 바꾸려면 이 문서를 먼저 고친다.
 
@@ -37,7 +37,7 @@ proj2-5/
         health.py             GET /health
         session.py            GET /api/session/{id}  (공유 링크용 읽기, 로그인 필수)
                               DELETE /api/session/{id}  (주선자 본인만, 즉시 삭제)
-                              PATCH /api/session/{id}/participants/{idx}  (참석자 본인 출발지 수정, 자리만. 2절)
+                              PATCH /api/session/{id}/participants  (핀 claim·위치 수정. 2절, 7절 핀 소유권)
         internal.py           POST /internal/cleanup (Cloud Scheduler 전용, 토큰)
       schemas/
         slots.py              슬롯 추출 결과 (LLM 출력 계약 1)
@@ -73,16 +73,29 @@ proj2-5/
   frontend/                   Next.js (Vercel)
     FRONTEND_GUIDE.md
     .env.example              frontend용 (9절). 브라우저에 노출되는 값만
+    package.json  tsconfig.json       Next 16, React 19, TypeScript. 지도 외 UI 라이브러리 없음
+    next.config.ts            agentRules: false (next dev 가 이 폴더에 AGENTS.md·CLAUDE.md 를 만들지 않게)
     app/
+      layout.tsx              html/body, 전역 CSS 로드
+      globals.css             전역 스타일. 핀 커서 규칙(핀 소유권)도 여기
       page.tsx                지도 + 채팅
       about/page.tsx          소개 페이지 (필수 조건 6, 서비스 화면과 별도)
       s/[id]/page.tsx         공유 링크 페이지. 링크는 이 주소 그대로(별도 토큰·단축 없음), 로그인 필요
       api/agent/route.ts      Cloud Run 프록시 (키 숨김)
+      api/session/[id]/route.ts               GET 프록시 (공유 링크)
+      api/session/[id]/participants/route.ts  PATCH 프록시 (핀 claim·위치 수정)
     components/
-      MapView.tsx  ChatPanel.tsx  ParticipantPins.tsx  ResultTable.tsx  Progress.tsx
+      MapView.tsx  ChatPanel.tsx  ParticipantPins.tsx  RouteLines.tsx  ResultTable.tsx  AuthGate.tsx  Progress.tsx
     lib/
       kakao.ts                지도 SDK 로더
+      auth.ts                 구글 로그인(Supabase Auth), 토큰 헤더
+      proxy.ts                app/api/ 라우트 공용 백엔드 전달
+      dev-user.ts             로컬 모드 사용자 id
+      mock.ts                 NEXT_PUBLIC_API_BASE 가 없을 때 프록시가 돌려주는 고정 응답
+      mock-data.json          mock 시나리오(함정·SI)와 실제 경로 좌표
       api-types.ts            backend/app/schemas/에서 생성. 손으로 고치지 않는다
+    types/
+      agent.ts                2·3·4절 타입을 손으로 옮긴 것. api-types.ts 가 생기면 대체한다
   skills/converge/
     SKILL.md
     rules/  access.md  schedule.md  convention.md  transport.md  vendor.md
@@ -99,15 +112,29 @@ proj2-5/
     gen_dataset.py
   scripts/
     gen_types.sh              schemas/ → frontend/lib/api-types.ts. CI가 어긋남을 검사
+    fetch_mock_routes.py      프론트 mock 경로를 카카오모빌리티·TMAP 에서 한 번 받아 저장
 ```
 
 ---
 
 ## 2. 엔드포인트
 
+서비스 전체가 구글 로그인 뒤에 있다. 공유 링크로 결과를 보는 사람도 로그인해야 하고, 익명 열람 경로는 없다.
+
+| 엔드포인트 | 인증 |
+|---|---|
+| POST /api/agent | 로그인 필수 |
+| GET /api/session/{id} | 로그인 필수. 링크만으로는 열람 불가 |
+| DELETE /api/session/{id} | 로그인 필수 |
+| PATCH /api/session/{id}/participants | 로그인 필수 |
+| GET /health | 인증 없음 |
+| /mcp | Bearer 토큰 (MCP_TOKEN, 로그인과 별개) |
+
+로그인 필수 엔드포인트는 토큰이 없거나 검증에 실패하면 401. AUTH_REQUIRED=false(9절, 로컬 채점용)일 때만 검증을 건너뛴다.
+
 ### POST /api/agent
 
-**로그인 필수.** /health를 뺀 모든 엔드포인트가 같다. 헤더 `Authorization: Bearer {Supabase access token}`. services/auth.py가 Supabase 공개키(ES256, jwks.json)로 서명을 검증해 user_id를 꺼낸다. 비밀값을 우리 쪽에 두지 않는다. 없거나 틀리면 401 — LLM을 호출하지 않는다 (비용 방어).
+**로그인 필수.** 헤더 `Authorization: Bearer {Supabase access token}`. services/auth.py가 Supabase 공개키(ES256, jwks.json)로 서명을 검증해 user_id를 꺼낸다. 비밀값을 우리 쪽에 두지 않는다. 없거나 틀리면 401. LLM을 호출하지 않는다 (비용 방어).
 
 요청 (backend/app/schemas/request.py)
 
@@ -135,7 +162,22 @@ class AgentResponse(BaseModel):
     questions: list[str]            # need_info 일 때 되물을 것
     message: str                    # 화면에 보여줄 한 줄
     trace_id: str
+    geocoded: list[GeocodedPin] | None   # need_confirm, done 일 때 지도에 찍을 좌표
+
+class GeocodedPin(BaseModel):
+    name: str
+    lng: float
+    lat: float
+    confidence: float
+    kind: Literal["participant", "rendezvous", "destination", "pickup"]
+
+class ParticipantInput(BaseModel):   # PATCH 요청에서 claim 만 뺀 모양
+    name: str
+    lng: float
+    lat: float
 ```
+
+좌표는 Slots 에 넣지 않는다 (슬롯 계약과 파인튜닝 데이터를 지키기 위해). 지오코딩 결과는 geocoded 로만 나간다. need_confirm 과 done 양쪽에 담는다. done 에서도 집결 후보 외에 참석자 출발 핀을 찍어야 하기 때문이다.
 
 - need_confirm: 참석자 핀을 지도에 찍고 사용자 확인 대기 (확신도 < 0.8 또는 되묻기 없음)
 - need_info: 필수 슬롯 누락 (출발지·이동수단·시각 중 하나). questions에 무엇을 물을지
@@ -147,17 +189,25 @@ class AgentResponse(BaseModel):
 
 로그인 없음. `{"status":"ok","model_loaded":true,"version":"..."}`
 
+### PATCH /api/session/{id}/participants
+
+**로그인 필수.** 참석자가 자기 핀을 고르거나(claim) 위치를 고칠 때 쓴다.
+
+요청: `{ "name": "민수", "lng": 128.98, "lat": 35.16, "claim": false }`
+- `claim` 이 true 면 "내가 이 사람이다"를 등록하는 요청이다. owner_user_id 가 비어 있을 때만 성공한다
+- `claim` 이 false 면 위치만 고친다. 토큰의 user_id 와 owner_user_id 가 같아야 한다
+
+응답: 갱신된 Slots 와, 재계산이 끝났으면 새 Result
+
+실패: 남의 핀이면 403, 이미 소유자가 있는 핀에 claim 하면 409
+
 ### GET /api/session/{id}
 
-공유 링크용. 링크는 프론트 `/s/{id}` 주소 그대로이고 매직링크·임시 토큰으로 바꾸지 않는다. 로그인 필수(주선자·참석자 누구든 구글 계정으로). 세션이 있고 만료 전이면 마지막 result를 복호화해 반환. 없으면 404. 로그인한 사람이 그 세션의 참석자인지는 확인하지 않는다(참석자 ↔ 계정 연결은 미결, 11절).
+**로그인 필수.** 공유 링크용. 링크는 프론트 `/s/{id}` 주소 그대로이고 매직링크·임시 토큰으로 바꾸지 않는다. 링크만으로는 열람할 수 없고 주선자·참석자 누구든 구글 계정으로 로그인해야 한다. 응답은 AgentResponse 와 같은 모양이다. 세션이 있고 만료 전이면 마지막 result를 복호화해 반환. 없으면 404. 로그인한 사람이 그 세션의 참석자인지는 확인하지 않는다. 참석자 ↔ 계정 연결은 7절 핀 소유권을 따른다.
 
 ### DELETE /api/session/{id}
 
-로그인 필수. 세션의 user_id와 토큰의 user_id가 다르면 403. 즉시 삭제, results는 cascade. 204.
-
-### PATCH /api/session/{id}/participants/{idx}
-
-**자리만 잡아 둔다. 설계는 별도 세션.** 참석자가 공유 링크에서 본인 출발지를 고친다 (로그인 필수, PRD v2.1에서 허용). participants_enc의 해당 항목에 origin_set_by="self", self_edited_at을 찍는다. 재계산은 경로만 다시 하고 LLM은 부르지 않는 방향(미결, 11절). 잠긴 세션이면 409.
+**로그인 필수.** 세션의 user_id와 토큰의 user_id가 다르면 403. 즉시 삭제, results는 cascade. 204.
 
 ### /mcp
 
@@ -175,11 +225,13 @@ class Participant(BaseModel):
     origin: str | None              # 지명 텍스트. 없으면 None
     transport: Literal["car", "transit", "walk"] | None   # 없으면 None, 추측 금지
     pickup: str | None              # 이 사람을 태워 주는 참석자 이름
+    pickup_at: str | None           # 태워지는 지점 ("송파구 집 앞", "금천구 역 앞"). 집결지(rendezvous)와 다름
     unfamiliar: bool = False        # 그 일대 지리를 모르는 참석자
     role: Literal["site", "vendor", "client", "colleague"]   # 현장 담당 / 업체 / 고객사 / 동료
+    owner_user_id: str | None = None  # 이 핀을 소유한 사용자. None 이면 주선자 소유 (LLM 출력에는 없고 서버가 채운다)
 
 class Rendezvous(BaseModel):
-    name: str                       # 집결지 ("문정동 본사", "여의도역", "위병소")
+    name: str                       # 전원이 모이는 집결지 ("문정동 본사", "위병소"). 개인 픽업 지점은 participants[].pickup_at 에 둔다
     transport_after: Literal["car", "transit", "walk"] | None
 
 class Access(BaseModel):
@@ -188,7 +240,7 @@ class Access(BaseModel):
     lead_min: int | None            # 절차 소요(분). 규칙 파일 기본값으로 채움
 
 class Slots(BaseModel):
-    preset: Literal["ship_maintenance", "si_deploy"]
+    preset: Literal["ship_maintenance", "si_deploy"] | None   # out_of_scope 가 True 일 때만 None
     datetime: str | None            # "목요일 08:00", "오늘 22:00"
     purpose: str | None             # "레이더 정기점검", "야간 배포", "고객사 미팅"
     destination: str | None         # "진해 기지", "여의도 고객사". 없으면 None
@@ -196,15 +248,18 @@ class Slots(BaseModel):
     rendezvous: Rendezvous | None
     access: Access | None
     schedule_confirmed: bool | None # 입항·배포 시각 확정 여부. 모르면 None
-    constraints: list[str]          # "arrival_delayed", "port_changed", "vendor_route_same_day", "mutual_deference"
+    constraints: list[str]          # "arrival_delayed", "port_changed", "vendor_route_same_day", "mutual_deference", "luggage"
     missing: list[str]              # "participants[0].origin", "access.applied", "datetime"
     out_of_scope: bool = False      # 출발 후 실시간 상황
 ```
 
 검증 규칙 (schemas/slots.py의 validator)
-- participants 1명 이상
+- out_of_scope 가 False 면 participants 1명 이상, preset 은 None 이 아니어야 함
+- out_of_scope 가 True 면 preset 은 None, participants 는 빈 목록
 - name·origin·purpose·destination에 한글·영문·숫자·공백·일부 기호 외 문자(한자·가나 포함) 있으면 ValidationError
 - transport가 None인 참석자가 있으면 missing에 해당 경로가 있어야 함
+- pickup 과 pickup_at 은 짝이다. 하나만 있으면 ValidationError
+- owner_user_id 는 LLM 출력에 없다. 서버가 핀 확인 단계에서 채운다
 
 ---
 
@@ -237,6 +292,7 @@ class ParticipantResult(BaseModel):
     last_train: str | None
     polyline: list[list[float]]     # [[lng, lat], ...]
     via_rendezvous: bool
+    via_pickup: bool                # 운전자 경로가 이 사람을 태우러 경유하는가
 
 class Result(BaseModel):
     candidates: list[Candidate]     # 최대 3. 집결지 판정 결과
@@ -266,9 +322,9 @@ LLM(대형)이 만드는 건 candidates의 rank·reason·rejected_reason과 전�
 | 1-2 | 누락 판정 | slots.missing 비어 있지 않으면 need_info | |
 | 1-3 | 기간 판정 | slots.datetime을 시각으로 바꿔 오늘+30일을 넘으면 need_info("30일 안의 약속만 잡을 수 있습니다"). 30은 skills/converge/rules/의 값 | 코드라 실패 없음 |
 | 2 | geo.geocode_all | 참석자·집결지·목적지 지명 → 좌표, confidence | 한 명이라도 confidence < 0.8 → need_confirm |
-| 2-1 | 핀 확인 | 사용자가 confirmed_participants 반환 | |
+| 2-1 | 핀 확인 | 사용자가 confirmed_participants 반환. 각 핀의 owner_user_id 를 검사해 본인 핀만 수정을 허용한다 (7절 핀 소유권) | 남의 핀을 수정하면 403 |
 | 3 | geo.candidates | 집결 후보 생성: 절차 시작점(위병소·고객사 1층·본사) + 도착 어긋남 시 랜드마크(항만 입구·역) | 후보 0곳이면 목적지 좌표 자체를 후보로 |
-| 4 | routes.compute_all | 참석자 × 후보, 집결지 있으면 2구간. 캐시 확인 후 API | 타임아웃·5xx 백오프 2회 → 실패 참석자만 "조회 실패", 나머지로 진행 |
+| 4 | routes.compute_all | 참석자 × 후보, 집결지 있으면 2구간, pickup_at 있으면 운전자 경로에 경유지로 추가하고 태워지는 사람은 탑승 이후 구간만 계산. 캐시 확인 후 API | 타임아웃·5xx 백오프 2회 → 실패 참석자만 "조회 실패", 나머지로 진행 |
 | 5 | rules.apply | 절차 소요 반영, 출입조치 상태별 후보 가능 여부(access_ok), 도착 어긋남 전환 조건, 을 관례, 업체 순회 | 코드라 실패 없음 |
 | 6 | judge.rank | 후보 표 + 프리셋 규칙 문서 → rank·reason·switched_from | 스키마 위반 재시도 1회 → 실패면 rules.apply 순으로 rank, reason은 규칙 문구 그대로 |
 | 7 | rules.departure | (도착 기한 − 절차 소요) − 소요시간 − 여유 = 출발 시각, 집결지면 2단 역산, 야간이면 첫차 조회, 시각 미확정이면 provisional | |
@@ -303,6 +359,8 @@ session_id가 있으면 먼저 잠금 검사: 세션의 user_id가 토큰과 다
 | vessel_schedule | port: str, date: str | [{vessel, arrival, departure, pier}] | 해양수산부 선박 입출항 기록(PORT-MIS, 공공데이터포털). 군함 포함 여부 확인 필요, 없으면 사용자 입력으로 |
 | departure_calc | arrive_by: "HH:MM", duration_sec, buffer_min, access_lead_min | {depart_at: "HH:MM", arrive_by_adjusted: "HH:MM"} | 계산 |
 
+route_transit 이 부르는 TMAP 대중교통은 초당 호출 제한이 있어 연속 호출 시 429 THROTTLED 가 온다 (scripts/fetch_mock_routes.py 에서 확인). 간격을 두거나 재시도로 처리한다.
+
 description은 "언제 쓰는 도구인지"가 한 문장에 드러나게 쓴다. 예: vessel_schedule은 "함정 프리셋에서 입항·출항 시각이 확정됐는지 확인할 때 쓴다. 기록에 없으면 미확정으로 본다".
 
 ---
@@ -331,6 +389,9 @@ description은 "언제 쓰는 도구인지"가 한 문장에 드러나게 쓴다
 | transport.md | car_traffic_pct | 15 (최소 10분, 출퇴근 25) | |
 | transport.md | transit_transfer_extra_min | 10 | 마곡: 앱 55분에 환승 가산 |
 | transport.md | luggage_requires_car | true | 장비 있는 날 |
+| transport.md | pickup_wait_min | 5 | 태우는 지점에서 대기 |
+| transport.md | pickup_counts_from_board | true | 태워지는 사람의 소요시간은 탑승 이후 구간만 |
+| transport.md | max_pickup_per_car | 1 | 차 1대당 1명. 다중 픽업 순서 최적화는 범위 밖 |
 | vendor.md | same_day_route_first | true | 업체 당일 다른 방문지 먼저 반영 |
 | vendor.md | night_solo_requires_car_parking | true | 야간 단독 출동은 차량, 주차 확인 |
 | vendor.md | unfamiliar_prefer | 환승 0, 역·정문 300m 이내 | 타지 담당자 |
@@ -347,13 +408,30 @@ description은 "언제 쓰는 도구인지"가 한 문장에 드러나게 쓴다
 
 "(확인)" 표시 값은 착수 후 해당 조원이 확정한다.
 
+### 핀 소유권
+
+참석자가 각자 들어와 자기 위치를 찍을 수 있다. 다 모일 때까지 기다리지 않고, 들어온 사람 위치로 바로 계산한다.
+
+| 상황 | owner_user_id | 수정 권한 |
+|---|---|---|
+| 주선자가 문장으로 입력해 만든 핀 | None | 주선자만 |
+| 참석자가 공유 링크로 들어와 자기라고 고른 핀 | 그 사람의 user_id | 그 사람만 |
+
+- 전원이 로그인하지만, 참석자가 직접 들어와 자기 핀을 찍지 않는 경우도 있다. 그때는 주선자가 입력한 핀이 owner_user_id = null 로 남고 주선자가 수정한다. 참석자가 들어와 claim 하면 그 시점부터 그 사람 소유가 된다
+- 참석자는 공유 링크를 열고 구글 로그인한 뒤 참석자 목록에서 자기를 한 번 고른다. 그 시점에 owner_user_id 가 채워진다
+- 한 번 소유자가 정해진 핀은 주선자도 수정하지 못한다
+- 수정 요청은 PATCH /api/session/{id}/participants 로 받고, 서버가 토큰의 user_id 와 owner_user_id 를 대조한다. 다르면 403
+- 새 위치가 들어오면 그 세션의 결과를 다시 계산해 새 results 행을 만든다
+
+---
+
 ## 8. 프롬프트
 
 Langfuse Prompt 이름과 역할. 코드에 문자열로 두지 않는다.
 
 | 이름 | 모델 | 역할 |
 |---|---|---|
-| converge/slot-extract | 소형 (GGUF) 또는 대형 폴백 | 텍스트 → Slots JSON. GBNF 문법 강제. 출입조치·인솔·집결지·업체 역할 추출 |
+| converge/slot-extract | 소형 (GGUF) 또는 대형 폴백 | 텍스트 → Slots JSON. GBNF 문법 강제. 출입조치·인솔·집결지·픽업·업체 역할 추출. 범위 밖이면 out_of_scope true 에 preset null |
 | converge/vision-transcribe | Gemini Flash | 캡처 → 대화 텍스트 (이름·시각·말풍선 유지) |
 | converge/judge-ship, converge/judge-si | Sonnet 5 | 후보 표 + 프리셋 규칙 → rankings JSON (rank·reason·switched_from) |
 | converge/eval-judge | GPT-5.6 Luna | reason이 규칙과 계산값에 부합하는지 0~2점 |
@@ -371,6 +449,7 @@ TMAP_APP_KEY=            # SK오픈API
 DATA_GO_KR_KEY=          # 첫차·막차, 선박 입출항
 DATABASE_URL=postgresql://app:app@db:5432/app   # 로컬 compose 기본값. 운영은 Supabase 연결 문자열
 SUPABASE_URL=            # 프로젝트 주소. 토큰 서명을 공개키(/auth/v1/.well-known/jwks.json)로 검증. 비밀값 없음
+AUTH_REQUIRED=true       # 로컬 채점용으로만 false. 배포 환경에서는 항상 true
 ENCRYPTION_KEY=          # 32바이트 base64, AES-256-GCM
 LANGFUSE_PUBLIC_KEY=     # Langfuse Cloud
 LANGFUSE_SECRET_KEY=     # Langfuse Cloud
@@ -425,8 +504,6 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | Supabase 새 프로젝트 | 해결 (09-18) | 팀 구글 계정으로 새 조직 Converge2-5에 `converge_agent` 생성. 표 5개·RLS 마이그레이션 완료 |
 | 구글 OAuth 동의 화면 | 설정됨, 테스트 모드 (09-18) | 테스트 사용자 조원 2명 등록, 리디렉트 localhost:3000/**. 브라우저 로그인→토큰→백엔드 검증 실측. **남음:** 채점자 계정 처리(테스트 사용자 추가 또는 프로덕션 전환), Vercel 주소 추가 — 배포 때 |
 | Langfuse 트레이스의 참석자 이름·출발지 | 미검토 | 평문으로 들어간다. 마스킹 여부 (김승욱, observability) |
-| 참석자 출발지 수정 API | 미설계 | 2절 PATCH 자리만. 얕은 재계산(경로만, LLM 없음) 권장. 별도 세션 |
-| 참석자 ↔ 로그인 계정 연결 | 미결 | 모두 로그인하므로 "본인" 참석자를 계정으로 알 수 있다. participants_enc에 user_id를 넣을지, 넣으면 PATCH에서 본인 행만 고치게 막을지 |
 
 ---
 
@@ -434,8 +511,8 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 
 | 영역 | 담당 | 만나는 지점 |
 |---|---|---|
-| backend/, mcp_server/, skills/ (si_deploy 규칙) | 김승욱 | AgentRequest / AgentResponse 스키마 |
-| frontend/, finetune/, skills/ (ship_maintenance 규칙) | 하정운 | 같은 스키마, GGUF 파일 경로 |
+| backend/, mcp_server/, frontend/, skills/ (si_deploy 규칙) | 김승욱 | AgentRequest / AgentResponse 스키마 |
+| finetune/, skills/ (ship_maintenance 규칙) | 하정운 | 같은 스키마, GGUF 파일 경로 |
 | evals/, docs/ | 공동 | 함정 문항은 하정운, SI 문항은 김승욱이 판정. 상대 문항은 검토만 |
 | backend/db/, services/store.py, services/auth.py (DB·인증) | 하정운 | 테이블정의서.md, 9절 환경변수 |
 
