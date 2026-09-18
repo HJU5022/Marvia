@@ -51,7 +51,7 @@ proj2-5/
         judge.py              후보 판정 프롬프트 조립, 대형 모델 호출
         pipeline.py           단계 오케스트레이션 (루프 없음, 순차)
         store.py              Postgres 접근(asyncpg, DATABASE_URL), 암호화, expires_at 계산
-        auth.py               Supabase JWT 검증 → user_id. 로그인 필수 엔드포인트의 의존성
+        auth.py               Supabase 공개키(JWKS)로 JWT 검증 → user_id. 로그인 필수 엔드포인트의 의존성
       domain/                 계산만. 네트워크·LLM 호출 없음. API 키 없이 테스트된다
         CLAUDE.md             난간. 이 폴더 파일을 열면 자동 로드
         rules.py              Skill 규칙 로드, 계산식 (절차 소요·여유·역산·전환 조건)
@@ -130,7 +130,7 @@ proj2-5/
 
 ### POST /api/agent
 
-**로그인 필수.** 헤더 `Authorization: Bearer {Supabase access token}`. services/auth.py가 SUPABASE_JWT_SECRET으로 검증해 user_id를 꺼낸다. 없거나 틀리면 401. LLM을 호출하지 않는다 (비용 방어).
+**로그인 필수.** 헤더 `Authorization: Bearer {Supabase access token}`. services/auth.py가 Supabase 공개키(ES256, jwks.json)로 서명을 검증해 user_id를 꺼낸다. 비밀값을 우리 쪽에 두지 않는다. 없거나 틀리면 401. LLM을 호출하지 않는다 (비용 방어).
 
 요청 (backend/app/schemas/request.py)
 
@@ -442,7 +442,7 @@ KAKAO_REST_KEY=          # 카카오 개발자 콘솔
 TMAP_APP_KEY=            # SK오픈API
 DATA_GO_KR_KEY=          # 첫차·막차, 선박 입출항
 DATABASE_URL=postgresql://app:app@db:5432/app   # 로컬 compose 기본값. 운영은 Supabase 연결 문자열
-SUPABASE_JWT_SECRET=     # Supabase 프로젝트 설정 > API > JWT Secret. 토큰 검증용
+SUPABASE_URL=            # 프로젝트 주소. 토큰 서명을 공개키(/auth/v1/.well-known/jwks.json)로 검증. 비밀값 없음
 AUTH_REQUIRED=true       # 로컬 채점용으로만 false. 배포 환경에서는 항상 true
 ENCRYPTION_KEY=          # 32바이트 base64, AES-256-GCM
 LANGFUSE_PUBLIC_KEY=     # Langfuse Cloud
