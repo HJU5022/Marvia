@@ -183,7 +183,7 @@ class ParticipantInput(BaseModel):   # PATCH 요청에서 claim 만 뺀 모양
 - need_info: 필수 슬롯 누락 (출발지·이동수단·시각 중 하나). questions에 무엇을 물을지
 - done: 후보와 참석자별 결과
 - out_of_scope: 실시간 상황 등 범위 밖
-- failed: 재시도 후에도 실패. result 없이 후보 핀만 있으면 result.candidates에 rank 없이 담는다
+- failed: 재시도 후에도 실패. result 없이 후보 핀만 있으면 result.candidates에 rank 없이 담는다. 지오코딩까지 갔으면 geocoded 도 함께 보낸다 (화면이 어디까지 됐는지 보여준다)
 
 ### GET /health
 

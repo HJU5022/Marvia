@@ -11,12 +11,15 @@ Deps 로 바깥 함수를 받는 이유:
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+from backend.app.domain import router as model_router
+from backend.app.domain import rules as domain_rules
 from backend.app.observability import langfuse
 from backend.app.schemas.request import AgentRequest
-from backend.app.schemas.result import AgentResponse, GeocodedPin, Result
+from backend.app.schemas.result import AgentResponse, Candidate, GeocodedPin, ParticipantResult, Result
 from backend.app.schemas.slots import Slots
 
 # 확신도가 이보다 낮은 핀이 하나라도 있으면 사용자에게 확인을 받는다 (SDD 5절 2단계)
@@ -69,6 +72,10 @@ def _answer(
 async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> AgentResponse:
     """요청 하나를 끝까지 처리한다. 돌아오는 stage 가 화면을 정한다 (SDD 2절)."""
     deps = deps or Deps()
+    # 테스트가 넣지 않은 단계는 진짜 서비스로 채운다
+    for stage_name in ("extract_slots", "geocode_all", "build_candidates", "compute_routes"):
+        if getattr(deps, stage_name) is None:
+            setattr(deps, stage_name, _default(stage_name))
     session_id = req.session_id or ""
 
     with langfuse.trace("agent", user_id=user_id, preset=req.preset) as tr:
@@ -149,17 +156,82 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
             _check_ownership(slots, req.confirmed_participants, user_id)
             pins = _apply_confirmed(pins, req.confirmed_participants)
 
-        # 3~8. 후보 생성 → 경로 → 규칙 → 판정 → 역산 → 저장
-        # TODO: geo.candidates, routes.compute_all, rules.apply, judge.rank, rules.departure, store.save
-        #       MCP 도구 7개(mcp_server/tools/)가 준비되면 이 자리를 채운다 (SDD 5절 3~8단계)
+        # 3. 집결 후보
+        with tr.span("candidates") as span:
+            try:
+                raw_candidates = await _call(deps.build_candidates, slots, pins)
+                span.output = {"count": len(raw_candidates)}
+            except Exception as e:  # noqa: BLE001
+                span.error = str(e)
+                return _answer(session_id, "failed", slots, tr.id, "집결 후보를 찾지 못했습니다.", geocoded=pins)
+
+        # 4. 참석자 × 후보 경로
+        with tr.span("routes") as span:
+            plans = _route_plans(slots, pins, raw_candidates)
+            try:
+                routes = await _call(deps.compute_routes, plans)
+            except Exception as e:  # noqa: BLE001
+                span.error = str(e)
+                routes = []
+            span.output = {"요청": len(plans), "실패": sum(1 for r in routes if r.get("error"))}
+
+        # 5·7. 규칙 적용과 출발 시각 역산
+        with tr.span("rules") as span:
+            meet_at = domain_rules.parse_meet_time(slots.datetime)
+            if meet_at is None:
+                return _answer(
+                    session_id,
+                    "need_info",
+                    slots,
+                    tr.id,
+                    "몇 시에 시작하는지 알려 주세요.",
+                    questions=["몇 시에 시작하나요?"],
+                    geocoded=pins,
+                )
+            result = _build_result(slots, raw_candidates, routes, meet_at)
+            span.output = {"후보": len(result.candidates), "참석자행": len(result.per_participant)}
+
+        if not result.per_participant:
+            return _answer(session_id, "failed", slots, tr.id, "경로를 구하지 못했습니다. 잠시 후 다시 시도해 주세요.", geocoded=pins)
+
+        # 8. 저장은 DB 가 붙은 뒤에 (SDD 5절 8단계). 지금은 결과만 돌려준다
+        first = min((c.rank for c in result.candidates if c.rank), default=None)
+        top = next((c for c in result.candidates if c.rank == first), None)
+        arrive_by = result.per_participant[0].arrive_by
         return _answer(
             session_id,
-            "failed",
+            "done",
             slots,
             tr.id,
-            "집결 후보 계산은 아직 준비 중입니다.",
+            f"{top.name}에서 {arrive_by} 까지 모이는 안을 1순위로 제안합니다." if top else "결과를 정리했습니다.",
             geocoded=pins,
+            result=result,
         )
+
+
+def _default(name: str) -> Callable[..., Any] | None:
+    """Deps 에 안 넣은 단계는 진짜 서비스를 쓴다. import 는 부를 때 한다.
+
+    지연 import 인 이유: 테스트가 가짜 함수만 넣고 돌 때 openai·httpx 를 건드리지 않게 하려는 것이다.
+    아직 파일이 없는 단계(3~8)는 None 이라 _call 이 그 자리에서 실패한다.
+    """
+    if name == "extract_slots":
+        from backend.app.services import llm
+
+        return llm.extract_slots
+    if name == "geocode_all":
+        from backend.app.services import geo
+
+        return geo.geocode_all
+    if name == "build_candidates":
+        from backend.app.services import geo
+
+        return geo.build_candidates
+    if name == "compute_routes":
+        from backend.app.services import routes
+
+        return routes.compute_all
+    return None
 
 
 async def _call(fn: Callable[..., Any] | None, *args: Any) -> Any:
@@ -216,3 +288,145 @@ def _apply_confirmed(pins: list[GeocodedPin], confirmed: list[Any]) -> list[Geoc
             GeocodedPin(name=pin.name, lng=hit.lng, lat=hit.lat, confidence=1.0, kind=pin.kind) if hit else pin
         )
     return out
+
+
+def _pin_of(pins: list[GeocodedPin], name: str, kind: str) -> GeocodedPin | None:
+    return next((p for p in pins if p.kind == kind and p.name == name), None)
+
+
+def _route_plans(slots: Slots, pins: list[GeocodedPin], candidates: list[Any]) -> list[dict[str, Any]]:
+    """참석자 × 후보로 경로 요청 목록을 만든다 (SDD 5절 4단계).
+
+    태워지는 사람은 탑승 지점부터 계산하고(transport.md pickup_counts_from_board),
+    태워 주는 사람 경로에는 그 지점을 경유지로 넣는다.
+    """
+    riders = {p.pickup: p for p in slots.participants if p.pickup and p.pickup_at}
+    plans: list[dict[str, Any]] = []
+
+    for index, cand in enumerate(candidates):
+        dest = (cand["lng"], cand["lat"])
+        for person in slots.participants:
+            origin_pin = _pin_of(pins, person.name, "participant")
+            waypoint = None
+
+            if person.pickup and person.pickup_at:  # 태워지는 사람
+                board = _pin_of(pins, person.pickup_at, "pickup")
+                if board is None:
+                    continue
+                origin: tuple[float, float] = (board.lng, board.lat)
+            else:
+                if origin_pin is None:
+                    continue
+                origin = (origin_pin.lng, origin_pin.lat)
+                rider = riders.get(person.name)  # 이 사람이 누군가를 태우는가
+                if rider and rider.pickup_at:
+                    board = _pin_of(pins, rider.pickup_at, "pickup")
+                    if board is not None:
+                        waypoint = (board.lng, board.lat)
+
+            plans.append(
+                {
+                    "key": (index, person.name),
+                    "transport": person.transport or "car",
+                    "origin": origin,
+                    "dest": dest,
+                    "waypoint": waypoint,
+                }
+            )
+    return plans
+
+
+def _build_result(
+    slots: Slots, raw_candidates: list[Any], routes: list[dict[str, Any]], meet_at: str
+) -> Result:
+    """5·6·7단계를 합쳐 Result 를 만든다.
+
+    순위는 규칙 점수로 매긴다 (domain/rules.candidate_score). 대형 모델 판정(6단계)은 아직 붙이지
+    않았으므로 routed_to 는 small 로 둔다. judge 가 붙으면 그때 rank·reason 을 대형 모델이 채운다.
+    """
+    preset = slots.preset
+    access_required = bool(slots.access and slots.access.required)
+    applied = slots.access.applied if slots.access else None
+    lead = domain_rules.lead_min(preset)
+    buffer = domain_rules.buffer_min(preset)
+    by_key = {r["key"]: r for r in routes if not r.get("error")}
+
+    scored = sorted(
+        enumerate(raw_candidates),
+        key=lambda pair: domain_rules.candidate_score(pair[1]["kind"], access_required),
+        reverse=True,
+    )
+
+    candidates: list[Candidate] = []
+    rows: list[ParticipantResult] = []
+
+    for rank, (index, cand) in enumerate(scored, start=1):
+        ok = domain_rules.access_ok(cand["kind"], applied)
+        candidates.append(
+            Candidate(
+                name=cand["name"],
+                kind=cand["kind"],
+                address=cand["address"] or "주소 미상",
+                lng=cand["lng"],
+                lat=cand["lat"],
+                rank=rank,
+                access_ok=ok,
+                switched_from=None,
+                reason=_reason_for(cand["kind"], access_required, ok),
+                rejected_reason=None if ok else "출입조치를 신청해야 들어갈 수 있습니다",
+            )
+        )
+
+        for person in slots.participants:
+            route = by_key.get((index, person.name))
+            if route is None:
+                continue
+            transport = person.transport or "car"
+            raw_min = round(route["duration_sec"] / 60)
+            extra = domain_rules.traffic_extra_min(raw_min, transport, route.get("transfer_count"))
+            total = raw_min + extra + buffer
+            calc = domain_rules.calc_departure(meet_at, route["duration_sec"], extra + buffer, lead)
+            rows.append(
+                ParticipantResult(
+                    name=person.name,
+                    candidate_rank=rank,
+                    transport=transport,
+                    duration_min=total,
+                    raw_duration_min=raw_min,
+                    buffer_min=extra + buffer,
+                    departure_time=calc["depart_at"],
+                    arrive_by=calc["arrive_by_adjusted"],
+                    transfer_count=route.get("transfer_count"),
+                    first_train=None,
+                    last_train=None,
+                    polyline=[(float(x), float(y)) for x, y in route["polyline"]],
+                    via_rendezvous=False,
+                    via_pickup=bool(person.pickup and person.pickup_at),
+                )
+            )
+
+    return Result(
+        candidates=candidates,
+        provisional=slots.schedule_confirmed is False,
+        per_participant=rows,
+        rendezvous_departure=None,
+        confidence=0.8,
+        model_small=os.environ.get("MODEL_LARGE", "unknown"),
+        model_large=None,
+        prompt_version="converge/slot-extract",
+        routed_to=model_router.route(slots),
+    )
+
+
+def _reason_for(kind: str, access_required: bool, ok: bool) -> str:
+    """순위 이유 한 줄. 규칙 파일 항목을 인용한다 (SDD 4절 Candidate.reason).
+
+    대형 모델이 붙기 전까지는 규칙 문구를 그대로 쓴다 (SDD 5절 6단계 "실패면 규칙 문구 그대로").
+    """
+    if not ok:
+        return "access.md pier_requires_access_applied: 출입조치 전이라 부두 안은 쓸 수 없습니다"
+    if access_required and kind in ("gate", "lobby", "hq"):
+        return "access.md rendezvous_is_procedure_start: 출입 절차가 시작되는 자리에서 합류합니다"
+    if kind == "landmark":
+        return "access.md outside_landmark_kinds: 지리를 몰라도 찾기 쉬운 자리입니다"
+    return "목적지에서 가장 가까운 자리입니다"

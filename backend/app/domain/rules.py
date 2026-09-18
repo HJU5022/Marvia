@@ -97,3 +97,92 @@ def calc_departure(
         "arrive_by_adjusted": adjusted.strftime("%H:%M"),
         "day_offset": (depart.date() - arrive.date()).days,  # 0 = 같은 날, -1 = 전날
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 규칙 적용 (SDD 5절 5단계)
+# ─────────────────────────────────────────────────────────────────────────────
+# 값은 전부 skills/converge/rules/ 에서 읽는다. 여기에 숫자를 적지 않는다 (SDD 7절 원칙).
+
+import re
+
+_TIME_WORDS = {"아침": 8, "오전": 9, "점심": 12, "오후": 14, "저녁": 18, "밤": 21, "새벽": 5}
+
+
+def parse_meet_time(text: str | None) -> str | None:
+    """사람이 쓴 시각 표현에서 "HH:MM" 을 뽑는다. 못 뽑으면 None.
+
+      "목요일 08:00" → "08:00"     "오늘 22:00" → "22:00"
+      "목요일 아침 8시" → "08:00"   "오후 2시" → "14:00"
+
+    날짜는 여기서 다루지 않는다. 날짜는 세션의 meet_at 이 가진다 (테이블정의서 1절).
+    LLM 에 맡기지 않는 이유는 같은 문장이 늘 같은 시각으로 읽혀야 하기 때문이다.
+    """
+    if not text:
+        return None
+
+    hhmm = re.search(r"(\d{1,2})\s*:\s*(\d{2})", text)
+    if hhmm:
+        hour, minute = int(hhmm.group(1)), int(hhmm.group(2))
+    else:
+        korean = re.search(r"(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?", text)
+        if not korean:
+            return None
+        hour, minute = int(korean.group(1)), int(korean.group(2) or 0)
+
+    # "오후 2시" 처럼 앞에 붙은 말로 12시간제를 푼다
+    if hour < 12:
+        for word, base in _TIME_WORDS.items():
+            if word in text and base >= 12:
+                hour += 12
+                break
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def lead_min(preset: str | None) -> int:
+    """절차 소요(분). 함정은 위병소, SI 는 1층 인솔 (access.md)."""
+    access = load_rule("access")
+    return int(access["gate_lead_min"] if preset == "ship_maintenance" else access["lobby_lead_min"])
+
+
+def buffer_min(preset: str | None) -> int:
+    """여유(분). 함정 정비는 고객사 방문과 같은 기준, SI 배포는 인솔 기준 (transport.md, SDD 7절 프리셋 표)."""
+    transport = load_rule("transport")
+    key = "buffer_client_min" if preset == "ship_maintenance" else "buffer_deploy_min"
+    return int(transport[key])
+
+
+def traffic_extra_min(raw_min: int, transport: str, transfer_count: int | None) -> int:
+    """경로 API 값에 얹는 시간. 자동차는 정체분, 대중교통은 환승 가산 (transport.md)."""
+    rules = load_rule("transport")
+    if transport == "car":
+        pct = int(rules["car_traffic_pct"])
+        return max(int(rules["car_traffic_min_min"]), round(raw_min * pct / 100))
+    if transfer_count:
+        return int(rules["transit_transfer_extra_min"])
+    return 0
+
+
+def access_ok(kind: str, applied: bool | None) -> bool:
+    """이 자리가 지금 출입조치 상태로 가능한가 (access.md pier_requires_access_applied).
+
+    부두 안은 출입조치를 신청해 둔 경우에만 쓸 수 있다. 위병소·로비는 절차가 시작되는 자리라
+    신청 전이어도 만날 수 있다. 거기서 신청 결과를 확인하고 들어간다.
+    """
+    if kind == "pier" and load_rule("access")["pier_requires_access_applied"]:
+        return applied is True
+    return True
+
+
+def candidate_score(kind: str, access_required: bool) -> int:
+    """후보를 줄 세우는 점수. 클수록 앞. 대형 모델을 부르지 않는 경우에 쓴다 (SDD 5절 라우팅 small).
+
+    절차가 있는 현장이면 절차 시작점이 먼저다 (access.md rendezvous_is_procedure_start).
+    절차가 없으면 찾기 쉬운 랜드마크가 먼저다.
+    """
+    procedure_start = {"gate", "lobby", "hq"}
+    if access_required:
+        return 2 if kind in procedure_start else 1
+    return 2 if kind == "landmark" else 1

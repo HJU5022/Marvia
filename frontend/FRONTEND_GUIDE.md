@@ -27,7 +27,7 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 | `lib/mock-data.json` | mock 시나리오와 실제 경로 좌표. `routes`는 `scripts/fetch_mock_routes.py`가 채운다 |
 | `lib/dev-user.ts` | 로컬 모드 사용자 id. 브라우저 코드는 mock 대신 이 파일을 import 한다 |
 | `types/agent.ts` | SDD 2·3·4절 타입을 손으로 옮긴 것. `lib/api-types.ts`가 생기면 대체한다 |
-| `lib/api-types.ts` | 생성물. `backend/app/schemas/`에서 `scripts/gen_types.sh`로 만든다. 손으로 고치지 않는다 (아직 없음) |
+| `lib/api-types.ts` | 생성물. `backend/app/schemas/`에서 `bash scripts/gen_types.sh`로 만든다. 손으로 고치지 않는다 |
 
 ## 응답 stage에 따라 화면이 갈린다 (docs/SDD.md 2절)
 
@@ -37,7 +37,7 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 | `need_info` | `questions[]`를 채팅에 보여주고 대기 |
 | `done` | 후보 핀 + 참석자 핀 + 픽업 핀 + 경로선 + ResultTable. `provisional`이면 "시각 미확정, 잠정" 배지 |
 | `out_of_scope` | 범위 밖 안내만 |
-| `failed` | 후보 핀만 찍고 안내와 재시도 버튼 |
+| `failed` | 후보 핀과, 지오코딩까지 갔으면 참석자 핀. 안내와 재시도 버튼 |
 
 ## 지도 규칙
 

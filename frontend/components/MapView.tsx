@@ -76,7 +76,8 @@ export default function MapView({ response, participantPins, viewer, selectedRan
 
   const stage = response?.stage ?? null;
   const result = response?.result ?? null;
-  const showParticipants = stage === "need_confirm" || stage === "done";
+  // failed 여도 지오코딩까지 갔으면 참석자 핀은 보여준다. 어디까지 됐는지 보이는 편이 낫다
+  const showParticipants = stage === "need_confirm" || stage === "done" || stage === "failed";
   const showCandidates = stage === "done" || stage === "failed";
   const participantCount = response?.slots?.participants.length ?? 0;
 
