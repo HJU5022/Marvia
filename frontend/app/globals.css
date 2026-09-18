@@ -148,3 +148,17 @@ td:last-child { white-space: normal; }
 .people { list-style: none; margin: 0; padding: 0; }
 .people li { display: flex; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .people li button { margin-left: auto; }
+
+/* 진행 단계 */
+.progress {
+  display: flex; gap: 4px; list-style: none; margin: 0 0 8px; padding: 8px 12px 0;
+  font-size: 12px; color: var(--muted);
+}
+.progress-step { display: flex; align-items: center; gap: 4px; }
+.progress-step + .progress-step::before { content: ""; width: 12px; border-top: 1px solid var(--line); }
+.progress-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.progress-step.done { color: var(--ok); }
+.progress-step.done .progress-dot { background: var(--ok); }
+.progress-step.active { color: var(--primary); font-weight: 600; }
+.progress-step.active .progress-dot { background: var(--primary); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }

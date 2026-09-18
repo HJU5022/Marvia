@@ -138,7 +138,7 @@ function Organizer({ headers }: { headers: Record<string, string> }) {
         />
       </div>
       <div className="split-side">
-        <ChatPanel messages={messages} busy={busy} onSend={onSend}>
+        <ChatPanel messages={messages} busy={busy} stage={stage ?? null} onSend={onSend}>
           {stage === "need_confirm" && (
             <div className="step">
               <p>
