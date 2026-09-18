@@ -62,4 +62,4 @@ mcp = MCPServer(
 
 # 도구 등록: tools/ 아래 파일들이 import 시점에 @mcp.tool()로 붙는다. 여기서 import해야 등록된다.
 # noqa: 도구 파일이 이 파일의 `mcp`를 import하므로 순환을 피하려고 맨 아래에 둔다.
-from mcp_server.tools import departure_calc, geocode, search_places  # noqa: E402, F401
+from mcp_server.tools import departure_calc, geocode, route_transit, search_places  # noqa: E402, F401
