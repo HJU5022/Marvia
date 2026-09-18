@@ -39,7 +39,7 @@ export function pinsFrom(
   return response.geocoded
     .filter((g) => g.kind === "participant")
     .map((g) => {
-      const owner = response.slots.participants.find((p) => p.name === g.name)?.owner_user_id ?? null;
+      const owner = response.slots?.participants.find((p) => p.name === g.name)?.owner_user_id ?? null;
       const m = moved[g.name];
       return {
         name: g.name,

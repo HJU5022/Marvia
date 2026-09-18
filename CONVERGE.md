@@ -99,7 +99,7 @@ LLM은 0·1·6단계에만 있다. 나머지는 코드다. 이것이 이 프로�
 
 SDD 1절이 가리키지만 아직 안 만든 파일. 만들면 여기서 지운다.
 
-- `backend/app/`: `routers/` `schemas/` `observability/` 안의 `.py`, `services/`의 vision·geo·routes·judge·pipeline·store·auth, `domain/`의 rules·router
+- `backend/app/`: `routers/internal.py`, `services/`의 vision·geo·routes·judge, `domain/rules.py`의 계산식(로드 함수는 있음), `services/pipeline.py`의 3~8단계
 - `mcp_server/tools/` 7개
 - `frontend/`: `app/about/page.tsx`, `components/Progress.tsx`. `lib/api-types.ts`(생성물, 지금은 `types/agent.ts`가 대신함)
 - `skills/converge/`: `failures.md` `output-contract.md` `rules/` 5개 `presets/` 2개

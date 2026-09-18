@@ -70,7 +70,8 @@ function Shared({ sessionId, userId, headers }: { sessionId: string; userId: str
   }, [sessionId, headerKey]);
 
   const pins = useMemo(() => pinsFrom(response, {}), [response]);
-  const mine = response?.slots.participants.find((p) => p.owner_user_id === userId) ?? null;
+  const participants = response?.slots?.participants ?? [];
+  const mine = participants.find((p) => p.owner_user_id === userId) ?? null;
 
   const patch = useCallback(
     async (body: ParticipantPatchRequest) => {
@@ -164,7 +165,7 @@ function Shared({ sessionId, userId, headers }: { sessionId: string; userId: str
             <p className="muted">자기 이름을 고르면 그 핀을 직접 옮길 수 있습니다. 고르지 않아도 결과는 볼 수 있습니다.</p>
           )}
           <ul className="people">
-            {response.slots.participants.map((p) => {
+            {participants.map((p) => {
               const hasPin = pins.some((x) => x.name === p.name);
               const state =
                 p.owner_user_id === null ? "free" : p.owner_user_id === userId ? "me" : "taken";
@@ -189,7 +190,7 @@ function Shared({ sessionId, userId, headers }: { sessionId: string; userId: str
         {response.stage === "done" && response.result && (
           <ResultTable
             result={response.result}
-            participants={response.slots.participants}
+            participants={participants}
             selectedRank={selectedRank}
             onSelectRank={setSelectedRank}
           />

@@ -78,7 +78,7 @@ export default function MapView({ response, participantPins, viewer, selectedRan
   const result = response?.result ?? null;
   const showParticipants = stage === "need_confirm" || stage === "done";
   const showCandidates = stage === "done" || stage === "failed";
-  const participantCount = response?.slots.participants.length ?? 0;
+  const participantCount = response?.slots?.participants.length ?? 0;
 
   // 경로선 토글: 4명 이하면 기본 켬, 5명 이상이면 기본 끔
   const [showRoutes, setShowRoutes] = useState(true);
@@ -140,7 +140,7 @@ export default function MapView({ response, participantPins, viewer, selectedRan
       // 픽업 지점: 지오코딩 결과가 있으면 그 좌표, 없으면 태워지는 사람 경로의 첫 점(탑승 지점)
       const pickupPins = geocoded.filter((g) => g.kind === "pickup");
       for (const row of rankRows.filter((r) => r.via_pickup)) {
-        const person = response.slots.participants.find((p) => p.name === row.name);
+        const person = response.slots?.participants.find((p) => p.name === row.name);
         const place = person?.pickup_at ?? "픽업 지점";
         const hit = pickupPins.find((g) => g.name === place);
         const point = hit ? [hit.lng, hit.lat] : row.polyline[0];

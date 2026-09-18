@@ -157,7 +157,7 @@ text와 image_base64 중 하나는 필수. confirmed_participants가 오면 슬�
 class AgentResponse(BaseModel):
     session_id: str
     stage: Literal["need_confirm", "need_info", "done", "out_of_scope", "failed"]
-    slots: Slots                    # 추출·확정된 슬롯 (항상 포함)
+    slots: Slots | None             # 추출·확정된 슬롯. 추출 전에 끊기면 None (failed, need_info 만)
     result: Result | None           # stage == done 일 때
     questions: list[str]            # need_info 일 때 되물을 것
     message: str                    # 화면에 보여줄 한 줄
@@ -329,6 +329,10 @@ LLM(대형)이 만드는 건 candidates의 rank·reason·rejected_reason과 전�
 | 6 | judge.rank | 후보 표 + 프리셋 규칙 문서 → rank·reason·switched_from | 스키마 위반 재시도 1회 → 실패면 rules.apply 순으로 rank, reason은 규칙 문구 그대로 |
 | 7 | rules.departure | (도착 기한 − 절차 소요) − 소요시간 − 여유 = 출발 시각, 집결지면 2단 역산, 야간이면 첫차 조회, 시각 미확정이면 provisional | |
 | 8 | store.save + 응답 | expires_at을 여기서 계산해 넣는다: meet_at 있으면 meet_at+30일, 없으면(임시 세션) created_at+7일. DB 기본값 없음 | |
+
+2026-09-18 기준 구현 상태: 0~2단계와 갈림길(1-1 범위 밖, 1-2 누락, 2-1 핀 확인·핀 소유권)까지 services/pipeline.py 에 있다.
+1-3(기간 판정)은 규칙 파일이 생기면 붙인다. 3~8단계는 MCP 도구 7개가 준비되면 채운다. 그때까지 그 자리는 failed 로 끝난다.
+pipeline.run 은 바깥 함수를 Deps 로 받는다. 테스트가 키 없이 단계 순서만 검사하기 위해서다 (backend/tests/test_pipeline.py).
 
 ### 라우팅 (services/router.py)
 

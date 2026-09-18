@@ -118,7 +118,8 @@ export interface AgentRequest {
 export interface AgentResponse {
   session_id: string;
   stage: Stage;
-  slots: Slots;
+  // 추출 전에 끊기면(캡처를 못 읽음, 스키마 위반) null. failed, need_info 에서만 그렇다
+  slots: Slots | null;
   result: Result | null;
   questions: string[];
   message: string;

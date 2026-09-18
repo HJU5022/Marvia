@@ -42,6 +42,7 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 ## 지도 규칙
 
 - 핀 좌표는 `AgentResponse.geocoded`에서만 온다. Slots에는 좌표가 없다
+- `slots`는 `null`일 수 있다. 캡처를 못 읽거나 슬롯 추출이 깨진 응답(`failed`, `need_info`)이 그렇다. 화면은 `slots?.participants ?? []`로 받는다
 - 핀 소유권(SDD 7절): 주선자는 `owner_user_id`가 null인 핀만, 참석자는 자기 id인 핀만 끈다. 못 끄는 핀은 회색, 커서 `not-allowed`
 - 주선자 재계산 때 `confirmed_participants`에는 주선자가 고칠 수 있는 핀만 담는다
 - 공유 링크에서 자기 이름을 고르면 PATCH `claim: true`, 핀을 옮기면 `claim: false`. 403은 "본인 핀만 수정할 수 있습니다", 409는 "이미 다른 사람이 등록했습니다"
