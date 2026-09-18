@@ -186,3 +186,18 @@ def candidate_score(kind: str, access_required: bool) -> int:
     if access_required:
         return 2 if kind in procedure_start else 1
     return 2 if kind == "landmark" else 1
+
+
+def switch_outside(constraints: list[str]) -> bool:
+    """도착이 어긋나 출입조치를 포기하고 부두 밖에서 만나야 하는가 (access.md switch_if_delay_min).
+
+    근거: 인천 레이더 건. 입항이 늦어 도착이 30분 이상 어긋나면 출입조치 시각을 맞출 수 없어
+    부두 밖 랜드마크로 옮겼다.
+
+    지금은 슬롯에 "몇 분 어긋났는지"가 없고 `arrival_delayed` 플래그만 있다. 그래서 플래그가 있으면
+    기준을 넘었다고 본다. 분 단위가 슬롯에 들어오면 switch_if_delay_min 과 직접 비교로 바꾼다
+    (SDD 11절에 남겨 둔 항목).
+    """
+    if "arrival_delayed" not in constraints:
+        return False
+    return int(load_rule("access")["switch_if_delay_min"]) > 0

@@ -17,7 +17,10 @@
   /health 를 뺀 모든 엔드포인트에 붙인다 (결정 4).
 
 AUTH_REQUIRED=false (SDD 2절·9절, 김승욱 09-18):
-  로컬 채점용 스위치. false면 토큰 검사를 건너뛰고 고정 user_id "local-grader"를 돌려준다.
+  로컬 채점용 스위치. false면 토큰 검사를 건너뛰고 고정 user_id(LOCAL_GRADER_USER_ID)를 돌려준다.
+  그 값이 uuid 인 이유: sessions.user_id 가 uuid 컬럼이라(테이블정의서 1절) 문자열을 넣으면
+  Postgres 가 거부하고 저장이 통째로 실패한다. 실제 로그인은 Supabase auth.users.id(uuid)를 주므로
+  우회 경로도 같은 타입이어야 한다. 값은 Supabase 가 만들 일이 없는 것이라 채점 세션 표식도 된다.
   채점자가 우리 Supabase·구글 OAuth 없이 compose up 만으로 돌려볼 수 있게 하기 위한 것.
   배포 환경에서는 항상 true. 실수로 false가 들어가면 누구나 LLM을 쓸 수 있으므로 기동 시 경고를 남긴다.
 
@@ -39,6 +42,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 _bearer = HTTPBearer(auto_error=False)
 
 _log = logging.getLogger(__name__)
+
+# AUTH_REQUIRED=false 일 때 쓰는 고정 사용자. uuid 여야 sessions.user_id(uuid)에 들어간다
+LOCAL_GRADER_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def auth_required() -> bool:
@@ -96,7 +102,7 @@ async def current_user(
     401을 내면 LLM 호출까지 가지 않는다 (결정 4, 비용 방어).
     """
     if not auth_required():
-        return "local-grader"  # 로컬 채점 모드. 세션이 이 user_id로 남아 실제 사용자와 구분된다
+        return LOCAL_GRADER_USER_ID  # 로컬 채점 모드. 세션이 이 id로 남아 실제 사용자와 구분된다
     if cred is None or cred.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="로그인이 필요합니다")
     try:

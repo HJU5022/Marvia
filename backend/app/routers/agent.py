@@ -30,3 +30,8 @@ async def agent(req: AgentRequest, user_id: str = Depends(current_user)) -> Agen
     except pipeline.NotYourPin as e:
         # 남의 핀을 고치려 한 경우 (SDD 7절 핀 소유권)
         raise HTTPException(status_code=403, detail=f"본인 핀만 수정할 수 있습니다: {e}") from e
+    except pipeline.NotYourSession as e:
+        raise HTTPException(status_code=403, detail="본인 세션만 이어서 물어볼 수 있습니다") from e
+    except pipeline.SessionLocked as e:
+        # 약속이 지난 세션. 재계산할 이유가 없고 LLM 비용만 나간다 (SDD 5절 재질문)
+        raise HTTPException(status_code=409, detail="약속 날짜가 지나 잠긴 세션입니다") from e

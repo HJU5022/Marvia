@@ -12,6 +12,7 @@ Deps 로 바깥 함수를 받는 이유:
 from __future__ import annotations
 
 import os
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -20,7 +21,7 @@ from backend.app.domain import rules as domain_rules
 from backend.app.observability import langfuse
 from backend.app.schemas.request import AgentRequest
 from backend.app.schemas.result import AgentResponse, Candidate, GeocodedPin, ParticipantResult, Result
-from backend.app.schemas.slots import Slots
+from backend.app.schemas.slots import Participant, Slots
 
 # 확신도가 이보다 낮은 핀이 하나라도 있으면 사용자에게 확인을 받는다 (SDD 5절 2단계)
 GEOCODE_CONFIRM_BELOW = 0.8
@@ -28,6 +29,14 @@ GEOCODE_CONFIRM_BELOW = 0.8
 
 class NotYourPin(Exception):
     """남의 핀을 고치려 했다. 라우터가 403 으로 바꾼다 (SDD 5절 2-1, 7절 핀 소유권)."""
+
+
+class NotYourSession(Exception):
+    """남의 세션으로 재질문했다. 라우터가 403 으로 바꾼다 (SDD 5절 재질문)."""
+
+
+class SessionLocked(Exception):
+    """약속이 지나 잠긴 세션이다. 라우터가 409 로 바꾼다 (SDD 5절 재질문). LLM 을 부르기 전에 막는다."""
 
 
 @dataclass
@@ -40,9 +49,10 @@ class Deps:
     build_candidates: Callable[..., Awaitable[Any]] | None = None  # 3 geo
     compute_routes: Callable[..., Awaitable[Any]] | None = None  # 4 routes
     apply_rules: Callable[..., Any] | None = None  # 5 domain/rules
-    rank: Callable[..., Awaitable[Any]] | None = None  # 6 judge
+    rank: Callable[..., Awaitable[Any]] | None = None  # 6 judge (없으면 규칙 점수 순)
     departure: Callable[..., Any] | None = None  # 7 domain/rules
     save: Callable[..., Awaitable[str]] | None = None  # 8 store
+    load_session: Callable[..., Awaitable[Any]] | None = None  # 재질문: 이전 세션 읽기
     previous_slots: Slots | None = None  # 재질문이면 이전 슬롯 (SDD 5절 재질문)
     extras: dict[str, Any] = field(default_factory=dict)
 
@@ -72,14 +82,37 @@ def _answer(
 async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> AgentResponse:
     """요청 하나를 끝까지 처리한다. 돌아오는 stage 가 화면을 정한다 (SDD 2절)."""
     deps = deps or Deps()
+    # 세션 id 는 첫 요청에서 만든다. 8단계 저장이 붙으면 이 값으로 행을 만들고, 그 전에도
+    # 재질문(이전 슬롯 유지)과 Langfuse session_id 가 이어지도록 해야 한다 (SDD 5절 재질문, 22번)
+    session_id = req.session_id or uuid.uuid4().hex
     # 테스트가 넣지 않은 단계는 진짜 서비스로 채운다
-    for stage_name in ("extract_slots", "geocode_all", "build_candidates", "compute_routes"):
+    for stage_name in (
+        "extract_slots",
+        "geocode_all",
+        "build_candidates",
+        "compute_routes",
+        "rank",
+        "save",
+        "load_session",
+    ):
         if getattr(deps, stage_name) is None:
             setattr(deps, stage_name, _default(stage_name))
-    session_id = req.session_id or ""
 
-    with langfuse.trace("agent", user_id=user_id, preset=req.preset) as tr:
+    is_new_session = req.session_id is None
+
+    with langfuse.trace("agent", user_id=user_id, session_id=session_id, preset=req.preset) as tr:
         text = req.text or ""
+
+        # 재질문이면 이전 슬롯을 읽어 1단계 프롬프트에 넣는다 (SDD 5절 재질문)
+        if not is_new_session and deps.previous_slots is None:
+            with tr.span("load_session") as span:
+                try:
+                    deps.previous_slots = await _load_previous(deps, session_id, user_id)
+                    span.output = {"found": deps.previous_slots is not None}
+                except (NotYourSession, SessionLocked):
+                    raise
+                except Exception as e:  # noqa: BLE001  저장소가 없어도 계산은 이어 간다
+                    span.error = str(e)
 
         # 0. 캡처 → 텍스트. 실패하면 문장으로 다시 받는다
         if req.image_base64:
@@ -173,7 +206,23 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
             except Exception as e:  # noqa: BLE001
                 span.error = str(e)
                 routes = []
-            span.output = {"요청": len(plans), "실패": sum(1 for r in routes if r.get("error"))}
+            failed_names = sorted({r["key"][1] for r in routes if r.get("error")})
+            span.output = {"요청": len(plans), "실패": len([r for r in routes if r.get("error")]), "실패자": failed_names}
+
+        # 6. 판정. 소형 경로(SDD 5절 라우팅 small)면 대형 모델을 부르지 않는다
+        rankings: list[dict[str, Any]] | None = None
+        routed_to = model_router.route(slots)
+        if routed_to == "large":
+            with tr.span("judge") as span:
+                try:
+                    rankings = await _call(
+                        deps.rank, slots, _judge_candidates(raw_candidates, slots), _judge_rows(routes, slots)
+                    )
+                    span.output = {"rankings": rankings}
+                except Exception as e:  # noqa: BLE001
+                    # 판정이 실패해도 멈추지 않는다. 규칙 점수 순서로 대신 채운다 (SDD 5절 6단계)
+                    span.error = str(e)
+                    rankings = None
 
         # 5·7. 규칙 적용과 출발 시각 역산
         with tr.span("rules") as span:
@@ -188,22 +237,42 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
                     questions=["몇 시에 시작하나요?"],
                     geocoded=pins,
                 )
-            result = _build_result(slots, raw_candidates, routes, meet_at)
+            result = _build_result(slots, raw_candidates, routes, meet_at, rankings, routed_to)
             span.output = {"후보": len(result.candidates), "참석자행": len(result.per_participant)}
 
         if not result.per_participant:
             return _answer(session_id, "failed", slots, tr.id, "경로를 구하지 못했습니다. 잠시 후 다시 시도해 주세요.", geocoded=pins)
 
-        # 8. 저장은 DB 가 붙은 뒤에 (SDD 5절 8단계). 지금은 결과만 돌려준다
+        # 8. 저장
+        with tr.span("store") as span:
+            try:
+                session_id = await _persist(
+                    deps,
+                    session_id=session_id,
+                    is_new=is_new_session,
+                    user_id=user_id,
+                    slots=slots,
+                    result=result,
+                    trace_id=tr.id,
+                    pins=pins,
+                )
+                span.output = {"session_id": session_id}
+            except Exception as e:  # noqa: BLE001  저장이 실패해도 계산 결과는 보여 준다
+                span.error = str(e)
+
         first = min((c.rank for c in result.candidates if c.rank), default=None)
         top = next((c for c in result.candidates if c.rank == first), None)
         arrive_by = result.per_participant[0].arrive_by
+        # 경로를 못 구한 사람은 표에서 빠진다. 말없이 빼면 "왜 저 사람만 없지"가 되므로 알린다
+        done_names = {r.name for r in result.per_participant}
+        missing_people = [p.name for p in slots.participants if p.name not in done_names]
         return _answer(
             session_id,
             "done",
             slots,
             tr.id,
-            f"{top.name}에서 {arrive_by} 까지 모이는 안을 1순위로 제안합니다." if top else "결과를 정리했습니다.",
+            (f"{top.name}에서 {arrive_by} 까지 모이는 안을 1순위로 제안합니다." if top else "결과를 정리했습니다.")
+            + (f" {', '.join(missing_people)} 님은 경로를 조회하지 못해 표에서 빠졌습니다." if missing_people else ""),
             geocoded=pins,
             result=result,
         )
@@ -231,6 +300,17 @@ def _default(name: str) -> Callable[..., Any] | None:
         from backend.app.services import routes
 
         return routes.compute_all
+    if name == "rank":
+        from backend.app.services import judge
+
+        return judge.rank
+    if name in ("save", "load_session"):
+        # DB 설정이 없으면 import 자체가 실패한다. 그때는 저장 없이 계산만 한다
+        try:
+            from backend.app.services import session_store
+        except Exception:  # noqa: BLE001
+            return None
+        return session_store.save if name == "save" else session_store.load_session
     return None
 
 
@@ -336,13 +416,58 @@ def _route_plans(slots: Slots, pins: list[GeocodedPin], candidates: list[Any]) -
     return plans
 
 
+def _llm_meta() -> dict[str, Any]:
+    """마지막 슬롯 추출에 쓴 모델·프롬프트 버전. 결과에 남겨 무엇으로 돌았는지 보이게 한다."""
+    try:
+        from backend.app.services import llm
+
+        return llm.last_meta()
+    except Exception:  # noqa: BLE001  기록용이라 실패해도 계산을 막지 않는다
+        return {}
+
+
+def _judge_candidates(raw_candidates: list[dict[str, Any]], slots: Slots) -> list[dict[str, Any]]:
+    """판정 프롬프트에 넣을 후보 목록. access_ok 는 코드가 정한 값을 그대로 알려 준다."""
+    applied = slots.access.applied if slots.access else None
+    return [
+        {**cand, "access_ok": domain_rules.access_ok(cand["kind"], applied)} for cand in raw_candidates
+    ]
+
+
+def _judge_rows(routes: list[dict[str, Any]], slots: Slots) -> list[dict[str, Any]]:
+    """판정 프롬프트에 넣을 참석자별 소요. 실패한 조회는 빼고 준다."""
+    transport_of = {p.name: (p.transport or "car") for p in slots.participants}
+    rows: list[dict[str, Any]] = []
+    for route in routes:
+        if route.get("error"):
+            continue
+        index, name = route["key"]
+        rows.append(
+            {
+                "candidate_idx": index,
+                "name": name,
+                "transport": transport_of.get(name, "car"),
+                "raw_duration_min": round(route["duration_sec"] / 60),
+                "transfer_count": route.get("transfer_count"),
+            }
+        )
+    return rows
+
+
 def _build_result(
-    slots: Slots, raw_candidates: list[Any], routes: list[dict[str, Any]], meet_at: str
+    slots: Slots,
+    raw_candidates: list[Any],
+    routes: list[dict[str, Any]],
+    meet_at: str,
+    rankings: list[dict[str, Any]] | None = None,
+    routed_to: str = "small",
 ) -> Result:
     """5·6·7단계를 합쳐 Result 를 만든다.
 
-    순위는 규칙 점수로 매긴다 (domain/rules.candidate_score). 대형 모델 판정(6단계)은 아직 붙이지
-    않았으므로 routed_to 는 small 로 둔다. judge 가 붙으면 그때 rank·reason 을 대형 모델이 채운다.
+    순위는 두 갈래다 (SDD 5절 6단계).
+      rankings 가 있으면  대형 모델이 낸 rank·reason·rejected_reason·switched_from 을 그대로 쓴다
+      없으면              규칙 점수 순서(domain/rules.candidate_score)와 규칙 문구로 채운다
+    숫자와 access_ok 는 어느 쪽이든 코드가 넣는다.
     """
     preset = slots.preset
     access_required = bool(slots.access and slots.access.required)
@@ -351,17 +476,46 @@ def _build_result(
     buffer = domain_rules.buffer_min(preset)
     by_key = {r["key"]: r for r in routes if not r.get("error")}
 
-    scored = sorted(
-        enumerate(raw_candidates),
-        key=lambda pair: domain_rules.candidate_score(pair[1]["kind"], access_required),
-        reverse=True,
-    )
+    judged = {row["candidate_idx"]: row for row in (rankings or [])}
+
+    # 도착이 어긋나면 절차를 포기하고 부두 밖에서 만난다 (access.md switch_if_delay_min)
+    switched = domain_rules.switch_outside(slots.constraints)
+    if switched:
+        access_required = False  # 절차 시작점 우선을 끄고 랜드마크를 앞세운다
+    if judged:
+        scored = sorted(enumerate(raw_candidates), key=lambda pair: judged[pair[0]]["rank"])
+    else:
+        scored = sorted(
+            enumerate(raw_candidates),
+            key=lambda pair: domain_rules.candidate_score(pair[1]["kind"], access_required),
+            reverse=True,
+        )
+    # 전환했다면 원래 1순위였을 자리를 switched_from 에 남긴다. 화면이 "어디서 옮겼는지" 보여 준다
+    original_top = None
+    if switched:
+        original = sorted(
+            raw_candidates,
+            key=lambda c: domain_rules.candidate_score(c["kind"], True),
+            reverse=True,
+        )
+        original_top = original[0]["name"] if original else None
 
     candidates: list[Candidate] = []
     rows: list[ParticipantResult] = []
 
     for rank, (index, cand) in enumerate(scored, start=1):
         ok = domain_rules.access_ok(cand["kind"], applied)
+        verdict = judged.get(index)
+        if verdict:
+            reason = verdict["reason"]
+            rejected = verdict["rejected_reason"] or (None if ok else "출입조치를 신청해야 들어갈 수 있습니다")
+            switched_from = verdict["switched_from"]
+        else:
+            reason = _reason_for(cand["kind"], access_required, ok, switched and rank == 1)
+            rejected = None if ok else "출입조치를 신청해야 들어갈 수 있습니다"
+            switched_from = (
+                original_top if (switched and rank == 1 and cand["name"] != original_top) else None
+            )
         candidates.append(
             Candidate(
                 name=cand["name"],
@@ -371,9 +525,9 @@ def _build_result(
                 lat=cand["lat"],
                 rank=rank,
                 access_ok=ok,
-                switched_from=None,
-                reason=_reason_for(cand["kind"], access_required, ok),
-                rejected_reason=None if ok else "출입조치를 신청해야 들어갈 수 있습니다",
+                switched_from=switched_from,
+                reason=reason,
+                rejected_reason=rejected,
             )
         )
 
@@ -411,22 +565,126 @@ def _build_result(
         per_participant=rows,
         rendezvous_departure=None,
         confidence=0.8,
-        model_small=os.environ.get("MODEL_LARGE", "unknown"),
-        model_large=None,
-        prompt_version="converge/slot-extract",
-        routed_to=model_router.route(slots),
+        model_small=_llm_meta().get("model", "unknown"),
+        model_large=(rankings[0].get("model") if rankings else None),
+        prompt_version=_llm_meta().get("prompt_version", "converge/slot-extract"),
+        routed_to="large" if rankings else "small",
     )
 
 
-def _reason_for(kind: str, access_required: bool, ok: bool) -> str:
+def _reason_for(kind: str, access_required: bool, ok: bool, switched: bool = False) -> str:
     """순위 이유 한 줄. 규칙 파일 항목을 인용한다 (SDD 4절 Candidate.reason).
 
     대형 모델이 붙기 전까지는 규칙 문구를 그대로 쓴다 (SDD 5절 6단계 "실패면 규칙 문구 그대로").
     """
     if not ok:
         return "access.md pier_requires_access_applied: 출입조치 전이라 부두 안은 쓸 수 없습니다"
+    if switched:
+        return "access.md switch_if_delay_min: 도착이 어긋나 출입 절차를 포기하고 부두 밖에서 만납니다"
     if access_required and kind in ("gate", "lobby", "hq"):
         return "access.md rendezvous_is_procedure_start: 출입 절차가 시작되는 자리에서 합류합니다"
     if kind == "landmark":
         return "access.md outside_landmark_kinds: 지리를 몰라도 찾기 쉬운 자리입니다"
     return "목적지에서 가장 가까운 자리입니다"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 세션 (SDD 5절 재질문, 8단계 store.save)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _slots_from_session(row: dict[str, Any]) -> Slots:
+    """저장된 세션을 Slots 로 되돌린다. 재질문 때 1단계 프롬프트에 넣는다.
+
+    저장은 표 컬럼으로 흩어져 있고 (테이블정의서 1절) 슬롯은 한 덩어리라 여기서 다시 모은다.
+    검증을 거치지 않는 이유: 저장 당시에는 통과한 값이고, 지금은 프롬프트에 넣을 참고 자료이기 때문이다.
+    """
+    return Slots.model_construct(
+        preset=row.get("preset"),
+        datetime=None,  # 표에는 meet_at(시각)만 있고 사람이 쓴 표현은 남기지 않는다
+        purpose=row.get("purpose"),
+        destination=row.get("destination_name"),
+        participants=[Participant.model_construct(**p) for p in row.get("participants") or []],
+        rendezvous=None,
+        access=row.get("access"),
+        schedule_confirmed=row.get("schedule_confirmed"),
+        constraints=row.get("constraints") or [],
+        missing=[],
+        out_of_scope=False,
+    )
+
+
+async def _load_previous(deps: Deps, session_id: str, user_id: str) -> Slots | None:
+    """재질문이면 이전 세션을 읽는다. 없으면 None.
+
+    먼저 잠금과 주인을 본다. 남의 세션이면 403, 약속이 지난 세션이면 409 다. 둘 다 LLM 을 부르기 전에
+    막는다 (SDD 5절 재질문, 비용 방어).
+    """
+    if deps.load_session is None:
+        return None
+    row = await deps.load_session(session_id)
+    if row is None:
+        return None
+    if row.get("user_id") and row["user_id"] != user_id:
+        raise NotYourSession(session_id)
+    if row.get("locked"):
+        raise SessionLocked(session_id)
+    return _slots_from_session(row)
+
+
+async def _persist(
+    deps: Deps,
+    *,
+    session_id: str,
+    is_new: bool,
+    user_id: str,
+    slots: Slots,
+    result: Result,
+    trace_id: str,
+    pins: list[GeocodedPin],
+) -> str:
+    """8단계. 세션과 결과를 저장하고 최종 session_id 를 돌려준다.
+
+    DB 가 없으면 저장만 건너뛰고 계산 결과는 그대로 보여 준다. 화면이 멈추는 것보다 낫고,
+    저장 실패는 Langfuse span 에 남는다. (설정이 들어오면 이 갈래는 사라진다)
+    """
+    if deps.save is None:
+        return session_id
+    participants = _participants_for_store(slots, pins)
+    return await deps.save(
+        session_id=None if is_new else session_id,
+        user_id=user_id,
+        slots=slots,
+        participants=participants,
+        result=result,
+        trace_id=trace_id,
+    )
+
+
+def _participants_for_store(slots: Slots, pins: list[GeocodedPin]) -> list[dict[str, Any]]:
+    """저장용 참석자 평문 구조 (테이블정의서 1절 participants_enc).
+
+    좌표는 슬롯이 아니라 지오코딩 결과에 있으므로 여기서 이름으로 붙여 넣는다.
+    """
+    coords = {p.name: p for p in pins if p.kind == "participant"}
+    out: list[dict[str, Any]] = []
+    for person in slots.participants:
+        pin = coords.get(person.name)
+        out.append(
+            {
+                "name": person.name,
+                "origin_text": person.origin,
+                "lng": pin.lng if pin else None,
+                "lat": pin.lat if pin else None,
+                "transport": person.transport,
+                "pickup": person.pickup,
+                "pickup_at": person.pickup_at,
+                "unfamiliar": person.unfamiliar,
+                "role": person.role,
+                "confirmed": bool(pin and pin.confidence >= 1.0),
+                "owner_user_id": person.owner_user_id,
+                "origin_set_by": "self" if person.owner_user_id else "organizer",
+                "self_edited_at": None,
+            }
+        )
+    return out

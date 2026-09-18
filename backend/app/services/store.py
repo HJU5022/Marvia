@@ -14,8 +14,10 @@
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -30,6 +32,7 @@ from backend.app.domain import rules  # 도커(/app)와 로컬 모두 저장소 
 # "풀"은 DB 연결을 미리 몇 개 열어 두고 요청마다 빌려 쓰는 것. 요청마다 새로 접속하면
 # 매번 인증·핸드셰이크가 들어가 느리다. 앱이 뜰 때 한 번 만들고 내릴 때 닫는다.
 
+_log = logging.getLogger(__name__)
 _pool: asyncpg.Pool | None = None
 
 
@@ -44,8 +47,33 @@ async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
         url = os.environ["DATABASE_URL"]  # 없으면 KeyError. 조용히 기본값으로 붙는 것보다 낫다
-        _pool = await asyncpg.create_pool(url, min_size=1, max_size=5)
+        _pool = await _create_pool_with_retry(url)
     return _pool
+
+
+# 첫 접속이 이름 풀이(DNS)에서 가끔 실패한다. Supabase pooler 는 IP 를 여러 개 돌려 쓰고 TTL 이 짧아,
+# 캐시가 비는 순간 조회가 늦으면 리졸버가 실패로 처리한다 (Windows WSAHOST_NOT_FOUND, 09-18 실측).
+# 바로 다시 하면 붙으므로 몇 번 기다렸다 다시 해 본다. 여기서 포기하면 앱이 기동조차 못 한다.
+_RETRY_WAITS_SEC = (1, 2, 4)
+
+
+async def _create_pool_with_retry(url: str) -> asyncpg.Pool:
+    """풀을 만든다. 일시적인 접속 실패는 몇 번 다시 해 보고, 그래도 안 되면 그대로 올린다.
+
+    다시 해 보는 것: OSError 계열 (DNS 실패, 연결 거절, 타임아웃)
+    다시 하지 않는 것: 비밀번호가 틀렸거나 DB 이름이 없는 경우. 기다린다고 달라지지 않는다.
+    """
+    last: Exception | None = None
+    for wait in (*_RETRY_WAITS_SEC, None):
+        try:
+            return await asyncpg.create_pool(url, min_size=1, max_size=5)
+        except (OSError, asyncio.TimeoutError) as e:
+            last = e
+            if wait is None:
+                break
+            _log.warning("DB 접속 실패(%s). %s초 뒤 다시 시도합니다", type(e).__name__, wait)
+            await asyncio.sleep(wait)
+    raise last if last else RuntimeError("DB 접속에 실패했습니다")
 
 
 async def close_pool() -> None:
