@@ -24,6 +24,7 @@ import type {
   ParticipantResult,
   Preset,
   Role,
+  SessionBrief,
   Slots,
   Transport,
 } from "@/types/agent";
@@ -213,6 +214,7 @@ function base(stage: AgentResponse["stage"], sid: ScenarioId, list: Person[], pr
     message: "",
     trace_id: `mock-${Date.now()}`,
     geocoded: null,
+    edits: null,
   };
 }
 
@@ -306,6 +308,32 @@ export function mockAgent(req: AgentRequest): AgentResponse {
   return remember(sid, list, res);
 }
 
+export function mockSessionList(): SessionBrief[] {
+  // 지금 메모리에 있는 세션 하나만 목록으로 보여 준다
+  const now = new Date();
+  const scenario: ScenarioId = state?.scenario ?? "ship";
+  const sc = SCENARIOS[scenario];
+  if (!state) return [];
+  return [
+    {
+      id: MOCK_SESSION_ID,
+      preset: sc.preset,
+      status: state.last.stage === "done" ? "computed" : "draft",
+      purpose: sc.purpose,
+      destination: sc.destination.name,
+      meet_at: null,
+      participant_count: state.list.length,
+      created_at: now.toISOString(),
+      expires_at: new Date(now.getTime() + 7 * 24 * 3600 * 1000).toISOString(),
+      locked: false,
+    },
+  ];
+}
+
+export function mockDeleteSession(id: string): void {
+  if (id === MOCK_SESSION_ID) state = null;
+}
+
 export function mockSession(id: string): AgentResponse | null {
   if (id !== MOCK_SESSION_ID) return null;
   if (!state || state.last.stage !== "done") {
@@ -342,5 +370,5 @@ export function mockPatch(id: string, userId: string, body: ParticipantPatchRequ
   const next = done(state.scenario, list, current.result?.provisional ?? false);
   remember(state.scenario, list, next);
   // done 응답에는 슬롯이 반드시 있다 (AgentResponse 계약)
-  return { status: 200, body: { slots: next.slots!, result: next.result } };
+  return { status: 200, body: { slots: next.slots!, result: next.result, edits: null } };
 }
