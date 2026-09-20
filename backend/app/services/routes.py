@@ -97,7 +97,19 @@ async def _transit(client: httpx.AsyncClient, origin: LngLat, dest: LngLat) -> d
     itinerary = data["metaData"]["plan"]["itineraries"][0]
 
     points: list[list[float]] = []
+    # 구간(leg) 요약. 어느 호선·버스를 타는지 알아야 first_last_train 에 넘길 호선을 고를 수 있다 (09-18 결정).
+    # TMAP 의 route 는 지하철이면 "수도권4호선", 버스면 "간선:401", 걷기면 None 으로 온다 (09-18 실측).
+    legs: list[dict[str, Any]] = []
     for leg in itinerary["legs"]:
+        legs.append(
+            {
+                "mode": leg["mode"],  # WALK / SUBWAY / BUS
+                "route": leg.get("route"),
+                "from": leg["start"]["name"],
+                "to": leg["end"]["name"],
+                "sec": int(leg["sectionTime"]),
+            }
+        )
         shapes = []
         if leg.get("passShape"):
             shapes.append(leg["passShape"]["linestring"])
@@ -112,6 +124,7 @@ async def _transit(client: httpx.AsyncClient, origin: LngLat, dest: LngLat) -> d
         "duration_sec": int(itinerary["totalTime"]),
         "polyline": _thin(points),
         "transfer_count": itinerary.get("transferCount"),
+        "legs": legs,
     }
 
 
