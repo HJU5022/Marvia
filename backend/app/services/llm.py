@@ -26,7 +26,7 @@ from backend.app.schemas.slots import Preset, Slots
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 SLOT_PROMPT = "converge/slot-extract"
 
-# 소형 모델이 없을 때 추출에 쓰는 모델. SDD 9절 MODEL_LARGE 와 같은 값을 본다
+# SDD 9절 MODEL_LARGE 와 같은 값을 본다
 DEFAULT_LARGE = "anthropic/claude-sonnet-5"
 
 
@@ -55,6 +55,29 @@ def model_large() -> str:
     return os.environ.get("MODEL_LARGE", DEFAULT_LARGE)
 
 
+def model_small() -> str | None:
+    """소형 모델 id. 없으면 None.
+
+    SDD 8절의 소형 모델은 로컬 GGUF(MODEL_SMALL_PATH)다. 그 서빙이 아직 붙지 않았으므로,
+    OpenRouter 로 대신 돌려 볼 수 있게 MODEL_SMALL 도 본다. 둘 다 없으면 처음부터 대형으로 간다.
+    GGUF 서빙이 들어오면 이 함수만 "로컬 모델 핸들"을 돌려주게 바꾼다.
+    """
+    return os.environ.get("MODEL_SMALL") or None
+
+
+def attempt_models() -> list[str]:
+    """시도 순서 (SDD 5절 1단계 "스키마 위반 시 재시도 1회 → 대형 모델 승격").
+
+      소형이 있으면  [소형, 소형, 대형]   같은 모델로 한 번 더 → 그래도 어기면 대형으로 승격
+      소형이 없으면  [대형, 대형]        승격할 곳이 없으니 재시도까지만
+    """
+    small = model_small()
+    large = model_large()
+    if small and small != large:
+        return [small, small, large]
+    return [large, large]
+
+
 def _fill(prompt: str, text: str, previous: Slots | None, preset: Preset | None) -> str:
     """Langfuse 프롬프트의 {{변수}} 를 채운다.
 
@@ -68,8 +91,8 @@ def _fill(prompt: str, text: str, previous: Slots | None, preset: Preset | None)
     )
 
 
-def _parse(raw: str) -> Slots:
-    """모델 출력에서 JSON 을 꺼내 Slots 로 검증한다. 어긋나면 ValidationError 가 위로 올라간다."""
+def _parse_json_block(raw: str) -> dict[str, Any]:
+    """모델 출력에서 JSON 객체를 꺼낸다. judge.py 도 같은 파서를 쓴다."""
     body = raw.strip()
     if body.startswith("```"):  # ```json ... ``` 로 감싸 오는 모델이 있다
         body = body.split("```")[1]
@@ -77,7 +100,35 @@ def _parse(raw: str) -> Slots:
     start, end = body.find("{"), body.rfind("}")
     if start == -1 or end == -1:
         raise ValueError(f"JSON 을 찾지 못했습니다: {raw[:200]!r}")
-    return Slots.model_validate(json.loads(body[start : end + 1]))
+    return json.loads(body[start : end + 1])
+
+
+# 1인칭을 부르는 말. 모델이 문장 그대로 "저", "제가" 로 뽑아 오면 화면과 결과 표에 그대로 나온다.
+# 사람 이름 자리라 한 가지로 맞춘다. 프롬프트에도 "나" 로 두라고 적었지만 모델이 자주 어긴다.
+_FIRST_PERSON = {"저", "제", "제가", "저는", "나는", "본인", "me", "I"}
+FIRST_PERSON_NAME = "나"
+
+
+def normalize_names(slots: Slots) -> Slots:
+    """1인칭 표기를 "나" 하나로 맞춘다. pickup 이 그 사람을 가리키면 그것도 같이 바꾼다."""
+    renamed = {p.name: FIRST_PERSON_NAME for p in slots.participants if p.name.strip() in _FIRST_PERSON}
+    if not renamed:
+        return slots
+    participants = [
+        p.model_copy(
+            update={
+                "name": renamed.get(p.name, p.name),
+                "pickup": renamed.get(p.pickup, p.pickup) if p.pickup else p.pickup,
+            }
+        )
+        for p in slots.participants
+    ]
+    return slots.model_copy(update={"participants": participants})
+
+
+def _parse(raw: str) -> Slots:
+    """모델 출력을 Slots 로 검증한다. 어긋나면 ValidationError 가 위로 올라간다."""
+    return Slots.model_validate(_parse_json_block(raw))
 
 
 async def extract_slots(
@@ -91,13 +142,13 @@ async def extract_slots(
     """
     prompt, version = langfuse.get_prompt(SLOT_PROMPT)
     client = _client()
-    model = model_large()
     filled = _fill(prompt, text, previous, preset)
+    models = attempt_models()
 
     last_error: Exception | None = None
-    for attempt in (1, 2):
+    for attempt, model in enumerate(models, start=1):
         messages = [{"role": "user", "content": filled}]
-        if attempt == 2 and last_error is not None:
+        if attempt > 1 and last_error is not None:
             messages.append(
                 {
                     "role": "user",
@@ -117,12 +168,20 @@ async def extract_slots(
         except (ValidationError, ValueError, json.JSONDecodeError) as e:
             last_error = e
             continue
+        slots = normalize_names(slots)
         # 사용자가 프리셋을 골랐으면 그 값이 우선이다 (SDD 2절 AgentRequest.preset)
         if preset and not slots.out_of_scope and slots.preset != preset:
             slots = slots.model_copy(update={"preset": preset})
         # Result.model_small / prompt_version 은 6단계에서 함께 채운다. 그때 이 값을 쓰려면
         # 반환형을 (Slots, 모델, 프롬프트 버전) 으로 넓힌다 (SDD 4절)
-        _last_meta.update({"model": model, "prompt_version": version, "attempts": attempt})
+        _last_meta.update(
+            {
+                "model": model,
+                "prompt_version": version,
+                "attempts": attempt,
+                "escalated": model == model_large() and attempt > 1 and models[0] != model_large(),
+            }
+        )
         return slots
 
     raise last_error if last_error else RuntimeError("슬롯 추출에 실패했습니다")
