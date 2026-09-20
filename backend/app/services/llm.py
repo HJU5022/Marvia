@@ -22,6 +22,7 @@ from pydantic import ValidationError
 
 from backend.app.observability import langfuse
 from backend.app.schemas.slots import Preset, Slots
+from backend.app.services import costs as cost_guards
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 SLOT_PROMPT = "converge/slot-extract"
@@ -163,6 +164,9 @@ async def extract_slots(
             extra_body={"usage": {"include": True}},
         )
         raw = res.choices[0].message.content or ""
+        usage = getattr(res, "usage", None)
+        tokens_in = int(getattr(usage, "prompt_tokens", 0) or 0)
+        tokens_out = int(getattr(usage, "completion_tokens", 0) or 0)
         try:
             slots = _parse(raw)
         except (ValidationError, ValueError, json.JSONDecodeError) as e:
@@ -180,6 +184,9 @@ async def extract_slots(
                 "prompt_version": version,
                 "attempts": attempt,
                 "escalated": model == model_large() and attempt > 1 and models[0] != model_large(),
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "cost_usd": cost_guards.estimate_cost_usd(model, tokens_in, tokens_out),
             }
         )
         return slots
