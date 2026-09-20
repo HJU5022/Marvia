@@ -9,6 +9,14 @@ from backend.app.services import llm
 
 
 @pytest.fixture(autouse=True)
+def _no_local_gguf(monkeypatch):
+    """이 파일은 환경변수 기반 시도 순서만 본다. 로컬 GGUF 가 있는 PC 에서도 같은 결과가 나오게 끈다."""
+    from backend.app.services import slot_model
+
+    monkeypatch.setattr(slot_model, "available", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def _env():
     before = {k: os.environ.get(k) for k in ("MODEL_SMALL", "MODEL_LARGE")}
     os.environ["MODEL_LARGE"] = "vendor/large"
@@ -75,3 +83,12 @@ def test_보통_이름은_건드리지_않는다():
         participants=[dict(name="한동료", origin="강남역", transport="transit", role="colleague")],
     )
     assert llm.normalize_names(slots).participants[0].name == "한동료"
+
+
+def test_로컬_GGUF_가_있으면_그것을_먼저_쓴다(monkeypatch):
+    """SDD 8절: 소형은 로컬 GGUF 가 1순위다. 실패하면 대형으로 승격한다."""
+    from backend.app.services import slot_model
+
+    monkeypatch.setattr(slot_model, "available", lambda: True)
+    monkeypatch.setattr(slot_model, "model_name", lambda: "local/kanana")
+    assert llm.attempt_models() == ["local/kanana", "local/kanana", "vendor/large"]

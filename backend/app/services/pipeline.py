@@ -12,6 +12,7 @@ Deps 로 바깥 함수를 받는 이유:
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -130,11 +131,14 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
 
         # 1. 텍스트 → 슬롯
         with tr.span("extract", text=text[:200]) as span:
+            started = time.monotonic()
             try:
                 slots = await _call(deps.extract_slots, text, deps.previous_slots, req.preset)
                 span.output = slots.model_dump(exclude={"participants"})
+                await _log_llm("extract", tr.id, session_id, started, "ok")
             except Exception as e:  # noqa: BLE001
                 span.error = str(e)
+                await _log_llm("extract", tr.id, session_id, started, "error", type(e).__name__)
                 return _answer(session_id, "failed", None, tr.id, "요청을 이해하지 못했습니다. 다시 입력해 주세요.")
 
         # 1-1. 범위 밖
@@ -238,12 +242,15 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
                 span.output = {"skipped": "비용 상한 초과", "spent_usd": spent_usd, "cap_usd": cap}
         elif routed_to == "large":
             with tr.span("judge") as span:
+                started = time.monotonic()
                 try:
                     rankings = await _call(
                         deps.rank, slots, _judge_candidates(raw_candidates, slots), _judge_rows(routes, slots)
                     )
                     span.output = {"rankings": rankings}
+                    await _log_llm("judge", tr.id, session_id, started, "ok", routed_to=routed_to)
                 except Exception as e:  # noqa: BLE001
+                    await _log_llm("judge", tr.id, session_id, started, "error", type(e).__name__, routed_to)
                     # 판정이 실패해도 멈추지 않는다. 규칙 점수 순서로 대신 채운다 (SDD 5절 6단계)
                     span.error = str(e)
                     rankings = None
@@ -374,6 +381,40 @@ def _apply_confirmed(pins: list[GeocodedPin], confirmed: list[Any]) -> list[Geoc
             GeocodedPin(name=pin.name, lng=hit.lng, lat=hit.lat, confidence=1.0, kind=pin.kind) if hit else pin
         )
     return out
+
+
+async def _log_llm(
+    stage: str,
+    request_id: str,
+    session_id: str,
+    started: float,
+    status: str,
+    error_type: str | None = None,
+    routed_to: str | None = None,
+) -> None:
+    """LLM 단계 한 줄. 모델·토큰·비용은 services/llm.py 가 마지막 호출에서 남긴 값을 쓴다.
+
+    라우팅 전후 비용을 비교하려면 어느 모델을 얼마에 불렀는지가 요청 단위로 남아야 한다
+    (체크리스트 40번). 로컬 GGUF 는 비용 0 이라 그 차이가 그대로 드러난다.
+    """
+    from backend.app.services import llm, request_log
+
+    meta = llm.last_meta()
+    await request_log.write(
+        request_id=request_id,
+        session_id=session_id or None,
+        stage=stage,
+        provider="local" if str(meta.get("model", "")).startswith("local/") else "openrouter",
+        model_or_api=meta.get("model"),
+        latency_ms=int((time.monotonic() - started) * 1000),
+        status=status,
+        tokens_in=meta.get("tokens_in"),
+        tokens_out=meta.get("tokens_out"),
+        cost_usd=meta.get("cost_usd"),
+        error_type=error_type,
+        retry_no=max(0, int(meta.get("attempts", 1)) - 1),
+        routed_to=routed_to,
+    )
 
 
 def _pin_of(pins: list[GeocodedPin], name: str, kind: str) -> GeocodedPin | None:

@@ -14,6 +14,7 @@ SDD 8절이 "소형 (GGUF) 또는 대형 폴백"을 허용하므로 그때까지
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any
@@ -57,12 +58,15 @@ def model_large() -> str:
 
 
 def model_small() -> str | None:
-    """소형 모델 id. 없으면 None.
+    """소형 모델 이름. 없으면 None.
 
-    SDD 8절의 소형 모델은 로컬 GGUF(MODEL_SMALL_PATH)다. 그 서빙이 아직 붙지 않았으므로,
-    OpenRouter 로 대신 돌려 볼 수 있게 MODEL_SMALL 도 본다. 둘 다 없으면 처음부터 대형으로 간다.
-    GGUF 서빙이 들어오면 이 함수만 "로컬 모델 핸들"을 돌려주게 바꾼다.
+    1순위는 로컬 GGUF (SDD 8절). backend/app/models/ 에 모델·프롬프트 설정·문법이 다 있으면 그것을 쓴다.
+    2순위는 MODEL_SMALL 환경변수. GGUF 가 없는 환경에서 OpenRouter 소형 모델로 대신 돌려 볼 때 쓴다.
     """
+    from backend.app.services import slot_model
+
+    if slot_model.available():
+        return slot_model.model_name()
     return os.environ.get("MODEL_SMALL") or None
 
 
@@ -148,6 +152,16 @@ async def extract_slots(
 
     last_error: Exception | None = None
     for attempt, model in enumerate(models, start=1):
+        # 로컬 GGUF 차례면 학습 때와 같은 프롬프트로 부른다 (services/slot_model.py).
+        # Langfuse 프롬프트는 대형 모델용이라 여기서는 쓰지 않는다. 형식을 바꾸면 학습 효과가 사라진다
+        if model.startswith("local/"):
+            try:
+                slots = _parse(await _run_local(text))
+            except (ValidationError, ValueError, json.JSONDecodeError) as e:
+                last_error = e
+                continue
+            return _finish(slots, preset, model, version, attempt, models)
+
         messages = [{"role": "user", "content": filled}]
         if attempt > 1 and last_error is not None:
             messages.append(
@@ -192,3 +206,44 @@ async def extract_slots(
         return slots
 
     raise last_error if last_error else RuntimeError("슬롯 추출에 실패했습니다")
+
+
+async def _run_local(text: str) -> str:
+    """로컬 GGUF 호출. CPU 에서 20초쯤 걸리므로 이벤트 루프를 막지 않게 스레드로 돌린다."""
+    from backend.app.services import slot_model
+
+    return await asyncio.to_thread(slot_model.extract_json, text)
+
+
+def _finish(
+    slots: Slots,
+    preset: Preset | None,
+    model: str,
+    version: str,
+    attempt: int,
+    models: list[str],
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+) -> Slots:
+    """공통 마무리. 프리셋을 맞추고, 이름을 다듬고, 무엇으로 얼마에 뽑았는지 남긴다.
+
+    로컬 GGUF 는 토큰 요금이 없어 비용이 0 이다. 그 차이가 라우팅 전후 비교의 핵심이라
+    (SDD 5절 라우팅, 체크리스트 40번) 모델 이름과 함께 그대로 남긴다.
+    """
+    slots = normalize_names(slots)
+    # 사용자가 프리셋을 골랐으면 그 값이 우선이다 (SDD 2절 AgentRequest.preset)
+    if preset and not slots.out_of_scope and slots.preset != preset:
+        slots = slots.model_copy(update={"preset": preset})
+    local = model.startswith("local/")
+    _last_meta.update(
+        {
+            "model": model,
+            "prompt_version": "finetune/kanana" if local else version,
+            "attempts": attempt,
+            "escalated": model == model_large() and attempt > 1 and models[0] != model_large(),
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "cost_usd": 0.0 if local else cost_guards.estimate_cost_usd(model, tokens_in, tokens_out),
+        }
+    )
+    return slots
