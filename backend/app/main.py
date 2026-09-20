@@ -50,6 +50,7 @@ app.add_middleware(
 
 app.include_router(agent.router)
 app.include_router(session.router)
+app.include_router(session.list_router)
 
 # MCP 서버. FastAPI 라우트를 다 등록한 뒤, 마지막에 루트 마운트로 붙인다.
 # 왜 루트 마운트인가: "/mcp" 에 마운트 + path "/" 로 하면 실제 문은 /mcp/ 가 되고 /mcp 는 307 리다이렉트 (09-18 실측).

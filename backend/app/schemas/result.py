@@ -131,6 +131,19 @@ class GeocodedPin(BaseModel):
     kind: Literal["participant", "rendezvous", "destination", "pickup"]
 
 
+class ParticipantEdit(BaseModel):
+    """핀 하나의 마지막 수정 기록 (SDD 7절).
+
+    누구나 남의 핀도 고칠 수 있게 했으므로(09-18 결정), 누가 마지막에 고쳤는지를 화면에 보여 준다.
+    이름은 표에 없고 user_id 만 있으므로, 화면은 "본인이 고침 / 다른 사람이 고침"까지만 말한다.
+    """
+
+    name: str
+    edited_by: str | None = None
+    edited_at: str | None = None
+    by_owner: bool = False
+
+
 class AgentResponse(BaseModel):
     """POST /api/agent 의 응답. stage 하나로 화면이 갈린다 (frontend/FRONTEND_GUIDE.md 표).
 
@@ -154,6 +167,9 @@ class AgentResponse(BaseModel):
     geocoded: list[GeocodedPin] | None = Field(
         default=None, description="need_confirm, done 일 때 지도에 찍을 좌표"
     )
+    edits: list[ParticipantEdit] | None = Field(
+        default=None, description="핀별 마지막 수정 기록 (공유 링크 화면)"
+    )
 
     @model_validator(mode="after")
     def _check(self) -> AgentResponse:
@@ -168,7 +184,11 @@ class AgentResponse(BaseModel):
 
 
 class ParticipantPatchResponse(BaseModel):
-    """PATCH /api/session/{id}/participants 의 응답. 갱신된 슬롯과, 재계산이 끝났으면 새 결과 (SDD 2절)."""
+    """PATCH /api/session/{id}/participants 의 응답 (SDD 2절).
+
+    재계산은 하지 않는다. 좌표만 바꾸고 기존 결과를 그대로 돌려준다 (SDD 7절).
+    """
 
     slots: Slots
     result: Result | None = None
+    edits: list[ParticipantEdit] | None = None
