@@ -94,13 +94,15 @@ def test_확인한_좌표가_오면_그_좌표로_바꾸고_확신도를_올린�
     assert (pin.lng, pin.lat, pin.confidence) == (128.7, 35.25, 1.0)
 
 
-def test_남의_핀을_고치려_하면_막는다():
+def test_남의_핀도_고칠_수_있다():
+    """09-18 결정: 소유권은 표시용이고 수정은 막지 않는다 (SDD 7절)."""
     s = slots(
         participants=[dict(name="김현장", origin="창원시청", transport="car", role="site", owner_user_id="other")]
     )
     req = AgentRequest(text="점검", confirmed_participants=[ParticipantInput(name="김현장", lng=128.7, lat=35.25)])
-    with pytest.raises(pipeline.NotYourPin):
-        run(req, deps(s, pins(confidence=0.5)))
+    out = run(req, deps(s, pins(confidence=0.5)))
+    pin = next(p for p in out.geocoded if p.name == "김현장")
+    assert (pin.lng, pin.lat) == (128.7, 35.25)
 
 
 def test_내_핀은_고칠_수_있다():
@@ -240,3 +242,36 @@ def test_재질문이면_이전_슬롯을_추출에_넘긴다():
     run(AgentRequest(session_id="s1", text="출입조치 했어요"), d, user_id="u1")
     assert seen["previous"] is not None
     assert seen["previous"].destination == "진해 기지"
+
+
+def test_되묻기_단계에서도_세션을_만든다():
+    """메인에서 문장만 받고 /s/{id} 로 보내려면 링크가 먼저 있어야 한다 (화면 구조, 09-20)."""
+    saved = {}
+
+    async def save(**kwargs):
+        saved.update(kwargs)
+        return "draft-session-1"
+
+    s = slots(
+        participants=[dict(name="김현장", origin="창원시청", transport=None, role="site")],
+        missing=["participants[0].transport"],
+    )
+    out = run(AgentRequest(text="점검"), deps(s, save=save))
+    assert out.stage == "need_info"
+    assert out.session_id == "draft-session-1"
+    assert saved["status"] == "draft"
+    assert saved["result"] is None  # 아직 계산 전이라 결과는 없다
+
+
+def test_핀_확인_단계에서도_세션을_만든다():
+    saved = {}
+
+    async def save(**kwargs):
+        saved.update(kwargs)
+        return "draft-session-2"
+
+    out = run(AgentRequest(text="점검"), deps(slots(), pins(confidence=0.5), save=save))
+    assert out.stage == "need_confirm"
+    assert out.session_id == "draft-session-2"
+    assert saved["status"] == "draft"
+    assert saved["participants"][0]["lng"] == 128.68  # 찾아 둔 좌표는 함께 저장한다
