@@ -25,6 +25,7 @@ proj2-5/
   .env.example                backend용 (9절)
   docs/
     PRD.md  SDD.md  테이블정의서.md
+    compare.md              소형 모델 비교 기록 (정확도·지연·비용)
     evidence/                 제출 증거물
       langfuse/               대시보드 스크린샷 3장 이상, 트레이스 상세 1장
       mcp/                    연결 스크린샷, tool 목록, 호출 결과
@@ -37,7 +38,8 @@ proj2-5/
       routers/
         agent.py              POST /api/agent
         health.py             GET /health
-        session.py            GET /api/session/{id}  (공유 링크용 읽기, 로그인 필수)
+        session.py            GET /api/sessions      (내 계획 목록, 로그인 필수)
+                              GET /api/session/{id}  (공유 링크용 읽기, 로그인 필수)
                               DELETE /api/session/{id}  (주선자 본인만, 즉시 삭제)
                               PATCH /api/session/{id}/participants  (핀 claim·위치 수정. 2절, 7절 핀 소유권)
         internal.py           POST /internal/cleanup (Cloud Scheduler 전용, 토큰)
@@ -80,9 +82,11 @@ proj2-5/
     app/
       layout.tsx              html/body, 전역 CSS 로드
       globals.css             전역 스타일. 핀 커서 규칙(핀 소유권)도 여기
-      page.tsx                지도 + 채팅
+      page.tsx                메인. 로그인·소개·문장 입력만. 지도 없음. 만들면 /s/{id} 로 보낸다
       about/page.tsx          소개 페이지 (필수 조건 6, 서비스 화면과 별도)
-      s/[id]/page.tsx         공유 링크 페이지. 링크는 이 주소 그대로(별도 토큰·단축 없음), 로그인 필요
+      my/page.tsx             내 계획 목록. GET /api/sessions, 줄마다 삭제
+      s/[id]/page.tsx         참석자들이 모이는 자리. 지도·되묻기·핀 확인·결과·claim·수정이 전부 여기서.
+                              링크는 이 주소 그대로(별도 토큰·단축 없음), 로그인 필요
       api/agent/route.ts      Cloud Run 프록시 (키 숨김)
       api/session/[id]/route.ts               GET 프록시 (공유 링크)
       api/session/[id]/participants/route.ts  PATCH 프록시 (핀 claim·위치 수정)
@@ -126,6 +130,7 @@ proj2-5/
 | 엔드포인트 | 인증 |
 |---|---|
 | POST /api/agent | 로그인 필수 |
+| GET /api/sessions | 로그인 필수. 내가 만든 계획 목록 |
 | GET /api/session/{id} | 로그인 필수. 링크만으로는 열람 불가 |
 | DELETE /api/session/{id} | 로그인 필수 |
 | PATCH /api/session/{id}/participants | 로그인 필수 |
@@ -181,6 +186,10 @@ class ParticipantInput(BaseModel):   # PATCH 요청에서 claim 만 뺀 모양
 
 좌표는 Slots 에 넣지 않는다 (슬롯 계약과 파인튜닝 데이터를 지키기 위해). 지오코딩 결과는 geocoded 로만 나간다. need_confirm 과 done 양쪽에 담는다. done 에서도 집결 후보 외에 참석자 출발 핀을 찍어야 하기 때문이다.
 
+화면은 둘로 나뉜다 (09-20 결정). 메인(/)은 로그인·소개·문장 입력만 하고 지도가 없다. 문장을 넣으면
+세션이 만들어지고 /s/{id} 로 보낸다. 되묻기·핀 확인·결과·참석자 수정은 전부 /s/{id} 에서 한다.
+그래서 need_info·need_confirm 단계에서도 세션을 draft 로 먼저 저장한다 (5절 8단계).
+
 - need_confirm: 참석자 핀을 지도에 찍고 사용자 확인 대기 (확신도 < 0.8 또는 되묻기 없음)
 - need_info: 필수 슬롯 누락 (출발지·이동수단·시각 중 하나). questions에 무엇을 물을지
 - done: 후보와 참석자별 결과
@@ -197,11 +206,44 @@ class ParticipantInput(BaseModel):   # PATCH 요청에서 claim 만 뺀 모양
 
 요청: `{ "name": "민수", "lng": 128.98, "lat": 35.16, "claim": false }`
 - `claim` 이 true 면 "내가 이 사람이다"를 등록하는 요청이다. owner_user_id 가 비어 있을 때만 성공한다
-- `claim` 이 false 면 위치만 고친다. 토큰의 user_id 와 owner_user_id 가 같아야 한다
+- `claim` 이 false 면 위치만 고친다. 로그인한 사람이면 누구나 할 수 있다 (7절 핀 소유권)
 
-응답: 갱신된 Slots 와, 재계산이 끝났으면 새 Result
+응답: 갱신된 Slots, 재계산이 끝났으면 새 Result, 그리고 핀별 수정 기록(edits)
 
-실패: 남의 핀이면 403, 이미 소유자가 있는 핀에 claim 하면 409
+```python
+class ParticipantEdit(BaseModel):
+    name: str                 # 참석자 이름
+    edited_by: str | None     # 마지막으로 위치를 고친 사람의 user_id
+    edited_at: str | None     # 그 시각 (ISO 8601)
+    by_owner: bool            # 그 사람이 이 핀의 주인인가
+```
+
+AgentResponse 에도 같은 edits 가 선택적으로 실린다. 공유 링크 화면이 "누가 고쳤는지"를 보여 주기 위해서다.
+
+실패: 이미 소유자가 있는 핀에 claim 하면 409, 잠긴 세션이면 409, 참석자가 없으면 404
+
+### GET /api/sessions
+
+**로그인 필수.** 내가 만든 계획 목록. 주선자 본인 것만(`sessions.user_id` 일치), 최근 순.
+
+```python
+class SessionBrief(BaseModel):
+    id: str
+    preset: Literal["ship_maintenance", "si_deploy"]
+    status: str                     # draft / pins_confirmed / computed / failed
+    purpose: str | None
+    destination: str | None         # sessions.destination_name
+    meet_at: str | None             # ISO 8601. 없으면 임시 세션
+    participant_count: int
+    created_at: str
+    expires_at: str
+    locked: bool
+```
+
+참석자 이름과 좌표는 목록에 넣지 않는다. 복호화 비용이 들고, 목록은 어깨너머로 보이기 쉬운 화면이다
+(테이블정의서 7절). 이름이 필요하면 그 계획을 열어서 본다.
+
+기본 20건, `?limit=` 로 조절한다. 만료된 세션은 빼고 준다.
 
 ### GET /api/session/{id}
 
@@ -324,13 +366,13 @@ LLM(대형)이 만드는 건 candidates의 rank·reason·rejected_reason과 전�
 | 1-2 | 누락 판정 | slots.missing 비어 있지 않으면 need_info | |
 | 1-3 | 기간 판정 | slots.datetime을 시각으로 바꿔 오늘+30일을 넘으면 need_info("30일 안의 약속만 잡을 수 있습니다"). 30은 skills/converge/rules/의 값 | 코드라 실패 없음 |
 | 2 | geo.geocode_all | 참석자·집결지·목적지 지명 → 좌표, confidence | 한 명이라도 confidence < 0.8 → need_confirm |
-| 2-1 | 핀 확인 | 사용자가 confirmed_participants 반환. 각 핀의 owner_user_id 를 검사해 본인 핀만 수정을 허용한다 (7절 핀 소유권) | 남의 핀을 수정하면 403 |
+| 2-1 | 핀 확인 | 사용자가 confirmed_participants 반환. 누구 핀이든 고칠 수 있다 (7절 핀 소유권) | |
 | 3 | geo.candidates | 집결 후보 생성: 절차 시작점(위병소·고객사 1층·본사) + 도착 어긋남 시 랜드마크(항만 입구·역) | 후보 0곳이면 목적지 좌표 자체를 후보로 |
 | 4 | routes.compute_all | 참석자 × 후보, 집결지 있으면 2구간, pickup_at 있으면 운전자 경로에 경유지로 추가하고 태워지는 사람은 탑승 이후 구간만 계산. 캐시 확인 후 API | 타임아웃·5xx 백오프 2회 → 실패 참석자만 "조회 실패", 나머지로 진행 |
 | 5 | rules.apply | 절차 소요 반영, 출입조치 상태별 후보 가능 여부(access_ok), 도착 어긋남 전환 조건, 을 관례, 업체 순회 | 코드라 실패 없음 |
 | 6 | judge.rank | 후보 표 + 프리셋 규칙 문서 → rank·reason·switched_from | 스키마 위반 재시도 1회 → 실패면 rules.apply 순으로 rank, reason은 규칙 문구 그대로 |
 | 7 | rules.departure | (도착 기한 − 절차 소요) − 소요시간 − 여유 = 출발 시각, 집결지면 2단 역산, 야간이면 첫차 조회, 시각 미확정이면 provisional | |
-| 8 | store.save + 응답 | expires_at을 여기서 계산해 넣는다: meet_at 있으면 meet_at+30일, 없으면(임시 세션) created_at+7일. DB 기본값 없음 | |
+| 8 | store.save + 응답 | 되묻기·핀 확인 단계에서도 세션을 draft 로 저장한다 (링크가 먼저 있어야 참석자가 모인다). 계산이 끝나면 status=computed 와 results 행. expires_at을 여기서 계산해 넣는다: meet_at 있으면 meet_at+30일, 없으면(임시 세션) created_at+7일. DB 기본값 없음 | |
 
 2026-09-18 기준 구현 상태: 0~2단계와 갈림길(1-1 범위 밖, 1-2 누락, 2-1 핀 확인·핀 소유권)까지 services/pipeline.py 에 있다.
 1-3(기간 판정)은 규칙 파일이 생기면 붙인다. 3~8단계는 MCP 도구 7개가 준비되면 채운다. 그때까지 그 자리는 failed 로 끝난다.
@@ -416,20 +458,23 @@ description은 "언제 쓰는 도구인지"가 한 문장에 드러나게 쓴다
 
 "(확인)" 표시 값은 착수 후 해당 조원이 확정한다.
 
-### 핀 소유권
+### 핀 소유권 (2026-09-18 변경: 표시용으로만 둔다)
 
 참석자가 각자 들어와 자기 위치를 찍을 수 있다. 다 모일 때까지 기다리지 않고, 들어온 사람 위치로 바로 계산한다.
 
 | 상황 | owner_user_id | 수정 권한 |
 |---|---|---|
-| 주선자가 문장으로 입력해 만든 핀 | None | 주선자만 |
-| 참석자가 공유 링크로 들어와 자기라고 고른 핀 | 그 사람의 user_id | 그 사람만 |
+| 주선자가 문장으로 입력해 만든 핀 | None | 로그인한 누구나 |
+| 참석자가 공유 링크로 들어와 자기라고 고른 핀 | 그 사람의 user_id | 로그인한 누구나 |
 
-- 전원이 로그인하지만, 참석자가 직접 들어와 자기 핀을 찍지 않는 경우도 있다. 그때는 주선자가 입력한 핀이 owner_user_id = null 로 남고 주선자가 수정한다. 참석자가 들어와 claim 하면 그 시점부터 그 사람 소유가 된다
-- 참석자는 공유 링크를 열고 구글 로그인한 뒤 참석자 목록에서 자기를 한 번 고른다. 그 시점에 owner_user_id 가 채워진다
-- 한 번 소유자가 정해진 핀은 주선자도 수정하지 못한다
-- 수정 요청은 PATCH /api/session/{id}/participants 로 받고, 서버가 토큰의 user_id 와 owner_user_id 를 대조한다. 다르면 403
-- 새 위치가 들어오면 그 세션의 결과를 다시 계산해 새 results 행을 만든다
+- owner_user_id 는 "이 핀이 누구 것인가"를 나타내는 표시일 뿐이다. 수정을 막지 않는다
+- 참석자는 공유 링크를 열고 구글 로그인한 뒤 참석자 목록에서 자기를 한 번 고른다(claim). 그 시점에 owner_user_id 가 채워진다. 고르지 않아도 결과는 볼 수 있고 핀도 옮길 수 있다
+- 이미 주인이 있는 핀에 다른 사람이 claim 하면 409. 한 사람을 두 계정이 동시에 자기라고 할 수는 없다
+- 링크를 아는 로그인 사용자는 누구나 들어온다. 참석자 정원으로 막지 않는다. 사람이 늘거나 바뀌는 일이 흔하기 때문이다. 없는 링크와 만료된 링크만 404 이고, 화면은 "잘못된 경로"로 알린다
+- 위치 수정은 링크를 열 수 있는 사람이면 누구나 한다. 현장에서 "저 사람 거기서 출발 안 해요"를 옆 사람이 고쳐 주는 편이 빠르기 때문이다. 대신 링크를 아는 사람은 남의 출발지도 바꿀 수 있다는 뜻이라, 화면에 그 안내를 둔다
+- 누가 마지막에 고쳤는지 남긴다. participants_enc 의 last_edited_by(user_id)와 self_edited_at(시각). 화면은 "본인이 고침 / 다른 사람이 고침"으로 보여 준다
+- 약속 날짜가 지난 세션은 잠긴다. 그때는 누구도 고치지 못한다 (409)
+- 새 위치가 들어오면 그 세션의 결과를 다시 계산하지 않는다. 좌표만 바꾼다. 다시 계산할지는 주선자가 정한다 (LLM 비용이 드는 일을 참석자 조작으로 자동으로 일으키지 않는다)
 
 ---
 
@@ -470,6 +515,7 @@ MODEL_LARGE=anthropic/claude-sonnet-5
 MODEL_VISION=google/gemini-3.8-flash
 MODEL_EVAL_JUDGE=openai/gpt-5.6-luna
 COST_LIMIT_USD_PER_REQUEST=0.05
+DAILY_COST_LIMIT_USD=1.0       # 하루 합계 상한. 비우면 제한 없음 (41번)
 ```
 
 `frontend/.env.example` (브라우저에 노출되는 값만)
