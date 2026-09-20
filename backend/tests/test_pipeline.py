@@ -141,3 +141,102 @@ def test_아직_구현하지_않은_단계는_조용히_넘어가지_않는다()
     out = run(AgentRequest(text="점검"), deps(slots()))
     assert out.stage == "failed"
     assert out.geocoded is not None
+
+
+def test_세션_id_를_첫_요청에서_만든다():
+    out = run(AgentRequest(text="점검"), deps(slots()))
+    assert out.session_id and len(out.session_id) >= 16
+
+
+def test_세션_id_가_오면_그대로_쓴다():
+    out = run(AgentRequest(session_id="keep-me", text="점검"), deps(slots()))
+    assert out.session_id == "keep-me"
+
+
+def _done_deps(**over) -> pipeline.Deps:
+    """done 까지 가는 가짜 단계들. 외부 호출 없이 3~8단계를 흉내 낸다."""
+
+    async def build_candidates(*_):
+        return [
+            {"name": "위병소", "kind": "gate", "address": "테스트", "lng": 128.67, "lat": 35.14},
+            {"name": "진해역", "kind": "landmark", "address": "테스트", "lng": 128.69, "lat": 35.15},
+        ]
+
+    async def compute_routes(plans):
+        return [
+            {
+                "key": plan["key"],
+                "duration_sec": 1800,
+                "polyline": [[128.68, 35.22], [128.67, 35.14]],
+                "transfer_count": None,
+            }
+            for plan in plans
+        ]
+
+    base = dict(build_candidates=build_candidates, compute_routes=compute_routes)
+    base.update(over)
+    return deps(slots(datetime="목요일 08:00"), **base)
+
+
+def test_계산이_끝나면_저장하고_세션_id_를_돌려준다():
+    saved = {}
+
+    async def save(**kwargs):
+        saved.update(kwargs)
+        return "db-session-1"
+
+    out = run(AgentRequest(text="점검"), _done_deps(save=save))
+    assert out.stage == "done"
+    assert out.session_id == "db-session-1"  # DB 가 만든 id 를 쓴다
+    assert saved["session_id"] is None  # 새 세션이라 None 으로 넘긴다
+    assert saved["participants"][0]["origin_text"] == "창원시청"
+    assert saved["participants"][0]["lng"] == 128.68
+
+
+def test_저장에_실패해도_결과는_보여_준다():
+    async def boom(**_):
+        raise RuntimeError("DB 없음")
+
+    out = run(AgentRequest(text="점검"), _done_deps(save=boom))
+    assert out.stage == "done"
+    assert out.result is not None
+
+
+def test_남의_세션으로_재질문하면_막는다():
+    async def load_session(_):
+        return {"user_id": "other", "locked": False, "participants": []}
+
+    with pytest.raises(pipeline.NotYourSession):
+        run(AgentRequest(session_id="s1", text="점검"), _done_deps(load_session=load_session))
+
+
+def test_잠긴_세션이면_막는다():
+    async def load_session(_):
+        return {"user_id": "u1", "locked": True, "participants": []}
+
+    with pytest.raises(pipeline.SessionLocked):
+        run(AgentRequest(session_id="s1", text="점검"), _done_deps(load_session=load_session), user_id="u1")
+
+
+def test_재질문이면_이전_슬롯을_추출에_넘긴다():
+    seen = {}
+
+    async def load_session(_):
+        return {
+            "user_id": "u1",
+            "locked": False,
+            "preset": "ship_maintenance",
+            "purpose": "레이더 정기점검",
+            "destination_name": "진해 기지",
+            "participants": [{"name": "김현장", "origin": "창원시청", "transport": "car", "role": "site"}],
+            "constraints": [],
+        }
+
+    async def extract_slots(text, previous, preset):
+        seen["previous"] = previous
+        return slots(datetime="목요일 08:00")
+
+    d = _done_deps(load_session=load_session, extract_slots=extract_slots)
+    run(AgentRequest(session_id="s1", text="출입조치 했어요"), d, user_id="u1")
+    assert seen["previous"] is not None
+    assert seen["previous"].destination == "진해 기지"

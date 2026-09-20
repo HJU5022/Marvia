@@ -18,7 +18,9 @@ proj2-5/
   README.md                   채점자용. 소개, 실행법, 배포 URL
   EVAL_REPORT.md              제출물. 스캐폴딩 자리(루트) 유지
   Dockerfile                  루트. 빌드 컨텍스트가 skills/, mcp_server/를 포함해야 하므로
-                              빌드 시 HF에서 GGUF를 받아 이미지에 넣는다 (git, LFS 미사용)
+                              빌드 시 HF에서 GGUF를 받아 이미지에 넣는다 (git, LFS 미사용).
+                              받는 파일: kimseunguk/converge-slot-extractor 의 kanana_2.1b-Q4_K_M.gguf
+                              (1.30 GiB, 검증 40건 Exact Match 85.0%. 공개 저장소라 토큰 없이 받는다)
   docker-compose.yml          api + db(postgres:16). backend/db/를 initdb에 마운트, db healthcheck 후 api 기동
   .env.example                backend용 (9절)
   docs/
@@ -58,7 +60,7 @@ proj2-5/
         router.py             소형/대형 선택 규칙
       observability/
         langfuse.py           트레이스·span·프롬프트 조회
-      models/                 slot_extractor.gguf 자리. 빌드 시 채워짐. git에 없음
+      models/                 kanana_2.1b-Q4_K_M.gguf 자리. 빌드 시 채워짐. git에 없음
     db/
       001_init.sql          테이블정의서.md의 표 5개. 로컬(compose initdb)과 Supabase(SQL Editor)에 같은 파일을 실행
     tests/
@@ -396,6 +398,8 @@ description은 "언제 쓰는 도구인지"가 한 문장에 드러나게 쓴다
 | transport.md | pickup_wait_min | 5 | 태우는 지점에서 대기 |
 | transport.md | pickup_counts_from_board | true | 태워지는 사람의 소요시간은 탑승 이후 구간만 |
 | transport.md | max_pickup_per_car | 1 | 차 1대당 1명. 다중 픽업 순서 최적화는 범위 밖 |
+| transport.md | route_cache_ttl_hours | 24 | 경로 응답 캐시 보관 시간 (테이블정의서 4절) |
+| transport.md | geocode_cache_ttl_hours | 720 | 지오코딩 응답 캐시 보관 시간 |
 | vendor.md | same_day_route_first | true | 업체 당일 다른 방문지 먼저 반영 |
 | vendor.md | night_solo_requires_car_parking | true | 야간 단독 출동은 차량, 주차 확인 |
 | vendor.md | unfamiliar_prefer | 환승 0, 역·정문 300m 이내 | 타지 담당자 |
@@ -460,7 +464,8 @@ LANGFUSE_SECRET_KEY=     # Langfuse Cloud
 LANGFUSE_HOST=           # https://cloud.langfuse.com
 MCP_TOKEN=               # /mcp Bearer 토큰
 INTERNAL_TOKEN=          # /internal/cleanup
-MODEL_SMALL_PATH=backend/app/models/slot_extractor.gguf
+MODEL_SMALL_PATH=backend/app/models/kanana_2.1b-Q4_K_M.gguf   # HF kimseunguk/converge-slot-extractor (공개). 빌드 시 받는다
+MODEL_SMALL=            # 비우면 처음부터 대형으로 추출한다. 로컬 GGUF 서빙이 붙기 전 임시로 OpenRouter 소형 모델을 넣어 볼 때 쓴다
 MODEL_LARGE=anthropic/claude-sonnet-5
 MODEL_VISION=google/gemini-3.8-flash
 MODEL_EVAL_JUDGE=openai/gpt-5.6-luna
@@ -498,8 +503,8 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 |---|---|---|
 | 지하철 첫차·막차 | 확인됨 | 서울교통공사 첫차·막차 API(1~9호선만, 민자 노선 제외), 부산교통공사 열차시각표 API. 공공데이터포털 키 하나. 부산 역외부코드 CSV를 레포에 둠 |
 | TMAP 대중교통 도착 시각 지정 | 미확인 | 문서의 요청 파라미터 확인. 없으면 현재 기준 소요시간으로 역산 |
-| OpenRouter 슬롯 추출 통과율 | 미측정 | 크레딧 충전 후 spike 04 실행 |
-| 소형 모델 최종 선택 | 미정 | 새 도메인 데이터로 재학습 후 compare.md로 결정 |
+| OpenRouter 슬롯 추출 통과율 | 일부 확인 (09-18) | 크레딧 충전 완료. openai/gpt-4o-mini 로 converge/slot-extract v2 실호출, 참석자·픽업·누락 추출 통과 (11초, 재시도 없음). 평가셋 30건 기준 통과율은 미측정 |
+| 소형 모델 최종 선택 | 결정 (09-18) | kanana_2.1b-Q4_K_M.gguf (HF kimseunguk/converge-slot-extractor, 공개). 검증 40건 Exact Match 85.0%. 대안은 qwen3_1.7b 45.0%, qwen3_0.6b 47.5% |
 | 선박 입출항 데이터에 군함 포함 여부 | 미확인 | 공공데이터포털 파일 열어 확인 (하정운). 없으면 vessel_schedule 도구 제외 |
 | 규칙값 "(확인)" 항목 | 미확정 | 착수일 조원 확정 |
 | compose db healthcheck | 적용됨 (09-17) | pg_isready healthcheck + depends_on condition: service_healthy. backend/db/를 initdb에 마운트 |
@@ -508,6 +513,7 @@ Cloud Run 서비스는 하나다 (backend에 MCP 마운트). 프론트는 Vercel
 | Supabase 새 프로젝트 | 해결 (09-18) | 팀 구글 계정으로 새 조직 Converge2-5에 `converge_agent` 생성. 표 5개·RLS 마이그레이션 완료 |
 | 구글 OAuth 동의 화면 | 설정됨, 테스트 모드 (09-18) | 테스트 사용자 조원 2명 등록, 리디렉트 localhost:3000/**. 브라우저 로그인→토큰→백엔드 검증 실측. **남음:** 채점자 계정 처리(테스트 사용자 추가 또는 프로덕션 전환), Vercel 주소 추가 — 배포 때 |
 | Langfuse 트레이스의 참석자 이름·출발지 | 미검토 | 평문으로 들어간다. 마스킹 여부 (김승욱, observability) |
+| 로컬 확인용 서버 | 임시 (09-18) | backend/app/main.py 는 DATABASE_URL 과 Supabase 공개키가 있어야 뜬다. 그 전까지 POST /api/agent 만 띄우는 임시 서버로 화면을 확인했다. DB 설정이 들어오면 임시 서버를 버린다 |
 
 ---
 

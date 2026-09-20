@@ -11,6 +11,8 @@ luggage_requires_car: true       # 장비·짐이 있으면 대중교통으로 �
 pickup_wait_min: 5               # 태우는 지점에서 기다리는 시간(분)
 pickup_counts_from_board: true   # 태워지는 사람의 소요시간은 탑승 이후 구간만
 max_pickup_per_car: 1            # 차 한 대당 픽업 한 명. 다중 픽업 순서 최적화는 범위 밖
+route_cache_ttl_hours: 24        # 경로 응답을 캐시에 두는 시간. 길이 하루 뒤에는 달라진다
+geocode_cache_ttl_hours: 720     # 지오코딩 응답을 캐시에 두는 시간(30일). 장소 좌표는 잘 안 바뀐다
 ---
 # 이동과 여유
 
@@ -29,6 +31,8 @@ max_pickup_per_car: 1            # 차 한 대당 픽업 한 명. 다중 픽업 
 | `pickup_wait_min` | 4·5단계 | 운전자 경로에 태우는 시간 |
 | `pickup_counts_from_board` | 4단계 | 태워지는 사람 경로를 탑승 지점부터 계산 |
 | `max_pickup_per_car` | 4단계 | 한 대가 여러 명을 태우는 경우는 다루지 않는다 |
+| `route_cache_ttl_hours` | `services/routes.py` | 같은 구간을 다시 물을 때 API 대신 캐시를 쓴다 |
+| `geocode_cache_ttl_hours` | `services/geo.py` | 지오코딩 캐시 보관 시간 |
 
 ## 여유는 왜 따로 두나
 

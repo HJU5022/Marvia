@@ -3,7 +3,8 @@
 // 채팅창. 문장 입력, 카톡 캡처 업로드, 되묻기(questions) 표시.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Preset } from "@/types/agent";
+import type { Preset, Stage } from "@/types/agent";
+import Progress from "./Progress";
 
 export interface ChatMessage {
   id: number;
@@ -22,6 +23,7 @@ export interface ChatSend {
 interface Props {
   messages: ChatMessage[];
   busy: boolean;
+  stage: Stage | null;
   onSend: (input: ChatSend) => void;
   children?: ReactNode; // 입력창 위에 붙는 단계별 버튼
 }
@@ -37,7 +39,7 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-export default function ChatPanel({ messages, busy, onSend, children }: Props) {
+export default function ChatPanel({ messages, busy, stage, onSend, children }: Props) {
   const [text, setText] = useState("");
   const [preset, setPreset] = useState<Preset | "">("");
   const [image, setImage] = useState<File | null>(null);
@@ -112,6 +114,8 @@ export default function ChatPanel({ messages, busy, onSend, children }: Props) {
         ))}
         {busy && <div className="msg msg-agent pending">계산 중입니다…</div>}
       </div>
+
+      <Progress busy={busy} stage={stage} />
 
       {children && <div className="chat-actions">{children}</div>}
 

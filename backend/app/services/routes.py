@@ -12,17 +12,64 @@ MCP 로 가는 길:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from typing import Any
 
 import httpx
 
+from backend.app.domain import rules as domain_rules
+
 KAKAO_CAR_URL = "https://apis-navi.kakaomobility.com/v1/directions"
 TMAP_TRANSIT_URL = "https://apis.openapi.sk.com/transit/routes"
 TIMEOUT_SEC = 12.0
+# TMAP 대중교통은 초당 호출 제한이 있다. 연속으로 부르면 429 THROTTLED 가 온다 (SDD 6절).
+# 한 줄로 세우는 것만으로는 부족해서, 429 면 잠깐 쉬었다 다시 부른다.
+TRANSIT_GAP_SEC = 1.2
+TRANSIT_RETRY_WAITS_SEC = (2, 4)
 MAX_POLYLINE_POINTS = 300  # 화면에 그리기만 하면 되므로 점을 줄여 응답을 가볍게 한다
 
 LngLat = tuple[float, float]
+
+
+def _cache_key(plan: dict[str, Any]) -> str:
+    """같은 구간·같은 이동수단이면 같은 키. 좌표는 소수점 5자리(약 1m)까지만 본다.
+
+    좌표를 그대로 키에 쓰지 않고 해시로 만드는 이유: route_cache 는 평문 컬럼이라 출발지 좌표가
+    그대로 남으면 안 된다 (테이블정의서 7절 "좌표는 해시나 암호화로만").
+    """
+    parts = [plan["transport"]]
+    for point in (plan["origin"], plan["dest"], plan.get("waypoint")):
+        parts.append(f"{point[0]:.5f},{point[1]:.5f}" if point else "-")
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+async def _cached(plan: dict[str, Any]) -> dict[str, Any] | None:
+    """캐시 적중이면 저장해 둔 결과. DB 가 없으면 그냥 None (캐시는 있으면 좋은 것이다)."""
+    try:
+        from backend.app.services import store
+
+        hit = await store.cache_get(_cache_key(plan))
+    except Exception:  # noqa: BLE001
+        return None
+    return hit["response"] if hit else None
+
+
+async def _remember(plan: dict[str, Any], out: dict[str, Any]) -> None:
+    """다음에 같은 구간을 물으면 API 를 부르지 않게 남겨 둔다."""
+    try:
+        from backend.app.services import store
+
+        ttl = int(domain_rules.load_rule("transport")["route_cache_ttl_hours"])
+        await store.cache_put(
+            cache_key=_cache_key(plan),
+            provider="kakao_car" if plan["transport"] == "car" else "tmap_transit",
+            response=out,
+            summary={"duration_sec": out["duration_sec"], "transfer_count": out.get("transfer_count")},
+            ttl_hours=ttl,
+        )
+    except Exception:  # noqa: BLE001
+        return
 
 
 class RouteFailed(RuntimeError):
@@ -71,7 +118,21 @@ async def _car(
 
 
 async def _transit(client: httpx.AsyncClient, origin: LngLat, dest: LngLat) -> dict[str, Any]:
-    """TMAP 대중교통. 초당 호출 제한이 있어 연속 호출 시 429 가 온다 (SDD 6절)."""
+    """TMAP 대중교통. 429 면 쉬었다 다시 부른다. 한 명이 통째로 빠지는 것보다 몇 초 느린 편이 낫다."""
+    last: Exception | None = None
+    for wait in (*TRANSIT_RETRY_WAITS_SEC, None):
+        try:
+            return await _transit_once(client, origin, dest)
+        except RouteFailed as e:
+            if "429" not in str(e) or wait is None:
+                raise
+            last = e
+            await asyncio.sleep(wait)
+    raise last if last else RouteFailed("대중교통 경로를 구하지 못했습니다")
+
+
+async def _transit_once(client: httpx.AsyncClient, origin: LngLat, dest: LngLat) -> dict[str, Any]:
+    """TMAP 대중교통 한 번 호출."""
     key = os.environ.get("TMAP_APP_KEY")
     if not key:
         raise RouteFailed("TMAP_APP_KEY 가 없습니다")
@@ -140,19 +201,25 @@ async def compute_all(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(timeout=TIMEOUT_SEC) as client:
 
         async def run(plan: dict[str, Any]) -> dict[str, Any]:
+            cached = await _cached(plan)
+            if cached is not None:
+                return {"key": plan["key"], **cached, "cached": True}
             try:
                 out = await route_one(
                     client, plan["transport"], plan["origin"], plan["dest"], plan.get("waypoint")
                 )
+                await _remember(plan, out)
                 return {"key": plan["key"], **out}
             except (RouteFailed, httpx.HTTPError, KeyError, IndexError, ValueError) as e:
                 return {"key": plan["key"], "error": f"{type(e).__name__}: {e}"}
 
-        # 대중교통은 초당 제한이 있어 한 줄로 세우고, 자동차는 한꺼번에 부른다
+        # 대중교통은 초당 제한이 있어 한 줄로 세우고 사이를 띄운다. 자동차는 한꺼번에 부른다
         transit_plans = [p for p in plans if p["transport"] != "car"]
         car_plans = [p for p in plans if p["transport"] == "car"]
 
         results = list(await asyncio.gather(*(run(p) for p in car_plans)))
-        for plan in transit_plans:
+        for i, plan in enumerate(transit_plans):
+            if i:
+                await asyncio.sleep(TRANSIT_GAP_SEC)
             results.append(await run(plan))
         return results
