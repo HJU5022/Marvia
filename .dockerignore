@@ -1,3 +1,0 @@
-# 로컬에 받아 둔 GGUF가 빌드 컨텍스트로 딸려오지 않게. 이미지는 Dockerfile RUN이 HF에서 받는다.
-backend/app/models/*.gguf
-.git
