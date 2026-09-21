@@ -52,6 +52,7 @@ proj2-5/
         vision.py             캡처 → 텍스트
         geo.py                지오코딩·장소 검색 (MCP 클라이언트 경유)
         routes.py             경로·소요시간 (MCP 클라이언트 경유), 캐시
+        transit_schedule.py   첫차·막차 (서울 열린데이터광장, 역명→역코드→시각표. 부산은 승인 뒤)
         judge.py              후보 판정 프롬프트 조립, 대형 모델 호출
         pipeline.py           단계 오케스트레이션 (루프 없음, 순차)
         store.py              Postgres 접근(asyncpg, DATABASE_URL), 암호화, expires_at 계산
@@ -119,6 +120,7 @@ proj2-5/
   scripts/
     gen_types.sh              schemas/ → frontend/lib/api-types.ts. CI가 어긋남을 검사
     fetch_mock_routes.py      프론트 mock 경로를 카카오모빌리티·TMAP 에서 한 번 받아 저장
+    mcp_check.py              /mcp 에 MCP 클라이언트로 붙어 도구 목록·호출 결과를 찍는다. 컨테이너 안에서 stdin 으로 실행
 ```
 
 ---
