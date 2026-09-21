@@ -4,6 +4,9 @@
 import { NextResponse } from "next/server";
 import { LOCAL_USER_ID } from "@/lib/dev-user";
 
+// 본문을 가질 수 없는 상태 코드 (HTTP 규칙)
+const NO_BODY_STATUS = new Set([204, 205, 304]);
+
 export function apiBase(): string | null {
   const base = process.env.NEXT_PUBLIC_API_BASE;
   return base ? base.replace(/\/$/, "") : null;
@@ -15,9 +18,15 @@ export async function forward(req: Request, path: string, method: string): Promi
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const auth = req.headers.get("authorization");
   if (auth) headers.Authorization = auth;
-  const body = method === "GET" ? undefined : await req.text();
+  const raw = method === "GET" || method === "DELETE" ? undefined : await req.text();
+  const body = raw ? raw : undefined;
   try {
     const res = await fetch(`${base}${path}`, { method, headers, body, cache: "no-store" });
+    // 204·205·304 는 본문을 가질 수 없다. 빈 문자열이라도 붙이면 Response 생성 자체가 터진다.
+    // 그 예외가 아래 catch 로 떨어지면 성공한 삭제가 502 로 보인다 (09-20 실측)
+    if (NO_BODY_STATUS.has(res.status)) {
+      return new NextResponse(null, { status: res.status });
+    }
     const text = await res.text();
     return new NextResponse(text, {
       status: res.status,

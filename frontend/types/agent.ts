@@ -115,6 +115,13 @@ export interface AgentRequest {
   confirmed_participants: ParticipantInput[] | null;
 }
 
+export interface ParticipantEdit {
+  name: string;
+  edited_by: string | null;
+  edited_at: string | null;
+  by_owner: boolean;
+}
+
 export interface AgentResponse {
   session_id: string;
   stage: Stage;
@@ -125,6 +132,21 @@ export interface AgentResponse {
   message: string;
   trace_id: string;
   geocoded: GeocodedPin[] | null;
+  edits: ParticipantEdit[] | null;
+}
+
+// GET /api/sessions (내 계획 목록)
+export interface SessionBrief {
+  id: string;
+  preset: Preset;
+  status: string; // draft / pins_confirmed / computed / failed
+  purpose: string | null;
+  destination: string | null;
+  meet_at: string | null;
+  participant_count: number;
+  created_at: string;
+  expires_at: string;
+  locked: boolean;
 }
 
 // PATCH /api/session/{id}/participants
@@ -136,4 +158,5 @@ export interface ParticipantPatchRequest extends ParticipantInput {
 export interface ParticipantPatchResponse {
   slots: Slots;
   result: Result | null;
+  edits: ParticipantEdit[] | null;
 }

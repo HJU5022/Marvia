@@ -8,11 +8,13 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 |---|---|
 | `app/layout.tsx` | html/body와 전역 CSS 로드 |
 | `app/globals.css` | 전역 스타일. 핀 커서 규칙(드래그 가능·수정 불가)도 여기 |
-| `app/page.tsx` | 주선자 화면. 왼쪽 카카오맵, 오른쪽 채팅창과 캡처 업로드, 결과 표, 공유 링크 (docs/PRD.md 4절) |
+| `app/page.tsx` | 메인. 로그인·소개·문장 입력. 지도 없음. 만들면 `/s/{id}` 로 이동하며 첫 응답을 sessionStorage 로 넘긴다 |
 | `app/about/page.tsx` | 소개 페이지. 필수 조건 6. 서비스 화면과 별도 (아직 없음) |
-| `app/s/[id]/page.tsx` | 공유 링크. 로그인해야 보인다. 참석자 목록에서 자기를 고르면(claim) 자기 핀을 옮길 수 있다 |
+| `app/my/page.tsx` | 내 계획 목록. `GET /api/sessions`. 줄을 누르면 `/s/{id}`, 줄마다 삭제 |
+| `app/s/[id]/page.tsx` | 참석자들이 모이는 자리. 지도·되묻기·핀 확인·결과·claim·수정. 없는 링크면 "잘못된 경로" |
 | `app/api/agent/route.ts` | `POST /api/agent` 프록시. 브라우저는 백엔드를 직접 부르지 않는다 |
-| `app/api/session/[id]/route.ts` | `GET /api/session/{id}` 프록시 |
+| `app/api/sessions/route.ts` | `GET /api/sessions` 프록시 (내 계획 목록) |
+| `app/api/session/[id]/route.ts` | `GET /api/session/{id}` 와 `DELETE` 프록시 |
 | `app/api/session/[id]/participants/route.ts` | `PATCH /api/session/{id}/participants` 프록시 |
 | `components/MapView.tsx` | 지도 한 장. stage별 핀 구성, 후보·픽업·목적지 핀, 경로선 토글과 범례, bounds 맞춤 |
 | `components/ParticipantPins.tsx` | 참석자 출발지 핀. 핀 소유권에 따른 드래그 허용(`canEdit`) |
@@ -43,9 +45,10 @@ Next.js. Vercel에 배포. Root Directory = `frontend`.
 
 - 핀 좌표는 `AgentResponse.geocoded`에서만 온다. Slots에는 좌표가 없다
 - `slots`는 `null`일 수 있다. 캡처를 못 읽거나 슬롯 추출이 깨진 응답(`failed`, `need_info`)이 그렇다. 화면은 `slots?.participants ?? []`로 받는다
-- 핀 소유권(SDD 7절): 주선자는 `owner_user_id`가 null인 핀만, 참석자는 자기 id인 핀만 끈다. 못 끄는 핀은 회색, 커서 `not-allowed`
-- 주선자 재계산 때 `confirmed_participants`에는 주선자가 고칠 수 있는 핀만 담는다
-- 공유 링크에서 자기 이름을 고르면 PATCH `claim: true`, 핀을 옮기면 `claim: false`. 403은 "본인 핀만 수정할 수 있습니다", 409는 "이미 다른 사람이 등록했습니다"
+- 핀 소유권(SDD 7절, 09-18 변경): 로그인한 사람이면 누구 핀이든 끈다. 소유권은 색 표시일 뿐이다. 내 핀은 초록, 나머지는 파랑, 위치가 불확실하면 주황
+- 주선자 재계산 때 `confirmed_participants`에는 모든 참석자 핀을 담는다
+- 공유 링크에서 자기 이름을 고르면 PATCH `claim: true`, 핀을 옮기면 `claim: false`. 409는 "이미 다른 사람이 등록했습니다"(claim 충돌)와 잠긴 세션. 수정 자체는 막지 않는다
+- 응답의 `edits`로 핀별 마지막 수정자를 받아 "내가 고침 / 본인이 고침 / 다른 사람이 고침"을 참석자 목록에 보여 준다
 - 경로선 색은 이동수단(car·transit·walk) 세 가지. 사람마다 색을 바꾸지 않는다
 - 선이 겹치면 도보, 대중교통, 자동차 순으로 위에 온다. 자동차 선이 길고 굵어 나머지를 덮기 때문이다
 - 참석자 4명 이하면 경로선 기본 켬, 5명 이상이면 기본 끔. 꺼져 있을 때 참석자 핀을 누르면 그 사람 것만 보인다

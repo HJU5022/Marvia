@@ -280,6 +280,28 @@ async def update_session(
     await pool.execute(f"UPDATE sessions SET {', '.join(sets)} WHERE id = ${len(args)}", *args)
 
 
+async def list_sessions(user_id: str, limit: int = 20) -> list[dict]:
+    """내가 만든 세션 목록. 최근 순. 만료된 것은 뺀다 (SDD 2절 GET /api/sessions).
+
+    암호화된 컬럼(participants_enc, rendezvous_enc)은 읽지 않는다. 목록 화면은 이름이 필요 없고,
+    복호화는 비용이 들며 어깨너머로 보이기 쉬운 화면이기 때문이다 (테이블정의서 7절).
+    인덱스 (user_id, created_at desc)를 그대로 탄다.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, preset, status, purpose, destination_name, meet_at,
+               participant_count, created_at, expires_at
+        FROM sessions
+        WHERE user_id = $1 AND expires_at > now()
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        user_id, limit,
+    )
+    return [dict(row) for row in rows]
+
+
 async def delete_session(session_id: str, user_id: str) -> bool:
     """주선자 직접 삭제 (결정 7, SDD 2절 DELETE). 지웠으면 True, 본인 세션이 아니거나 없으면 False.
 
@@ -393,6 +415,16 @@ async def log_request(
         request_id, session_id, stage, provider, model_or_api, tokens_in, tokens_out,
         cost_usd, latency_ms, status, error_type, retry_no, cache_hit, routed_to,
     )
+
+
+async def daily_cost_usd() -> float:
+    """오늘 request_logs cost_usd 합. 일일 상한(41번) 검사용. routers/agent.py 가 부른다."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM request_logs "
+        "WHERE created_at >= date_trunc('day', now())"
+    )
+    return float(row["total"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

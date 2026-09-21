@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.app.schemas.request import AgentRequest
 from backend.app.schemas.result import AgentResponse
 from backend.app.services import pipeline
+from backend.app.services import costs as cost_guards
 from backend.app.services.auth import current_user
 
 router = APIRouter(prefix="/api", tags=["agent"])
@@ -26,12 +27,25 @@ async def agent(req: AgentRequest, user_id: str = Depends(current_user)) -> Agen
     HTTP 오류는 권한 문제일 때만 낸다.
     """
     try:
+        await _check_daily_limit()
         return await pipeline.run(req, user_id)
-    except pipeline.NotYourPin as e:
-        # 남의 핀을 고치려 한 경우 (SDD 7절 핀 소유권)
-        raise HTTPException(status_code=403, detail=f"본인 핀만 수정할 수 있습니다: {e}") from e
     except pipeline.NotYourSession as e:
         raise HTTPException(status_code=403, detail="본인 세션만 이어서 물어볼 수 있습니다") from e
     except pipeline.SessionLocked as e:
         # 약속이 지난 세션. 재계산할 이유가 없고 LLM 비용만 나간다 (SDD 5절 재질문)
         raise HTTPException(status_code=409, detail="약속 날짜가 지나 잠긴 세션입니다") from e
+
+
+async def _check_daily_limit() -> None:
+    """일일 상한(41번). 넘으면 429. env 가 비었거나 DB 조회가 실패하면 막지 않는다."""
+    limit = cost_guards.daily_limit()
+    if limit is None:
+        return
+    try:
+        from backend.app.services import store
+
+        spent = await store.daily_cost_usd()
+    except Exception:  # noqa: BLE001  집계 실패가 정상 요청까지 막지 않게 한다
+        return
+    if spent >= limit:
+        raise HTTPException(status_code=429, detail="오늘 사용량이 상한에 닿았습니다. 내일 다시 시도해 주세요.")

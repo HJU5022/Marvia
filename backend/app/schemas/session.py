@@ -15,6 +15,25 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class SessionBrief(BaseModel):
+    """내 계획 목록의 한 줄 (SDD 2절 GET /api/sessions).
+
+    참석자 이름·좌표가 없다. 목록에 필요하지 않고, 복호화 비용과 노출 위험만 늘기 때문이다
+    (테이블정의서 7절). 이름이 필요하면 그 계획을 열어서 본다.
+    """
+
+    id: str
+    preset: str
+    status: str = Field(description="draft / pins_confirmed / computed / failed")
+    purpose: str | None = None
+    destination: str | None = Field(default=None, description="sessions.destination_name")
+    meet_at: datetime | None = Field(default=None, description="약속 시각. 없으면 임시 세션")
+    participant_count: int
+    created_at: datetime
+    expires_at: datetime
+    locked: bool = Field(description="약속 다음날부터 True. 재질문 불가")
+
+
 class SessionRead(BaseModel):
     """세션 한 건 + 가장 최근 계산 결과. 공유 링크 화면이 그대로 그린다.
 

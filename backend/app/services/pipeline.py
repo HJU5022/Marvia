@@ -12,6 +12,7 @@ Deps 로 바깥 함수를 받는 이유:
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -22,13 +23,10 @@ from backend.app.observability import langfuse
 from backend.app.schemas.request import AgentRequest
 from backend.app.schemas.result import AgentResponse, Candidate, GeocodedPin, ParticipantResult, Result
 from backend.app.schemas.slots import Participant, Slots
+from backend.app.services import costs as cost_guards
 
 # 확신도가 이보다 낮은 핀이 하나라도 있으면 사용자에게 확인을 받는다 (SDD 5절 2단계)
 GEOCODE_CONFIRM_BELOW = 0.8
-
-
-class NotYourPin(Exception):
-    """남의 핀을 고치려 했다. 라우터가 403 으로 바꾼다 (SDD 5절 2-1, 7절 핀 소유권)."""
 
 
 class NotYourSession(Exception):
@@ -133,11 +131,14 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
 
         # 1. 텍스트 → 슬롯
         with tr.span("extract", text=text[:200]) as span:
+            started = time.monotonic()
             try:
                 slots = await _call(deps.extract_slots, text, deps.previous_slots, req.preset)
                 span.output = slots.model_dump(exclude={"participants"})
+                await _log_llm("extract", tr.id, session_id, started, "ok")
             except Exception as e:  # noqa: BLE001
                 span.error = str(e)
+                await _log_llm("extract", tr.id, session_id, started, "error", type(e).__name__)
                 return _answer(session_id, "failed", None, tr.id, "요청을 이해하지 못했습니다. 다시 입력해 주세요.")
 
         # 1-1. 범위 밖
@@ -152,6 +153,17 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
 
         # 1-2. 필수 슬롯 누락
         if slots.missing:
+            session_id = await _persist_quietly(
+                deps,
+                tr,
+                session_id=session_id,
+                is_new=is_new_session,
+                user_id=user_id,
+                slots=slots,
+                pins=[],
+                status="draft",
+            )
+            is_new_session = False
             return _answer(
                 session_id,
                 "need_info",
@@ -176,6 +188,17 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
         # 2-1. 확신도가 낮으면 핀 확인. 사용자가 고친 좌표는 confirmed_participants 로 다시 온다
         unsure = [p for p in pins if p.kind == "participant" and p.confidence < GEOCODE_CONFIRM_BELOW]
         if unsure and not req.confirmed_participants:
+            session_id = await _persist_quietly(
+                deps,
+                tr,
+                session_id=session_id,
+                is_new=is_new_session,
+                user_id=user_id,
+                slots=slots,
+                pins=pins,
+                status="draft",
+            )
+            is_new_session = False
             return _answer(
                 session_id,
                 "need_confirm",
@@ -185,8 +208,7 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
                 geocoded=pins,
             )
         if req.confirmed_participants:
-            # 주선자는 owner_user_id 가 없는 핀만, 참석자는 자기 핀만 고칠 수 있다 (SDD 7절)
-            _check_ownership(slots, req.confirmed_participants, user_id)
+            # 누구 핀이든 고칠 수 있다 (SDD 7절, 09-18 결정). 소유권은 표시용이다
             pins = _apply_confirmed(pins, req.confirmed_participants)
 
         # 3. 집결 후보
@@ -209,17 +231,26 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
             failed_names = sorted({r["key"][1] for r in routes if r.get("error")})
             span.output = {"요청": len(plans), "실패": len([r for r in routes if r.get("error")]), "실패자": failed_names}
 
-        # 6. 판정. 소형 경로(SDD 5절 라우팅 small)면 대형 모델을 부르지 않는다
+        # 6. 판정. 소형 경로(SDD 5절 라우팅 small)면 대형 모델을 부르지 않는다.
+        # 요청당 상한(41번)을 넘었어도 대형을 생략하고 규칙 점수 순서로 간다.
         rankings: list[dict[str, Any]] | None = None
         routed_to = model_router.route(slots)
-        if routed_to == "large":
+        spent_usd = float(_llm_meta().get("cost_usd") or 0.0)
+        cap = cost_guards.per_request_limit()
+        if routed_to == "large" and cost_guards.over_limit(spent_usd, cap):
             with tr.span("judge") as span:
+                span.output = {"skipped": "비용 상한 초과", "spent_usd": spent_usd, "cap_usd": cap}
+        elif routed_to == "large":
+            with tr.span("judge") as span:
+                started = time.monotonic()
                 try:
                     rankings = await _call(
                         deps.rank, slots, _judge_candidates(raw_candidates, slots), _judge_rows(routes, slots)
                     )
                     span.output = {"rankings": rankings}
+                    await _log_llm("judge", tr.id, session_id, started, "ok", routed_to=routed_to)
                 except Exception as e:  # noqa: BLE001
+                    await _log_llm("judge", tr.id, session_id, started, "error", type(e).__name__, routed_to)
                     # 판정이 실패해도 멈추지 않는다. 규칙 점수 순서로 대신 채운다 (SDD 5절 6단계)
                     span.error = str(e)
                     rankings = None
@@ -244,21 +275,16 @@ async def run(req: AgentRequest, user_id: str, deps: Deps | None = None) -> Agen
             return _answer(session_id, "failed", slots, tr.id, "경로를 구하지 못했습니다. 잠시 후 다시 시도해 주세요.", geocoded=pins)
 
         # 8. 저장
-        with tr.span("store") as span:
-            try:
-                session_id = await _persist(
-                    deps,
-                    session_id=session_id,
-                    is_new=is_new_session,
-                    user_id=user_id,
-                    slots=slots,
-                    result=result,
-                    trace_id=tr.id,
-                    pins=pins,
-                )
-                span.output = {"session_id": session_id}
-            except Exception as e:  # noqa: BLE001  저장이 실패해도 계산 결과는 보여 준다
-                span.error = str(e)
+        session_id = await _persist_quietly(
+            deps,
+            tr,
+            session_id=session_id,
+            is_new=is_new_session,
+            user_id=user_id,
+            slots=slots,
+            pins=pins,
+            result=result,
+        )
 
         first = min((c.rank for c in result.candidates if c.rank), default=None)
         top = next((c for c in result.candidates if c.rank == first), None)
@@ -345,19 +371,6 @@ def _questions_for(missing: list[str]) -> list[str]:
     return list(dict.fromkeys(questions))
 
 
-def _check_ownership(slots: Slots, confirmed: list[Any], user_id: str) -> None:
-    """고치려는 핀마다 소유자를 본다. 소유자가 있고 그 사람이 아니면 NotYourPin.
-
-    주선자가 만든 핀은 owner_user_id 가 None 이라 누구의 것도 아니고, 주선자가 고친다.
-    참석자가 공유 링크에서 자기라고 고른 뒤에는 그 사람만 고칠 수 있다.
-    """
-    owners = {p.name: p.owner_user_id for p in slots.participants}
-    for c in confirmed:
-        owner = owners.get(c.name)
-        if owner is not None and owner != user_id:
-            raise NotYourPin(c.name)
-
-
 def _apply_confirmed(pins: list[GeocodedPin], confirmed: list[Any]) -> list[GeocodedPin]:
     """사용자가 핀을 끌어 고친 좌표로 바꾼다. 고친 핀은 확신도 1.0 (SDD 5절 2-1)."""
     fixed = {c.name: c for c in confirmed}
@@ -368,6 +381,40 @@ def _apply_confirmed(pins: list[GeocodedPin], confirmed: list[Any]) -> list[Geoc
             GeocodedPin(name=pin.name, lng=hit.lng, lat=hit.lat, confidence=1.0, kind=pin.kind) if hit else pin
         )
     return out
+
+
+async def _log_llm(
+    stage: str,
+    request_id: str,
+    session_id: str,
+    started: float,
+    status: str,
+    error_type: str | None = None,
+    routed_to: str | None = None,
+) -> None:
+    """LLM 단계 한 줄. 모델·토큰·비용은 services/llm.py 가 마지막 호출에서 남긴 값을 쓴다.
+
+    라우팅 전후 비용을 비교하려면 어느 모델을 얼마에 불렀는지가 요청 단위로 남아야 한다
+    (체크리스트 40번). 로컬 GGUF 는 비용 0 이라 그 차이가 그대로 드러난다.
+    """
+    from backend.app.services import llm, request_log
+
+    meta = llm.last_meta()
+    await request_log.write(
+        request_id=request_id,
+        session_id=session_id or None,
+        stage=stage,
+        provider="local" if str(meta.get("model", "")).startswith("local/") else "openrouter",
+        model_or_api=meta.get("model"),
+        latency_ms=int((time.monotonic() - started) * 1000),
+        status=status,
+        tokens_in=meta.get("tokens_in"),
+        tokens_out=meta.get("tokens_out"),
+        cost_usd=meta.get("cost_usd"),
+        error_type=error_type,
+        retry_no=max(0, int(meta.get("attempts", 1)) - 1),
+        routed_to=routed_to,
+    )
 
 
 def _pin_of(pins: list[GeocodedPin], name: str, kind: str) -> GeocodedPin | None:
@@ -593,27 +640,6 @@ def _reason_for(kind: str, access_required: bool, ok: bool, switched: bool = Fal
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _slots_from_session(row: dict[str, Any]) -> Slots:
-    """저장된 세션을 Slots 로 되돌린다. 재질문 때 1단계 프롬프트에 넣는다.
-
-    저장은 표 컬럼으로 흩어져 있고 (테이블정의서 1절) 슬롯은 한 덩어리라 여기서 다시 모은다.
-    검증을 거치지 않는 이유: 저장 당시에는 통과한 값이고, 지금은 프롬프트에 넣을 참고 자료이기 때문이다.
-    """
-    return Slots.model_construct(
-        preset=row.get("preset"),
-        datetime=None,  # 표에는 meet_at(시각)만 있고 사람이 쓴 표현은 남기지 않는다
-        purpose=row.get("purpose"),
-        destination=row.get("destination_name"),
-        participants=[Participant.model_construct(**p) for p in row.get("participants") or []],
-        rendezvous=None,
-        access=row.get("access"),
-        schedule_confirmed=row.get("schedule_confirmed"),
-        constraints=row.get("constraints") or [],
-        missing=[],
-        out_of_scope=False,
-    )
-
-
 async def _load_previous(deps: Deps, session_id: str, user_id: str) -> Slots | None:
     """재질문이면 이전 세션을 읽는다. 없으면 None.
 
@@ -629,7 +655,45 @@ async def _load_previous(deps: Deps, session_id: str, user_id: str) -> Slots | N
         raise NotYourSession(session_id)
     if row.get("locked"):
         raise SessionLocked(session_id)
-    return _slots_from_session(row)
+    from backend.app.services import session_store
+
+    return session_store.slots_from_session(row)
+
+
+async def _persist_quietly(
+    deps: Deps,
+    tr: Any,
+    *,
+    session_id: str,
+    is_new: bool,
+    user_id: str,
+    slots: Slots,
+    pins: list[GeocodedPin],
+    result: Result | None = None,
+    status: str = "computed",
+) -> str:
+    """저장을 시도하고 실패는 삼킨다. 저장이 안 돼도 화면은 결과를 보여 준다.
+
+    돌려주는 값은 최종 session_id 다. 새 세션이면 DB 가 만든 id 로 바뀐다.
+    """
+    with tr.span("store") as span:
+        try:
+            saved = await _persist(
+                deps,
+                session_id=session_id,
+                is_new=is_new,
+                user_id=user_id,
+                slots=slots,
+                result=result,
+                trace_id=tr.id,
+                pins=pins,
+                status=status,
+            )
+            span.output = {"session_id": saved, "status": status}
+            return saved
+        except Exception as e:  # noqa: BLE001
+            span.error = str(e)
+            return session_id
 
 
 async def _persist(
@@ -639,25 +703,30 @@ async def _persist(
     is_new: bool,
     user_id: str,
     slots: Slots,
-    result: Result,
+    result: Result | None,
     trace_id: str,
     pins: list[GeocodedPin],
+    status: str = "computed",
 ) -> str:
-    """8단계. 세션과 결과를 저장하고 최종 session_id 를 돌려준다.
+    """세션(과 결과가 있으면 결과)을 저장하고 최종 session_id 를 돌려준다 (SDD 5절 8단계).
 
-    DB 가 없으면 저장만 건너뛰고 계산 결과는 그대로 보여 준다. 화면이 멈추는 것보다 낫고,
-    저장 실패는 Langfuse span 에 남는다. (설정이 들어오면 이 갈래는 사라진다)
+    결과가 없어도 저장한다. 되묻기·핀 확인 단계에서도 링크가 있어야 참석자들이 그 주소에 모여
+    이어서 답할 수 있기 때문이다 (화면 구조: 메인은 문장만 받고, 나머지는 /s/{id} 에서 한다).
+
+    DB 가 없으면 저장만 건너뛰고 화면은 그대로 간다. 저장 실패는 Langfuse span 에 남는다.
     """
     if deps.save is None:
         return session_id
-    participants = _participants_for_store(slots, pins)
+    dest = next((p for p in pins if p.kind == "destination"), None)
     return await deps.save(
         session_id=None if is_new else session_id,
         user_id=user_id,
         slots=slots,
-        participants=participants,
+        participants=_participants_for_store(slots, pins),
         result=result,
         trace_id=trace_id,
+        status=status,
+        destination=(dest.lng, dest.lat) if dest else None,
     )
 
 
