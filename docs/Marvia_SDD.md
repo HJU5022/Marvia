@@ -491,6 +491,16 @@ sequenceDiagram
 
 - 유일한 LLM 진입점. 함수: `judge()`, `pick_vessel()`, `answer_follow_up()`.
 - 프롬프트는 `observability/langfuse.get_prompt(name, label="production")`로 받는다. 코드에 프롬프트 문자열 없음.
+- 프롬프트 이름 4개 (09-22 확정). LLM이 하는 일마다 하나, 평가용 하나:
+
+  | 이름 | 쓰는 함수 |
+  | --- | --- |
+  | `marvia-judge` | `judge()` 2층 판정 |
+  | `marvia-pick-vessel` | `pick_vessel()` 후보 여럿일 때 선박 선택 |
+  | `marvia-follow-up` | `answer_follow_up()` 후속 질문 |
+  | `marvia-judge-eval` | evals/judge.py LLM-as-judge (통관 해설 채점) |
+
+- 버전은 Langfuse가 자동으로 매긴다. 코드는 label `production`만 부른다. 프롬프트 실험(D10)은 새 버전을 `staging`에 붙여 평가한 뒤 `production`으로 옮긴다. 모델 A/B 비교는 label이 아니라 아래 `model` 인자로 한다. 한 번에 하나만 바꾼다 (PRD 8절).
 - 시스템 프롬프트 = Langfuse prompt + skills/*.md 전문 (통째로).
 - 도구 호출: MCP 클라이언트로 `/mcp` 호출. LLM이 도구를 고르면 실행하고 결과를 messages에 붙여 재호출. 최대 6회.
 - 모델은 `MODEL_A` 기본, 인자로 교체 가능(평가용). 레이트 리밋 시 `MODEL_B`로 1회 라우팅.
