@@ -94,7 +94,7 @@ C1~C6 계약 고정 뒤 착수. 9/28부터 본격.
 | D3 | Langfuse 트레이스 데코레이터·미들웨어를 C-6 llm.py와 MCP 호출에 적용, user_id·session_id, 재시도 표시 (C-6 완료 다음 날) | 대시보드에 trace 1건 | 10/1 |
 | D4 | Langfuse Prompt fetch 코드(`get_prompt`), 버전 → 트레이스 링크 (프롬프트 내용은 C-11) | trace에 prompt 버전 표시 | 10/1 |
 | D5 | 평가셋 30건 구성 (C7 스키마): 정상 8(fine 4·act 4), 경계 14(판정형 9·보류형 5), 실패 8. PRD 8절과 같음. 가상 B/L·통관·판매 예정일 부여 | Langfuse Dataset 업로드 | 10/6 |
-| D6 | 라벨링: 하정운이 스냅샷 보고 verdict·vessel_match 정답, 사유 기록. 사후 입항 시각으로 예측 적중 별도 | 30건 라벨 완료 | 10/6 |
+| D6 | 라벨링: 초안 김승욱, 경계 14건 정답은 하정운, 정상·실패는 하정운 검수. 문항마다 판정자·날짜·사유. 사후 입항 시각으로 예측 적중 별도 | 30건 라벨 완료 | 10/6 |
 | D7 | 베이스라인 (a) 규칙만: 1층 결과 → verdict, 유사도 최고 후보 자동 선택 | 30건 실행 결과 | 10/1 |
 | D8 | 평가 실행기: (a)(b)(c) 세 구성 × 30건, 축 7개 채점 (verdict_accuracy, act_recall, insufficient_precision, vessel_match_accuracy, customs_explanation judge, grounded, schema_pass) | 결과 표 자동 생성 | 10/6 |
 | D9 | LLM-as-judge: customs_explanation 판정 모델 ≠ 생성 모델, judge trace 연결 | 표본 5건 사람 대조 | 10/6 |
