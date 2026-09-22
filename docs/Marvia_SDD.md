@@ -26,7 +26,7 @@ repo/
     requirements.txt        app, mcp, worker가 같은 이미지를 쓰므로 하나
     app/
       main.py               FastAPI 앱, 라우터 등록, 미들웨어
-      routers/agent.py      POST /api/agent, GET /health
+      routers/agent.py      POST /api/agent, GET /api/history, GET /health
       schemas/agent.py      C1 AgentRequest, AgentResponse
       schemas/signals.py    C3 Signal, SignalSet
       schemas/customs.py    C5 CustomsInfo
@@ -444,6 +444,15 @@ sequenceDiagram
 
 3단계에서 후보가 2척 이상이면 `identify.llm_pick`이 confidence를 낸다. high가 아니면 `status=insufficient, verdict=null, missing_inputs=[voyage_no, forwarder_eta]`로 바로 응답하고 도구 조회와 판정을 하지 않는다. frontend는 CandidatePicker를 띄우고, 사용자가 고르거나 입력하면 `resolved_mmsi` 또는 `voyage_no`를 넣어 같은 엔드포인트를 다시 호출한다.
 
+### 4.4 GET /api/history (09-22 확정)
+
+조회 이력. 세션의 지난 조회를 목록으로 돌려준다. 나중에 "등록해 둔 B/L 계속 보기"(확장 가능성)를 얹을 자리라 이번에 넣는다.
+
+- 입력: `session_id` (필수), `limit` (기본 20, 최대 100)
+- 출력: `query_log`에서 그 세션의 행을 `created_at` 내림차순으로. 행마다 `request_id, bl_masked, status, verdict, vessel_match, decided_by, model, created_at, trace_id`
+- 새 계산 없음, 새 저장 없음. 3.9 `query_log`를 읽기만 한다. B/L은 `bl_masked`로만 나간다
+- 완료 기준: `/api/agent` 2회 호출 뒤 같은 session_id로 조회하면 2건, 다른 session_id면 0건
+
 ## 5. 컴포넌트 명세
 
 ### 5.1 services/customs.py
@@ -572,7 +581,7 @@ sequenceDiagram
 | AskPanel | follow_up_question → answer |
 | CandidatePicker | vessel_candidates + missing_inputs 폼 → resolved_mmsi/voyage_no 재요청 |
 | FailureBanner | status failed/partial, 재조회, 해수부 기록만 보기 |
-| HistoryTable | `GET /api/history` (trace 요약) |
+| HistoryTable | `GET /api/history?session_id=` (query_log 최근 20건, 4.4) |
 | MetricsPage | `evals/results/*.json` 정적 로드 |
 | SettingsPage | rules.md 값 표시(읽기 전용, 서버 재시작 필요 안내) |
 
@@ -587,7 +596,7 @@ sequenceDiagram
 
 | 서비스 | 이미지 | 포트 | 의존 | 역할 |
 | --- | --- | --- | --- | --- |
-| app | `./Dockerfile` target app | 8000 | postgres | FastAPI, `/api/agent`, `/health`, `/docs` |
+| app | `./Dockerfile` target app | 8000 | postgres | FastAPI, `/api/agent`, `/api/history`, `/health`, `/docs` |
 | mcp | 같은 이미지 target mcp | 8001 | postgres | FastMCP `/mcp` |
 | worker | 같은 이미지 target worker | 없음 | postgres | collector, arrivals 주기 실행 |
 | postgres | `postgres:16-alpine` | 5432 | 없음 | positions, arrivals, 캐시 |
