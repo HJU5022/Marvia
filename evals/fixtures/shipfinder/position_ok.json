@@ -1,0 +1,6 @@
+{"status": 0, "msg": "", "data": {
+  "mmsi": 413961925, "imo": 0, "call_sign": "P", "ship_name": "WANHONGYUAN369", "ship_cnname": "",
+  "data_source": 0, "ship_type": 70, "length": 68, "width": 13, "left": 8, "trail": 18, "draught": 4.8,
+  "dest": "TAIZHOU,CN", "destcode": "CNTZO", "eta": 1745827548, "navistat": 0,
+  "lat": 32.192517, "lng": 119.628093, "sog": 6.2, "cog": 80.8, "hdg": 511, "rot": 0, "last_time": 1745827548
+}}
