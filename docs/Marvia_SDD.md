@@ -393,7 +393,7 @@ CREATE TABLE query_log (
 POST /api/agent
  1. 검증: bl_no 형식, sale_due_date >= today       (400)
  2. customs = services.customs.fetch(bl_no, bl_type)   코드 직접 호출
-      없음 → status=failed, answer="조회 결과 없음", missing_inputs=["bl_type 확인"]
+      없음 → status=insufficient, missing_inputs=["bl_type"], answer="조회 결과 없음. M B/L·H B/L 구분을 바꿔 다시 넣어주세요" (09-22 확정: 없는 B/L은 실패가 아니라 되묻기. failed는 우리 쪽이 못 한 것에만)
  3. 식별
       resolved_mmsi 있으면 → confirmed
       else candidates = mcp.get_vessel_candidates(customs.shipNm, customs.shipNat)
@@ -654,7 +654,7 @@ open http://localhost:8000/docs
 | 상황 | 감지 | 응답 |
 | --- | --- | --- |
 | bl_no 형식 오류 | 라우터 | 400, 안내 |
-| UNI-PASS 결과 없음 | customs.fetch None | status failed, missing_inputs ["bl_type"] |
+| UNI-PASS 결과 없음 | customs.fetch None | status insufficient, missing_inputs ["bl_type"], M/H 구분 재입력 안내 (09-22 확정) |
 | UNI-PASS 타임아웃 | 2회 재시도 후 | status failed |
 | ShipFinder 21 | client | 해당 도구 error, partial, 근거에 표시 |
 | ShipFinder 23/29 | client | 캐시 값 + cached_at, 근거에 "캐시" |
