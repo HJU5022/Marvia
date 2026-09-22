@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | C1 응답 스키마 | PRD 12장 Pydantic 모델. status, verdict, vessel_match, reasons, conflicts, actions, days_margin, evidence 등 | `app/schemas/agent.py` |
 | C2 요청 스키마 | bl_no, bl_type(M/H), sale_due_date, session_id, follow_up_question | `app/schemas/agent.py` |
-| C3 1층 신호 출력 | 신호 6종 각각 triggered / clear / unknown + 값 + 출처 | `app/schemas/signals.py` |
+| C3 1층 신호 출력 | 신호 7종 각각 triggered / clear / unknown + 값 + 출처 | `app/schemas/signals.py` |
 | C4 MCP 도구 4종 입출력 | PRD 11장 표 그대로. 모든 출력에 source, fetched_at 포함 | `mcp_server/schemas.py` |
 | C5 UNI-PASS 정제 결과 | ship_name, ship_nat, voyage, entry_date, stage_history, shed_name. LLM에 안 넘기는 필드(품명, 중량) 제외 | `app/schemas/customs.py` |
 | C6 Skill 임계값 | 6시간, 12시간, 0.5노트, 24시간, 부산 반경 | `skills/ais-reliability/rules.md` 프론트매터 |
@@ -74,7 +74,7 @@ C1~C6 계약 고정 뒤 착수. 9/28부터 본격.
 | C-1 | `skills/ais-reliability/SKILL.md` + `rules.md`(임계값 프론트매터). 신호 6종 정의, 상충 우선순위, 2층 판정 원칙, 되묻기 조건 | 하정운 검수 | 9/27 |
 | C-2 | `skills/customs-stages/SKILL.md`: 단계 코드(CAGE12 등) 목록, 의미, 다음 단계, 할 일, 관세사 확인 조건 | 단계 코드 전체 확보 | 9/29 |
 | C-3 | `skills/port-busan/SKILL.md`: 부두·정박지 개요, 하역 장소 문장 규칙 | 하정운 검수 | 9/30 |
-| C-4 | 1층 신호 판정 코드 (`app/services/signals.py`): rules.md 읽어 6종 판정 → C3 | 단위 테스트 12건 통과 | 9/29 |
+| C-4 | 1층 신호 판정 코드 (`app/services/signals.py`): rules.md 읽어 7종 판정 → C3 | 단위 테스트 21건 통과 | 9/29 |
 | C-5 | 선박 식별 로직: 후보 1척이면 코드 확정, 복수면 LLM 판단, uncertain이면 판정 차단 | PANSTAR 케이스가 uncertain | 9/30 |
 | C-6 | `services/llm.py`: OpenRouter 호출 단일 지점, Skill 주입, tool call 루프, 모델 A/B 스위치 | 라우터 밖에서 LLM SDK import 없음 | 9/30 |
 | C-7 | 출력 검증 7규칙 (PRD 12장) + 3단계 재시도 + 폴백 | 위반 응답 주입 시 재시도 트레이스 | 10/1 |

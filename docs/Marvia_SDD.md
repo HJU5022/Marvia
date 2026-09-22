@@ -280,7 +280,7 @@ class AgentResponse(BaseModel):
 ```python
 SignalState = Literal["triggered","clear","unknown"]
 class Signal(BaseModel):
-    id: Literal["position_stale","eta_conflict","anchor_wait","dest_changed","navstat_mismatch","customs_hold"]
+    id: Literal["position_stale","eta_conflict","anchor_wait","dest_changed","navstat_mismatch","customs_hold","sales_date_exceeded"]
     state: SignalState
     value: str
     threshold: str
@@ -477,16 +477,17 @@ sequenceDiagram
 
 ### 5.4 services/signals.py
 
-- `compute(position, schedule, dist, customs, rules) -> SignalSet`
-- 규칙:
+- `compute(position, schedule, dist, customs, days_margin, rules) -> SignalSet`. days_margin은 evidence.py(5.8)가 먼저 계산해 넘긴다.
+- 규칙 7종:
   - position_stale: now - last_time > position_stale_hours → triggered. position 없음 → unknown
   - eta_conflict: |ais_eta - mof_planned| > eta_conflict_hours → triggered. 둘 중 하나 없음 → unknown
   - anchor_wait: 부산 기준점 busan_radius_nm 안, sog <= anchor_speed_kn, 지속 >= anchor_wait_hours(수집 이력 필요, 없으면 unknown)
   - dest_changed: destcode 비어있거나 KRPUS가 아님 → triggered
   - navstat_mismatch: (navistat in [1,5] and sog > 2) or (navistat == 0 and sog < 0.3 and 반경 밖) → triggered
   - customs_hold: prgsStCd가 검사·보류 코드 집합에 있음 → triggered
+  - sales_date_exceeded: days_margin < 0 → triggered (배가 정상이어도 신뢰 ETA가 판매 예정일을 넘김). days_margin 없음 → unknown. 임계값 없음, 0이 기준
 - 순수 함수. 외부 호출 없음.
-- 완료 기준: 신호별 triggered/clear/unknown 각 1건, 총 18건 단위 테스트.
+- 완료 기준: 신호별 triggered/clear/unknown 각 1건, 총 21건 단위 테스트.
 
 ### 5.5 services/identify.py
 
@@ -534,7 +535,7 @@ sequenceDiagram
 
 ### 5.8 services/evidence.py
 
-- 도구 응답마다 Evidence 1건 이상 생성. `days_margin = (sale_due_date - trusted_eta.date()).days`. trusted_eta = priority 순서로 첫 유효값. LLM 출력의 days_margin은 무시하고 코드 값으로 덮어쓴다.
+- 도구 응답마다 Evidence 1건 이상 생성. `days_margin = (sale_due_date - trusted_eta.date()).days`. KST 날짜 차이, 시간 무시, 창고 입고·배송 시간 미포함. trusted_eta = priority 순서로 첫 유효값. LLM 출력의 days_margin은 무시하고 코드 값으로 덮어쓴다.
 
 ### 5.9 mcp_server/
 

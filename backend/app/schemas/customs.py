@@ -1,0 +1,42 @@
+"""계약 C5(UNI-PASS 정제 결과). 근거: SDD 3.5.
+
+책임: UNI-PASS 원본 응답에서 LLM에 넘겨도 되는 필드만 남긴 형태.
+- 넘기는 것: 선명, 국적, 항차, 입항일, 통관 진행 상태·코드, 장치장명, 단계 이력.
+- 넘기지 않는 것: 품명(prnm), 중량(wght), 세관명, 화주 정보. 이 모델에 아예 필드가 없다.
+- B/L 번호는 LLM에 안 넘기고, 트레이스·로그에는 mask_bl()로 남긴다 (SDD 3.5, 7절).
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class CustomsStage(BaseModel):
+    """단계 이력 1건. UNI-PASS 단계 코드(prgsStCd)·이름·처리 일시(prcsDttm)."""
+
+    code: str
+    name: str
+    at: datetime | None
+
+
+class CustomsRecord(BaseModel):
+    """UNI-PASS 화물통관진행정보 정제본. services/customs.py가 만들고 C(판정)는 이것만 소비한다."""
+
+    ship_name: str | None = Field(default=None, description="shipNm")
+    ship_nat: str | None = Field(default=None, description="shipNat, 국적 코드")
+    voyage: str | None = Field(default=None, description="vydf, 항차")
+    entry_date: datetime | None = Field(default=None, description="etprDt, 입항(예정)일")
+    stage_code: str | None = Field(default=None, description="prgsStCd, 현재 통관 단계 코드")
+    stage_name: str | None = Field(default=None, description="csclPrgsStts, 현재 통관 단계명")
+    shed_name: str | None = Field(default=None, description="shedNm, 장치장명")
+    stage_history: list[CustomsStage] = Field(default_factory=list)
+    bl_masked: str = Field(description="앞4자+****+뒤4자. 로그·트레이스용")
+    fetched_at: datetime
+
+
+def mask_bl(bl_no: str) -> str:
+    """B/L 번호를 앞4자+****+뒤4자로 가린다 (SDD 3.5). 8자 이하면 전부 가린다."""
+    if len(bl_no) <= 8:
+        return "*" * len(bl_no)
+    return f"{bl_no[:4]}****{bl_no[-4:]}"
