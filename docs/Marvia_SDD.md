@@ -244,6 +244,16 @@ class BerthInfo(BaseModel):
     facility: str | None   # 해수부 fcltyNm
     shed: str | None       # UNI-PASS shedNm
 
+class VesselInfo(BaseModel):
+    """식별이 끝난 배. 프론트 VesselCard가 그대로 그린다 (09-22 확정)."""
+    mmsi: int
+    imo: int | None
+    name: str
+    call_sign: str | None  # 해수부 실적 매칭 키
+    flag: str | None       # 국적. UNI-PASS shipNat, 없으면 ShipFinder
+    ship_type: int | None
+    voyage_no: str | None  # UNI-PASS vydf 또는 사용자 입력
+
 class AgentResponse(BaseModel):
     status: Status
     verdict: Verdict | None
@@ -255,7 +265,7 @@ class AgentResponse(BaseModel):
     actions: list[str] = []
     days_margin: int | None
     decided_by: Literal["rule","llm"] | None
-    vessel: dict | None
+    vessel: VesselInfo | None
     position: Position | None
     eta: EtaInfo | None
     customs: CustomsInfo | None
