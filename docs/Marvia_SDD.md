@@ -245,7 +245,7 @@ class BerthInfo(BaseModel):
     shed: str | None       # UNI-PASS shedNm
 
 class VesselInfo(BaseModel):
-    """식별이 끝난 배. 프론트 VesselCard가 그대로 그린다 (09-22 확정)."""
+    """식별이 끝난 배. 프론트 VesselCard가 그대로 그린다."""
     mmsi: int
     imo: int | None
     name: str
@@ -393,7 +393,7 @@ CREATE TABLE query_log (
 POST /api/agent
  1. 검증: bl_no 형식, sale_due_date >= today       (400)
  2. customs = services.customs.fetch(bl_no, bl_type)   코드 직접 호출
-      없음 → status=insufficient, missing_inputs=["bl_type"], answer="조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요" (09-22 확정: 없는 B/L은 실패가 아니라 되묻기. failed는 우리 쪽이 못 한 것에만)
+      없음 → status=insufficient, missing_inputs=["bl_type"], answer="조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요" (없는 B/L은 실패가 아니라 되묻기. failed는 우리 쪽이 못 한 것에만)
  3. 식별
       resolved_mmsi 있으면 → confirmed
       else candidates = mcp.get_vessel_candidates(customs.shipNm, customs.shipNat)
@@ -444,7 +444,7 @@ sequenceDiagram
 
 3단계에서 후보가 2척 이상이면 `identify.llm_pick`이 confidence를 낸다. high가 아니면 `status=insufficient, verdict=null, missing_inputs=[voyage_no, forwarder_eta]`로 바로 응답하고 도구 조회와 판정을 하지 않는다. frontend는 CandidatePicker를 띄우고, 사용자가 고르거나 입력하면 `resolved_mmsi` 또는 `voyage_no`를 넣어 같은 엔드포인트를 다시 호출한다.
 
-### 4.4 GET /api/history (09-22 확정)
+### 4.4 GET /api/history
 
 조회 이력. 세션의 지난 조회를 목록으로 돌려준다. 나중에 "등록해 둔 B/L 계속 보기"(확장 가능성)를 얹을 자리라 이번에 넣는다.
 
@@ -500,7 +500,7 @@ sequenceDiagram
 
 - 유일한 LLM 진입점. 함수: `judge()`, `pick_vessel()`, `answer_follow_up()`.
 - 프롬프트는 `observability/langfuse.get_prompt(name, label="production")`로 받는다. 코드에 프롬프트 문자열 없음.
-- 프롬프트 이름 4개 (09-22 확정). LLM이 하는 일마다 하나, 평가용 하나:
+- 프롬프트 이름 4개. LLM이 하는 일마다 하나, 평가용 하나:
 
   | 이름 | 쓰는 함수 |
   | --- | --- |
@@ -658,7 +658,7 @@ open http://localhost:8000/docs
 | 가용성 | 외부 API 1개 장애 시 partial 응답, 전체 실패 아님 | 실패 경로 테스트 |
 | 재현성 | clone → compose up 10분 | 수동 |
 
-**신뢰 경계 (09-22 확정): 지시는 시스템 프롬프트와 skills/*.md에서만 온다. 나머지는 전부 데이터다.**
+**신뢰 경계: 지시는 시스템 프롬프트와 skills/*.md에서만 온다. 나머지는 전부 데이터다.**
 
 | 출처 | 믿는 범위 | 다루는 법 |
 | --- | --- | --- |
@@ -683,7 +683,7 @@ open http://localhost:8000/docs
 | 상황 | 감지 | 응답 |
 | --- | --- | --- |
 | bl_no 형식 오류 | 라우터 | 400, 안내 |
-| UNI-PASS 결과 없음 | customs.fetch None | status insufficient, missing_inputs ["bl_type"], "B/L 번호와 M/H 구분을 다시 확인해 주세요" 안내 (09-22 확정) |
+| UNI-PASS 결과 없음 | customs.fetch None | status insufficient, missing_inputs ["bl_type"], "B/L 번호와 M/H 구분을 다시 확인해 주세요" 안내 |
 | UNI-PASS 타임아웃 | 2회 재시도 후 | status failed |
 | ShipFinder 21 | client | 해당 도구 error, partial, 근거에 표시 |
 | ShipFinder 23/29 | client | 캐시 값 + cached_at, 근거에 "캐시" |
