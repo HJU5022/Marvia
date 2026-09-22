@@ -62,7 +62,7 @@ repo/
   evals/
     schema.py               C7
     dataset/                30건 JSON
-    fixtures/               실제 API 응답 저장본 (테스트, REPLAY_MODE)
+    fixtures/               가공 API 응답 (테스트, REPLAY_MODE). 실제 원본은 커밋 금지
     results/                run_eval 결과 JSON
     baseline_rules.py       (a)
     run_eval.py             (a)(b)(c) 실행, 축 채점
@@ -465,9 +465,9 @@ sequenceDiagram
 ### 5.2 clients/shipfinder.py
 
 - `search(keywords, max=10)`, `position(mmsi)`. Base `https://api.elaneglobal.com/v1/AIS/`. 키는 query `key=`.
-- status 매핑: 0 ok, 3 not_found, 9 bad_key, 21 no_permission, 23/29 rate_limited(retryable), 그 외 error.
+- status 매핑: 0 ok, 3 not_found, 9 bad_key, 13 busy(retryable), 21 no_permission, 23/29 rate_limited(retryable), 그 외 error.
 - 23/29 시 캐시(최근 값, `cached_at`) 반환. 캐시 TTL 6시간.
-- 완료 기준: fixture 5건(오늘 응답)으로 단위 테스트, MMSI 440063450 실호출 성공.
+- 완료 기준: fixture 5건(공식 문서 예시 또는 가공값)으로 단위 테스트, MMSI 440063450 실호출 성공(결과는 로컬에만).
 
 ### 5.3 clients/mof.py
 
@@ -671,6 +671,7 @@ open http://localhost:8000/docs
 **보안**
 
 - 외부 API 키는 서버 환경변수만. frontend 번들에 키 없음. `.env` 미커밋, `.env.example`만.
+- 외부 API 원본 응답은 레포에 커밋하지 않는다. ShipFinder 약관은 데이터를 "internal business research purposes only"로 한정하고 서면 동의 없는 복사·게시를 금지하며, UNI-PASS 이용약관 15조③은 조회 정보의 복제·타인 제공을 금지한다. 해수부 공공데이터는 이용허락범위 제한 없음. searoute는 Apache-2.0(고지 유지). fixture와 REPLAY_MODE 데모는 형식만 같은 가공값으로 만들고, 실제 수집값은 DB(내부)에만 둔다.
 - `/mcp`는 Bearer 토큰 필수. `/api/agent`는 `ALLOWED_ORIGINS` CORS 제한. 데모 단계라 사용자 인증은 없고 session_id로 구분한다 (P1에서 카카오 로그인).
 - B/L은 LLM에 조회를 맡기지 않고 코드가 호출한다. 트레이스에는 마스킹.
 - UNI-PASS 응답 중 품명·중량·화주 정보는 LLM에 넘기지 않고 DB에도 저장하지 않는다.
@@ -714,5 +715,5 @@ open http://localhost:8000/docs
 출력 계약: <1.x>
 완료 기준: <리스트 표의 완료 기준 그대로>
 금지: langgraph, 벡터 검색, 라우터에서 LLM import, 프롬프트 하드코딩
-fixture: evals/fixtures/<파일> (실제 API 응답 저장본)
+fixture: evals/fixtures/<파일> (가공 응답, 실제 원본 아님)
 ```

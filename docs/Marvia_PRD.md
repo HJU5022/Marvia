@@ -129,6 +129,8 @@ AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(HM
 
 키 발급 4종: UNI-PASS, 공공데이터포털, OpenRouter, Langfuse. ShipFinder는 보유.
 
+**이용 조건:** ShipFinder는 데이터를 내부 연구 목적으로만 쓰고 서면 동의 없이 복사·게시 금지(www.shipfinder.com/Home/Treaty). 해수부 두 API는 이용허락범위 제한 없음, 개발계정 하루 1만 건. UNI-PASS는 조회 정보의 복제·타인 제공 금지(이용약관 15조③). searoute는 Apache-2.0, 내장 항로 데이터 원본은 Eurostat SeaRoute(EUPL-1.2)라 출처 고지. 따라서 실제 API 응답은 DB(내부)에만 두고 레포의 fixture·데모는 가공값으로 만든다.
+
 ## 7. 출력 계약과 실패 경로
 
 **스키마(Pydantic):** `status`(ok/partial/insufficient/failed) · `verdict`(fine/watch/act/null) · `vessel_match`(confirmed/uncertain/none) · `vessel_candidates` · `missing_inputs` · `reasons`(1층 규칙 이름+값) · `conflicts`(상충 쌍과 선택 이유) · `actions` · `days_margin`(코드 계산, LLM 덮어쓰기 금지) · `vessel` · `position`(freshness 포함) · `eta` · `customs` · `berth` · `evidence`(출처·원본·조회 시각) · `answer`

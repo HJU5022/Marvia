@@ -55,7 +55,7 @@ repo/
 | # | 작업 | 완료 기준 | 시점 |
 | --- | --- | --- | --- |
 | B1 | FastMCP 서버 뼈대, Streamable HTTP `/mcp` | MCP 클라이언트(Claude Desktop 또는 langchain-mcp-adapters)로 tool 목록 조회 | 9/23 |
-| B2 | ShipFinder 클라이언트: VesselSearch, VesselPositionSingle. status 코드 매핑(0, 3, 9, 21, 23, 29) | 오늘 확인한 MMSI 440063450 조회 성공 | 9/23 |
+| B2 | ShipFinder 클라이언트: VesselSearch, VesselPositionSingle. status 코드 매핑(0, 3, 9, 13, 21, 23, 29) | 오늘 확인한 MMSI 440063450 조회 성공 | 9/23 |
 | B3 | 도구 `get_vessel_candidates`: 후보 목록 + 유사도 + last_time. 같은 IMO면 최신 MMSI만 | PANSTAR 검색 시 후보 복수 반환 | 9/29 |
 | B4 | 도구 `get_live_position`: 원본 값과 last_time 반환 (freshness 판정은 C-4가 함) | MMSI 440063461 조회 시 last_time이 7월 값으로 반환 | 9/29 |
 | B5 | 해수부 클라이언트: 관제정보(`CntlVssl2/Info`, 부산 prtAgCd), 선박운항정보. 호출부호·선명으로 조회 | 부산항 입항 예정 목록 1회 수신 | 9/30 |
@@ -159,4 +159,4 @@ C1~C6 계약 고정 뒤 착수. 9/28부터 본격.
 1. 계약 파일(C1~C8) 경로와 PRD 해당 장 번호를 함께 준다
 2. "완료 기준" 열을 그대로 테스트 조건으로 쓴다
 3. 금지 사항을 명시한다: langgraph 설치 금지, 벡터 검색·청킹 금지, 라우터에서 LLM SDK import 금지, 프롬프트 문자열 코드 하드코딩 금지(Langfuse Prompt)
-4. 외부 API 응답은 저장한 실제 JSON을 fixture로 준다 (오늘 받은 ShipFinder 응답 5건이 첫 fixture)
+4. 외부 API 응답은 실제와 형식만 같은 가공 JSON을 fixture로 준다. 실제 응답 원본은 약관상 레포에 올리지 않는다 (SDD 7절)
