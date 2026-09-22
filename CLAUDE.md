@@ -74,7 +74,7 @@ proj2-5/
     requirements.txt    app, mcp, worker가 같은 이미지를 쓰므로 하나
     app/
       main.py           FastAPI 앱, 라우터 등록, 미들웨어(구조화 로그, CORS, 레이트 리밋)
-      routers/          agent.py: POST /api/agent, GET /health
+      routers/          agent.py: POST /api/agent, GET /api/history, GET /health
       schemas/          agent.py(C1, C2), signals.py(C3), customs.py(C5)
       services/         customs.py, signals.py, identify.py, llm.py, validate.py, evidence.py
       clients/          shipfinder.py, mof.py, searoute_client.py
