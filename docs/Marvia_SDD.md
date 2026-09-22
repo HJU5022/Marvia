@@ -8,8 +8,9 @@
 | --- | --- |
 | 목적 | B/L 번호와 판매 예정일을 받아 선박을 식별하고, 신호를 판정해 3단계 verdict와 할 일, 근거를 돌려준다 |
 | 형태 | Next.js UI(Vercel) + FastAPI(Cloud Run) + FastMCP `/mcp` + Postgres + Langfuse |
-| LLM | OpenRouter 경유. 호출은 `app/services/llm.py` 한 곳 |
+| LLM | OpenRouter 경유. 호출은 `backend/app/services/llm.py` 한 곳 |
 | 금지 | langgraph, RAG(청킹·벡터 검색 후 프롬프트 주입), 라우터에서 LLM SDK import, 프롬프트 문자열 하드코딩 |
+| 팀 | 2명, 둘 다 풀스택. 작업 묶음(A~E)별 담당은 두지 않는다. 함정 경험이 필요한 Skill 검수와 라벨 확정만 하정운 |
 
 **범위:** PRD의 P0 기능(F0~F8)과 필수 조건 6개. P1(F9 서류 등록, F10 알림)은 인터페이스만 남기고 구현하지 않는다.
 
@@ -17,28 +18,34 @@
 
 ### 1.1 레포 구조
 
+최상위는 강사 스캐폴드와 1차 히스토리(backend/, frontend/, evals/, skills/, mcp_server/)를 따르고, 루트가 Docker 빌드 컨텍스트다.
+
 ```
 repo/
-  app/
-    main.py                 FastAPI 앱, 라우터 등록, 미들웨어
-    routers/agent.py        POST /api/agent, GET /health
-    schemas/agent.py        C1 AgentRequest, AgentResponse
-    schemas/signals.py      C3 Signal, SignalSet
-    schemas/customs.py      C5 CustomsInfo
-    services/
-      customs.py            UNI-PASS 클라이언트 + 정제
-      signals.py            1층 신호 판정 (rules.md 읽음)
-      identify.py           선박 식별 (코드 1척 확정, 복수는 LLM)
-      llm.py                LLM 호출 단일 지점, tool loop, 검증, 재시도
-      validate.py           출력 검증 7규칙
-      evidence.py           근거 카드 조립, days_margin
-    clients/
-      shipfinder.py         B2
-      mof.py                해수부
-      searoute_client.py
-    observability/
-      langfuse.py           트레이스 데코레이터, prompt fetch
-      logging.py            구조화 로그
+  backend/
+    requirements.txt        app, mcp, worker가 같은 이미지를 쓰므로 하나
+    app/
+      main.py               FastAPI 앱, 라우터 등록, 미들웨어
+      routers/agent.py      POST /api/agent, GET /health
+      schemas/agent.py      C1 AgentRequest, AgentResponse
+      schemas/signals.py    C3 Signal, SignalSet
+      schemas/customs.py    C5 CustomsInfo
+      services/
+        customs.py          UNI-PASS 클라이언트 + 정제
+        signals.py          1층 신호 판정 (rules.md 읽음)
+        identify.py         선박 식별 (코드 1척 확정, 복수는 LLM)
+        llm.py              LLM 호출 단일 지점, tool loop, 검증, 재시도
+        validate.py         출력 검증 7규칙
+        evidence.py         근거 카드 조립, days_margin
+      clients/
+        shipfinder.py       B2
+        mof.py              해수부
+        searoute_client.py
+      observability/
+        langfuse.py         트레이스 데코레이터, prompt fetch
+        logging.py          구조화 로그
+      db/migrations/        *.sql, 기동 시 순서대로 적용 (3.9)
+    tests/                  pytest, 키 없이 fixture로
   mcp_server/
     server.py               FastMCP 앱, /mcp, 토큰 인증
     tools/                  vessel_candidates.py, live_position.py, port_schedule.py, distance.py
@@ -50,15 +57,21 @@ repo/
   worker/
     collector.py            D1 위치 수집
     arrivals.py             D2 입항 실적
-  eval/
+    run.py                  진입점 (compose worker 서비스)
+    targets.json            수집 대상 MMSI
+  evals/
     schema.py               C7
     dataset/                30건 JSON
+    fixtures/               실제 API 응답 저장본 (테스트, REPLAY_MODE)
+    results/                run_eval 결과 JSON
     baseline_rules.py       (a)
     run_eval.py             (a)(b)(c) 실행, 축 채점
     judge.py                LLM-as-judge
-    EVAL_REPORT.md
-  web/                      Next.js
-  docker-compose.yml  Dockerfile  .env.example  README.md
+  frontend/                 Next.js (Vercel), compose 밖
+  scripts/                  손으로 돌리는 확인 스크립트 (MCP 연결 확인, 실제 API 호출 저장)
+  docs/                     PRD, SDD, 작업 리스트, specs/, evidence/(제출 스크린샷)
+  EVAL_REPORT.md            제출물 (루트)
+  docker-compose.yml  Dockerfile  .dockerignore  .env.example  README.md  CLAUDE.md  AGENTS.md
 ```
 
 ## 2. 시스템 아키텍처
@@ -67,7 +80,7 @@ repo/
 
 ```mermaid
 flowchart LR
-  U["사용자 브라우저"] --> W["web: Next.js (Vercel)"]
+  U["사용자 브라우저"] --> W["frontend: Next.js (Vercel)"]
   W -->|"POST /api/agent"| A["app: FastAPI (Cloud Run)"]
   A --> CU["services/customs: UNI-PASS 직접 조회"]
   A --> SG["services/signals: 1층 신호 판정"]
@@ -90,7 +103,7 @@ flowchart LR
 
 | 컴포넌트 | 책임 | 하지 않는 것 |
 | --- | --- | --- |
-| web | 입력, 결과 렌더, 되묻기·실패 화면, 재생 배지 | 외부 API 직접 호출, 키 보유 |
+| frontend | 입력, 결과 렌더, 되묻기·실패 화면, 재생 배지 | 외부 API 직접 호출, 키 보유 |
 | app | 요청 검증, UNI-PASS 조회, 신호 계산, LLM 오케스트레이션, 출력 검증 | 프롬프트 하드코딩, 라우터에서 LLM import |
 | mcp | 외부 데이터 도구 4종 노출 | 판정, freshness 계산 |
 | worker | 대상 선박 위치·입항 실적 수집 | 판정 |
@@ -103,7 +116,7 @@ flowchart LR
 
 | 실행 위치 | 구성 요소 | 포트/주기 | 통신 대상 |
 | --- | --- | --- | --- |
-| Vercel | web (Next.js) | HTTPS | app |
+| Vercel | frontend (Next.js) | HTTPS | app |
 | GCP Cloud Run 서비스 1 | app (FastAPI) | 8000 | UNI-PASS, mcp, OpenRouter, Langfuse, DB |
 | GCP Cloud Run 서비스 2 | mcp (FastMCP) | 8001, 토큰 인증 | ShipFinder, 해수부, DB |
 | GCP Cloud Run Job | worker (collector, arrivals) | Scheduler 3시간 | ShipFinder, 해수부, DB |
@@ -114,7 +127,7 @@ flowchart LR
 ```mermaid
 flowchart TB
   subgraph vercel["Vercel"]
-    W["web"]
+    W["frontend"]
   end
   subgraph gcp["GCP Cloud Run"]
     A["app 서비스 :8000"]
@@ -145,7 +158,7 @@ flowchart TB
   J --> DB
 ```
 
-로컬은 같은 구성을 `docker compose up` 하나로 띄운다 (6장 인프라와 배포). 차이는 web이 compose 밖(Vercel 또는 `npm run dev`)이고, DB가 컨테이너 postgres라는 점만이다.
+로컬은 같은 구성을 `docker compose up` 하나로 띄운다 (6장 인프라와 배포). 차이는 frontend가 compose 밖(Vercel 또는 `npm run dev`)이고, DB가 컨테이너 postgres라는 점만이다.
 
 ### 2.3 기술 스택
 
@@ -360,7 +373,7 @@ CREATE TABLE query_log (
 ```
 
 - 개인정보·화주 정보는 저장하지 않는다. `bl_masked`만 남긴다.
-- 마이그레이션은 `app/db/migrations/*.sql`, 앱 기동 시 순서대로 적용.
+- 마이그레이션은 `backend/app/db/migrations/*.sql`, 앱 기동 시 순서대로 적용.
 
 ## 4. 처리 흐름
 
@@ -393,7 +406,7 @@ POST /api/agent
 
 ```mermaid
 sequenceDiagram
-  participant W as web
+  participant W as frontend
   participant A as app
   participant UP as UNI-PASS
   participant L as services/llm
@@ -419,7 +432,7 @@ sequenceDiagram
 
 ### 4.3 시퀀스 (되묻기)
 
-3단계에서 후보가 2척 이상이면 `identify.llm_pick`이 confidence를 낸다. high가 아니면 `status=insufficient, verdict=null, missing_inputs=[voyage_no, forwarder_eta]`로 바로 응답하고 도구 조회와 판정을 하지 않는다. web은 CandidatePicker를 띄우고, 사용자가 고르거나 입력하면 `resolved_mmsi` 또는 `voyage_no`를 넣어 같은 엔드포인트를 다시 호출한다.
+3단계에서 후보가 2척 이상이면 `identify.llm_pick`이 confidence를 낸다. high가 아니면 `status=insufficient, verdict=null, missing_inputs=[voyage_no, forwarder_eta]`로 바로 응답하고 도구 조회와 판정을 하지 않는다. frontend는 CandidatePicker를 띄우고, 사용자가 고르거나 입력하면 `resolved_mmsi` 또는 `voyage_no`를 넣어 같은 엔드포인트를 다시 호출한다.
 
 ## 5. 컴포넌트 명세
 
@@ -514,16 +527,16 @@ sequenceDiagram
 - `get_prompt(name, label)`: Langfuse Prompt fetch, 60초 캐시.
 - logging.py: JSON 로그 `{request_id, path, model, tokens_in, tokens_out, latency_ms, status}`.
 
-### 5.12 eval/
+### 5.12 evals/
 
 - `baseline_rules.py`: SignalSet → verdict 매핑만. triggered 있으면 act(anchor_wait, dest_changed, customs_hold) 또는 watch(그 외), 없으면 fine. 식별은 유사도 최고 후보 자동.
-- `run_eval.py --config a|b|c`: dataset 30건 × fixtures 주입(REPLAY_MODE) → AgentResponse → 축 채점 → `eval/results/<config>.json`.
+- `run_eval.py --config a|b|c`: dataset 30건 × fixtures 주입(REPLAY_MODE) → AgentResponse → 축 채점 → `evals/results/<config>.json`.
 - 축: verdict_accuracy, act_recall, insufficient_precision, vessel_match_accuracy, grounded(V7 통과율), customs_explanation(judge), schema_pass(V1~V7 위반율).
 - `judge.py`: JUDGE_MODEL로 customs.plain_explanation을 정답 기준과 대조, 0/1 + 이유. judge trace를 결과에 링크.
 - 게이트 판정 출력: act_recall == 1.0, vessel_match 오확정 0, schema_pass >= 0.95, injection 케이스 오작동 0.
 - 완료 기준: (a)(b)(c) 결과 JSON 3개와 EVAL_REPORT.md 표 자동 생성.
 
-### 5.13 web/ (Next.js)
+### 5.13 frontend/ (Next.js)
 
 목업 캔버스 기준. 화면 6개: 내 화물(정상/보류/실패 상태를 같은 화면에서 status로 분기), 조회 이력, 평가 지표, 설정.
 
@@ -540,7 +553,7 @@ sequenceDiagram
 | CandidatePicker | vessel_candidates + missing_inputs 폼 → resolved_mmsi/voyage_no 재요청 |
 | FailureBanner | status failed/partial, 재조회, 해수부 기록만 보기 |
 | HistoryTable | `GET /api/history` (trace 요약) |
-| MetricsPage | `eval/results/*.json` 정적 로드 |
+| MetricsPage | `evals/results/*.json` 정적 로드 |
 | SettingsPage | rules.md 값 표시(읽기 전용, 서버 재시작 필요 안내) |
 
 - 브라우저는 Cloud Run만 호출. 키 노출 없음.
@@ -563,27 +576,27 @@ sequenceDiagram
 - `healthcheck`: app은 `/health`, postgres는 `pg_isready`. app·mcp·worker는 `depends_on: condition: service_healthy`.
 - `.env` 하나를 모든 서비스가 `env_file`로 공유. 컨테이너 안에서 `DATABASE_URL=postgresql://…@postgres:5432/cargo`.
 - 볼륨: `pgdata` 하나. 코드는 개발 시 bind mount(`./app:/srv/app`)로 핫리로드, 배포 이미지에는 COPY.
-- `REPLAY_MODE=true`면 외부 API 대신 `eval/fixtures/`를 읽는다. 키 없이도 compose up 후 데모 3건이 동작해야 한다 (채점자 재현용).
+- `REPLAY_MODE=true`면 외부 API 대신 `evals/fixtures/`를 읽는다. 키 없이도 compose up 후 데모 3건이 동작해야 한다 (채점자 재현용).
 
 ### 6.2 Dockerfile (멀티스테이지, 하나)
 
 ```
 FROM python:3.11-slim AS base
   apt: build-essential, libgeos-dev(searoute 빌드용), curl
-  pip install -r requirements.txt
-  COPY app mcp_server worker eval skills
-FROM base AS app     CMD uvicorn app.main:app --host 0.0.0.0 --port 8000
+  pip install -r backend/requirements.txt
+  COPY backend mcp_server worker evals skills
+FROM base AS app     CMD uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 FROM base AS mcp     CMD python -m mcp_server.server --port 8001
 FROM base AS worker  CMD python -m worker.run
 ```
 
 - `platform: linux/amd64` 명시 (Apple Silicon 팀원 대응, 가이드 15장).
-- 이미지 안에 `.env`나 키를 COPY하지 않는다. `.dockerignore`에 `.env`, `eval/results`, `web/node_modules`.
+- 이미지 안에 `.env`나 키를 COPY하지 않는다. `.dockerignore`에 `.env`, `evals/results`, `frontend/node_modules`.
 - searoute는 시스템 Python에서 빌드 오류가 났으므로 이미지 빌드 단계에서 설치가 되는지 A3에서 먼저 확인한다.
 
-### 6.3 web 배포 (Vercel)
+### 6.3 frontend 배포 (Vercel)
 
-- Vercel이 빌드하므로 compose에는 넣지 않는다. 로컬 확인용 `web/Dockerfile`(node:20-alpine)은 선택.
+- Vercel이 빌드하므로 compose에는 넣지 않는다. 로컬 확인용 `frontend/Dockerfile`(node:20-alpine)은 선택.
 - 환경변수 `NEXT_PUBLIC_API_BASE`로 Cloud Run URL 지정.
 
 ### 6.4 Cloud Run
@@ -618,7 +631,7 @@ open http://localhost:8000/docs
 
 **보안과 신뢰 경계**
 
-- 외부 API 키는 서버 환경변수만. web 번들에 키 없음. `.env` 미커밋, `.env.example`만.
+- 외부 API 키는 서버 환경변수만. frontend 번들에 키 없음. `.env` 미커밋, `.env.example`만.
 - `/mcp`는 Bearer 토큰 필수. `/api/agent`는 `ALLOWED_ORIGINS` CORS 제한. 데모 단계라 사용자 인증은 없고 session_id로 구분한다 (P1에서 카카오 로그인).
 - B/L은 LLM에 조회를 맡기지 않고 코드가 호출한다. 트레이스에는 마스킹.
 - UNI-PASS 응답 중 품명·중량·화주 정보는 LLM에 넘기지 않고 DB에도 저장하지 않는다.
@@ -650,7 +663,7 @@ open http://localhost:8000/docs
 | 단위 | signals(18), validate(7×2), identify(3), customs.refine(3), shipfinder status 매핑(6) | pytest |
 | 계약 | AgentResponse 예시 JSON 검증, MCP 도구 스키마 | pytest + pydantic |
 | 통합 | REPLAY_MODE로 /api/agent 정상·보류·실패 3경로 | pytest + httpx |
-| 평가 | run_eval a/b/c | eval/ |
+| 평가 | run_eval a/b/c | evals/ |
 | 재현 | 다른 팀원 노트북 clone → .env → compose up → /health 10분 내, REPLAY_MODE 데모 1건 | 수동, Apple Silicon 1대 포함 |
 
 ## 10. Claude Code 작업 지시 형식
@@ -662,5 +675,5 @@ open http://localhost:8000/docs
 출력 계약: <1.x>
 완료 기준: <리스트 표의 완료 기준 그대로>
 금지: langgraph, 벡터 검색, 라우터에서 LLM import, 프롬프트 하드코딩
-fixture: eval/fixtures/<파일> (실제 API 응답 저장본)
+fixture: evals/fixtures/<파일> (실제 API 응답 저장본)
 ```
