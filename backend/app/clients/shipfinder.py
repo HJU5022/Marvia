@@ -112,11 +112,15 @@ class ShipFinderClient:
     # 클라이언트를 새로 만들어도 캐시는 남아야 해서 클래스 변수로 둔다
     cache = ResponseCache()
 
+    #: 마지막 호출이 캐시로 답한 시각. 실시간으로 받았으면 None (SDD 8절 "근거에 캐시 표시")
+    last_cached_at: datetime | None
+
     def __init__(self, key: str | None = None, transport: httpx.BaseTransport | None = None):
         self._key = key or os.environ.get("SHIPFINDER_KEY", "")
         if not self._key:
             raise ShipFinderError("bad_key", "SHIPFINDER_KEY가 비어 있습니다")
         self._http = httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SEC, transport=transport)
+        self.last_cached_at = None
 
     def _cached(self, key: str, fetch):
         """호출해 보고, 빈도 초과면 마지막 성공 값을 돌려준다 (SDD 5.2).
@@ -128,11 +132,13 @@ class ShipFinderClient:
         except ShipFinderError as e:
             if e.code != "rate_limited":
                 raise
-            cached = self.cache.get(key)
-            if cached is None:
+            entry = self.cache.entry(key)
+            if entry is None:
                 raise
-            return cached
+            self.last_cached_at = entry.cached_at
+            return entry.value
         self.cache.set(key, value)
+        self.last_cached_at = None
         return value
 
     def close(self) -> None:

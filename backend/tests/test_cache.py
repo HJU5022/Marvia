@@ -67,3 +67,14 @@ def test_entry_expires_after_ttl():
     # 7시간 전에 담긴 값으로 바꿔치면 TTL을 넘겨 버려진다
     cache._store["k"] = CacheEntry(value="v", cached_at=datetime.now(timezone.utc) - timedelta(hours=7))
     assert cache.get("k") is None
+
+
+def test_cache_hit_is_visible():
+    """캐시로 답했으면 언제 담긴 값인지 알 수 있어야 한다 (SDD 8절 근거에 캐시 표시)."""
+    client = _client(["position_busan_anchored.json", "rate_limited.json"])
+
+    client.position(440999001)
+    assert client.last_cached_at is None  # 실시간으로 받았다
+
+    client.position(440999001)
+    assert client.last_cached_at is not None  # 이번엔 캐시가 받아냈다

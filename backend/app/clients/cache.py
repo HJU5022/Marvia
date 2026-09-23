@@ -37,13 +37,18 @@ class ResponseCache:
 
     def get(self, key: str) -> Any | None:
         """TTL 안이면 값을, 지났거나 없으면 None을 돌려준다."""
+        entry = self.entry(key)
+        return entry.value if entry else None
+
+    def entry(self, key: str) -> CacheEntry | None:
+        """값과 함께 언제 담겼는지도 알아야 할 때 쓴다. 근거 카드에 캐시 시각을 적는다 (SDD 8절)."""
         entry = self._store.get(key)
         if entry is None:
             return None
         if not entry.is_fresh(self._ttl):
             del self._store[key]
             return None
-        return entry.value
+        return entry
 
     def clear(self) -> None:
         self._store.clear()

@@ -114,4 +114,8 @@ def get_vessel_candidates(
             )
         )
 
-    return VesselCandidatesResult(candidates=candidates, fetched_at=datetime.now(timezone.utc)).model_dump(mode="json")
+    return VesselCandidatesResult(
+        candidates=candidates,
+        fetched_at=datetime.now(timezone.utc),
+        cached_at=client.last_cached_at,  # 검색이 캐시로 답했으면 그 시각
+    ).model_dump(mode="json")
