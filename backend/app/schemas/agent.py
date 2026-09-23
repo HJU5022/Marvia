@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field, field_validator
 
 # ---- 공용 열거값 (SDD 3.2) ----
 Verdict = Literal["fine", "watch", "act"]
-Status = Literal["ok", "partial", "insufficient", "failed"]
+# unsupported: 지원 범위 밖 요청(부산 외 항만 등). 외부 조회 없이 끝낸다. failed(처리 실패)와 구분한다 (09-23 결정).
+Status = Literal["ok", "partial", "insufficient", "failed", "unsupported"]
 VesselMatch = Literal["confirmed", "uncertain", "none"]
 Freshness = Literal["fresh", "stale", "unknown"]
 
@@ -134,7 +135,7 @@ class BerthInfo(BaseModel):
 
 
 class AgentResponse(BaseModel):
-    """C1. 성공·실패 모두 같은 틀. status가 ok/partial/insufficient/failed를 가른다 (SDD 8절).
+    """C1. 성공·실패 모두 같은 틀. status가 ok/partial/insufficient/failed/unsupported를 가른다 (SDD 8절, unsupported는 09-23 추가).
 
     - insufficient면 verdict는 None이고 missing_inputs 또는 vessel_candidates가 채워진다 (V4·V5).
     - days_margin은 코드 계산값. LLM이 다른 값을 내도 evidence.py가 덮어쓴다 (SDD 5.8).
