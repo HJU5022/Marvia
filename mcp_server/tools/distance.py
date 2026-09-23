@@ -14,6 +14,7 @@ from functools import cache
 import searoute
 
 from mcp_server.rules import rule
+from mcp_server.schemas import DistanceResult, ToolError
 
 _EARTH_RADIUS_NM = 3440.065
 
@@ -46,9 +47,9 @@ def estimate_distance(lat: float, lng: float, sog: float | None = None) -> dict:
         lng: 선박 경도 (WGS84, -180~180)
         sog: 선박 대지속력(노트). 주면 그 속력으로 걸리는 시간(calc_hours_at_sog)도 계산한다
     """
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = datetime.now(timezone.utc)
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
-        return {"error": {"code": "bad_input", "message": f"좌표 범위 밖: {lat}, {lng}", "retryable": False}}
+        return {"error": ToolError(code="bad_input", message=f"좌표 범위 밖: {lat}, {lng}", retryable=False).model_dump()}
 
     try:
         ref = _busan_ref()
@@ -56,20 +57,17 @@ def estimate_distance(lat: float, lng: float, sog: float | None = None) -> dict:
         last_leg = _great_circle_nm(node, ref)
         direct = _great_circle_nm((lat, lng), ref)
         if direct <= last_leg:
-            distance, method = direct, "great_circle"
+            distance = direct  # 노드 안쪽. 항만 접근 구간이라 직선으로 본다
         else:
             # searoute 좌표 순서는 [경도, 위도]
             route = searoute.searoute([lng, lat], [node[1], node[0]], units="naut", append_orig_dest=True)
-            distance, method = float(route["properties"]["length"]) + last_leg, "searoute"
+            distance = float(route["properties"]["length"]) + last_leg
     except Exception as e:  # searoute는 좌표·항로망 문제를 다양한 예외로 던진다
-        return {"error": {"code": "route_failed", "message": f"{type(e).__name__}: {e}", "retryable": False}}
+        return {"error": ToolError(code="route_failed", message=f"{type(e).__name__}: {e}", retryable=False).model_dump()}
 
     distance_nm = round(distance, 1)
-    return {
-        "distance_nm": distance_nm,
-        "calc_hours_at_sog": round(distance_nm / sog, 1) if sog and sog > 0 else None,
-        "method": method,
-        "busan_ref": {"lat": ref[0], "lng": ref[1]},
-        "source": "searoute",
-        "fetched_at": fetched_at,
-    }
+    return DistanceResult(
+        distance_nm=distance_nm,
+        calc_hours_at_sog=round(distance_nm / sog, 1) if sog and sog > 0 else None,
+        fetched_at=fetched_at,
+    ).model_dump(mode="json")

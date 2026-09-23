@@ -1,0 +1,93 @@
+"""도구 get_vessel_candidates (작업 B3). 선명으로 선박 후보를 찾는다.
+
+UNI-PASS는 선명과 국적만 주고 IMO·호출부호를 주지 않는다 (PRD 6.6). 그래서 선명으로 검색한 뒤
+어느 배인지는 받는 쪽이 정한다. 동명 선박이 흔해서 후보를 좁히지 않고 그대로 넘기는 것이 이 도구의 일이다.
+
+호출 비용: VesselSearch는 1회지만 후보의 목적지·선종·국적은 검색 응답에 없어서
+후보마다 VesselPositionSingle과 VesselFlagInfo를 한 번씩 더 불러야 한다. 스타터 키의 빈도 제한
+(status 23·29)을 생각해 상세 조회는 상위 MAX_LOOKUPS명까지만 한다.
+
+출력 계약은 mcp_server/schemas.py의 VesselCandidatesResult다 (C4, SDD 3.4).
+"""
+from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
+
+from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError, VesselHit
+from mcp_server.schemas import ToolError, VesselCandidate, VesselCandidatesResult
+
+MAX_LOOKUPS = 5  # 상세 조회(위치·국적)를 붙일 후보 수 상한
+IMO_RANGE = range(1000000, 10000000)  # 실제 응답에 7자리가 아닌 IMO가 섞여 온다
+
+make_client = ShipFinderClient  # 테스트가 fixture 클라이언트로 바꿔 끼우는 자리
+
+
+def _similarity(query: str, name: str) -> float:
+    return round(SequenceMatcher(None, query.upper().strip(), name.upper().strip()).ratio(), 2)
+
+
+def _newest_per_imo(hits: list[VesselHit]) -> list[VesselHit]:
+    """같은 IMO면 last_time이 가장 최신인 1건만 남긴다 (C4).
+
+    IMO가 없거나 7자리가 아닌 값은 서로 다른 배로 본다. 실제 응답에 357289382 같은
+    값이 섞여 와서, 이런 값으로 묶으면 남의 배를 한 척으로 합쳐 버린다.
+    """
+    newest: dict[int, VesselHit] = {}
+    kept: list[VesselHit] = []
+    for hit in hits:
+        if hit.imo not in IMO_RANGE:
+            kept.append(hit)
+            continue
+        seen = newest.get(hit.imo)
+        if seen is None or (hit.last_time or datetime.min.replace(tzinfo=timezone.utc)) > (
+            seen.last_time or datetime.min.replace(tzinfo=timezone.utc)
+        ):
+            newest[hit.imo] = hit
+    return kept + list(newest.values())
+
+
+def get_vessel_candidates(ship_name: str, nationality: str | None = None, eta_window_days: int = 7) -> dict:
+    """선명만 아는 상태에서 그 이름을 쓰는 선박 후보를 모두 볼 때 쓴다.
+
+    동명 선박이 있으면 여러 척을 돌려준다. 어느 배인지 고르는 것은 이 도구가 하지 않는다.
+
+    Args:
+        ship_name: 찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다
+        nationality: 아는 국적(예: Panama). 주면 국적이 다른 후보를 뺀다
+        eta_window_days: 이 기간보다 오래 전에 마지막 신호를 보낸 후보는 뺀다. 기본 7일
+    """
+    try:
+        client = make_client()
+        hits = client.search(ship_name, max=10).hits
+    except ShipFinderError as e:
+        return {"error": ToolError(**e.to_dict()).model_dump()}
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=eta_window_days)
+    fresh = [h for h in _newest_per_imo(hits) if h.last_time and h.last_time >= cutoff]
+    fresh.sort(key=lambda h: (_similarity(ship_name, h.ship_name), h.last_time), reverse=True)
+
+    candidates = []
+    for hit in fresh:
+        dest = ship_type = flag = None
+        if len(candidates) < MAX_LOOKUPS:  # 상세 조회는 상위 후보까지만 (호출 한도)
+            try:
+                pos = client.position(hit.mmsi)
+                dest, ship_type = pos.dest, pos.ship_type
+                flag = client.flag(hit.mmsi)
+            except ShipFinderError:
+                pass  # 상세를 못 받아도 후보 자체는 남긴다. 판단 근거가 줄 뿐이다
+        if nationality and flag and nationality.lower() not in flag.lower():
+            continue
+        candidates.append(
+            VesselCandidate(
+                mmsi=hit.mmsi,
+                imo=hit.imo,
+                name=hit.ship_name,
+                flag=flag,
+                dest=dest,
+                last_time=hit.last_time,
+                ship_type=ship_type,
+                similarity=_similarity(ship_name, hit.ship_name),
+            )
+        )
+
+    return VesselCandidatesResult(candidates=candidates, fetched_at=datetime.now(timezone.utc)).model_dump(mode="json")
