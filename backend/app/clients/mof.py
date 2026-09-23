@@ -134,7 +134,7 @@ class MofClient:
     def close(self) -> None:
         self._http.close()
 
-    def _fetch(self, url: str, label: str, start: date, end: date, call_sign: str | None, prt_ag_cd: str, rows: int):
+    def _fetch(self, url: str, label: str, start: date, end: date, call_sign: str | None, prt_ag_cd: str, rows: int, page: int = 1):
         """두 API가 파라미터와 오류 형식이 같아 호출부를 공유한다."""
         params = {
             "serviceKey": self._key,
@@ -142,7 +142,7 @@ class MofClient:
             "sde": start.strftime("%Y%m%d"),
             "ede": end.strftime("%Y%m%d"),
             "numOfRows": min(rows, MAX_ROWS),
-            "pageNo": 1,
+            "pageNo": page,
         }
         if call_sign:
             params["clsgn"] = call_sign
@@ -176,10 +176,21 @@ class MofClient:
         call_sign: str | None = None,
         prt_ag_cd: str = BUSAN_PRT_AG_CD,
         rows: int = MAX_ROWS,
+        max_pages: int = 1,
     ) -> list[VesselCall]:
-        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다."""
-        root = self._fetch(CONTROL_URL, "CntlVssl2", start, end, call_sign, prt_ag_cd, rows)
-        return [self._to_call(item) for item in root.iter("item")]
+        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다.
+
+        부산은 하루 100건이 넘고 한 번에 50건까지만 온다. 호출부호 없이 선명으로 찾을 때는
+        max_pages를 올려 뒤 페이지까지 봐야 그 배가 목록에 들어온다.
+        """
+        records = []
+        for page in range(1, max_pages + 1):
+            root = self._fetch(CONTROL_URL, "CntlVssl2", start, end, call_sign, prt_ag_cd, rows, page)
+            items = [self._to_call(item) for item in root.iter("item")]
+            records.extend(items)
+            if len(items) < min(rows, MAX_ROWS):
+                break  # 마지막 페이지다
+        return records
 
     def sailing_plans(
         self,
@@ -188,13 +199,20 @@ class MofClient:
         call_sign: str | None = None,
         prt_ag_cd: str = BUSAN_PRT_AG_CD,
         rows: int = MAX_ROWS,
+        max_pages: int = 1,
     ) -> list[SailingPlan]:
         """입출항 신고 기준 운항정보. 미래 날짜를 주면 입항 예정이 나온다.
 
         관제정보와 달리 아직 안 들어온 배도 준다. 신고가 바뀌면 reqstSeNm이 변경으로 온다.
         """
-        root = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, call_sign, prt_ag_cd, rows)
-        return [self._to_plan(item) for item in root.iter("item")]
+        plans = []
+        for page in range(1, max_pages + 1):
+            root = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, call_sign, prt_ag_cd, rows, page)
+            items = [self._to_plan(item) for item in root.iter("item")]
+            plans.extend(items)
+            if len(items) < min(rows, MAX_ROWS):
+                break
+        return plans
 
     @staticmethod
     def _to_plan(item) -> SailingPlan:

@@ -26,6 +26,7 @@ from mcp_server.schemas import ControlEvent, PortScheduleResult, ToolError
 LOOKBACK_DAYS = 3  # 실적을 며칠 전까지 볼지
 LOOKAHEAD_DAYS = 7  # 입항 예정을 며칠 뒤까지 볼지
 NAME_MATCH_RATIO = 0.85  # 이 이상 닮았으면 같은 배로 본다
+NAME_SEARCH_PAGES = 5  # 선명으로 찾을 때 볼 페이지 수. 부산은 하루 100건이 넘는다
 
 make_client = MofClient  # 테스트가 fixture 클라이언트로 바꿔 끼우는 자리
 
@@ -45,7 +46,8 @@ def _by_name(records: list, ship_name: str | None) -> list:
     """선명으로 거른다. 호출부호로 조회했으면 보통 1건이라 그대로 지나간다.
 
     정확히 같은 이름 → 한쪽이 다른 쪽을 품는 이름 → 많이 닮은 이름 순으로 찾는다.
-    아무것도 못 찾으면 거르지 않고 전부 돌려준다. 선명이 달라 보여도 그 배일 수 있어서다.
+    아무것도 못 찾으면 빈 목록을 돌려준다. 남의 배 입항 시각을 그 배 것처럼 답하는 쪽이
+    아무 답도 없는 쪽보다 나쁘다.
     """
     if not ship_name:
         return records
@@ -60,8 +62,7 @@ def _by_name(records: list, ship_name: str | None) -> list:
     partial = [r for r, n in names if n and (target in n or n in target)]
     if partial:
         return partial
-    close = [r for r, n in names if n and SequenceMatcher(None, target, n).ratio() >= NAME_MATCH_RATIO]
-    return close or records
+    return [r for r, n in names if n and SequenceMatcher(None, target, n).ratio() >= NAME_MATCH_RATIO]
 
 
 def _pick(calls: list[VesselCall], ship_name: str | None) -> VesselCall | None:
@@ -106,10 +107,12 @@ def get_port_schedule(
 
     today = date.today()
     client = make_client()
+    # 호출부호가 있으면 API가 걸러 주므로 한 페이지면 된다. 선명으로 찾을 때는 뒤 페이지까지 본다
+    pages = 1 if call_sign else NAME_SEARCH_PAGES
     try:
-        calls = client.control_records(today - timedelta(days=lookback_days), today, call_sign=call_sign)
+        calls = client.control_records(today - timedelta(days=lookback_days), today, call_sign=call_sign, max_pages=pages)
         plans = (
-            client.sailing_plans(today, today + timedelta(days=lookahead_days), call_sign=call_sign)
+            client.sailing_plans(today, today + timedelta(days=lookahead_days), call_sign=call_sign, max_pages=pages)
             if lookahead_days
             else []
         )

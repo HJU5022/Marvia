@@ -109,8 +109,25 @@ def test_name_match_ignores_spacing_and_suffix(fake):
     assert result["actual_arrival"].startswith("2026-09-22T22:30")
 
 
-def test_name_match_falls_back_to_all_when_nothing_matches(fake):
-    """닮은 이름이 없으면 거르지 않는다. 선명이 달라 보여도 그 배일 수 있다."""
+def test_unmatched_name_returns_empty_not_another_vessel(fake):
+    """닮은 이름이 없으면 빈 결과다. 남의 배 입항 시각을 그 배 것처럼 답하면 안 된다."""
     fake()
     result = get_port_schedule(ship_name="전혀다른배이름")
-    assert result["actual_arrival"] is not None
+    assert result["actual_arrival"] is None and result["planned_arrival"] is None
+    assert result["control_events"] == [] and "error" not in result
+
+
+def test_name_search_reads_more_pages(fake):
+    """호출부호 없이 선명으로 찾을 때는 뒤 페이지까지 본다. 부산은 하루 100건이 넘는다."""
+    calls = []
+    fake(calls=calls)
+    get_port_schedule(ship_name="테스트예선1호")
+    pages = [c.url.params.get("pageNo") for c in calls]
+    assert pages.count("1") >= 1  # fixture가 한 페이지뿐이라 첫 장에서 멈춘다
+
+
+def test_call_sign_search_reads_one_page(fake):
+    calls = []
+    fake(calls=calls)
+    get_port_schedule(call_sign="TEST01")
+    assert all(c.url.params.get("pageNo") == "1" for c in calls)
