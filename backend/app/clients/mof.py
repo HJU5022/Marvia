@@ -109,6 +109,7 @@ class ArrivalReport:
     call_sign: str | None
     ship_name: str
     nationality: str | None
+    ship_kind: str | None       # vsslKndNm. 워커가 풀컨테이너선만 추적 대상으로 고를 때 쓴다
     stage: str | None           # reqstSeNm: 최초/변경/최종
     arrival_at: datetime | None  # etryptDt. 최종이면 실제 입항 시각에 가깝다
     facility: str | None        # laidupFcltyNm, 신고한 선석 또는 박지
@@ -157,20 +158,30 @@ class MofClient:
         prt_ag_cd: str = BUSAN_PRT_AG_CD,
         rows: int = MAX_ROWS,
     ) -> list[VesselCall]:
-        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다."""
-        params = {
-            "serviceKey": self._key,
-            "prtAgCd": prt_ag_cd,
-            "sde": start.strftime("%Y%m%d"),
-            "ede": end.strftime("%Y%m%d"),
-            "numOfRows": min(rows, MAX_ROWS),
-            "pageNo": 1,
-        }
-        if call_sign:
-            params["clsgn"] = call_sign
+        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다.
 
-        root = self._get(BASE_URL, params, label="관제정보")
-        return [self._to_call(item) for item in root.iter("item")]
+        페이지를 끝까지 넘긴다. 호출부호로 부르면 보통 한 페이지지만, 워커는 부산 전체를
+        받아서 여러 페이지가 된다 (3일치 332척 = 7페이지, 2026-09-23 실측).
+        """
+        calls: list[VesselCall] = []
+        for page in range(1, MAX_PAGES + 1):
+            params = {
+                "serviceKey": self._key,
+                "prtAgCd": prt_ag_cd,
+                "sde": start.strftime("%Y%m%d"),
+                "ede": end.strftime("%Y%m%d"),
+                "numOfRows": min(rows, MAX_ROWS),
+                "pageNo": page,
+            }
+            if call_sign:
+                params["clsgn"] = call_sign
+            root = self._get(BASE_URL, params, label="관제정보")
+            items = list(root.iter("item"))
+            calls.extend(self._to_call(item) for item in items)
+            total = _int(root.findtext(".//totalCount")) or 0
+            if not items or page * params["numOfRows"] >= total:
+                break
+        return calls
 
     def arrival_reports(
         self,
@@ -251,6 +262,7 @@ class MofClient:
                     call_sign=_text(item, "clsgn"),
                     ship_name=_text(item, "vsslNm") or "",
                     nationality=_text(item, "vsslNltyNm"),
+                    ship_kind=_text(item, "vsslKndNm"),
                     stage=_text(detail, "reqstSeNm"),
                     arrival_at=_dt(_text(detail, "etryptDt")),
                     facility=_text(detail, "laidupFcltyNm"),
