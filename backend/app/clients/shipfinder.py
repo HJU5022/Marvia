@@ -1,7 +1,7 @@
 """ShipFinder AIS API 클라이언트 (작업 B2).
 
 VesselSearch(선박 검색)와 VesselPositionSingle(단일 선박 위치) 두 개만 부릅니다.
-MCP 도구(B3·B4)와 수집 워커(D1)가 이 클라이언트를 같이 씁니다.
+MCP 도구(B3·B4)와 수집 워커(D1)가 이 클라이언트를 같이 씁니다. 위치는 SDD 1.1·CLAUDE.md의 backend/app/clients/.
 
 - 값은 원본 그대로 돌려주고 판정(freshness 등)은 하지 않습니다. 판정은 services/signals.py 몫입니다.
 - API의 "무효" 표시값(sog -1, hdg 511, eta 0 등)만 None으로 바꾸고, 원본은 raw에 남깁니다.
@@ -21,14 +21,16 @@ BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
 TIMEOUT_SEC = 10.0
 
 # SDD 5.2 상태 코드 매핑. 목록에 없는 코드는 "error".
+# 13 = Server busy (docs.shipfinder.com/8401497m0). 잠시 뒤 다시 부르면 되므로 retryable (09-22 확인).
 _STATUS_CODES = {
     3: "not_found",
     9: "bad_key",
+    13: "busy",
     21: "no_permission",
     23: "rate_limited",
     29: "rate_limited",
 }
-_RETRYABLE = {"rate_limited", "timeout"}
+_RETRYABLE = {"busy", "rate_limited", "timeout"}
 
 
 class ShipFinderError(Exception):
