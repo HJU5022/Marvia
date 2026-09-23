@@ -12,6 +12,9 @@
 출력 계약은 mcp_server/schemas.py의 PortScheduleResult다 (C4, SDD 3.4).
 """
 from datetime import date, datetime, timedelta, timezone
+from typing import Annotated
+
+from pydantic import Field
 
 from backend.app.clients.mof import MofClient, MofError, VesselCall
 from mcp_server.schemas import ControlEvent, PortScheduleResult, ToolError
@@ -34,16 +37,17 @@ def _pick(calls: list[VesselCall], ship_name: str | None) -> VesselCall | None:
     return max(calls, key=lambda c: c.actual_arrival or c.reported_arrival or datetime.min.replace(tzinfo=timezone.utc))
 
 
-def get_port_schedule(call_sign: str | None = None, ship_name: str | None = None, lookback_days: int = LOOKBACK_DAYS) -> dict:
-    """부산항에 그 배가 들어왔는지, 어느 부두에 붙었는지 확인할 때 쓴다.
+def get_port_schedule(
+    call_sign: Annotated[str | None, Field(description="선박 호출부호. 이걸 알면 가장 정확하다")] = None,
+    ship_name: Annotated[str | None, Field(description="선명. 호출부호를 모를 때 쓴다")] = None,
+    lookback_days: Annotated[int, Field(description="오늘부터 며칠 전까지 볼지. 기본 3일", ge=1, le=30)] = LOOKBACK_DAYS,
+) -> dict:
+    """해수부 관제 기록에서 그 배가 부산항에 실제로 들어왔는지와 접안 부두를 확인한다.
 
-    호출부호를 알면 그것으로 조회하는 편이 정확하다. 선명만 알면 최근 기간 전체를 받아 이름으로 고른다.
-    AIS 위치와 어긋날 때 어느 쪽을 믿을지 가르는 근거가 된다.
-
-    Args:
-        call_sign: 선박 호출부호. UNI-PASS나 관제정보에서 얻는다
-        ship_name: 선명. 호출부호를 모를 때 쓴다
-        lookback_days: 오늘부터 며칠 전까지 볼지. 기본 3일
+    call_sign이나 ship_name 중 하나는 반드시 준다.
+    AIS 위치나 AIS ETA와 어긋날 때는 이 기록을 먼저 믿는다. 관제 실적이 가장 확실한 근거다.
+    돌려주는 값: actual_arrival(실제 입항), facility(접안 시설), control_events(입항·접안·이안·출항), fetched_at.
+    planned_arrival은 이 API가 주지 않아 항상 비어 있다. 기록이 없으면 아직 안 들어온 것일 수 있다.
     """
     if not call_sign and not ship_name:
         return {"error": ToolError(code="bad_input", message="call_sign이나 ship_name 중 하나는 필요하다", retryable=False).model_dump()}

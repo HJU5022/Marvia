@@ -10,8 +10,10 @@ searoute 항로망은 노드가 성겨서 부산 기준점에 가장 가까운 �
 import math
 from datetime import datetime, timezone
 from functools import cache
+from typing import Annotated
 
 import searoute
+from pydantic import Field
 
 from mcp_server.rules import rule
 from mcp_server.schemas import DistanceResult, ToolError
@@ -39,13 +41,16 @@ def _busan_node() -> tuple[float, float]:
     return (lat, lng)
 
 
-def estimate_distance(lat: float, lng: float, sog: float | None = None) -> dict:
-    """선박 좌표에서 부산항까지 남은 해상 거리(해리)를 계산할 때 쓴다.
+def estimate_distance(
+    lat: Annotated[float, Field(description="선박 위도. WGS84, -90~90", ge=-90, le=90)],
+    lng: Annotated[float, Field(description="선박 경도. WGS84, -180~180", ge=-180, le=180)],
+    sog: Annotated[float | None, Field(description="선박 대지속력(노트). 주면 그 속력으로 걸리는 시간도 함께 계산한다")] = None,
+) -> dict:
+    """선박이 부산항까지 얼마나 남았는지 해상 거리(해리)를 구한다.
 
-    Args:
-        lat: 선박 위도 (WGS84, -90~90)
-        lng: 선박 경도 (WGS84, -180~180)
-        sog: 선박 대지속력(노트). 주면 그 속력으로 걸리는 시간(calc_hours_at_sog)도 계산한다
+    get_live_position으로 받은 lat·lng·sog를 그대로 넣는다.
+    돌려주는 값: distance_nm, calc_hours_at_sog(속력을 준 경우), source, fetched_at.
+    이 거리로 도착 시각을 단정하지 않는다. 항로망이 성겨서 30~60해리 구간은 실제보다 크게 나온다.
     """
     fetched_at = datetime.now(timezone.utc)
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):

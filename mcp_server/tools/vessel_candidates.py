@@ -11,6 +11,9 @@ UNI-PASS는 선명과 국적만 주고 IMO·호출부호를 주지 않는다 (PR
 """
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
+from typing import Annotated
+
+from pydantic import Field
 
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError, VesselHit
 from mcp_server.schemas import ToolError, VesselCandidate, VesselCandidatesResult
@@ -45,15 +48,17 @@ def _newest_per_imo(hits: list[VesselHit]) -> list[VesselHit]:
     return kept + list(newest.values())
 
 
-def get_vessel_candidates(ship_name: str, nationality: str | None = None, eta_window_days: int = 7) -> dict:
-    """선명만 아는 상태에서 그 이름을 쓰는 선박 후보를 모두 볼 때 쓴다.
+def get_vessel_candidates(
+    ship_name: Annotated[str, Field(description="찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다")],
+    nationality: Annotated[str | None, Field(description="아는 국적의 영문 표기(예: Panama, Korea). 주면 국적이 다른 후보를 뺀다")] = None,
+    eta_window_days: Annotated[int, Field(description="최근 며칠 안에 신호를 보낸 배만 볼지. 기본 7일", ge=1, le=90)] = 7,
+) -> dict:
+    """선명으로 그 이름을 쓰는 선박 후보를 찾는다. 선박 식별의 첫 단계다.
 
-    동명 선박이 있으면 여러 척을 돌려준다. 어느 배인지 고르는 것은 이 도구가 하지 않는다.
-
-    Args:
-        ship_name: 찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다
-        nationality: 아는 국적(예: Panama). 주면 국적이 다른 후보를 뺀다
-        eta_window_days: 이 기간보다 오래 전에 마지막 신호를 보낸 후보는 뺀다. 기본 7일
+    같은 이름의 배가 흔해서 여러 척이 나온다. 어느 배가 맞는지 이 도구는 정하지 않는다.
+    후보가 둘 이상이고 국적·목적지로도 못 가르면 판정하지 말고 사용자에게 되물어야 한다.
+    돌려주는 값: 후보마다 mmsi, imo, name, flag, dest, ship_type, last_time, similarity.
+    similarity는 선명이 얼마나 비슷한지일 뿐 내 화물 배라는 뜻이 아니다.
     """
     try:
         client = make_client()
