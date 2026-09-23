@@ -26,7 +26,7 @@ class CacheEntry:
 
 
 class ResponseCache:
-    """키 하나에 마지막 성공 응답 하나. 예: shipfinder:pos:440063450"""
+    """키 하나에 마지막 성공 응답 하나. 예: shipfinder:pos:440999001"""
 
     def __init__(self, ttl: timedelta = DEFAULT_TTL):
         self._ttl = ttl

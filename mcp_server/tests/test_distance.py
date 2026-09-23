@@ -13,7 +13,7 @@ def test_southampton_to_busan_matches_prd_check():
 
 def test_vessel_at_busan_north_port_is_near_zero():
     # fixture position_busan_anchored와 같은 좌표 (부산 북항)
-    r = estimate_distance(35.12157, 129.053445)
+    r = estimate_distance(35.1, 129.05)
     assert r["distance_nm"] < 5
 
 

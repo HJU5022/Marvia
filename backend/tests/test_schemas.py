@@ -68,7 +68,7 @@ def test_response_insufficient_example_validates():
     d.update({"status": "insufficient", "verdict": None, "vessel_match": "uncertain", "vessel": None,
               "days_margin": None, "decided_by": None, "reasons": [], "conflicts": [],
               "missing_inputs": ["voyage_no", "forwarder_eta"],
-              "vessel_candidates": [{"mmsi": 440000001, "imo": None, "name": "PANSTAR TEST", "flag": "MH",
+              "vessel_candidates": [{"mmsi": 440000001, "imo": None, "name": "TEST PAN", "flag": "MH",
                                      "dest": "BUSAN", "last_time": NOW.isoformat(), "ship_type": 70,
                                      "match_reasons": ["선명 일치"]}]})
     res = AgentResponse.model_validate(d)

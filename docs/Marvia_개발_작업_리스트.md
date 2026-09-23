@@ -55,9 +55,9 @@ repo/
 | # | 작업 | 완료 기준 | 시점 |
 | --- | --- | --- | --- |
 | B1 | FastMCP 서버 뼈대, Streamable HTTP `/mcp` | MCP 클라이언트(Claude Desktop 또는 langchain-mcp-adapters)로 tool 목록 조회 | 9/23 |
-| B2 | ShipFinder 클라이언트: VesselSearch, VesselPositionSingle. status 코드 매핑(0, 3, 9, 13, 21, 23, 29) | 오늘 확인한 MMSI 440063450 조회 성공 | 9/23 |
-| B3 | 도구 `get_vessel_candidates`: 후보 목록 + 유사도 + last_time. 같은 IMO면 최신 MMSI만 | PANSTAR 검색 시 후보 복수 반환 | 9/29 |
-| B4 | 도구 `get_live_position`: 원본 값과 last_time 반환 (freshness 판정은 C-4가 함) | MMSI 440063461 조회 시 last_time이 7월 값으로 반환 | 9/29 |
+| B2 | ShipFinder 클라이언트: VesselSearch, VesselPositionSingle. status 코드 매핑(0, 3, 9, 13, 21, 23, 29) | 실제 선박 1척 MMSI 조회 성공(MMSI는 로컬에만) | 9/23 |
+| B3 | 도구 `get_vessel_candidates`: 후보 목록 + 유사도 + last_time. 같은 IMO면 최신 MMSI만 | 동명 선박 검색 시 후보 복수 반환 | 9/29 |
+| B4 | 도구 `get_live_position`: 원본 값과 last_time 반환 (freshness 판정은 C-4가 함) | 실제 선박 1척 조회 시 last_time이 7월 값으로 반환(MMSI는 로컬에만) | 9/29 |
 | B5 | 해수부 클라이언트: 관제정보(`CntlVssl2/Info`, 부산 prtAgCd), 선박운항정보. 호출부호·선명으로 조회 | 부산항 입항 예정 목록 1회 수신 | 9/30 |
 | B6 | 도구 `get_port_schedule`: 입항 예정·실적, 접안 시설(fcltyNm) | 실제 선박 1척 매칭 | 10/1 |
 | B7 | searoute 도구 `estimate_distance` (Docker 안에서 빌드) | 부산까지 해리 반환 | 9/30 |
@@ -75,7 +75,7 @@ C1~C6 계약 고정 뒤 착수. 9/28부터 본격.
 | C-2 | `skills/customs-stages/SKILL.md`: 단계 코드(CAGE12 등) 목록, 의미, 다음 단계, 할 일, 관세사 확인 조건 | 단계 코드 전체 확보 | 9/29 |
 | C-3 | `skills/port-busan/SKILL.md`: 부두·정박지 개요, 하역 장소 문장 규칙 | 하정운 검수 | 9/30 |
 | C-4 | 1층 신호 판정 코드 (`app/services/signals.py`): rules.md 읽어 7종 판정 → C3 | 단위 테스트 21건 통과 | 9/29 |
-| C-5 | 선박 식별 로직: 후보 1척이면 코드 확정, 복수면 LLM 판단, uncertain이면 판정 차단 | PANSTAR 케이스가 uncertain | 9/30 |
+| C-5 | 선박 식별 로직: 후보 1척이면 코드 확정, 복수면 LLM 판단, uncertain이면 판정 차단 | 동명 선박(B01) 케이스가 uncertain | 9/30 |
 | C-6 | `services/llm.py`: OpenRouter 호출 단일 지점, Skill 주입, tool call 루프, 모델 A/B 스위치 | 라우터 밖에서 LLM SDK import 없음 | 9/30 |
 | C-7 | 출력 검증 7규칙 (PRD 12장) + 3단계 재시도 + 폴백 | 위반 응답 주입 시 재시도 트레이스 | 10/1 |
 | C-8 | days_margin 코드 계산, LLM 덮어쓰기 금지 울타리 | LLM이 다른 값 내도 코드 값 유지 | 10/1 |
@@ -111,7 +111,7 @@ C1~C6 계약 고정 뒤 착수. 9/28부터 본격.
 | E3 | 조회 진행 표시 (식별 → 위치 → 판정 단계) | 로딩 상태 3단계 | 10/1 |
 | E4 | 결과 화면: 판정 배지(fine/watch/act), 할 일, 지도(stale은 흐리게), 화물 카드, 통관 타임라인, 하역 장소 | C1 응답 전 필드 렌더 | 10/3 |
 | E5 | 근거 카드: evidence 목록 (출처, 값, 조회 시각) | 클릭 시 원본 값 | 10/3 |
-| E6 | 되묻기 화면: vessel_candidates 후보 + 근거, missing_inputs 입력 폼 → 재요청 | PANSTAR 케이스 흐름 | 10/6 |
+| E6 | 되묻기 화면: vessel_candidates 후보 + 근거, missing_inputs 입력 폼 → 재요청 | 동명 선박(B01) 케이스 흐름 | 10/6 |
 | E7 | 실패 화면: status failed/partial 원인, 마지막 확인 시각, 다음 행동 | 타임아웃 모의 시 표시 | 10/6 |
 | E8 | 채팅 후속 질의 UI | 근거 범위 답변 표시 | 10/6 |
 | E9 | 저장 데이터 재생 모드 (데모용 B/L 3개, "재생" 배지) | API 장애 시에도 시연 가능 | 10/7 |

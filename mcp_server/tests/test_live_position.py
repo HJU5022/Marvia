@@ -30,7 +30,7 @@ def test_returns_raw_values_and_both_times(use_fixture):
     use_fixture("position_busan_anchored.json")
     r = get_live_position(440999001)
 
-    assert (r["mmsi"], r["lat"], r["lng"], r["sog"], r["navistat"]) == (440999001, 35.12157, 129.053445, 0.0, 8)
+    assert (r["mmsi"], r["lat"], r["lng"], r["sog"], r["navistat"]) == (440999001, 35.1, 129.05, 0.0, 8)
     assert (r["dest"], r["destcode"]) == ("BUSAN, KR", "KRPUS")
     assert r["source"] == "shipfinder"
     # last_time은 선박이 보고한 시각, fetched_at은 우리가 조회한 시각. 둘 다 있어야 C-4가 stale을 판정한다
