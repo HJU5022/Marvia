@@ -22,7 +22,7 @@ from backend.app.clients.cache import ResponseCache
 from backend.app.clients.retry import with_retry
 
 BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
-TIMEOUT_SEC = 10.0
+TIMEOUT_SEC = float(os.environ.get("SHIPFINDER_TIMEOUT_SEC", 10))  # 환경변수로 조정 가능
 
 # SDD 5.2 상태 코드 매핑. 목록에 없는 코드는 "error".
 # 13 = Server busy (docs.shipfinder.com/8401497m0). 잠시 뒤 다시 부르면 되므로 retryable (09-22 확인).

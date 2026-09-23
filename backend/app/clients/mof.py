@@ -29,7 +29,7 @@ from backend.app.clients.retry import with_retry
 
 CONTROL_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
 SAILING_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
-TIMEOUT_SEC = 15.0
+TIMEOUT_SEC = float(os.environ.get("MOF_TIMEOUT_SEC", 15))  # 환경변수로 조정 가능
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
 

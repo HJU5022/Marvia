@@ -43,9 +43,9 @@ def _busan_node() -> tuple[float, float]:
 
 
 def estimate_distance(
-    lat: Annotated[float, Field(description="선박 위도. WGS84, -90~90", ge=-90, le=90)],
-    lng: Annotated[float, Field(description="선박 경도. WGS84, -180~180", ge=-180, le=180)],
-    sog: Annotated[float | None, Field(description="선박 대지속력(노트). 주면 그 속력으로 걸리는 시간도 함께 계산한다")] = None,
+    lat: Annotated[float, Field(description="선박 위도. WGS84, -90~90. 예: 34.5", ge=-90, le=90)],
+    lng: Annotated[float, Field(description="선박 경도. WGS84, -180~180. 예: 128.8", ge=-180, le=180)],
+    sog: Annotated[float | None, Field(description="선박 대지속력(노트). 예: 12. 주면 그 속력으로 걸리는 시간도 함께 계산한다")] = None,
 ) -> dict:
     """선박이 부산항까지 얼마나 남았는지 해상 거리(해리)를 구한다.
 
