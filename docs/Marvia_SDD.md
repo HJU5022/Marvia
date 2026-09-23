@@ -368,7 +368,7 @@ CREATE TABLE arrivals (
 CREATE INDEX ON arrivals (call_sign, actual_at);
 
 CREATE TABLE api_cache (
-  key TEXT PRIMARY KEY,             -- 예: shipfinder:pos:440326000
+  key TEXT PRIMARY KEY,             -- 예: shipfinder:pos:440999001
   payload JSONB NOT NULL,
   cached_at TIMESTAMPTZ NOT NULL
 );
@@ -467,7 +467,7 @@ sequenceDiagram
 - `search(keywords, max=10)`, `position(mmsi)`. Base `https://api.elaneglobal.com/v1/AIS/`. 키는 query `key=`.
 - status 매핑: 0 ok, 3 not_found, 9 bad_key, 13 busy(retryable), 21 no_permission, 23/29 rate_limited(retryable), 그 외 error.
 - 23/29 시 캐시(최근 값, `cached_at`) 반환. 캐시 TTL 6시간.
-- 완료 기준: fixture 5건(공식 문서 예시 또는 가공값)으로 단위 테스트, MMSI 440063450 실호출 성공(결과는 로컬에만).
+- 완료 기준: fixture 5건(공식 문서 예시 또는 가공값)으로 단위 테스트, 실제 선박 1척 MMSI로 실호출 성공(MMSI·결과는 로컬에만).
 
 ### 5.3 clients/mof.py
 
@@ -495,7 +495,7 @@ sequenceDiagram
 - 1척 → confirmed. 0척 → none.
 - 2척 이상 → llm.pick_vessel() 호출. LLM 출력 스키마 `{choice: mmsi|null, confidence: high|medium|low, reasons_per_candidate: {...}}`. confidence high만 confirmed, 나머지 uncertain.
 - uncertain이면 missing_inputs = ["voyage_no", "forwarder_eta"] 중 아직 없는 것.
-- 완료 기준: PANSTAR fixture(3척) → uncertain, HMM ALGECIRAS fixture(IMO 동일 2건) → 최신 MMSI confirmed.
+- 완료 기준: 동명 선박 fixture(search_same_name) → uncertain, 같은 IMO fixture(search_same_imo, IMO 동일 2건) → 최신 MMSI confirmed.
 
 ### 5.6 services/llm.py
 

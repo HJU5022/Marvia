@@ -58,9 +58,9 @@ def test_keeps_same_name_candidates_and_scores_similarity(fake):
 def test_same_imo_keeps_newest_only(fake):
     fake()
     mmsis = [c["mmsi"] for c in get_vessel_candidates("TEST STAR")["candidates"]]
-    # 440999103·440999104는 IMO가 357289382로 같지만 7자리가 아니라 서로 다른 배로 둔다
+    # 440999103·440999104는 IMO가 300000001로 같지만 7자리가 아니라 서로 다른 배로 둔다
     assert 440999103 in mmsis and 440999104 in mmsis
-    # 9162150(정상 IMO)은 한 척만 남는다
+    # 9900012(정상 IMO)은 한 척만 남는다
     assert len([m for m in mmsis if m == 440999102]) == 1
 
 

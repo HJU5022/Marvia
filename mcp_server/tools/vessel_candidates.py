@@ -36,7 +36,7 @@ def _similarity(query: str, name: str) -> float:
 def _newest_per_imo(hits: list[VesselHit]) -> list[VesselHit]:
     """같은 IMO면 last_time이 가장 최신인 1건만 남긴다 (C4).
 
-    IMO가 없거나 7자리가 아닌 값은 서로 다른 배로 본다. 실제 응답에 357289382 같은
+    IMO가 없거나 7자리가 아닌 값은 서로 다른 배로 본다. 실제 응답에 9자리 같은
     값이 섞여 와서, 이런 값으로 묶으면 남의 배를 한 척으로 합쳐 버린다.
     """
     newest: dict[int, VesselHit] = {}
@@ -70,7 +70,7 @@ def _fetch_details(client: ShipFinderClient, mmsis: list[int]) -> dict[int, tupl
 
 
 def get_vessel_candidates(
-    ship_name: Annotated[str, Field(description="찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다. 예: PANSTAR")],
+    ship_name: Annotated[str, Field(description="찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다. 예: TEST STAR")],
     nationality: Annotated[str | None, Field(description="아는 국적의 영문 표기(예: Panama, Korea). 주면 국적이 다른 후보를 뺀다")] = None,
     eta_window_days: Annotated[int, Field(description="최근 며칠 안에 신호를 보낸 배만 볼지. 예: 7(기본값)", ge=1, le=90)] = 7,
 ) -> dict:

@@ -150,12 +150,12 @@ def test_select_targets_keeps_unmatched_ship_so_it_is_not_searched_again():
 
 def test_collect_positions_saves_and_respects_budget():
     calls = []
-    conn = ScriptedConn(tracked=[413961925, 413961925, 413961925])
+    conn = ScriptedConn(tracked=[440999002, 440999002, 440999002])
     result = collect_positions(conn, _sf("position_ok.json", calls), Budget(2), now=NOW)
     assert len(calls) == 2 and result["tracked"] == 3
     sql, params = conn.inserts[0]
-    assert "INSERT INTO positions" in sql and params[0] == 413961925
-    assert json.loads(params[-1])["mmsi"] == 413961925  # 원본은 raw(JSONB)로 DB에만 남긴다
+    assert "INSERT INTO positions" in sql and params[0] == 440999002
+    assert json.loads(params[-1])["mmsi"] == 440999002  # 원본은 raw(JSONB)로 DB에만 남긴다
 
 
 def test_targets_fit_daily_shipfinder_limit():
