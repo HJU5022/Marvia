@@ -1,7 +1,7 @@
 """계약 C5(UNI-PASS 정제 결과). 근거: SDD 3.5.
 
 책임: UNI-PASS 원본 응답에서 LLM에 넘겨도 되는 필드만 남긴 형태.
-- 넘기는 것: 선명, 국적, 항차, 입항일, 통관 진행 상태·코드, 장치장명, 단계 이력.
+- 넘기는 것: 선명, 국적, 항차, 입항일, 통관 진행 상태·코드, 장치장명, 단계 이력, MRN(배 특정용).
 - 넘기지 않는 것: 품명(prnm), 중량(wght), 세관명, 화주 정보. 이 모델에 아예 필드가 없다.
 - B/L 번호는 LLM에 안 넘기고, 트레이스·로그에는 mask_bl()로 남긴다 (SDD 3.5, 7절).
 """
@@ -30,6 +30,10 @@ class CustomsRecord(BaseModel):
     stage_code: str | None = Field(default=None, description="prgsStCd, 현재 통관 단계 코드")
     stage_name: str | None = Field(default=None, description="csclPrgsStts, 현재 통관 단계명")
     shed_name: str | None = Field(default=None, description="shedNm, 장치장명")
+    mrn: str | None = Field(
+        default=None,
+        description="cargMtNo 앞 11자리, 입항 적하목록 관리번호. 해수부 선박운항정보 mrNum과 같아서 배(호출부호)를 특정한다 (09-23 추가)",
+    )
     stage_history: list[CustomsStage] = Field(default_factory=list)
     bl_masked: str = Field(description="앞4자+****+뒤4자. 로그·트레이스용")
     fetched_at: datetime

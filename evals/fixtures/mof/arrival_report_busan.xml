@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><prtAgNm>부산</prtAgNm><etryptYear>2026</etryptYear><etryptCo>011</etryptCo><clsgn>TEST11</clsgn><vsslNm>테스트컨테이너11</vsslNm><vsslNltyCd>PA</vsslNltyCd><vsslNltyNm>파나마</vsslNltyNm><vsslKndNm>풀컨테이너선</vsslKndNm>
+<details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>테스트 신항 1선석</laidupFcltyNm><mrNum>26TEST0011I</mrNum></detail>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>출항</etryndNm><tkoffDt>2026-09-25T06:00:00+09:00</tkoffDt><laidupFcltyNm>테스트 신항 1선석</laidupFcltyNm><mrNum>26TEST0012E</mrNum></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><prtAgNm>부산</prtAgNm><etryptYear>2026</etryptYear><etryptCo>012</etryptCo><clsgn>TEST12</clsgn><vsslNm>테스트벌크12</vsslNm><vsslNltyCd>KR</vsslNltyCd><vsslNltyNm>대한민국</vsslNltyNm><vsslKndNm>산물선(벌크선)</vsslKndNm>
+<details>
+<detail><reqstSeNm>최종</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-22T13:54:00+09:00</etryptDt><laidupFcltyNm>테스트 남외항 박지</laidupFcltyNm><mrNum>26TEST0021I</mrNum></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><prtAgNm>부산</prtAgNm><etryptYear>2026</etryptYear><etryptCo>013</etryptCo><clsgn>TEST13</clsgn><vsslNm>테스트예선13</vsslNm><vsslNltyCd>KR</vsslNltyCd><vsslNltyNm>대한민국</vsslNltyNm><vsslKndNm>기타 예선</vsslKndNm>
+<details>
+<detail><reqstSeNm>최초</reqstSeNm><etryndNm>출항</etryndNm><tkoffDt>2026-09-24T09:00:00+09:00</tkoffDt><laidupFcltyNm></laidupFcltyNm><mrNum></mrNum></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>3</totalCount></body></response>

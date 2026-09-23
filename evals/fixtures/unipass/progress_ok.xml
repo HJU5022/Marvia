@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cargCsclPrgsInfoQryRtnVo><ntceInfo></ntceInfo><tCnt>1</tCnt>
 <cargCsclPrgsInfoQryVo>
-<cargMtNo>26TESTMT000001</cargMtNo><mblNo>TESTMBL0000001</mblNo><blYy>2026</blYy>
+<cargMtNo>26TEST0099I00010001</cargMtNo><mblNo>TESTMBL0000001</mblNo><blYy>2026</blYy>
 <shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><vydf>0012W</vydf>
 <etprDt>20260925</etprDt><csclPrgsStts>반입신고</csclPrgsStts><prgsStCd>CAGE12</prgsStCd>
 <shedNm>부산항보세창고</shedNm>

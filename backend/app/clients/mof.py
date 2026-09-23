@@ -14,6 +14,15 @@
   입항 예정은 해수부 선박운항정보(별도 활용신청)에서 가져와야 한다
 - MMSI가 없다. 호출부호(clsgn)와 선명으로 ShipFinder 쪽과 맞춰야 한다
 
+선박운항정보에서 확인한 것 (2026-09-23, 부산 실측):
+- 신고 단계(reqstSeNm)는 최초/변경/최종. API는 이력을 주지 않고 현재 단계 값 하나만 준다
+- 입항 뒤 '최종' 신고가 되면 etryptDt가 실제 입항 시각과 거의 같아진다
+  (09-20~22 입항 238척 중 최종 175척, 그중 85%가 관제 입항 시각과 분 단위까지 일치).
+  그래서 입항 "예정"으로 믿을 수 있는 것은 최초·변경 단계 값뿐이다 (SailingPlan.expected_arrival)
+- 입항 detail의 mrNum은 적하목록 관리번호(MRN). 입항은 끝이 I, 출항은 E로 번호가 다르다.
+  UNI-PASS 화물관리번호(cargMtNo) 앞 11자리와 같아서 B/L에서 배를 특정하는 열쇠가 된다
+  (실제 B/L 1건으로 호출부호까지 연결 확인). 선명은 UNI-PASS 영문·해수부 한글이라 맞지 않는다
+
 응답은 XML이다. 값은 원본 그대로 돌려주고 판정은 하지 않는다.
 """
 from __future__ import annotations
@@ -32,6 +41,10 @@ SAILING_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
 TIMEOUT_SEC = float(os.environ.get("MOF_TIMEOUT_SEC", 15))  # 환경변수로 조정 가능
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
+# 기간 전체를 훑을 때 페이지 상한. 부산 5일치 선박운항정보가 12페이지였다 (2026-09-23 실측).
+# 워커(부산 전체 수집)와 MRN 찾기가 쓴다
+MAX_PAGES = 20
+REVISION_FINAL = "최종"
 
 # 관제구분(cntrlNm) 값. 2026-09-22 부산 하루치에서 확인한 6종
 ARRIVAL_KINDS = ("입항", "접안")
@@ -75,7 +88,13 @@ class SailingPlan:
     planned_arrival: datetime | None  # detail etryndNm=입항의 etryptDt
     planned_departure: datetime | None  # detail etryndNm=출항의 tkoffDt
     facility: str | None  # 접안 예정 시설
-    revision: str | None  # reqstSeNm. 최초인지 변경인지
+    revision: str | None  # reqstSeNm. 최초/변경/최종
+    mrn: str | None = None  # 입항 detail의 mrNum, 적하목록 관리번호 (모듈 설명 참고)
+
+    @property
+    def expected_arrival(self) -> datetime | None:
+        """아직 믿을 수 있는 입항 예정. 최종 신고의 시각은 실제 입항 시각이라 예정으로 쓰지 않는다 (모듈 설명)."""
+        return None if self.revision == REVISION_FINAL else self.planned_arrival
 
 
 @dataclass(frozen=True)
@@ -214,15 +233,27 @@ class MofClient:
                 break
         return plans
 
+    def find_plan_by_mrn(self, mrn: str, start: date, end: date) -> SailingPlan | None:
+        """입항 MRN이 같은 신고를 찾는다. B/L → UNI-PASS MRN → 배(호출부호)로 잇는 단계.
+
+        호출부호를 아직 모르니 기간 전체를 훑는다. 출항 MRN(끝이 E)으로는 찾지 않는다.
+        """
+        target = mrn.strip().upper()
+        for plan in self.sailing_plans(start, end, max_pages=MAX_PAGES):
+            if plan.mrn and plan.mrn.upper() == target:
+                return plan
+        return None
+
     @staticmethod
     def _to_plan(item) -> SailingPlan:
-        arrival = departure = facility = revision = None
+        arrival = departure = facility = revision = mrn = None
         for detail in item.iter("detail"):
             kind = _text(detail, "etryndNm")
             if kind == "입항":
                 arrival = _dt(_text(detail, "etryptDt"))
                 facility = _text(detail, "laidupFcltyNm")
                 revision = _text(detail, "reqstSeNm")
+                mrn = _text(detail, "mrNum")
             elif kind == "출항":
                 departure = _dt(_text(detail, "tkoffDt"))
                 facility = facility or _text(detail, "laidupFcltyNm")
@@ -239,6 +270,7 @@ class MofClient:
             planned_departure=departure,
             facility=facility,
             revision=revision,
+            mrn=mrn,
         )
 
     @staticmethod

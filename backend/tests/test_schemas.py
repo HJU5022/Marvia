@@ -83,6 +83,16 @@ def test_response_failed_keeps_evidence():
     assert res.evidence  # 실패해도 근거 카드는 남긴다
 
 
+def test_response_unsupported_for_out_of_scope_port():
+    # 부산 외 항만 요청: 판정·선박 없이 범위 밖 안내만 한다. failed와 다른 상태다.
+    d = _ok_response()
+    d.update({"status": "unsupported", "verdict": None, "vessel_match": "none", "decided_by": None,
+              "days_margin": None, "vessel": None, "position": None, "eta": None, "customs": None, "berth": None,
+              "answer": "부산항 수입 화물만 지원합니다."})
+    res = AgentResponse.model_validate(d)
+    assert res.status == "unsupported" and res.verdict is None
+
+
 def test_response_rejects_unknown_status():
     d = _ok_response(); d["status"] = "maybe"
     with pytest.raises(ValidationError):

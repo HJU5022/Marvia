@@ -89,3 +89,9 @@ def test_timeout_is_retryable():
 
 def test_mask_bl_hides_short_numbers_entirely():
     assert mask_bl("SHORT123") == "********"
+
+
+def test_mrn_is_first_11_chars_of_cargo_number():
+    """화물관리번호 19자리 중 앞 11자리가 MRN이다. 해수부 mrNum과 이어 배를 특정한다 (09-23 실측)."""
+    record = _client("progress_ok.xml").fetch("TESTMBL0000001")
+    assert record.mrn == "26TEST0099I"
