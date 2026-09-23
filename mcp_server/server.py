@@ -17,6 +17,8 @@ import os
 from mcp.server.fastmcp import FastMCP
 
 from mcp_server.tools.distance import estimate_distance
+from mcp_server.tools.live_position import get_live_position
+from mcp_server.tools.vessel_candidates import get_vessel_candidates
 
 DEFAULT_PORT = 8001
 
@@ -28,6 +30,8 @@ mcp = FastMCP(
 )
 
 mcp.tool()(estimate_distance)
+mcp.tool()(get_live_position)
+mcp.tool()(get_vessel_candidates)
 
 
 def main() -> None:

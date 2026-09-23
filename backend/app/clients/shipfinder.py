@@ -148,6 +148,11 @@ class ShipFinderClient:
         ]
         return SearchResult(hits=hits, fetched_at=datetime.now(timezone.utc))
 
+    def flag(self, mmsi: int | str) -> str | None:
+        """선박 등록 국가. MMSI 하나당 한 번 불러야 한다 (VesselFlagInfo)."""
+        body = self._get("VesselFlagInfo", {"mmsi": str(mmsi)})
+        return _text((body.get("data") or {}).get("registry"))
+
     def position(self, mmsi: int | str) -> VesselPosition:
         body = self._get("VesselPositionSingle", {"mmsi": str(mmsi)})
         d = body.get("data")

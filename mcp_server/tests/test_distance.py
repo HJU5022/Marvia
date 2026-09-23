@@ -8,6 +8,7 @@ def test_southampton_to_busan_matches_prd_check():
     r = estimate_distance(50.90, -1.40)
     assert 10_600 < r["distance_nm"] < 10_800
     assert r["source"] == "searoute" and r["fetched_at"]
+    assert set(r) == {"distance_nm", "calc_hours_at_sog", "source", "fetched_at"}  # 계약 C4 그대로
 
 
 def test_vessel_at_busan_north_port_is_near_zero():
@@ -27,7 +28,11 @@ def test_out_of_range_returns_error_not_exception():
     assert r["error"]["code"] == "bad_input" and r["error"]["retryable"] is False
 
 
-def test_busan_ref_comes_from_rules_md():
+def test_busan_ref_comes_from_rules_md(monkeypatch):
     """기준점은 코드 상수가 아니라 rules.md busan_ref가 원본이다 (C6)."""
-    r = estimate_distance(34.0, 128.5)
-    assert r["busan_ref"] == rule("busan_ref")
+    from mcp_server.tools import distance
+
+    base = estimate_distance(34.0, 128.5)["distance_nm"]
+    monkeypatch.setattr(distance, "_busan_ref", lambda: (rule("busan_ref")["lat"] + 1.0, rule("busan_ref")["lng"]))
+    distance._busan_node.cache_clear()
+    assert estimate_distance(34.0, 128.5)["distance_nm"] != base
