@@ -107,3 +107,20 @@ def test_sailing_plans_hit_the_other_endpoint():
 
     assert calls[0].url.path.endswith("/VsslEtrynd5/Info5")
     assert calls[0].url.params["clsgn"] == "TEST01"
+
+
+# ---- 선박운항정보의 MRN과 최종 신고 (2026-09-23 실측 반영). 값은 전부 가공값이다 ----
+
+def test_plan_carries_arrival_mrn_and_excludes_final_from_expected():
+    changed, final = [p for p in _client("arrival_report_busan.xml").sailing_plans(date(2026, 9, 22), date(2026, 9, 26))
+                      if p.planned_arrival]
+    assert (changed.revision, changed.mrn) == ("변경", "26TEST0011I")  # 출항 MRN(끝 E)이 아니라 입항 MRN
+    assert changed.expected_arrival.hour == 12
+    assert final.revision == "최종" and final.planned_arrival is not None and final.expected_arrival is None
+
+
+def test_find_plan_by_mrn_matches_arrival_mrn_only():
+    client = _client("arrival_report_busan.xml")
+    found = client.find_plan_by_mrn("26test0011i", date(2026, 9, 22), date(2026, 9, 26))
+    assert found is not None and found.call_sign == "TEST11"
+    assert client.find_plan_by_mrn("26TEST0012E", date(2026, 9, 22), date(2026, 9, 26)) is None

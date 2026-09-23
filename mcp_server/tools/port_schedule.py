@@ -80,11 +80,15 @@ def _pick(calls: list[VesselCall], ship_name: str | None) -> VesselCall | None:
 
 
 def _pick_plan(plans: list[SailingPlan], ship_name: str | None) -> SailingPlan | None:
-    """예정 중 한 건. 가장 이른 입항 예정을 쓴다. 신고가 여러 번 바뀌어도 시각 기준으로 고른다."""
-    plans = [p for p in _by_name(plans, ship_name) if p.planned_arrival]
+    """예정 중 한 건. 가장 이른 입항 예정을 쓴다. 신고가 여러 번 바뀌어도 시각 기준으로 고른다.
+
+    최종 신고는 뺀다. 입항 뒤 최종이 되면 시각이 실제 입항 시각으로 바뀌어 예정이 아니다
+    (mof.py 모듈 설명, 2026-09-23 부산 실측).
+    """
+    plans = [p for p in _by_name(plans, ship_name) if p.expected_arrival]
     if not plans:
         return None
-    return min(plans, key=lambda p: p.planned_arrival)
+    return min(plans, key=lambda p: p.expected_arrival)
 
 
 def get_port_schedule(
@@ -124,7 +128,7 @@ def get_port_schedule(
     plan = _pick_plan(plans, ship_name)
 
     return PortScheduleResult(
-        planned_arrival=plan.planned_arrival if plan else None,
+        planned_arrival=plan.expected_arrival if plan else None,
         actual_arrival=chosen.actual_arrival if chosen else None,
         # 접안 시설은 실적이 있으면 실적 쪽을 쓴다. 예정은 바뀔 수 있다
         facility=(chosen.facility if chosen else None) or (plan.facility if plan else None),

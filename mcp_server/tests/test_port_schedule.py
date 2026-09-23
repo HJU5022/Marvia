@@ -131,3 +131,13 @@ def test_call_sign_search_reads_one_page(fake):
     fake(calls=calls)
     get_port_schedule(call_sign="TEST01")
     assert all(c.url.params.get("pageNo") == "1" for c in calls)
+
+
+def test_final_revision_is_not_planned_arrival(fake):
+    """최종 신고의 시각은 실제 입항 시각이라 예정으로 돌려주지 않는다 (2026-09-23 실측).
+
+    arrival_report_busan.xml: TEST11은 변경(09-24 12:00), TEST12는 최종(09-22 13:54).
+    """
+    fake(sailing="arrival_report_busan.xml")
+    assert get_port_schedule(call_sign="TEST11", ship_name="테스트컨테이너11")["planned_arrival"].startswith("2026-09-24T12:00")
+    assert get_port_schedule(call_sign="TEST12", ship_name="테스트벌크12")["planned_arrival"] is None
