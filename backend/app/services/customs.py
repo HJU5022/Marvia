@@ -21,6 +21,7 @@ from xml.etree import ElementTree
 
 import httpx
 
+from backend.app.clients.retry import with_retry
 from backend.app.schemas.customs import CustomsRecord, CustomsStage, mask_bl
 
 BASE_URL = "https://unipass.customs.go.kr:38010/ext/rest/cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo"
@@ -102,10 +103,14 @@ class UnipassClient:
             "mblNo" if bl_type.upper() == "MASTER" else "hblNo": number,
         }
 
-        try:
+        def call() -> httpx.Response:
             resp = self._http.get(BASE_URL, params=params)
             resp.raise_for_status()
-            root = ElementTree.fromstring(resp.text)
+            return resp
+
+        try:
+            # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
+            root = ElementTree.fromstring(with_retry(call, name="unipass:cargCsclPrgsInfo").text)
         except httpx.TimeoutException as e:
             raise CustomsError("timeout", "UNI-PASS 응답 시간 초과") from e
         except httpx.HTTPError as e:

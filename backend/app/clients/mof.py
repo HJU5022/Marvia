@@ -21,6 +21,8 @@ from xml.etree import ElementTree
 
 import httpx
 
+from backend.app.clients.retry import with_retry
+
 BASE_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
 TIMEOUT_SEC = 15.0
 BUSAN_PRT_AG_CD = "020"
@@ -130,10 +132,14 @@ class MofClient:
         if call_sign:
             params["clsgn"] = call_sign
 
-        try:
+        def call() -> httpx.Response:
             resp = self._http.get(BASE_URL, params=params)
             resp.raise_for_status()
-            root = ElementTree.fromstring(resp.text)
+            return resp
+
+        try:
+            # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
+            root = ElementTree.fromstring(with_retry(call, name="mof:CntlVssl2").text)
         except httpx.TimeoutException as e:
             raise MofError("timeout", "관제정보 응답 시간 초과") from e
         except httpx.HTTPError as e:
