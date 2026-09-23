@@ -5,7 +5,8 @@ MCP 도구(B3·B4)와 수집 워커(D1)가 이 클라이언트를 같이 씁니�
 
 - 값은 원본 그대로 돌려주고 판정(freshness 등)은 하지 않습니다. 판정은 services/signals.py 몫입니다.
 - API의 "무효" 표시값(sog -1, hdg 511, eta 0 등)만 None으로 바꾸고, 원본은 raw에 남깁니다.
-- 캐시(23·29 대응)는 B8에서 붙입니다.
+- 빈도 초과(23·29)로 실패하면 마지막 성공 응답을 캐시에서 돌려줍니다 (B8, TTL 6시간).
+  캐시 값은 fetched_at이 과거라서 받는 쪽이 오래된 값임을 알 수 있습니다.
 
 명세: https://docs.shipfinder.com/428749512e0 (검색), /428990613e0 (위치), /8401497m0 (상태 코드)
 """
@@ -16,6 +17,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import httpx
+
+from backend.app.clients.cache import ResponseCache
 
 BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
 TIMEOUT_SEC = 10.0
@@ -105,11 +108,31 @@ def _text(value) -> str | None:
 
 
 class ShipFinderClient:
+    # 클라이언트를 새로 만들어도 캐시는 남아야 해서 클래스 변수로 둔다
+    cache = ResponseCache()
+
     def __init__(self, key: str | None = None, transport: httpx.BaseTransport | None = None):
         self._key = key or os.environ.get("SHIPFINDER_KEY", "")
         if not self._key:
             raise ShipFinderError("bad_key", "SHIPFINDER_KEY가 비어 있습니다")
         self._http = httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SEC, transport=transport)
+
+    def _cached(self, key: str, fetch):
+        """호출해 보고, 빈도 초과면 마지막 성공 값을 돌려준다 (SDD 5.2).
+
+        다른 실패(권한 없음, 없는 배 등)는 캐시로 가리지 않는다. 그 실패는 사실이기 때문이다.
+        """
+        try:
+            value = fetch()
+        except ShipFinderError as e:
+            if e.code != "rate_limited":
+                raise
+            cached = self.cache.get(key)
+            if cached is None:
+                raise
+            return cached
+        self.cache.set(key, value)
+        return value
 
     def close(self) -> None:
         self._http.close()
@@ -134,6 +157,9 @@ class ShipFinderClient:
 
     def search(self, keywords: str, max: int = 10) -> SearchResult:
         """선명·호출부호·MMSI·IMO로 검색. max는 API 상한 100."""
+        return self._cached(f"shipfinder:search:{keywords}:{max}", lambda: self._search(keywords, max))
+
+    def _search(self, keywords: str, max: int) -> SearchResult:
         body = self._get("VesselSearch", {"keywords": keywords, "max": min(max, 100)})
         hits = [
             VesselHit(
@@ -150,10 +176,16 @@ class ShipFinderClient:
 
     def flag(self, mmsi: int | str) -> str | None:
         """선박 등록 국가. MMSI 하나당 한 번 불러야 한다 (VesselFlagInfo)."""
+        return self._cached(f"shipfinder:flag:{mmsi}", lambda: self._flag(mmsi))
+
+    def _flag(self, mmsi: int | str) -> str | None:
         body = self._get("VesselFlagInfo", {"mmsi": str(mmsi)})
         return _text((body.get("data") or {}).get("registry"))
 
     def position(self, mmsi: int | str) -> VesselPosition:
+        return self._cached(f"shipfinder:pos:{mmsi}", lambda: self._position(mmsi))
+
+    def _position(self, mmsi: int | str) -> VesselPosition:
         body = self._get("VesselPositionSingle", {"mmsi": str(mmsi)})
         d = body.get("data")
         if not d:

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cargCsclPrgsInfoQryRtnVo><ntceInfo></ntceInfo><tCnt>1</tCnt>
+<cargCsclPrgsInfoQryVo>
+<cargMtNo>26TESTMT000001</cargMtNo><mblNo>TESTMBL0000001</mblNo><blYy>2026</blYy>
+<shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><vydf>0012W</vydf>
+<etprDt>20260925</etprDt><csclPrgsStts>반입신고</csclPrgsStts><prgsStCd>CAGE12</prgsStCd>
+<shedNm>부산항보세창고</shedNm>
+<prnm>의류</prnm><wght>1200</wght><cstmNm>부산세관</cstmNm>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>CAGE01</cargTrcnRelaBsopTpcd><cargTrcnRelaBsopTpcdNm>입항보고</cargTrcnRelaBsopTpcdNm><prcsDttm>20260925081500</prcsDttm></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>CAGE12</cargTrcnRelaBsopTpcd><cargTrcnRelaBsopTpcdNm>반입신고</cargTrcnRelaBsopTpcdNm><prcsDttm>20260925143000</prcsDttm></cargCsclPrgsInfoDtlQryVo>
+</cargCsclPrgsInfoQryVo>
+</cargCsclPrgsInfoQryRtnVo>

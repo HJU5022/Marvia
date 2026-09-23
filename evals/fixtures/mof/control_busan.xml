@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><prtAgNm>부산</prtAgNm><etryptYear>2026</etryptYear><etryptCo>009</etryptCo><clsgn>TEST01</clsgn><vsslKndCd>69</vsslKndCd><vsslKndNm>기타 예선</vsslKndNm><vsslNm>테스트예선1호</vsslNm><vsslGrtg>54</vsslGrtg><vsslNltyCd>KR</vsslNltyCd><vsslNltyNm>대한민국</vsslNltyNm><aprtfEtryptDt>2026-09-22T22:30:00+09:00</aprtfEtryptDt>
+<details>
+<detail><cntrlNm>입항</cntrlNm><cntrlSe>03</cntrlSe><cntrlOpertDt>2026-09-22T22:30:00+09:00</cntrlOpertDt><fcltyCd>*LP</fcltyCd><fcltyNm>대평동호안</fcltyNm></detail>
+<detail><cntrlNm>접안</cntrlNm><cntrlSe>05</cntrlSe><cntrlOpertDt>2026-09-22T23:10:00+09:00</cntrlOpertDt><fcltyNm>대평동호안</fcltyNm></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><prtAgNm>부산</prtAgNm><clsgn>TEST02</clsgn><vsslKndCd>21</vsslKndCd><vsslKndNm>산물선(벌크선)</vsslKndNm><vsslNm>테스트벌크2호</vsslNm><vsslGrtg>4401</vsslGrtg><vsslNltyCd>PA</vsslNltyCd><vsslNltyNm>파나마</vsslNltyNm><aprtfEtryptDt>2026-09-23T06:35:00+09:00</aprtfEtryptDt>
+<details>
+<detail><cntrlNm>출항</cntrlNm><cntrlSe>04</cntrlSe><cntrlOpertDt>2026-09-23T09:00:00+09:00</cntrlOpertDt><fcltyNm></fcltyNm></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>2</totalCount></body></response>
