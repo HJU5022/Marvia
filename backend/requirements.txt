@@ -9,3 +9,4 @@ httpx>=0.27          # 외부 API 호출 (ShipFinder 등)
 pytest>=8.0          # 단위 테스트
 searoute>=1.6        # 부산까지 남은 해상 거리 (B7). 키 불필요
 # asyncpg>=0.30       # Postgres를 쓴다면
+psycopg[binary]>=3.2  # 수집 워커의 Postgres 저장 (D1). 동기 드라이버라 주기 실행 스크립트에 단순하다
