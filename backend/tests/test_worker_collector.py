@@ -158,3 +158,20 @@ def test_collect_positions_saves_and_respects_budget():
 
 def test_max_targets_is_task_list_range():
     assert 20 <= MAX_TARGETS <= 30  # 작업 리스트 D1 "부산행 20~30척"
+
+
+# ---- 실행 진입점. 스케줄러는 기본 꺼져 있어야 한다 (09-23 결정) ----
+from worker import run as worker_run
+
+
+def test_schedule_is_off_by_default(monkeypatch):
+    monkeypatch.delenv("WORKER_SCHEDULE", raising=False)
+    called = []
+    monkeypatch.setattr(worker_run, "run_once", lambda n: called.append(n) or {})
+    assert worker_run.main([]) == 0 and called == []  # 한 번도 수집하지 않고 끝난다
+
+
+def test_once_runs_a_single_collection_with_given_budget(monkeypatch):
+    called = []
+    monkeypatch.setattr(worker_run, "run_once", lambda n: called.append(n) or {})
+    assert worker_run.main(["--once", "--shipfinder-calls", "2"]) == 0 and called == [2]

@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # searoute는 항로망 데이터를 패키지에 들고 있어 빌드 도구가 필요 없다 (2026-09-23 확인)
 COPY backend/ ./backend/
 COPY mcp_server/ ./mcp_server/
+COPY worker/ ./worker/
 COPY skills/ ./skills/
 COPY scripts/ ./scripts/
 COPY evals/ ./evals/
@@ -23,3 +24,8 @@ FROM base AS mcp
 EXPOSE 8001
 ENV MCP_HOST=0.0.0.0 MCP_PORT=8001
 CMD ["python", "-m", "mcp_server.server"]
+
+# 수집 워커 (D1, SDD 6.2). 스케줄러는 기본 꺼짐(WORKER_SCHEDULE=off). 한 번 돌리려면
+# docker compose run --rm worker python -m worker.run --once
+FROM base AS worker
+CMD ["python", "-m", "worker.run"]
