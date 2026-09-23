@@ -14,11 +14,14 @@ FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "fixtures" / "mof"
 
 @pytest.fixture
 def fake(monkeypatch):
-    def _use(fixture: str = "control_busan.xml", calls: list | None = None):
+    """관제정보와 선박운항정보를 경로로 갈라 fixture를 돌려준다."""
+
+    def _use(fixture: str = "control_busan.xml", calls: list | None = None, sailing: str = "sailing_busan.xml"):
         def handler(request: httpx.Request) -> httpx.Response:
             if calls is not None:
                 calls.append(request)
-            return httpx.Response(200, text=(FIXTURES / fixture).read_text(encoding="utf-8"))
+            name = sailing if request.url.path.endswith("Info5") else fixture
+            return httpx.Response(200, text=(FIXTURES / name).read_text(encoding="utf-8"))
 
         client = MofClient(key="test-key", transport=httpx.MockTransport(handler))
         monkeypatch.setattr(port_schedule, "make_client", lambda: client)
@@ -36,10 +39,31 @@ def test_returns_actual_arrival_and_facility(fake):
     assert r["source"] == "mof" and r["fetched_at"]
 
 
-def test_planned_arrival_is_none_for_now(fake):
-    """관제정보는 실적만 준다. 입항 예정은 선박운항정보 연동 후에 채운다."""
+def test_planned_arrival_comes_from_sailing_info(fake):
+    """관제정보는 실적만 준다. 입항 예정은 선박운항정보(Info5)에서 온다."""
     fake()
-    assert get_port_schedule(call_sign="TEST01")["planned_arrival"] is None
+    result = get_port_schedule(call_sign="TEST01", ship_name="테스트예선1호")
+    assert result["planned_arrival"].startswith("2026-09-25T08:00")
+
+
+def test_earliest_plan_wins(fake):
+    """예정이 여럿이면 가장 이른 입항을 쓴다."""
+    fake()
+    assert get_port_schedule(call_sign="TEST03", ship_name="테스트컨테이너3호")["planned_arrival"].startswith("2026-09-24T06:00")
+
+
+def test_actual_facility_wins_over_planned(fake):
+    """실적이 있으면 접안 시설은 실적 쪽을 쓴다. 예정은 바뀔 수 있다."""
+    fake()
+    assert get_port_schedule(call_sign="TEST01", ship_name="테스트예선1호")["facility"] == "대평동호안"
+
+
+def test_lookahead_zero_skips_sailing_call(fake):
+    calls = []
+    fake(calls=calls)
+    result = get_port_schedule(call_sign="TEST01", lookahead_days=0)
+    assert result["planned_arrival"] is None
+    assert not any(c.url.path.endswith("Info5") for c in calls)
 
 
 def test_ship_name_picks_matching_vessel(fake):
@@ -51,7 +75,7 @@ def test_ship_name_picks_matching_vessel(fake):
 
 def test_no_record_is_not_an_error(fake):
     """기록이 없으면 아직 안 들어왔다는 뜻일 수 있다. 빈 결과로 돌려준다."""
-    fake("control_empty.xml")
+    fake("control_empty.xml", sailing="control_empty.xml")
     r = get_port_schedule(call_sign="TEST99")
     assert r["actual_arrival"] is None and r["control_events"] == []
     assert "error" not in r
@@ -73,6 +97,37 @@ def test_requires_call_sign_or_ship_name(fake):
 
 
 def test_api_error_returns_tool_error(fake):
-    fake("invalid_parameter.xml")
+    fake("invalid_parameter.xml", sailing="invalid_parameter.xml")
     r = get_port_schedule(call_sign="TEST01")
     assert r["error"]["code"] == "error" and r["error"]["retryable"] is False
+
+
+def test_name_match_ignores_spacing_and_suffix(fake):
+    """해수부 선명과 입력이 공백·호 접미사만 다르면 같은 배로 본다."""
+    fake()
+    result = get_port_schedule(ship_name="테스트 예선 1")
+    assert result["actual_arrival"].startswith("2026-09-22T22:30")
+
+
+def test_unmatched_name_returns_empty_not_another_vessel(fake):
+    """닮은 이름이 없으면 빈 결과다. 남의 배 입항 시각을 그 배 것처럼 답하면 안 된다."""
+    fake()
+    result = get_port_schedule(ship_name="전혀다른배이름")
+    assert result["actual_arrival"] is None and result["planned_arrival"] is None
+    assert result["control_events"] == [] and "error" not in result
+
+
+def test_name_search_reads_more_pages(fake):
+    """호출부호 없이 선명으로 찾을 때는 뒤 페이지까지 본다. 부산은 하루 100건이 넘는다."""
+    calls = []
+    fake(calls=calls)
+    get_port_schedule(ship_name="테스트예선1호")
+    pages = [c.url.params.get("pageNo") for c in calls]
+    assert pages.count("1") >= 1  # fixture가 한 페이지뿐이라 첫 장에서 멈춘다
+
+
+def test_call_sign_search_reads_one_page(fake):
+    calls = []
+    fake(calls=calls)
+    get_port_schedule(call_sign="TEST01")
+    assert all(c.url.params.get("pageNo") == "1" for c in calls)

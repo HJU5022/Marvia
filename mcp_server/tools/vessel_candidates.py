@@ -5,10 +5,15 @@ UNI-PASS는 선명과 국적만 주고 IMO·호출부호를 주지 않는다 (PR
 
 호출 비용: VesselSearch는 1회지만 후보의 목적지·선종·국적은 검색 응답에 없어서
 후보마다 VesselPositionSingle과 VesselFlagInfo를 한 번씩 더 불러야 한다. 스타터 키의 빈도 제한
-(status 23·29)을 생각해 상세 조회는 상위 MAX_LOOKUPS명까지만 한다.
+(status 23·29)을 생각해 상세 조회는 상위 MAX_LOOKUPS명까지만 하고, 그 안에서는 동시에 부른다.
+순서대로 부르면 5척에 3초가 넘어 p95 목표(15초)를 갉아먹는다.
+
+호출부호(call_sign)는 검색 응답에 있는 값을 그대로 넘긴다. 해수부 조회의 키가 되는데,
+선명은 해수부가 한글이고 ShipFinder가 영문이라 서로 맞추기 어렵다.
 
 출력 계약은 mcp_server/schemas.py의 VesselCandidatesResult다 (C4, SDD 3.4).
 """
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from typing import Annotated
@@ -48,6 +53,22 @@ def _newest_per_imo(hits: list[VesselHit]) -> list[VesselHit]:
     return kept + list(newest.values())
 
 
+def _fetch_details(client: ShipFinderClient, mmsis: list[int]) -> dict[int, tuple]:
+    """후보들의 목적지·선종·국적을 동시에 받아 온다. 실패한 후보는 빈 값으로 둔다."""
+
+    def one(mmsi: int) -> tuple[int, tuple]:
+        try:
+            pos = client.position(mmsi)
+            return mmsi, (pos.dest, pos.ship_type, client.flag(mmsi))
+        except ShipFinderError:
+            return mmsi, (None, None, None)  # 상세가 없어도 후보 자체는 남긴다
+
+    if not mmsis:
+        return {}
+    with ThreadPoolExecutor(max_workers=len(mmsis)) as pool:
+        return dict(pool.map(one, mmsis))
+
+
 def get_vessel_candidates(
     ship_name: Annotated[str, Field(description="찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다")],
     nationality: Annotated[str | None, Field(description="아는 국적의 영문 표기(예: Panama, Korea). 주면 국적이 다른 후보를 뺀다")] = None,
@@ -70,16 +91,13 @@ def get_vessel_candidates(
     fresh = [h for h in _newest_per_imo(hits) if h.last_time and h.last_time >= cutoff]
     fresh.sort(key=lambda h: (_similarity(ship_name, h.ship_name), h.last_time), reverse=True)
 
+    # 상세 조회는 상위 후보까지만 하고, 그 안에서는 동시에 부른다 (호출 한도와 지연 둘 다 고려)
+    details = _fetch_details(client, [h.mmsi for h in fresh[:MAX_LOOKUPS]])
+
     candidates = []
     for hit in fresh:
-        dest = ship_type = flag = None
-        if len(candidates) < MAX_LOOKUPS:  # 상세 조회는 상위 후보까지만 (호출 한도)
-            try:
-                pos = client.position(hit.mmsi)
-                dest, ship_type = pos.dest, pos.ship_type
-                flag = client.flag(hit.mmsi)
-            except ShipFinderError:
-                pass  # 상세를 못 받아도 후보 자체는 남긴다. 판단 근거가 줄 뿐이다
+        dest, ship_type, flag = details.get(hit.mmsi, (None, None, None))
+        # 국적을 모르는 후보는 남긴다. 다르다는 근거가 없는데 빼면 진짜 그 배를 놓친다
         if nationality and flag and nationality.lower() not in flag.lower():
             continue
         candidates.append(
@@ -87,6 +105,7 @@ def get_vessel_candidates(
                 mmsi=hit.mmsi,
                 imo=hit.imo,
                 name=hit.ship_name,
+                call_sign=hit.call_sign,
                 flag=flag,
                 dest=dest,
                 last_time=hit.last_time,
@@ -95,4 +114,8 @@ def get_vessel_candidates(
             )
         )
 
-    return VesselCandidatesResult(candidates=candidates, fetched_at=datetime.now(timezone.utc)).model_dump(mode="json")
+    return VesselCandidatesResult(
+        candidates=candidates,
+        fetched_at=datetime.now(timezone.utc),
+        cached_at=client.last_cached_at,  # 검색이 캐시로 답했으면 그 시각
+    ).model_dump(mode="json")

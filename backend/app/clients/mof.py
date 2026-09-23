@@ -1,7 +1,11 @@
 """해양수산부 공공데이터 클라이언트 (작업 B5).
 
-관제정보(CntlVssl2/Info)를 부른다. 전국 해상교통관제센터가 남긴 관제 실적이고,
-선박 1건 안에 입항·접안·이안·출항 같은 이벤트가 여러 개 들어 있다.
+두 가지를 부른다. 키는 공공데이터포털 하나를 같이 쓴다.
+
+1. 관제정보 CntlVssl2/Info: 관제센터가 남긴 실적. 이미 일어난 일만 준다
+2. 선박운항정보 VsslEtrynd5/Info5: 입출항 신고 기반이라 앞으로 들어올 배도 준다
+
+선박 1건 안에 입항·출항 같은 신고가 detail로 여러 개 들어 있다.
 
 확인한 것 (2026-09-23):
 - 필수 파라미터는 serviceKey, prtAgCd, sde, ede. 하나라도 빠지면 INVALID_REQUEST_PARAMETER_ERROR
@@ -23,7 +27,8 @@ import httpx
 
 from backend.app.clients.retry import with_retry
 
-BASE_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
+CONTROL_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
+SAILING_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
 TIMEOUT_SEC = 15.0
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
@@ -54,6 +59,23 @@ class ControlEvent:
     kind: str
     at: datetime | None
     facility: str | None
+
+
+@dataclass(frozen=True)
+class SailingPlan:
+    """선박운항정보 1건. 신고 기준이라 앞으로 들어올 배의 입항 예정을 담고 있다."""
+
+    call_sign: str | None
+    ship_name: str
+    nationality: str | None
+    ship_kind: str | None
+    purpose: str | None  # 입항 목적 (양하·적하·급유 등)
+    previous_port: str | None
+    next_port: str | None
+    planned_arrival: datetime | None  # detail etryndNm=입항의 etryptDt
+    planned_departure: datetime | None  # detail etryndNm=출항의 tkoffDt
+    facility: str | None  # 접안 예정 시설
+    revision: str | None  # reqstSeNm. 최초인지 변경인지
 
 
 @dataclass(frozen=True)
@@ -112,6 +134,41 @@ class MofClient:
     def close(self) -> None:
         self._http.close()
 
+    def _fetch(self, url: str, label: str, start: date, end: date, call_sign: str | None, prt_ag_cd: str, rows: int, page: int = 1):
+        """두 API가 파라미터와 오류 형식이 같아 호출부를 공유한다."""
+        params = {
+            "serviceKey": self._key,
+            "prtAgCd": prt_ag_cd,
+            "sde": start.strftime("%Y%m%d"),
+            "ede": end.strftime("%Y%m%d"),
+            "numOfRows": min(rows, MAX_ROWS),
+            "pageNo": page,
+        }
+        if call_sign:
+            params["clsgn"] = call_sign
+
+        def call() -> httpx.Response:
+            resp = self._http.get(url, params=params)
+            resp.raise_for_status()
+            return resp
+
+        try:
+            # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
+            root = ElementTree.fromstring(with_retry(call, name=f"mof:{label}").text)
+        except httpx.TimeoutException as e:
+            raise MofError("timeout", f"{label} 응답 시간 초과") from e
+        except httpx.HTTPError as e:
+            raise MofError("error", f"{label} 호출 실패: {type(e).__name__}") from e
+        except ElementTree.ParseError as e:
+            raise MofError("error", f"{label} 응답이 XML이 아닙니다") from e
+
+        result_code = root.findtext(".//resultCode")
+        if result_code and result_code not in ("00", "0"):
+            message = root.findtext(".//resultMsg") or f"resultCode {result_code}"
+            code = "bad_key" if result_code in ("30", "31") else "error"
+            raise MofError(code, message, result_code=result_code)
+        return root
+
     def control_records(
         self,
         start: date,
@@ -119,41 +176,70 @@ class MofClient:
         call_sign: str | None = None,
         prt_ag_cd: str = BUSAN_PRT_AG_CD,
         rows: int = MAX_ROWS,
+        max_pages: int = 1,
     ) -> list[VesselCall]:
-        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다."""
-        params = {
-            "serviceKey": self._key,
-            "prtAgCd": prt_ag_cd,
-            "sde": start.strftime("%Y%m%d"),
-            "ede": end.strftime("%Y%m%d"),
-            "numOfRows": min(rows, MAX_ROWS),
-            "pageNo": 1,
-        }
-        if call_sign:
-            params["clsgn"] = call_sign
+        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다.
 
-        def call() -> httpx.Response:
-            resp = self._http.get(BASE_URL, params=params)
-            resp.raise_for_status()
-            return resp
+        부산은 하루 100건이 넘고 한 번에 50건까지만 온다. 호출부호 없이 선명으로 찾을 때는
+        max_pages를 올려 뒤 페이지까지 봐야 그 배가 목록에 들어온다.
+        """
+        records = []
+        for page in range(1, max_pages + 1):
+            root = self._fetch(CONTROL_URL, "CntlVssl2", start, end, call_sign, prt_ag_cd, rows, page)
+            items = [self._to_call(item) for item in root.iter("item")]
+            records.extend(items)
+            if len(items) < min(rows, MAX_ROWS):
+                break  # 마지막 페이지다
+        return records
 
-        try:
-            # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
-            root = ElementTree.fromstring(with_retry(call, name="mof:CntlVssl2").text)
-        except httpx.TimeoutException as e:
-            raise MofError("timeout", "관제정보 응답 시간 초과") from e
-        except httpx.HTTPError as e:
-            raise MofError("error", f"관제정보 호출 실패: {type(e).__name__}") from e
-        except ElementTree.ParseError as e:
-            raise MofError("error", "관제정보 응답이 XML이 아닙니다") from e
+    def sailing_plans(
+        self,
+        start: date,
+        end: date,
+        call_sign: str | None = None,
+        prt_ag_cd: str = BUSAN_PRT_AG_CD,
+        rows: int = MAX_ROWS,
+        max_pages: int = 1,
+    ) -> list[SailingPlan]:
+        """입출항 신고 기준 운항정보. 미래 날짜를 주면 입항 예정이 나온다.
 
-        result_code = root.findtext(".//resultCode")
-        if result_code and result_code not in ("00", "0"):
-            message = root.findtext(".//resultMsg") or f"resultCode {result_code}"
-            code = "bad_key" if result_code in ("30", "31") else "error"
-            raise MofError(code, message, result_code=result_code)
+        관제정보와 달리 아직 안 들어온 배도 준다. 신고가 바뀌면 reqstSeNm이 변경으로 온다.
+        """
+        plans = []
+        for page in range(1, max_pages + 1):
+            root = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, call_sign, prt_ag_cd, rows, page)
+            items = [self._to_plan(item) for item in root.iter("item")]
+            plans.extend(items)
+            if len(items) < min(rows, MAX_ROWS):
+                break
+        return plans
 
-        return [self._to_call(item) for item in root.iter("item")]
+    @staticmethod
+    def _to_plan(item) -> SailingPlan:
+        arrival = departure = facility = revision = None
+        for detail in item.iter("detail"):
+            kind = _text(detail, "etryndNm")
+            if kind == "입항":
+                arrival = _dt(_text(detail, "etryptDt"))
+                facility = _text(detail, "laidupFcltyNm")
+                revision = _text(detail, "reqstSeNm")
+            elif kind == "출항":
+                departure = _dt(_text(detail, "tkoffDt"))
+                facility = facility or _text(detail, "laidupFcltyNm")
+
+        return SailingPlan(
+            call_sign=_text(item, "clsgn"),
+            ship_name=_text(item, "vsslNm") or "",
+            nationality=_text(item, "vsslNltyNm"),
+            ship_kind=_text(item, "vsslKndNm"),
+            purpose=_text(item, "etryptPurpsNm"),
+            previous_port=_text(item, "prvsDpmprtPrtNm"),
+            next_port=_text(item, "nxlnptPrtNm"),
+            planned_arrival=arrival,
+            planned_departure=departure,
+            facility=facility,
+            revision=revision,
+        )
 
     @staticmethod
     def _to_call(item) -> VesselCall:

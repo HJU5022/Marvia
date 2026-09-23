@@ -17,14 +17,18 @@ import argparse
 import os
 
 import uvicorn
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 from mcp_server.auth import protect
-
 from mcp_server.tools.distance import estimate_distance
 from mcp_server.tools.live_position import get_live_position
 from mcp_server.tools.port_schedule import get_port_schedule
 from mcp_server.tools.vessel_candidates import get_vessel_candidates
+
+# 외부 API 키와 MCP_TOKEN을 .env에서 읽는다. 컨테이너에서는 env_file로 이미 들어와 있고,
+# 그때는 load_dotenv가 기존 값을 덮어쓰지 않는다
+load_dotenv()
 
 DEFAULT_PORT = 8001
 
