@@ -1,15 +1,39 @@
-# 필수 조건 2 — `docker compose up` 한 줄로 전체 서비스가 떠야 합니다.
-# 필요 없는 서비스는 지우고, 필요한 것(redis 등)은 추가하세요.
+# 필수 조건 2. `docker compose up` 한 줄로 전체가 뜬다.
+# app(FastAPI)과 mcp(FastMCP)는 같은 이미지에서 target만 다르게 만든다 (SDD 6.1).
 services:
   api:
-    build: .
+    build:
+      context: .
+      target: app
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app:app@db:5432/app
+      MCP_URL: http://mcp:8001/mcp
     depends_on:
-      - db
-    # Apple Silicon에서 이미지가 안 뜨면 아래 주석을 해제해 보세요
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Apple Silicon에서 이미지가 안 뜨면 주석을 푼다
+    # platform: linux/amd64
+
+  mcp:
+    build:
+      context: .
+      target: mcp
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
     # platform: linux/amd64
 
   db:
@@ -18,6 +42,11 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
       POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     volumes:
       - pgdata:/var/lib/postgresql/data
 
