@@ -10,8 +10,11 @@ import argparse
 import asyncio
 import os
 
+from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+
+load_dotenv()  # MCP_TOKEN을 .env에서 읽는다
 
 
 async def list_tools(url: str, token: str | None = None) -> list[str]:

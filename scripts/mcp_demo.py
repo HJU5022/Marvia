@@ -14,8 +14,11 @@ import asyncio
 import json
 import os
 
+from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+
+load_dotenv()  # MCP_TOKEN을 .env에서 읽는다
 
 DEMO_SHIP_NAME = "PANSTAR"  # 동명 선박이 여러 척이라 되묻기 상황을 보여준다
 DEMO_MMSI = 440063450  # 부산 북항 선박
