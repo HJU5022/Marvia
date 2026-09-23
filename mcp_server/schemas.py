@@ -28,6 +28,7 @@ class VesselCandidate(BaseModel):
     mmsi: int
     imo: int | None
     name: str
+    call_sign: str | None = Field(default=None, description="해수부 조회 키. 선명은 한글·영문이 달라 매칭이 약하다")
     flag: str | None
     dest: str | None
     last_time: datetime | None
