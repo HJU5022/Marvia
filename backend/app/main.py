@@ -1,11 +1,29 @@
 """FastAPI 진입점.
 
-LLM 호출은 여기가 아니라 services/ 아래 한곳에 모으세요.
-3차 프로젝트에서 그 자리에 RAG 그래프가 들어옵니다 — 호출부가 흩어져 있으면 그때 전부 뜯어야 합니다.
-"""
-from fastapi import FastAPI
+라우터 등록과 미들웨어만 둔다. LLM 호출은 services/llm.py 한 곳에서만 한다 (CLAUDE.md).
 
-app = FastAPI(title="2차 프로젝트 API")
+미들웨어:
+- RequestLogMiddleware: 요청마다 JSON 로그 한 줄 (A5, SDD 5.11)
+- CORS: ALLOWED_ORIGINS에 적힌 출처만 (A10, SDD 7절)
+"""
+import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.app.observability.logging import RequestLogMiddleware, setup_logging
+
+setup_logging()
+
+app = FastAPI(title="Marvia API")
+app.add_middleware(RequestLogMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    # 기본값은 로컬 프론트만. 배포에서는 .env의 ALLOWED_ORIGINS에 Vercel 도메인을 넣는다
+    allow_origins=[o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
@@ -14,6 +32,4 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-# TODO: 도메인 엔드포인트를 여기에 추가하세요.
-#   - 요청·응답은 Pydantic 모델로 정의합니다 (필수 조건 3: 출력 계약)
-#   - 요청 ID·사용 모델·토큰 수·지연 시간을 로그에 남깁니다 (축 ③ 구조화 로그)
+# TODO: POST /api/agent 라우터 (A6). 서비스 계층만 부르고 LLM SDK를 import하지 않는다
