@@ -75,7 +75,7 @@ B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 �
 
 ### 6.2 판정 (2층)
 
-**1층 · 코드:** 위치 갱신 6시간 끊김 / AIS ETA와 해수부 입항예정 12시간 차이 / 부산 인근 0.5노트 이하 24시간 정박 / 목적지 변경·깨짐 / 항해상태와 속도 불일치 / 통관 검사 지정·보류. 각각 triggered·clear·unknown. 임계값은 Skill 파일 프론트매터에 두고 코드가 읽는다.
+**1층 · 코드:** 위치 갱신 6시간 끊김 / AIS ETA와 해수부 입항예정 12시간 차이 / 부산 인근 0.5노트 이하 24시간 정박 / 목적지 변경·깨짐 / 항해상태와 속도 불일치 / 통관 검사 지정·보류 / 신뢰 ETA가 판매 예정일을 넘김(sales_date_exceeded, 배가 정상이어도 act). 각각 triggered·clear·unknown. 임계값은 Skill 파일 프론트매터에 두고 코드가 읽는다.
 
 **2층 · LLM:** 신호가 모순이면 어느 출처를 왜 믿는지 정하고 판정. 결정적 신호가 unknown이면(식별 불확정, 위치 없음) 판정하지 않고 되묻기. 판매 예정일까지 여유가 있으면 watch, 없으면 act.
 
@@ -138,6 +138,8 @@ AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(HM
 
 키 발급 4종: UNI-PASS, 공공데이터포털, OpenRouter, Langfuse. ShipFinder는 보유.
 
+**이용 조건:** ShipFinder는 데이터를 내부 연구 목적으로만 쓰고 서면 동의 없이 복사·게시 금지(www.shipfinder.com/Home/Treaty). 해수부 두 API는 이용허락범위 제한 없음, 개발계정 하루 1만 건. UNI-PASS는 조회 정보의 복제·타인 제공 금지(이용약관 15조③). searoute는 Apache-2.0, 내장 항로 데이터 원본은 Eurostat SeaRoute(EUPL-1.2)라 출처 고지. 따라서 실제 API 응답은 DB(내부)에만 두고 레포의 fixture·데모는 가공값으로 만든다.
+
 ## 7. 출력 계약과 실패 경로
 
 **스키마(Pydantic):** `status`(ok/partial/insufficient/failed) · `verdict`(fine/watch/act/null) · `vessel_match`(confirmed/uncertain/none) · `vessel_candidates` · `missing_inputs` · `reasons`(1층 규칙 이름+값) · `conflicts`(상충 쌍과 선택 이유) · `actions` · `days_margin`(코드 계산, LLM 덮어쓰기 금지) · `vessel` · `position`(freshness 포함) · `eta` · `customs` · `berth` · `evidence`(출처·원본·조회 시각) · `answer`
@@ -156,9 +158,11 @@ AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(HM
 
 ## 8. 평가
 
-**데이터:** 해수부 입항 예정에서 부산항 입항 선박 20~30척 선정, ShipFinder로 MMSI 확정, 9/23부터 3~6시간마다 위치 저장. 가상 B/L·모의 통관 단계·가상 판매 예정일을 붙인다(선박·위치는 실제, 나머지는 시뮬레이션이며 발표에서 밝힌다). 입항 후 실제 입항 시각 저장.
+**데이터:** 해수부 입항 예정에서 부산항 입항 선박 20~30척 선정, ShipFinder로 MMSI 확정, 9/23부터 3~6시간마다 위치 저장. 가상 B/L·모의 통관 단계·가상 판매 예정일을 붙인다(라벨링은 실제 수집 스냅샷을 보고 하고, 나머지는 시뮬레이션이며 발표에서 밝힌다). 입항 후 실제 입항 시각 저장. 실제 스냅샷은 DB에만 두고, 레포 `evals/dataset.jsonl`과 Langfuse Dataset에 넣는 fixture 값은 좌표·시각을 옮긴 가공값으로 만든다(ShipFinder 약관, 6.6).
 
 **정답 기준 둘:** ① 판정 정확도 = 판정 시점 스냅샷을 보고 하정운이 정한 verdict·insufficient(모델 출력 보기 전에 확정) ② 예측 적중 = 실제 입항이 신뢰 ETA보다 12시간 넘게 늦었는가(별도 지표).
+
+**판정자 배정:** 30건 초안은 김승욱. 경계 14건의 정답은 하정운(AIS 판독 경험)이 정하고, 정상 8건·실패 8건은 김승욱 초안을 하정운이 검수한다. 문항마다 판정자 이름·날짜·사유 한 줄을 남기고, 이견은 지우지 않고 기록한다.
 
 **평가셋 30건(Langfuse Dataset):**
 
@@ -166,7 +170,7 @@ AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(HM
 | --- | --- | --- |
 | 정상 | 8 | 실시간 수신, ETA 근거 일치. fine 4, 여유 부족으로 act 4 |
 | 경계 | 14 | 판정형 9: 신호 상충 5(아래), 정박 대기 1, 목적지 변경 1, 통관 검사 1, MMSI 중복 1 / 보류형 5: 동명 선박 3, 위치 없음 1, 식별 근거 부족 1 |
-| 실패 유도 | 8 | 없는 B/L, 타임아웃, 권한 없음, 범위 밖, 주입(사용자 입력 1, AIS dest 1) |
+| 실패 유도 | 8 | 없는 B/L, 타임아웃, 권한 없음, 부산 외 항만, LLM 스키마 위반 지속(failed), 주입 3(사용자 입력, AIS dest, MCP 도구 설명) |
 
 verdict 정답 17건, act 정답 최소 6건(act_recall용). 판정형은 상충 해석을, 보류형은 되묻기를 잰다.
 
