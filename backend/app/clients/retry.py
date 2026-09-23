@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Callable, TypeVar
 
@@ -16,8 +17,9 @@ import httpx
 
 T = TypeVar("T")
 
-MAX_ATTEMPTS = 3  # 최초 1회 + 재시도 2회 (SDD 8절)
-BACKOFF_SEC = 0.5  # 시도 사이 대기. 2회차 0.5초, 3회차 1.0초
+# 값은 환경변수로 바꿀 수 있다. 운영에서 외부 API가 느려질 때 코드를 고치지 않으려는 것이다
+MAX_ATTEMPTS = int(os.environ.get("HTTP_MAX_ATTEMPTS", 3))  # 최초 1회 + 재시도 2회 (SDD 8절)
+BACKOFF_SEC = float(os.environ.get("HTTP_BACKOFF_SEC", 0.5))  # 시도 사이 대기. 2회차 0.5초, 3회차 1.0초
 RETRYABLE_STATUS = range(500, 600)
 
 logger = logging.getLogger(__name__)

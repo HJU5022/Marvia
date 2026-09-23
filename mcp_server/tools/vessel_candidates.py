@@ -70,9 +70,9 @@ def _fetch_details(client: ShipFinderClient, mmsis: list[int]) -> dict[int, tupl
 
 
 def get_vessel_candidates(
-    ship_name: Annotated[str, Field(description="찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다")],
+    ship_name: Annotated[str, Field(description="찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다. 예: PANSTAR")],
     nationality: Annotated[str | None, Field(description="아는 국적의 영문 표기(예: Panama, Korea). 주면 국적이 다른 후보를 뺀다")] = None,
-    eta_window_days: Annotated[int, Field(description="최근 며칠 안에 신호를 보낸 배만 볼지. 기본 7일", ge=1, le=90)] = 7,
+    eta_window_days: Annotated[int, Field(description="최근 며칠 안에 신호를 보낸 배만 볼지. 예: 7(기본값)", ge=1, le=90)] = 7,
 ) -> dict:
     """선명으로 그 이름을 쓰는 선박 후보를 찾는다. 선박 식별의 첫 단계다.
 

@@ -20,7 +20,7 @@ make_client = ShipFinderClient
 
 
 def get_live_position(
-    mmsi: Annotated[int, Field(description="9자리 해상이동업무식별번호. 선명만 알면 get_vessel_candidates로 먼저 찾는다")],
+    mmsi: Annotated[int, Field(description="9자리 해상이동업무식별번호. 예: 440063450. 선명만 알면 get_vessel_candidates로 먼저 찾는다")],
 ) -> dict:
     """MMSI로 그 배의 최신 AIS 위치·속도·침로·목적지·AIS ETA를 가져온다.
 

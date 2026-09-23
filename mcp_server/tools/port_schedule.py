@@ -92,9 +92,9 @@ def _pick_plan(plans: list[SailingPlan], ship_name: str | None) -> SailingPlan |
 
 
 def get_port_schedule(
-    call_sign: Annotated[str | None, Field(description="선박 호출부호. 이걸 알면 가장 정확하다")] = None,
-    ship_name: Annotated[str | None, Field(description="선명. 호출부호를 모를 때 쓴다")] = None,
-    lookback_days: Annotated[int, Field(description="실적을 며칠 전까지 볼지. 기본 3일", ge=1, le=30)] = LOOKBACK_DAYS,
+    call_sign: Annotated[str | None, Field(description="선박 호출부호. 예: VRLG2. get_vessel_candidates 결과의 call_sign을 그대로 넣으면 가장 정확하다")] = None,
+    ship_name: Annotated[str | None, Field(description="선명. 예: SITC SHIMIZU. 호출부호를 모를 때 쓴다. 해수부는 국적선을 한글로 준다")] = None,
+    lookback_days: Annotated[int, Field(description="실적을 며칠 전까지 볼지. 예: 3(기본값)", ge=1, le=30)] = LOOKBACK_DAYS,
     lookahead_days: Annotated[int, Field(description="입항 예정을 며칠 뒤까지 볼지. 기본 7일", ge=0, le=30)] = LOOKAHEAD_DAYS,
 ) -> dict:
     """해수부 기록에서 그 배의 부산항 입항 예정과 실제 입항, 접안 부두를 확인한다.
@@ -104,7 +104,9 @@ def get_port_schedule(
     그다음이 입출항 신고 기반의 입항 예정이다.
     돌려주는 값: planned_arrival(입항 예정), actual_arrival(실제 입항), facility(접안 시설),
     control_events(입항·접안·이안·출항), fetched_at.
-    둘 다 비어 있으면 아직 신고도 입항도 없는 것이다.
+    둘 다 비어 있으면 아직 신고도 입항도 없는 것이다. 그 경우 "안 온다"가 아니라
+    "부산항 기록에 아직 없다"로 읽는다.
+    배의 현재 위치를 알고 싶으면 이 도구가 아니라 get_live_position을 쓴다.
     """
     if not call_sign and not ship_name:
         return {"error": ToolError(code="bad_input", message="call_sign이나 ship_name 중 하나는 필요하다", retryable=False).model_dump()}

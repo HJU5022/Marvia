@@ -38,7 +38,7 @@ from backend.app.clients.retry import with_retry
 
 CONTROL_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
 SAILING_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
-TIMEOUT_SEC = 15.0
+TIMEOUT_SEC = float(os.environ.get("MOF_TIMEOUT_SEC", 15))  # 환경변수로 조정 가능
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
 # 기간 전체를 훑을 때 페이지 상한. 부산 5일치 선박운항정보가 12페이지였다 (2026-09-23 실측).
