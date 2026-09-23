@@ -1,11 +1,11 @@
-"""도구 estimate_distance (작업 B7) — 부산항까지 남은 해상 거리.
+"""도구 estimate_distance (작업 B7). 부산항까지 남은 해상 거리.
 
 searoute 해상 항로망으로 계산합니다. 키 불필요, 외부 호출 없음.
-기준점은 rules.md busan_ref (35.10N 129.05E, SDD 3.6).
+기준점은 rules.md busan_ref가 원본이다 (C6, SDD 3.6).
 
-searoute 항로망은 노드가 성겨서 부산 기준점에 가장 가까운 노드가 약 9.6해리 앞바다에 있습니다.
-그래서 (1) 그 노드보다 안쪽 배는 기준점까지 대권거리, (2) 바깥 배는 배→노드 항로 + 노드→기준점 대권거리로
-계산합니다. append_orig_dest로 양 끝 구간을 붙이면 항만 근처 배가 19.8해리처럼 부풀려집니다.
+searoute 항로망은 노드가 성겨서 부산 기준점에 가장 가까운 노드가 약 9.6해리 앞바다에 있다.
+그래서 (1) 그 노드보다 안쪽 배는 기준점까지 대권거리, (2) 바깥 배는 배에서 노드까지 항로 + 노드에서 기준점까지
+대권거리로 계산한다. append_orig_dest로 양 끝 구간을 붙이면 항만 근처 배가 19.8해리처럼 부풀려진다.
 """
 import math
 from datetime import datetime, timezone
@@ -13,8 +13,15 @@ from functools import cache
 
 import searoute
 
-BUSAN_REF = (35.10, 129.05)  # (lat, lng)
+from mcp_server.rules import rule
+
 _EARTH_RADIUS_NM = 3440.065
+
+
+def _busan_ref() -> tuple[float, float]:
+    """부산 기준점 (lat, lng). 값은 rules.md busan_ref가 원본이다 (C6)."""
+    ref = rule("busan_ref")
+    return (ref["lat"], ref["lng"])
 
 
 def _great_circle_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -26,7 +33,8 @@ def _great_circle_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
 @cache
 def _busan_node() -> tuple[float, float]:
     """항로망에서 부산 기준점이 붙는 노드 (lat, lng). searoute 1.6.0 기준 35.0N 129.2E."""
-    lng, lat = searoute.searoute([BUSAN_REF[1], BUSAN_REF[0]], [BUSAN_REF[1], BUSAN_REF[0]])["geometry"]["coordinates"][0]
+    ref_lat, ref_lng = _busan_ref()
+    lng, lat = searoute.searoute([ref_lng, ref_lat], [ref_lng, ref_lat])["geometry"]["coordinates"][0]
     return (lat, lng)
 
 
@@ -43,9 +51,10 @@ def estimate_distance(lat: float, lng: float, sog: float | None = None) -> dict:
         return {"error": {"code": "bad_input", "message": f"좌표 범위 밖: {lat}, {lng}", "retryable": False}}
 
     try:
+        ref = _busan_ref()
         node = _busan_node()
-        last_leg = _great_circle_nm(node, BUSAN_REF)
-        direct = _great_circle_nm((lat, lng), BUSAN_REF)
+        last_leg = _great_circle_nm(node, ref)
+        direct = _great_circle_nm((lat, lng), ref)
         if direct <= last_leg:
             distance, method = direct, "great_circle"
         else:
@@ -60,7 +69,7 @@ def estimate_distance(lat: float, lng: float, sog: float | None = None) -> dict:
         "distance_nm": distance_nm,
         "calc_hours_at_sog": round(distance_nm / sog, 1) if sog and sog > 0 else None,
         "method": method,
-        "busan_ref": {"lat": BUSAN_REF[0], "lng": BUSAN_REF[1]},
+        "busan_ref": {"lat": ref[0], "lng": ref[1]},
         "source": "searoute",
         "fetched_at": fetched_at,
     }

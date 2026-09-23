@@ -1,7 +1,7 @@
 """B2 ShipFinder 클라이언트 단위 테스트.
 
-fixture는 evals/fixtures/shipfinder/. 지금은 공식 문서 응답 예시로 채웠고,
-실제 호출 응답을 받으면 같은 파일명으로 교체합니다.
+fixture는 evals/fixtures/shipfinder/. 실제 응답과 형식만 같은 가공값이다
+(CLAUDE.md "실제 응답 원본은 커밋하지 않는다"). 진짜 호출은 scripts/fetch_shipfinder.py.
 """
 import json
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from backend.clients.shipfinder import ShipFinderClient, ShipFinderError
+from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 
 FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "fixtures" / "shipfinder"
 
@@ -28,7 +28,7 @@ def test_search_parses_hits_and_sends_params():
     result = _client("search_same_imo.json", calls=calls).search("DENEB LEADER", max=500)
 
     assert [h.mmsi for h in result.hits] == [356688000, 346559616, 525007112]
-    # 같은 IMO에 MMSI 2개 — 최신 선택은 B3 몫이므로 클라이언트는 그대로 돌려준다
+    # 같은 IMO에 MMSI 2개. 최신 선택은 B3 몫이므로 클라이언트는 그대로 돌려준다
     assert result.hits[0].imo == result.hits[1].imo == 9738777
     assert result.hits[2].imo is None and result.hits[2].call_sign is None
     assert result.hits[0].last_time.year == 2026
@@ -53,20 +53,20 @@ def test_position_parses_fields_and_invalid_markers():
     assert pos.raw["hdg"] == 511  # 원본은 보존
 
 
-def test_real_position_440063450():
-    """2026-09-22 실제 응답. eta 필드가 아예 없고 hdg가 511.0(float)으로 온다."""
-    pos = _client("position_440063450.json").position(440063450)
-    assert (pos.ship_name, pos.destcode, pos.navistat) == ("BUSAN 201HO", "KRPUS", 8)
+def test_position_without_eta_field():
+    """실제 응답에는 eta 키가 아예 없고 hdg가 511.0(float)으로 오는 경우가 있다."""
+    pos = _client("position_busan_anchored.json").position(440999001)
+    assert (pos.ship_name, pos.destcode, pos.navistat) == ("TEST CARRIER 1", "KRPUS", 8)
     assert pos.ais_eta is None and pos.hdg is None
     assert pos.sog == 0.0  # 0은 무효가 아니라 정지
 
 
-def test_real_search_panstar_has_many_candidates():
-    """2026-09-22 실제 응답. 선명 PANSTAR로 10척, 같은 IMO에 MMSI 여럿(선박 식별 되묻기 근거)."""
-    hits = _client("search_panstar.json").search("PANSTAR").hits
-    assert len(hits) == 10
-    assert sum(h.ship_name == "PANSTAR DREAM" for h in hits) == 3
-    assert hits[3].imo == hits[4].imo == 357289382  # 7자리가 아닌 IMO도 원본 그대로 온다
+def test_search_same_name_many_candidates():
+    """같은 선명이 여럿이고 IMO가 겹친다. 선박 식별을 되묻는 근거 (PRD 6.4)."""
+    hits = _client("search_same_name.json").search("TEST STAR").hits
+    assert len(hits) == 6
+    assert sum(h.ship_name == "TEST STAR DREAM" for h in hits) == 3
+    assert hits[2].imo == hits[3].imo == 357289382  # 7자리가 아닌 IMO도 원본 그대로 온다
 
 
 @pytest.mark.parametrize(

@@ -1,4 +1,4 @@
-"""Marvia MCP 서버 (작업 B1) — 필수 조건 5.
+"""Marvia MCP 서버 (작업 B1) (필수 조건 5).
 
 FastMCP, Streamable HTTP, 경로 /mcp. 외부 데이터 도구 4종을 여기에 등록합니다 (SDD 3.4).
   - get_vessel_candidates (B3), get_live_position (B4)  → ShipFinder
@@ -9,7 +9,7 @@ FastMCP, Streamable HTTP, 경로 /mcp. 외부 데이터 도구 4종을 여기에
 {error: {code, message, retryable}}로 돌려줍니다. Bearer 토큰 인증은 A10에서 붙입니다.
 
 실행:  python -m mcp_server.server --port 8001
-확인:  python -m mcp_server.check http://localhost:8001/mcp
+확인:  python -m scripts.mcp_check http://localhost:8001/mcp
 """
 import argparse
 import os
