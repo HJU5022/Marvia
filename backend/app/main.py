@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging
+from backend.app.routers import agent, history
 
 setup_logging()
 
@@ -26,10 +27,12 @@ app.add_middleware(
 )
 
 
+app.include_router(agent.router)
+app.include_router(history.router)
+
+
 @app.get("/health")
 def health() -> dict:
     """채점자와 배포 환경이 서비스 상태를 확인하는 곳."""
     return {"status": "ok"}
 
-
-# TODO: POST /api/agent 라우터 (A6). 서비스 계층만 부르고 LLM SDK를 import하지 않는다

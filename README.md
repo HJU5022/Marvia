@@ -165,26 +165,70 @@ SDD 1.1절 기준 목표 구조입니다. 현재 레포는 스캐폴드(`backend
 
 ## 4. 실행
 
-> 구현 진행 중입니다. 아래는 목표 절차이며, 완성되면 실제 동작 기준으로 갱신합니다.
+### 한 줄로 띄우기
 
 ```bash
 git clone https://github.com/aihuman-7th/proj2-5.git && cd proj2-5
-cp .env.example .env     # 키 채우기. REPLAY_MODE=true면 키 없이 데모 동작
-docker compose up        # app :8000 (/api/agent, /health, /docs) + mcp :8001 + worker + postgres
-
-cd web && npm install && npm run dev   # :3000
+cp .env.example .env     # 키를 채운다 (아래 표 참고)
+docker compose up        # api :8000, mcp :8001, worker, postgres
 ```
 
-필요한 키는 `.env.example`을 참고하세요. UNI-PASS·공공데이터포털(해수부)·ShipFinder·OpenRouter·Langfuse.
+뜨면 이렇게 확인한다.
 
-`REPLAY_MODE=true`면 외부 API 대신 저장된 응답을 읽어서, 키 없이도 데모 3건(정상·되묻기·실패)이 동작합니다.
+```bash
+curl http://localhost:8000/health        # {"status":"ok"}
+open http://localhost:8000/docs          # API 문서
+```
+
+한글 경로에서는 Docker BuildKit이 죽는다. 그때는 `DOCKER_BUILDKIT=0 docker compose build` 후에 올린다.
+
+### 키
+
+| 키 | 어디서 | 없으면 |
+|---|---|---|
+| `SHIPFINDER_KEY` | ShipFinder 스타터 키 (팀 보유) | 선박 검색·위치 조회 불가 |
+| `DATA_GO_KR_KEY` | 공공데이터포털. 해수부 관제정보·선박운항정보 활용신청 | 입항 예정·실적 조회 불가 |
+| `UNIPASS_KEY` | 관세청 UNI-PASS 오픈API | B/L 조회 불가 |
+| `OPENROUTER_API_KEY` | openrouter.ai | 판정 불가 |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse 프로젝트 설정 | 트레이스 없음 |
+| `MCP_TOKEN` | 아무 랜덤 문자열 | /mcp가 인증 없이 열린다 |
+
+`MCP_TOKEN`은 이렇게 만든다.
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(24))"
+```
+
+### 로컬에서 직접 돌리기 (Docker 없이)
+
+```bash
+python -m venv .venv && .venv/Scripts/python -m pip install -r backend/requirements.txt
+.venv/Scripts/python -m uvicorn backend.app.main:app --port 8000     # API
+.venv/Scripts/python -m mcp_server.server --port 8001                # MCP 서버
+```
+
+### MCP 서버 확인
+
+```bash
+python -m scripts.mcp_check http://localhost:8001/mcp   # 연결과 도구 4종 목록
+python -m scripts.mcp_demo                              # 도구 4종 실제 호출
+python -m scripts.mcp_auth_check                        # 토큰 없으면 401
+```
 
 ### 테스트
 
 ```bash
-pytest                                  # REPLAY_MODE로 API 키 없이 실행
-python -m eval.run_eval                 # 평가셋 (a) 규칙만 / (b) 모델 A / (c) 모델 B
+pytest          # 179건. 외부 API 키 없이 돈다 (저장된 응답으로 대체)
 ```
+
+### 아직 안 되는 것
+
+| 항목 | 상태 |
+|---|---|
+| `POST /api/agent` 판정 | 조회까지만 동작한다. LLM 판정(C-6)과 출력 검증(C-7)이 붙으면 verdict가 나온다 |
+| `REPLAY_MODE` | 미구현. 지금은 키가 있어야 실제 조회가 된다 |
+| 웹 화면 | `web/` 미착수 |
+| 평가 실행기 | `evals/run_eval.py` 미착수 |
 
 ### 기술 스택
 
