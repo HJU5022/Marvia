@@ -12,6 +12,8 @@ B/L 번호를 LLM에 넘기면 숫자를 잘못 옮기거나 프롬프트 주입
 - 없는 B/L은 tCnt=0, 파라미터가 빠지면 tCnt=-1과 안내 문구가 온다
 - 성공 응답의 필드 이름은 공개 문서에 없어서 SDD 3.5 기준으로 잡고, 이름이 다를 경우를 대비해
   후보 여러 개를 순서대로 찾는다. 실제 B/L로 한 번 확인한 뒤 후보를 줄인다
+- 실제 B/L 1건(HBL)으로 확인: cargMtNo(화물관리번호)는 19자리 = MRN 11 + MSN 4 + HSN 4.
+  앞 11자리 MRN이 해수부 선박운항정보 mrNum과 같아서 B/L에서 배를 특정할 수 있다 (2026-09-23)
 """
 from __future__ import annotations
 
@@ -37,6 +39,7 @@ FIELD_CANDIDATES = {
     "stage_code": ("prgsStCd", "csclPrgsSttsCd", "prgsStts"),
     "shed_name": ("shedNm", "shedNmKr", "shedCd"),
 }
+MRN_LENGTH = 11  # 화물관리번호 앞 MRN 길이 (실측 19자리 중 앞 11자리, 입항 MRN은 끝이 I)
 STAGE_ITEM_TAGS = ("cargCsclPrgsInfoDtlQryVo", "cargCsclPrgsInfoDtlQryRtnVo", "detail")
 STAGE_FIELDS = {
     "code": ("cargTrcnRelaBsopTpcd", "prgsStCd", "shedSgn"),
@@ -62,6 +65,13 @@ def _first(node, names: tuple[str, ...]) -> str | None:
         if found and found.strip():
             return found.strip()
     return None
+
+
+def _mrn(cargo_no: str | None) -> str | None:
+    """화물관리번호에서 MRN(앞 11자리)만 꺼낸다. 짧으면 형식이 달라 None으로 둔다."""
+    if not cargo_no or len(cargo_no) < MRN_LENGTH:
+        return None
+    return cargo_no[:MRN_LENGTH].upper()
 
 
 def _dt(value: str | None) -> datetime | None:
@@ -155,6 +165,7 @@ class UnipassClient:
             stage_code=_first(root, FIELD_CANDIDATES["stage_code"]),
             stage_name=_first(root, FIELD_CANDIDATES["stage_name"]) or (stages[-1].name if stages else None),
             shed_name=_first(root, FIELD_CANDIDATES["shed_name"]),
+            mrn=_mrn(_first(root, ("cargMtNo",))),
             stage_history=stages,
             bl_masked=mask_bl(bl_no),
             fetched_at=datetime.now(timezone.utc),

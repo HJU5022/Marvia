@@ -85,3 +85,56 @@ def test_missing_key_rejected(monkeypatch):
     with pytest.raises(MofError) as e:
         MofClient()
     assert e.value.code == "bad_key"
+
+
+# ---- 선박운항정보 (입항 신고). 값은 전부 가공값이다 ----
+
+def test_arrival_reports_calls_info5_and_keeps_only_arrival_details():
+    calls = []
+    reports = _client("arrival_report_busan.xml", calls).arrival_reports(date(2026, 9, 22), date(2026, 9, 26))
+
+    assert str(calls[0].url).startswith("https://apis.data.go.kr/1192000/VsslEtrynd5/Info5")
+    assert calls[0].url.params["prtAgCd"] == "020"
+    # 출항 신고만 있는 TEST13은 빠진다
+    assert [r.call_sign for r in reports] == ["TEST11", "TEST12"]
+    first = reports[0]
+    assert (first.stage, first.facility, first.mrn) == ("변경", "테스트 신항 1선석", "26TEST0011I")
+
+
+def test_final_stage_is_not_used_as_planned_arrival():
+    # 최종 신고의 etryptDt는 실제 입항 시각이라 예정으로 쓰지 않는다 (mof.py 선박운항정보 절)
+    changed, final = _client("arrival_report_busan.xml").arrival_reports(date(2026, 9, 22), date(2026, 9, 26))
+    assert changed.planned_arrival is not None and changed.planned_arrival.hour == 12
+    assert final.arrival_at is not None and final.planned_arrival is None
+
+
+def test_find_arrival_by_mrn_matches_arrival_mrn_only():
+    client = _client("arrival_report_busan.xml")
+    found = client.find_arrival_by_mrn("26test0011i", date(2026, 9, 22), date(2026, 9, 26))
+    assert found is not None and found.call_sign == "TEST11"
+    # 출항 MRN(끝이 E)으로는 찾지 않는다
+    assert client.find_arrival_by_mrn("26TEST0012E", date(2026, 9, 22), date(2026, 9, 26)) is None
+
+
+def test_arrival_reports_follows_pages_until_total_count():
+    # 51건 = 50건 페이지 + 1건 페이지. 두 번 부르고 멈춰야 한다
+    def page_xml(page: int) -> str:
+        start, count = (0, 50) if page == 1 else (50, 1)
+        items = "".join(
+            f"<item><clsgn>P{n:03d}</clsgn><vsslNm>테스트{n}</vsslNm><details><detail>"
+            f"<reqstSeNm>최초</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt>"
+            f"<mrNum>26TEST{n:04d}I</mrNum></detail></details></item>"
+            for n in range(start, start + count)
+        )
+        return (f"<response><header><resultCode>00</resultCode></header><body><items>{items}</items>"
+                f"<totalCount>51</totalCount></body></response>")
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, text=page_xml(int(request.url.params["pageNo"])))
+
+    client = MofClient(key="test-key", transport=httpx.MockTransport(handler))
+    reports = client.arrival_reports(date(2026, 9, 24), date(2026, 9, 30))
+    assert len(reports) == 51 and len(calls) == 2
