@@ -24,8 +24,9 @@ from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 LOOKAHEAD_DAYS = 7
 # 어제 것도 다시 받는 이유: 관제 이벤트가 늦게 올라오거나 신고가 최종으로 바뀌는 것을 놓치지 않으려고
 LOOKBACK_DAYS = 1
-# 추적 대상 척수 상한. 작업 리스트 D1 "부산행 20~30척"
-MAX_TARGETS = 30
+# 추적 대상 척수 상한 (09-23 결정). 작업 리스트 D1은 20~30척이지만 ShipFinder가 하루 50회라 12척으로 줄였다.
+# 24시간 정박을 위치 이력으로 잡으려면 6시간 간격으로 한 척당 하루 4번은 받아야 한다: 12척 x 4 = 48회
+MAX_TARGETS = 12
 # 추적 대상으로 고르는 선종. 소량 수입 화물은 컨테이너로 온다 (PRD 사용자: 소량 해상 수입자)
 TARGET_SHIP_KIND = "풀컨테이너선"
 # 입항 예정이 이만큼 지난 대상은 위치를 더 받지 않는다. 입항 전후 묘박·접안까지만 보면 된다 (임시값, 대기 분포가 나오면 다시 본다)

@@ -158,8 +158,11 @@ def test_collect_positions_saves_and_respects_budget():
     assert json.loads(params[-1])["mmsi"] == 413961925  # 원본은 raw(JSONB)로 DB에만 남긴다
 
 
-def test_max_targets_is_task_list_range():
-    assert 20 <= MAX_TARGETS <= 30  # 작업 리스트 D1 "부산행 20~30척"
+def test_targets_fit_daily_shipfinder_limit():
+    """대상 전부가 6시간마다(하루 4번) 위치를 받아도 ShipFinder 하루 한도 50회 안이어야 한다 (09-23 결정)."""
+    from worker.run import DEFAULT_INTERVAL_HOURS, DEFAULT_SHIPFINDER_CALLS
+    runs_per_day = int(24 / DEFAULT_INTERVAL_HOURS)
+    assert MAX_TARGETS <= DEFAULT_SHIPFINDER_CALLS and runs_per_day * DEFAULT_SHIPFINDER_CALLS <= 50
 
 
 # ---- 실행 진입점. 스케줄러는 기본 꺼져 있어야 한다 (09-23 결정) ----

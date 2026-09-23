@@ -6,7 +6,8 @@
 
 스케줄러는 기본 꺼져 있다 (09-23 결정). ShipFinder 스타터 키가 하루 50회라서 개발 중에 계속 돌면
 테스트할 몫이 남지 않는다. 켜면 WORKER_INTERVAL_HOURS마다 돈다.
-한 번 실행에 쓰는 ShipFinder 호출 수 기본값 6은 3시간 주기 하루 8회 x 6 = 48회로 한도 50 안에 들게 잡은 값이다.
+주기 6시간, 한 번 실행에 ShipFinder 12회가 기본이다 (09-23 결정). 하루 4회 x 12 = 48회로 한도 50 안이고,
+추적 대상 12척(collector.MAX_TARGETS)이 매 실행 위치를 한 번씩 받는다.
 """
 from __future__ import annotations
 
@@ -22,8 +23,8 @@ from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 from backend.app.db import apply_migrations, connect
 from worker.collector import Budget, collect_port, collect_positions, select_targets
 
-DEFAULT_INTERVAL_HOURS = 3.0  # SDD 5.10 "주기 3시간"
-DEFAULT_SHIPFINDER_CALLS = 6  # 위 설명 참고. 하루 한도 50회
+DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
+DEFAULT_SHIPFINDER_CALLS = 12  # 위 설명 참고. 하루 한도 50회
 
 
 def _log(event: str, **fields) -> None:
