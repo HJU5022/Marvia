@@ -53,6 +53,22 @@ def test_position_parses_fields_and_invalid_markers():
     assert pos.raw["hdg"] == 511  # 원본은 보존
 
 
+def test_real_position_440063450():
+    """2026-09-22 실제 응답. eta 필드가 아예 없고 hdg가 511.0(float)으로 온다."""
+    pos = _client("position_440063450.json").position(440063450)
+    assert (pos.ship_name, pos.destcode, pos.navistat) == ("BUSAN 201HO", "KRPUS", 8)
+    assert pos.ais_eta is None and pos.hdg is None
+    assert pos.sog == 0.0  # 0은 무효가 아니라 정지
+
+
+def test_real_search_panstar_has_many_candidates():
+    """2026-09-22 실제 응답. 선명 PANSTAR로 10척, 같은 IMO에 MMSI 여럿(선박 식별 되묻기 근거)."""
+    hits = _client("search_panstar.json").search("PANSTAR").hits
+    assert len(hits) == 10
+    assert sum(h.ship_name == "PANSTAR DREAM" for h in hits) == 3
+    assert hits[3].imo == hits[4].imo == 357289382  # 7자리가 아닌 IMO도 원본 그대로 온다
+
+
 @pytest.mark.parametrize(
     "fixture, code, status, retryable",
     [
