@@ -14,11 +14,14 @@ FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "fixtures" / "mof"
 
 @pytest.fixture
 def fake(monkeypatch):
-    def _use(fixture: str = "control_busan.xml", calls: list | None = None):
+    """관제정보와 선박운항정보를 경로로 갈라 fixture를 돌려준다."""
+
+    def _use(fixture: str = "control_busan.xml", calls: list | None = None, sailing: str = "sailing_busan.xml"):
         def handler(request: httpx.Request) -> httpx.Response:
             if calls is not None:
                 calls.append(request)
-            return httpx.Response(200, text=(FIXTURES / fixture).read_text(encoding="utf-8"))
+            name = sailing if request.url.path.endswith("Info5") else fixture
+            return httpx.Response(200, text=(FIXTURES / name).read_text(encoding="utf-8"))
 
         client = MofClient(key="test-key", transport=httpx.MockTransport(handler))
         monkeypatch.setattr(port_schedule, "make_client", lambda: client)
@@ -36,10 +39,31 @@ def test_returns_actual_arrival_and_facility(fake):
     assert r["source"] == "mof" and r["fetched_at"]
 
 
-def test_planned_arrival_is_none_for_now(fake):
-    """관제정보는 실적만 준다. 입항 예정은 선박운항정보 연동 후에 채운다."""
+def test_planned_arrival_comes_from_sailing_info(fake):
+    """관제정보는 실적만 준다. 입항 예정은 선박운항정보(Info5)에서 온다."""
     fake()
-    assert get_port_schedule(call_sign="TEST01")["planned_arrival"] is None
+    result = get_port_schedule(call_sign="TEST01", ship_name="테스트예선1호")
+    assert result["planned_arrival"].startswith("2026-09-25T08:00")
+
+
+def test_earliest_plan_wins(fake):
+    """예정이 여럿이면 가장 이른 입항을 쓴다."""
+    fake()
+    assert get_port_schedule(call_sign="TEST03", ship_name="테스트컨테이너3호")["planned_arrival"].startswith("2026-09-24T06:00")
+
+
+def test_actual_facility_wins_over_planned(fake):
+    """실적이 있으면 접안 시설은 실적 쪽을 쓴다. 예정은 바뀔 수 있다."""
+    fake()
+    assert get_port_schedule(call_sign="TEST01", ship_name="테스트예선1호")["facility"] == "대평동호안"
+
+
+def test_lookahead_zero_skips_sailing_call(fake):
+    calls = []
+    fake(calls=calls)
+    result = get_port_schedule(call_sign="TEST01", lookahead_days=0)
+    assert result["planned_arrival"] is None
+    assert not any(c.url.path.endswith("Info5") for c in calls)
 
 
 def test_ship_name_picks_matching_vessel(fake):
@@ -51,7 +75,7 @@ def test_ship_name_picks_matching_vessel(fake):
 
 def test_no_record_is_not_an_error(fake):
     """기록이 없으면 아직 안 들어왔다는 뜻일 수 있다. 빈 결과로 돌려준다."""
-    fake("control_empty.xml")
+    fake("control_empty.xml", sailing="control_empty.xml")
     r = get_port_schedule(call_sign="TEST99")
     assert r["actual_arrival"] is None and r["control_events"] == []
     assert "error" not in r
@@ -73,6 +97,6 @@ def test_requires_call_sign_or_ship_name(fake):
 
 
 def test_api_error_returns_tool_error(fake):
-    fake("invalid_parameter.xml")
+    fake("invalid_parameter.xml", sailing="invalid_parameter.xml")
     r = get_port_schedule(call_sign="TEST01")
     assert r["error"]["code"] == "error" and r["error"]["retryable"] is False

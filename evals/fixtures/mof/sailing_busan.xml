@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><prtAgNm>부산</prtAgNm><clsgn>TEST01</clsgn><vsslNm>테스트예선1호</vsslNm>
+<vsslNltyCd>KR</vsslNltyCd><vsslNltyNm>대한민국</vsslNltyNm><vsslKndNm>기타 예선</vsslKndNm>
+<etryptPurpsNm>양하</etryptPurpsNm><prvsDpmprtPrtNm>SHANGHAI</prvsDpmprtPrtNm><nxlnptPrtNm>광양</nxlnptPrtNm>
+<details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-25T08:00:00+09:00</etryptDt><laidupFcltyNm>감만부두 4선석</laidupFcltyNm><tkoffPrrrnDt>2026-09-25 18:00:00</tkoffPrrrnDt></detail>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>출항</etryndNm><tkoffDt>2026-09-25T18:00:00+09:00</tkoffDt><laidupFcltyNm>감만부두 4선석</laidupFcltyNm></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><prtAgNm>부산</prtAgNm><clsgn>TEST03</clsgn><vsslNm>테스트컨테이너3호</vsslNm>
+<vsslNltyCd>PA</vsslNltyCd><vsslNltyNm>파나마</vsslNltyNm><vsslKndNm>풀컨테이너선</vsslKndNm>
+<details>
+<detail><reqstSeNm>최초</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T06:00:00+09:00</etryptDt><laidupFcltyNm>신항 4부두 1선석</laidupFcltyNm></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>2</totalCount></body></response>

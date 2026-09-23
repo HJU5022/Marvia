@@ -85,3 +85,25 @@ def test_missing_key_rejected(monkeypatch):
     with pytest.raises(MofError) as e:
         MofClient()
     assert e.value.code == "bad_key"
+
+
+def test_sailing_plans_parse_arrival_and_departure():
+    """선박운항정보는 입출항 신고 기반이라 아직 안 들어온 배의 입항 예정을 준다."""
+    plans = _client("sailing_busan.xml").sailing_plans(date(2026, 9, 24), date(2026, 9, 26))
+
+    assert len(plans) == 2
+    first = plans[0]
+    assert (first.call_sign, first.ship_name, first.nationality) == ("TEST01", "테스트예선1호", "대한민국")
+    assert first.planned_arrival.strftime("%Y-%m-%d %H:%M") == "2026-09-25 08:00"
+    assert first.planned_departure.strftime("%H:%M") == "18:00"
+    assert first.facility == "감만부두 4선석"
+    assert (first.purpose, first.previous_port, first.next_port) == ("양하", "SHANGHAI", "광양")
+    assert first.revision == "변경"  # 신고가 바뀐 건인지 알 수 있다
+
+
+def test_sailing_plans_hit_the_other_endpoint():
+    calls = []
+    _client("sailing_busan.xml", calls).sailing_plans(date(2026, 9, 24), date(2026, 9, 26), call_sign="TEST01")
+
+    assert calls[0].url.path.endswith("/VsslEtrynd5/Info5")
+    assert calls[0].url.params["clsgn"] == "TEST01"
