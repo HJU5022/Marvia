@@ -42,3 +42,30 @@ def apply_migrations(conn) -> list[str]:
         conn.execute("INSERT INTO schema_migrations (name) VALUES (%s)", (path.name,))
         applied.append(path.name)
     return applied
+
+
+def log_query(conn, session_id: str, **fields) -> None:
+    """조회 이력 한 줄을 남긴다 (A12, SDD 3.9).
+
+    B/L 원본은 넣지 않는다. 부르는 쪽이 bl_masked만 넘긴다.
+    이력 저장이 실패해도 판정 응답은 나가야 하므로 부르는 쪽에서 예외를 삼킨다.
+    """
+    columns = ["session_id", *fields.keys()]
+    placeholders = ", ".join(["%s"] * len(columns))
+    conn.execute(
+        f"INSERT INTO query_log ({', '.join(columns)}) VALUES ({placeholders})",
+        [session_id, *fields.values()],
+    )
+
+
+def recent_queries(conn, session_id: str, limit: int = 20) -> list[dict]:
+    """세션의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4)."""
+    rows = conn.execute(
+        """
+        SELECT request_id, bl_masked, status, verdict, vessel_match, decided_by, model, trace_id, created_at
+        FROM query_log WHERE session_id = %s ORDER BY created_at DESC LIMIT %s
+        """,
+        [session_id, min(limit, 100)],
+    ).fetchall()
+    keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "model", "trace_id", "created_at")
+    return [dict(zip(keys, row)) for row in rows]
