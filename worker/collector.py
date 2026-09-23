@@ -173,3 +173,12 @@ def select_targets(conn, reports: list[SailingPlan], sf: ShipFinderClient, budge
         conn.execute(INSERT_TARGET, (r.call_sign, hit.mmsi if hit else None, r.ship_name, r.expected_arrival, now))
         (added if hit else no_match).append({"call_sign": r.call_sign, "mmsi": hit.mmsi if hit else None})
     return {"targets_known": len(known), "targets_added": added, "targets_unmatched": no_match}
+
+
+def purge_positions(conn) -> int:
+    """입항 30일 지난 배의 위치 기록을 지우고 지운 줄 수를 돌려준다 (09-23 결정).
+
+    규칙은 DB 함수 purge_old_positions()에만 있다 (migrations/002). Supabase는 pg_cron이 하루 한 번
+    부르고, pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
+    """
+    return conn.execute("SELECT purge_old_positions()").fetchall()[0][0]

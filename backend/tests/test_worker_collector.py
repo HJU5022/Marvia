@@ -180,3 +180,16 @@ def test_once_runs_a_single_collection_with_given_budget(monkeypatch):
     called = []
     monkeypatch.setattr(worker_run, "run_once", lambda n: called.append(n) or {})
     assert worker_run.main(["--once", "--shipfinder-calls", "2"]) == 0 and called == [2]
+
+
+def test_purge_calls_db_function_and_returns_count():
+    """삭제 규칙은 DB 함수에 있다. 워커는 부르기만 한다."""
+    from worker.collector import purge_positions
+
+    class Conn:
+        def execute(self, sql, params=()):
+            self.sql = sql
+            return type("Cur", (), {"fetchall": lambda self: [(3,)]})()
+
+    conn = Conn()
+    assert purge_positions(conn) == 3 and "purge_old_positions()" in conn.sql
