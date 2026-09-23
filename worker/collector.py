@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from backend.app.clients.mof import ArrivalReport, MofClient
+from backend.app.clients.mof import MAX_PAGES, MofClient, SailingPlan
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 
 # 입항 신고를 오늘부터 며칠 뒤까지 볼지. 해수부 신고가 1주 앞까지 나온다 (09-24~30 조회 264척, 2026-09-23 실측).
@@ -53,13 +53,16 @@ def collect_port(conn, mof: MofClient, today: date | None = None) -> dict:
     today = today or date.today()
     now = datetime.now(timezone.utc)
 
-    reports = mof.arrival_reports(today - timedelta(days=LOOKBACK_DAYS), today + timedelta(days=LOOKAHEAD_DAYS))
+    plans = mof.sailing_plans(today - timedelta(days=LOOKBACK_DAYS), today + timedelta(days=LOOKAHEAD_DAYS), max_pages=MAX_PAGES)
+    # 입항 신고가 있는 것만 남긴다. 출항만 신고한 배는 입항 예정을 재는 데 쓸 수 없다
+    reports = [p for p in plans if p.planned_arrival]
     new_reports = 0
     for r in reports:
-        cur = conn.execute(INSERT_REPORT, (r.call_sign, r.ship_name, r.ship_kind, r.stage, r.arrival_at, r.facility, r.mrn, now))
+        # arrival_at에는 신고 시각을 그대로 둔다. 최종이면 실제 시각이라는 구분은 stage 칸으로 한다
+        cur = conn.execute(INSERT_REPORT, (r.call_sign, r.ship_name, r.ship_kind, r.revision, r.planned_arrival, r.facility, r.mrn, now))
         new_reports += _inserted(cur)
 
-    calls = mof.control_records(today - timedelta(days=LOOKBACK_DAYS), today)
+    calls = mof.control_records(today - timedelta(days=LOOKBACK_DAYS), today, max_pages=MAX_PAGES)
     events = [(c, e) for c in calls for e in c.events if e.at]  # 시각 없는 이벤트는 쓸 데가 없다
     new_events = 0
     for c, e in events:
@@ -142,7 +145,7 @@ def _pick_hit(hits, call_sign: str):
     return max(same, key=lambda h: h.last_time or datetime.min.replace(tzinfo=timezone.utc))
 
 
-def select_targets(conn, reports: list[ArrivalReport], sf: ShipFinderClient, budget: Budget,
+def select_targets(conn, reports: list[SailingPlan], sf: ShipFinderClient, budget: Budget,
                    now: datetime | None = None) -> dict:
     """입항 예정 풀컨테이너선을 추적 대상으로 더한다. 호출부호로 ShipFinder를 검색해 MMSI를 찾는다.
 
@@ -153,8 +156,8 @@ def select_targets(conn, reports: list[ArrivalReport], sf: ShipFinderClient, bud
     candidates = sorted(
         (r for r in reports
          if r.ship_kind == TARGET_SHIP_KIND and r.call_sign and r.call_sign not in known
-         and r.planned_arrival and r.planned_arrival > now),
-        key=lambda r: r.planned_arrival,
+         and r.expected_arrival and r.expected_arrival > now),  # 최종 신고는 이미 들어온 배다
+        key=lambda r: r.expected_arrival,
     )
     added, no_match = [], []
     for r in candidates:
@@ -166,6 +169,6 @@ def select_targets(conn, reports: list[ArrivalReport], sf: ShipFinderClient, bud
             no_match.append({"call_sign": r.call_sign, "code": e.code})
             continue
         # 못 찾아도 대상으로 남긴다(mmsi NULL). 같은 배를 다시 검색하느라 예산을 쓰지 않으려고
-        conn.execute(INSERT_TARGET, (r.call_sign, hit.mmsi if hit else None, r.ship_name, r.planned_arrival, now))
+        conn.execute(INSERT_TARGET, (r.call_sign, hit.mmsi if hit else None, r.ship_name, r.expected_arrival, now))
         (added if hit else no_match).append({"call_sign": r.call_sign, "mmsi": hit.mmsi if hit else None})
     return {"targets_known": len(known), "targets_added": added, "targets_unmatched": no_match}

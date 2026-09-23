@@ -28,6 +28,7 @@ class VesselCandidate(BaseModel):
     mmsi: int
     imo: int | None
     name: str
+    call_sign: str | None = Field(default=None, description="해수부 조회 키. 선명은 한글·영문이 달라 매칭이 약하다")
     flag: str | None
     dest: str | None
     last_time: datetime | None
@@ -39,6 +40,7 @@ class VesselCandidatesResult(BaseModel):
     candidates: list[VesselCandidate]
     source: str = "shipfinder"
     fetched_at: datetime
+    cached_at: datetime | None = Field(default=None, description="빈도 초과로 캐시 값을 돌려줬을 때 그 값이 담긴 시각 (SDD 8절)")
 
 
 class LivePositionResult(BaseModel):
@@ -56,6 +58,7 @@ class LivePositionResult(BaseModel):
     last_time: datetime | None
     source: str = "shipfinder"
     fetched_at: datetime
+    cached_at: datetime | None = Field(default=None, description="빈도 초과로 캐시 값을 돌려줬을 때 그 값이 담긴 시각 (SDD 8절)")
 
 
 class ControlEvent(BaseModel):

@@ -28,9 +28,11 @@ def get_live_position(
     돌려주는 값: lat, lng, sog, cog, navistat, dest, destcode, ais_eta, last_time, fetched_at.
     last_time은 선박이 보고한 시각이고 fetched_at은 조회한 시각이다. 둘이 많이 벌어지면
     위치가 오래된 것이므로 현재 위치라고 말하지 않는다.
+    cached_at이 있으면 호출 한도에 걸려 그 시각에 담아둔 값을 돌려준 것이다.
     """
+    client = make_client()
     try:
-        pos = make_client().position(mmsi)
+        pos = client.position(mmsi)
     except ShipFinderError as e:
         return {"error": ToolError(**e.to_dict()).model_dump()}
 
@@ -46,4 +48,6 @@ def get_live_position(
         ais_eta=pos.ais_eta,
         last_time=pos.last_time,
         fetched_at=pos.fetched_at or datetime.now(timezone.utc),
+        # 빈도 초과로 캐시 값을 받았으면 언제 담긴 값인지 알린다
+        cached_at=client.last_cached_at,
     ).model_dump(mode="json")

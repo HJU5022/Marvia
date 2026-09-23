@@ -1,10 +1,11 @@
 """해양수산부 공공데이터 클라이언트 (작업 B5).
 
-두 API를 부른다.
-- 관제정보(CntlVssl2/Info): 전국 해상교통관제센터가 남긴 관제 실적이고,
-  선박 1건 안에 입항·접안·이안·출항 같은 이벤트가 여러 개 들어 있다.
-- 선박운항정보(VsslEtrynd5/Info5): 선사·대리점이 낸 입출항 신고. 입항 예정 시각과
-  적하목록 관리번호(MRN)가 여기서 나온다. 아래 "선박운항정보" 절 참고.
+두 가지를 부른다. 키는 공공데이터포털 하나를 같이 쓴다.
+
+1. 관제정보 CntlVssl2/Info: 관제센터가 남긴 실적. 이미 일어난 일만 준다
+2. 선박운항정보 VsslEtrynd5/Info5: 입출항 신고 기반이라 앞으로 들어올 배도 준다
+
+선박 1건 안에 입항·출항 같은 신고가 detail로 여러 개 들어 있다.
 
 확인한 것 (2026-09-23):
 - 필수 파라미터는 serviceKey, prtAgCd, sde, ede. 하나라도 빠지면 INVALID_REQUEST_PARAMETER_ERROR
@@ -12,6 +13,15 @@
 - 미래 날짜로 부르면 0건이다. 이 API는 실적만 주고 입항 예정은 주지 않는다.
   입항 예정은 해수부 선박운항정보(별도 활용신청)에서 가져와야 한다
 - MMSI가 없다. 호출부호(clsgn)와 선명으로 ShipFinder 쪽과 맞춰야 한다
+
+선박운항정보에서 확인한 것 (2026-09-23, 부산 실측):
+- 신고 단계(reqstSeNm)는 최초/변경/최종. API는 이력을 주지 않고 현재 단계 값 하나만 준다
+- 입항 뒤 '최종' 신고가 되면 etryptDt가 실제 입항 시각과 거의 같아진다
+  (09-20~22 입항 238척 중 최종 175척, 그중 85%가 관제 입항 시각과 분 단위까지 일치).
+  그래서 입항 "예정"으로 믿을 수 있는 것은 최초·변경 단계 값뿐이다 (SailingPlan.expected_arrival)
+- 입항 detail의 mrNum은 적하목록 관리번호(MRN). 입항은 끝이 I, 출항은 E로 번호가 다르다.
+  UNI-PASS 화물관리번호(cargMtNo) 앞 11자리와 같아서 B/L에서 배를 특정하는 열쇠가 된다
+  (실제 B/L 1건으로 호출부호까지 연결 확인). 선명은 UNI-PASS 영문·해수부 한글이라 맞지 않는다
 
 응답은 XML이다. 값은 원본 그대로 돌려주고 판정은 하지 않는다.
 """
@@ -26,13 +36,15 @@ import httpx
 
 from backend.app.clients.retry import with_retry
 
-BASE_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
-# 선박운항정보. 주소 끝이 Info5다 (Swagger 확인 2026-09-23, /Info로 부르면 NO_OPENAPI 오류)
-REPORT_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
+CONTROL_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
+SAILING_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
 TIMEOUT_SEC = 15.0
-MAX_PAGES = 20  # 선박운항정보 페이지 넘김 상한. 부산 5일치가 12페이지였다 (2026-09-23 실측)
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
+# 기간 전체를 훑을 때 페이지 상한. 부산 5일치 선박운항정보가 12페이지였다 (2026-09-23 실측).
+# 워커(부산 전체 수집)와 MRN 찾기가 쓴다
+MAX_PAGES = 20
+REVISION_FINAL = "최종"
 
 # 관제구분(cntrlNm) 값. 2026-09-22 부산 하루치에서 확인한 6종
 ARRIVAL_KINDS = ("입항", "접안")
@@ -63,6 +75,29 @@ class ControlEvent:
 
 
 @dataclass(frozen=True)
+class SailingPlan:
+    """선박운항정보 1건. 신고 기준이라 앞으로 들어올 배의 입항 예정을 담고 있다."""
+
+    call_sign: str | None
+    ship_name: str
+    nationality: str | None
+    ship_kind: str | None
+    purpose: str | None  # 입항 목적 (양하·적하·급유 등)
+    previous_port: str | None
+    next_port: str | None
+    planned_arrival: datetime | None  # detail etryndNm=입항의 etryptDt
+    planned_departure: datetime | None  # detail etryndNm=출항의 tkoffDt
+    facility: str | None  # 접안 예정 시설
+    revision: str | None  # reqstSeNm. 최초/변경/최종
+    mrn: str | None = None  # 입항 detail의 mrNum, 적하목록 관리번호 (모듈 설명 참고)
+
+    @property
+    def expected_arrival(self) -> datetime | None:
+        """아직 믿을 수 있는 입항 예정. 최종 신고의 시각은 실제 입항 시각이라 예정으로 쓰지 않는다 (모듈 설명)."""
+        return None if self.revision == REVISION_FINAL else self.planned_arrival
+
+
+@dataclass(frozen=True)
 class VesselCall:
     """선박 1척의 입출항 1회분. 관제 이벤트 여러 개를 묶고 있다."""
 
@@ -87,38 +122,6 @@ class VesselCall:
             if e.kind in ARRIVAL_KINDS and e.facility:
                 return e.facility
         return None
-
-
-# ---- 선박운항정보 ----
-# 확인한 것 (2026-09-23, 부산 실측):
-# - 미래 날짜로 부르면 입항 신고가 나온다 (09-24~30 조회 264척). 이게 "해수부 입항 예정"이다
-# - 신고 단계(reqstSeNm)는 최초/변경/최종. API는 이력을 주지 않고 현재 단계 값 하나만 준다
-# - 입항 뒤 '최종' 신고가 되면 etryptDt가 실제 입항 시각과 거의 같아진다
-#   (09-20~22 입항 238척 중 최종 175척, 그중 85%가 관제 입항 시각과 분 단위까지 일치).
-#   그래서 입항 예정으로 믿을 수 있는 것은 최초·변경 단계 값뿐이다
-# - mrNum은 적하목록 관리번호(MRN). 입항은 끝이 I, 출항은 E로 번호가 다르다.
-#   UNI-PASS 화물관리번호(cargMtNo) 앞 11자리와 같아서 B/L에서 배를 특정하는 열쇠가 된다
-# - IMO·MMSI는 없다. 호출부호(clsgn)가 ShipFinder와 잇는 값이다
-REPORT_STAGE_FINAL = "최종"
-
-
-@dataclass(frozen=True)
-class ArrivalReport:
-    """입항 신고 1건 (선박운항정보의 '입항' detail 하나)."""
-
-    call_sign: str | None
-    ship_name: str
-    nationality: str | None
-    ship_kind: str | None       # vsslKndNm. 워커가 풀컨테이너선만 추적 대상으로 고를 때 쓴다
-    stage: str | None           # reqstSeNm: 최초/변경/최종
-    arrival_at: datetime | None  # etryptDt. 최종이면 실제 입항 시각에 가깝다
-    facility: str | None        # laidupFcltyNm, 신고한 선석 또는 박지
-    mrn: str | None             # mrNum, 입항 적하목록 관리번호
-
-    @property
-    def planned_arrival(self) -> datetime | None:
-        """입항 예정 시각. 최종 신고 값은 실제 시각이라 예정으로 쓰지 않는다 (위 확인 내용)."""
-        return None if self.stage == REPORT_STAGE_FINAL else self.arrival_at
 
 
 def _text(node, tag: str) -> str | None:
@@ -150,86 +153,18 @@ class MofClient:
     def close(self) -> None:
         self._http.close()
 
-    def control_records(
-        self,
-        start: date,
-        end: date,
-        call_sign: str | None = None,
-        prt_ag_cd: str = BUSAN_PRT_AG_CD,
-        rows: int = MAX_ROWS,
-    ) -> list[VesselCall]:
-        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다.
-
-        페이지를 끝까지 넘긴다. 호출부호로 부르면 보통 한 페이지지만, 워커는 부산 전체를
-        받아서 여러 페이지가 된다 (3일치 332척 = 7페이지, 2026-09-23 실측).
-        """
-        calls: list[VesselCall] = []
-        for page in range(1, MAX_PAGES + 1):
-            params = {
-                "serviceKey": self._key,
-                "prtAgCd": prt_ag_cd,
-                "sde": start.strftime("%Y%m%d"),
-                "ede": end.strftime("%Y%m%d"),
-                "numOfRows": min(rows, MAX_ROWS),
-                "pageNo": page,
-            }
-            if call_sign:
-                params["clsgn"] = call_sign
-            root = self._get(BASE_URL, params, label="관제정보")
-            items = list(root.iter("item"))
-            calls.extend(self._to_call(item) for item in items)
-            total = _int(root.findtext(".//totalCount")) or 0
-            if not items or page * params["numOfRows"] >= total:
-                break
-        return calls
-
-    def arrival_reports(
-        self,
-        start: date,
-        end: date,
-        call_sign: str | None = None,
-        prt_ag_cd: str = BUSAN_PRT_AG_CD,
-    ) -> list[ArrivalReport]:
-        """기간 안의 입항 신고를 선박운항정보에서 가져온다. 페이지를 끝까지 넘긴다.
-
-        call_sign이 없으면 기간 전체를 훑는다. MRN으로 배를 찾을 때는 호출부호를 아직
-        모르니 이렇게 불러야 한다 (부산 5일치 12페이지, 2026-09-23 실측).
-        """
-        reports: list[ArrivalReport] = []
-        for page in range(1, MAX_PAGES + 1):
-            params = {
-                "serviceKey": self._key,
-                "prtAgCd": prt_ag_cd,
-                "sde": start.strftime("%Y%m%d"),
-                "ede": end.strftime("%Y%m%d"),
-                "numOfRows": MAX_ROWS,
-                "pageNo": page,
-            }
-            if call_sign:
-                params["clsgn"] = call_sign
-            root = self._get(REPORT_URL, params, label="선박운항정보")
-            items = list(root.iter("item"))
-            reports.extend(r for item in items if (r := self._to_report(item)) is not None)
-            # totalCount를 다 읽었거나 빈 페이지면 멈춘다
-            total = _int(root.findtext(".//totalCount")) or 0
-            if not items or page * MAX_ROWS >= total:
-                break
-        return reports
-
-    def find_arrival_by_mrn(self, mrn: str, start: date, end: date) -> ArrivalReport | None:
-        """입항 MRN이 같은 신고를 찾는다. B/L → UNI-PASS MRN → 배(호출부호)로 잇는 단계.
-
-        이름으로 찾지 않는 이유: UNI-PASS는 영문 선명, 해수부는 한글 선명이라 맞지 않는다
-        (HEUNG-A JANICE / 흥아 제니스, 2026-09-23 실측).
-        """
-        target = mrn.strip().upper()
-        for report in self.arrival_reports(start, end):
-            if report.mrn and report.mrn.upper() == target:
-                return report
-        return None
-
-    def _get(self, url: str, params: dict, label: str):
-        """GET 한 번 부르고 XML 루트를 돌려준다. 두 API의 오류 처리가 같아서 한 곳에 둔다."""
+    def _fetch(self, url: str, label: str, start: date, end: date, call_sign: str | None, prt_ag_cd: str, rows: int, page: int = 1):
+        """두 API가 파라미터와 오류 형식이 같아 호출부를 공유한다."""
+        params = {
+            "serviceKey": self._key,
+            "prtAgCd": prt_ag_cd,
+            "sde": start.strftime("%Y%m%d"),
+            "ede": end.strftime("%Y%m%d"),
+            "numOfRows": min(rows, MAX_ROWS),
+            "pageNo": page,
+        }
+        if call_sign:
+            params["clsgn"] = call_sign
 
         def call() -> httpx.Response:
             resp = self._http.get(url, params=params)
@@ -238,7 +173,7 @@ class MofClient:
 
         try:
             # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
-            root = ElementTree.fromstring(with_retry(call, name=f"mof:{url.rsplit('/', 2)[-2]}").text)
+            root = ElementTree.fromstring(with_retry(call, name=f"mof:{label}").text)
         except httpx.TimeoutException as e:
             raise MofError("timeout", f"{label} 응답 시간 초과") from e
         except httpx.HTTPError as e:
@@ -253,22 +188,90 @@ class MofClient:
             raise MofError(code, message, result_code=result_code)
         return root
 
-    @staticmethod
-    def _to_report(item) -> ArrivalReport | None:
-        """신고 1건에서 '입항' detail만 꺼낸다. 출항만 있는 신고는 None."""
-        for detail in item.iter("detail"):
-            if _text(detail, "etryndNm") == "입항":
-                return ArrivalReport(
-                    call_sign=_text(item, "clsgn"),
-                    ship_name=_text(item, "vsslNm") or "",
-                    nationality=_text(item, "vsslNltyNm"),
-                    ship_kind=_text(item, "vsslKndNm"),
-                    stage=_text(detail, "reqstSeNm"),
-                    arrival_at=_dt(_text(detail, "etryptDt")),
-                    facility=_text(detail, "laidupFcltyNm"),
-                    mrn=_text(detail, "mrNum"),
-                )
+    def control_records(
+        self,
+        start: date,
+        end: date,
+        call_sign: str | None = None,
+        prt_ag_cd: str = BUSAN_PRT_AG_CD,
+        rows: int = MAX_ROWS,
+        max_pages: int = 1,
+    ) -> list[VesselCall]:
+        """기간 안의 관제 실적을 가져온다. call_sign을 주면 그 배만 조회한다.
+
+        부산은 하루 100건이 넘고 한 번에 50건까지만 온다. 호출부호 없이 선명으로 찾을 때는
+        max_pages를 올려 뒤 페이지까지 봐야 그 배가 목록에 들어온다.
+        """
+        records = []
+        for page in range(1, max_pages + 1):
+            root = self._fetch(CONTROL_URL, "CntlVssl2", start, end, call_sign, prt_ag_cd, rows, page)
+            items = [self._to_call(item) for item in root.iter("item")]
+            records.extend(items)
+            if len(items) < min(rows, MAX_ROWS):
+                break  # 마지막 페이지다
+        return records
+
+    def sailing_plans(
+        self,
+        start: date,
+        end: date,
+        call_sign: str | None = None,
+        prt_ag_cd: str = BUSAN_PRT_AG_CD,
+        rows: int = MAX_ROWS,
+        max_pages: int = 1,
+    ) -> list[SailingPlan]:
+        """입출항 신고 기준 운항정보. 미래 날짜를 주면 입항 예정이 나온다.
+
+        관제정보와 달리 아직 안 들어온 배도 준다. 신고가 바뀌면 reqstSeNm이 변경으로 온다.
+        """
+        plans = []
+        for page in range(1, max_pages + 1):
+            root = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, call_sign, prt_ag_cd, rows, page)
+            items = [self._to_plan(item) for item in root.iter("item")]
+            plans.extend(items)
+            if len(items) < min(rows, MAX_ROWS):
+                break
+        return plans
+
+    def find_plan_by_mrn(self, mrn: str, start: date, end: date) -> SailingPlan | None:
+        """입항 MRN이 같은 신고를 찾는다. B/L → UNI-PASS MRN → 배(호출부호)로 잇는 단계.
+
+        호출부호를 아직 모르니 기간 전체를 훑는다. 출항 MRN(끝이 E)으로는 찾지 않는다.
+        """
+        target = mrn.strip().upper()
+        for plan in self.sailing_plans(start, end, max_pages=MAX_PAGES):
+            if plan.mrn and plan.mrn.upper() == target:
+                return plan
         return None
+
+    @staticmethod
+    def _to_plan(item) -> SailingPlan:
+        arrival = departure = facility = revision = mrn = None
+        for detail in item.iter("detail"):
+            kind = _text(detail, "etryndNm")
+            if kind == "입항":
+                arrival = _dt(_text(detail, "etryptDt"))
+                facility = _text(detail, "laidupFcltyNm")
+                revision = _text(detail, "reqstSeNm")
+                mrn = _text(detail, "mrNum")
+            elif kind == "출항":
+                departure = _dt(_text(detail, "tkoffDt"))
+                facility = facility or _text(detail, "laidupFcltyNm")
+
+        return SailingPlan(
+            call_sign=_text(item, "clsgn"),
+            ship_name=_text(item, "vsslNm") or "",
+            nationality=_text(item, "vsslNltyNm"),
+            ship_kind=_text(item, "vsslKndNm"),
+            purpose=_text(item, "etryptPurpsNm"),
+            previous_port=_text(item, "prvsDpmprtPrtNm"),
+            next_port=_text(item, "nxlnptPrtNm"),
+            planned_arrival=arrival,
+            planned_departure=departure,
+            facility=facility,
+            revision=revision,
+            mrn=mrn,
+        )
 
     @staticmethod
     def _to_call(item) -> VesselCall:

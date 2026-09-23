@@ -73,7 +73,7 @@ def test_asks_report_window_ahead_and_control_window_back():
 import json
 from datetime import datetime, timedelta, timezone
 
-from backend.app.clients.mof import ArrivalReport
+from backend.app.clients.mof import SailingPlan
 from backend.app.clients.shipfinder import ShipFinderClient
 from worker.collector import MAX_TARGETS, Budget, collect_positions, select_targets
 
@@ -107,8 +107,10 @@ def _sf(fixture: str, calls: list) -> ShipFinderClient:
 
 
 def _report(call_sign, kind="풀컨테이너선", stage="변경", hours=24):
-    return ArrivalReport(call_sign=call_sign, ship_name=f"테스트{call_sign}", nationality=None, ship_kind=kind,
-                         stage=stage, arrival_at=NOW + timedelta(hours=hours), facility=None, mrn=None)
+    return SailingPlan(call_sign=call_sign, ship_name=f"테스트{call_sign}", nationality=None, ship_kind=kind,
+                       purpose=None, previous_port=None, next_port=None,
+                       planned_arrival=NOW + timedelta(hours=hours), planned_departure=None,
+                       facility=None, revision=stage)
 
 
 def test_budget_stops_calls():

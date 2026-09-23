@@ -71,8 +71,17 @@ def test_stale_candidates_dropped_by_eta_window(fake):
 
 
 def test_nationality_filters_out_other_flags(fake):
+    """국적이 다른 것이 확인된 후보만 뺀다. 상세를 못 받아 국적을 모르는 후보는 남긴다."""
     fake(flag="Panama")
-    assert get_vessel_candidates("TEST STAR", nationality="Korea")["candidates"] == []
+    kept = get_vessel_candidates("TEST STAR", nationality="Korea")["candidates"]
+    assert all(c["flag"] is None for c in kept)  # 국적을 아는 후보는 전부 빠졌다
+
+
+def test_call_sign_is_carried_for_mof_lookup(fake):
+    """호출부호는 해수부 조회 키다. 검색 응답에 있는 값을 그대로 넘긴다."""
+    fake()
+    first = get_vessel_candidates("TEST STAR")["candidates"][0]
+    assert first["call_sign"] == "TST01"
 
 
 def test_detail_lookup_capped(fake):

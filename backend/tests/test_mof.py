@@ -87,54 +87,40 @@ def test_missing_key_rejected(monkeypatch):
     assert e.value.code == "bad_key"
 
 
-# ---- 선박운항정보 (입항 신고). 값은 전부 가공값이다 ----
+def test_sailing_plans_parse_arrival_and_departure():
+    """선박운항정보는 입출항 신고 기반이라 아직 안 들어온 배의 입항 예정을 준다."""
+    plans = _client("sailing_busan.xml").sailing_plans(date(2026, 9, 24), date(2026, 9, 26))
 
-def test_arrival_reports_calls_info5_and_keeps_only_arrival_details():
+    assert len(plans) == 2
+    first = plans[0]
+    assert (first.call_sign, first.ship_name, first.nationality) == ("TEST01", "테스트예선1호", "대한민국")
+    assert first.planned_arrival.strftime("%Y-%m-%d %H:%M") == "2026-09-25 08:00"
+    assert first.planned_departure.strftime("%H:%M") == "18:00"
+    assert first.facility == "감만부두 4선석"
+    assert (first.purpose, first.previous_port, first.next_port) == ("양하", "SHANGHAI", "광양")
+    assert first.revision == "변경"  # 신고가 바뀐 건인지 알 수 있다
+
+
+def test_sailing_plans_hit_the_other_endpoint():
     calls = []
-    reports = _client("arrival_report_busan.xml", calls).arrival_reports(date(2026, 9, 22), date(2026, 9, 26))
+    _client("sailing_busan.xml", calls).sailing_plans(date(2026, 9, 24), date(2026, 9, 26), call_sign="TEST01")
 
-    assert str(calls[0].url).startswith("https://apis.data.go.kr/1192000/VsslEtrynd5/Info5")
-    assert calls[0].url.params["prtAgCd"] == "020"
-    # 출항 신고만 있는 TEST13은 빠진다
-    assert [r.call_sign for r in reports] == ["TEST11", "TEST12"]
-    first = reports[0]
-    assert (first.stage, first.facility, first.mrn) == ("변경", "테스트 신항 1선석", "26TEST0011I")
+    assert calls[0].url.path.endswith("/VsslEtrynd5/Info5")
+    assert calls[0].url.params["clsgn"] == "TEST01"
 
 
-def test_final_stage_is_not_used_as_planned_arrival():
-    # 최종 신고의 etryptDt는 실제 입항 시각이라 예정으로 쓰지 않는다 (mof.py 선박운항정보 절)
-    changed, final = _client("arrival_report_busan.xml").arrival_reports(date(2026, 9, 22), date(2026, 9, 26))
-    assert changed.planned_arrival is not None and changed.planned_arrival.hour == 12
-    assert final.arrival_at is not None and final.planned_arrival is None
+# ---- 선박운항정보의 MRN과 최종 신고 (2026-09-23 실측 반영). 값은 전부 가공값이다 ----
+
+def test_plan_carries_arrival_mrn_and_excludes_final_from_expected():
+    changed, final = [p for p in _client("arrival_report_busan.xml").sailing_plans(date(2026, 9, 22), date(2026, 9, 26))
+                      if p.planned_arrival]
+    assert (changed.revision, changed.mrn) == ("변경", "26TEST0011I")  # 출항 MRN(끝 E)이 아니라 입항 MRN
+    assert changed.expected_arrival.hour == 12
+    assert final.revision == "최종" and final.planned_arrival is not None and final.expected_arrival is None
 
 
-def test_find_arrival_by_mrn_matches_arrival_mrn_only():
+def test_find_plan_by_mrn_matches_arrival_mrn_only():
     client = _client("arrival_report_busan.xml")
-    found = client.find_arrival_by_mrn("26test0011i", date(2026, 9, 22), date(2026, 9, 26))
+    found = client.find_plan_by_mrn("26test0011i", date(2026, 9, 22), date(2026, 9, 26))
     assert found is not None and found.call_sign == "TEST11"
-    # 출항 MRN(끝이 E)으로는 찾지 않는다
-    assert client.find_arrival_by_mrn("26TEST0012E", date(2026, 9, 22), date(2026, 9, 26)) is None
-
-
-def test_arrival_reports_follows_pages_until_total_count():
-    # 51건 = 50건 페이지 + 1건 페이지. 두 번 부르고 멈춰야 한다
-    def page_xml(page: int) -> str:
-        start, count = (0, 50) if page == 1 else (50, 1)
-        items = "".join(
-            f"<item><clsgn>P{n:03d}</clsgn><vsslNm>테스트{n}</vsslNm><details><detail>"
-            f"<reqstSeNm>최초</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt>"
-            f"<mrNum>26TEST{n:04d}I</mrNum></detail></details></item>"
-            for n in range(start, start + count)
-        )
-        return (f"<response><header><resultCode>00</resultCode></header><body><items>{items}</items>"
-                f"<totalCount>51</totalCount></body></response>")
-
-    calls = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls.append(request)
-        return httpx.Response(200, text=page_xml(int(request.url.params["pageNo"])))
-
-    client = MofClient(key="test-key", transport=httpx.MockTransport(handler))
-    reports = client.arrival_reports(date(2026, 9, 24), date(2026, 9, 30))
-    assert len(reports) == 51 and len(calls) == 2
+    assert client.find_plan_by_mrn("26TEST0012E", date(2026, 9, 22), date(2026, 9, 26)) is None
