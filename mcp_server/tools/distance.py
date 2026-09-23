@@ -16,7 +16,7 @@ from typing import Annotated
 import searoute
 from pydantic import Field
 
-from mcp_server.rules import rule
+from backend.app.services.rules import rule
 from mcp_server.schemas import DistanceResult, ToolError
 
 _EARTH_RADIUS_NM = 3440.065

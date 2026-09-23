@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import httpx
 
 from backend.app.clients.cache import ResponseCache
+from backend.app.clients.retry import with_retry
 
 BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
 TIMEOUT_SEC = 10.0
@@ -138,10 +139,14 @@ class ShipFinderClient:
         self._http.close()
 
     def _get(self, endpoint: str, params: dict) -> dict:
-        try:
+        def call() -> httpx.Response:
             resp = self._http.get(endpoint, params={"key": self._key, **params})
             resp.raise_for_status()
-            body = resp.json()
+            return resp
+
+        try:
+            # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
+            body = with_retry(call, name=f"shipfinder:{endpoint}").json()
         except httpx.TimeoutException as e:
             raise ShipFinderError("timeout", f"{endpoint} 응답 시간 초과") from e
         except httpx.HTTPStatusError as e:
