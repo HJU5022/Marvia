@@ -100,3 +100,17 @@ def test_api_error_returns_tool_error(fake):
     fake("invalid_parameter.xml", sailing="invalid_parameter.xml")
     r = get_port_schedule(call_sign="TEST01")
     assert r["error"]["code"] == "error" and r["error"]["retryable"] is False
+
+
+def test_name_match_ignores_spacing_and_suffix(fake):
+    """해수부 선명과 입력이 공백·호 접미사만 다르면 같은 배로 본다."""
+    fake()
+    result = get_port_schedule(ship_name="테스트 예선 1")
+    assert result["actual_arrival"].startswith("2026-09-22T22:30")
+
+
+def test_name_match_falls_back_to_all_when_nothing_matches(fake):
+    """닮은 이름이 없으면 거르지 않는다. 선명이 달라 보여도 그 배일 수 있다."""
+    fake()
+    result = get_port_schedule(ship_name="전혀다른배이름")
+    assert result["actual_arrival"] is not None

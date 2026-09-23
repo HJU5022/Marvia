@@ -13,7 +13,9 @@ UNI-PASS에는 MMSI가 없고 ShipFinder에는 접안 시설이 없어서, 둘�
 
 출력 계약은 mcp_server/schemas.py의 PortScheduleResult다 (C4, SDD 3.4).
 """
+import re
 from datetime import date, datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from typing import Annotated
 
 from pydantic import Field
@@ -23,25 +25,57 @@ from mcp_server.schemas import ControlEvent, PortScheduleResult, ToolError
 
 LOOKBACK_DAYS = 3  # 실적을 며칠 전까지 볼지
 LOOKAHEAD_DAYS = 7  # 입항 예정을 며칠 뒤까지 볼지
+NAME_MATCH_RATIO = 0.85  # 이 이상 닮았으면 같은 배로 본다
 
 make_client = MofClient  # 테스트가 fixture 클라이언트로 바꿔 끼우는 자리
 
 
+def _normalize(name: str) -> str:
+    """선명을 비교하기 좋게 다듬는다.
+
+    해수부는 외국 선박을 영문으로, 국적선을 한글로 준다. ShipFinder는 영문이다.
+    수입 화물은 대부분 외국 선박이라 영문끼리 비교되는데, 공백·점·하이픈이 제각각이고
+    국적선은 "제203동인호"처럼 한글에 호가 붙는다. 그런 차이만 걷어낸다.
+    """
+    text = re.sub(r"[^0-9A-Z가-힣]", "", name.upper())
+    return re.sub(r"호$", "", text)
+
+
 def _by_name(records: list, ship_name: str | None) -> list:
-    """선명으로 거른다. 호출부호로 조회했으면 보통 1건이라 그대로 지나간다."""
+    """선명으로 거른다. 호출부호로 조회했으면 보통 1건이라 그대로 지나간다.
+
+    정확히 같은 이름 → 한쪽이 다른 쪽을 품는 이름 → 많이 닮은 이름 순으로 찾는다.
+    아무것도 못 찾으면 거르지 않고 전부 돌려준다. 선명이 달라 보여도 그 배일 수 있어서다.
+    """
     if not ship_name:
         return records
-    target = ship_name.replace(" ", "").upper()
-    matched = [r for r in records if target in r.ship_name.replace(" ", "").upper()]
-    return matched or records
+    target = _normalize(ship_name)
+    if not target:
+        return records
+
+    names = [(r, _normalize(r.ship_name)) for r in records]
+    exact = [r for r, n in names if n == target]
+    if exact:
+        return exact
+    partial = [r for r, n in names if n and (target in n or n in target)]
+    if partial:
+        return partial
+    close = [r for r, n in names if n and SequenceMatcher(None, target, n).ratio() >= NAME_MATCH_RATIO]
+    return close or records
 
 
 def _pick(calls: list[VesselCall], ship_name: str | None) -> VesselCall | None:
-    """실적 중 한 건. 같은 배가 여러 번 들어왔으면 가장 최근 입항."""
+    """실적 중 한 건. 입항 기록이 있는 것을 먼저 보고, 그중 가장 최근 입항을 쓴다.
+
+    출항 기록만 있는 건은 "들어왔는가"라는 질문에 답하지 못하므로 뒤로 미룬다.
+    """
     calls = _by_name(calls, ship_name)
+    arrived = [c for c in calls if c.actual_arrival]
+    if arrived:
+        return max(arrived, key=lambda c: c.actual_arrival)
     if not calls:
         return None
-    return max(calls, key=lambda c: c.actual_arrival or c.reported_arrival or datetime.min.replace(tzinfo=timezone.utc))
+    return max(calls, key=lambda c: c.reported_arrival or datetime.min.replace(tzinfo=timezone.utc))
 
 
 def _pick_plan(plans: list[SailingPlan], ship_name: str | None) -> SailingPlan | None:
