@@ -20,3 +20,9 @@ def clear_shipfinder_cache():
 @pytest.fixture(autouse=True)
 def no_retry_backoff(monkeypatch):
     monkeypatch.setattr(retry, "BACKOFF_SEC", 0)
+
+
+@pytest.fixture
+def anyio_backend():
+    """anyio 표시가 붙은 비동기 테스트는 asyncio로만 돌린다 (trio는 쓰지 않는다)."""
+    return "asyncio"

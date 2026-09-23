@@ -6,15 +6,20 @@ FastMCP, Streamable HTTP, 경로 /mcp. 외부 데이터 도구 4종을 여기에
   - estimate_distance (B7)                              → searoute
 
 도구는 판정하지 않고 원본 값과 fetched_at만 돌려줍니다. 실패는 예외 대신
-{error: {code, message, retryable}}로 돌려줍니다. Bearer 토큰 인증은 A10에서 붙입니다.
+{error: {code, message, retryable}}로 돌려줍니다.
+
+MCP_TOKEN이 있으면 /mcp는 Authorization: Bearer <MCP_TOKEN> 없이 부를 수 없습니다 (A10).
 
 실행:  python -m mcp_server.server --port 8001
-확인:  python -m scripts.mcp_check http://localhost:8001/mcp
+확인:  python -m scripts.mcp_check http://localhost:8001/mcp --token <MCP_TOKEN>
 """
 import argparse
 import os
 
+import uvicorn
 from mcp.server.fastmcp import FastMCP
+
+from mcp_server.auth import protect
 
 from mcp_server.tools.distance import estimate_distance
 from mcp_server.tools.live_position import get_live_position
@@ -36,15 +41,18 @@ mcp.tool()(get_vessel_candidates)
 mcp.tool()(get_port_schedule)
 
 
+def build_app(token: str | None = None):
+    """인증을 건 ASGI 앱. mcp.run 대신 이걸 띄워야 토큰 검사가 걸린다."""
+    return protect(mcp.streamable_http_app(), token)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Marvia MCP 서버")
     parser.add_argument("--host", default=os.environ.get("MCP_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("MCP_PORT", DEFAULT_PORT)))
     args = parser.parse_args()
 
-    mcp.settings.host = args.host
-    mcp.settings.port = args.port
-    mcp.run(transport="streamable-http")
+    uvicorn.run(build_app(), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
