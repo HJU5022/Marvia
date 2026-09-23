@@ -1,15 +1,14 @@
 """skills/ais-reliability/rules.md 프론트매터 읽기 (계약 C6, SDD 3.6).
 
 임계값 원본은 rules.md 하나다. 코드에 숫자를 적지 않는다 (CLAUDE.md "하지 말 것").
-MCP 도구가 쓰는 최소 로더다. 판정 코드(backend/app/services/signals.py, C-4)가
-같은 값을 읽어야 하면 그쪽 로더로 합친다.
+임계값을 읽는 곳은 여기 하나다. 판정 코드(services/signals.py)와 MCP 도구가 같이 쓴다.
 """
 from functools import cache
 from pathlib import Path
 
 import yaml
 
-RULES_PATH = Path(__file__).resolve().parents[1] / "skills" / "ais-reliability" / "rules.md"
+RULES_PATH = Path(__file__).resolve().parents[3] / "skills" / "ais-reliability" / "rules.md"
 
 
 @cache
