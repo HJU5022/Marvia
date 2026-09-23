@@ -67,3 +67,94 @@ def test_asks_report_window_ahead_and_control_window_back():
     assert (report["sde"], report["ede"]) == ("20260922", "20260930")
     assert (control["sde"], control["ede"]) == ("20260922", "20260923")
     assert "clsgn" not in report and "clsgn" not in control  # 부산 전체
+
+
+# ---- 추적 대상 선정과 ShipFinder 위치. ShipFinder는 하루 50회 한도라 예산을 지키는지가 핵심이다 ----
+import json
+from datetime import datetime, timedelta, timezone
+
+from backend.app.clients.mof import ArrivalReport
+from backend.app.clients.shipfinder import ShipFinderClient
+from worker.collector import MAX_TARGETS, Budget, collect_positions, select_targets
+
+SF_FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "fixtures" / "shipfinder"
+NOW = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
+
+
+class ScriptedConn:
+    """SELECT에는 정해 둔 행을 돌려주고, INSERT는 기록만 한다."""
+
+    def __init__(self, known_targets=(), tracked=()):
+        self.known, self.tracked, self.inserts = list(known_targets), list(tracked), []
+
+    def execute(self, sql, params=()):
+        rows = []
+        if "SELECT call_sign FROM targets" in sql:
+            rows = [(c,) for c in self.known]
+        elif "FROM targets t" in sql:
+            rows = [(m,) for m in self.tracked]
+        else:
+            self.inserts.append((sql, params))
+        return type("Cur", (), {"rowcount": 1, "fetchall": lambda self: rows})()
+
+
+def _sf(fixture: str, calls: list) -> ShipFinderClient:
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=json.loads((SF_FIXTURES / fixture).read_text(encoding="utf-8")))
+
+    return ShipFinderClient(key="test-key", transport=httpx.MockTransport(handler))
+
+
+def _report(call_sign, kind="풀컨테이너선", stage="변경", hours=24):
+    return ArrivalReport(call_sign=call_sign, ship_name=f"테스트{call_sign}", nationality=None, ship_kind=kind,
+                         stage=stage, arrival_at=NOW + timedelta(hours=hours), facility=None, mrn=None)
+
+
+def test_budget_stops_calls():
+    b = Budget(2)
+    assert [b.take(), b.take(), b.take()] == [True, True, False] and b.remaining == 0
+
+
+def test_select_targets_matches_call_sign_and_filters_candidates():
+    calls, conn = [], ScriptedConn()
+    reports = [
+        _report("TST01", hours=5),
+        _report("TSTBULK", kind="산물선(벌크선)"),       # 컨테이너선이 아니다
+        _report("TSTFINAL", stage="최종"),               # 최종 신고는 예정이 아니다
+        _report("TSTPAST", hours=-5),                    # 이미 지난 예정
+    ]
+    result = select_targets(conn, reports, _sf("search_same_name.json", calls), Budget(10), now=NOW)
+    assert len(calls) == 1  # 조건에 맞는 한 척만 검색했다
+    assert result["targets_added"] == [{"call_sign": "TST01", "mmsi": 440999101}]
+
+
+def test_select_targets_respects_budget_and_known_targets():
+    calls = []
+    conn = ScriptedConn(known_targets=["TST02"])
+    reports = [_report("TST01", hours=1), _report("TST02", hours=2), _report("TST05", hours=3), _report("TST09", hours=4)]
+    select_targets(conn, reports, _sf("search_same_name.json", calls), Budget(2), now=NOW)
+    # 이미 대상인 TST02는 건너뛰고, 예산 2회만 쓴다
+    assert len(calls) == 2
+    assert [p[0] for sql, p in conn.inserts] == ["TST01", "TST05"]
+
+
+def test_select_targets_keeps_unmatched_ship_so_it_is_not_searched_again():
+    calls, conn = [], ScriptedConn()
+    result = select_targets(conn, [_report("NOSUCH")], _sf("search_same_name.json", calls), Budget(5), now=NOW)
+    assert result["targets_unmatched"] == [{"call_sign": "NOSUCH", "mmsi": None}]
+    assert conn.inserts[0][1][:2] == ("NOSUCH", None)
+
+
+def test_collect_positions_saves_and_respects_budget():
+    calls = []
+    conn = ScriptedConn(tracked=[413961925, 413961925, 413961925])
+    result = collect_positions(conn, _sf("position_ok.json", calls), Budget(2), now=NOW)
+    assert len(calls) == 2 and result["tracked"] == 3
+    sql, params = conn.inserts[0]
+    assert "INSERT INTO positions" in sql and params[0] == 413961925
+    assert json.loads(params[-1])["mmsi"] == 413961925  # 원본은 raw(JSONB)로 DB에만 남긴다
+
+
+def test_max_targets_is_task_list_range():
+    assert 20 <= MAX_TARGETS <= 30  # 작업 리스트 D1 "부산행 20~30척"
