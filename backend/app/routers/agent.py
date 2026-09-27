@@ -155,9 +155,10 @@ def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentRe
 
 
 def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[VesselCandidate], str, int | None, str | None]:
-    """후보 1척이면 확정, 여럿이면 되묻기. 사용자가 고른 MMSI가 있으면 그것을 쓴다.
+    """후보 1척이면 확정, 여럿이면 LLM이 고르고, 확실하지 않으면 되묻기. 사용자가 고른 MMSI가 있으면 그것을 쓴다.
 
-    여럿일 때 LLM이 고르는 단계(C-5)는 아직 없다. 그전까지는 확정하지 않고 되묻는다.
+    여럿일 때는 llm.pick_vessel()을 부르고 confidence가 high일 때만 확정한다 (SDD 5.5, C-5).
+    medium·low이거나 LLM이 실패하면 확정하지 않고 되묻는다.
     확정하지 않는 쪽이 남의 배를 내 배라고 답하는 것보다 낫다 (PRD 6.2).
 
     호출부호도 같이 돌려준다. C1 VesselCandidate에는 자리가 없지만 해수부 조회에 필요하다.
@@ -188,6 +189,15 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     if len(candidates) == 1:
         only = rows[0]
         return candidates, "confirmed", candidates[0].mmsi, only.get("call_sign")
+
+    # 여럿이면 LLM이 고른다. 사용자가 되묻기에 답한 항차·포워더 입항 예정일도 같이 넘긴다
+    try:
+        picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
+    except llm.LLMError:
+        return candidates, "uncertain", None, None
+    if picked.confidence == "high" and picked.choice is not None:
+        call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
+        return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
 
 

@@ -39,7 +39,7 @@ def _candidate(mmsi: int, name: str = "TEST STAR", call_sign: str = "TST01") -> 
 def fake(monkeypatch):
     """UNI-PASS·도구·DB를 전부 가짜로. 라우터가 무엇을 어떤 순서로 부르는지만 본다."""
 
-    def _use(*, customs=..., candidates=None, position=None, schedule=None, judge=None):
+    def _use(*, customs=..., candidates=None, position=None, schedule=None, judge=None, pick=None):
         record = CustomsRecord(ship_name="TEST STAR", ship_nat="PA", stage_name="반입신고",
                                bl_masked="TEST****0001", fetched_at=NOW) if customs is ... else customs
 
@@ -58,6 +58,7 @@ def fake(monkeypatch):
         monkeypatch.setattr(agent_router, "_logged", lambda request, response: response)  # DB 없이
         # LLM도 가짜로. 기본은 실패 → partial. judge에 dict를 주면 그 판정을 돌려준다
         monkeypatch.setattr(agent_router.llm, "judge", _fake_judge(judge))
+        monkeypatch.setattr(agent_router.llm, "pick_vessel", _fake_pick(pick))
 
     return _use
 
@@ -69,6 +70,16 @@ def _fake_judge(answer: dict | None):
         return llm.LLMAnswer(output=llm.JudgeOutput.model_validate(answer),
                              llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
     return judge
+
+
+def _fake_pick(answer: dict | None):
+    """가짜 pick_vessel. None이면 LLM 실패."""
+    def pick(candidates, customs, voyage_no=None, forwarder_eta=None, **kwargs):
+        if answer is None:
+            raise llm.LLMError("테스트: LLM 없음")
+        return llm.LLMAnswer(output=llm.PickOutput.model_validate(answer),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+    return pick
 
 
 JUDGED = {
@@ -146,7 +157,7 @@ def test_llm_hold_asks_forwarder_eta(fake):
 
 
 def test_multiple_candidates_ask_back(fake):
-    """동명 선박이면 확정하지 않고 되묻는다 (PRD 6.2)."""
+    """동명 선박인데 LLM이 못 고르면(여기선 실패) 확정하지 않고 되묻는다 (PRD 6.2)."""
     fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")])
 
     with TestClient(app) as client:
@@ -156,6 +167,31 @@ def test_multiple_candidates_ask_back(fake):
     assert len(body["vessel_candidates"]) == 2
     assert set(body["missing_inputs"]) == {"voyage_no", "forwarder_eta"}
     assert body["verdict"] is None
+
+
+@pytest.mark.parametrize("confidence", ["medium", "low"])
+def test_multiple_candidates_not_sure_ask_back(fake, confidence):
+    """LLM이 골라도 high가 아니면 확정하지 않는다 (SDD 5.5)."""
+    fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
+         pick={"choice": 440999002, "confidence": confidence, "reasons_per_candidate": []})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
+
+
+def test_multiple_candidates_llm_sure_is_confirmed(fake):
+    """LLM이 high로 고르면 그 배로 확정하고 판정까지 간다 (C-5)."""
+    fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
+         pick={"choice": 440999002, "confidence": "high", "reasons_per_candidate": []},
+         position={**POSITION, "mmsi": 440999002}, judge=JUDGED)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["vessel_match"] == "confirmed" and body["verdict"] == "watch"
+    assert len(body["vessel_candidates"]) == 2  # 무엇 중에서 골랐는지 화면에 남긴다
 
 
 def test_unknown_bl_is_insufficient_not_failed(fake):
