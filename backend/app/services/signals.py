@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import Freshness, Signal, SignalSet
-from backend.app.services.evidence import days_margin
+from backend.app.services.evidence import KST, days_margin
 from backend.app.services.rules import rule
 
 BUSAN_PORT_CODE = "KRPUS"
@@ -99,9 +99,10 @@ def compute(
     eta_gap_hours = None
     conflict_hours = rule("eta_conflict_hours")
     if ais_eta and mof_eta:
-        eta_gap_hours = round(_hours_between(ais_eta, mof_eta), 1)
+        eta_gap_hours, date_only = _eta_gap(ais_eta, mof_eta)
         state = "triggered" if eta_gap_hours > conflict_hours else "clear"
-        signals.append(_signal("eta_conflict", state, f"{eta_gap_hours}시간 차이", f"{conflict_hours}시간", "shipfinder+mof"))
+        value = f"{eta_gap_hours}시간 차이" + (" (해수부는 날짜만 신고)" if date_only else "")
+        signals.append(_signal("eta_conflict", state, value, f"{conflict_hours}시간", "shipfinder+mof"))
     else:
         missing = "AIS ETA 없음" if not ais_eta else "해수부 입항예정 없음"
         signals.append(_signal("eta_conflict", "unknown", missing, f"{conflict_hours}시간", "shipfinder+mof"))
@@ -196,6 +197,25 @@ def _customs_hold(customs: CustomsRecord | None) -> Signal:
     if any(word in stage for word in CUSTOMS_HOLD_WORDS):
         return _signal("customs_hold", "triggered", stage, threshold, "unipass")
     return _signal("customs_hold", "clear", stage, threshold, "unipass")
+
+
+def _eta_gap(ais_eta: datetime, mof_eta: datetime) -> tuple[float, bool]:
+    """AIS ETA와 해수부 입항 예정의 차이(시간)와, 해수부 값이 날짜만인지를 돌려준다.
+
+    해수부 예정이 한국 시각 정확히 00:00이면 날짜만 신고하고 시각을 00:00으로 채운 값으로 본다.
+    09-27 부산 입항 신고 838건 실측에서 2~9%가 00:00이었고, 00:00이 다른 정각보다 몰려 있었다.
+    이때는 그날 하루(00:00~24:00)를 범위로 보고, AIS ETA가 범위 밖으로 벗어난 만큼만 차이로 센다.
+    00:00을 그대로 시각으로 쓰면 같은 날 오후 도착도 12시간 넘게 어긋난 것으로 잡혀 eta_conflict가 가짜로 켜진다.
+    """
+    local = mof_eta.astimezone(KST)
+    if (local.hour, local.minute) != (0, 0):
+        return round(_hours_between(ais_eta, mof_eta), 1), False
+
+    day_start, day_end = mof_eta, mof_eta + timedelta(days=1)
+    if day_start <= ais_eta <= day_end:
+        return 0.0, True
+    edge = day_start if ais_eta < day_start else day_end
+    return round(_hours_between(ais_eta, edge), 1), True
 
 
 def trusted_eta(position: dict | None, schedule: dict | None) -> datetime | None:
