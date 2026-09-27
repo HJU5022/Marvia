@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import Freshness, Signal, SignalSet
+from backend.app.services.evidence import days_margin
 from backend.app.services.rules import rule
 
 BUSAN_PORT_CODE = "KRPUS"
@@ -123,8 +124,7 @@ def compute(
     signals.append(_customs_hold(customs))
 
     # 7. sales_date_exceeded: 신뢰 ETA가 판매 예정일을 넘기나
-    trusted_eta = _as_utc(_parse_dt((schedule or {}).get("actual_arrival"))) or mof_eta or ais_eta
-    signals.append(_sales_date(trusted_eta, sale_due_date))
+    signals.append(_sales_date(trusted_eta(position, schedule), sale_due_date))
 
     return SignalSet(
         signals=signals,
@@ -198,11 +198,30 @@ def _customs_hold(customs: CustomsRecord | None) -> Signal:
     return _signal("customs_hold", "clear", stage, threshold, "unipass")
 
 
-def _sales_date(trusted_eta: datetime | None, sale_due_date) -> Signal:
+def trusted_eta(position: dict | None, schedule: dict | None) -> datetime | None:
+    """믿을 만한 도착 예정 시각. rules.md priority 순서로 첫 유효값을 쓴다 (SDD 5.8).
+
+    해수부 실제 입항(actual_arrival) > 해수부 입항 예정(planned_arrival) > AIS ETA.
+    AIS 목적지 문자열은 시각이 아니라서 여기엔 없다. 라우터도 이 함수를 불러 days_margin을 계산한다.
+    """
+    position = position if position and "error" not in position else None
+    schedule = schedule if schedule and "error" not in schedule else None
+    for value in (
+        (schedule or {}).get("actual_arrival"),
+        (schedule or {}).get("planned_arrival"),
+        (position or {}).get("ais_eta"),
+    ):
+        found = _as_utc(_parse_dt(value))
+        if found:
+            return found
+    return None
+
+
+def _sales_date(trusted: datetime | None, sale_due_date) -> Signal:
     threshold = "판매 예정일"
-    if trusted_eta is None or sale_due_date is None:
+    margin_days = days_margin(trusted, sale_due_date)  # 한국 날짜로 센다. 라우터와 같은 함수 (evidence.py)
+    if margin_days is None:
         return _signal("sales_date_exceeded", "unknown", "신뢰 ETA 또는 판매 예정일 없음", threshold, "rule")
 
-    margin_days = (sale_due_date - trusted_eta.date()).days
     value = f"여유 {margin_days}일"
     return _signal("sales_date_exceeded", "triggered" if margin_days < 0 else "clear", value, threshold, "rule")
