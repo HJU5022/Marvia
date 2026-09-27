@@ -20,6 +20,7 @@ GOOD_ANSWER = {
     "conflicts": [{"signals": ["dest_changed", "eta_conflict"], "chosen": "mof", "why": "입항 신고가 공식 서류"}],
     "actions": ["포워더에 목적지를 한 번 확인"],
     "answer": "배는 부산으로 오고 있지만 목적지 표시가 달라 한 번 확인이 필요합니다.",
+    "customs": {"plain_explanation": "화물이 터미널에 들어갔습니다.", "next_stage": "수입신고", "needs_broker": False},
 }
 
 
@@ -97,13 +98,15 @@ def test_parses_answer_into_judge_output(monkeypatch):
     assert result.output.verdict == "watch"
     assert result.output.reasons[0].rule == "dest_changed"
     assert result.output.conflicts[0].chosen == "mof"
+    assert result.output.customs.next_stage == "수입신고"
     assert result.prompt_version == "local"
 
 
-def test_null_verdict_is_allowed(monkeypatch):
-    """판정 보류(null)는 정상 답이다. 위치가 아예 없을 때 등 (skills/ais-reliability 되묻기 조건)."""
-    _fake_chat(monkeypatch, json.dumps({**GOOD_ANSWER, "verdict": None, "reasons": [], "conflicts": []}))
-    assert llm.judge(_signals(), None, days_margin=None).output.verdict is None
+def test_null_verdict_and_customs_are_allowed(monkeypatch):
+    """판정 보류(null)와 통관 정보 없음(customs null)은 정상 답이다 (skills/ais-reliability 되묻기 조건)."""
+    _fake_chat(monkeypatch, json.dumps({**GOOD_ANSWER, "verdict": None, "reasons": [], "conflicts": [], "customs": None}))
+    output = llm.judge(_signals(), None, days_margin=None).output
+    assert output.verdict is None and output.customs is None
 
 
 @pytest.mark.parametrize("bad", ["판정: watch", json.dumps({**GOOD_ANSWER, "verdict": "maybe"})])

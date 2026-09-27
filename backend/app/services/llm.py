@@ -176,7 +176,7 @@ SKILL_DIR = Path(__file__).resolve().parents[3] / "skills"  # 레포 루트의 s
 JUDGE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["verdict", "reasons", "conflicts", "actions", "answer"],
+    "required": ["verdict", "reasons", "conflicts", "actions", "answer", "customs"],  # strict 모드는 모든 칸이 required
     "properties": {
         # null = 판정 보류. 위치가 아예 없을 때 등 (skills/ais-reliability 되묻기 조건)
         "verdict": {"type": ["string", "null"], "enum": ["fine", "watch", "act", None]},
@@ -208,8 +208,32 @@ JUDGE_SCHEMA = {
         },
         "actions": {"type": "array", "items": {"type": "string"}},
         "answer": {"type": "string", "description": "사용자에게 보여 줄 한국어 두세 문장"},
+        # 통관 단계 해설 (PRD 6.1 LLM 몫, skills/customs-stages). 통관 정보가 없으면 null
+        "customs": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["plain_explanation", "next_stage", "needs_broker"],
+                    "properties": {
+                        "plain_explanation": {"type": "string"},
+                        "next_stage": {"type": ["string", "null"]},
+                        "needs_broker": {"type": "boolean"},
+                    },
+                },
+                {"type": "null"},
+            ]
+        },
     },
 }
+
+
+class CustomsExplanation(BaseModel):
+    """LLM이 쓴 통관 해설. 단계 이름·코드·이력은 코드 값(CustomsRecord)을 쓰고, 여기서는 설명 셋만 받는다 (C1 CustomsInfo)."""
+
+    plain_explanation: str
+    next_stage: str | None
+    needs_broker: bool
 
 
 class JudgeOutput(BaseModel):
@@ -220,6 +244,7 @@ class JudgeOutput(BaseModel):
     conflicts: list[Conflict]
     actions: list[str]
     answer: str
+    customs: CustomsExplanation | None
 
 
 @dataclass
