@@ -11,6 +11,8 @@ from backend.app.main import app
 from backend.app.routers import agent as agent_router
 from backend.app.routers import history as history_router
 from backend.app.schemas.customs import CustomsRecord
+from backend.app.schemas.signals import Signal, SignalSet
+from backend.app.services import llm
 
 NOW = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
 
@@ -37,7 +39,7 @@ def _candidate(mmsi: int, name: str = "TEST STAR", call_sign: str = "TST01") -> 
 def fake(monkeypatch):
     """UNI-PASS·도구·DB를 전부 가짜로. 라우터가 무엇을 어떤 순서로 부르는지만 본다."""
 
-    def _use(*, customs=..., candidates=None, position=None, schedule=None):
+    def _use(*, customs=..., candidates=None, position=None, schedule=None, judge=None):
         record = CustomsRecord(ship_name="TEST STAR", ship_nat="PA", stage_name="반입신고",
                                bl_masked="TEST****0001", fetched_at=NOW) if customs is ... else customs
 
@@ -54,8 +56,36 @@ def fake(monkeypatch):
         monkeypatch.setattr(agent_router, "get_live_position", lambda mmsi: position or {"error": {"code": "not_found"}})
         monkeypatch.setattr(agent_router, "get_port_schedule", lambda **k: schedule or {"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
         monkeypatch.setattr(agent_router, "_logged", lambda request, response: response)  # DB 없이
+        # LLM도 가짜로. 기본은 실패 → partial. judge에 dict를 주면 그 판정을 돌려준다
+        monkeypatch.setattr(agent_router.llm, "judge", _fake_judge(judge))
 
     return _use
+
+
+def _fake_judge(answer: dict | None):
+    def judge(signal_set, customs, margin, **kwargs):
+        if answer is None:
+            raise llm.LLMError("테스트: LLM 없음")
+        return llm.LLMAnswer(output=llm.JudgeOutput.model_validate(answer),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+    return judge
+
+
+JUDGED = {
+    "verdict": "watch",
+    "reasons": [{"rule": "navstat_mismatch", "value": "항해 중인데 속도 0", "triggered": True}],
+    "conflicts": [], "actions": ["포워더에 확인"], "answer": "한 번 확인이 필요합니다.",
+    "customs": {"plain_explanation": "화물이 터미널에 들어갔습니다.", "next_stage": "수입신고", "needs_broker": False},
+}
+
+
+def _all_clear(monkeypatch):
+    """신호 7개를 전부 clear로 바꾼다. 규칙 판정(fine) 경로를 보려고."""
+    ids = ["position_stale", "eta_conflict", "anchor_wait", "dest_changed",
+           "navstat_mismatch", "customs_hold", "sales_date_exceeded"]
+    signal_set = SignalSet(signals=[Signal(id=i, state="clear", value="-", threshold="-", source="test") for i in ids],
+                           freshness="fresh", distance_nm=None, calc_eta=None, eta_gap_hours=None, computed_at=NOW)
+    monkeypatch.setattr(agent_router.signals_service, "compute", lambda *a, **k: signal_set)
 
 
 def test_single_candidate_is_confirmed(fake):
@@ -69,7 +99,49 @@ def test_single_candidate_is_confirmed(fake):
 
     assert body["vessel_match"] == "confirmed"
     assert body["position"]["lat"] == 35.1
-    assert body["status"] == "partial"  # 판정(C-6)이 아직 없다
+    assert body["status"] == "partial"  # LLM 실패면 판정 없이 partial (09-23 결정)
+    assert body["verdict"] is None
+    assert "sales_date_exceeded" not in body["answer"]  # 실패 안내 문장이 나간다
+
+
+POSITION = {"mmsi": 440999001, "lat": 35.1, "lng": 129.05, "sog": 0.0, "cog": 10.0,
+            "navistat": 8, "dest": "BUSAN, KR", "destcode": "KRPUS", "ais_eta": None,
+            "last_time": NOW.isoformat(), "fetched_at": NOW.isoformat()}
+
+
+def test_llm_verdict_fills_response(fake):
+    """신호가 하나라도 켜지면 LLM 판정을 그대로 담는다. 통관 해설은 UNI-PASS 단계 이름과 합친다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"], body["decided_by"]) == ("ok", "watch", "llm")
+    assert body["actions"] == ["포워더에 확인"] and body["reasons"][0]["rule"] == "navstat_mismatch"
+    assert body["customs"]["stage_name"] == "반입신고" and body["customs"]["next_stage"] == "수입신고"
+    assert body["position"]["freshness"] in ("fresh", "stale")  # unknown이 아니라 signals가 계산한 값
+
+
+def test_all_clear_is_fine_by_rule(fake, monkeypatch):
+    """신호가 전부 clear면 LLM이 뭐라 하든 판정은 규칙으로 fine (SDD 4.1 7단계)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED)
+    _all_clear(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["verdict"], body["decided_by"], body["status"]) == ("fine", "rule", "ok")
+    assert body["answer"] == JUDGED["answer"]  # 문장은 LLM 것을 쓴다
+
+
+def test_llm_hold_asks_forwarder_eta(fake):
+    """LLM이 판정을 보류하면 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": None})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "insufficient" and body["missing_inputs"] == ["forwarder_eta"]
     assert body["verdict"] is None
 
 
