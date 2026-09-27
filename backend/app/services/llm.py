@@ -10,7 +10,9 @@
 
 지금 있는 것:
   chat()   OpenRouter에 한 번 묻는다. 과부하·한도(503·429)면 한 번 더 묻는다
-  judge()  2층 판정. 프롬프트(Langfuse) + skills/ 문서 + 코드가 모은 자료를 주고 판정 JSON을 받는다 (SDD 4.1 7단계, 5.6)
+  judge()            2층 판정. 프롬프트(Langfuse) + skills/ 문서 + 코드가 모은 자료를 주고 판정 JSON을 받는다 (SDD 4.1 7단계, 5.6)
+  pick_vessel()      이름 같은 후보가 여럿일 때 어느 배인지 고른다 (SDD 5.5, C-5)
+  answer_follow_up() 판정 뒤 후속 질문에 근거 안에서만 답한다 (C-9)
 
 모델 자리 (.env, 계약 C8):
   MODEL_A     싼 모델. 대화+판단 기본
@@ -24,14 +26,16 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
+from typing import Literal
 
 import openai
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from backend.app.observability.langfuse import get_prompt
-from backend.app.schemas.agent import Conflict, Reason, Verdict
+from backend.app.schemas.agent import AgentResponse, Conflict, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 
@@ -248,10 +252,11 @@ class JudgeOutput(BaseModel):
 
 
 @dataclass
-class JudgeResult:
-    """judge() 결과. 판정과 함께 트레이스에 남길 값(모델·토큰·지연·프롬프트 버전)을 들고 다닌다 (SDD 5.11)."""
+class LLMAnswer:
+    """judge()·pick_vessel()·answer_follow_up()의 결과. 검사를 통과한 출력과 함께
+    트레이스에 남길 값(모델·토큰·지연·프롬프트 버전)을 들고 다닌다 (SDD 5.11)."""
 
-    output: JudgeOutput
+    output: BaseModel  # 함수마다 JudgeOutput·PickOutput·FollowUpOutput
     llm: LLMResult
     prompt_version: str
 
@@ -277,31 +282,133 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
     return json.dumps(data, ensure_ascii=False)
 
 
+def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
+              output_model: type[BaseModel], model: str | None) -> LLMAnswer:
+    """세 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
+    구조화 출력으로 받은 JSON을 output_model로 검사한다.
+
+    Raises:
+        LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
+                  내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
+    """
+    prompt = get_prompt(prompt_name)
+    messages = [
+        {"role": "system", "content": f"{prompt.text}\n\n{_skills_text()}"},
+        {"role": "user", "content": user_content},
+    ]
+    result = chat(
+        messages,
+        model=model,
+        response_format={"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}},
+    )
+    try:
+        output = output_model.model_validate_json(result.content or "")
+    except ValidationError as e:
+        raise LLMError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건)") from e
+    return LLMAnswer(output=output, llm=result, prompt_version=prompt.version)
+
+
 def judge(
     signals: SignalSet,
     customs: CustomsRecord | None,
     days_margin: int | None,
     *,
     model: str | None = None,
-) -> JudgeResult:
-    """2층 판정. 지시문 + skills 문서를 system에, 코드가 모은 자료를 user에 넣고 판정 JSON을 받는다.
+) -> LLMAnswer:
+    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수 (SDD 4.1 7단계)."""
+    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin), "judge", JUDGE_SCHEMA, JudgeOutput, model)
 
-    Raises:
-        LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 JudgeOutput과 다를 때.
-                  내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
+
+# ── 선박 선택 pick_vessel() ─────────────────────────────────────
+# SDD 5.5: 후보 2척 이상일 때만 부른다. confidence high만 confirmed, 나머지는 uncertain (판정은 identify.py가 한다).
+
+PICK_PROMPT = "marvia-pick-vessel"
+PICK_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["choice", "confidence", "reasons_per_candidate"],
+    "properties": {
+        "choice": {"type": ["integer", "null"], "description": "고른 배의 MMSI. 애매하면 null"},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "reasons_per_candidate": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["mmsi", "reason"],
+                "properties": {"mmsi": {"type": "integer"}, "reason": {"type": "string"}},
+            },
+        },
+    },
+}
+
+
+class CandidateReason(BaseModel):
+    mmsi: int
+    reason: str
+
+
+class PickOutput(BaseModel):
+    choice: int | None
+    confidence: Literal["high", "medium", "low"]
+    reasons_per_candidate: list[CandidateReason]
+
+
+def pick_vessel(
+    candidates: list[VesselCandidate],
+    customs: CustomsRecord,
+    voyage_no: str | None = None,
+    forwarder_eta: date | None = None,
+    *,
+    model: str | None = None,
+) -> LLMAnswer:
+    """후보 여럿 중 이 화물의 배를 고른다. output은 PickOutput.
+
+    후보에 없는 MMSI를 고르면 LLMError다. 없는 배로 확정하는 것을 막는다 (PRD 6.1 오확정 방지).
     """
-    prompt = get_prompt(JUDGE_PROMPT)
-    messages = [
-        {"role": "system", "content": f"{prompt.text}\n\n{_skills_text()}"},
-        {"role": "user", "content": _judge_input(signals, customs, days_margin)},
-    ]
-    result = chat(
-        messages,
-        model=model,
-        response_format={"type": "json_schema", "json_schema": {"name": "judge", "strict": True, "schema": JUDGE_SCHEMA}},
-    )
-    try:
-        output = JudgeOutput.model_validate_json(result.content or "")
-    except ValidationError as e:
-        raise LLMError(f"{result.model}: 판정 JSON 모양이 다름 ({e.error_count()}건)") from e
-    return JudgeResult(output=output, llm=result, prompt_version=prompt.version)
+    data = {
+        # 통관 정보는 식별에 쓰는 네 칸만. B/L·MRN은 넘기지 않는다 (CLAUDE.md)
+        "customs": {"ship_name": customs.ship_name, "ship_nat": customs.ship_nat,
+                    "voyage": customs.voyage, "entry_date": customs.entry_date.isoformat() if customs.entry_date else None},
+        "candidates": [c.model_dump(mode="json") for c in candidates],
+        "user_voyage_no": voyage_no,
+        "user_forwarder_eta": forwarder_eta.isoformat() if forwarder_eta else None,
+    }
+    answer = _ask_json(PICK_PROMPT, json.dumps(data, ensure_ascii=False), "pick_vessel", PICK_SCHEMA, PickOutput, model)
+    choice = answer.output.choice
+    if choice is not None and choice not in {c.mmsi for c in candidates}:
+        raise LLMError(f"{answer.llm.model}: 후보에 없는 MMSI {choice}를 골랐음")
+    return answer
+
+
+# ── 후속 질문 answer_follow_up() ────────────────────────────────
+# C-9: 근거 범위 밖 질문은 거절한다 ("비트코인 시세" 거절이 완료 기준).
+
+FOLLOW_UP_PROMPT = "marvia-follow-up"
+FOLLOW_UP_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["in_scope", "answer"],
+    "properties": {
+        "in_scope": {"type": "boolean", "description": "판정 결과·근거 안에서 답할 수 있는 질문인가"},
+        "answer": {"type": "string"},
+    },
+}
+
+
+class FollowUpOutput(BaseModel):
+    in_scope: bool
+    answer: str
+
+
+def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None) -> LLMAnswer:
+    """이미 나온 판정(response)에 대한 후속 질문에 답한다. output은 FollowUpOutput.
+
+    질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
+    """
+    data = {
+        "result": response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"}),
+        "question": question,
+    }
+    return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
+                     FOLLOW_UP_SCHEMA, FollowUpOutput, model)
