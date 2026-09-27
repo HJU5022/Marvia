@@ -86,7 +86,11 @@ class LLMError(Exception):
 def _client() -> OpenAI:
     # 키는 호출할 때 읽는다. import 시점에 .env가 아직 안 읽혔을 수 있어서 (clients/*.py와 같은 방식).
     # max_retries=0: openai SDK는 기본으로 몰래 2번 재시도한다. 재시도는 아래 chat()이 한 곳에서만 한다.
-    return OpenAI(base_url=BASE_URL, api_key=os.environ["OPENROUTER_API_KEY"], timeout=TIMEOUT_SEC, max_retries=0)
+    # 키가 없으면 KeyError로 서버가 500을 내는 대신 LLMError로 올린다. 라우터가 판정 없이 partial로 돌려준다 (09-23 결정)
+    key = os.environ.get("OPENROUTER_API_KEY")
+    if not key:
+        raise LLMError("OPENROUTER_API_KEY가 없습니다")
+    return OpenAI(base_url=BASE_URL, api_key=key, timeout=TIMEOUT_SEC, max_retries=0)
 
 
 def _call_once(kwargs: dict) -> LLMResult:
@@ -101,6 +105,9 @@ def _call_once(kwargs: dict) -> LLMResult:
         resp = _client().chat.completions.create(**kwargs, extra_body=extra_body)
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
+                       latency_ms=int((time.monotonic() - start) * 1000)) from e
+    except openai.APIConnectionError as e:  # 연결 실패·타임아웃. 다시 부르지 않는다 (위 RETRYABLE_CODES 주석)
+        raise LLMError(f"{model}: 연결 실패 {type(e).__name__}",
                        latency_ms=int((time.monotonic() - start) * 1000)) from e
     latency_ms = int((time.monotonic() - start) * 1000)
 
@@ -145,7 +152,10 @@ def chat(
     Raises:
         LLMError: 재시도해도 안 되거나, 다시 불러도 소용없는 실패(400·401 등)
     """
-    kwargs: dict = {"model": model or os.environ["MODEL_A"], "messages": messages}
+    model = model or os.environ.get("MODEL_A")
+    if not model:
+        raise LLMError("MODEL_A가 없습니다")
+    kwargs: dict = {"model": model, "messages": messages}
     if response_format:
         kwargs["response_format"] = response_format
     if tools:
