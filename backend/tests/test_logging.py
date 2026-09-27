@@ -5,7 +5,7 @@ import logging
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.observability.logging import JsonFormatter, current_request_id, set_llm_usage
+from backend.app.observability.logging import JsonFormatter, current_request_id, set_llm_usage, setup_logging
 
 
 def test_health_request_logs_one_json_line(caplog):
@@ -61,3 +61,20 @@ def test_llm_usage_is_attached_to_log(caplog):
     assert record.model == "anthropic/claude-sonnet-5"
     assert (record.tokens_in, record.tokens_out) == (100, 20)
     assert body["request_id"] == record.request_id
+
+
+def test_http_client_request_urls_are_not_logged(capsys):
+    """외부 API 주소에는 키(crkyCn·serviceKey·key)와 B/L 번호가 들어 있다. httpx가 INFO로 주소 전체를
+    남기면 로그에 그대로 쌓인다(09-28 실제 B/L 호출에서 발견). 주소를 남기는 로거는 WARNING 이상만 남긴다."""
+    import httpx
+
+    setup_logging()
+
+    def handler(request):
+        return httpx.Response(200, text="ok")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        client.get("https://example.test/api?serviceKey=SECRET-KEY-123&hblNo=REALBL0001")
+
+    out = capsys.readouterr().out
+    assert "SECRET-KEY-123" not in out and "REALBL0001" not in out
