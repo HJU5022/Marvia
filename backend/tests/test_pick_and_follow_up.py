@@ -56,6 +56,15 @@ def test_pick_sends_customs_and_candidates_without_bl(monkeypatch):
     assert "TEST****0001" not in user and "26TEST0099I" not in user  # B/L·MRN은 LLM에 안 간다
 
 
+def test_pick_sends_hours_since_last_computed_by_code(monkeypatch):
+    """LLM은 지금 시각을 모른다. 경과 시간은 코드가 계산해 넣는다 (09-27 스모크 테스트에서 발견)."""
+    calls = _fake_chat(monkeypatch, {"choice": None, "confidence": "low", "reasons_per_candidate": []})
+    llm.pick_vessel(_candidates(), _customs(), now=NOW.replace(hour=3))
+
+    candidates = json.loads(calls[0]["messages"][1]["content"])["candidates"]
+    assert [c["hours_since_last"] for c in candidates] == [3.0, 3.0]  # 후보 둘 다 last_time=NOW(0시)
+
+
 def test_pick_reads_choice(monkeypatch):
     _fake_chat(monkeypatch, {"choice": 440999001, "confidence": "high",
                              "reasons_per_candidate": [{"mmsi": 440999001, "reason": "국적 PA 일치"}]})

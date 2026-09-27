@@ -26,7 +26,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -354,6 +354,13 @@ class PickOutput(BaseModel):
     reasons_per_candidate: list[CandidateReason]
 
 
+def _hours_since(then: datetime, now: datetime) -> float:
+    """then부터 now까지 몇 시간 지났나 (소수 한 자리). 시간대가 없으면 UTC로 본다."""
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    return round((now - then).total_seconds() / 3600, 1)
+
+
 def pick_vessel(
     candidates: list[VesselCandidate],
     customs: CustomsRecord,
@@ -361,16 +368,23 @@ def pick_vessel(
     forwarder_eta: date | None = None,
     *,
     model: str | None = None,
+    now: datetime | None = None,
 ) -> LLMAnswer:
     """후보 여럿 중 이 화물의 배를 고른다. output은 PickOutput.
 
     후보에 없는 MMSI를 고르면 LLMError다. 없는 배로 확정하는 것을 막는다 (PRD 6.1 오확정 방지).
+    now는 테스트에서 시각을 고정할 때만 넘긴다.
     """
+    now = now or datetime.now(timezone.utc)
     data = {
         # 통관 정보는 식별에 쓰는 네 칸만. B/L·MRN은 넘기지 않는다 (CLAUDE.md)
         "customs": {"ship_name": customs.ship_name, "ship_nat": customs.ship_nat,
                     "voyage": customs.voyage, "entry_date": customs.entry_date.isoformat() if customs.entry_date else None},
-        "candidates": [c.model_dump(mode="json") for c in candidates],
+        # 마지막 수신 후 경과 시간은 코드가 계산해 붙인다. LLM은 지금 시각을 몰라서 수신 시각만 주면
+        # 1시간 전 신호를 "오래됐다"고 읽었다 (09-27 스모크 테스트). freshness를 코드가 정하는 원칙과 같다 (CLAUDE.md)
+        "candidates": [
+            {**c.model_dump(mode="json"), "hours_since_last": _hours_since(c.last_time, now)} for c in candidates
+        ],
         "user_voyage_no": voyage_no,
         "user_forwarder_eta": forwarder_eta.isoformat() if forwarder_eta else None,
     }
