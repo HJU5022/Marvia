@@ -194,6 +194,43 @@ def test_multiple_candidates_llm_sure_is_confirmed(fake):
     assert len(body["vessel_candidates"]) == 2  # 무엇 중에서 골랐는지 화면에 남긴다
 
 
+def test_no_candidate_stops_before_judging(fake):
+    """후보가 0척이면 판정하지 않고 포워더 입항 예정일을 되묻는다 (SDD 4.1 3단계, 09-28 실제 B/L 버그).
+    LLM이 판정을 낼 수 있는 상태(judge=JUDGED)여도 거기까지 가면 안 된다."""
+    fake(candidates=[], judge=JUDGED)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "none"
+    assert body["missing_inputs"] == ["forwarder_eta"]
+    assert body["verdict"] is None and body["position"] is None
+
+
+def test_no_candidate_with_forwarder_eta_is_partial(fake):
+    """포워더 입항 예정일을 이미 받았는데도 0척이면 더 물을 게 없어 partial로 끝낸다 (V5)."""
+    fake(candidates=[], judge=JUDGED)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(forwarder_eta="2026-10-01")).json()
+
+    assert body["status"] == "partial" and body["vessel_match"] == "none"
+    assert body["missing_inputs"] == [] and body["verdict"] is None
+
+
+def test_candidate_tool_failure_is_partial_not_ask_back(fake, monkeypatch):
+    """선박 검색 도구가 실패한 건 우리 쪽 문제라 사용자에게 되묻지 않고 partial이다 (SDD 4.1 4단계·8절)."""
+    fake(judge=JUDGED)
+    monkeypatch.setattr(agent_router, "get_vessel_candidates",
+                        lambda **k: {"error": {"code": "timeout", "message": "테스트", "retryable": True}})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "partial" and body["vessel_match"] == "none"
+    assert body["missing_inputs"] == [] and body["verdict"] is None
+
+
 def test_unknown_bl_is_insufficient_not_failed(fake):
     """없는 B/L은 실패가 아니라 정보 부족이다 (SDD 4.1)."""
     fake(customs=None)
