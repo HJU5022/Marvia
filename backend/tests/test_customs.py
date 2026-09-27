@@ -40,10 +40,23 @@ def test_refines_contract_fields():
 
     assert (record.ship_name, record.ship_nat, record.voyage) == ("TEST STAR", "PA", "0012W")
     assert record.entry_date.strftime("%Y%m%d") == "20260925"
-    # stage_name은 통관진행상태(csclPrgsStts), stage_code는 진행상태코드(prgsStCd). 연계가이드 v4.1 기준 서로 다른 칸이다
-    assert (record.stage_name, record.stage_code) == ("수입신고수리", "CAGE12")
+    # stage_name은 가장 최근 이력 줄의 처리구분이다. 상단 csclPrgsStts는 "수입신고수리"에서 멈춰서
+    # 이미 반출된 화물도 수리 단계로 보였다 (09-28 실제 B/L). stage_code는 진행상태코드(prgsStCd)
+    assert (record.stage_name, record.stage_code) == ("반출신고", "CAGE12")
     assert record.shed_name == "TEST터미널 CY"  # 상단엔 장치장이 없어 최신 이력 줄의 값을 쓴다
     assert record.fetched_at is not None
+
+
+def test_stage_name_falls_back_to_status_without_history():
+    """이력 줄이 없으면 상단 통관진행상태(csclPrgsStts)를 단계 이름으로 쓴다."""
+    xml = (FIXTURES / "progress_ok.xml").read_text(encoding="utf-8")
+    start, end = xml.index("<cargCsclPrgsInfoDtlQryVo>"), xml.rindex("</cargCsclPrgsInfoDtlQryVo>")
+    no_history = xml[:start] + xml[end + len("</cargCsclPrgsInfoDtlQryVo>"):]
+    client = UnipassClient(key="test-key", transport=httpx.MockTransport(lambda r: httpx.Response(200, text=no_history)))
+
+    record = client.fetch("TESTMBL0000001")
+
+    assert record.stage_history == [] and record.stage_name == "수입신고수리"
 
 
 def test_stage_history_is_sorted_by_time():
