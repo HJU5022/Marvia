@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from backend.app.db import connect, log_query
+from backend.app.db import connect, latest_response, log_query
 from backend.app.observability.logging import current_request_id
 from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
@@ -43,6 +43,7 @@ NOT_JUDGED = "조회한 값을 정리했습니다. 판정은 아직 붙지 않�
 NO_CARGO = "조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요."
 ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
+FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
 
 
 def _response(**over) -> AgentResponse:
@@ -67,22 +68,27 @@ def _response(**over) -> AgentResponse:
 
 @router.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest) -> AgentResponse:
-    """B/L과 판매 예정일을 받아 화물 상태를 정리해 돌려준다."""
+    """B/L과 판매 예정일을 받아 화물 상태를 정리해 돌려준다. 후속 질문이 오면 지난 결과를 보고 답한다.
+    어느 쪽이든 결과를 조회 이력(query_log)에 남긴다."""
+    if request.follow_up_question:
+        return _logged(request, _follow_up(request))
+    return _logged(request, _assess(request))
+
+
+def _assess(request: AgentRequest) -> AgentResponse:
+    """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다."""
     customs, failure = _fetch_customs(request)
     if failure is not None:
-        return _logged(request, failure)
+        return failure
 
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
     if vessel_match == "uncertain":
-        return _logged(
-            request,
-            _response(
-                status="insufficient",
-                vessel_match="uncertain",
-                vessel_candidates=candidates,
-                missing_inputs=[f for f in ("voyage_no", "forwarder_eta") if not getattr(request, f)],
-                answer=ASK_BACK,
-            ),
+        return _response(
+            status="insufficient",
+            vessel_match="uncertain",
+            vessel_candidates=candidates,
+            missing_inputs=[f for f in ("voyage_no", "forwarder_eta") if not getattr(request, f)],
+            answer=ASK_BACK,
         )
 
     position = get_live_position(mmsi) if mmsi else None
@@ -109,7 +115,7 @@ def run_agent(request: AgentRequest) -> AgentResponse:
     try:
         judged = llm.judge(signal_set, customs, margin)
     except llm.LLMError:
-        return _logged(request, _response(status="partial", answer=LLM_FAILED, **collected))
+        return _response(status="partial", answer=LLM_FAILED, **collected)
     out = judged.output
 
     # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
@@ -126,21 +132,43 @@ def run_agent(request: AgentRequest) -> AgentResponse:
 
     # TODO(C-7): validate.run()으로 7규칙을 걸고 위반이면 재시도한다
     # TODO(C-8): 근거 카드(evidence) 조립
-    return _logged(
-        request,
-        _response(
-            status=status,
-            verdict=verdict,
-            decided_by=decided_by,
-            missing_inputs=missing,
-            reasons=out.reasons,
-            conflicts=out.conflicts,
-            actions=out.actions,
-            answer=out.answer,
-            customs=_customs_info(customs, out.customs),
-            **collected,
-        ),
+    return _response(
+        status=status,
+        verdict=verdict,
+        decided_by=decided_by,
+        missing_inputs=missing,
+        reasons=out.reasons,
+        conflicts=out.conflicts,
+        actions=out.actions,
+        answer=out.answer,
+        customs=_customs_info(customs, out.customs),
+        **collected,
     )
+
+
+def _follow_up(request: AgentRequest) -> AgentResponse:
+    """후속 질문 (C-9). 같은 세션·같은 B/L의 가장 최근 결과를 DB에서 꺼내 그 안에서만 답한다.
+
+    세션별로 지난 결과를 저장해 두는 방식이다 (09-27 결정). 로그인이 붙으면 session_id 자리가 사용자 ID가 된다.
+    DB가 없거나 지난 결과가 없으면 조회·판정을 한 번 더 해서 그 결과로 답한다 (채점 환경은 DB 없이 돌 수 있다).
+    판정·근거는 지난 결과 그대로 두고 answer만 질문의 답으로 바꿔 돌려준다.
+    """
+    previous = _previous_response(request) or _assess(request)
+    try:
+        out = llm.answer_follow_up(request.follow_up_question, previous).output
+    except llm.LLMError:
+        return previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
+    return previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
+
+
+def _previous_response(request: AgentRequest) -> AgentResponse | None:
+    """DB에 저장된 지난 결과. 없거나 DB에 못 붙으면 None (그러면 다시 조회한다)."""
+    try:
+        with connect() as conn:
+            saved = latest_response(conn, request.session_id, mask_bl(request.bl_no))
+    except Exception:
+        return None
+    return AgentResponse.model_validate(saved) if saved else None
 
 
 def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentResponse | None]:
@@ -250,6 +278,13 @@ def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
     )
 
 
+def _as_jsonb(data: dict):
+    """psycopg가 dict를 jsonb로 넣게 감싼다. psycopg는 DB를 쓸 때만 import한다 (db/__init__.py와 같은 이유)."""
+    from psycopg.types.json import Jsonb
+
+    return Jsonb(data)
+
+
 def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
     """조회 이력 한 줄을 남기고 응답을 그대로 돌려준다 (A12).
 
@@ -267,6 +302,8 @@ def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
                 vessel_match=response.vessel_match,
                 decided_by=response.decided_by,
                 trace_id=response.trace_id,
+                # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다
+                response=_as_jsonb(response.model_dump(mode="json")),
             )
     except Exception:
         pass

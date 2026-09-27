@@ -69,3 +69,19 @@ def recent_queries(conn, session_id: str, limit: int = 20) -> list[dict]:
     ).fetchall()
     keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "model", "trace_id", "created_at")
     return [dict(zip(keys, row)) for row in rows]
+
+
+def latest_response(conn, session_id: str, bl_masked: str) -> dict | None:
+    """같은 세션·같은 B/L의 가장 최근 결과(AgentResponse JSON)를 읽는다. 후속 질문이 쓴다 (C-9, 004 마이그레이션).
+
+    결과가 저장되지 않은 옛 줄(response가 NULL)은 건너뛴다. 없으면 None.
+    """
+    row = conn.execute(
+        """
+        SELECT response FROM query_log
+        WHERE session_id = %s AND bl_masked = %s AND response IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        [session_id, bl_masked],
+    ).fetchone()
+    return row[0] if row else None

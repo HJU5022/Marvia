@@ -256,3 +256,59 @@ def test_history_reads_session_rows(monkeypatch):
 
     assert len(mine["items"]) == 1 and mine["items"][0]["bl_masked"] == "TEST****0001"
     assert other["items"] == [] and other["available"] is True
+
+
+# ── 후속 질문 (C-9) ──
+
+def _fake_follow(monkeypatch, answer: dict | None):
+    calls = []
+
+    def follow(question, response, **kwargs):
+        calls.append({"question": question, "previous": response})
+        if answer is None:
+            raise llm.LLMError("테스트: LLM 없음")
+        return llm.LLMAnswer(output=llm.FollowUpOutput.model_validate(answer),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+
+    monkeypatch.setattr(agent_router.llm, "answer_follow_up", follow)
+    return calls
+
+
+def test_follow_up_uses_saved_result(fake, monkeypatch):
+    """세션에 저장된 지난 결과가 있으면 다시 조회하지 않고 그 결과 안에서 답한다 (09-27 결정)."""
+    fake(judge=JUDGED)
+    saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", answer="지난 답")
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    monkeypatch.setattr(agent_router, "_assess", lambda request: pytest.fail("저장된 결과가 있으면 다시 조회하면 안 된다"))
+    calls = _fake_follow(monkeypatch, {"in_scope": True, "answer": "여유는 5일입니다."})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(follow_up_question="여유 며칠이야?")).json()
+
+    assert body["answer"] == "여유는 5일입니다." and body["verdict"] == "watch"  # 판정은 지난 결과 그대로
+    assert calls[0]["previous"].answer == "지난 답"
+
+
+def test_follow_up_without_saved_result_assesses_again(fake, monkeypatch):
+    """DB가 없거나 지난 결과가 없으면 조회·판정을 다시 해서 그 결과로 답한다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED)
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request: None)
+    calls = _fake_follow(monkeypatch, {"in_scope": False, "answer": "이 화물의 조회 결과 안에서만 답할 수 있습니다."})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(follow_up_question="비트코인 시세 알려줘")).json()
+
+    assert calls[0]["previous"].verdict == "watch"  # 방금 다시 판정한 결과를 넘겼다
+    assert body["answer"].startswith("이 화물의 조회 결과")
+
+
+def test_follow_up_llm_failure_keeps_result(fake, monkeypatch):
+    fake(judge=JUDGED)
+    saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", answer="지난 답")
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    _fake_follow(monkeypatch, None)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(follow_up_question="여유 며칠이야?")).json()
+
+    assert body["answer"] == agent_router.FOLLOW_UP_FAILED and body["verdict"] == "watch"
