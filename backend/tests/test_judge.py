@@ -69,7 +69,7 @@ def test_system_has_prompt_and_all_skills(monkeypatch):
     llm.judge(_signals(), _customs(), days_margin=5)
 
     system = calls[0]["messages"][0]["content"]
-    assert "판정은 셋 중 하나다" in system  # 프롬프트 파일 앞부분
+    assert "The verdict is one of three" in system  # 프롬프트 파일 앞부분
     for skill in ("ais-reliability/SKILL.md", "ais-reliability/rules.md", "customs-stages/SKILL.md", "port-busan/SKILL.md"):
         assert f"skills/{skill}" in system
 
