@@ -10,10 +10,17 @@ B/L 번호를 LLM에 넘기면 숫자를 잘못 옮기거나 프롬프트 주입
 - 엔드포인트는 https://unipass.customs.go.kr:38010/ext/rest/cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo
 - 응답은 XML이고 루트가 cargCsclPrgsInfoQryRtnVo, 건수는 tCnt, 안내·오류 문구는 ntceInfo
 - 없는 B/L은 tCnt=0, 파라미터가 빠지면 tCnt=-1과 안내 문구가 온다
-- 성공 응답의 필드 이름은 공개 문서에 없어서 SDD 3.5 기준으로 잡고, 이름이 다를 경우를 대비해
-  후보 여러 개를 순서대로 찾는다. 실제 B/L로 한 번 확인한 뒤 후보를 줄인다
 - 실제 B/L 1건(HBL)으로 확인: cargMtNo(화물관리번호)는 19자리 = MRN 11 + MSN 4 + HSN 4.
   앞 11자리 MRN이 해수부 선박운항정보 mrNum과 같아서 B/L에서 배를 특정할 수 있다 (2026-09-23)
+
+필드 이름 확정 (2026-09-27, UNI-PASS OpenAPI 연계가이드 v4.1 + 실제 응답 1건):
+- 처음엔 필드 이름을 몰라 후보 여러 개를 찾았다. 확인한 이름 하나씩만 남겼다
+- 상단 상태 칸은 셋이다. csclPrgsStts(통관진행상태, 예: 수입신고수리)와
+  prgsStts + prgsStCd(화물 진행상태와 그 코드, 예: 반출완료 + CAGE12). 계약 C5대로
+  stage_name은 csclPrgsStts, stage_code는 prgsStCd를 쓴다. 둘은 짝이 아니다
+- 이력 줄(cargCsclPrgsInfoDtlQryVo)에는 단계 코드가 없고, 처리구분 cargTrcnRelaBsopTpcd에
+  한글 이름이 바로 들어 있다 (예: 반입신고). 이전 코드는 이름을 다른 칸에서 찾아 이력을 전부 버렸다
+- 이력은 최신이 위에 온다. 장치장명(shedNm)은 상단에 없고 이력 줄에만 있다
 """
 from __future__ import annotations
 
@@ -29,22 +36,21 @@ from backend.app.schemas.customs import CustomsRecord, CustomsStage, mask_bl
 BASE_URL = "https://unipass.customs.go.kr:38010/ext/rest/cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo"
 TIMEOUT_SEC = 15.0
 
-# 응답 필드 이름 후보. 앞에서부터 찾아 처음 있는 값을 쓴다 (SDD 3.5 기준 + 흔한 변형)
+# 응답 필드 이름 (연계가이드 v4.1, 09-27 실제 응답으로 확인). _first()가 튜플을 받아서 튜플로 둔다
 FIELD_CANDIDATES = {
-    "ship_name": ("shipNm", "sanm", "shipNmKr"),
-    "ship_nat": ("shipNat", "shipNatNm", "ldprNat"),
-    "voyage": ("vydf", "vydfNo", "voyNo"),
-    "entry_date": ("etprDt", "etprCstm", "etprDttm"),
-    "stage_name": ("csclPrgsStts", "prgsStts", "cargTrcnRelaBsopTpcd"),
-    "stage_code": ("prgsStCd", "csclPrgsSttsCd", "prgsStts"),
-    "shed_name": ("shedNm", "shedNmKr", "shedCd"),
+    "ship_name": ("shipNm",),
+    "ship_nat": ("shipNat",),
+    "voyage": ("vydf",),
+    "entry_date": ("etprDt",),
+    "stage_name": ("csclPrgsStts",),  # 통관진행상태
+    "stage_code": ("prgsStCd",),  # 진행상태코드. 짝은 prgsStts(화물 진행상태)라 stage_name과 뜻이 다를 수 있다
+    "shed_name": ("shedNm",),  # 상단엔 없다. .// 검색이 최신 이력 줄(맨 위)의 값을 찾는다
 }
 MRN_LENGTH = 11  # 화물관리번호 앞 MRN 길이 (실측 19자리 중 앞 11자리, 입항 MRN은 끝이 I)
-STAGE_ITEM_TAGS = ("cargCsclPrgsInfoDtlQryVo", "cargCsclPrgsInfoDtlQryRtnVo", "detail")
+STAGE_ITEM_TAG = "cargCsclPrgsInfoDtlQryVo"  # 이력 1줄
 STAGE_FIELDS = {
-    "code": ("cargTrcnRelaBsopTpcd", "prgsStCd", "shedSgn"),
-    "name": ("cargTrcnRelaBsopTpcdNm", "csclPrgsStts", "prgsStts"),
-    "at": ("prcsDttm", "rlbrDttm", "shedRlbrDttm"),
+    "name": ("cargTrcnRelaBsopTpcd",),  # 처리구분. 코드가 아니라 한글 이름이 들어 있다
+    "at": ("prcsDttm",),  # 처리일시
 }
 
 
@@ -141,21 +147,13 @@ class UnipassClient:
     def _refine(root, bl_no: str) -> CustomsRecord:
         """계약 C5에 있는 필드만 남긴다. 품명·중량·화주는 애초에 옮기지 않는다."""
         stages = []
-        for tag in STAGE_ITEM_TAGS:
-            for item in root.iter(tag):
-                name = _first(item, STAGE_FIELDS["name"])
-                if not name:
-                    continue
-                stages.append(
-                    CustomsStage(
-                        code=_first(item, STAGE_FIELDS["code"]) or "",
-                        name=name,
-                        at=_dt(_first(item, STAGE_FIELDS["at"])),
-                    )
-                )
-            if stages:
-                break
-        stages.sort(key=lambda s: s.at or datetime.min)
+        for item in root.iter(STAGE_ITEM_TAG):
+            name = _first(item, STAGE_FIELDS["name"])
+            if not name:
+                continue
+            # 이력 줄에는 단계 코드 칸이 없다. 계약 C5의 code는 필수 문자열이라 빈 값으로 둔다
+            stages.append(CustomsStage(code="", name=name, at=_dt(_first(item, STAGE_FIELDS["at"]))))
+        stages.sort(key=lambda s: s.at or datetime.min)  # 응답은 최신이 위. 오래된 순으로 뒤집는다
 
         return CustomsRecord(
             ship_name=_first(root, FIELD_CANDIDATES["ship_name"]),
