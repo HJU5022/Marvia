@@ -4,11 +4,13 @@
 3차에서 이 파일 내부만 갈아끼우면 나머지는 그대로 돌아갑니다.
 
 여기서 책임지는 것:
-  - 출력 계약 검증 (Pydantic)          ← TODO
+  - 출력 형식 검사 (Pydantic)          ← judge()가 JSON 모양만 본다. 내용 7규칙은 C-7 validate.py
   - 실패 시 재시도와 폴백, 라우팅       ← 재시도 1회만 있음. 폴백·라우팅·요청당 시간 예산은 TODO (09-23 결정)
   - Langfuse 트레이스 남기기            ← TODO (D3)
 
-지금 있는 것: chat() 하나. OpenRouter에 묻고, 과부하·한도(503·429)면 한 번 더 묻는다.
+지금 있는 것:
+  chat()   OpenRouter에 한 번 묻는다. 과부하·한도(503·429)면 한 번 더 묻는다
+  judge()  2층 판정. 프롬프트(Langfuse) + skills/ 문서 + 코드가 모은 자료를 주고 판정 JSON을 받는다 (SDD 4.1 7단계, 5.6)
 
 모델 자리 (.env, 계약 C8):
   MODEL_A     싼 모델. 대화+판단 기본
@@ -17,13 +19,21 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import openai
 from openai import OpenAI
+from pydantic import BaseModel, ValidationError
+
+from backend.app.observability.langfuse import get_prompt
+from backend.app.schemas.agent import Conflict, Reason, Verdict
+from backend.app.schemas.customs import CustomsRecord
+from backend.app.schemas.signals import SignalSet
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -151,3 +161,122 @@ def chat(
                            kwargs["model"], e.code, RETRY_WAIT_SEC, attempt + 1, MAX_ATTEMPTS)
             time.sleep(RETRY_WAIT_SEC)
     raise AssertionError("unreachable")  # 마지막 시도는 위에서 return 또는 raise된다
+
+
+# ── 2층 판정 judge() ─────────────────────────────────────────────
+# SDD 4.1 7단계: 신호·통관·여유 일수를 받아 verdict·reasons·conflicts·actions·answer를 받는다.
+# 자료는 코드가 미리 다 모아서 준다. LLM이 도구를 부르지 않는다 (09-27 결정, SDD 4.1 방식).
+
+JUDGE_PROMPT = "marvia-judge"  # Langfuse 프롬프트 이름 (SDD 5.6 표)
+SKILL_DIR = Path(__file__).resolve().parents[3] / "skills"  # 레포 루트의 skills/. Dockerfile도 같은 자리에 복사한다
+
+# 구조화 출력 스키마. Pydantic에서 자동으로 뽑지 않고 손으로 적은 이유: strict 모드는 minItems 같은
+# 키워드를 받지 않는 제공사가 있어서, 09-23 스모크 테스트에서 통과한 모양(scripts/smoke_llm.py)을 그대로 따른다.
+# 모양은 아래 JudgeOutput과 같아야 한다. 받은 뒤 JudgeOutput으로 한 번 더 검사한다.
+JUDGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["verdict", "reasons", "conflicts", "actions", "answer"],
+    "properties": {
+        # null = 판정 보류. 위치가 아예 없을 때 등 (skills/ais-reliability 되묻기 조건)
+        "verdict": {"type": ["string", "null"], "enum": ["fine", "watch", "act", None]},
+        "reasons": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["rule", "value", "triggered"],
+                "properties": {
+                    "rule": {"type": "string", "description": "신호 id (rules.md)"},
+                    "value": {"type": "string"},
+                    "triggered": {"type": "boolean"},
+                },
+            },
+        },
+        "conflicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["signals", "chosen", "why"],
+                "properties": {
+                    "signals": {"type": "array", "items": {"type": "string"}},
+                    "chosen": {"type": "string", "description": "믿은 출처"},
+                    "why": {"type": "string"},
+                },
+            },
+        },
+        "actions": {"type": "array", "items": {"type": "string"}},
+        "answer": {"type": "string", "description": "사용자에게 보여 줄 한국어 두세 문장"},
+    },
+}
+
+
+class JudgeOutput(BaseModel):
+    """LLM이 낸 판정. 필드 타입은 계약 C1(schemas/agent.py)의 것을 그대로 쓴다."""
+
+    verdict: Verdict | None
+    reasons: list[Reason]
+    conflicts: list[Conflict]
+    actions: list[str]
+    answer: str
+
+
+@dataclass
+class JudgeResult:
+    """judge() 결과. 판정과 함께 트레이스에 남길 값(모델·토큰·지연·프롬프트 버전)을 들고 다닌다 (SDD 5.11)."""
+
+    output: JudgeOutput
+    llm: LLMResult
+    prompt_version: str
+
+
+def _skills_text() -> str:
+    """skills/ 아래 .md 전부를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
+    parts = []
+    for path in sorted(SKILL_DIR.rglob("*.md")):
+        parts.append(f"# 파일: skills/{path.relative_to(SKILL_DIR)}\n\n{path.read_text(encoding='utf-8')}")
+    return "\n\n".join(parts)
+
+
+def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None) -> str:
+    """LLM에 넘길 자료를 JSON 문자열로 만든다. B/L 번호(bl_masked)와 MRN은 판정에 필요 없어 뺀다 (CLAUDE.md, SDD 3.5)."""
+    data = {
+        "signals": [s.model_dump() for s in signals.signals],
+        "freshness": signals.freshness,
+        "distance_nm": signals.distance_nm,
+        "calc_eta": signals.calc_eta.isoformat() if signals.calc_eta else None,
+        "days_margin": days_margin,
+        "customs": customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"}) if customs else None,
+    }
+    return json.dumps(data, ensure_ascii=False)
+
+
+def judge(
+    signals: SignalSet,
+    customs: CustomsRecord | None,
+    days_margin: int | None,
+    *,
+    model: str | None = None,
+) -> JudgeResult:
+    """2층 판정. 지시문 + skills 문서를 system에, 코드가 모은 자료를 user에 넣고 판정 JSON을 받는다.
+
+    Raises:
+        LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 JudgeOutput과 다를 때.
+                  내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
+    """
+    prompt = get_prompt(JUDGE_PROMPT)
+    messages = [
+        {"role": "system", "content": f"{prompt.text}\n\n{_skills_text()}"},
+        {"role": "user", "content": _judge_input(signals, customs, days_margin)},
+    ]
+    result = chat(
+        messages,
+        model=model,
+        response_format={"type": "json_schema", "json_schema": {"name": "judge", "strict": True, "schema": JUDGE_SCHEMA}},
+    )
+    try:
+        output = JudgeOutput.model_validate_json(result.content or "")
+    except ValidationError as e:
+        raise LLMError(f"{result.model}: 판정 JSON 모양이 다름 ({e.error_count()}건)") from e
+    return JudgeResult(output=output, llm=result, prompt_version=prompt.version)
