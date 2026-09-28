@@ -328,6 +328,45 @@ def test_response_carries_evidence_cards(fake):
     assert body["status"] == "partial"  # 기본 가짜 LLM은 실패
 
 
+def _judge_sequence(answers: list[dict], calls: list):
+    """차례로 다른 답을 내는 가짜 judge. 받은 feedback을 calls에 남긴다."""
+    def judge(signal_set, customs, margin, feedback=None, **kwargs):
+        calls.append(feedback)
+        answer = answers[min(len(calls), len(answers)) - 1]
+        return llm.LLMAnswer(output=llm.JudgeOutput.model_validate(answer),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+    return judge
+
+
+def test_rule_violation_is_retried_with_detail(fake, monkeypatch):
+    """검증 위반이면 위반 내용을 붙여 다시 묻고, 고친 답을 쓴다 (C-7, SDD 5.7)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    calls = []
+    bad = {**JUDGED, "answer": "10월 3일에 들어옵니다."}  # 3은 근거에 없는 숫자 (V7)
+    monkeypatch.setattr(agent_router.llm, "judge", _judge_sequence([bad, JUDGED], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert calls[0] is None and "V7" in calls[1]
+    assert body["status"] == "ok" and body["answer"] == JUDGED["answer"]
+
+
+def test_three_violations_end_in_failed_with_evidence(fake, monkeypatch):
+    """세 번 모두 위반이면 판정 없이 failed. 근거 카드는 남긴다 (SDD 5.7 3차 폴백)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    calls = []
+    bad = {**JUDGED, "answer": "10월 3일에 들어옵니다."}
+    monkeypatch.setattr(agent_router.llm, "judge", _judge_sequence([bad], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert len(calls) == 3 and "JSON only" in calls[2]  # 3번째는 강화 문구 (SDD 5.7 2차 재시도)
+    assert body["status"] == "failed" and body["verdict"] is None
+    assert body["evidence"] and body["answer"] == agent_router.VALIDATION_FAILED
+
+
 def test_unknown_bl_is_insufficient_not_failed(fake):
     """없는 B/L은 실패가 아니라 정보 부족이다 (SDD 4.1)."""
     fake(customs=None)

@@ -85,6 +85,22 @@ def test_user_has_signals_and_margin_but_no_bl(monkeypatch):
     assert "TEST****0001" not in user_text and "26TEST0099I" not in user_text  # B/L·MRN은 LLM에 안 간다
 
 
+def test_feedback_goes_as_separate_message_after_data(monkeypatch):
+    """검증 위반을 붙여 다시 물을 때, 위반 내용은 자료와 섞지 않고 따로 붙인다 (C-7, SDD 5.7 재시도)."""
+    calls = _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
+    llm.judge(_signals(), _customs(), days_margin=5, feedback="V7: number 3 is not in the evidence")
+
+    messages = calls[0]["messages"]
+    assert len(messages) == 3 and messages[2]["role"] == "user"
+    assert "V7" in messages[2]["content"] and "V7" not in messages[1]["content"]
+
+
+def test_no_feedback_keeps_two_messages(monkeypatch):
+    calls = _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
+    llm.judge(_signals(), _customs(), days_margin=5)
+    assert len(calls[0]["messages"]) == 2
+
+
 def test_asks_for_structured_output(monkeypatch):
     calls = _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
     llm.judge(_signals(), _customs(), days_margin=5)

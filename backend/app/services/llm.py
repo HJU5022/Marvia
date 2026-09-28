@@ -299,7 +299,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
 
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
-              output_model: type[BaseModel], model: str | None) -> LLMAnswer:
+              output_model: type[BaseModel], model: str | None, feedback: str | None = None) -> LLMAnswer:
     """세 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
 
@@ -312,6 +312,9 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         {"role": "system", "content": f"{prompt.text}\n\n{_skills_text()}"},
         {"role": "user", "content": user_content},
     ]
+    if feedback:
+        # 검증 위반을 붙여 다시 묻는 경우 (C-7). 코드가 쓴 지시라 자료(user_content)와 섞지 않고 따로 보낸다
+        messages.append({"role": "user", "content": f"Your previous answer broke these rules. Answer again in the same JSON format and fix them:\n{feedback}"})
     # 트레이스 입력은 코드가 모은 자료(user_content)만. 지시문·skills 전문은 길고 매번 같아서 빼고 prompt_version으로 가린다
     generation = start_generation(prompt_name, user_content)
     try:
@@ -339,9 +342,12 @@ def judge(
     days_margin: int | None,
     *,
     model: str | None = None,
+    feedback: str | None = None,
 ) -> LLMAnswer:
-    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수 (SDD 4.1 7단계)."""
-    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin), "judge", JUDGE_SCHEMA, JudgeOutput, model)
+    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수 (SDD 4.1 7단계).
+    feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도)."""
+    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin), "judge", JUDGE_SCHEMA, JudgeOutput, model,
+                     feedback=feedback)
 
 
 # ── 선박 선택 pick_vessel() ─────────────────────────────────────

@@ -10,14 +10,14 @@
   3. 선박 식별 (MRN 호출부호로 먼저, 안 되면 선명으로. 후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
-  6. 2층 판정 (LLM)      <- C-6 services/llm.py가 들어올 자리
-  7. 출력 검증 7규칙      <- C-7이 들어올 자리
+  6. 2층 판정 (LLM, services/llm.judge)
+  7. 출력 검증 7규칙 (services/validate.py). 위반이면 최대 3번까지 다시 묻고, 그래도 위반이면 failed
 
 6단계는 services/llm.judge()가 한다 (C-6, 09-27 연결). 결과를 어떻게 응답에 담나:
   - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
   - 신호 7개가 전부 clear면 verdict=fine은 코드가 정한다(decided_by=rule). LLM 답은 문장만 쓴다 (SDD 4.1 7단계)
   - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
-7단계(출력 검증 7규칙, C-7)는 아직 없다. 근거 카드는 services/evidence.build()가 만든다 (C-8).
+근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
 from datetime import datetime, timezone
 
@@ -30,7 +30,7 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import identify, llm
+from backend.app.services import identify, llm, validate
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import build as build_evidence, days_margin
 from backend.app.services.customs import CustomsError, UnipassClient
@@ -49,6 +49,9 @@ NO_VESSEL_AFTER_ETA = "선박 위치 서비스에서 이 배를 찾지 못해 �
 VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하지 못했습니다. 잠시 뒤 다시 조회해 주세요."
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
+VALIDATION_FAILED = "판정을 생성하지 못했습니다. 근거 카드를 확인하세요."  # SDD 5.7 3차 폴백 문구
+
+JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 첨부 + 강화 (SDD 5.7)
 
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
@@ -138,13 +141,27 @@ def _assess(request: AgentRequest) -> AgentResponse:
         evidence=build_evidence(customs, position, schedule, distance, trusted, margin, signals=signal_set),
     )
 
-    # 6. 2층 판정 (LLM)
-    try:
-        judged = llm.judge(signal_set, customs, margin)
-    except llm.LLMError:
-        return _response(status="partial", answer=LLM_FAILED, **collected)
-    out = judged.output
+    # 6·7. 2층 판정 (LLM)과 출력 검증 (C-7, SDD 5.7)
+    # 위반이면 위반 내용을 붙여 다시 묻는다. 두 번째 재시도는 "JSON만, 규칙 준수"를 덧붙인다.
+    # 세 번 모두 위반이면 판정 없이 failed로 끝내고 근거 카드는 남긴다
+    feedback = None
+    for attempt in range(1, JUDGE_ATTEMPTS + 1):
+        try:
+            judged = llm.judge(signal_set, customs, margin, feedback=feedback)
+        except llm.LLMError:
+            return _response(status="partial", answer=LLM_FAILED, **collected)
+        response = _judged(judged.output, signal_set, request, customs, collected)
+        violations = validate.check(response)
+        if not violations:
+            return response
+        feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+        if attempt == JUDGE_ATTEMPTS - 1:
+            feedback += "\nReturn JSON only and follow every rule above."
+    return _response(status="failed", answer=VALIDATION_FAILED, **collected)
 
+
+def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict) -> AgentResponse:
+    """LLM 판정 1회분을 응답으로 옮긴다. 검증(validate.check)은 부르는 쪽이 한다."""
     # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
     if all(s.state == "clear" for s in signal_set.signals):
         verdict, decided_by = "fine", "rule"
@@ -157,7 +174,6 @@ def _assess(request: AgentRequest) -> AgentResponse:
     if verdict is None:
         status, missing = ("partial", []) if request.forwarder_eta else ("insufficient", ["forwarder_eta"])
 
-    # TODO(C-7): validate.run()으로 7규칙을 걸고 위반이면 재시도한다
     return _response(
         status=status,
         verdict=verdict,
