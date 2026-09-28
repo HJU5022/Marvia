@@ -135,7 +135,7 @@ def _assess(request: AgentRequest) -> AgentResponse:
         berth=BerthInfo(facility=(schedule or {}).get("facility") if "error" not in (schedule or {}) else None,
                         shed=customs.shed_name),
         # 근거 카드. LLM이 실패해 판정이 없어도 조회한 값은 보여준다 (C-8, SDD 5.8)
-        evidence=build_evidence(customs, position, schedule, distance, trusted, margin),
+        evidence=build_evidence(customs, position, schedule, distance, trusted, margin, signals=signal_set),
     )
 
     # 6. 2층 판정 (LLM)

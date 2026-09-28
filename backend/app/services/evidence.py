@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from backend.app.schemas.agent import Evidence
 from backend.app.schemas.customs import CustomsRecord
+from backend.app.schemas.signals import SignalSet
 
 KST = timezone(timedelta(hours=9))  # 판매 예정일은 한국 날짜로 받으므로 ETA도 한국 날짜로 바꿔 센다 (SDD 5.8)
 
@@ -30,7 +31,8 @@ def days_margin(trusted_eta: datetime | None, sale_due_date: date | None) -> int
 
 
 def build(customs: CustomsRecord | None, position: dict | None, schedule: dict | None, distance: dict | None,
-          trusted: datetime | None, margin: int | None, now: datetime | None = None) -> list[Evidence]:
+          trusted: datetime | None, margin: int | None, now: datetime | None = None,
+          signals: SignalSet | None = None) -> list[Evidence]:
     """도구 응답과 코드 계산값을 근거 카드 목록으로 만든다.
 
     값이 없거나 도구가 실패한 곳은 카드를 만들지 않는다. 없는 값을 근거로 쓰지 못하게 하려는 것이다.
@@ -49,6 +51,11 @@ def build(customs: CustomsRecord | None, position: dict | None, schedule: dict |
         for field, value in (("ship_name", customs.ship_name), ("stage_name", customs.stage_name),
                              ("entry_date", entry), ("shed_name", customs.shed_name)):
             add("unipass", field, value, customs.fetched_at)
+        # 통관 이력. UNI-PASS 처리일시는 시간대 없이 한국 시각으로 온다 (services/customs.py _dt)
+        for stage in customs.stage_history:
+            if stage.at:
+                add("unipass", f"stage:{stage.name}", stage.at.strftime("%Y-%m-%d %H:%M") if stage.at.tzinfo is None else stage.at,
+                    customs.fetched_at)
 
     if _ok(position):
         at = position["fetched_at"]
@@ -65,6 +72,10 @@ def build(customs: CustomsRecord | None, position: dict | None, schedule: dict |
             add("searoute", field, distance.get(field), distance["fetched_at"])
 
     # 코드가 계산한 값도 근거다. 판정과 answer가 이 값을 인용한다 (SDD 5.8)
+    # 신호 값은 LLM이 보고 답하는 자료라 V7 대조에 필요하다. unknown은 값이 없다는 뜻이라 뺀다
+    for signal in (signals.signals if signals else []):
+        if signal.state != "unknown":
+            add("rule", signal.id, signal.value, signals.computed_at)
     add("rule", "trusted_eta", trusted, now)
     add("rule", "days_margin", margin, now)
     return cards

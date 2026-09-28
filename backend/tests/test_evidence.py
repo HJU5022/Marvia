@@ -84,3 +84,18 @@ def test_missing_or_failed_tools_leave_no_card():
     got = _by_source(cards)
     assert set(got) == {"unipass"}
     assert "shed_name" not in got["unipass"]  # 값이 None이면 카드 없음
+
+
+def test_signal_values_and_customs_history_are_evidence():
+    """LLM은 신호 값과 통관 이력을 보고 답한다. 그 값도 근거 카드에 있어야 answer의 숫자를 대조할 수 있다 (V7)."""
+    from backend.app.schemas.customs import CustomsStage
+    from backend.app.schemas.signals import Signal, SignalSet
+
+    customs = CUSTOMS.model_copy(update={"stage_history": [CustomsStage(code="", name="반입신고", at=datetime(2026, 9, 26, 7, 0))]})
+    signal_set = SignalSet(signals=[Signal(id="anchor_wait", state="triggered", value="18.0시간 정지", threshold="24h", source="rule"),
+                                    Signal(id="customs_hold", state="unknown", value="통관 정보 없음", threshold="-", source="unipass")],
+                           freshness="fresh", distance_nm=None, calc_eta=None, eta_gap_hours=None, computed_at=NOW)
+    got = _by_source(build(customs, None, None, None, trusted=None, margin=None, now=NOW, signals=signal_set))
+    assert got["rule"]["anchor_wait"] == "18.0시간 정지"
+    assert "customs_hold" not in got["rule"]  # unknown 신호는 근거가 아니다
+    assert got["unipass"]["stage:반입신고"] == "2026-09-26 07:00"  # UNI-PASS 처리일시는 한국 시각으로 온다
