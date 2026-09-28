@@ -77,15 +77,22 @@ def test_missing_key_or_model_is_llm_error(monkeypatch):
 class _FakeClient:
     """create()에 들어온 인자를 기억하고, 최소 모양의 응답을 돌려주는 가짜 OpenAI 클라이언트."""
 
-    def __init__(self):
+    def __init__(self, usage=None):
         self.sent = None
+        self.usage = usage  # 응답에 실을 토큰 사용량. 없으면 None
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs):
         self.sent = kwargs
         msg = SimpleNamespace(content="ok", tool_calls=None)
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg)], usage=None,
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg)], usage=self.usage,
                                model=kwargs["model"], id="req-1", model_extra={})
+
+
+def _usage(prompt, completion, reasoning):
+    """09-28 Vertex curl 응답과 같은 모양: 생각 토큰은 completion_tokens_details에 따로 온다."""
+    return SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion,
+                           completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning))
 
 
 def test_vertex_prefix_goes_to_vertex_without_openrouter_options(monkeypatch):
@@ -106,6 +113,21 @@ def test_other_models_still_go_to_openrouter(monkeypatch):
     llm._call_once({"model": "openai/gpt-4o-mini", "messages": []})
     assert fake.sent["model"] == "openai/gpt-4o-mini"
     assert fake.sent["extra_body"] == {"provider": {"require_parameters": True}}
+
+
+def test_vertex_counts_reasoning_tokens_as_output(monkeypatch):
+    """Vertex는 생각 토큰을 따로 주므로 출력 토큰에 더한다. 요금은 생각 토큰도 출력으로 받는다."""
+    monkeypatch.setattr(llm, "_vertex_client", lambda: _FakeClient(usage=_usage(14, 28, 191)))
+    result = llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []})
+    assert result.prompt_tokens == 14
+    assert result.completion_tokens == 28 + 191
+
+
+def test_openrouter_does_not_add_reasoning_tokens(monkeypatch):
+    """OpenRouter는 OpenAI 방식대로 completion_tokens에 이미 포함돼 있어 더하지 않는다 (두 번 세지 않게)."""
+    monkeypatch.setattr(llm, "_client", lambda: _FakeClient(usage=_usage(14, 219, 191)))
+    result = llm._call_once({"model": "openai/gpt-4o-mini", "messages": []})
+    assert result.completion_tokens == 219
 
 
 def test_vertex_without_login_is_llm_error(monkeypatch):

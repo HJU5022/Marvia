@@ -140,7 +140,8 @@ def _vertex_client() -> OpenAI:
 def _call_once(kwargs: dict) -> LLMResult:
     """OpenRouter 또는 Vertex AI를 딱 한 번 부른다. 실패는 전부 LLMError로 바꿔서 올린다."""
     model = kwargs["model"]
-    if model.startswith(VERTEX_PREFIX):
+    is_vertex = model.startswith(VERTEX_PREFIX)
+    if is_vertex:
         client = _vertex_client()
         # Vertex는 "google/gemini-2.5-flash"처럼 앞머리 없는 이름을 받는다
         kwargs = {**kwargs, "model": model.removeprefix(VERTEX_PREFIX)}
@@ -171,6 +172,14 @@ def _call_once(kwargs: dict) -> LLMResult:
     msg = resp.choices[0].message
     calls = [{"name": c.function.name, "arguments": c.function.arguments} for c in (msg.tool_calls or [])]
     usage = resp.usage
+    completion_tokens = usage.completion_tokens if usage else None
+    # Vertex는 생각(reasoning) 토큰을 completion_tokens에 넣지 않고 completion_tokens_details에 따로 준다
+    # (09-28 curl: prompt 11 + completion 1 + reasoning 33 = total 45). 요금은 생각 토큰도 출력으로 받으므로
+    # 더해 둔다. 안 더하면 Langfuse가 모델 가격표로 계산한 비용이 실제보다 낮게 나온다.
+    # OpenRouter는 OpenAI 방식대로 이미 포함해서 주므로 더하지 않는다
+    if is_vertex and completion_tokens is not None:
+        details = getattr(usage, "completion_tokens_details", None)
+        completion_tokens += getattr(details, "reasoning_tokens", None) or 0
     return LLMResult(
         content=msg.content,
         tool_calls=calls,
@@ -178,7 +187,7 @@ def _call_once(kwargs: dict) -> LLMResult:
         provider=getattr(resp, "provider", None),  # OpenRouter 전용 필드라 SDK 타입에는 없다
         request_id=resp.id,
         prompt_tokens=usage.prompt_tokens if usage else None,
-        completion_tokens=usage.completion_tokens if usage else None,
+        completion_tokens=completion_tokens,  # 생각 토큰 포함 (위 주석)
         # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
         cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,
