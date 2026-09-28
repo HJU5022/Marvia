@@ -127,9 +127,12 @@ def test_null_verdict_and_customs_are_allowed(monkeypatch):
 
 @pytest.mark.parametrize("bad", ["판정: watch", json.dumps({**GOOD_ANSWER, "verdict": "maybe"})])
 def test_bad_shape_raises_llm_error(monkeypatch, bad):
+    """모양이 틀린 답은 LLMFormatError. 라우터가 다시 물을 때 붙일 설명(detail)을 들고 있다 (09-28)."""
     _fake_chat(monkeypatch, bad)
-    with pytest.raises(llm.LLMError):
+    with pytest.raises(llm.LLMFormatError) as e:
         llm.judge(_signals(), _customs(), days_margin=5)
+    assert isinstance(e.value, llm.LLMError)  # 따로 안 잡는 곳은 지금처럼 LLM 실패로 처리된다
+    assert "did not match the JSON format" in e.value.detail
 
 
 def test_ais_destination_text_never_reaches_judge():

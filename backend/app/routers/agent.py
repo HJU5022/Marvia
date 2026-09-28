@@ -157,17 +157,22 @@ def _assess(request: AgentRequest) -> AgentResponse:
     # 6·7. 2층 판정 (LLM)과 출력 검증 (C-7, SDD 5.7)
     # 위반이면 위반 내용을 붙여 다시 묻는다. 두 번째 재시도는 "JSON만, 규칙 준수"를 덧붙인다.
     # 세 번 모두 위반이면 판정 없이 failed로 끝내고 근거 카드는 남긴다
+    # 형식이 깨진 답(JSON 아님·필수 칸 누락)도 위반과 같이 다시 묻는다 (09-28 결정). 전에는 바로 partial로 끝나
+    # 두 번째 답이 깨지면 세 번째 기회가 없었다 (09-28 평가 B09). 호출 자체가 실패하면 지금처럼 바로 partial
     feedback = None
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback)
+        except llm.LLMFormatError as e:
+            feedback = e.detail
         except llm.LLMError:
             return _response(status="partial", answer=LLM_FAILED, **collected)
-        response = _judged(judged.output, signal_set, request, customs, collected)
-        violations = validate.check(response)
-        if not violations:
-            return response
-        feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+        else:
+            response = _judged(judged.output, signal_set, request, customs, collected)
+            violations = validate.check(response)
+            if not violations:
+                return response
+            feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
         if attempt == JUDGE_ATTEMPTS - 1:
             feedback += "\nReturn JSON only and follow every rule above."
     return _response(status="failed", answer=VALIDATION_FAILED, **collected)

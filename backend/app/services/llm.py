@@ -96,6 +96,19 @@ class LLMError(Exception):
         return self.code in RETRYABLE_CODES
 
 
+class LLMFormatError(LLMError):
+    """LLM이 답은 했는데 JSON이 아니거나 필수 칸이 빠지는 등 모양이 스키마와 다른 경우.
+
+    호출 실패(네트워크·키·과부하)와 구분한다. 라우터는 이것을 규칙 위반처럼 보고 무엇이 틀렸는지 붙여 다시 묻는다.
+    세 번 다 깨지면 failed다 (09-28 결정, SDD 5.7 "3단계 재시도 뒤 failed", 평가셋 F08).
+    LLMError를 물려받으므로 이것을 따로 잡지 않는 곳(pick_vessel·후속 질문)은 지금처럼 LLM 실패로 처리한다.
+    """
+
+    def __init__(self, message: str, detail: str):
+        super().__init__(message)
+        self.detail = detail  # LLM에 다시 물을 때 붙일 설명 (영어, 프롬프트와 같은 언어)
+
+
 def _client() -> OpenAI:
     # 키는 호출할 때 읽는다. import 시점에 .env가 아직 안 읽혔을 수 있어서 (clients/*.py와 같은 방식).
     # max_retries=0: openai SDK는 기본으로 몰래 2번 재시도한다. 재시도는 아래 chat()이 한 곳에서만 한다.
@@ -388,7 +401,10 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     try:
         output = output_model.model_validate_json(result.content or "")
     except ValidationError as e:
-        error = LLMError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건)")
+        # 어느 칸이 왜 틀렸는지만 적는다. LLM이 쓴 본문은 다시 붙이지 않는다 (트레이스 output에는 남는다)
+        detail = "; ".join(f"{'.'.join(str(p) for p in err['loc']) or 'root'}: {err['msg']}" for err in e.errors()[:5])
+        error = LLMFormatError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건)",
+                               f"Your answer did not match the JSON format. {detail}")
         end_generation(generation, result, prompt.version, output=result.content, error=str(error))
         raise error from e
     end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))

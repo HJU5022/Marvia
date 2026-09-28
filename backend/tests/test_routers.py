@@ -402,6 +402,44 @@ def test_three_violations_end_in_failed_with_evidence(fake, monkeypatch):
     assert body["evidence"] and body["answer"] == agent_router.VALIDATION_FAILED
 
 
+def _broken_then(answers: list, calls: list):
+    """answers 차례대로: "broken"이면 형식 오류(LLMFormatError), dict면 그 판정. 받은 feedback을 calls에 남긴다."""
+    def judge(signal_set, customs, margin, feedback=None, **kwargs):
+        calls.append(feedback)
+        answer = answers[min(len(calls), len(answers)) - 1]
+        if answer == "broken":
+            raise llm.LLMFormatError("테스트: 모양 틀림", "Your answer did not match the JSON format. verdict: Field required")
+        return llm.LLMAnswer(output=llm.JudgeOutput.model_validate(answer),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+    return judge
+
+
+def test_broken_format_is_retried_like_a_violation(fake, monkeypatch):
+    """형식이 깨진 답도 무엇이 틀렸는지 붙여 다시 묻는다. 전에는 바로 partial이었다 (09-28 결정, 평가 B09)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    calls = []
+    monkeypatch.setattr(agent_router.llm, "judge", _broken_then(["broken", JUDGED], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert calls[0] is None and "JSON format" in calls[1]
+    assert body["status"] == "ok" and body["answer"] == JUDGED["answer"]
+
+
+def test_three_broken_formats_end_in_failed(fake, monkeypatch):
+    """세 번 다 형식이 깨지면 failed (SDD 5.7, 평가셋 F08). 호출 실패(LLMError)만 partial이다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    calls = []
+    monkeypatch.setattr(agent_router.llm, "judge", _broken_then(["broken"], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert len(calls) == 3 and "JSON only" in calls[2]
+    assert body["status"] == "failed" and body["answer"] == agent_router.VALIDATION_FAILED
+
+
 def test_llm_pick_outside_candidates_is_not_confirmed(fake):
     """LLM이 후보에 없는 MMSI를 high로 골라도 확정하지 않는다. 후보 목적지 문자열 속 지시문에 속았을 수 있다 (C-10, 평가셋 F03)."""
     fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
