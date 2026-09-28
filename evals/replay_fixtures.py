@@ -15,6 +15,11 @@
   mof/CntlVssl2/<호출부호>.xml, _ALL.xml            관제정보(입항 실적)
 
 값은 전부 fixtures에 있는 가공값 그대로다. 실제 응답 원본은 쓰지 않는다 (CLAUDE.md).
+
+실패 문항 (09-28):
+  위치 조회가 에러 응답(F04 권한 없음 {"status": 21, ...})이면 그 응답을 그대로 파일로 쓴다.
+  타임아웃(F02)은 응답이 안 오는 것이라 파일로 흉내 낼 수 없다. TIMEOUT_MARKER를 파일에 쓰고,
+  use_error_replay()가 평가 동안만 ShipFinder 재생 transport를 감싸 그 파일을 만나면 타임아웃 예외를 낸다.
 """
 from __future__ import annotations
 
@@ -22,10 +27,36 @@ import json
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from backend.app.clients.replay import file_key
+import httpx
+
+from backend.app.clients import shipfinder as shipfinder_client
+from backend.app.clients.replay import file_key, shipfinder_transport
 
 # 평가셋 UNI-PASS 단계 값에 붙은 표시. 실제 단계 이름에는 없으므로 떼고 쓴다 (예: "검사지정(평가용 요약)")
 SUMMARY_MARK = "(평가용 요약)"
+# 이 내용의 재생 파일을 만나면 타임아웃을 낸다 (use_error_replay). 실제 API 응답에는 없는 모양이다
+TIMEOUT_MARKER = '{"_replay": "timeout"}'
+
+
+def use_error_replay() -> None:
+    """ShipFinder 재생 transport를 감싸서 TIMEOUT_MARKER 파일이면 타임아웃 예외를 내게 한다.
+
+    평가 실행기에서만 부른다. 서버 코드(clients/replay.py)는 고치지 않는다.
+    shipfinder.py가 shipfinder_transport를 이름으로 가져다 쓰므로 그 자리를 바꿔 끼운다.
+    클라이언트는 실제 타임아웃과 같은 예외를 받아 같은 재시도·실패 경로를 탄다.
+    """
+    def transport() -> httpx.MockTransport:
+        inner = shipfinder_transport()
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            response = inner.handle_request(request)
+            if response.read().decode() == TIMEOUT_MARKER:
+                raise httpx.ReadTimeout("replay: 평가셋이 타임아웃으로 정한 호출", request=request)
+            return response
+
+        return httpx.MockTransport(handle)
+
+    shipfinder_client.shipfinder_transport = transport
 
 
 def write_replay_files(record: dict, out_dir: Path) -> None:
@@ -53,6 +84,7 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
         "shipNat": u.get("shipNat"),
         "etprDt": u.get("etprDt"),
         "etprCstm": u.get("cstmNm"),
+        "dsprCd": u.get("dsprCd"),  # 양륙항. 부산(KRPUS)이 아니면 서버가 unsupported로 끝낸다 (F05)
         "shedNm": u.get("shedNm"),
     }
     body = "".join(f"<{tag}>{escape(str(value))}</{tag}>" for tag, value in fields.items() if value)
@@ -78,8 +110,12 @@ def _write_shipfinder(s: dict, out_dir: Path) -> None:
 
     # 위치: 한 척이면 position, 동명 선박 문항은 positions에 여러 척
     positions = dict(s.get("positions") or {})
-    if s.get("position") and "mmsi" in s["position"]:
-        positions[str(s["position"]["mmsi"])] = s["position"]
+    position = s.get("position")
+    if position and "error" in position:
+        # 실패 문항. 에러 칸에는 MMSI가 없으므로 검색 결과의 배로 둔다 (F02·F04는 검색 1척)
+        _write(out_dir / "shipfinder" / "VesselPositionSingle" / f"{hits[0]['mmsi']}.json", _position_error(position["error"]))
+    elif position:
+        positions[str(position["mmsi"])] = position
     for mmsi, pos in positions.items():
         _write(out_dir / "shipfinder" / "VesselPositionSingle" / f"{mmsi}.json",
                json.dumps({"status": 0, "msg": "", "data": pos}, ensure_ascii=False))
@@ -87,6 +123,14 @@ def _write_shipfinder(s: dict, out_dir: Path) -> None:
     for mmsi, country in (s.get("flag") or {}).items():
         _write(out_dir / "shipfinder" / "VesselFlagInfo" / f"{mmsi}.json",
                json.dumps({"status": 0, "msg": "", "data": {"registry": country}}, ensure_ascii=False))
+
+
+def _position_error(error) -> str:
+    """위치 조회 실패 응답. "timeout"이면 표시만 쓰고(use_error_replay가 예외로 바꾼다),
+    {"status": 21, ...}처럼 ShipFinder 에러 본문이면 그대로 쓴다 (evals/fixtures/shipfinder/no_permission.json과 같은 모양)."""
+    if error == "timeout":
+        return TIMEOUT_MARKER
+    return json.dumps(error, ensure_ascii=False)
 
 
 # ── 해수부 ──────────────────────────────────────────────────
