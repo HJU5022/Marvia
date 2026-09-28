@@ -91,7 +91,7 @@ def recorded(monkeypatch, no_keys):
     calls = {"start": [], "end": []}
     gen = FakeGeneration()
 
-    def fake_start(name, input):
+    def fake_start(name, input, prompt=None):
         calls["start"].append((name, input))
         return gen
 
@@ -169,6 +169,30 @@ def test_same_request_id_gives_same_trace(monkeypatch):
     first, second = started[0]["trace_context"]["trace_id"], started[1]["trace_context"]["trace_id"]
     assert first == second and len(first) == 32
     assert started[0]["metadata"] == {"request_id": "req-abc123"}
+
+
+def test_generation_links_langfuse_prompt(monkeypatch):
+    """Langfuse에서 가져온 프롬프트면 generation에 연결한다. 그래야 프롬프트 화면에서 어느 호출이 어느 버전을 썼는지 보인다 (가이드 9-2)."""
+    import langfuse as langfuse_sdk
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    started = []
+
+    class FakeClient:
+        create_trace_id = staticmethod(langfuse_sdk.Langfuse.create_trace_id)
+
+        def start_observation(self, **kwargs):
+            started.append(kwargs)
+            return FakeGeneration()
+
+    monkeypatch.setattr(langfuse_sdk, "get_client", lambda: FakeClient())
+    remote_prompt = object()  # Langfuse PromptClient 자리
+    tracing.start_generation("marvia-judge", "{}", remote_prompt)
+    tracing.start_generation("marvia-judge", "{}")  # 로컬 파일에서 왔으면 연결할 것이 없다
+
+    assert started[0]["prompt"] is remote_prompt
+    assert "prompt" not in started[1]
 
 
 # ── OpenRouter usage.cost 읽기 ──

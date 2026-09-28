@@ -316,7 +316,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         # 검증 위반을 붙여 다시 묻는 경우 (C-7). 코드가 쓴 지시라 자료(user_content)와 섞지 않고 따로 보낸다
         messages.append({"role": "user", "content": f"Your previous answer broke these rules. Answer again in the same JSON format and fix them:\n{feedback}"})
     # 트레이스 입력은 코드가 모은 자료(user_content)만. 지시문·skills 전문은 길고 매번 같아서 빼고 prompt_version으로 가린다
-    generation = start_generation(prompt_name, user_content)
+    generation = start_generation(prompt_name, user_content, prompt.source)
     try:
         result = chat(
             messages,

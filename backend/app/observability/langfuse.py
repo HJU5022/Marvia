@@ -40,6 +40,7 @@ class Prompt:
     name: str
     text: str
     version: str  # Langfuse 버전 번호(문자열) 또는 "local"
+    source: Any = None  # Langfuse에서 왔으면 그 PromptClient. 트레이스에 프롬프트를 연결할 때 쓴다 (start_generation)
 
 
 def get_prompt(name: str, label: str = "production") -> Prompt:
@@ -50,7 +51,7 @@ def get_prompt(name: str, label: str = "production") -> Prompt:
             from langfuse import Langfuse
 
             remote = Langfuse().get_prompt(name, label=label)
-            return Prompt(name=name, text=remote.prompt, version=str(remote.version))
+            return Prompt(name=name, text=remote.prompt, version=str(remote.version), source=remote)
         except Exception as e:  # 미설치·연결 실패·미등록 모두 같은 처리: 로컬 파일
             logger.warning("langfuse 프롬프트 %s 가져오기 실패(%s), 로컬 파일을 씁니다", name, type(e).__name__)
 
@@ -85,13 +86,16 @@ def session_scope(session_id: str) -> AbstractContextManager:
         return nullcontext()
 
 
-def start_generation(name: str, input: Any) -> Any:
+def start_generation(name: str, input: Any, prompt: Any = None) -> Any:
     """generation 기록을 시작한다. 끝낼 때 돌려받은 값을 end_generation()에 넘긴다. 못 남기면 None.
 
     trace_id는 요청 ID(응답의 trace_id)를 씨앗으로 만든다. 그러면
       - 같은 요청 안의 pick_vessel·judge가 한 트레이스로 묶이고
       - 응답에 찍힌 trace_id로 Langfuse에서 찾을 수 있다 (metadata.request_id로도 검색된다)
     HTTP 요청 밖(scripts/의 스모크 등)은 요청 ID가 비어 있어 매번 새 트레이스가 된다.
+
+    prompt: get_prompt()가 Langfuse에서 받은 PromptClient. 주면 generation에 연결돼 Langfuse 프롬프트 화면에서
+    어느 호출이 어느 버전을 썼는지 보인다 (가이드 9-2 "트레이스에 프롬프트 버전 연결"). 로컬 파일이면 None
     """
     if not _keys_set():
         return None
@@ -101,9 +105,10 @@ def start_generation(name: str, input: Any) -> Any:
         client = get_client()
         request_id = current_request_id()
         trace_context = {"trace_id": client.create_trace_id(seed=request_id)} if request_id else None
+        extra = {"prompt": prompt} if prompt is not None else {}
         return client.start_observation(
             name=name, as_type="generation", input=input,
-            trace_context=trace_context, metadata={"request_id": request_id or None},
+            trace_context=trace_context, metadata={"request_id": request_id or None}, **extra,
         )
     except Exception as e:  # 미설치·설정 오류 모두 같은 처리: 트레이스 없이 진행
         logger.warning("langfuse 트레이스 시작 실패(%s), 트레이스 없이 진행합니다", type(e).__name__)
