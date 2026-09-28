@@ -3,7 +3,7 @@
 Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 무엇을 왜 바꿨고 결과가 어땠는지. 원문은 `backend/app/prompts/<이름>.md`, 코드는 label `production`만 가져온다 (SDD 5.6).
 
 - **개발 중에는 네 프롬프트 모두 v0이다.** 배포 뒤 평가·확인을 거쳐야 v1로 올린다 (09-28 강사 지침). 개발 중 고친 내용은 버전을 올리지 않고 아래 "v0 개발 중 수정" 표에 남긴다
-- Langfuse에는 개발 중 새 버전을 올리지 않는다. Langfuse 화면의 버전 번호는 Langfuse가 자동으로 매긴 것이라 이 문서의 v0과 숫자가 다를 수 있다
+- Langfuse의 버전 1이 v0이다 (09-28에 개발 중 이력을 지우고 네 개 모두 버전 1로 다시 등록). 서비스는 Langfuse를 먼저 읽고 레포 파일은 예비라서, 고칠 때는 Langfuse에서 먼저 고치고 같은 글을 레포 파일에 복사한다. Langfuse는 고칠 때마다 번호가 자동으로 올라가지만 이 문서의 버전은 v0으로 둔다
 - 결과 칸에는 실제로 돌린 것만 적는다. "스모크"는 `scripts/smoke_judge.py`의 가공 사례 1건을 1회 돌린 것이라 경향만 보여 준다. 평가셋 30건 수치는 D11 이후 `EVAL_REPORT.md`에 적는다
 - v1부터는 한 번에 하나만 바꾼다 (PRD 8절). 모델은 모두 `openai/gpt-4o-mini` (OpenRouter, 2026-09-27)
 - 프롬프트는 영어로 쓰고, 사용자가 읽는 글(answer·actions·conflicts.why·plain_explanation·후보 이유)은 한국어로 쓰라고 명시한다

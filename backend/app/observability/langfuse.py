@@ -4,12 +4,12 @@
   1. Langfuse 키가 있으면 Langfuse Prompt에서 label(기본 production)이 붙은 버전
   2. 키가 없거나, 연결·등록·설치 중 하나라도 실패하면 backend/app/prompts/<이름>.md
      채점자가 키 없이 재현할 때(REPLAY_MODE)와 테스트가 이 길을 탄다.
-     이 파일은 Langfuse에 등록한 v0 원본이기도 하다 (C-11)
+     이 파일은 Langfuse production 버전의 사본이다. 고칠 때는 Langfuse에서 먼저 고치고 여기에 복사한다 (C-11)
 돌려주는 version은 트레이스의 prompt_version 자리에 들어간다 (SDD 5.11). 파일에서 왔으면 "local".
 
 개발 중에는 모든 프롬프트가 v0이다. 배포 뒤 평가·확인을 거쳐야 v1로 올린다 (09-28 강사 지침).
-Langfuse에는 새 버전을 올리지 않고 지금 번호에 머문다. version에 찍히는 숫자는 Langfuse가 매긴 번호라
-문서의 v0과 다를 수 있다.
+Langfuse의 버전 1이 v0이다 (09-28 다시 등록). Langfuse는 고칠 때마다 번호가 자동으로 올라가서
+version에 찍히는 숫자가 문서의 v0과 달라질 수 있다 (docs/prompt_versions.md).
 
 prompts/를 backend/app/ 안에 둔 이유: Dockerfile이 backend/를 통째로 복사하므로 이미지에도 들어간다.
 
