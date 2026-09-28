@@ -36,14 +36,14 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal
+from typing import Literal, get_args
 
 import openai
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
-from backend.app.schemas.agent import AgentResponse, Conflict, Reason, VesselCandidate, Verdict
+from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 
@@ -319,7 +319,11 @@ JUDGE_SCHEMA = {
                 "required": ["signals", "chosen", "why"],
                 "properties": {
                     "signals": {"type": "array", "items": {"type": "string"}},
-                    "chosen": {"type": "string", "description": "믿은 출처"},
+                    # 믿은 출처는 근거 카드의 출처 이름 중 하나여야 한다 (V6). 목록을 주지 않았더니 Gemini가
+                    # "해수부 입항 예정" 같은 설명을 써서 act가 맞는데도 V6로 3번 탈락했다 (09-29 평가 B04·B09, Langfuse 확인).
+                    # 목록은 계약 C1 Evidence.source에서 가져온다. 여기에 따로 적으면 둘이 어긋날 수 있다
+                    "chosen": {"type": "string", "enum": list(get_args(Evidence.model_fields["source"].annotation)),
+                               "description": "믿은 출처"},
                     "why": {"type": "string"},
                 },
             },

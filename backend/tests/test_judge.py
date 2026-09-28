@@ -173,3 +173,18 @@ def test_empty_cut_off_answer_is_truncated(monkeypatch):
     with pytest.raises(llm.LLMFormatError) as e:
         llm.judge(_signals(), _customs(), days_margin=5)
     assert e.value.kind == "truncated"
+
+
+def test_chosen_source_is_limited_to_evidence_sources():
+    """믿은 출처(chosen)는 근거 카드의 출처 이름 중에서만 고르게 한다 (V6).
+    목록이 없을 때 Gemini가 "해수부 입항 예정"을 써서 act가 맞는데도 3번 탈락했다 (09-29 평가 B04·B09)."""
+    chosen = llm.JUDGE_SCHEMA["properties"]["conflicts"]["items"]["properties"]["chosen"]
+    assert sorted(chosen["enum"]) == ["mof", "rule", "searoute", "shipfinder", "unipass"]
+
+
+def test_single_signal_conflict_is_valid():
+    """eta_conflict 하나만으로도 상충이다 (AIS와 해수부가 다름). 전에는 2개 이상을 요구해 형식 오류로 탈락했다 (09-29)."""
+    answer = {**GOOD_ANSWER, "verdict": "act",
+              "conflicts": [{"signals": ["eta_conflict"], "chosen": "mof", "why": "해수부 입항 신고를 믿음"}]}
+    out = llm.JudgeOutput.model_validate(answer)
+    assert out.conflicts[0].signals == ["eta_conflict"]

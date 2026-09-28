@@ -66,7 +66,10 @@ class Reason(BaseModel):
 class Conflict(BaseModel):
     """신호가 어긋났을 때 어느 출처를 왜 골랐나. chosen은 evidence[].source에 있어야 한다 (V6)."""
 
-    signals: list[str] = Field(min_length=2, description="상충한 신호 id 2개 이상")
+    # 1개 이상 (09-29 변경, 전에는 2개 이상). eta_conflict처럼 신호 하나가 그 자체로 "AIS와 해수부가 다르다"는
+    # 상충인 경우가 있다. 2개를 요구했더니 Gemini가 ["eta_conflict"]로 맞게 답하고도 형식 오류로 3번 탈락했다
+    # (평가 B04·B09, Langfuse 확인). 구조화 출력(strict)은 minItems를 LLM에 전하지 못해 LLM은 이 조건을 알 수도 없었다
+    signals: list[str] = Field(min_length=1, description="상충한 신호 id 1개 이상")
     chosen: str
     why: str
 
