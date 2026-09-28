@@ -40,6 +40,10 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
+# 요청 주소를 INFO로 남기는 라이브러리 로거. httpx2는 fastapi TestClient가 쓴다
+NOISY_URL_LOGGERS = ("httpx", "httpx2", "httpcore")
+
+
 def setup_logging(level: int = logging.INFO) -> None:
     """루트 로거에 JSON 핸들러를 건다. 앱 기동 때 한 번 부른다."""
     handler = logging.StreamHandler(sys.stdout)
@@ -47,6 +51,12 @@ def setup_logging(level: int = logging.INFO) -> None:
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)
+
+    # HTTP 클라이언트는 INFO로 요청 주소 전체를 남긴다. 외부 API 주소에는 키(UNI-PASS crkyCn,
+    # 공공데이터 serviceKey, ShipFinder key)와 B/L 번호가 들어 있어 로그에 그대로 쌓인다
+    # (09-28 실제 B/L 호출에서 발견, SDD 3.5 "로그에는 가린 번호만" 위반). 경고 이상만 남긴다.
+    for name in NOISY_URL_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def set_llm_usage(model: str, tokens_in: int | None = None, tokens_out: int | None = None) -> None:
