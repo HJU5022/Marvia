@@ -81,15 +81,26 @@ class LLMResult:
     latency_ms: int = 0                 # 마지막 시도 하나의 지연. 재시도 대기는 빠진다
     attempts: int = 1                   # 몇 번 만에 답을 받았나. Langfuse retry_count 자리 (SDD 5.11)
     cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0. Vertex는 안 줘서 None
+    finish_reason: str | None = None    # "length"면 토큰 한도에서 잘린 답. 형식 오류와 구분한다 (truncated)
 
 
 class LLMError(Exception):
-    """OpenRouter·Vertex AI가 답 대신 에러를 준 경우. code가 RETRYABLE_CODES면 chat()이 한 번 더 부른다."""
+    """OpenRouter·Vertex AI가 답 대신 에러를 준 경우. code가 RETRYABLE_CODES면 chat()이 한 번 더 부른다.
 
-    def __init__(self, message: str, code: int | None = None, latency_ms: int = 0):
+    kind는 실패 종류다. 로그(log_failure)에 코드 대신 이 이름을 남긴다. 해결책이 종류마다 달라서 나눈다
+    (09-29 평가 c에서 qwen 무료가 21건 실패했는데 429 말고는 왜 실패했는지 알 수 없었다).
+      rate_limited  429 요청이 너무 잦음        overloaded  5xx 제공사 과부하
+      auth          401·403·Vertex 로그인 문제   bad_request 그 밖의 4xx (요청 모양·지원 안 하는 옵션)
+      connection    연결 실패·시간 초과          no_choices  200인데 답 없이 error만 옴
+      not_configured 모델 이름이 설정에 없음
+      truncated·bad_format은 LLMFormatError 쪽 (답은 왔는데 쓸 수 없음)
+    """
+
+    def __init__(self, message: str, code: int | None = None, latency_ms: int = 0, kind: str = "unknown"):
         super().__init__(message)
         self.code = code
         self.latency_ms = latency_ms
+        self.kind = kind
 
     @property
     def retryable(self) -> bool:
@@ -104,8 +115,8 @@ class LLMFormatError(LLMError):
     LLMError를 물려받으므로 이것을 따로 잡지 않는 곳(pick_vessel·후속 질문)은 지금처럼 LLM 실패로 처리한다.
     """
 
-    def __init__(self, message: str, detail: str):
-        super().__init__(message)
+    def __init__(self, message: str, detail: str, kind: str = "bad_format"):
+        super().__init__(message, kind=kind)
         self.detail = detail  # LLM에 다시 물을 때 붙일 설명 (영어, 프롬프트와 같은 언어)
 
 
@@ -142,10 +153,11 @@ def _vertex_client() -> OpenAI:
         if not _vertex_creds.valid:
             _vertex_creds.refresh(google.auth.transport.requests.Request())
     except google.auth.exceptions.GoogleAuthError as e:
-        raise LLMError(f"Vertex AI 로그인 정보 없음 또는 토큰 발급 실패: {type(e).__name__}") from e
+        raise LLMError(f"Vertex AI 로그인 정보 없음 또는 토큰 발급 실패: {type(e).__name__}", kind="auth") from e
 
     if not _vertex_project:
-        raise LLMError("Vertex AI 프로젝트를 모릅니다. GOOGLE_CLOUD_PROJECT를 넣거나 gcloud로 ADC를 다시 만드세요")
+        raise LLMError("Vertex AI 프로젝트를 모릅니다. GOOGLE_CLOUD_PROJECT를 넣거나 gcloud로 ADC를 다시 만드세요",
+                       kind="auth")
     return OpenAI(base_url=VERTEX_URL.format(project=_vertex_project), api_key=_vertex_creds.token,
                   timeout=TIMEOUT_SEC, max_retries=0)
 
@@ -170,17 +182,18 @@ def _call_once(kwargs: dict) -> LLMResult:
         resp = client.chat.completions.create(**kwargs, extra_body=extra_body)
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
-                       latency_ms=int((time.monotonic() - start) * 1000)) from e
+                       latency_ms=int((time.monotonic() - start) * 1000), kind=_status_kind(e.status_code)) from e
     except openai.APIConnectionError as e:  # 연결 실패·타임아웃. 다시 부르지 않는다 (위 RETRYABLE_CODES 주석)
         raise LLMError(f"{model}: 연결 실패 {type(e).__name__}",
-                       latency_ms=int((time.monotonic() - start) * 1000)) from e
+                       latency_ms=int((time.monotonic() - start) * 1000), kind="connection") from e
     latency_ms = int((time.monotonic() - start) * 1000)
 
     # OpenRouter는 제공사가 실패하면 HTTP 200 안에 choices 없이 error만 담아 보낼 때가 있다 (09-23 스모크 테스트).
     # 그대로 두면 choices[0]에서 TypeError가 나서 원인이 가려지므로, 에러 내용과 코드를 그대로 올린다.
     if not resp.choices:
         error = (resp.model_extra or {}).get("error") or {}
-        raise LLMError(f"{model}: 응답에 choices 없음, error={error}", code=error.get("code"), latency_ms=latency_ms)
+        raise LLMError(f"{model}: 응답에 choices 없음, error={error}", code=error.get("code"), latency_ms=latency_ms,
+                       kind="no_choices")
 
     msg = resp.choices[0].message
     calls = [{"name": c.function.name, "arguments": c.function.arguments} for c in (msg.tool_calls or [])]
@@ -204,7 +217,19 @@ def _call_once(kwargs: dict) -> LLMResult:
         # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
         cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,
+        finish_reason=getattr(resp.choices[0], "finish_reason", None),
     )
+
+
+def _status_kind(status: int) -> str:
+    """HTTP 상태 코드를 LLMError.kind로 바꾼다."""
+    if status == 429:
+        return "rate_limited"
+    if status >= 500:
+        return "overloaded"
+    if status in (401, 403):
+        return "auth"
+    return "bad_request"
 
 
 def chat(
@@ -229,7 +254,7 @@ def chat(
     """
     model = model or os.environ.get("MODEL_A")
     if not model:
-        raise LLMError("MODEL_A가 없습니다")
+        raise LLMError("MODEL_A가 없습니다", kind="not_configured")
     kwargs: dict = {"model": model, "messages": messages}
     if response_format:
         kwargs["response_format"] = response_format
@@ -403,8 +428,11 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     except ValidationError as e:
         # 어느 칸이 왜 틀렸는지만 적는다. LLM이 쓴 본문은 다시 붙이지 않는다 (트레이스 output에는 남는다)
         detail = "; ".join(f"{'.'.join(str(p) for p in err['loc']) or 'root'}: {err['msg']}" for err in e.errors()[:5])
-        error = LLMFormatError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건)",
-                               f"Your answer did not match the JSON format. {detail}")
+        # 토큰 한도에서 잘린 답(finish_reason=length)은 모양이 틀린 답과 해결책이 다르다. 잘림은 한도를 늘리거나
+        # 생각(reasoning)을 줄여야 하고, 모양 오류는 프롬프트를 고쳐야 한다. 그래서 kind를 나눈다
+        kind = "truncated" if result.finish_reason == "length" else "bad_format"
+        error = LLMFormatError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건, {kind})",
+                               f"Your answer did not match the JSON format. {detail}", kind=kind)
         end_generation(generation, result, prompt.version, output=result.content, error=str(error))
         raise error from e
     end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))

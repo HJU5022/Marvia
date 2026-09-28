@@ -132,3 +132,24 @@ def test_search_failure_returns_tool_error(fake, monkeypatch):
     monkeypatch.setattr(vessel_candidates, "make_client", lambda: client)
     r = get_vessel_candidates("TEST STAR")
     assert r["error"]["code"] == "rate_limited" and r["error"]["retryable"] is True
+
+
+def test_failed_detail_lookup_is_logged(monkeypatch, caplog):
+    """후보 한 척의 위치 조회가 실패하면 목록은 그대로 주되 로그를 남긴다. 국적까지 모르면 B14 비교를 못 한다."""
+    body = {"status": 0, "msg": "", "data": [
+        {"match_type": 1, "mmsi": 351999301, "imo": 9900301, "call_sign": "3ETS1", "ship_name": "TEST STAR", "last_time": _fresh()}]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("VesselSearch"):
+            return httpx.Response(200, json=body)
+        if request.url.path.endswith("VesselFlagInfo"):
+            return httpx.Response(200, json={"status": 0, "msg": "", "data": {"registry": "Panama"}})
+        return httpx.Response(200, json={"status": 3, "msg": "Operation target does not exist"})
+
+    client = ShipFinderClient(key="test-key", transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(vessel_candidates, "make_client", lambda: client)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        get_vessel_candidates("TEST STAR")
+
+    logged = [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
+    assert len(logged) == 1 and logged[0][0] == "candidate_detail" and logged[0][1].startswith("position ")

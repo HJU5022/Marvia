@@ -20,3 +20,15 @@ def test_langfuse_failure_falls_back_to_local_file(monkeypatch):
     monkeypatch.setitem(sys.modules, "langfuse", None)  # import하면 ImportError가 나게 한다
 
     assert get_prompt("marvia-judge").version == LOCAL_VERSION
+
+
+def test_langfuse_fallback_is_logged(monkeypatch, caplog):
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.setitem(sys.modules, "langfuse", None)
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        get_prompt("marvia-judge")
+
+    logged = [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
+    assert logged == [("langfuse_prompt", "ModuleNotFoundError fallback=local_file")]

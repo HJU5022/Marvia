@@ -51,3 +51,15 @@ def test_missing_mrn_or_entry_date_skips_lookup():
     assert identify.call_sign_from_mrn(_customs(mrn=None), mof) is None
     assert identify.call_sign_from_mrn(_customs(entry=None), mof) is None
     assert mof.calls == []  # 찾을 근거가 없으면 해수부를 부르지 않는다
+
+
+def _failures(caplog) -> list[tuple[str, str]]:
+    return [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
+
+
+def test_mrn_not_found_and_mof_error_are_logged_apart(caplog):
+    """입항 신고 전이라 없는 것(not_found)과 해수부 오류는 다르다. 둘 다 이름 검색으로 넘어가지만 이유를 남긴다."""
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        identify.call_sign_from_mrn(_customs(), FakeMof(result=None))
+        identify.call_sign_from_mrn(_customs(), FakeMof(error=MofError("timeout", "테스트")))
+    assert _failures(caplog) == [("identify_mrn", "not_found"), ("identify_mrn", "timeout")]

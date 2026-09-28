@@ -20,6 +20,7 @@
   - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
 근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
+import os
 from datetime import datetime, timezone
 
 import pycountry
@@ -169,7 +170,7 @@ def _assess(request: AgentRequest) -> AgentResponse:
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback)
         except llm.LLMFormatError as e:
-            log_failure("judge", f"format attempt {attempt}")
+            log_failure("judge", f"{e.kind} attempt {attempt}")
             feedback = e.detail
         except llm.LLMError as e:
             log_failure("judge", _llm_error(e))
@@ -261,6 +262,8 @@ def _follow_up(request: AgentRequest) -> AgentResponse:
 
 def _previous_response(request: AgentRequest) -> AgentResponse | None:
     """DB에 저장된 지난 결과. 없거나 DB에 못 붙으면 None (그러면 다시 조회한다)."""
+    if not _db_configured("db_read"):
+        return None
     try:
         with connect() as conn:
             saved = latest_response(conn, request.session_id, mask_bl(request.bl_no))
@@ -355,8 +358,17 @@ def _log_tool_error(stage: str, result: dict | None) -> None:
 
 
 def _llm_error(e: llm.LLMError) -> str:
-    """LLM 실패를 종류와 HTTP 코드로 줄인다. 메시지에는 공급자 응답 문장이 들어 있을 수 있어 뺀다."""
-    return f"{type(e).__name__} {e.code}" if e.code else type(e).__name__
+    """LLM 실패를 종류(kind)와 HTTP 코드로 줄인다. 메시지에는 공급자 응답 문장이 들어 있을 수 있어 뺀다."""
+    return f"{e.kind} {e.code}" if e.code else e.kind
+
+
+def _db_configured(stage: str) -> bool:
+    """DATABASE_URL이 없으면 not_configured를 남기고 False. DB를 일부러 끈 경우(평가 실행기·채점 환경)와
+    실제 DB 고장(연결 실패 등, 아래 except에서 예외 이름으로 남음)을 로그에서 구분하려는 것이다."""
+    if os.environ.get("DATABASE_URL"):
+        return True
+    log_failure(stage, "not_configured")
+    return False
 
 
 def _same_call_sign(a: str, b: str) -> bool:
@@ -462,6 +474,8 @@ def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
 
     이력 저장이 실패해도 응답은 나가야 한다. DB 없이도 서비스가 돌아야 하기 때문이다.
     """
+    if not _db_configured("db_write"):
+        return response
     try:
         with connect() as conn:
             log_query(

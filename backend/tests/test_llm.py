@@ -142,3 +142,17 @@ def test_vertex_without_login_is_llm_error(monkeypatch):
     monkeypatch.setattr(google.auth, "default", no_adc)
     with pytest.raises(llm.LLMError):
         llm.chat([{"role": "user", "content": "hi"}], model="vertex/google/gemini-2.5-flash")
+
+
+@pytest.mark.parametrize("status, kind", [(429, "rate_limited"), (503, "overloaded"), (500, "overloaded"),
+                                          (401, "auth"), (403, "auth"), (400, "bad_request")])
+def test_http_status_maps_to_failure_kind(status, kind):
+    """로그에 남길 LLM 실패 종류. 해결책이 종류마다 달라서 코드 대신 이름으로 나눈다 (09-29)."""
+    assert llm._status_kind(status) == kind
+
+
+def test_missing_model_is_not_configured(monkeypatch):
+    monkeypatch.delenv("MODEL_A", raising=False)
+    with pytest.raises(llm.LLMError) as e:
+        llm.chat([{"role": "user", "content": "hi"}])
+    assert e.value.kind == "not_configured"

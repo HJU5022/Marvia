@@ -90,3 +90,13 @@ def test_failure_line_carries_stage_and_error():
     payload = json.loads(JsonFormatter().format(record))
     assert payload == {"level": "WARNING", "message": "failure", "request_id": "abc",
                        "stage": "customs", "error": "timeout"}
+
+
+def test_failure_message_is_readable_without_json(caplog):
+    """JSON 핸들러가 없는 터미널(평가 실행기)에서도 무엇이 실패했는지 보인다. 전에는 "failure"만 찍혔다."""
+    from backend.app.observability.logging import log_failure
+
+    with caplog.at_level(logging.WARNING, logger="marvia.failure"):
+        log_failure("customs", "timeout")
+
+    assert caplog.records[-1].getMessage() == "failure stage=customs error=timeout"

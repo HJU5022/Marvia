@@ -36,6 +36,7 @@ import httpx
 
 from backend.app.clients.replay import mof_transport, replay_enabled
 from backend.app.clients.retry import with_retry
+from backend.app.observability.logging import log_failure
 
 CONTROL_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
 SAILING_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
@@ -50,6 +51,14 @@ REVISION_FINAL = "최종"
 # 관제구분(cntrlNm) 값. 2026-09-22 부산 하루치에서 확인한 6종
 ARRIVAL_KINDS = ("입항", "접안")
 DEPARTURE_KINDS = ("출항", "이안")
+
+
+def _log_page_cap(stage: str, max_pages: int) -> None:
+    """페이지 상한까지 다 받았는데 마지막 페이지가 꽉 차 있었다 = 뒤에 더 있는데 못 봤다.
+    그 배가 목록에 없으면 "기록 없음"이 아니라 "못 본 것"일 수 있다 (09-28 실측: 이름 훑기 5페이지에서 잘림).
+    한 페이지만 보는 호출(호출부호 조회)은 원래 한 페이지면 되니 남기지 않는다."""
+    if max_pages > 1:
+        log_failure(stage, f"page_cap_hit {max_pages}")
 
 
 class MofError(Exception):
@@ -215,6 +224,8 @@ class MofClient:
             records.extend(items)
             if len(items) < min(rows, MAX_ROWS):
                 break  # 마지막 페이지다
+        else:
+            _log_page_cap("mof_control", max_pages)
         return records
 
     def sailing_plans(
@@ -237,6 +248,8 @@ class MofClient:
             plans.extend(items)
             if len(items) < min(rows, MAX_ROWS):
                 break
+        else:
+            _log_page_cap("mof_sailing", max_pages)
         return plans
 
     def find_plan_by_mrn(self, mrn: str, start: date, end: date) -> SailingPlan | None:

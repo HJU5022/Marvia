@@ -81,8 +81,11 @@ def log_failure(stage: str, error: str) -> None:
     라우터는 실패를 partial·failed 응답으로 바꿔 돌려주므로 요청 로그의 status는 200이다.
     이 줄이 없으면 로그만 보고는 어느 단계가 왜 실패했는지 알 수 없다. request_id로 요청 로그·트레이스와 잇는다.
     error에는 오류 종류·코드만 넣는다. 예외 메시지는 넣지 않는다. 외부 API 주소(키)나 B/L이 섞일 수 있다 (SDD 3.5).
+    메시지에도 stage·error를 적는다. JSON 핸들러가 없는 곳(평가 실행기 터미널)에서는 메시지만 찍혀서,
+    전에는 "failure" 한 단어만 보여 무엇이 실패했는지 알 수 없었다 (09-29 평가 실행).
     """
-    failure_logger.warning("failure", extra={"request_id": current_request_id(), "stage": stage, "error": error})
+    failure_logger.warning("failure stage=%s error=%s", stage, error,
+                           extra={"request_id": current_request_id(), "stage": stage, "error": error})
 
 
 class RequestLogMiddleware:

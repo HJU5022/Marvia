@@ -24,6 +24,7 @@ from typing import Annotated
 from pydantic import Field
 
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError, VesselHit
+from backend.app.observability.logging import log_failure
 from mcp_server.schemas import ToolError, VesselCandidate, VesselCandidatesResult
 
 MAX_LOOKUPS = 5  # 상세 조회(위치·국적)를 붙일 후보 수 상한
@@ -64,14 +65,18 @@ def _fetch_details(client: ShipFinderClient, mmsis: list[int]) -> dict[int, tupl
     """
 
     def one(mmsi: int) -> tuple[int, tuple]:
+        # 한 척의 상세 조회가 실패해도 후보 목록은 돌려준다. 다만 국적을 모르면 라우터가 세관 국적과
+        # 비교하지 못하고 확정할 수 있어서(평가 B14) 어느 조회가 왜 실패했는지 남긴다
         try:
             pos = client.position(mmsi)
             dest, ship_type = pos.dest, pos.ship_type
-        except ShipFinderError:
+        except ShipFinderError as e:
+            log_failure("candidate_detail", f"position {e.code}")
             dest, ship_type = None, None
         try:
             flag = client.flag(mmsi)
-        except ShipFinderError:
+        except ShipFinderError as e:
+            log_failure("candidate_detail", f"flag {e.code}")
             flag = None
         return mmsi, (dest, ship_type, flag)
 

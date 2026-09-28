@@ -146,3 +146,21 @@ def test_ais_destination_text_never_reaches_judge():
                 "ais_eta": None, "last_time": now.isoformat(), "fetched_at": now.isoformat()}
     signal_set = signals_service.compute(position, None, None, _customs(), None)
     assert injected not in llm._judge_input(signal_set, _customs(), None)
+
+
+def test_cut_off_answer_is_truncated_not_bad_format(monkeypatch):
+    """토큰 한도에서 잘린 답(finish_reason=length)은 모양 오류(bad_format)와 따로 센다.
+    잘림은 한도·생각 설정을, 모양 오류는 프롬프트를 고쳐야 해서 해결책이 다르다 (09-29)."""
+    monkeypatch.setattr(llm, "chat", lambda messages, **k: llm.LLMResult(
+        content='{"verdict": "act", "rea', model="test/model", finish_reason="length"))
+    with pytest.raises(llm.LLMFormatError) as e:
+        llm.judge(_signals(), _customs(), days_margin=5)
+    assert e.value.kind == "truncated"
+
+
+def test_finished_but_wrong_shape_is_bad_format(monkeypatch):
+    monkeypatch.setattr(llm, "chat", lambda messages, **k: llm.LLMResult(
+        content='{"verdict": "act"}', model="test/model", finish_reason="stop"))
+    with pytest.raises(llm.LLMFormatError) as e:
+        llm.judge(_signals(), _customs(), days_margin=5)
+    assert e.value.kind == "bad_format"

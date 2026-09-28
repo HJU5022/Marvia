@@ -124,3 +124,15 @@ def test_find_plan_by_mrn_matches_arrival_mrn_only():
     found = client.find_plan_by_mrn("26test0011i", date(2026, 9, 22), date(2026, 9, 26))
     assert found is not None and found.call_sign == "TEST11"
     assert client.find_plan_by_mrn("26TEST0012E", date(2026, 9, 22), date(2026, 9, 26)) is None
+
+
+def test_page_cap_hit_is_logged_only_when_pages_run_out(caplog):
+    """마지막으로 받은 페이지까지 꽉 차 있으면 뒤를 못 본 것이다. "기록 없음"과 구분하려고 남긴다 (09-28 실측).
+    한 페이지만 보는 호출은 원래 한 페이지라 남기지 않는다."""
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        _client("control_busan.xml").control_records(date(2026, 9, 22), date(2026, 9, 23), rows=2, max_pages=2)
+        _client("control_busan.xml").control_records(date(2026, 9, 22), date(2026, 9, 23), rows=2, max_pages=1)
+        _client("control_busan.xml").control_records(date(2026, 9, 22), date(2026, 9, 23), rows=50, max_pages=5)
+
+    logged = [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
+    assert logged == [("mof_control", "page_cap_hit 2")]

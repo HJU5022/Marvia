@@ -21,6 +21,7 @@ import httpx
 from backend.app.clients.cache import ResponseCache
 from backend.app.clients.replay import replay_enabled, shipfinder_transport
 from backend.app.clients.retry import with_retry
+from backend.app.observability.logging import log_failure
 
 BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
 TIMEOUT_SEC = float(os.environ.get("SHIPFINDER_TIMEOUT_SEC", 10))  # 환경변수로 조정 가능
@@ -142,6 +143,9 @@ class ShipFinderClient:
             if entry is None:
                 raise
             self.last_cached_at = entry.cached_at
+            # 지난 값이 지금 값처럼 나간다. 판정이 이상할 때 추적할 수 있게 어느 호출이 캐시로 대체됐는지 남긴다.
+            # key의 앞 두 칸(shipfinder:pos 등)만 쓴다. 뒤에는 검색어·MMSI가 붙는다
+            log_failure(":".join(key.split(":")[:2]), "rate_limited served_from_cache")
             return entry.value
         self.cache.set(key, value)
         self.last_cached_at = None

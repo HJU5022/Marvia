@@ -667,12 +667,44 @@ def test_llm_call_failure_is_logged_without_message(fake, monkeypatch, caplog):
     fake(candidates=[_candidate(440999001)], position=POSITION)
 
     def fail(*a, **k):
-        raise llm.LLMError("provider said: 비밀 문장", code=503)
+        raise llm.LLMError("provider said: 비밀 문장", code=503, kind="overloaded")
     monkeypatch.setattr(agent_router.llm, "judge", fail)
 
     with caplog.at_level("WARNING", logger="marvia.failure"):
         with TestClient(app) as client:
             client.post("/api/agent", json=_request())
 
-    assert ("judge", "LLMError 503") in _failures(caplog)
+    assert ("judge", "overloaded 503") in _failures(caplog)
     assert not any("비밀 문장" in str(r.__dict__) for r in caplog.records if r.name == "marvia.failure")
+
+
+def test_db_turned_off_is_logged_apart_from_db_errors(monkeypatch, caplog):
+    """DB를 일부러 끈 경우(평가 실행기·채점 환경)는 not_configured, 연결 실패는 예외 이름. 둘을 구분한다.
+    fake 픽스처는 _logged를 바꿔 끼우므로 여기서는 _logged를 직접 부른다."""
+    from backend.app.schemas.agent import AgentRequest
+
+    request, response = AgentRequest(**_request()), agent_router._response()
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        assert agent_router._logged(request, response) is response  # 저장 못 해도 응답은 그대로 나간다
+    assert _failures(caplog) == [("db_write", "not_configured")]
+
+    caplog.clear()
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test")
+
+    def broken():
+        raise ConnectionError("테스트")
+    monkeypatch.setattr(agent_router, "connect", broken)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        agent_router._logged(request, response)
+    assert _failures(caplog) == [("db_write", "ConnectionError")]
+
+
+def test_history_read_failure_is_logged(monkeypatch, caplog):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            body = client.get("/api/history", params={"session_id": "sess-1"}).json()
+    assert body["available"] is False
+    assert ("history_read", "not_configured") in _failures(caplog)

@@ -78,3 +78,14 @@ def test_cache_hit_is_visible():
 
     client.position(440999001)
     assert client.last_cached_at is not None  # 이번엔 캐시가 받아냈다
+
+
+def test_cache_fallback_is_logged(caplog):
+    """지난 값이 지금 값처럼 나가므로 어느 호출이 캐시로 대체됐는지 남긴다. MMSI는 로그에 넣지 않는다."""
+    client = _client(["position_busan_anchored.json", "rate_limited.json"])
+    client.position(440999001)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        client.position(440999001)
+
+    logged = [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
+    assert logged == [("shipfinder:pos", "rate_limited served_from_cache")]
