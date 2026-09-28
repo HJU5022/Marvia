@@ -304,3 +304,15 @@ git push                # PR이 자동 갱신됨
 - 실제 B/L 번호와 UNI-PASS 응답 원본도 커밋하지 않습니다. 평가셋에는 가상 B/L만 씁니다.
 - 필요한 키 목록은 `.env.example`에 값 없이 적어 공유합니다.
 
+
+## 8. 데이터 출처와 라이선스
+
+| 출처 | 쓰는 곳 | 라이선스·이용 조건 |
+|---|---|---|
+| [searoute-py](https://github.com/genthalili/searoute-py) (Gent Halili) | 부산항까지 남은 해상 거리 (`estimate_distance`) | Apache-2.0 |
+| [Eurostat SeaRoute](https://github.com/eurostat/searoute) | searoute-py에 들어 있는 항로 네트워크 데이터의 원본 | EUPL-1.2 |
+| ShipFinder API | 선박 후보·실시간 위치 | 내부 연구 목적만. 서면 동의 없이 복사·게시 금지 → 실제 응답은 레포에 넣지 않고 DB에만 둔다 |
+| 관세청 UNI-PASS OpenAPI | 화물통관진행정보 | 조회 정보의 복제·타인 제공 금지 (이용약관 15조③) → 실제 응답은 레포에 넣지 않는다 |
+| 해양수산부 공공데이터 (관제정보·선박운항정보) | 입항 예정·실적, 접안 시설 | 공공데이터포털 이용허락범위 제한 없음 |
+
+레포의 테스트용 응답(`evals/fixtures/`)은 실제 응답과 형식만 같은 가공값이다.
