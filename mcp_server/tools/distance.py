@@ -47,11 +47,12 @@ def estimate_distance(
     lng: Annotated[float, Field(description="선박 경도. WGS84, -180~180. 예: 128.8", ge=-180, le=180)],
     sog: Annotated[float | None, Field(description="선박 대지속력(노트). 예: 12. 주면 그 속력으로 걸리는 시간도 함께 계산한다")] = None,
 ) -> dict:
-    """선박이 부산항까지 얼마나 남았는지 해상 거리(해리)를 구한다.
+    """배의 좌표에서 부산항까지 바닷길로 얼마나 남았는지 알고 싶을 때 쓴다.
 
-    get_live_position으로 받은 lat·lng·sog를 그대로 넣는다.
-    돌려주는 값: distance_nm, calc_hours_at_sog(속력을 준 경우), source, fetched_at.
-    이 거리로 도착 시각을 단정하지 않는다. 항로망이 성겨서 30~60해리 구간은 실제보다 크게 나온다.
+    get_live_position으로 받은 lat·lng·sog를 그대로 넣는다. searoute 해상 항로망으로 계산하며 외부 호출과 키가 없다.
+    돌려주는 값: distance_nm(해리), calc_hours_at_sog(속력을 준 경우), source, fetched_at.
+    근사값이다. 항로망이 성겨서 30~60해리 구간은 실제보다 크게 나온다.
+    calc_hours_at_sog는 지금 속력이 끝까지 간다고 친 계산일 뿐 도착 예정 시각이 아니다.
     """
     fetched_at = datetime.now(timezone.utc)
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):

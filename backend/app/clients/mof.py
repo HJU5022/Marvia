@@ -34,6 +34,7 @@ from xml.etree import ElementTree
 
 import httpx
 
+from backend.app.clients.replay import mof_transport, replay_enabled
 from backend.app.clients.retry import with_retry
 
 CONTROL_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
@@ -146,6 +147,11 @@ def _int(value: str | None) -> int | None:
 class MofClient:
     def __init__(self, key: str | None = None, transport: httpx.BaseTransport | None = None):
         self._key = key or os.environ.get("DATA_GO_KR_KEY", "")
+        # REPLAY_MODE면 키 없이 evals/fixtures/replay/를 읽는다 (SDD 6.1, clients/replay.py).
+        # 테스트가 transport를 직접 주면 그쪽이 먼저다
+        if transport is None and replay_enabled():
+            transport = mof_transport()
+            self._key = self._key or "replay"
         if not self._key:
             raise MofError("bad_key", "DATA_GO_KR_KEY가 비어 있습니다")
         self._http = httpx.Client(timeout=TIMEOUT_SEC, transport=transport)

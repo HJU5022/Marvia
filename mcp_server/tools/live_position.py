@@ -22,12 +22,12 @@ make_client = ShipFinderClient
 def get_live_position(
     mmsi: Annotated[int, Field(description="9자리 해상이동업무식별번호. 예: 440999001. 선명만 알면 get_vessel_candidates로 먼저 찾는다")],
 ) -> dict:
-    """MMSI로 그 배의 최신 AIS 위치·속도·침로·목적지·AIS ETA를 가져온다.
+    """MMSI를 알고 그 배가 어디서 어떤 속력으로 어디로 가는지 볼 때 쓴다.
 
-    선명만 아는 상태에서는 쓸 수 없다. get_vessel_candidates로 MMSI를 먼저 확정한다.
-    돌려주는 값: lat, lng, sog, cog, navistat, dest, destcode, ais_eta, last_time, fetched_at.
-    last_time은 선박이 보고한 시각이고 fetched_at은 조회한 시각이다. 둘이 많이 벌어지면
-    위치가 오래된 것이므로 현재 위치라고 말하지 않는다.
+    ShipFinder의 최신 AIS 보고를 원본 그대로 돌려준다. 선명만 알면 get_vessel_candidates로 MMSI부터 찾는다.
+    돌려주는 값: mmsi, lat, lng, sog, cog, navistat, dest, destcode, ais_eta, last_time, source, fetched_at, cached_at.
+    last_time은 선박이 보고한 시각이고 fetched_at은 조회한 시각이다. 이 도구는 위치가 오래됐는지 판정하지 않는다.
+    두 시각이 벌어진 만큼 그 좌표는 과거의 위치다.
     cached_at이 있으면 호출 한도에 걸려 그 시각에 담아둔 값을 돌려준 것이다.
     """
     client = make_client()

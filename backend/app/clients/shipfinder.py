@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import httpx
 
 from backend.app.clients.cache import ResponseCache
+from backend.app.clients.replay import replay_enabled, shipfinder_transport
 from backend.app.clients.retry import with_retry
 
 BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
@@ -117,6 +118,11 @@ class ShipFinderClient:
 
     def __init__(self, key: str | None = None, transport: httpx.BaseTransport | None = None):
         self._key = key or os.environ.get("SHIPFINDER_KEY", "")
+        # REPLAY_MODE면 키 없이 evals/fixtures/replay/를 읽는다 (SDD 6.1, clients/replay.py).
+        # 테스트가 transport를 직접 주면 그쪽이 먼저다
+        if transport is None and replay_enabled():
+            transport = shipfinder_transport()
+            self._key = self._key or "replay"
         if not self._key:
             raise ShipFinderError("bad_key", "SHIPFINDER_KEY가 비어 있습니다")
         self._http = httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SEC, transport=transport)

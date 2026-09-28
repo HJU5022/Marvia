@@ -275,7 +275,10 @@ def _skills_text() -> str:
     """skills/ 아래 .md 전부를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
     parts = []
     for path in sorted(SKILL_DIR.rglob("*.md")):
-        parts.append(f"# 파일: skills/{path.relative_to(SKILL_DIR)}\n\n{path.read_text(encoding='utf-8')}")
+        # Windows 문제: relative_to()를 그대로 문자열로 쓰면 Windows에서 "ais-reliability\SKILL.md"처럼 역슬래시가 된다.
+        # 그러면 LLM이 보는 파일 이름이 OS마다 달라지고 test_judge.py::test_system_has_prompt_and_all_skills가 Windows에서만 깨진다.
+        # as_posix()로 어느 OS에서든 "/"로 맞춘다 (Docker·Mac은 원래 "/"라 동작 변화 없음)
+        parts.append(f"# 파일: skills/{path.relative_to(SKILL_DIR).as_posix()}\n\n{path.read_text(encoding='utf-8')}")
     return "\n\n".join(parts)
 
 

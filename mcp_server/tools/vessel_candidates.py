@@ -74,11 +74,13 @@ def get_vessel_candidates(
     nationality: Annotated[str | None, Field(description="아는 국적의 영문 표기(예: Panama, Korea). 주면 국적이 다른 후보를 뺀다")] = None,
     eta_window_days: Annotated[int, Field(description="최근 며칠 안에 신호를 보낸 배만 볼지. 예: 7(기본값)", ge=1, le=90)] = 7,
 ) -> dict:
-    """선명으로 그 이름을 쓰는 선박 후보를 찾는다. 선박 식별의 첫 단계다.
+    """선명만 알고 그 배의 MMSI를 아직 모를 때 쓴다.
 
-    같은 이름의 배가 흔해서 여러 척이 나온다. 어느 배가 맞는지 이 도구는 정하지 않는다.
-    후보가 둘 이상이고 국적·목적지로도 못 가르면 판정하지 말고 사용자에게 되물어야 한다.
-    돌려주는 값: 후보마다 mmsi, imo, name, flag, dest, ship_type, last_time, similarity.
+    선박 식별의 첫 단계다. 선명으로 ShipFinder를 검색해 그 이름을 쓰는 배를 후보로 모두 돌려준다.
+    같은 이름의 배가 흔해서 여러 척이 나올 수 있고, 어느 배가 맞는지는 이 도구가 정하지 않는다.
+    같은 IMO는 가장 최근에 신호를 보낸 MMSI 한 건만 남긴다.
+    돌려주는 값: 후보마다 mmsi, imo, name, call_sign, flag, dest, ship_type, last_time, similarity.
+    그리고 source, fetched_at, cached_at(호출 한도에 걸려 담아둔 값을 줬을 때 그 시각).
     similarity는 선명이 얼마나 비슷한지일 뿐 내 화물 배라는 뜻이 아니다.
     """
     try:
