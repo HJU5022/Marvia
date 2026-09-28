@@ -6,31 +6,33 @@
 처리 순서는 SDD 4.1을 따른다.
   1. 입력 검증 (스키마 AgentRequest가 B/L 형식까지 본다, A7)
   2. UNI-PASS 조회 (코드가 직접 부른다. B/L을 LLM에 넘기지 않는다)
-  3. 선박 식별 (후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
+  2-1. 지원 범위 확인 (양륙항이 부산이 아니면 unsupported로 끝낸다)
+  3. 선박 식별 (MRN 호출부호로 먼저, 안 되면 선명으로. 후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
-  6. 2층 판정 (LLM)      <- C-6 services/llm.py가 들어올 자리
-  7. 출력 검증 7규칙      <- C-7이 들어올 자리
+  6. 2층 판정 (LLM, services/llm.judge)
+  7. 출력 검증 7규칙 (services/validate.py). 위반이면 최대 3번까지 다시 묻고, 그래도 위반이면 failed
 
 6단계는 services/llm.judge()가 한다 (C-6, 09-27 연결). 결과를 어떻게 응답에 담나:
   - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
   - 신호 7개가 전부 clear면 verdict=fine은 코드가 정한다(decided_by=rule). LLM 답은 문장만 쓴다 (SDD 4.1 7단계)
   - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
-7단계(출력 검증 7규칙, C-7)와 근거 카드(C-8)는 아직 없다.
+근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
 from backend.app.db import connect, latest_response, log_query
+from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id
 from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import llm
+from backend.app.services import identify, llm, validate
 from backend.app.services import signals as signals_service
-from backend.app.services.evidence import days_margin
+from backend.app.services.evidence import build as build_evidence, days_margin
 from backend.app.services.customs import CustomsError, UnipassClient
 from mcp_server.tools.distance import estimate_distance
 from mcp_server.tools.live_position import get_live_position
@@ -45,7 +47,11 @@ ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워
 NO_VESSEL = "선박 위치 서비스에서 이 배를 찾지 못했습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
 NO_VESSEL_AFTER_ETA = "선박 위치 서비스에서 이 배를 찾지 못해 판정하지 못했습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
 VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하지 못했습니다. 잠시 뒤 다시 조회해 주세요."
+NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
+VALIDATION_FAILED = "판정을 생성하지 못했습니다. 근거 카드를 확인하세요."  # SDD 5.7 3차 폴백 문구
+
+JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 첨부 + 강화 (SDD 5.7)
 
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
@@ -75,10 +81,12 @@ def _response(**over) -> AgentResponse:
 @router.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest) -> AgentResponse:
     """B/L과 판매 예정일을 받아 화물 상태를 정리해 돌려준다. 후속 질문이 오면 지난 결과를 보고 답한다.
-    어느 쪽이든 결과를 조회 이력(query_log)에 남긴다."""
-    if request.follow_up_question:
-        return _logged(request, _follow_up(request))
-    return _logged(request, _assess(request))
+    어느 쪽이든 결과를 조회 이력(query_log)에 남긴다.
+    이 요청에서 부르는 LLM 트레이스에는 session_id가 붙는다 (SDD 5.11). 키가 없으면 아무 일도 안 한다."""
+    with session_scope(request.session_id):
+        if request.follow_up_question:
+            return _logged(request, _follow_up(request))
+        return _logged(request, _assess(request))
 
 
 def _assess(request: AgentRequest) -> AgentResponse:
@@ -86,6 +94,11 @@ def _assess(request: AgentRequest) -> AgentResponse:
     customs, failure = _fetch_customs(request)
     if failure is not None:
         return failure
+
+    # 지원 범위는 부산항이다 (PRD 4절). 양륙항이 부산이 아니면 배를 찾지 않고 끝낸다 (평가셋 F05).
+    # 양륙항 칸이 비어 있으면 범위 밖으로 단정하지 않고 진행한다. 모르는 것을 거절하는 쪽이 더 나쁘다
+    if customs.discharge_port and customs.discharge_port != signals_service.BUSAN_PORT_CODE:
+        return _response(status="unsupported", answer=NOT_BUSAN)
 
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
     # 배를 못 정하면 판정하지 않는다. 위치·입항 정보 없이 판정하면 근거 없이 "괜찮다"가 나온다 (09-28 실제 B/L)
@@ -124,15 +137,31 @@ def _assess(request: AgentRequest) -> AgentResponse:
         eta=_eta(position, schedule, signal_set, trusted),
         berth=BerthInfo(facility=(schedule or {}).get("facility") if "error" not in (schedule or {}) else None,
                         shed=customs.shed_name),
+        # 근거 카드. LLM이 실패해 판정이 없어도 조회한 값은 보여준다 (C-8, SDD 5.8)
+        evidence=build_evidence(customs, position, schedule, distance, trusted, margin, signals=signal_set),
     )
 
-    # 6. 2층 판정 (LLM)
-    try:
-        judged = llm.judge(signal_set, customs, margin)
-    except llm.LLMError:
-        return _response(status="partial", answer=LLM_FAILED, **collected)
-    out = judged.output
+    # 6·7. 2층 판정 (LLM)과 출력 검증 (C-7, SDD 5.7)
+    # 위반이면 위반 내용을 붙여 다시 묻는다. 두 번째 재시도는 "JSON만, 규칙 준수"를 덧붙인다.
+    # 세 번 모두 위반이면 판정 없이 failed로 끝내고 근거 카드는 남긴다
+    feedback = None
+    for attempt in range(1, JUDGE_ATTEMPTS + 1):
+        try:
+            judged = llm.judge(signal_set, customs, margin, feedback=feedback)
+        except llm.LLMError:
+            return _response(status="partial", answer=LLM_FAILED, **collected)
+        response = _judged(judged.output, signal_set, request, customs, collected)
+        violations = validate.check(response)
+        if not violations:
+            return response
+        feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+        if attempt == JUDGE_ATTEMPTS - 1:
+            feedback += "\nReturn JSON only and follow every rule above."
+    return _response(status="failed", answer=VALIDATION_FAILED, **collected)
 
+
+def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict) -> AgentResponse:
+    """LLM 판정 1회분을 응답으로 옮긴다. 검증(validate.check)은 부르는 쪽이 한다."""
     # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
     if all(s.state == "clear" for s in signal_set.signals):
         verdict, decided_by = "fine", "rule"
@@ -145,8 +174,6 @@ def _assess(request: AgentRequest) -> AgentResponse:
     if verdict is None:
         status, missing = ("partial", []) if request.forwarder_eta else ("insufficient", ["forwarder_eta"])
 
-    # TODO(C-7): validate.run()으로 7규칙을 걸고 위반이면 재시도한다
-    # TODO(C-8): 근거 카드(evidence) 조립
     return _response(
         status=status,
         verdict=verdict,
@@ -205,9 +232,24 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     확정하지 않는 쪽이 남의 배를 내 배라고 답하는 것보다 낫다 (PRD 6.2).
 
     호출부호도 같이 돌려준다. C1 VesselCandidate에는 자리가 없지만 해수부 조회에 필요하다.
+
+    MRN 먼저 (09-28): B/L의 MRN으로 해수부 입항 신고에서 호출부호를 찾고, 그 호출부호로 최근 신호를 보낸 배가
+    1척이면 코드가 확정한다 (services/identify.py). 이름이 아니라 번호로 이어서 동명 선박·표기 차이가 없다.
+    MRN으로 못 찾거나(입항 신고 전 등) 호출부호로 최근 배가 1척이 아니면 지금까지처럼 이름으로 찾는다.
     """
+    mrn_call_sign = identify.call_sign_from_mrn(customs)
     if request.resolved_mmsi:
-        return [], "confirmed", request.resolved_mmsi, None
+        # 사용자가 고른 배. 호출부호를 알면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)
+        return [], "confirmed", request.resolved_mmsi, mrn_call_sign
+
+    if mrn_call_sign:
+        result = get_vessel_candidates(ship_name=customs.ship_name or "", call_sign=mrn_call_sign)
+        if "error" not in result:
+            found = _candidates(result.get("candidates", []), "MRN 입항 신고의 호출부호 일치")
+            if len(found) == 1:
+                return found, "confirmed", found[0].mmsi, mrn_call_sign
+        # 실패·0척·여럿이면 아래 이름 검색으로 넘어간다
+
     if not customs.ship_name:
         return [], "none", None, None
 
@@ -215,20 +257,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     if "error" in result:
         return [], TOOL_FAILED, None, None
     rows = result.get("candidates", [])
-    candidates = [
-        VesselCandidate(
-            mmsi=row["mmsi"],
-            imo=row.get("imo"),
-            name=row["name"],
-            flag=row.get("flag"),
-            dest=row.get("dest"),
-            last_time=row["last_time"],
-            ship_type=row.get("ship_type"),
-            match_reasons=[f"선명 유사도 {row.get('similarity')}"],
-        )
-        for row in rows
-        if row.get("last_time")
-    ]
+    candidates = _candidates(rows)
     if not candidates:
         return [], "none", None, None
     if len(candidates) == 1:
@@ -240,10 +269,30 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
     except llm.LLMError:
         return candidates, "uncertain", None, None
-    if picked.confidence == "high" and picked.choice is not None:
+    # 후보에 없는 MMSI는 확정하지 않는다. 후보 목적지 문자열 속 지시문에 속았거나 번호를 지어냈을 수 있다 (C-10)
+    if picked.confidence == "high" and picked.choice in {c.mmsi for c in candidates}:
         call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
         return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
+
+
+def _candidates(rows: list[dict], reason: str | None = None) -> list[VesselCandidate]:
+    """도구 출력 후보를 C1 VesselCandidate로 옮긴다. 마지막 신호 시각이 없는 후보는 뺀다.
+    reason이 없으면 선명 유사도를 근거로 적는다."""
+    return [
+        VesselCandidate(
+            mmsi=row["mmsi"],
+            imo=row.get("imo"),
+            name=row["name"],
+            flag=row.get("flag"),
+            dest=row.get("dest"),
+            last_time=row["last_time"],
+            ship_type=row.get("ship_type"),
+            match_reasons=[reason or f"선명 유사도 {row.get('similarity')}"],
+        )
+        for row in rows
+        if row.get("last_time")
+    ]
 
 
 def _distance(position: dict | None) -> dict | None:

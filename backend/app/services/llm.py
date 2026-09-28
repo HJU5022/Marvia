@@ -6,7 +6,7 @@
 여기서 책임지는 것:
   - 출력 형식 검사 (Pydantic)          ← judge()가 JSON 모양만 본다. 내용 7규칙은 C-7 validate.py
   - 실패 시 재시도와 폴백, 라우팅       ← 재시도 1회만 있음. 폴백·라우팅·요청당 시간 예산은 TODO (09-23 결정)
-  - Langfuse 트레이스 남기기            ← TODO (D3)
+  - Langfuse 트레이스 남기기            ← _ask_json()이 호출마다 generation 하나 (observability/langfuse.py, SDD 5.11)
 
 지금 있는 것:
   chat()   OpenRouter에 한 번 묻는다. 과부하·한도(503·429)면 한 번 더 묻는다
@@ -34,7 +34,7 @@ import openai
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
-from backend.app.observability.langfuse import get_prompt
+from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
@@ -68,6 +68,7 @@ class LLMResult:
     completion_tokens: int | None = None
     latency_ms: int = 0                 # 마지막 시도 하나의 지연. 재시도 대기는 빠진다
     attempts: int = 1                   # 몇 번 만에 답을 받았나. Langfuse retry_count 자리 (SDD 5.11)
+    cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0
 
 
 class LLMError(Exception):
@@ -128,6 +129,8 @@ def _call_once(kwargs: dict) -> LLMResult:
         request_id=resp.id,
         prompt_tokens=usage.prompt_tokens if usage else None,
         completion_tokens=usage.completion_tokens if usage else None,
+        # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
+        cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,
     )
 
@@ -296,7 +299,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
 
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
-              output_model: type[BaseModel], model: str | None) -> LLMAnswer:
+              output_model: type[BaseModel], model: str | None, feedback: str | None = None) -> LLMAnswer:
     """세 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
 
@@ -309,15 +312,27 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         {"role": "system", "content": f"{prompt.text}\n\n{_skills_text()}"},
         {"role": "user", "content": user_content},
     ]
-    result = chat(
-        messages,
-        model=model,
-        response_format={"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}},
-    )
+    if feedback:
+        # 검증 위반을 붙여 다시 묻는 경우 (C-7). 코드가 쓴 지시라 자료(user_content)와 섞지 않고 따로 보낸다
+        messages.append({"role": "user", "content": f"Your previous answer broke these rules. Answer again in the same JSON format and fix them:\n{feedback}"})
+    # 트레이스 입력은 코드가 모은 자료(user_content)만. 지시문·skills 전문은 길고 매번 같아서 빼고 prompt_version으로 가린다
+    generation = start_generation(prompt_name, user_content, prompt.source)
+    try:
+        result = chat(
+            messages,
+            model=model,
+            response_format={"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}},
+        )
+    except LLMError as e:
+        end_generation(generation, None, prompt.version, error=str(e))
+        raise
     try:
         output = output_model.model_validate_json(result.content or "")
     except ValidationError as e:
-        raise LLMError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건)") from e
+        error = LLMError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건)")
+        end_generation(generation, result, prompt.version, output=result.content, error=str(error))
+        raise error from e
+    end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))
     return LLMAnswer(output=output, llm=result, prompt_version=prompt.version)
 
 
@@ -327,9 +342,12 @@ def judge(
     days_margin: int | None,
     *,
     model: str | None = None,
+    feedback: str | None = None,
 ) -> LLMAnswer:
-    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수 (SDD 4.1 7단계)."""
-    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin), "judge", JUDGE_SCHEMA, JudgeOutput, model)
+    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수 (SDD 4.1 7단계).
+    feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도)."""
+    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin), "judge", JUDGE_SCHEMA, JudgeOutput, model,
+                     feedback=feedback)
 
 
 # ── 선박 선택 pick_vessel() ─────────────────────────────────────

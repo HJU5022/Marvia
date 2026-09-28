@@ -1,4 +1,4 @@
-"""도구 get_vessel_candidates (작업 B3). 선명으로 선박 후보를 찾는다.
+"""도구 get_vessel_candidates (작업 B3). 선명 또는 호출부호로 선박 후보를 찾는다.
 
 UNI-PASS는 선명과 국적만 주고 IMO·호출부호를 주지 않는다 (PRD 6.6). 그래서 선명으로 검색한 뒤
 어느 배인지는 받는 쪽이 정한다. 동명 선박이 흔해서 후보를 좁히지 않고 그대로 넘기는 것이 이 도구의 일이다.
@@ -10,6 +10,9 @@ UNI-PASS는 선명과 국적만 주고 IMO·호출부호를 주지 않는다 (PR
 
 호출부호(call_sign)는 검색 응답에 있는 값을 그대로 넘긴다. 해수부 조회의 키가 되는데,
 선명은 해수부가 한글이고 ShipFinder가 영문이라 서로 맞추기 어렵다.
+
+호출부호로도 찾을 수 있다 (09-28 추가). B/L의 MRN으로 해수부 입항 신고에서 호출부호를 얻으면
+선명 대신 그것으로 찾는다 (backend/app/services/identify.py). 동명 선박·표기 차이 문제가 없다.
 
 출력 계약은 mcp_server/schemas.py의 VesselCandidatesResult다 (C4, SDD 3.4).
 """
@@ -73,8 +76,9 @@ def get_vessel_candidates(
     ship_name: Annotated[str, Field(description="찾을 선명. UNI-PASS 화물통관진행정보의 선명을 그대로 넣는다. 예: TEST STAR")],
     nationality: Annotated[str | None, Field(description="아는 국적의 영문 표기(예: Panama, Korea). 주면 국적이 다른 후보를 뺀다")] = None,
     eta_window_days: Annotated[int, Field(description="최근 며칠 안에 신호를 보낸 배만 볼지. 예: 7(기본값)", ge=1, le=90)] = 7,
+    call_sign: Annotated[str | None, Field(description="호출부호. 주면 선명 대신 호출부호로 검색하고 호출부호가 같은 배만 남긴다. 예: TST01")] = None,
 ) -> dict:
-    """선명만 알고 그 배의 MMSI를 아직 모를 때 쓴다.
+    """선명이나 호출부호만 알고 그 배의 MMSI를 아직 모를 때 쓴다.
 
     선박 식별의 첫 단계다. 선명으로 ShipFinder를 검색해 그 이름을 쓰는 배를 후보로 모두 돌려준다.
     같은 이름의 배가 흔해서 여러 척이 나올 수 있고, 어느 배가 맞는지는 이 도구가 정하지 않는다.
@@ -82,12 +86,19 @@ def get_vessel_candidates(
     돌려주는 값: 후보마다 mmsi, imo, name, call_sign, flag, dest, ship_type, last_time, similarity.
     그리고 source, fetched_at, cached_at(호출 한도에 걸려 담아둔 값을 줬을 때 그 시각).
     similarity는 선명이 얼마나 비슷한지일 뿐 내 화물 배라는 뜻이 아니다.
+    호출부호를 알면 call_sign을 준다. 선명보다 정확하다. 같은 호출부호를 예전에 쓴 배도 검색되지만
+    최근 신호 기준(eta_window_days)으로 걸러지면 지금 그 호출부호를 쓰는 배만 남는다.
     """
     try:
         client = make_client()
-        hits = client.search(ship_name, max=10).hits
+        hits = client.search(call_sign or ship_name, max=10).hits
     except ShipFinderError as e:
         return {"error": ToolError(**e.to_dict()).model_dump()}
+    if call_sign:
+        # 검색어는 선명·호출부호 등을 두루 찾으므로, 호출부호가 정확히 같은 배만 남긴다
+        # 호출부호는 배가 팔리거나 국적을 바꾸면 다른 배에 다시 배정된다. 09-28 실측: 같은 호출부호로 IMO가 다른 3척,
+        # 마지막 신호 0일·123일·552일 전. 아래 최근 신호 필터를 지나면 지금 쓰는 배 1척만 남는다
+        hits = [h for h in hits if (h.call_sign or "").strip().upper() == call_sign.strip().upper()]
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=eta_window_days)
     fresh = [h for h in _newest_per_imo(hits) if h.last_time and h.last_time >= cutoff]

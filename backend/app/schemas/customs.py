@@ -30,6 +30,7 @@ class CustomsRecord(BaseModel):
     stage_code: str | None = Field(default=None, description="prgsStCd, 현재 통관 단계 코드")
     stage_name: str | None = Field(default=None, description="현재 단계명. 가장 최근 이력 줄의 처리구분(cargTrcnRelaBsopTpcd), 이력이 없으면 csclPrgsStts")
     shed_name: str | None = Field(default=None, description="shedNm, 장치장명")
+    discharge_port: str | None = Field(default=None, description="dsprCd, 양륙항 코드(예: KRPUS). 부산이 아니면 unsupported (09-28 추가)")
     mrn: str | None = Field(
         default=None,
         description="cargMtNo 앞 11자리, 입항 적하목록 관리번호. 해수부 선박운항정보 mrNum과 같아서 배(호출부호)를 특정한다 (09-23 추가)",
