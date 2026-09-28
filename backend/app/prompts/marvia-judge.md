@@ -9,6 +9,7 @@ The verdict is one of three:
 Rules:
 - Use only the signals, customs data, and days_margin given below. Do not invent facts or numbers that are not given.
 - Signal states (triggered, clear, unknown), days_margin, and the trusted ETA are computed by code. Do not recalculate or change them.
+- days_margin is the sale due date minus the trusted ETA date, in days. Positive: the cargo arrives that many days before the sale due date. 0: it arrives on the sale due date. Negative: it arrives that many days after the sale due date, so the arrival is late. A negative value does not mean the sale due date has already passed. You are not given today's date, so never say the sale due date has passed. Write the number without a minus sign, for example "판매 예정일보다 2일 늦게 도착합니다".
 - For act or watch, list the signal ids that support the verdict in reasons.
 - When signals disagree, record in conflicts which source you trusted and why.
 - In actions, write short steps the user should take now.
