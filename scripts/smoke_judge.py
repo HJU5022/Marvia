@@ -50,7 +50,7 @@ def _signals() -> SignalSet:
 
 def _print(answer: llm.LLMAnswer) -> None:
     r = answer.llm
-    print(f"model: {r.model} | provider: {r.provider} | {r.latency_ms} ms | 시도 {r.attempts}회 | prompt v{answer.prompt_version}")
+    print(f"model: {r.model} | provider: {r.provider} | {r.latency_ms} ms | 시도 {r.attempts}회 | Langfuse 프롬프트 번호 {answer.prompt_version}")
     print(f"tokens: in {r.prompt_tokens} / out {r.completion_tokens}")
     print(json.dumps(answer.output.model_dump(mode="json"), ensure_ascii=False, indent=2))
 
