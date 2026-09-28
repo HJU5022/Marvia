@@ -8,13 +8,22 @@
 돌려주는 version은 트레이스의 prompt_version 자리에 들어간다 (SDD 5.11). 파일에서 왔으면 "local".
 
 prompts/를 backend/app/ 안에 둔 이유: Dockerfile이 backend/를 통째로 복사하므로 이미지에도 들어간다.
+
+LLM 호출 트레이스도 여기서 남긴다 (SDD 5.11). 아래 "트레이스" 절.
 """
 from __future__ import annotations
 
 import logging
 import os
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from backend.app.observability.logging import current_request_id
+
+if TYPE_CHECKING:  # 타입 표시에만 쓴다. 실제로 import하면 llm.py와 서로 import하게 된다
+    from backend.app.services.llm import LLMResult
 
 PROMPT_DIR = Path(__file__).resolve().parents[1] / "prompts"
 LOCAL_VERSION = "local"
@@ -43,3 +52,87 @@ def get_prompt(name: str, label: str = "production") -> Prompt:
 
     path = PROMPT_DIR / f"{name}.md"
     return Prompt(name=name, text=path.read_text(encoding="utf-8"), version=LOCAL_VERSION)
+
+
+# ── 트레이스 (SDD 5.11) ─────────────────────────────────────────
+# LLM을 한 번 부를 때마다 Langfuse에 generation 하나를 남긴다. services/llm.py의 _ask_json()이 부른다.
+# 키가 없거나 Langfuse 쪽이 실패해도 판정은 막지 않는다. 트레이스만 빠진다 (get_prompt와 같은 원칙).
+# SDD 5.11은 @traced 데코레이터로 적었지만, 결과(토큰·비용)와 실패를 둘 다 남기려고 시작·끝 함수 둘로 나눴다.
+
+
+def _keys_set() -> bool:
+    return bool(os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"))
+
+
+def session_scope(session_id: str) -> AbstractContextManager:
+    """이 with 안에서 남기는 트레이스에 session_id를 붙인다. 라우터가 요청 하나를 이걸로 감싼다.
+
+    같은 세션의 조회·후속 질문을 Langfuse Sessions 화면에서 한 줄로 볼 수 있다.
+    로그인이 붙으면 user_id도 여기서 붙인다 (지금은 넣을 값이 없다).
+    잘못된 값(ASCII가 아니거나 200자 초과)은 langfuse가 경고만 남기고 버린다. 요청은 막히지 않는다.
+    """
+    if not _keys_set():
+        return nullcontext()
+    try:
+        from langfuse import propagate_attributes
+
+        return propagate_attributes(session_id=session_id)
+    except ImportError:  # 키 없는 테스트 환경처럼 langfuse가 설치돼 있지 않을 때
+        return nullcontext()
+
+
+def start_generation(name: str, input: Any) -> Any:
+    """generation 기록을 시작한다. 끝낼 때 돌려받은 값을 end_generation()에 넘긴다. 못 남기면 None.
+
+    trace_id는 요청 ID(응답의 trace_id)를 씨앗으로 만든다. 그러면
+      - 같은 요청 안의 pick_vessel·judge가 한 트레이스로 묶이고
+      - 응답에 찍힌 trace_id로 Langfuse에서 찾을 수 있다 (metadata.request_id로도 검색된다)
+    HTTP 요청 밖(scripts/의 스모크 등)은 요청 ID가 비어 있어 매번 새 트레이스가 된다.
+    """
+    if not _keys_set():
+        return None
+    try:
+        from langfuse import get_client
+
+        client = get_client()
+        request_id = current_request_id()
+        trace_context = {"trace_id": client.create_trace_id(seed=request_id)} if request_id else None
+        return client.start_observation(
+            name=name, as_type="generation", input=input,
+            trace_context=trace_context, metadata={"request_id": request_id or None},
+        )
+    except Exception as e:  # 미설치·설정 오류 모두 같은 처리: 트레이스 없이 진행
+        logger.warning("langfuse 트레이스 시작 실패(%s), 트레이스 없이 진행합니다", type(e).__name__)
+        return None
+
+
+def end_generation(generation: Any, result: LLMResult | None, prompt_version: str,
+                   output: Any = None, error: str | None = None) -> None:
+    """start_generation()이 연 기록에 결과를 적고 닫는다. generation이 None이면 아무것도 안 한다.
+
+    result: chat()이 돌려준 값. 호출 자체가 실패했으면 None (그때는 error만 남는다)
+    output: 검사를 통과한 출력 (dict). 실패면 None
+    error:  실패 이유. 있으면 level=ERROR로 남아 Langfuse에서 걸러 볼 수 있다
+    지연(latency)은 따로 적지 않는다. 시작~끝 시간이 곧 지연이고, 재시도 대기까지 포함된다.
+    """
+    if generation is None:
+        return
+    try:
+        fields: dict[str, Any] = {"output": output, "metadata": {"prompt_version": prompt_version}}
+        if result is not None:
+            fields["model"] = result.model
+            fields["usage_details"] = {"input": result.prompt_tokens or 0, "output": result.completion_tokens or 0}
+            if result.cost is not None:
+                fields["cost_details"] = {"total": result.cost}  # OpenRouter가 준 실제 금액 (크레딧 = USD)
+            fields["metadata"].update({
+                "retry_count": result.attempts - 1,  # 첫 시도는 재시도가 아니다
+                "provider": result.provider,
+                "openrouter_id": result.request_id,
+            })
+        if error:
+            fields["level"] = "ERROR"
+            fields["status_message"] = error
+        generation.update(**fields)
+        generation.end()
+    except Exception as e:
+        logger.warning("langfuse 트레이스 기록 실패(%s)", type(e).__name__)

@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from backend.app.db import connect, latest_response, log_query
+from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id
 from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
@@ -75,10 +76,12 @@ def _response(**over) -> AgentResponse:
 @router.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest) -> AgentResponse:
     """B/L과 판매 예정일을 받아 화물 상태를 정리해 돌려준다. 후속 질문이 오면 지난 결과를 보고 답한다.
-    어느 쪽이든 결과를 조회 이력(query_log)에 남긴다."""
-    if request.follow_up_question:
-        return _logged(request, _follow_up(request))
-    return _logged(request, _assess(request))
+    어느 쪽이든 결과를 조회 이력(query_log)에 남긴다.
+    이 요청에서 부르는 LLM 트레이스에는 session_id가 붙는다 (SDD 5.11). 키가 없으면 아무 일도 안 한다."""
+    with session_scope(request.session_id):
+        if request.follow_up_question:
+            return _logged(request, _follow_up(request))
+        return _logged(request, _assess(request))
 
 
 def _assess(request: AgentRequest) -> AgentResponse:
