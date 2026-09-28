@@ -28,7 +28,7 @@ class CustomsRecord(BaseModel):
     voyage: str | None = Field(default=None, description="vydf, 항차")
     entry_date: datetime | None = Field(default=None, description="etprDt, 입항(예정)일")
     stage_code: str | None = Field(default=None, description="prgsStCd, 현재 통관 단계 코드")
-    stage_name: str | None = Field(default=None, description="csclPrgsStts, 현재 통관 단계명")
+    stage_name: str | None = Field(default=None, description="현재 단계명. 가장 최근 이력 줄의 처리구분(cargTrcnRelaBsopTpcd), 이력이 없으면 csclPrgsStts")
     shed_name: str | None = Field(default=None, description="shedNm, 장치장명")
     mrn: str | None = Field(
         default=None,

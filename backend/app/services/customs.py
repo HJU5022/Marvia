@@ -16,8 +16,9 @@ B/L 번호를 LLM에 넘기면 숫자를 잘못 옮기거나 프롬프트 주입
 필드 이름 확정 (2026-09-27, UNI-PASS OpenAPI 연계가이드 v4.1 + 실제 응답 1건):
 - 처음엔 필드 이름을 몰라 후보 여러 개를 찾았다. 확인한 이름 하나씩만 남겼다
 - 상단 상태 칸은 셋이다. csclPrgsStts(통관진행상태, 예: 수입신고수리)와
-  prgsStts + prgsStCd(화물 진행상태와 그 코드, 예: 반출완료 + CAGE12). 계약 C5대로
-  stage_name은 csclPrgsStts, stage_code는 prgsStCd를 쓴다. 둘은 짝이 아니다
+  prgsStts + prgsStCd(화물 진행상태와 그 코드, 예: 반출완료 + CAGE12). stage_code는 prgsStCd를 쓴다.
+  stage_name은 가장 최근 이력 줄의 처리구분이고, 이력이 없을 때만 csclPrgsStts를 쓴다.
+  csclPrgsStts는 수입신고수리에서 멈춰 반출된 화물도 수리 단계로 보였다 (09-28 실제 B/L)
 - 이력 줄(cargCsclPrgsInfoDtlQryVo)에는 단계 코드가 없고, 처리구분 cargTrcnRelaBsopTpcd에
   한글 이름이 바로 들어 있다 (예: 반입신고). 이전 코드는 이름을 다른 칸에서 찾아 이력을 전부 버렸다
 - 이력은 최신이 위에 온다. 장치장명(shedNm)은 상단에 없고 이력 줄에만 있다
@@ -42,7 +43,7 @@ FIELD_CANDIDATES = {
     "ship_nat": ("shipNat",),
     "voyage": ("vydf",),
     "entry_date": ("etprDt",),
-    "stage_name": ("csclPrgsStts",),  # 통관진행상태
+    "stage_name": ("csclPrgsStts",),  # 통관진행상태. 이력 줄이 없을 때만 단계 이름으로 쓴다 (_refine 참고)
     "stage_code": ("prgsStCd",),  # 진행상태코드. 짝은 prgsStts(화물 진행상태)라 stage_name과 뜻이 다를 수 있다
     "shed_name": ("shedNm",),  # 상단엔 없다. .// 검색이 최신 이력 줄(맨 위)의 값을 찾는다
 }
@@ -161,7 +162,9 @@ class UnipassClient:
             voyage=_first(root, FIELD_CANDIDATES["voyage"]),
             entry_date=_dt(_first(root, FIELD_CANDIDATES["entry_date"])),
             stage_code=_first(root, FIELD_CANDIDATES["stage_code"]),
-            stage_name=_first(root, FIELD_CANDIDATES["stage_name"]) or (stages[-1].name if stages else None),
+            # 현재 단계는 가장 최근 이력 줄. 상단 csclPrgsStts는 수입신고수리에서 멈춰 반출을 못 보여서
+            # 이력이 없을 때만 쓴다 (09-28 실제 B/L: 반출완료 화물이 "다음은 반출신고"로 나옴)
+            stage_name=stages[-1].name if stages else _first(root, FIELD_CANDIDATES["stage_name"]),
             shed_name=_first(root, FIELD_CANDIDATES["shed_name"]),
             mrn=_mrn(_first(root, ("cargMtNo",))),
             stage_history=stages,
