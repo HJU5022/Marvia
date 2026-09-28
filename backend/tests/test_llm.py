@@ -1,7 +1,10 @@
 """services/llm.py 재시도 테스트 (C-6). 키 없이 돈다: OpenRouter 호출(_call_once)을 가짜로 바꾼다.
 
 확인하는 것: 503·429면 한 번 더 부르고, 400 같은 건 바로 올리고, 두 번 다 실패하면 포기한다.
+모델 이름이 vertex/로 시작하면 Vertex AI로, 아니면 OpenRouter로 간다.
 """
+from types import SimpleNamespace
+
 import pytest
 
 from backend.app.services import llm
@@ -67,3 +70,75 @@ def test_missing_key_or_model_is_llm_error(monkeypatch):
     monkeypatch.delenv("MODEL_A", raising=False)
     with pytest.raises(llm.LLMError):
         llm.chat([{"role": "user", "content": "hi"}])
+
+
+# ── 어디로 보내나: "vertex/" 앞머리면 Vertex AI, 아니면 OpenRouter (09-28) ──────────
+
+class _FakeClient:
+    """create()에 들어온 인자를 기억하고, 최소 모양의 응답을 돌려주는 가짜 OpenAI 클라이언트."""
+
+    def __init__(self, usage=None):
+        self.sent = None
+        self.usage = usage  # 응답에 실을 토큰 사용량. 없으면 None
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        self.sent = kwargs
+        msg = SimpleNamespace(content="ok", tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg)], usage=self.usage,
+                               model=kwargs["model"], id="req-1", model_extra={})
+
+
+def _usage(prompt, completion, reasoning):
+    """09-28 Vertex curl 응답과 같은 모양: 생각 토큰은 completion_tokens_details에 따로 온다."""
+    return SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion,
+                           completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning))
+
+
+def test_vertex_prefix_goes_to_vertex_without_openrouter_options(monkeypatch):
+    fake = _FakeClient()
+    monkeypatch.setattr(llm, "_vertex_client", lambda: fake)
+    monkeypatch.setattr(llm, "_client", lambda: pytest.fail("OpenRouter로 가면 안 된다"))
+    result = llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []})
+    assert fake.sent["model"] == "google/gemini-2.5-flash"  # Vertex는 앞머리 없는 이름을 받는다
+    assert fake.sent["extra_body"] is None                   # provider 옵션은 OpenRouter 전용
+    assert result.content == "ok"
+
+
+def test_other_models_still_go_to_openrouter(monkeypatch):
+    """vertex/를 안 쓰면 이전과 똑같이 OpenRouter로, 같은 옵션으로 간다."""
+    fake = _FakeClient()
+    monkeypatch.setattr(llm, "_client", lambda: fake)
+    monkeypatch.setattr(llm, "_vertex_client", lambda: pytest.fail("Vertex로 가면 안 된다"))
+    llm._call_once({"model": "openai/gpt-4o-mini", "messages": []})
+    assert fake.sent["model"] == "openai/gpt-4o-mini"
+    assert fake.sent["extra_body"] == {"provider": {"require_parameters": True}}
+
+
+def test_vertex_counts_reasoning_tokens_as_output(monkeypatch):
+    """Vertex는 생각 토큰을 따로 주므로 출력 토큰에 더한다. 요금은 생각 토큰도 출력으로 받는다."""
+    monkeypatch.setattr(llm, "_vertex_client", lambda: _FakeClient(usage=_usage(14, 28, 191)))
+    result = llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []})
+    assert result.prompt_tokens == 14
+    assert result.completion_tokens == 28 + 191
+
+
+def test_openrouter_does_not_add_reasoning_tokens(monkeypatch):
+    """OpenRouter는 OpenAI 방식대로 completion_tokens에 이미 포함돼 있어 더하지 않는다 (두 번 세지 않게)."""
+    monkeypatch.setattr(llm, "_client", lambda: _FakeClient(usage=_usage(14, 219, 191)))
+    result = llm._call_once({"model": "openai/gpt-4o-mini", "messages": []})
+    assert result.completion_tokens == 219
+
+
+def test_vertex_without_login_is_llm_error(monkeypatch):
+    """ADC 로그인 정보가 없으면 LLMError. OpenRouter 키가 없을 때와 같이 라우터가 partial로 받는다 (09-23 결정)."""
+    import google.auth
+    import google.auth.exceptions
+
+    def no_adc(**_):
+        raise google.auth.exceptions.DefaultCredentialsError("no adc")
+
+    monkeypatch.setattr(llm, "_vertex_creds", None)
+    monkeypatch.setattr(google.auth, "default", no_adc)
+    with pytest.raises(llm.LLMError):
+        llm.chat([{"role": "user", "content": "hi"}], model="vertex/google/gemini-2.5-flash")

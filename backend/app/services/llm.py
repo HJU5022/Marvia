@@ -9,7 +9,7 @@
   - Langfuse 트레이스 남기기            ← _ask_json()이 호출마다 generation 하나 (observability/langfuse.py, SDD 5.11)
 
 지금 있는 것:
-  chat()   OpenRouter에 한 번 묻는다. 과부하·한도(503·429)면 한 번 더 묻는다
+  chat()   OpenRouter(또는 Vertex AI)에 한 번 묻는다. 과부하·한도(503·429)면 한 번 더 묻는다
   judge()            2층 판정. 프롬프트(Langfuse) + skills/ 문서 + 코드가 모은 자료를 주고 판정 JSON을 받는다 (SDD 4.1 7단계, 5.6)
   pick_vessel()      이름 같은 후보가 여럿일 때 어느 배인지 고른다 (SDD 5.5, C-5)
   answer_follow_up() 판정 뒤 후속 질문에 근거 안에서만 답한다 (C-9)
@@ -18,6 +18,13 @@
   MODEL_A     싼 모델. 대화+판단 기본
   MODEL_B     강한 모델. 어려운 건 + 비전
   JUDGE_MODEL 평가 때만. A·B와 다른 회사
+
+어디로 보내나 (모델 이름 앞머리로 가른다, 09-28):
+  "vertex/"로 시작   Vertex AI (GCP 크레딧). 예: MODEL_A=vertex/google/gemini-2.5-flash
+                     키 대신 `gcloud auth application-default login` 로그인 정보(ADC)를 쓴다.
+                     Cloud Run에서는 서비스 계정에 Vertex AI 사용자 권한이 있어야 한다
+  그 밖             OpenRouter. 예: MODEL_A=openai/gpt-4o-mini
+  개발 중엔 크레딧(vertex/)으로 돌리고, 최종 테스트 때 .env 한 줄만 되돌리려고 두 길을 같이 둔다.
 """
 from __future__ import annotations
 
@@ -41,6 +48,11 @@ from backend.app.schemas.signals import SignalSet
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
+# Vertex AI도 OpenAI 형식 주소를 따로 연다. strict json_schema까지 같은 요청으로 통과했다 (09-28 curl 확인).
+# global 위치를 쓴다: 지역을 고르지 않아도 되고, 09-28 gemini-2.5-flash 호출이 여기서 됐다
+VERTEX_PREFIX = "vertex/"
+VERTEX_URL = "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/endpoints/openapi"
+VERTEX_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 TIMEOUT_SEC = 60.0  # 호출 하나가 요청 전체 시간을 다 먹지 않게 하는 상한. p95 실측 뒤 조정
 
 # 재시도는 횟수가 아니라 요청당 시간 예산으로 정하기로 했다 (09-23 결정). 예산 숫자가 정해지기 전까지는
@@ -68,11 +80,11 @@ class LLMResult:
     completion_tokens: int | None = None
     latency_ms: int = 0                 # 마지막 시도 하나의 지연. 재시도 대기는 빠진다
     attempts: int = 1                   # 몇 번 만에 답을 받았나. Langfuse retry_count 자리 (SDD 5.11)
-    cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0
+    cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0. Vertex는 안 줘서 None
 
 
 class LLMError(Exception):
-    """OpenRouter가 답 대신 에러를 준 경우. code가 RETRYABLE_CODES면 chat()이 한 번 더 부른다."""
+    """OpenRouter·Vertex AI가 답 대신 에러를 준 경우. code가 RETRYABLE_CODES면 chat()이 한 번 더 부른다."""
 
     def __init__(self, message: str, code: int | None = None, latency_ms: int = 0):
         super().__init__(message)
@@ -94,16 +106,55 @@ def _client() -> OpenAI:
     return OpenAI(base_url=BASE_URL, api_key=key, timeout=TIMEOUT_SEC, max_retries=0)
 
 
+# google-auth 자격 증명과 프로젝트. 처음 한 번만 읽고, 토큰(1시간짜리)이 만료되면 refresh만 한다
+_vertex_creds = None
+_vertex_project: str | None = None
+
+
+def _vertex_client() -> OpenAI:
+    """Vertex AI의 OpenAI 형식 주소로 가는 클라이언트. API 키 자리에 Google 액세스 토큰을 넣는다.
+
+    google.auth는 여기서만 import한다. OpenRouter만 쓰는 사람은 google-auth가 없어도 서버가 뜬다.
+    로그인 정보가 없거나 토큰을 못 받으면 _client()와 같이 LLMError로 올린다 (09-23 결정, partial 경로).
+    """
+    global _vertex_creds, _vertex_project
+    import google.auth
+    import google.auth.exceptions
+    import google.auth.transport.requests
+
+    try:
+        if _vertex_creds is None:
+            # 프로젝트는 GOOGLE_CLOUD_PROJECT가 있으면 그것, 없으면 ADC에 기록된 quota project (google.auth.default 순서)
+            _vertex_creds, _vertex_project = google.auth.default(scopes=VERTEX_SCOPES)
+        if not _vertex_creds.valid:
+            _vertex_creds.refresh(google.auth.transport.requests.Request())
+    except google.auth.exceptions.GoogleAuthError as e:
+        raise LLMError(f"Vertex AI 로그인 정보 없음 또는 토큰 발급 실패: {type(e).__name__}") from e
+
+    if not _vertex_project:
+        raise LLMError("Vertex AI 프로젝트를 모릅니다. GOOGLE_CLOUD_PROJECT를 넣거나 gcloud로 ADC를 다시 만드세요")
+    return OpenAI(base_url=VERTEX_URL.format(project=_vertex_project), api_key=_vertex_creds.token,
+                  timeout=TIMEOUT_SEC, max_retries=0)
+
+
 def _call_once(kwargs: dict) -> LLMResult:
-    """OpenRouter를 딱 한 번 부른다. 실패는 전부 LLMError로 바꿔서 올린다."""
+    """OpenRouter 또는 Vertex AI를 딱 한 번 부른다. 실패는 전부 LLMError로 바꿔서 올린다."""
     model = kwargs["model"]
-    # require_parameters: 요청에 쓴 기능(구조화 출력, tool)을 지원하는 제공사로만 보낸다.
-    # OpenRouter의 모델 단위 "지원" 표시는 제공사 합계라, 이게 없으면 미지원 제공사로 조용히 넘어갈 수 있다 (09-23 조사).
-    extra_body = {"provider": {"require_parameters": True}}
+    is_vertex = model.startswith(VERTEX_PREFIX)
+    if is_vertex:
+        client = _vertex_client()
+        # Vertex는 "google/gemini-2.5-flash"처럼 앞머리 없는 이름을 받는다
+        kwargs = {**kwargs, "model": model.removeprefix(VERTEX_PREFIX)}
+        extra_body = None  # 아래 provider 옵션은 OpenRouter 전용이라 보내지 않는다
+    else:
+        client = _client()
+        # require_parameters: 요청에 쓴 기능(구조화 출력, tool)을 지원하는 제공사로만 보낸다.
+        # OpenRouter의 모델 단위 "지원" 표시는 제공사 합계라, 이게 없으면 미지원 제공사로 조용히 넘어갈 수 있다 (09-23 조사).
+        extra_body = {"provider": {"require_parameters": True}}
 
     start = time.monotonic()
     try:
-        resp = _client().chat.completions.create(**kwargs, extra_body=extra_body)
+        resp = client.chat.completions.create(**kwargs, extra_body=extra_body)
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
                        latency_ms=int((time.monotonic() - start) * 1000)) from e
@@ -121,6 +172,14 @@ def _call_once(kwargs: dict) -> LLMResult:
     msg = resp.choices[0].message
     calls = [{"name": c.function.name, "arguments": c.function.arguments} for c in (msg.tool_calls or [])]
     usage = resp.usage
+    completion_tokens = usage.completion_tokens if usage else None
+    # Vertex는 생각(reasoning) 토큰을 completion_tokens에 넣지 않고 completion_tokens_details에 따로 준다
+    # (09-28 curl: prompt 11 + completion 1 + reasoning 33 = total 45). 요금은 생각 토큰도 출력으로 받으므로
+    # 더해 둔다. 안 더하면 Langfuse가 모델 가격표로 계산한 비용이 실제보다 낮게 나온다.
+    # OpenRouter는 OpenAI 방식대로 이미 포함해서 주므로 더하지 않는다
+    if is_vertex and completion_tokens is not None:
+        details = getattr(usage, "completion_tokens_details", None)
+        completion_tokens += getattr(details, "reasoning_tokens", None) or 0
     return LLMResult(
         content=msg.content,
         tool_calls=calls,
@@ -128,7 +187,7 @@ def _call_once(kwargs: dict) -> LLMResult:
         provider=getattr(resp, "provider", None),  # OpenRouter 전용 필드라 SDK 타입에는 없다
         request_id=resp.id,
         prompt_tokens=usage.prompt_tokens if usage else None,
-        completion_tokens=usage.completion_tokens if usage else None,
+        completion_tokens=completion_tokens,  # 생각 토큰 포함 (위 주석)
         # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
         cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,
