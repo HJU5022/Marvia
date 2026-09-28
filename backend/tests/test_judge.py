@@ -164,3 +164,12 @@ def test_finished_but_wrong_shape_is_bad_format(monkeypatch):
     with pytest.raises(llm.LLMFormatError) as e:
         llm.judge(_signals(), _customs(), days_margin=5)
     assert e.value.kind == "bad_format"
+
+
+def test_empty_cut_off_answer_is_truncated(monkeypatch):
+    """본문 없이 잘린 답(content None, finish_reason=length)도 truncated다. 라우터가 재시도하고 3번이면 failed로 끝낸다."""
+    monkeypatch.setattr(llm, "chat", lambda messages, **k: llm.LLMResult(
+        content=None, model="test/model", finish_reason="length"))
+    with pytest.raises(llm.LLMFormatError) as e:
+        llm.judge(_signals(), _customs(), days_margin=5)
+    assert e.value.kind == "truncated"

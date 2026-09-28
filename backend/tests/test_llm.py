@@ -156,3 +156,17 @@ def test_missing_model_is_not_configured(monkeypatch):
     with pytest.raises(llm.LLMError) as e:
         llm.chat([{"role": "user", "content": "hi"}])
     assert e.value.kind == "not_configured"
+
+
+def test_vertex_answer_without_message_is_empty_not_crash(monkeypatch):
+    """Gemini가 생각 토큰으로 한도를 다 쓰면 message 없이 finish_reason=length만 온다 (09-29 실패 훈련 judge_truncated).
+    전에는 msg.tool_calls에서 AttributeError로 죽어 라우터가 못 잡고 500이 났다. 빈 답으로 받아 truncated로 가게 한다."""
+    fake = _FakeClient()
+    fake.chat.completions.create = lambda **kwargs: SimpleNamespace(
+        choices=[SimpleNamespace(message=None, finish_reason="length")], usage=None,
+        model=kwargs["model"], id="req-1", model_extra={})
+    monkeypatch.setattr(llm, "_vertex_client", lambda: fake)
+
+    result = llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []})
+
+    assert result.content is None and result.tool_calls == [] and result.finish_reason == "length"
