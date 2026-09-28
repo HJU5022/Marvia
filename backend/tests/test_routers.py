@@ -316,6 +316,18 @@ def test_resolved_mmsi_uses_mrn_call_sign_for_schedule(fake, monkeypatch):
     assert schedule_calls[0]["call_sign"] == "TST09"
 
 
+def test_response_carries_evidence_cards(fake):
+    """판정이 없어도(LLM 실패) 조회한 값은 근거 카드로 나간다 (C-8, SDD 5.8)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    sources = {card["source"] for card in body["evidence"]}
+    assert {"unipass", "shipfinder"} <= sources
+    assert body["status"] == "partial"  # 기본 가짜 LLM은 실패
+
+
 def test_unknown_bl_is_insufficient_not_failed(fake):
     """없는 B/L은 실패가 아니라 정보 부족이다 (SDD 4.1)."""
     fake(customs=None)

@@ -17,7 +17,7 @@
   - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
   - 신호 7개가 전부 clear면 verdict=fine은 코드가 정한다(decided_by=rule). LLM 답은 문장만 쓴다 (SDD 4.1 7단계)
   - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
-7단계(출력 검증 7규칙, C-7)와 근거 카드(C-8)는 아직 없다.
+7단계(출력 검증 7규칙, C-7)는 아직 없다. 근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
 from datetime import datetime, timezone
 
@@ -32,7 +32,7 @@ from backend.app.schemas.agent import (
 from backend.app.schemas.customs import CustomsRecord, mask_bl
 from backend.app.services import identify, llm
 from backend.app.services import signals as signals_service
-from backend.app.services.evidence import days_margin
+from backend.app.services.evidence import build as build_evidence, days_margin
 from backend.app.services.customs import CustomsError, UnipassClient
 from mcp_server.tools.distance import estimate_distance
 from mcp_server.tools.live_position import get_live_position
@@ -134,6 +134,8 @@ def _assess(request: AgentRequest) -> AgentResponse:
         eta=_eta(position, schedule, signal_set, trusted),
         berth=BerthInfo(facility=(schedule or {}).get("facility") if "error" not in (schedule or {}) else None,
                         shed=customs.shed_name),
+        # 근거 카드. LLM이 실패해 판정이 없어도 조회한 값은 보여준다 (C-8, SDD 5.8)
+        evidence=build_evidence(customs, position, schedule, distance, trusted, margin),
     )
 
     # 6. 2층 판정 (LLM)
@@ -156,7 +158,6 @@ def _assess(request: AgentRequest) -> AgentResponse:
         status, missing = ("partial", []) if request.forwarder_eta else ("insufficient", ["forwarder_eta"])
 
     # TODO(C-7): validate.run()으로 7규칙을 걸고 위반이면 재시도한다
-    # TODO(C-8): 근거 카드(evidence) 조립
     return _response(
         status=status,
         verdict=verdict,
