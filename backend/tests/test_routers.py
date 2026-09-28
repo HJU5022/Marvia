@@ -249,6 +249,41 @@ def test_non_busan_port_is_unsupported(fake, monkeypatch):
     assert body["verdict"] is None and body["missing_inputs"] == []
 
 
+def test_released_cargo_is_fine_by_rule_without_vessel(fake, monkeypatch):
+    """반출신고까지 끝난 화물은 배를 찾지 않고 LLM도 부르지 않고 규칙으로 fine (09-28 결정).
+    배를 찾으면 같은 배의 다음 항차로 여유 일수를 계산해 엉뚱한 act가 나왔다 (09-28 실제 B/L)."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", discharge_port="KRPUS", stage_name="반출신고",
+                               shed_name="모의 CY", bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], judge=JUDGED)
+
+    def must_not_call(*a, **k):
+        raise AssertionError("반출된 화물인데 배 검색이나 LLM을 불렀다")
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", must_not_call)
+    monkeypatch.setattr(agent_router.llm, "judge", must_not_call)
+
+    with TestClient(app) as client:
+        # 판매 예정일이 지났어도 fine. 반출 뒤 배송은 PRD 4절 범위 밖이다
+        body = client.post("/api/agent", json=_request(sale_due_date="2026-09-01")).json()
+
+    assert body["status"] == "ok" and body["verdict"] == "fine" and body["decided_by"] == "rule"
+    assert body["position"] is None and body["eta"] is None and body["days_margin"] is None
+    assert body["customs"]["stage_name"] == "반출신고" and body["customs"]["next_stage"] is None
+    assert body["berth"]["shed"] == "모의 CY"
+    assert any(e["field"] == "stage_name" and e["value"] == "반출신고" for e in body["evidence"])
+
+
+def test_not_yet_released_cargo_still_tracks_vessel(fake):
+    """반출 전 단계(수입신고수리)는 지금까지처럼 배를 찾는다. 건너뛰기는 반출신고부터만 (09-28 결정)."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", stage_name="수입신고수리",
+                               bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], position=POSITION)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["vessel_match"] == "confirmed"
+
+
 @pytest.mark.parametrize("port", ["KRPUS", None])
 def test_busan_or_unknown_port_goes_on(fake, port):
     """부산이면 진행한다. 양륙항 칸이 비어 있어도 범위 밖으로 단정하지 않고 진행한다."""

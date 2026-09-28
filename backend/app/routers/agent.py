@@ -7,6 +7,7 @@
   1. 입력 검증 (스키마 AgentRequest가 B/L 형식까지 본다, A7)
   2. UNI-PASS 조회 (코드가 직접 부른다. B/L을 LLM에 넘기지 않는다)
   2-1. 지원 범위 확인 (양륙항이 부산이 아니면 unsupported로 끝낸다)
+  2-2. 반출 확인 (이미 창고에서 나간 화물이면 배를 찾지 않고 규칙으로 fine, 09-28 결정)
   3. 선박 식별 (MRN 호출부호로 먼저, 안 되면 선명으로. 후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
@@ -50,6 +51,13 @@ VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하�
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 VALIDATION_FAILED = "판정을 생성하지 못했습니다. 근거 카드를 확인하세요."  # SDD 5.7 3차 폴백 문구
+
+# 반출된 화물 (09-28 결정). 반출신고는 통관의 마지막 단계다 (skills/customs-stages 표 "다음 단계 없음(끝)")
+RELEASED_STAGE = "반출신고"
+RELEASED = "이 화물은 이미 보세창고에서 반출됐습니다. 통관이 끝나 배 위치는 확인하지 않았습니다. 배송 일정은 운송사에 확인해 주세요."
+RELEASED_EXPLANATION = "화물이 보세창고에서 나갔고 세관 절차가 모두 끝났습니다."
+# 할 일은 Skill 표의 반출신고 행("입고를 확인한다")을 따르고, 범위 밖인 배송 일정은 운송사로 넘긴다 (PRD 4절 창고 수령일 예측)
+RELEASED_ACTIONS = ["배송 일정은 운송사에 확인하세요.", "물건이 도착하면 입고를 확인하세요."]
 
 JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 첨부 + 강화 (SDD 5.7)
 
@@ -99,6 +107,11 @@ def _assess(request: AgentRequest) -> AgentResponse:
     # 양륙항 칸이 비어 있으면 범위 밖으로 단정하지 않고 진행한다. 모르는 것을 거절하는 쪽이 더 나쁘다
     if customs.discharge_port and customs.discharge_port != signals_service.BUSAN_PORT_CODE:
         return _response(status="unsupported", answer=NOT_BUSAN)
+
+    # 이미 반출된 화물은 배를 찾지 않는다 (09-28 결정). 화물이 창고를 떠났는데 배를 찾으면 같은 배의
+    # 다음 항차 위치로 여유 일수를 계산해 엉뚱한 act가 나온다 (09-28 실제 B/L: 9/17 반출인데 act, 여유 -1일)
+    if customs.stage_name == RELEASED_STAGE:
+        return _released(customs)
 
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
     # 배를 못 정하면 판정하지 않는다. 위치·입항 정보 없이 판정하면 근거 없이 "괜찮다"가 나온다 (09-28 실제 B/L)
@@ -185,6 +198,33 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
         answer=out.answer,
         customs=_customs_info(customs, out.customs),
         **collected,
+    )
+
+
+def _released(customs: CustomsRecord) -> AgentResponse:
+    """반출이 끝난 화물의 응답. 판정은 규칙으로 fine이고 LLM은 부르지 않는다 (09-28 결정).
+
+    반출 뒤에는 기다릴 입항도 통관도 없어서 "지금 신경 써야 하나?"의 답은 괜찮음이다.
+    반출 뒤 배송 일정은 PRD 4절 "창고 수령일 예측"이라 판정하지 않고 운송사로 안내한다.
+    통관 이력·보관 장소·근거 카드는 UNI-PASS 값으로 채우고, 배를 찾지 않았으니 배·위치·ETA 칸은 비운다.
+    판매 예정일이 지났어도 fine이다. 늦어졌는지는 배송 쪽 일이라 이 서비스가 볼 수 없다.
+    """
+    return _response(
+        status="ok",
+        verdict="fine",
+        decided_by="rule",
+        actions=RELEASED_ACTIONS,
+        answer=RELEASED,
+        customs=CustomsInfo(
+            stage_code=customs.stage_code or "",
+            stage_name=customs.stage_name,
+            plain_explanation=RELEASED_EXPLANATION,
+            next_stage=None,
+            needs_broker=False,
+            history=[s.model_dump(mode="json") for s in customs.stage_history],
+        ),
+        berth=BerthInfo(facility=None, shed=customs.shed_name),
+        evidence=build_evidence(customs, None, None, None, None, None),
     )
 
 
