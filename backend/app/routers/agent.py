@@ -7,7 +7,7 @@
   1. 입력 검증 (스키마 AgentRequest가 B/L 형식까지 본다, A7)
   2. UNI-PASS 조회 (코드가 직접 부른다. B/L을 LLM에 넘기지 않는다)
   2-1. 지원 범위 확인 (양륙항이 부산이 아니면 unsupported로 끝낸다)
-  3. 선박 식별 (후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
+  3. 선박 식별 (MRN 호출부호로 먼저, 안 되면 선명으로. 후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
   6. 2층 판정 (LLM)      <- C-6 services/llm.py가 들어올 자리
@@ -30,7 +30,7 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import llm
+from backend.app.services import identify, llm
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import days_margin
 from backend.app.services.customs import CustomsError, UnipassClient
@@ -215,9 +215,24 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     확정하지 않는 쪽이 남의 배를 내 배라고 답하는 것보다 낫다 (PRD 6.2).
 
     호출부호도 같이 돌려준다. C1 VesselCandidate에는 자리가 없지만 해수부 조회에 필요하다.
+
+    MRN 먼저 (09-28): B/L의 MRN으로 해수부 입항 신고에서 호출부호를 찾고, 그 호출부호로 최근 신호를 보낸 배가
+    1척이면 코드가 확정한다 (services/identify.py). 이름이 아니라 번호로 이어서 동명 선박·표기 차이가 없다.
+    MRN으로 못 찾거나(입항 신고 전 등) 호출부호로 최근 배가 1척이 아니면 지금까지처럼 이름으로 찾는다.
     """
+    mrn_call_sign = identify.call_sign_from_mrn(customs)
     if request.resolved_mmsi:
-        return [], "confirmed", request.resolved_mmsi, None
+        # 사용자가 고른 배. 호출부호를 알면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)
+        return [], "confirmed", request.resolved_mmsi, mrn_call_sign
+
+    if mrn_call_sign:
+        result = get_vessel_candidates(ship_name=customs.ship_name or "", call_sign=mrn_call_sign)
+        if "error" not in result:
+            found = _candidates(result.get("candidates", []), "MRN 입항 신고의 호출부호 일치")
+            if len(found) == 1:
+                return found, "confirmed", found[0].mmsi, mrn_call_sign
+        # 실패·0척·여럿이면 아래 이름 검색으로 넘어간다
+
     if not customs.ship_name:
         return [], "none", None, None
 
@@ -225,20 +240,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     if "error" in result:
         return [], TOOL_FAILED, None, None
     rows = result.get("candidates", [])
-    candidates = [
-        VesselCandidate(
-            mmsi=row["mmsi"],
-            imo=row.get("imo"),
-            name=row["name"],
-            flag=row.get("flag"),
-            dest=row.get("dest"),
-            last_time=row["last_time"],
-            ship_type=row.get("ship_type"),
-            match_reasons=[f"선명 유사도 {row.get('similarity')}"],
-        )
-        for row in rows
-        if row.get("last_time")
-    ]
+    candidates = _candidates(rows)
     if not candidates:
         return [], "none", None, None
     if len(candidates) == 1:
@@ -254,6 +256,25 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
         return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
+
+
+def _candidates(rows: list[dict], reason: str | None = None) -> list[VesselCandidate]:
+    """도구 출력 후보를 C1 VesselCandidate로 옮긴다. 마지막 신호 시각이 없는 후보는 뺀다.
+    reason이 없으면 선명 유사도를 근거로 적는다."""
+    return [
+        VesselCandidate(
+            mmsi=row["mmsi"],
+            imo=row.get("imo"),
+            name=row["name"],
+            flag=row.get("flag"),
+            dest=row.get("dest"),
+            last_time=row["last_time"],
+            ship_type=row.get("ship_type"),
+            match_reasons=[reason or f"선명 유사도 {row.get('similarity')}"],
+        )
+        for row in rows
+        if row.get("last_time")
+    ]
 
 
 def _distance(position: dict | None) -> dict | None:

@@ -56,6 +56,8 @@ def fake(monkeypatch):
         monkeypatch.setattr(agent_router, "get_live_position", lambda mmsi: position or {"error": {"code": "not_found"}})
         monkeypatch.setattr(agent_router, "get_port_schedule", lambda **k: schedule or {"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
         monkeypatch.setattr(agent_router, "_logged", lambda request, response: response)  # DB 없이
+        # MRN으로 호출부호 찾기는 기본으로 실패(None) → 지금까지처럼 이름 검색. MRN 경로는 테스트마다 따로 켠다
+        monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: None)
         # LLM도 가짜로. 기본은 실패 → partial. judge에 dict를 주면 그 판정을 돌려준다
         monkeypatch.setattr(agent_router.llm, "judge", _fake_judge(judge))
         monkeypatch.setattr(agent_router.llm, "pick_vessel", _fake_pick(pick))
@@ -257,6 +259,61 @@ def test_busan_or_unknown_port_goes_on(fake, port):
         body = client.post("/api/agent", json=_request()).json()
 
     assert body["status"] != "unsupported" and body["vessel_match"] == "confirmed"
+
+
+def _search_by(by_call_sign: list, by_name: list, calls: list):
+    """호출부호로 찾으면 by_call_sign, 선명으로 찾으면 by_name을 돌려주는 가짜 후보 검색. 받은 인자를 calls에 남긴다."""
+    def search(**k):
+        calls.append(k)
+        rows = by_call_sign if k.get("call_sign") else by_name
+        return {"candidates": rows, "source": "shipfinder", "fetched_at": NOW.isoformat()}
+    return search
+
+
+def test_mrn_call_sign_confirms_without_llm(fake, monkeypatch):
+    """MRN으로 호출부호를 찾고 그 호출부호로 최근 배가 1척이면 코드가 확정한다. 이름 검색·LLM 선택 없음 (09-28)."""
+    fake(position=POSITION, pick=None)
+    calls, schedule_calls = [], []
+    monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
+    monkeypatch.setattr(agent_router, "get_vessel_candidates",
+                        _search_by([_candidate(440999009, call_sign="TST09")], [_candidate(1), _candidate(2)], calls))
+    monkeypatch.setattr(agent_router, "get_port_schedule",
+                        lambda **k: schedule_calls.append(k) or {"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["vessel_match"] == "confirmed" and body["vessel_candidates"][0]["mmsi"] == 440999009
+    assert [c.get("call_sign") for c in calls] == ["TST09"]  # 이름 검색까지 가지 않았다
+    assert schedule_calls[0]["call_sign"] == "TST09"  # 해수부는 호출부호로 빠르게 조회한다
+
+
+def test_mrn_call_sign_without_live_vessel_falls_back_to_name(fake, monkeypatch):
+    """호출부호로 최근 배를 못 찾으면 지금까지처럼 이름으로 찾는다."""
+    fake(position=POSITION)
+    calls = []
+    monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", _search_by([], [_candidate(440999001)], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert [c.get("call_sign") for c in calls] == ["TST09", None]
+    assert body["vessel_match"] == "confirmed" and body["vessel_candidates"][0]["mmsi"] == 440999001
+
+
+def test_resolved_mmsi_uses_mrn_call_sign_for_schedule(fake, monkeypatch):
+    """되묻기 답으로 배를 받았어도 MRN 호출부호가 있으면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)."""
+    fake(position=POSITION)
+    schedule_calls = []
+    monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
+    monkeypatch.setattr(agent_router, "get_port_schedule",
+                        lambda **k: schedule_calls.append(k) or {"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
+
+    with TestClient(app) as client:
+        client.post("/api/agent", json=_request(resolved_mmsi=440999009))
+
+    assert schedule_calls[0]["call_sign"] == "TST09"
 
 
 def test_unknown_bl_is_insufficient_not_failed(fake):
