@@ -324,17 +324,32 @@ def test_mrn_call_sign_confirms_without_llm(fake, monkeypatch):
 
 
 def test_mrn_call_sign_without_live_vessel_falls_back_to_name(fake, monkeypatch):
-    """호출부호로 최근 배를 못 찾으면 지금까지처럼 이름으로 찾는다."""
+    """호출부호로 최근 배를 못 찾으면 이름으로 찾는다. 이름 후보의 호출부호를 모르면 어긋난다는 근거가 없어 확정한다."""
     fake(position=POSITION)
     calls = []
     monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
-    monkeypatch.setattr(agent_router, "get_vessel_candidates", _search_by([], [_candidate(440999001)], calls))
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", _search_by([], [_candidate(440999001, call_sign="")], calls))
 
     with TestClient(app) as client:
         body = client.post("/api/agent", json=_request()).json()
 
     assert [c.get("call_sign") for c in calls] == ["TST09", None]
     assert body["vessel_match"] == "confirmed" and body["vessel_candidates"][0]["mmsi"] == 440999001
+
+
+def test_name_candidate_with_other_call_sign_than_mrn_asks_back(fake, monkeypatch):
+    """MRN 호출부호는 TST09인데 이름으로 찾은 1척은 TST01이면 남의 배다. 확정하지 않고 되묻는다 (09-28 결정, 평가 B07)."""
+    fake(position=POSITION)
+    calls = []
+    monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", _search_by([], [_candidate(440999001, call_sign="TST01")], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
+    assert body["verdict"] is None and body["missing_inputs"] == ["voyage_no", "forwarder_eta"]
+    assert [c["mmsi"] for c in body["vessel_candidates"]] == [440999001]  # 후보는 보여 주고 사용자가 고른다
 
 
 def test_resolved_mmsi_uses_mrn_call_sign_for_schedule(fake, monkeypatch):

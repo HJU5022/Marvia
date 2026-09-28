@@ -307,6 +307,10 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         return [], "none", None, None
     if len(candidates) == 1:
         only = rows[0]
+        # MRN 서류로 호출부호를 아는데 이름으로 찾은 1척의 호출부호가 다르면 이름만 같은 남의 배다.
+        # 확정하지 않고 되묻는다 (09-28 결정, 평가 B07). 후보의 호출부호를 모르면 어긋난다는 근거가 없어 지금처럼 확정한다
+        if mrn_call_sign and only.get("call_sign") and not _same_call_sign(mrn_call_sign, only["call_sign"]):
+            return candidates, "uncertain", None, None
         return candidates, "confirmed", candidates[0].mmsi, only.get("call_sign")
 
     # 여럿이면 LLM이 고른다. 사용자가 되묻기에 답한 항차·포워더 입항 예정일도 같이 넘긴다
@@ -319,6 +323,11 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
         return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
+
+
+def _same_call_sign(a: str, b: str) -> bool:
+    """호출부호 비교. 대소문자와 앞뒤 공백 차이는 같은 것으로 본다 (vessel_candidates 도구의 호출부호 필터와 같은 기준)."""
+    return a.strip().upper() == b.strip().upper()
 
 
 def _candidates(rows: list[dict], reason: str | None = None) -> list[VesselCandidate]:
