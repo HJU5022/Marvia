@@ -231,6 +231,34 @@ def test_candidate_tool_failure_is_partial_not_ask_back(fake, monkeypatch):
     assert body["missing_inputs"] == [] and body["verdict"] is None
 
 
+def test_non_busan_port_is_unsupported(fake, monkeypatch):
+    """양륙항이 부산이 아니면 배를 찾지 않고 unsupported로 끝낸다 (평가셋 F05, schemas/agent.py Status 설명)."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", discharge_port="ICN", bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], judge=JUDGED)
+
+    def must_not_search(**k):
+        raise AssertionError("부산 외 화물인데 선박 검색을 불렀다")
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", must_not_search)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "unsupported" and body["vessel_match"] == "none"
+    assert body["verdict"] is None and body["missing_inputs"] == []
+
+
+@pytest.mark.parametrize("port", ["KRPUS", None])
+def test_busan_or_unknown_port_goes_on(fake, port):
+    """부산이면 진행한다. 양륙항 칸이 비어 있어도 범위 밖으로 단정하지 않고 진행한다."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", discharge_port=port, bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], position=POSITION)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] != "unsupported" and body["vessel_match"] == "confirmed"
+
+
 def test_unknown_bl_is_insufficient_not_failed(fake):
     """없는 B/L은 실패가 아니라 정보 부족이다 (SDD 4.1)."""
     fake(customs=None)

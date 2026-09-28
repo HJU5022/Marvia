@@ -6,6 +6,7 @@
 처리 순서는 SDD 4.1을 따른다.
   1. 입력 검증 (스키마 AgentRequest가 B/L 형식까지 본다, A7)
   2. UNI-PASS 조회 (코드가 직접 부른다. B/L을 LLM에 넘기지 않는다)
+  2-1. 지원 범위 확인 (양륙항이 부산이 아니면 unsupported로 끝낸다)
   3. 선박 식별 (후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
@@ -46,6 +47,7 @@ ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워
 NO_VESSEL = "선박 위치 서비스에서 이 배를 찾지 못했습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
 NO_VESSEL_AFTER_ETA = "선박 위치 서비스에서 이 배를 찾지 못해 판정하지 못했습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
 VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하지 못했습니다. 잠시 뒤 다시 조회해 주세요."
+NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
@@ -89,6 +91,11 @@ def _assess(request: AgentRequest) -> AgentResponse:
     customs, failure = _fetch_customs(request)
     if failure is not None:
         return failure
+
+    # 지원 범위는 부산항이다 (PRD 4절). 양륙항이 부산이 아니면 배를 찾지 않고 끝낸다 (평가셋 F05).
+    # 양륙항 칸이 비어 있으면 범위 밖으로 단정하지 않고 진행한다. 모르는 것을 거절하는 쪽이 더 나쁘다
+    if customs.discharge_port and customs.discharge_port != signals_service.BUSAN_PORT_CODE:
+        return _response(status="unsupported", answer=NOT_BUSAN)
 
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
     # 배를 못 정하면 판정하지 않는다. 위치·입항 정보 없이 판정하면 근거 없이 "괜찮다"가 나온다 (09-28 실제 B/L)

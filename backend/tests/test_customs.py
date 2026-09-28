@@ -44,6 +44,7 @@ def test_refines_contract_fields():
     # 이미 반출된 화물도 수리 단계로 보였다 (09-28 실제 B/L). stage_code는 진행상태코드(prgsStCd)
     assert (record.stage_name, record.stage_code) == ("반출신고", "CAGE12")
     assert record.shed_name == "TEST터미널 CY"  # 상단엔 장치장이 없어 최신 이력 줄의 값을 쓴다
+    assert record.discharge_port == "KRPUS"  # 양륙항 코드. 부산 외면 unsupported (09-28, 실제 부산 화물 1건도 KRPUS)
     assert record.fetched_at is not None
 
 
