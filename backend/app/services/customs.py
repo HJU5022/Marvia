@@ -31,6 +31,7 @@ from xml.etree import ElementTree
 
 import httpx
 
+from backend.app.clients.replay import replay_enabled, unipass_transport
 from backend.app.clients.retry import with_retry
 from backend.app.schemas.customs import CustomsRecord, CustomsStage, mask_bl
 
@@ -100,6 +101,11 @@ def _dt(value: str | None) -> datetime | None:
 class UnipassClient:
     def __init__(self, key: str | None = None, transport: httpx.BaseTransport | None = None):
         self._key = key or os.environ.get("UNIPASS_KEY", "")
+        # REPLAY_MODE면 키 없이 evals/fixtures/replay/unipass/를 읽는다 (SDD 6.1, clients/replay.py).
+        # 테스트가 transport를 직접 주면 그쪽이 먼저다
+        if transport is None and replay_enabled():
+            transport = unipass_transport()
+            self._key = self._key or "replay"
         if not self._key:
             raise CustomsError("bad_key", "UNIPASS_KEY가 비어 있습니다")
         self._http = httpx.Client(timeout=TIMEOUT_SEC, transport=transport)
