@@ -269,7 +269,8 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
     except llm.LLMError:
         return candidates, "uncertain", None, None
-    if picked.confidence == "high" and picked.choice is not None:
+    # 후보에 없는 MMSI는 확정하지 않는다. 후보 목적지 문자열 속 지시문에 속았거나 번호를 지어냈을 수 있다 (C-10)
+    if picked.confidence == "high" and picked.choice in {c.mmsi for c in candidates}:
         call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
         return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
