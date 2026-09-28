@@ -84,6 +84,19 @@ def test_call_sign_is_carried_for_mof_lookup(fake):
     assert first["call_sign"] == "TST01"
 
 
+def test_call_sign_search_keeps_exact_call_sign_only(fake):
+    """호출부호로 찾으면 호출부호가 같은 배만 남긴다. 대소문자는 가리지 않는다 (09-28, MRN 식별)."""
+    fake()
+    got = get_vessel_candidates("TEST STAR", call_sign="tst02")["candidates"]
+    assert [c["mmsi"] for c in got] == [440999102]
+
+
+def test_call_sign_search_drops_old_holders(fake):
+    """호출부호는 다른 배에 다시 배정된다. 최근에 신호를 보낸 배만 지금 그 호출부호를 쓰는 배다 (09-28 실측: 같은 호출부호 3척)."""
+    fake(stale_mmsi=(440999102,))
+    assert get_vessel_candidates("TEST STAR", call_sign="TST02")["candidates"] == []
+
+
 def test_detail_lookup_capped(fake):
     """상세 조회는 상위 MAX_LOOKUPS명까지만. 나머지는 flag·dest가 비어 있다."""
     fake()
