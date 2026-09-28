@@ -22,6 +22,7 @@
 """
 from datetime import datetime, timezone
 
+import pycountry
 from fastapi import APIRouter
 
 from backend.app.db import connect, latest_response, log_query
@@ -298,7 +299,10 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     if not customs.ship_name:
         return [], "none", None, None
 
-    result = get_vessel_candidates(ship_name=customs.ship_name, nationality=customs.ship_nat)
+    # 도구의 국적 필터(nationality)는 쓰지 않는다 (09-28 결정). 세관은 "KR"·"MH" 같은 코드를, ShipFinder는
+    # "Korea, Republic of"·"Marshall Islands" 같은 영어 이름을 주는데 필터는 글자 포함으로 비교해서,
+    # MH처럼 이름에 코드 글자가 없는 나라는 진짜 내 배를 말없이 뺄 수 있다. 국적이 다르면 아래에서 되묻는다
+    result = get_vessel_candidates(ship_name=customs.ship_name)
     if "error" in result:
         return [], TOOL_FAILED, None, None
     rows = result.get("candidates", [])
@@ -310,6 +314,10 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         # MRN 서류로 호출부호를 아는데 이름으로 찾은 1척의 호출부호가 다르면 이름만 같은 남의 배다.
         # 확정하지 않고 되묻는다 (09-28 결정, 평가 B07). 후보의 호출부호를 모르면 어긋난다는 근거가 없어 지금처럼 확정한다
         if mrn_call_sign and only.get("call_sign") and not _same_call_sign(mrn_call_sign, only["call_sign"]):
+            return candidates, "uncertain", None, None
+        # 세관 국적과 후보 국적이 다르면 역시 되묻는다 (09-28 결정, 평가 B14). 둘 중 하나라도 모르면 확정한다.
+        # 비교가 틀려도(코드·이름 표기 차이) 진짜 배를 버리지 않고 한 번 더 묻는 쪽으로 실수한다
+        if customs.ship_nat and only.get("flag") and not _same_nationality(customs.ship_nat, only["flag"]):
             return candidates, "uncertain", None, None
         return candidates, "confirmed", candidates[0].mmsi, only.get("call_sign")
 
@@ -328,6 +336,24 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
 def _same_call_sign(a: str, b: str) -> bool:
     """호출부호 비교. 대소문자와 앞뒤 공백 차이는 같은 것으로 본다 (vessel_candidates 도구의 호출부호 필터와 같은 기준)."""
     return a.strip().upper() == b.strip().upper()
+
+
+def _same_nationality(customs_nat: str, flag: str) -> bool:
+    """세관 국적(두 글자 코드, 예: KR)과 ShipFinder 국적(코드 또는 영어 이름)이 같은 나라인가.
+
+    세관 코드를 ISO 국가 이름으로 바꿔(pycountry) 정확히 같은지만 본다. 09-28 실제 응답의 ShipFinder 국적은
+    ISO 이름("Korea, Republic of")과 같은 모양이었다. 글자 포함으로 비교하면 KR과 "Korea"가 안 맞고
+    ("kr"이 붙어 있지 않다) NE(니제르)와 "Nigeria"는 맞아 버려서 쓰지 않는다.
+    코드를 모르거나 이름이 다르게 오면 다르다고 보고, 부르는 쪽이 되묻는다 (진짜 배를 버리지 않는 쪽으로 실수).
+    """
+    a, b = customs_nat.strip(), flag.strip()
+    if a.upper() == b.upper():
+        return True  # 둘 다 코드로 온 경우 (평가셋 fixture 등)
+    country = pycountry.countries.get(alpha_2=a.upper()) if len(a) == 2 else None
+    if country is None:
+        return False
+    names = {getattr(country, attr, None) for attr in ("name", "official_name", "common_name")}
+    return b.lower() in {n.lower() for n in names if n}
 
 
 def _candidates(rows: list[dict], reason: str | None = None) -> list[VesselCandidate]:

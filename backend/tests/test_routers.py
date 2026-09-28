@@ -352,6 +352,32 @@ def test_name_candidate_with_other_call_sign_than_mrn_asks_back(fake, monkeypatc
     assert [c["mmsi"] for c in body["vessel_candidates"]] == [440999001]  # 후보는 보여 주고 사용자가 고른다
 
 
+def test_single_candidate_with_other_nationality_asks_back(fake, monkeypatch):
+    """세관은 한국 배(KR)인데 이름으로 찾은 1척이 파나마 배면 확정하지 않고 되묻는다 (09-28 결정, 평가 B14)."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", ship_nat="KR", bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], position=POSITION)  # _candidate의 flag는 Panama
+    searched = []
+    real = agent_router.get_vessel_candidates
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", lambda **k: (searched.append(k), real(**k))[1])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
+    assert "nationality" not in searched[0]  # 도구 필터로 말없이 빼지 않고 후보를 보여 준다
+
+
+def test_nationality_code_matches_english_flag_name(fake):
+    """세관 코드 KR과 ShipFinder 이름 "Korea, Republic of"는 같은 나라로 보고 확정한다."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", ship_nat="KR", bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[{**_candidate(440999001), "flag": "Korea, Republic of"}], position=POSITION)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["vessel_match"] == "confirmed"
+
+
 def test_resolved_mmsi_uses_mrn_call_sign_for_schedule(fake, monkeypatch):
     """되묻기 답으로 배를 받았어도 MRN 호출부호가 있으면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)."""
     fake(position=POSITION)

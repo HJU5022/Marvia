@@ -57,14 +57,23 @@ def _newest_per_imo(hits: list[VesselHit]) -> list[VesselHit]:
 
 
 def _fetch_details(client: ShipFinderClient, mmsis: list[int]) -> dict[int, tuple]:
-    """후보들의 목적지·선종·국적을 동시에 받아 온다. 실패한 후보는 빈 값으로 둔다."""
+    """후보들의 목적지·선종·국적을 동시에 받아 온다. 실패한 값은 빈 값으로 둔다. 상세가 없어도 후보 자체는 남긴다.
+
+    위치와 국적은 따로 받는다. 전에는 위치가 실패하면 국적도 건너뛰어서, 신호가 끊긴 배는 국적을 몰랐다.
+    그래서 세관 국적과 다른 배를 가려내지 못하고 확정했다 (09-28, 평가 B14).
+    """
 
     def one(mmsi: int) -> tuple[int, tuple]:
         try:
             pos = client.position(mmsi)
-            return mmsi, (pos.dest, pos.ship_type, client.flag(mmsi))
+            dest, ship_type = pos.dest, pos.ship_type
         except ShipFinderError:
-            return mmsi, (None, None, None)  # 상세가 없어도 후보 자체는 남긴다
+            dest, ship_type = None, None
+        try:
+            flag = client.flag(mmsi)
+        except ShipFinderError:
+            flag = None
+        return mmsi, (dest, ship_type, flag)
 
     if not mmsis:
         return {}
