@@ -56,3 +56,14 @@ def test_uses_model_a_when_model_omitted(monkeypatch):
     calls = _fake(monkeypatch, [llm.LLMResult(content="ok")])
     llm.chat([{"role": "user", "content": "hi"}])
     assert calls[0]["model"] == "test/model"
+
+
+def test_missing_key_or_model_is_llm_error(monkeypatch):
+    """키나 모델이 없으면 서버가 500을 내지 않고 LLMError로 올린다. 라우터가 partial로 받는다 (09-23 결정)."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(llm.LLMError):
+        llm.chat([{"role": "user", "content": "hi"}])
+
+    monkeypatch.delenv("MODEL_A", raising=False)
+    with pytest.raises(llm.LLMError):
+        llm.chat([{"role": "user", "content": "hi"}])

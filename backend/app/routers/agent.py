@@ -12,18 +12,25 @@
   6. 2층 판정 (LLM)      <- C-6 services/llm.py가 들어올 자리
   7. 출력 검증 7규칙      <- C-7이 들어올 자리
 
-지금은 6·7이 없어서 판정 없이 status=partial로 돌려준다. 수집까지는 실제로 동작하므로
-프론트(E 묶음)가 화면을 붙일 수 있고, C가 끝나면 이 파일의 TODO 자리만 채우면 된다.
+6단계는 services/llm.judge()가 한다 (C-6, 09-27 연결). 결과를 어떻게 응답에 담나:
+  - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
+  - 신호 7개가 전부 clear면 verdict=fine은 코드가 정한다(decided_by=rule). LLM 답은 문장만 쓴다 (SDD 4.1 7단계)
+  - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
+7단계(출력 검증 7규칙, C-7)와 근거 카드(C-8)는 아직 없다.
 """
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from backend.app.db import connect, log_query
+from backend.app.db import connect, latest_response, log_query
 from backend.app.observability.logging import current_request_id
-from backend.app.schemas.agent import AgentRequest, AgentResponse, Position, VesselCandidate
+from backend.app.schemas.agent import (
+    AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
+)
 from backend.app.schemas.customs import CustomsRecord, mask_bl
+from backend.app.services import llm
 from backend.app.services import signals as signals_service
+from backend.app.services.evidence import days_margin
 from backend.app.services.customs import CustomsError, UnipassClient
 from mcp_server.tools.distance import estimate_distance
 from mcp_server.tools.live_position import get_live_position
@@ -35,6 +42,8 @@ router = APIRouter(prefix="/api", tags=["agent"])
 NOT_JUDGED = "조회한 값을 정리했습니다. 판정은 아직 붙지 않았습니다."
 NO_CARGO = "조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요."
 ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다."
+LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
+FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
 
 
 def _response(**over) -> AgentResponse:
@@ -59,43 +68,107 @@ def _response(**over) -> AgentResponse:
 
 @router.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest) -> AgentResponse:
-    """B/L과 판매 예정일을 받아 화물 상태를 정리해 돌려준다."""
+    """B/L과 판매 예정일을 받아 화물 상태를 정리해 돌려준다. 후속 질문이 오면 지난 결과를 보고 답한다.
+    어느 쪽이든 결과를 조회 이력(query_log)에 남긴다."""
+    if request.follow_up_question:
+        return _logged(request, _follow_up(request))
+    return _logged(request, _assess(request))
+
+
+def _assess(request: AgentRequest) -> AgentResponse:
+    """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다."""
     customs, failure = _fetch_customs(request)
     if failure is not None:
-        return _logged(request, failure)
+        return failure
 
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
     if vessel_match == "uncertain":
-        return _logged(
-            request,
-            _response(
-                status="insufficient",
-                vessel_match="uncertain",
-                vessel_candidates=candidates,
-                missing_inputs=[f for f in ("voyage_no", "forwarder_eta") if not getattr(request, f)],
-                answer=ASK_BACK,
-            ),
+        return _response(
+            status="insufficient",
+            vessel_match="uncertain",
+            vessel_candidates=candidates,
+            missing_inputs=[f for f in ("voyage_no", "forwarder_eta") if not getattr(request, f)],
+            answer=ASK_BACK,
         )
 
     position = get_live_position(mmsi) if mmsi else None
     schedule = get_port_schedule(call_sign=call_sign, ship_name=customs.ship_name)
     distance = _distance(position)
 
-    # 1층 신호는 코드가 판정한다. 결과는 C-6가 2층 판정에 쓴다 (지금은 응답에 담지 않는다)
-    signals_service.compute(position, schedule, distance, customs, request.sale_due_date)
+    # 5. 1층 신호와 여유 일수는 코드가 계산한다 (SDD 4.1 5·6단계). LLM은 이 값을 바꾸지 않는다
+    signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date)
+    trusted = signals_service.trusted_eta(position, schedule)
+    margin = days_margin(trusted, request.sale_due_date)
 
-    # TODO(C-6): llm.judge()로 verdict·reasons·actions·answer를 받는다
-    # TODO(C-7): validate.run()으로 7규칙을 걸고 위반이면 재시도한다
-    # TODO(C-8): evidence.summarize()로 days_margin과 근거 카드를 채운다
-    return _logged(
-        request,
-        _response(
-            status="partial",
-            vessel_match=vessel_match,
-            vessel_candidates=candidates,
-            position=_position(position),
-        ),
+    # 판정이 붙든 안 붙든 같이 나가는 값
+    collected = dict(
+        vessel_match=vessel_match,
+        vessel_candidates=candidates,
+        position=_position(position, signal_set.freshness),
+        days_margin=margin,
+        eta=_eta(position, schedule, signal_set, trusted),
+        berth=BerthInfo(facility=(schedule or {}).get("facility") if "error" not in (schedule or {}) else None,
+                        shed=customs.shed_name),
     )
+
+    # 6. 2층 판정 (LLM)
+    try:
+        judged = llm.judge(signal_set, customs, margin)
+    except llm.LLMError:
+        return _response(status="partial", answer=LLM_FAILED, **collected)
+    out = judged.output
+
+    # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
+    if all(s.state == "clear" for s in signal_set.signals):
+        verdict, decided_by = "fine", "rule"
+    else:
+        verdict, decided_by = out.verdict, "llm"
+
+    # LLM이 판정을 보류하면 되묻는다 (skills/ais-reliability 되묻기 조건: 위치가 없으면 포워더 입항 예정일)
+    # 이미 포워더 입항 예정일을 받았는데도 보류면 더 물을 게 없어 partial로 둔다 (V5: insufficient면 물을 것 1개 이상)
+    status, missing = "ok", []
+    if verdict is None:
+        status, missing = ("partial", []) if request.forwarder_eta else ("insufficient", ["forwarder_eta"])
+
+    # TODO(C-7): validate.run()으로 7규칙을 걸고 위반이면 재시도한다
+    # TODO(C-8): 근거 카드(evidence) 조립
+    return _response(
+        status=status,
+        verdict=verdict,
+        decided_by=decided_by,
+        missing_inputs=missing,
+        reasons=out.reasons,
+        conflicts=out.conflicts,
+        actions=out.actions,
+        answer=out.answer,
+        customs=_customs_info(customs, out.customs),
+        **collected,
+    )
+
+
+def _follow_up(request: AgentRequest) -> AgentResponse:
+    """후속 질문 (C-9). 같은 세션·같은 B/L의 가장 최근 결과를 DB에서 꺼내 그 안에서만 답한다.
+
+    세션별로 지난 결과를 저장해 두는 방식이다 (09-27 결정). 로그인이 붙으면 session_id 자리가 사용자 ID가 된다.
+    DB가 없거나 지난 결과가 없으면 조회·판정을 한 번 더 해서 그 결과로 답한다 (채점 환경은 DB 없이 돌 수 있다).
+    판정·근거는 지난 결과 그대로 두고 answer만 질문의 답으로 바꿔 돌려준다.
+    """
+    previous = _previous_response(request) or _assess(request)
+    try:
+        out = llm.answer_follow_up(request.follow_up_question, previous).output
+    except llm.LLMError:
+        return previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
+    return previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
+
+
+def _previous_response(request: AgentRequest) -> AgentResponse | None:
+    """DB에 저장된 지난 결과. 없거나 DB에 못 붙으면 None (그러면 다시 조회한다)."""
+    try:
+        with connect() as conn:
+            saved = latest_response(conn, request.session_id, mask_bl(request.bl_no))
+    except Exception:
+        return None
+    return AgentResponse.model_validate(saved) if saved else None
 
 
 def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentResponse | None]:
@@ -110,9 +183,10 @@ def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentRe
 
 
 def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[VesselCandidate], str, int | None, str | None]:
-    """후보 1척이면 확정, 여럿이면 되묻기. 사용자가 고른 MMSI가 있으면 그것을 쓴다.
+    """후보 1척이면 확정, 여럿이면 LLM이 고르고, 확실하지 않으면 되묻기. 사용자가 고른 MMSI가 있으면 그것을 쓴다.
 
-    여럿일 때 LLM이 고르는 단계(C-5)는 아직 없다. 그전까지는 확정하지 않고 되묻는다.
+    여럿일 때는 llm.pick_vessel()을 부르고 confidence가 high일 때만 확정한다 (SDD 5.5, C-5).
+    medium·low이거나 LLM이 실패하면 확정하지 않고 되묻는다.
     확정하지 않는 쪽이 남의 배를 내 배라고 답하는 것보다 낫다 (PRD 6.2).
 
     호출부호도 같이 돌려준다. C1 VesselCandidate에는 자리가 없지만 해수부 조회에 필요하다.
@@ -143,6 +217,15 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     if len(candidates) == 1:
         only = rows[0]
         return candidates, "confirmed", candidates[0].mmsi, only.get("call_sign")
+
+    # 여럿이면 LLM이 고른다. 사용자가 되묻기에 답한 항차·포워더 입항 예정일도 같이 넘긴다
+    try:
+        picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
+    except llm.LLMError:
+        return candidates, "uncertain", None, None
+    if picked.confidence == "high" and picked.choice is not None:
+        call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
+        return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
 
 
@@ -152,8 +235,8 @@ def _distance(position: dict | None) -> dict | None:
     return estimate_distance(position["lat"], position["lng"], position.get("sog"))
 
 
-def _position(position: dict | None) -> Position | None:
-    """도구 출력을 C1 Position으로 옮긴다. freshness는 signals가 정하므로 여기선 unknown."""
+def _position(position: dict | None, freshness: str = "unknown") -> Position | None:
+    """도구 출력을 C1 Position으로 옮긴다. freshness는 signals가 계산한 값을 받아 쓴다 (코드가 정한다)."""
     if not position or "error" in position:
         return None
     return Position(
@@ -163,8 +246,43 @@ def _position(position: dict | None) -> Position | None:
         cog=position.get("cog") or 0.0,
         navistat=position.get("navistat") or 0,
         last_time=position.get("last_time") or datetime.now(timezone.utc),
-        freshness="unknown",
+        freshness=freshness,
     )
+
+
+def _eta(position: dict | None, schedule: dict | None, signal_set, trusted) -> EtaInfo:
+    """ETA 출처별 값을 나란히 담는다. 화면이 어느 값을 왜 믿었는지 보여 줄 수 있게 (C1 EtaInfo)."""
+    position = position if position and "error" not in position else {}
+    schedule = schedule if schedule and "error" not in schedule else {}
+    return EtaInfo(
+        ais_eta=position.get("ais_eta"),
+        mof_eta=schedule.get("planned_arrival"),
+        calc_eta=signal_set.calc_eta,
+        trusted_eta=trusted,
+        distance_nm=signal_set.distance_nm,
+    )
+
+
+def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
+    """단계 이름·코드·이력은 UNI-PASS 값(코드), 해설 셋은 LLM 값으로 C1 CustomsInfo를 만든다.
+    단계 이름이 없거나 LLM이 해설을 안 냈으면 None."""
+    if not customs.stage_name or explained is None:
+        return None
+    return CustomsInfo(
+        stage_code=customs.stage_code or "",
+        stage_name=customs.stage_name,
+        plain_explanation=explained.plain_explanation,
+        next_stage=explained.next_stage,
+        needs_broker=explained.needs_broker,
+        history=[s.model_dump(mode="json") for s in customs.stage_history],
+    )
+
+
+def _as_jsonb(data: dict):
+    """psycopg가 dict를 jsonb로 넣게 감싼다. psycopg는 DB를 쓸 때만 import한다 (db/__init__.py와 같은 이유)."""
+    from psycopg.types.json import Jsonb
+
+    return Jsonb(data)
 
 
 def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
@@ -184,6 +302,8 @@ def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
                 vessel_match=response.vessel_match,
                 decided_by=response.decided_by,
                 trace_id=response.trace_id,
+                # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다
+                response=_as_jsonb(response.model_dump(mode="json")),
             )
     except Exception:
         pass
