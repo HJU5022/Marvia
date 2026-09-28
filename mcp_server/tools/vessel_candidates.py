@@ -78,7 +78,7 @@ def get_vessel_candidates(
     eta_window_days: Annotated[int, Field(description="최근 며칠 안에 신호를 보낸 배만 볼지. 예: 7(기본값)", ge=1, le=90)] = 7,
     call_sign: Annotated[str | None, Field(description="호출부호. 주면 선명 대신 호출부호로 검색하고 호출부호가 같은 배만 남긴다. 예: TST01")] = None,
 ) -> dict:
-    """선명만 알고 그 배의 MMSI를 아직 모를 때 쓴다.
+    """선명이나 호출부호만 알고 그 배의 MMSI를 아직 모를 때 쓴다.
 
     선박 식별의 첫 단계다. 선명으로 ShipFinder를 검색해 그 이름을 쓰는 배를 후보로 모두 돌려준다.
     같은 이름의 배가 흔해서 여러 척이 나올 수 있고, 어느 배가 맞는지는 이 도구가 정하지 않는다.
