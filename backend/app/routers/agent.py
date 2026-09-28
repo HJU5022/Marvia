@@ -27,7 +27,7 @@ from fastapi import APIRouter
 
 from backend.app.db import connect, latest_response, log_query
 from backend.app.observability.langfuse import session_scope
-from backend.app.observability.logging import current_request_id
+from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
 )
@@ -136,6 +136,10 @@ def _assess(request: AgentRequest) -> AgentResponse:
     position = get_live_position(mmsi) if mmsi else None
     schedule = get_port_schedule(call_sign=call_sign, ship_name=customs.ship_name)
     distance = _distance(position)
+    # 도구가 실패해도 신호는 unknown으로 두고 계속 간다. 어느 도구가 실패했는지는 로그에 남긴다
+    _log_tool_error("live_position", position)
+    _log_tool_error("port_schedule", schedule)
+    _log_tool_error("distance", distance)
 
     # 5. 1층 신호와 여유 일수는 코드가 계산한다 (SDD 4.1 5·6단계). LLM은 이 값을 바꾸지 않는다
     signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date)
@@ -165,17 +169,22 @@ def _assess(request: AgentRequest) -> AgentResponse:
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback)
         except llm.LLMFormatError as e:
+            log_failure("judge", f"format attempt {attempt}")
             feedback = e.detail
-        except llm.LLMError:
+        except llm.LLMError as e:
+            log_failure("judge", _llm_error(e))
             return _response(status="partial", answer=LLM_FAILED, **collected)
         else:
             response = _judged(judged.output, signal_set, request, customs, collected)
             violations = validate.check(response)
             if not violations:
                 return response
+            # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
+            log_failure("validate", f"{','.join(v.rule for v in violations)} attempt {attempt}")
             feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
         if attempt == JUDGE_ATTEMPTS - 1:
             feedback += "\nReturn JSON only and follow every rule above."
+    log_failure("judge", f"gave up after {JUDGE_ATTEMPTS} attempts")
     return _response(status="failed", answer=VALIDATION_FAILED, **collected)
 
 
@@ -244,7 +253,8 @@ def _follow_up(request: AgentRequest) -> AgentResponse:
     previous = _previous_response(request) or _assess(request)
     try:
         out = llm.answer_follow_up(request.follow_up_question, previous).output
-    except llm.LLMError:
+    except llm.LLMError as e:
+        log_failure("follow_up", _llm_error(e))
         return previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
     return previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
 
@@ -254,7 +264,8 @@ def _previous_response(request: AgentRequest) -> AgentResponse | None:
     try:
         with connect() as conn:
             saved = latest_response(conn, request.session_id, mask_bl(request.bl_no))
-    except Exception:
+    except Exception as e:
+        log_failure("db_read", type(e).__name__)
         return None
     return AgentResponse.model_validate(saved) if saved else None
 
@@ -264,6 +275,7 @@ def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentRe
     try:
         record = UnipassClient().fetch(request.bl_no, request.bl_type)
     except CustomsError as e:
+        log_failure("customs", e.code)
         return None, _response(status="failed", answer=f"통관 정보를 가져오지 못했습니다 ({e.code}).")
     if record is None:
         return None, _response(status="insufficient", missing_inputs=["bl_type"], answer=NO_CARGO)
@@ -290,6 +302,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
 
     if mrn_call_sign:
         result = get_vessel_candidates(ship_name=customs.ship_name or "", call_sign=mrn_call_sign)
+        _log_tool_error("vessel_candidates_mrn", result)
         if "error" not in result:
             found = _candidates(result.get("candidates", []), "MRN 입항 신고의 호출부호 일치")
             if len(found) == 1:
@@ -304,6 +317,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     # MH처럼 이름에 코드 글자가 없는 나라는 진짜 내 배를 말없이 뺄 수 있다. 국적이 다르면 아래에서 되묻는다
     result = get_vessel_candidates(ship_name=customs.ship_name)
     if "error" in result:
+        _log_tool_error("vessel_candidates", result)
         return [], TOOL_FAILED, None, None
     rows = result.get("candidates", [])
     candidates = _candidates(rows)
@@ -324,13 +338,25 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     # 여럿이면 LLM이 고른다. 사용자가 되묻기에 답한 항차·포워더 입항 예정일도 같이 넘긴다
     try:
         picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
-    except llm.LLMError:
+    except llm.LLMError as e:
+        log_failure("pick_vessel", _llm_error(e))
         return candidates, "uncertain", None, None
     # 후보에 없는 MMSI는 확정하지 않는다. 후보 목적지 문자열 속 지시문에 속았거나 번호를 지어냈을 수 있다 (C-10)
     if picked.confidence == "high" and picked.choice in {c.mmsi for c in candidates}:
         call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
         return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
+
+
+def _log_tool_error(stage: str, result: dict | None) -> None:
+    """MCP 도구가 {"error": ToolError}를 돌려줬으면 코드만 로그에 남긴다. message는 예외 문장이라 넣지 않는다."""
+    if result and "error" in result:
+        log_failure(stage, result["error"].get("code") or "unknown")
+
+
+def _llm_error(e: llm.LLMError) -> str:
+    """LLM 실패를 종류와 HTTP 코드로 줄인다. 메시지에는 공급자 응답 문장이 들어 있을 수 있어 뺀다."""
+    return f"{type(e).__name__} {e.code}" if e.code else type(e).__name__
 
 
 def _same_call_sign(a: str, b: str) -> bool:
@@ -451,6 +477,6 @@ def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
                 # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다
                 response=_as_jsonb(response.model_dump(mode="json")),
             )
-    except Exception:
-        pass
+    except Exception as e:
+        log_failure("db_write", type(e).__name__)
     return response

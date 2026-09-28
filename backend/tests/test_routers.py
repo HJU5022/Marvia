@@ -625,3 +625,54 @@ def test_follow_up_llm_failure_keeps_result(fake, monkeypatch):
         body = client.post("/api/agent", json=_request(follow_up_question="여유 며칠이야?")).json()
 
     assert body["answer"] == agent_router.FOLLOW_UP_FAILED and body["verdict"] == "watch"
+
+
+# ── D6 에러 로깅: 실패를 응답으로 바꿀 때 어디서 무엇이 실패했는지 로그 한 줄 ──
+
+def _failures(caplog) -> list[tuple[str, str]]:
+    return [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
+
+
+def test_tool_failure_is_logged_with_stage_and_code(fake, monkeypatch, caplog):
+    """응답은 partial(HTTP 200)이라 요청 로그만으로는 원인을 모른다. 도구 이름과 오류 코드를 남긴다."""
+    fake(judge=JUDGED)
+    monkeypatch.setattr(agent_router, "get_vessel_candidates",
+                        lambda **k: {"error": {"code": "timeout", "message": "key=SECRET", "retryable": True}})
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            client.post("/api/agent", json=_request())
+
+    assert ("vessel_candidates", "timeout") in _failures(caplog)
+    # 도구 message(외부 주소·키가 섞일 수 있음)와 B/L 원번호는 로그에 없다
+    assert not any("SECRET" in r.getMessage() or "TESTMBL0000001" in str(r.__dict__) for r in caplog.records)
+
+
+def test_judge_violations_and_give_up_are_logged(fake, monkeypatch, caplog):
+    """위반 재시도마다 규칙 번호를, 세 번 다 위반이면 포기를 남긴다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    bad = {**JUDGED, "answer": "10월 3일에 들어옵니다."}
+    monkeypatch.setattr(agent_router.llm, "judge", _judge_sequence([bad], []))
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            client.post("/api/agent", json=_request())
+
+    failures = _failures(caplog)
+    assert [stage for stage, _ in failures].count("validate") == 3
+    assert ("judge", "gave up after 3 attempts") in failures
+
+
+def test_llm_call_failure_is_logged_without_message(fake, monkeypatch, caplog):
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+
+    def fail(*a, **k):
+        raise llm.LLMError("provider said: 비밀 문장", code=503)
+    monkeypatch.setattr(agent_router.llm, "judge", fail)
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            client.post("/api/agent", json=_request())
+
+    assert ("judge", "LLMError 503") in _failures(caplog)
+    assert not any("비밀 문장" in str(r.__dict__) for r in caplog.records if r.name == "marvia.failure")
