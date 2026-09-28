@@ -1,12 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cargCsclPrgsInfoQryRtnVo><ntceInfo></ntceInfo><tCnt>1</tCnt>
+<!-- 가공값. 필드 구성과 순서는 UNI-PASS 연계가이드 v4.1과 09-27 실제 응답 1건을 따랐고, 값은 모두 만든 것이다.
+     이력(cargCsclPrgsInfoDtlQryVo)은 실제처럼 최신이 위에 온다. 이력 줄에는 단계 코드가 없고 처리구분(cargTrcnRelaBsopTpcd)이 한글 이름이다. -->
+<cargCsclPrgsInfoQryRtnVo>
+<ntceInfo></ntceInfo>
 <cargCsclPrgsInfoQryVo>
-<cargMtNo>26TEST0099I00010001</cargMtNo><mblNo>TESTMBL0000001</mblNo><blYy>2026</blYy>
-<shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><vydf>0012W</vydf>
-<etprDt>20260925</etprDt><csclPrgsStts>반입신고</csclPrgsStts><prgsStCd>CAGE12</prgsStCd>
-<shedNm>부산항보세창고</shedNm>
-<prnm>의류</prnm><wght>1200</wght><cstmNm>부산세관</cstmNm>
-<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>CAGE01</cargTrcnRelaBsopTpcd><cargTrcnRelaBsopTpcdNm>입항보고</cargTrcnRelaBsopTpcdNm><prcsDttm>20260925081500</prcsDttm></cargCsclPrgsInfoDtlQryVo>
-<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>CAGE12</cargTrcnRelaBsopTpcd><cargTrcnRelaBsopTpcdNm>반입신고</cargTrcnRelaBsopTpcdNm><prcsDttm>20260925143000</prcsDttm></cargCsclPrgsInfoDtlQryVo>
+<csclPrgsStts>수입신고수리</csclPrgsStts><prgsStts>반출완료</prgsStts><prgsStCd>CAGE12</prgsStCd>
+<cargMtNo>26TEST0099I00010001</cargMtNo><mblNo>TESTMBL0000001</mblNo><hblNo>TESTHBL0000001</hblNo>
+<shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><shipNatNm>파나마</shipNatNm><vydf>0012W</vydf>
+<etprDt>20260925</etprDt><etprCstm>부산세관</etprCstm><dsprCd>KRPUS</dsprCd><dsprNm>부산항</dsprNm>
+<prnm>의류</prnm><ttwg>1200</ttwg><wghtUt>KG</wghtUt><cargTp>수입 일반화물</cargTp>
+<rlseDtyPridPassTpcd>N</rlseDtyPridPassTpcd><dclrDelyAdtxYn>N</dclrDelyAdtxYn>
 </cargCsclPrgsInfoQryVo>
+<tCnt>7</tCnt>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>반출신고</cargTrcnRelaBsopTpcd><prcsDttm>20260929100000</prcsDttm><shedNm>TEST터미널 CY</shedNm><rlbrCn>수입신고 수리후 반출</rlbrCn><wght>1200</wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>수입신고수리</cargTrcnRelaBsopTpcd><prcsDttm>20260928150000</prcsDttm><shedNm>TEST터미널 CY</shedNm><rlbrCn></rlbrCn><wght>1200</wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>수입신고</cargTrcnRelaBsopTpcd><prcsDttm>20260928090000</prcsDttm><shedNm>TEST터미널 CY</shedNm><rlbrCn></rlbrCn><wght>1200</wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>반입신고</cargTrcnRelaBsopTpcd><prcsDttm>20260926070000</prcsDttm><shedNm>TEST터미널 CY</shedNm><rlbrCn>입항 반입</rlbrCn><wght>1200</wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>입항보고 수리</cargTrcnRelaBsopTpcd><prcsDttm>20260925080000</prcsDttm><shedNm></shedNm><rlbrCn></rlbrCn><wght></wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>하선신고 수리</cargTrcnRelaBsopTpcd><prcsDttm>20260923170000</prcsDttm><shedNm>TEST터미널 CY</shedNm><rlbrCn></rlbrCn><wght>1200</wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>입항적재화물목록 제출</cargTrcnRelaBsopTpcd><prcsDttm>20260923150000</prcsDttm><shedNm>TEST터미널 CY</shedNm><rlbrCn></rlbrCn><wght>1200</wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>
 </cargCsclPrgsInfoQryRtnVo>

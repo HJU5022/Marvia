@@ -40,16 +40,20 @@ def test_refines_contract_fields():
 
     assert (record.ship_name, record.ship_nat, record.voyage) == ("TEST STAR", "PA", "0012W")
     assert record.entry_date.strftime("%Y%m%d") == "20260925"
-    assert (record.stage_name, record.stage_code) == ("반입신고", "CAGE12")
-    assert record.shed_name == "부산항보세창고"
+    # stage_name은 통관진행상태(csclPrgsStts), stage_code는 진행상태코드(prgsStCd). 연계가이드 v4.1 기준 서로 다른 칸이다
+    assert (record.stage_name, record.stage_code) == ("수입신고수리", "CAGE12")
+    assert record.shed_name == "TEST터미널 CY"  # 상단엔 장치장이 없어 최신 이력 줄의 값을 쓴다
     assert record.fetched_at is not None
 
 
 def test_stage_history_is_sorted_by_time():
+    """실제 응답은 최신 이력이 위에 온다. 이력 줄의 단계 이름은 처리구분(cargTrcnRelaBsopTpcd)에 있다 (09-27 실측)."""
     stages = _client("progress_ok.xml").fetch("TESTMBL0000001").stage_history
-    assert [s.name for s in stages] == ["입항보고", "반입신고"]
-    assert [s.code for s in stages] == ["CAGE01", "CAGE12"]
-    assert stages[0].at < stages[1].at
+    assert [s.name for s in stages] == [
+        "입항적재화물목록 제출", "하선신고 수리", "입항보고 수리", "반입신고", "수입신고", "수입신고수리", "반출신고",
+    ]
+    assert all(s.code == "" for s in stages)  # 이력 줄에는 단계 코드 칸이 없다
+    assert all(a.at < b.at for a, b in zip(stages, stages[1:]))
 
 
 def test_excluded_fields_are_not_carried():
