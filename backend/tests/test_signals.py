@@ -71,6 +71,26 @@ def test_eta_conflict(gap_hours, expected):
     assert result.eta_gap_hours == gap_hours
 
 
+KST = timezone(timedelta(hours=9))
+
+
+@pytest.mark.parametrize(
+    "ais_kst, expected, gap",
+    [
+        (datetime(2026, 9, 25, 14, 0, tzinfo=KST), "clear", 0.0),       # 신고한 날 안 → 차이 0 (옛 계산은 14시간이라 켜졌다)
+        (datetime(2026, 9, 24, 23, 0, tzinfo=KST), "clear", 1.0),       # 전날 밤 23시 → 그날 시작까지 1시간
+        (datetime(2026, 9, 26, 20, 0, tzinfo=KST), "triggered", 20.0),  # 다음 날 20시 → 그날 끝(24시)에서 20시간
+    ],
+)
+def test_eta_conflict_date_only_plan(ais_kst, expected, gap):
+    """해수부 입항 예정이 한국 시각 정확히 00:00이면 날짜만 신고한 값으로 보고 그날 하루를 범위로 비교한다.
+    09-27 실측: 부산 입항 신고 838건 중 2~9%가 00:00. 00:00을 시각으로 보면 가짜로 켜진다."""
+    schedule = {"planned_arrival": datetime(2026, 9, 25, 0, 0, tzinfo=KST).isoformat(), "actual_arrival": None}
+    result = compute(_position(ais_eta=ais_kst.isoformat()), schedule, None, None, now=NOW)
+    assert _state(result, "eta_conflict") == expected
+    assert result.eta_gap_hours == gap
+
+
 def test_eta_conflict_unknown_when_one_side_missing():
     result = compute(_position(ais_eta=(NOW + timedelta(hours=10)).isoformat()), None, None, None, now=NOW)
     assert _state(result, "eta_conflict") == "unknown" and result.eta_gap_hours is None
