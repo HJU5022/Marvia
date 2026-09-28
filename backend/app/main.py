@@ -5,18 +5,45 @@
 미들웨어:
 - RequestLogMiddleware: 요청마다 JSON 로그 한 줄 (A5, SDD 5.11)
 - CORS: ALLOWED_ORIGINS에 적힌 출처만 (A10, SDD 7절)
+
+기동할 때 DB 마이그레이션을 적용한다. 워커는 기본이 꺼짐이라 워커만 믿으면 query_log 같은 표가 안 생긴다.
+DB가 없거나 붙지 않으면 경고만 남기고 서버는 뜬다 (DB 없이도 판정은 돌아야 한다).
 """
+import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.app.db import apply_migrations, connect
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging
 from backend.app.routers import agent, history
 
 setup_logging()
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Marvia API")
+
+def _migrate() -> None:
+    """DATABASE_URL이 있을 때만 migrations/*.sql을 적용한다. 이미 적용한 파일은 건너뛴다 (db/__init__.py)."""
+    if not os.environ.get("DATABASE_URL"):
+        return
+    try:
+        with connect() as conn:
+            applied = apply_migrations(conn)
+        if applied:
+            logger.info("migrations applied: %s", applied)
+    except Exception as e:
+        logger.warning("DB 마이그레이션을 적용하지 못했습니다(%s). DB 없이 계속합니다", type(e).__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _migrate()
+    yield
+
+
+app = FastAPI(title="Marvia API", lifespan=lifespan)
 app.add_middleware(RequestLogMiddleware)
 app.add_middleware(
     CORSMiddleware,
