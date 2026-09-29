@@ -25,7 +25,8 @@ def verdict_for(signal_set, margin: int | None) -> str:
     """
     on = {s.id for s in signal_set.signals if s.state == "triggered" and not _input_error(s)}
     if not on:
-        return "fine"
+        # D4 (09-29 결정): 다 정상이어도 여유가 margin_act_days 미만이면 watch. 판매일이 없으면(여유 None) 배 상태만으로 fine
+        return "watch" if margin is not None and margin < rule("margin_act_days") else "fine"
     if on & ACT_SIGNALS:
         return "act"
     # 여유 일수를 모르면(판매일·도착 예정 없음) 이 조건으로는 act를 내지 않는다
@@ -43,7 +44,10 @@ def judge(signal_set, customs, margin, **kwargs) -> llm.LLMAnswer:
     output = llm.JudgeOutput(
         verdict=verdict_for(signal_set, margin),
         reasons=[Reason(rule=s.id, value=s.value, triggered=True)
-                 for s in signal_set.signals if s.state == "triggered"],
+                 for s in signal_set.signals if s.state == "triggered"]
+        # D4 watch는 켜진 신호가 없다. V2(watch면 이유 1개 이상)를 지키려고 여유 일수를 본 신호를 든다 (라우터와 같다)
+        or ([Reason(rule="sales_date_exceeded", value=f"여유 {margin}일", triggered=False)]
+            if verdict_for(signal_set, margin) == "watch" else []),
         conflicts=[],
         actions=[],
         answer="규칙만으로 판정했습니다.",
