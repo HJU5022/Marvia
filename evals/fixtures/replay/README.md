@@ -23,7 +23,17 @@
 실제 API가 모르는 배에 답하는 모양으로 돌려준다. 검색은 0건, 위치·국적은 status 3(대상 없음), 해수부는 빈 결과, UNI-PASS는 tCnt 0(없는 B/L).
 그래서 재생 데이터가 없는 B/L은 평소처럼 되묻기나 partial 경로를 탄다.
 
-## 아직 없는 것
+## 데모 3건 (09-29)
 
-- 데모 B/L 3건(정상·되묻기·실패)의 재생 데이터. 어느 시나리오로 할지 팀에서 정한 뒤 채운다
-- LLM(OpenRouter) 재생. 지금은 키가 없으면 판정 없이 partial로 끝난다
+`python -m scripts.make_demo`가 평가셋 N01(정상)·B01(되묻기)·F04(실패)를 지금 시각 기준으로 옮겨 이 폴더에 쓴다.
+B/L은 `TESTBL01`·`TESTBL04`·`TESTBL26`. 만든 파일(`shipfinder/`·`mof/`·`unipass/`)은 실행 시각에 따라 바뀌어 깃에 올리지 않는다(.gitignore).
+날짜를 왜 옮기는지, F04만 배 이름을 바꾸는 이유는 `scripts/make_demo.py` 머리 주석에 있다.
+
+## LLM 녹화 답
+
+`llm/<프롬프트 이름>.json`. REPLAY_MODE이고 `MODEL_A`가 비어 있으면 모델 대신 이 파일의 답을 쓴다 (`services/llm.py` `_replay_answer`).
+
+- 한 파일에 녹화 여러 개. `match`(여유 일수, 신호 7종 상태)가 이번 입력과 같은 녹화의 `output`을 돌려준다
+- 맞는 녹화가 없으면 키가 없을 때와 같은 실패(not_configured)로 끝난다. 라우터는 판정 없이 partial을 돌려준다
+- 지금 있는 것: `marvia-judge.json` 정상 건 2개(판매 예정일 넣음 여유 4일 / 비움). 09-29 `google/gemini-2.5-flash`(Vertex, 생각 끔)로 데모 입력을 한 번 돌려 받은 답이다
+- 되묻기(B01)는 선박 선택 LLM의 녹화가 없어 실패하고, 라우터가 그대로 되묻는다. 키가 있을 때와 결과가 같다

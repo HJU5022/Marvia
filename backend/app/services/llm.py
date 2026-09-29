@@ -44,6 +44,7 @@ import openai
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
+from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
 from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
@@ -451,6 +452,8 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
                   내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
     """
+    if replay.replay_enabled() and not (model or os.environ.get("MODEL_A")):
+        return _replay_answer(prompt_name, user_content, output_model)
     prompt = get_prompt(prompt_name)
     system = f"{prompt.text}\n\n{_skills_text()}" if include_skills else prompt.text
     messages = [
@@ -485,6 +488,45 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         raise error from e
     end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))
     return LLMAnswer(output=output, llm=result, prompt_version=prompt.version)
+
+
+# ── LLM 녹화 답 재생 (09-29 결정) ─────────────────────────────
+# 채점자가 키 없이 데모 3건을 돌리게 하는 장치다 (SDD 6.1, CLAUDE.md "REPLAY_MODE=true면 키 없이").
+# REPLAY_MODE이고 MODEL_A가 비어 있을 때만 탄다. MODEL_A가 있으면 재생 모드에서도 진짜 LLM을 부른다.
+# 녹화 파일: evals/fixtures/replay/llm/<프롬프트 이름>.json. 실제 모델로 데모 입력을 한 번 돌려 받은 답이다.
+# 녹화 답은 그 입력에만 맞다. 입력이 다르면(판매일을 다르게 넣는 등) 녹화 답을 쓰지 않고 LLMError를 낸다.
+# 틀린 답을 그럴듯하게 보여 주는 것보다, 라우터가 평소처럼 "판정 없이 partial"로 끝나는 편이 정직하다.
+
+REPLAY_LLM_DIR = "llm"  # replay.REPLAY_DIR 아래 폴더. 평가 실행기가 REPLAY_DIR를 바꿔 끼워도 같이 따라간다
+
+
+def _replay_matches(expected: dict, data: dict) -> bool:
+    """녹화의 match 칸이 이번 입력과 같은가. signals는 {신호 id: 상태}로 줄여서 비교한다 (값·거리는 시각에 따라 조금씩 달라진다)."""
+    for key, value in expected.items():
+        actual = data.get(key)
+        if key == "signals":
+            actual = {s["id"]: s["state"] for s in actual or []}
+        if actual != value:
+            return False
+    return True
+
+
+def _replay_answer(prompt_name: str, user_content: str, output_model: type[BaseModel]) -> LLMAnswer:
+    """녹화 파일에서 이번 입력에 맞는 답을 찾아 돌려준다. 없으면 키가 없을 때와 같은 LLMError (kind=not_configured).
+
+    Langfuse 트레이스는 남기지 않는다. 모델을 부르지 않았고, 키 없는 데모라 보낼 곳도 없다.
+    """
+    # REPLAY_DIR는 부를 때 읽는다. 평가 실행기가 문항마다 바꿔 끼운다
+    path = replay.REPLAY_DIR / REPLAY_LLM_DIR / f"{prompt_name}.json"
+    # 녹화가 없는 프롬프트(선박 선택, 서류 칸 옮겨 적기 등)는 입력을 읽지 않고 바로 끝낸다. 서류 글자처럼 JSON이 아닌 입력도 있다
+    if path.is_file():
+        data = json.loads(user_content)
+        for recording in json.loads(path.read_text(encoding="utf-8")):
+            if _replay_matches(recording["match"], data):
+                output = output_model.model_validate(recording["output"])
+                return LLMAnswer(output=output, llm=LLMResult(content=None, model=f"replay/{recording['model']}"),
+                                 prompt_version="replay")
+    raise LLMError(f"REPLAY_MODE: {prompt_name} 녹화 답 중 이번 입력에 맞는 것이 없습니다", kind="not_configured")
 
 
 def judge(

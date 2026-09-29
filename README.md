@@ -182,6 +182,40 @@ open http://localhost:8000/docs          # API 문서
 
 한글 경로에서는 Docker BuildKit이 죽는다. 그때는 `DOCKER_BUILDKIT=0 docker compose build` 후에 올린다.
 
+### 키 없이 데모 3건 (10분 재현)
+
+키를 하나도 넣지 않고 정상·되묻기·실패 세 경우를 끝까지 돌려 본다. 외부 API 응답은 가공값 재생 파일(`evals/fixtures/replay/`), 판정 LLM은 녹화 답이다.
+
+```bash
+cp .env.example .env
+# .env에서 REPLAY_MODE=false 를 REPLAY_MODE=true 로 바꾼다. 다른 칸은 비워 둔다
+docker compose up -d --build
+docker compose exec api python -m scripts.make_demo      # 데모 재생 파일을 지금 시각 기준으로 만든다
+```
+
+`make_demo`가 B/L 번호와 넣을 판매 예정일을 표로 보여 준다. 판매 예정일은 실행한 날에 따라 달라진다(아래 `<판매일>`).
+
+| B/L | 시나리오 | 기대 결과 |
+|---|---|---|
+| `TESTBL01` | 정상 | `ok` · 괜찮음(`fine`), 여유 4일 |
+| `TESTBL04` | 되묻기 | `insufficient` · 같은 이름 배 2척, 항차나 포워더 입항 예정일을 묻는다 |
+| `TESTBL26` | 실패 | `partial` · 위치 조회 권한 없음, 판정 보류 |
+
+```bash
+curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
+  -d '{"bl_no":"TESTBL01","bl_type":"HOUSE","sale_due_date":"<판매일>","session_id":"demo"}'
+```
+
+`TESTBL04`, `TESTBL26`도 `bl_no`만 바꿔 같은 명령으로 부른다. `/docs` 화면에서 넣어 봐도 된다.
+
+알아 둘 것
+
+- 판매 예정일은 선택이다. 비우면 정상 건은 여유 일수 없이 괜찮음과 "판매 예정일을 넣으면 여유까지 볼 수 있다"는 안내가 나온다
+- 녹화 답은 이 입력에만 맞다. 판매 예정일을 다른 날짜로 넣으면 녹화 답을 쓰지 않고 판정 없이 `partial`로 끝난다. 틀린 답을 그럴듯하게 보이지 않게 한 것이다
+- `.env`에 `MODEL_A`를 넣으면 같은 데모를 진짜 LLM이 판정한다 (녹화 답을 쓰지 않는다)
+- 위치 수신 시각이 "만든 시각 30분 전"이라 약 5시간 반 뒤에는 오래된 위치가 된다. 그때는 `make_demo`를 다시 돌린다
+- Docker 없이: `python -m scripts.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
+
 ### 키
 
 | 키 | 어디서 | 없으면 |
@@ -218,17 +252,14 @@ python -m scripts.mcp_auth_check                        # 토큰 없으면 401
 ### 테스트
 
 ```bash
-pytest          # 179건. 외부 API 키 없이 돈다 (저장된 응답으로 대체)
+pytest          # 398건 (09-29). 외부 API 키 없이 돈다 (가공 응답으로 대체)
 ```
 
 ### 아직 안 되는 것
 
 | 항목 | 상태 |
 |---|---|
-| `POST /api/agent` 판정 | 조회까지만 동작한다. LLM 판정(C-6)과 출력 검증(C-7)이 붙으면 verdict가 나온다 |
-| `REPLAY_MODE` | 미구현. 지금은 키가 있어야 실제 조회가 된다 |
 | 웹 화면 | `web/` 미착수 |
-| 평가 실행기 | `evals/run_eval.py` 미착수 |
 
 ### 기술 스택
 
