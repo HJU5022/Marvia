@@ -13,6 +13,7 @@
   judge()            2층 판정. 프롬프트(Langfuse) + skills/ 문서 + 코드가 모은 자료를 주고 판정 JSON을 받는다 (SDD 4.1 7단계, 5.6)
   pick_vessel()      이름 같은 후보가 여럿일 때 어느 배인지 고른다 (SDD 5.5, C-5)
   answer_follow_up() 판정 뒤 후속 질문에 근거 안에서만 답한다 (C-9)
+  extract_doc_fields() 서류 사진 OCR 글자에서 선명·항차·ETA 등 6칸을 옮겨 적는다 (docs/specs/document-extract.md)
 
 모델 자리 (.env, 계약 C8):
   MODEL_A     싼 모델. 대화+판단 기본
@@ -23,6 +24,7 @@
   "vertex/"로 시작   Vertex AI (GCP 크레딧). 예: MODEL_A=vertex/google/gemini-2.5-flash
                      키 대신 `gcloud auth application-default login` 로그인 정보(ADC)를 쓴다.
                      Cloud Run에서는 서비스 계정에 Vertex AI 사용자 권한이 있어야 한다
+                     VERTEX_THINKING_BUDGET=0이면 Gemini가 생각 없이 바로 답한다. 비우면 모델 기본값 (_vertex_thinking)
   그 밖             OpenRouter. 예: MODEL_A=openai/gpt-4o-mini
   개발 중엔 크레딧(vertex/)으로 돌리고, 최종 테스트 때 .env 한 줄만 되돌리려고 두 길을 같이 둔다.
 """
@@ -35,14 +37,15 @@ import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Literal
+from types import SimpleNamespace
+from typing import Literal, get_args
 
 import openai
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
-from backend.app.schemas.agent import AgentResponse, Conflict, Reason, VesselCandidate, Verdict
+from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 
@@ -59,10 +62,12 @@ TIMEOUT_SEC = 60.0  # 호출 하나가 요청 전체 시간을 다 먹지 않게
 # 최초 1회 + 재시도 1회만 한다. 3회씩 돌리면 사용자가 너무 오래 기다린다.
 MAX_ATTEMPTS = 2
 RETRY_WAIT_SEC = 2.0  # 과부하는 잠깐 뒤 풀리는 경우가 많다. 실측 전 임시값
-# 다시 불러 볼 만한 것: 한도 초과(429), 제공사 과부하·게이트웨이(502·503).
+# 다시 불러 볼 만한 것: 한도 초과(429), 제공사 과부하·게이트웨이(500·502·503).
 # 09-23 스모크 테스트에서 nemotron 무료가 503 provider_overloaded를 5번 중 3번 냈다.
+# 500은 09-29에 넣었다. Vertex가 과부하를 500으로 줬고(평가 3.8 Flash B09), _status_kind도 500을 overloaded로
+# 분류하는데 재시도만 안 해서 분류와 동작이 어긋나 있었다.
 # 타임아웃은 넣지 않는다. 60초를 한 번 더 기다리면 시간 예산을 넘는다.
-RETRYABLE_CODES = {429, 502, 503}
+RETRYABLE_CODES = {429, 500, 502, 503}
 
 logger = logging.getLogger(__name__)
 
@@ -81,19 +86,43 @@ class LLMResult:
     latency_ms: int = 0                 # 마지막 시도 하나의 지연. 재시도 대기는 빠진다
     attempts: int = 1                   # 몇 번 만에 답을 받았나. Langfuse retry_count 자리 (SDD 5.11)
     cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0. Vertex는 안 줘서 None
+    finish_reason: str | None = None    # "length"면 토큰 한도에서 잘린 답. 형식 오류와 구분한다 (truncated)
 
 
 class LLMError(Exception):
-    """OpenRouter·Vertex AI가 답 대신 에러를 준 경우. code가 RETRYABLE_CODES면 chat()이 한 번 더 부른다."""
+    """OpenRouter·Vertex AI가 답 대신 에러를 준 경우. code가 RETRYABLE_CODES면 chat()이 한 번 더 부른다.
 
-    def __init__(self, message: str, code: int | None = None, latency_ms: int = 0):
+    kind는 실패 종류다. 로그(log_failure)에 코드 대신 이 이름을 남긴다. 해결책이 종류마다 달라서 나눈다
+    (09-29 평가 c에서 qwen 무료가 21건 실패했는데 429 말고는 왜 실패했는지 알 수 없었다).
+      rate_limited  429 요청이 너무 잦음        overloaded  5xx 제공사 과부하
+      auth          401·403·Vertex 로그인 문제   bad_request 그 밖의 4xx (요청 모양·지원 안 하는 옵션)
+      connection    연결 실패·시간 초과          no_choices  200인데 답 없이 error만 옴
+      not_configured 모델 이름이 설정에 없음
+      truncated·bad_format은 LLMFormatError 쪽 (답은 왔는데 쓸 수 없음)
+    """
+
+    def __init__(self, message: str, code: int | None = None, latency_ms: int = 0, kind: str = "unknown"):
         super().__init__(message)
         self.code = code
         self.latency_ms = latency_ms
+        self.kind = kind
 
     @property
     def retryable(self) -> bool:
         return self.code in RETRYABLE_CODES
+
+
+class LLMFormatError(LLMError):
+    """LLM이 답은 했는데 JSON이 아니거나 필수 칸이 빠지는 등 모양이 스키마와 다른 경우.
+
+    호출 실패(네트워크·키·과부하)와 구분한다. 라우터는 이것을 규칙 위반처럼 보고 무엇이 틀렸는지 붙여 다시 묻는다.
+    세 번 다 깨지면 failed다 (09-28 결정, SDD 5.7 "3단계 재시도 뒤 failed", 평가셋 F08).
+    LLMError를 물려받으므로 이것을 따로 잡지 않는 곳(pick_vessel·후속 질문)은 지금처럼 LLM 실패로 처리한다.
+    """
+
+    def __init__(self, message: str, detail: str, kind: str = "bad_format"):
+        super().__init__(message, kind=kind)
+        self.detail = detail  # LLM에 다시 물을 때 붙일 설명 (영어, 프롬프트와 같은 언어)
 
 
 def _client() -> OpenAI:
@@ -129,12 +158,28 @@ def _vertex_client() -> OpenAI:
         if not _vertex_creds.valid:
             _vertex_creds.refresh(google.auth.transport.requests.Request())
     except google.auth.exceptions.GoogleAuthError as e:
-        raise LLMError(f"Vertex AI 로그인 정보 없음 또는 토큰 발급 실패: {type(e).__name__}") from e
+        raise LLMError(f"Vertex AI 로그인 정보 없음 또는 토큰 발급 실패: {type(e).__name__}", kind="auth") from e
 
     if not _vertex_project:
-        raise LLMError("Vertex AI 프로젝트를 모릅니다. GOOGLE_CLOUD_PROJECT를 넣거나 gcloud로 ADC를 다시 만드세요")
+        raise LLMError("Vertex AI 프로젝트를 모릅니다. GOOGLE_CLOUD_PROJECT를 넣거나 gcloud로 ADC를 다시 만드세요",
+                       kind="auth")
     return OpenAI(base_url=VERTEX_URL.format(project=_vertex_project), api_key=_vertex_creds.token,
                   timeout=TIMEOUT_SEC, max_retries=0)
+
+
+def _vertex_thinking() -> dict | None:
+    """VERTEX_THINKING_BUDGET이 있으면 Gemini의 생각(thinking) 토큰 상한을 요청에 붙인다. 없으면 None(모델 기본값).
+
+    09-29 평가: Gemini 2.5 Flash는 답 전에 호출당 평균 1,863토큰을 생각에 써서 정상 질문 평균 10.1초였다
+    (gpt-4o-mini 3.3초). 0이면 생각을 끈다. 실측 1회: 생각 597 → 0토큰, 5.3초 → 1.1초.
+    OpenAI 형식의 reasoning_effort="none"은 Vertex가 400으로 거부해서(high·low·max·medium·minimal만 받음)
+    Google 전용 칸 thinking_config를 쓴다. 이 SDK 호출에서는 extra_body 안에 한 겹 더 extra_body로 넣어야
+    Vertex에 전달된다 (Vertex AI "OpenAI 라이브러리 사용" 문서 형식, 09-29 실측으로 확인).
+    """
+    budget = os.environ.get("VERTEX_THINKING_BUDGET")
+    if budget is None or budget == "":
+        return None
+    return {"extra_body": {"google": {"thinking_config": {"thinking_budget": int(budget)}}}}
 
 
 def _call_once(kwargs: dict) -> LLMResult:
@@ -145,7 +190,7 @@ def _call_once(kwargs: dict) -> LLMResult:
         client = _vertex_client()
         # Vertex는 "google/gemini-2.5-flash"처럼 앞머리 없는 이름을 받는다
         kwargs = {**kwargs, "model": model.removeprefix(VERTEX_PREFIX)}
-        extra_body = None  # 아래 provider 옵션은 OpenRouter 전용이라 보내지 않는다
+        extra_body = _vertex_thinking()  # 아래 provider 옵션은 OpenRouter 전용이라 보내지 않는다
     else:
         client = _client()
         # require_parameters: 요청에 쓴 기능(구조화 출력, tool)을 지원하는 제공사로만 보낸다.
@@ -157,19 +202,23 @@ def _call_once(kwargs: dict) -> LLMResult:
         resp = client.chat.completions.create(**kwargs, extra_body=extra_body)
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
-                       latency_ms=int((time.monotonic() - start) * 1000)) from e
+                       latency_ms=int((time.monotonic() - start) * 1000), kind=_status_kind(e.status_code)) from e
     except openai.APIConnectionError as e:  # 연결 실패·타임아웃. 다시 부르지 않는다 (위 RETRYABLE_CODES 주석)
         raise LLMError(f"{model}: 연결 실패 {type(e).__name__}",
-                       latency_ms=int((time.monotonic() - start) * 1000)) from e
+                       latency_ms=int((time.monotonic() - start) * 1000), kind="connection") from e
     latency_ms = int((time.monotonic() - start) * 1000)
 
     # OpenRouter는 제공사가 실패하면 HTTP 200 안에 choices 없이 error만 담아 보낼 때가 있다 (09-23 스모크 테스트).
     # 그대로 두면 choices[0]에서 TypeError가 나서 원인이 가려지므로, 에러 내용과 코드를 그대로 올린다.
     if not resp.choices:
         error = (resp.model_extra or {}).get("error") or {}
-        raise LLMError(f"{model}: 응답에 choices 없음, error={error}", code=error.get("code"), latency_ms=latency_ms)
+        raise LLMError(f"{model}: 응답에 choices 없음, error={error}", code=error.get("code"), latency_ms=latency_ms,
+                       kind="no_choices")
 
-    msg = resp.choices[0].message
+    # Gemini(Vertex)는 생각(reasoning) 토큰으로 한도를 다 쓰면 message 없이 finish_reason=length만 준다
+    # (09-29 실패 훈련 judge_truncated). 그대로 읽으면 AttributeError로 죽고, 라우터는 LLMError만 받으니 500이 났다.
+    # 빈 답으로 받으면 _ask_json이 finish_reason을 보고 truncated로 올리고, 라우터가 재시도·failed로 처리한다
+    msg = resp.choices[0].message or SimpleNamespace(content=None, tool_calls=None)
     calls = [{"name": c.function.name, "arguments": c.function.arguments} for c in (msg.tool_calls or [])]
     usage = resp.usage
     completion_tokens = usage.completion_tokens if usage else None
@@ -191,7 +240,19 @@ def _call_once(kwargs: dict) -> LLMResult:
         # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
         cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,
+        finish_reason=getattr(resp.choices[0], "finish_reason", None),
     )
+
+
+def _status_kind(status: int) -> str:
+    """HTTP 상태 코드를 LLMError.kind로 바꾼다."""
+    if status == 429:
+        return "rate_limited"
+    if status >= 500:
+        return "overloaded"
+    if status in (401, 403):
+        return "auth"
+    return "bad_request"
 
 
 def chat(
@@ -216,7 +277,7 @@ def chat(
     """
     model = model or os.environ.get("MODEL_A")
     if not model:
-        raise LLMError("MODEL_A가 없습니다")
+        raise LLMError("MODEL_A가 없습니다", kind="not_configured")
     kwargs: dict = {"model": model, "messages": messages}
     if response_format:
         kwargs["response_format"] = response_format
@@ -277,7 +338,11 @@ JUDGE_SCHEMA = {
                 "required": ["signals", "chosen", "why"],
                 "properties": {
                     "signals": {"type": "array", "items": {"type": "string"}},
-                    "chosen": {"type": "string", "description": "믿은 출처"},
+                    # 믿은 출처는 근거 카드의 출처 이름 중 하나여야 한다 (V6). 목록을 주지 않았더니 Gemini가
+                    # "해수부 입항 예정" 같은 설명을 써서 act가 맞는데도 V6로 3번 탈락했다 (09-29 평가 B04·B09, Langfuse 확인).
+                    # 목록은 계약 C1 Evidence.source에서 가져온다. 여기에 따로 적으면 둘이 어긋날 수 있다
+                    "chosen": {"type": "string", "enum": list(get_args(Evidence.model_fields["source"].annotation)),
+                               "description": "믿은 출처"},
                     "why": {"type": "string"},
                 },
             },
@@ -358,17 +423,20 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
 
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
-              output_model: type[BaseModel], model: str | None, feedback: str | None = None) -> LLMAnswer:
-    """세 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
+              output_model: type[BaseModel], model: str | None, feedback: str | None = None,
+              include_skills: bool = True) -> LLMAnswer:
+    """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
+    include_skills=False는 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용이다. skills 약 5천 자를 매번 넣지 않는다.
 
     Raises:
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
                   내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
     """
     prompt = get_prompt(prompt_name)
+    system = f"{prompt.text}\n\n{_skills_text()}" if include_skills else prompt.text
     messages = [
-        {"role": "system", "content": f"{prompt.text}\n\n{_skills_text()}"},
+        {"role": "system", "content": system},
         {"role": "user", "content": user_content},
     ]
     if feedback:
@@ -388,7 +456,13 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     try:
         output = output_model.model_validate_json(result.content or "")
     except ValidationError as e:
-        error = LLMError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건)")
+        # 어느 칸이 왜 틀렸는지만 적는다. LLM이 쓴 본문은 다시 붙이지 않는다 (트레이스 output에는 남는다)
+        detail = "; ".join(f"{'.'.join(str(p) for p in err['loc']) or 'root'}: {err['msg']}" for err in e.errors()[:5])
+        # 토큰 한도에서 잘린 답(finish_reason=length)은 모양이 틀린 답과 해결책이 다르다. 잘림은 한도를 늘리거나
+        # 생각(reasoning)을 줄여야 하고, 모양 오류는 프롬프트를 고쳐야 한다. 그래서 kind를 나눈다
+        kind = "truncated" if result.finish_reason == "length" else "bad_format"
+        error = LLMFormatError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건, {kind})",
+                               f"Your answer did not match the JSON format. {detail}", kind=kind)
         end_generation(generation, result, prompt.version, output=result.content, error=str(error))
         raise error from e
     end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))
@@ -505,14 +579,55 @@ class FollowUpOutput(BaseModel):
     answer: str
 
 
-def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None) -> LLMAnswer:
+def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None,
+                     feedback: str | None = None) -> LLMAnswer:
     """이미 나온 판정(response)에 대한 후속 질문에 답한다. output은 FollowUpOutput.
 
     질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
+    feedback: 앞 답이 검증 규칙(V1·V7)을 어겼을 때 어긴 내용. judge()와 같은 방식으로 다시 묻는다 (09-29, 평가 F06)
     """
     data = {
         "result": response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"}),
         "question": question,
     }
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
-                     FOLLOW_UP_SCHEMA, FollowUpOutput, model)
+                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback)
+
+
+# ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────
+# docs/specs/document-extract.md 4단계: OCR 글자에서 6칸을 옮겨 적는다. 판단은 하지 않는다.
+# B/L 번호는 코드(doc_ocr.take_bl)가 먼저 뽑아 [BL]로 가린 글자만 받는다 (CLAUDE.md).
+# 옮긴 값이 글자에 실제로 있는지는 doc_ocr.check_fields가 검사한다.
+
+DOC_EXTRACT_PROMPT = "marvia-doc-extract"
+DOC_EXTRACT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["vessel", "voyage", "eta", "pol", "pod", "item"],  # strict 모드는 모든 칸이 required
+    "properties": {
+        "vessel": {"type": ["string", "null"]},
+        "voyage": {"type": ["string", "null"]},
+        "eta": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
+        "pol": {"type": ["string", "null"]},
+        "pod": {"type": ["string", "null"]},
+        "item": {"type": ["string", "null"]},
+    },
+}
+
+
+class DocFieldsOutput(BaseModel):
+    vessel: str | None
+    voyage: str | None
+    eta: str | None  # 모양 검사는 doc_ocr.check_fields가 한다. 여기서 date로 바꾸면 틀린 모양이 형식 오류로 바뀌어 원인이 가려진다
+    pol: str | None
+    pod: str | None
+    item: str | None
+
+
+def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnswer:
+    """B/L을 가린 OCR 글자에서 선명·항차·ETA·선적항·양하항·품명을 옮겨 적는다. output은 DocFieldsOutput.
+
+    OCR 글자는 사용자 서류라 데이터로만 넘긴다 (SDD 7절 신뢰 경계, 프롬프트에도 명시).
+    """
+    return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
+                     include_skills=False)

@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from backend.app.clients.mof import MofClient, MofError
+from backend.app.observability.logging import log_failure
 from backend.app.schemas.customs import CustomsRecord
 
 # UNI-PASS 입항(예정)일 앞뒤 며칠의 입항 신고를 훑을지. 09-28 실제 B/L 1건이 ±1일 안에서 찾아졌다.
@@ -30,6 +31,13 @@ def call_sign_from_mrn(customs: CustomsRecord, mof: MofClient | None = None) -> 
     day = customs.entry_date.date()
     try:
         plan = (mof or MofClient()).find_plan_by_mrn(customs.mrn, day - timedelta(days=SEARCH_DAYS), day + timedelta(days=SEARCH_DAYS))
-    except MofError:
-        return None  # 해수부 실패는 식별을 막지 않는다. 라우터가 이름 검색으로 간다
-    return plan.call_sign if plan else None
+    except MofError as e:
+        # 해수부 실패는 식별을 막지 않는다. 라우터가 이름 검색으로 간다. 다만 이름 검색은 느리고 동명선에 약해서
+        # 왜 MRN 길을 못 탔는지는 남긴다
+        log_failure("identify_mrn", e.code)
+        return None
+    if plan is None:
+        # 입항 신고 전이면 정상적으로 없다 (도착 1주일 안쪽에 신고, 09-23 실측). 해수부 오류와 구분해서 남긴다
+        log_failure("identify_mrn", "not_found")
+        return None
+    return plan.call_sign

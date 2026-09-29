@@ -7,6 +7,7 @@
   1. 입력 검증 (스키마 AgentRequest가 B/L 형식까지 본다, A7)
   2. UNI-PASS 조회 (코드가 직접 부른다. B/L을 LLM에 넘기지 않는다)
   2-1. 지원 범위 확인 (양륙항이 부산이 아니면 unsupported로 끝낸다)
+  2-2. 반출 확인 (이미 창고에서 나간 화물이면 배를 찾지 않고 규칙으로 fine, 09-28 결정)
   3. 선박 식별 (MRN 호출부호로 먼저, 안 되면 선명으로. 후보 1척이면 확정, 여럿이면 되묻기, 0척이면 여기서 멈추고 되묻기)
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
@@ -17,15 +18,19 @@
   - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
   - 신호 7개가 전부 clear면 verdict=fine은 코드가 정한다(decided_by=rule). LLM 답은 문장만 쓴다 (SDD 4.1 7단계)
   - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
+  - 쓸 위치가 없으면 LLM을 부르지 않는다. 데이터 없음은 insufficient, 도구 고장은 partial (09-29 결정, _no_position)
+  - 위치가 캐시에서 왔으면(실시간 조회 실패) 판정은 하되 status=partial (09-29 결정, 평가셋 F02)
 근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
+import os
 from datetime import datetime, timezone
 
+import pycountry
 from fastapi import APIRouter
 
-from backend.app.db import connect, latest_response, log_query
+from backend.app.db import connect, latest_response, log_query, recent_positions
 from backend.app.observability.langfuse import session_scope
-from backend.app.observability.logging import current_request_id
+from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
 )
@@ -47,15 +52,29 @@ ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워
 NO_VESSEL = "선박 위치 서비스에서 이 배를 찾지 못했습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
 NO_VESSEL_AFTER_ETA = "선박 위치 서비스에서 이 배를 찾지 못해 판정하지 못했습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
 VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하지 못했습니다. 잠시 뒤 다시 조회해 주세요."
+# 위치 없음 (09-29 결정, 09-27 "위치 없음 → 판정 보류" 문구: 조회되지 않는다고 그대로 말하고 포워더 입항 예정일을 묻는다)
+POSITION_MISSING = "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
+POSITION_MISSING_AFTER_ETA = "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
+POSITION_TOOL_FAILED = "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요."
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 VALIDATION_FAILED = "판정을 생성하지 못했습니다. 근거 카드를 확인하세요."  # SDD 5.7 3차 폴백 문구
+
+# 반출된 화물 (09-28 결정). 반출신고는 통관의 마지막 단계다 (skills/customs-stages 표 "다음 단계 없음(끝)")
+RELEASED_STAGE = "반출신고"
+RELEASED = "이 화물은 이미 보세창고에서 반출됐습니다. 통관이 끝나 배 위치는 확인하지 않았습니다. 배송 일정은 운송사에 확인해 주세요."
+RELEASED_EXPLANATION = "화물이 보세창고에서 나갔고 세관 절차가 모두 끝났습니다."
+# 할 일은 Skill 표의 반출신고 행("입고를 확인한다")을 따르고, 범위 밖인 배송 일정은 운송사로 넘긴다 (PRD 4절 창고 수령일 예측)
+RELEASED_ACTIONS = ["배송 일정은 운송사에 확인하세요.", "물건이 도착하면 입고를 확인하세요."]
 
 JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 첨부 + 강화 (SDD 5.7)
 
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
 FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
+# 후속 답에 거는 검증 규칙. 7규칙 중 answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기)과
+# V7(근거에 없는 숫자 금지)뿐이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
+FOLLOW_UP_RULES = {"V1", "V7"}
 
 
 def _response(**over) -> AgentResponse:
@@ -100,6 +119,11 @@ def _assess(request: AgentRequest) -> AgentResponse:
     if customs.discharge_port and customs.discharge_port != signals_service.BUSAN_PORT_CODE:
         return _response(status="unsupported", answer=NOT_BUSAN)
 
+    # 이미 반출된 화물은 배를 찾지 않는다 (09-28 결정). 화물이 창고를 떠났는데 배를 찾으면 같은 배의
+    # 다음 항차 위치로 여유 일수를 계산해 엉뚱한 act가 나온다 (09-28 실제 B/L: 9/17 반출인데 act, 여유 -1일)
+    if customs.stage_name == RELEASED_STAGE:
+        return _released(customs)
+
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
     # 배를 못 정하면 판정하지 않는다. 위치·입항 정보 없이 판정하면 근거 없이 "괜찮다"가 나온다 (09-28 실제 B/L)
     if vessel_match == TOOL_FAILED:
@@ -122,11 +146,18 @@ def _assess(request: AgentRequest) -> AgentResponse:
     position = get_live_position(mmsi) if mmsi else None
     schedule = get_port_schedule(call_sign=call_sign, ship_name=customs.ship_name)
     distance = _distance(position)
+    # 도구가 실패해도 신호는 unknown으로 두고 계속 간다. 어느 도구가 실패했는지는 로그에 남긴다
+    _log_tool_error("live_position", position)
+    _log_tool_error("port_schedule", schedule)
+    _log_tool_error("distance", distance)
 
     # 5. 1층 신호와 여유 일수는 코드가 계산한다 (SDD 4.1 5·6단계). LLM은 이 값을 바꾸지 않는다
-    signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date)
+    signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date,
+                                         history=_position_history(mmsi))
     trusted = signals_service.trusted_eta(position, schedule)
-    margin = days_margin(trusted, request.sale_due_date)
+    # 쓸 위치가 없으면 여유 일수도 내지 않는다. 해수부 예정만으로 센 값을 판정 근거처럼 보이지 않게 (평가셋 B13·F04 days_margin=null)
+    has_position = bool(position) and "error" not in position
+    margin = days_margin(trusted, request.sale_due_date) if has_position else None
 
     # 판정이 붙든 안 붙든 같이 나가는 값
     collected = dict(
@@ -141,27 +172,49 @@ def _assess(request: AgentRequest) -> AgentResponse:
         evidence=build_evidence(customs, position, schedule, distance, trusted, margin, signals=signal_set),
     )
 
+    # 위치 없음: LLM을 부르지 않고 코드가 보류한다 (09-29 결정, 09-27 "위치 없음 → 판정 보류"를 코드로).
+    # 전에는 위치 없이 LLM에 넘겨 해수부 예정만 보고 watch를 냈다 (평가 B13·F04)
+    if not has_position:
+        return _no_position(position, request, collected)
+    # 실시간 조회는 실패하고 마지막으로 받은 위치(캐시)로 판정한다. 판정은 하되 partial로 알린다
+    # (평가셋 F02 정답 partial·watch, SDD 8절 "ShipFinder 타임아웃 → partial")
+    from_cache = bool(position.get("cached_at"))
+
     # 6·7. 2층 판정 (LLM)과 출력 검증 (C-7, SDD 5.7)
     # 위반이면 위반 내용을 붙여 다시 묻는다. 두 번째 재시도는 "JSON만, 규칙 준수"를 덧붙인다.
     # 세 번 모두 위반이면 판정 없이 failed로 끝내고 근거 카드는 남긴다
+    # 형식이 깨진 답(JSON 아님·필수 칸 누락)도 위반과 같이 다시 묻는다 (09-28 결정). 전에는 바로 partial로 끝나
+    # 두 번째 답이 깨지면 세 번째 기회가 없었다 (09-28 평가 B09). 호출 자체가 실패하면 지금처럼 바로 partial
     feedback = None
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback)
-        except llm.LLMError:
+        except llm.LLMFormatError as e:
+            log_failure("judge", f"{e.kind} attempt {attempt}")
+            feedback = e.detail
+        except llm.LLMError as e:
+            log_failure("judge", _llm_error(e))
             return _response(status="partial", answer=LLM_FAILED, **collected)
-        response = _judged(judged.output, signal_set, request, customs, collected)
-        violations = validate.check(response)
-        if not violations:
-            return response
-        feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+        else:
+            response = _judged(judged.output, signal_set, request, customs, collected, from_cache=from_cache)
+            violations = validate.check(response)
+            if not violations:
+                return response
+            # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
+            log_failure("validate", f"{','.join(v.rule for v in violations)} attempt {attempt}")
+            feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
         if attempt == JUDGE_ATTEMPTS - 1:
             feedback += "\nReturn JSON only and follow every rule above."
+    log_failure("judge", f"gave up after {JUDGE_ATTEMPTS} attempts")
     return _response(status="failed", answer=VALIDATION_FAILED, **collected)
 
 
-def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict) -> AgentResponse:
-    """LLM 판정 1회분을 응답으로 옮긴다. 검증(validate.check)은 부르는 쪽이 한다."""
+def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict,
+            from_cache: bool = False) -> AgentResponse:
+    """LLM 판정 1회분을 응답으로 옮긴다. 검증(validate.check)은 부르는 쪽이 한다.
+
+    from_cache면 위치가 실시간이 아니라 캐시에서 왔다는 뜻이라, 판정이 나와도 status를 partial로 둔다.
+    """
     # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
     if all(s.state == "clear" for s in signal_set.signals):
         verdict, decided_by = "fine", "rule"
@@ -173,6 +226,8 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
     status, missing = "ok", []
     if verdict is None:
         status, missing = ("partial", []) if request.forwarder_eta else ("insufficient", ["forwarder_eta"])
+    elif from_cache:
+        status = "partial"  # 도구 실패를 캐시로 메웠다. 판정은 두되 실시간 확인이 아니었음을 알린다 (평가셋 F02)
 
     return _response(
         status=status,
@@ -188,6 +243,51 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
     )
 
 
+def _no_position(position: dict | None, request: AgentRequest, collected: dict) -> AgentResponse:
+    """쓸 위치가 없을 때 LLM 없이 보류 응답을 만든다 (09-29 결정). 조회한 값(해수부 예정·근거 카드)은 참고로 둔다.
+
+    둘로 나눈다. 해결책이 달라서다.
+      - 데이터 자체가 없음(도구는 성공, 관측값 없음 = not_found, 또는 MMSI가 없어 못 부름)
+        → 사용자가 포워더에게 알아 올 수 있다. insufficient로 입항 예정일을 묻는다 (평가셋 B13)
+      - 도구 고장(권한 없음, 시간 초과인데 캐시도 없음 등)
+        → 우리 쪽 문제라 사용자에게 되묻지 않는다. partial (평가셋 F04, SDD 8절 ShipFinder 21)
+    """
+    error_code = ((position or {}).get("error") or {}).get("code")
+    if position is None or error_code == "not_found":
+        # 이미 포워더 입항 예정일을 받았으면 더 물을 게 없어 partial (V5: insufficient면 물을 것이 1개 이상)
+        if request.forwarder_eta:
+            return _response(status="partial", answer=POSITION_MISSING_AFTER_ETA, **collected)
+        return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=POSITION_MISSING, **collected)
+    return _response(status="partial", answer=POSITION_TOOL_FAILED, **collected)
+
+
+def _released(customs: CustomsRecord) -> AgentResponse:
+    """반출이 끝난 화물의 응답. 판정은 규칙으로 fine이고 LLM은 부르지 않는다 (09-28 결정).
+
+    반출 뒤에는 기다릴 입항도 통관도 없어서 "지금 신경 써야 하나?"의 답은 괜찮음이다.
+    반출 뒤 배송 일정은 PRD 4절 "창고 수령일 예측"이라 판정하지 않고 운송사로 안내한다.
+    통관 이력·보관 장소·근거 카드는 UNI-PASS 값으로 채우고, 배를 찾지 않았으니 배·위치·ETA 칸은 비운다.
+    판매 예정일이 지났어도 fine이다. 늦어졌는지는 배송 쪽 일이라 이 서비스가 볼 수 없다.
+    """
+    return _response(
+        status="ok",
+        verdict="fine",
+        decided_by="rule",
+        actions=RELEASED_ACTIONS,
+        answer=RELEASED,
+        customs=CustomsInfo(
+            stage_code=customs.stage_code or "",
+            stage_name=customs.stage_name,
+            plain_explanation=RELEASED_EXPLANATION,
+            next_stage=None,
+            needs_broker=False,
+            history=[s.model_dump(mode="json") for s in customs.stage_history],
+        ),
+        berth=BerthInfo(facility=None, shed=customs.shed_name),
+        evidence=build_evidence(customs, None, None, None, None, None),
+    )
+
+
 def _follow_up(request: AgentRequest) -> AgentResponse:
     """후속 질문 (C-9). 같은 세션·같은 B/L의 가장 최근 결과를 DB에서 꺼내 그 안에서만 답한다.
 
@@ -196,19 +296,41 @@ def _follow_up(request: AgentRequest) -> AgentResponse:
     판정·근거는 지난 결과 그대로 두고 answer만 질문의 답으로 바꿔 돌려준다.
     """
     previous = _previous_response(request) or _assess(request)
-    try:
-        out = llm.answer_follow_up(request.follow_up_question, previous).output
-    except llm.LLMError:
-        return previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
-    return previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
+    failed = previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
+
+    # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거에 없는 숫자("9월 23일")가 사용자에게 갔다 (평가 F06).
+    # 판정·근거는 지난 결과 그대로라 답 문장을 보는 규칙(FOLLOW_UP_RULES)만 건다. 재시도 방식은 판정과 같다 (SDD 5.7)
+    feedback = None
+    for attempt in range(1, JUDGE_ATTEMPTS + 1):
+        try:
+            out = llm.answer_follow_up(request.follow_up_question, previous, feedback=feedback).output
+        except llm.LLMFormatError as e:
+            log_failure("follow_up", f"{e.kind} attempt {attempt}")
+            feedback = e.detail
+            continue
+        except llm.LLMError as e:
+            log_failure("follow_up", _llm_error(e))
+            return failed
+        answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
+        violations = [v for v in validate.check(answered) if v.rule in FOLLOW_UP_RULES]
+        if not violations:
+            return answered
+        log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")
+        feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+    # 세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정·근거는 그대로 둔다
+    log_failure("follow_up", f"gave up after {JUDGE_ATTEMPTS} attempts")
+    return failed
 
 
 def _previous_response(request: AgentRequest) -> AgentResponse | None:
     """DB에 저장된 지난 결과. 없거나 DB에 못 붙으면 None (그러면 다시 조회한다)."""
+    if not _db_configured("db_read"):
+        return None
     try:
         with connect() as conn:
             saved = latest_response(conn, request.session_id, mask_bl(request.bl_no))
-    except Exception:
+    except Exception as e:
+        log_failure("db_read", type(e).__name__)
         return None
     return AgentResponse.model_validate(saved) if saved else None
 
@@ -218,6 +340,7 @@ def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentRe
     try:
         record = UnipassClient().fetch(request.bl_no, request.bl_type)
     except CustomsError as e:
+        log_failure("customs", e.code)
         return None, _response(status="failed", answer=f"통관 정보를 가져오지 못했습니다 ({e.code}).")
     if record is None:
         return None, _response(status="insufficient", missing_inputs=["bl_type"], answer=NO_CARGO)
@@ -244,6 +367,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
 
     if mrn_call_sign:
         result = get_vessel_candidates(ship_name=customs.ship_name or "", call_sign=mrn_call_sign)
+        _log_tool_error("vessel_candidates_mrn", result)
         if "error" not in result:
             found = _candidates(result.get("candidates", []), "MRN 입항 신고의 호출부호 일치")
             if len(found) == 1:
@@ -253,8 +377,12 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     if not customs.ship_name:
         return [], "none", None, None
 
-    result = get_vessel_candidates(ship_name=customs.ship_name, nationality=customs.ship_nat)
+    # 도구의 국적 필터(nationality)는 쓰지 않는다 (09-28 결정). 세관은 "KR"·"MH" 같은 코드를, ShipFinder는
+    # "Korea, Republic of"·"Marshall Islands" 같은 영어 이름을 주는데 필터는 글자 포함으로 비교해서,
+    # MH처럼 이름에 코드 글자가 없는 나라는 진짜 내 배를 말없이 뺄 수 있다. 국적이 다르면 아래에서 되묻는다
+    result = get_vessel_candidates(ship_name=customs.ship_name)
     if "error" in result:
+        _log_tool_error("vessel_candidates", result)
         return [], TOOL_FAILED, None, None
     rows = result.get("candidates", [])
     candidates = _candidates(rows)
@@ -262,18 +390,85 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         return [], "none", None, None
     if len(candidates) == 1:
         only = rows[0]
+        # MRN 서류로 호출부호를 아는데 이름으로 찾은 1척의 호출부호가 다르면 이름만 같은 남의 배다.
+        # 확정하지 않고 되묻는다 (09-28 결정, 평가 B07). 후보의 호출부호를 모르면 어긋난다는 근거가 없어 지금처럼 확정한다
+        if mrn_call_sign and only.get("call_sign") and not _same_call_sign(mrn_call_sign, only["call_sign"]):
+            return candidates, "uncertain", None, None
+        # 세관 국적과 후보 국적이 다르면 역시 되묻는다 (09-28 결정, 평가 B14). 둘 중 하나라도 모르면 확정한다.
+        # 비교가 틀려도(코드·이름 표기 차이) 진짜 배를 버리지 않고 한 번 더 묻는 쪽으로 실수한다
+        if customs.ship_nat and only.get("flag") and not _same_nationality(customs.ship_nat, only["flag"]):
+            return candidates, "uncertain", None, None
         return candidates, "confirmed", candidates[0].mmsi, only.get("call_sign")
 
     # 여럿이면 LLM이 고른다. 사용자가 되묻기에 답한 항차·포워더 입항 예정일도 같이 넘긴다
     try:
         picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
-    except llm.LLMError:
+    except llm.LLMError as e:
+        log_failure("pick_vessel", _llm_error(e))
         return candidates, "uncertain", None, None
     # 후보에 없는 MMSI는 확정하지 않는다. 후보 목적지 문자열 속 지시문에 속았거나 번호를 지어냈을 수 있다 (C-10)
     if picked.confidence == "high" and picked.choice in {c.mmsi for c in candidates}:
         call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
         return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
+
+
+def _log_tool_error(stage: str, result: dict | None) -> None:
+    """MCP 도구가 {"error": ToolError}를 돌려줬으면 코드만 로그에 남긴다. message는 예외 문장이라 넣지 않는다."""
+    if result and "error" in result:
+        log_failure(stage, result["error"].get("code") or "unknown")
+
+
+def _position_history(mmsi: int | None) -> list[dict]:
+    """워커가 DB에 모은 이 배의 위치 이력. anchor_wait 정지 시간을 재는 데 쓴다 (09-29, 평가셋 B08).
+
+    DB가 없거나 읽기가 실패해도 판정은 계속한다. 이력이 없으면 정지 시간 신호가 unknown이 될 뿐이다.
+    """
+    if not mmsi or not _db_configured("positions_read"):
+        return []
+    try:
+        with connect() as conn:
+            return recent_positions(conn, mmsi)
+    except Exception as e:
+        log_failure("positions_read", type(e).__name__)
+        return []
+
+
+def _llm_error(e: llm.LLMError) -> str:
+    """LLM 실패를 종류(kind)와 HTTP 코드로 줄인다. 메시지에는 공급자 응답 문장이 들어 있을 수 있어 뺀다."""
+    return f"{e.kind} {e.code}" if e.code else e.kind
+
+
+def _db_configured(stage: str) -> bool:
+    """DATABASE_URL이 없으면 not_configured를 남기고 False. DB를 일부러 끈 경우(평가 실행기·채점 환경)와
+    실제 DB 고장(연결 실패 등, 아래 except에서 예외 이름으로 남음)을 로그에서 구분하려는 것이다."""
+    if os.environ.get("DATABASE_URL"):
+        return True
+    log_failure(stage, "not_configured")
+    return False
+
+
+def _same_call_sign(a: str, b: str) -> bool:
+    """호출부호 비교. 대소문자와 앞뒤 공백 차이는 같은 것으로 본다 (vessel_candidates 도구의 호출부호 필터와 같은 기준)."""
+    return a.strip().upper() == b.strip().upper()
+
+
+def _same_nationality(customs_nat: str, flag: str) -> bool:
+    """세관 국적(두 글자 코드, 예: KR)과 ShipFinder 국적(코드 또는 영어 이름)이 같은 나라인가.
+
+    세관 코드를 ISO 국가 이름으로 바꿔(pycountry) 정확히 같은지만 본다. 09-28 실제 응답의 ShipFinder 국적은
+    ISO 이름("Korea, Republic of")과 같은 모양이었다. 글자 포함으로 비교하면 KR과 "Korea"가 안 맞고
+    ("kr"이 붙어 있지 않다) NE(니제르)와 "Nigeria"는 맞아 버려서 쓰지 않는다.
+    코드를 모르거나 이름이 다르게 오면 다르다고 보고, 부르는 쪽이 되묻는다 (진짜 배를 버리지 않는 쪽으로 실수).
+    """
+    a, b = customs_nat.strip(), flag.strip()
+    if a.upper() == b.upper():
+        return True  # 둘 다 코드로 온 경우 (평가셋 fixture 등)
+    country = pycountry.countries.get(alpha_2=a.upper()) if len(a) == 2 else None
+    if country is None:
+        return False
+    names = {getattr(country, attr, None) for attr in ("name", "official_name", "common_name")}
+    return b.lower() in {n.lower() for n in names if n}
 
 
 def _candidates(rows: list[dict], reason: str | None = None) -> list[VesselCandidate]:
@@ -356,6 +551,8 @@ def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
 
     이력 저장이 실패해도 응답은 나가야 한다. DB 없이도 서비스가 돌아야 하기 때문이다.
     """
+    if not _db_configured("db_write"):
+        return response
     try:
         with connect() as conn:
             log_query(
@@ -371,6 +568,6 @@ def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
                 # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다
                 response=_as_jsonb(response.model_dump(mode="json")),
             )
-    except Exception:
-        pass
+    except Exception as e:
+        log_failure("db_write", type(e).__name__)
     return response

@@ -127,9 +127,12 @@ def test_null_verdict_and_customs_are_allowed(monkeypatch):
 
 @pytest.mark.parametrize("bad", ["판정: watch", json.dumps({**GOOD_ANSWER, "verdict": "maybe"})])
 def test_bad_shape_raises_llm_error(monkeypatch, bad):
+    """모양이 틀린 답은 LLMFormatError. 라우터가 다시 물을 때 붙일 설명(detail)을 들고 있다 (09-28)."""
     _fake_chat(monkeypatch, bad)
-    with pytest.raises(llm.LLMError):
+    with pytest.raises(llm.LLMFormatError) as e:
         llm.judge(_signals(), _customs(), days_margin=5)
+    assert isinstance(e.value, llm.LLMError)  # 따로 안 잡는 곳은 지금처럼 LLM 실패로 처리된다
+    assert "did not match the JSON format" in e.value.detail
 
 
 def test_ais_destination_text_never_reaches_judge():
@@ -143,3 +146,45 @@ def test_ais_destination_text_never_reaches_judge():
                 "ais_eta": None, "last_time": now.isoformat(), "fetched_at": now.isoformat()}
     signal_set = signals_service.compute(position, None, None, _customs(), None)
     assert injected not in llm._judge_input(signal_set, _customs(), None)
+
+
+def test_cut_off_answer_is_truncated_not_bad_format(monkeypatch):
+    """토큰 한도에서 잘린 답(finish_reason=length)은 모양 오류(bad_format)와 따로 센다.
+    잘림은 한도·생각 설정을, 모양 오류는 프롬프트를 고쳐야 해서 해결책이 다르다 (09-29)."""
+    monkeypatch.setattr(llm, "chat", lambda messages, **k: llm.LLMResult(
+        content='{"verdict": "act", "rea', model="test/model", finish_reason="length"))
+    with pytest.raises(llm.LLMFormatError) as e:
+        llm.judge(_signals(), _customs(), days_margin=5)
+    assert e.value.kind == "truncated"
+
+
+def test_finished_but_wrong_shape_is_bad_format(monkeypatch):
+    monkeypatch.setattr(llm, "chat", lambda messages, **k: llm.LLMResult(
+        content='{"verdict": "act"}', model="test/model", finish_reason="stop"))
+    with pytest.raises(llm.LLMFormatError) as e:
+        llm.judge(_signals(), _customs(), days_margin=5)
+    assert e.value.kind == "bad_format"
+
+
+def test_empty_cut_off_answer_is_truncated(monkeypatch):
+    """본문 없이 잘린 답(content None, finish_reason=length)도 truncated다. 라우터가 재시도하고 3번이면 failed로 끝낸다."""
+    monkeypatch.setattr(llm, "chat", lambda messages, **k: llm.LLMResult(
+        content=None, model="test/model", finish_reason="length"))
+    with pytest.raises(llm.LLMFormatError) as e:
+        llm.judge(_signals(), _customs(), days_margin=5)
+    assert e.value.kind == "truncated"
+
+
+def test_chosen_source_is_limited_to_evidence_sources():
+    """믿은 출처(chosen)는 근거 카드의 출처 이름 중에서만 고르게 한다 (V6).
+    목록이 없을 때 Gemini가 "해수부 입항 예정"을 써서 act가 맞는데도 3번 탈락했다 (09-29 평가 B04·B09)."""
+    chosen = llm.JUDGE_SCHEMA["properties"]["conflicts"]["items"]["properties"]["chosen"]
+    assert sorted(chosen["enum"]) == ["mof", "rule", "searoute", "shipfinder", "unipass"]
+
+
+def test_single_signal_conflict_is_valid():
+    """eta_conflict 하나만으로도 상충이다 (AIS와 해수부가 다름). 전에는 2개 이상을 요구해 형식 오류로 탈락했다 (09-29)."""
+    answer = {**GOOD_ANSWER, "verdict": "act",
+              "conflicts": [{"signals": ["eta_conflict"], "chosen": "mof", "why": "해수부 입항 신고를 믿음"}]}
+    out = llm.JudgeOutput.model_validate(answer)
+    assert out.conflicts[0].signals == ["eta_conflict"]

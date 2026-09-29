@@ -20,6 +20,10 @@ from backend.app.services.evidence import KST, days_margin
 from backend.app.services.rules import rule
 
 BUSAN_PORT_CODE = "KRPUS"
+# dest_changed 값 가운데 "배의 실제 목적지가 아니라 입력 오류일 수 있다"는 뜻인 둘.
+# SKILL.md 판정 표 예외(watch 이유로 세지 않음)와 평가 베이스라인(evals/baseline_rules.py)이 같이 쓴다
+DEST_BROKEN = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
+DEST_EMPTY = "비어 있음"
 EARTH_RADIUS_NM = 3440.065
 
 # 항해상태(navistat) 코드. 1=정박, 5=계류, 0=항해 중(엔진 사용)
@@ -61,6 +65,7 @@ def compute(
     customs: CustomsRecord | None,
     sale_due_date=None,
     now: datetime | None = None,
+    history: list[dict] | None = None,
 ) -> SignalSet:
     """도구 응답과 통관 정보를 받아 신호 7종을 판정한다.
 
@@ -71,6 +76,8 @@ def compute(
         customs: UNI-PASS 정제본
         sale_due_date: 판매 예정일. 신뢰 ETA가 이 날을 넘기면 sales_date_exceeded
         now: 기준 시각. 테스트에서 고정하려고 받는다
+        history: 워커가 6시간마다 모은 같은 배의 위치 이력 [{"at", "lat", "lng", "sog"}]. anchor_wait의
+            정지 지속 시간을 잰다 (09-23 결정 "위치 이력 + 24시간"). 없으면 지속 시간은 unknown
     """
     now = _as_utc(now) or datetime.now(timezone.utc)
     position = position if position and "error" not in position else None
@@ -98,7 +105,13 @@ def compute(
     mof_eta = _as_utc(_parse_dt((schedule or {}).get("planned_arrival")))
     eta_gap_hours = None
     conflict_hours = rule("eta_conflict_hours")
-    if ais_eta and mof_eta:
+    elsewhere = _other_port(position)
+    if ais_eta and mof_eta and elsewhere:
+        # AIS ETA는 AIS 목적지 항구의 도착 시각이다. 목적지가 다른 항구면 부산 예정과 비교하지 않는다.
+        # 전에는 오사카 ETA를 부산 예정과 비교해 "48시간 차이"라는 가짜 충돌을 냈다 (평가셋 B09 판정 방식)
+        signals.append(_signal("eta_conflict", "unknown", f"AIS ETA는 {elsewhere} 도착 시각이라 비교 안 함",
+                               f"{conflict_hours}시간", "shipfinder+mof"))
+    elif ais_eta and mof_eta:
         eta_gap_hours, date_only = _eta_gap(ais_eta, mof_eta)
         state = "triggered" if eta_gap_hours > conflict_hours else "clear"
         value = f"{eta_gap_hours}시간 차이" + (" (해수부는 날짜만 신고)" if date_only else "")
@@ -108,15 +121,13 @@ def compute(
         signals.append(_signal("eta_conflict", "unknown", missing, f"{conflict_hours}시간", "shipfinder+mof"))
 
     # 3. anchor_wait: 부산 인근에서 오래 서 있나
-    signals.append(_anchor_wait(position, last_time, now))
+    signals.append(_anchor_wait(position, last_time, now, history))
 
     # 4. dest_changed: 목적지가 부산이 아니거나 깨졌나
     if position is None:
         signals.append(_signal("dest_changed", "unknown", "위치 없음", BUSAN_PORT_CODE, "shipfinder"))
     else:
-        destcode = (position.get("destcode") or "").strip().upper()
-        state = "clear" if destcode == BUSAN_PORT_CODE else "triggered"
-        signals.append(_signal("dest_changed", state, destcode or "비어 있음", BUSAN_PORT_CODE, "shipfinder"))
+        signals.append(_dest_changed(position))
 
     # 5. navstat_mismatch: 항해상태와 속도가 서로 안 맞나
     signals.append(_navstat_mismatch(position))
@@ -152,10 +163,16 @@ def _calc_eta(distance: dict | None, now: datetime) -> datetime | None:
     return now + timedelta(hours=hours) if hours else None
 
 
-def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetime) -> Signal:
-    """부산 반경 안에서 느린 속도로 서 있는지. 지속 시간은 수집 이력이 있어야 알 수 있다 (D1).
+def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetime,
+                 history: list[dict] | None = None) -> Signal:
+    """부산 반경 안에서 느린 속도로 서 있는지, 서 있다면 얼마나 오래인지 (SDD 5.4, 09-23 결정 "위치 이력 + 24시간").
 
-    지금은 이력이 없어서, 조건에 맞으면 '정지 중'으로만 알리고 지속 시간 판정은 unknown으로 둔다.
+    지금 위치가 멈춤이 아니면 clear. 멈춤이면 위치 이력(워커 6시간 간격)을 최신부터 거슬러 올라가
+    멈춘 점이 이어진 구간의 길이(가장 오래된 멈춘 점 ~ 가장 최근 멈춘 점)를 잰다.
+      - 구간이 anchor_wait_hours 이상 → triggered (평가셋 B08: 30시간)
+      - 그보다 짧고, 그 앞에 움직이던 점이 있다 → clear. 멈추기 시작한 때를 봤다 (평가셋 B04: 18시간, N03)
+      - 그보다 짧고, 이력이 멈춘 채로 시작한다 → unknown. 언제부터 멈췄는지 모른다
+    전에는 이력을 받는 자리가 없어서 멈춰 있으면 늘 unknown이었고, B08(30시간 정박)을 놓쳤다 (09-29 확인).
     """
     speed_limit = rule("anchor_speed_kn")
     wait_hours = rule("anchor_wait_hours")
@@ -170,8 +187,81 @@ def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetim
     if distance_nm > radius or position["sog"] > speed_limit:
         return _signal("anchor_wait", "clear", f"{distance_nm:.1f}해리, {position['sog']}노트", threshold, "shipfinder")
 
-    # 부산 반경 안에서 멈춰 있다. 얼마나 오래인지는 수집 이력(D1)이 있어야 안다
-    return _signal("anchor_wait", "unknown", f"{distance_nm:.1f}해리에서 {position['sog']}노트, 지속 시간 미확인", threshold, "shipfinder")
+    # 부산 반경 안에서 멈춰 있다. 얼마나 오래인지는 위치 이력으로 잰다
+    here = f"{distance_nm:.1f}해리에서 {position['sog']}노트"
+
+    def stopped(point: dict) -> bool | None:
+        """이 점이 부산 반경 안 멈춤인가. 속도가 없으면 None(판단 불가)."""
+        if point.get("sog") is None:
+            return None
+        near = _great_circle_nm((point["lat"], point["lng"]), (ref["lat"], ref["lng"])) <= radius
+        return near and point["sog"] <= speed_limit
+
+    points = sorted(
+        ({**p, "at": _as_utc(_parse_dt(p.get("at")))} for p in (history or [])),
+        key=lambda p: p["at"] or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    points = [p for p in points if p["at"] is not None]
+    # 지금 위치도 한 점으로 넣는다. 이력의 마지막 점보다 새로울 때만 (같은 보고를 두 번 세지 않게)
+    if last_time and (not points or last_time > points[-1]["at"]):
+        points.append({"at": last_time, "lat": position["lat"], "lng": position["lng"], "sog": position["sog"]})
+
+    run: list[dict] = []  # 최신부터 이어진 멈춘 점들
+    saw_moving = False
+    for point in reversed(points):
+        state = stopped(point)
+        if state is None:
+            break  # 속도를 모르는 점에서 멈춘다. 그 앞은 이어졌는지 모른다
+        if not state:
+            saw_moving = True
+            break
+        run.append(point)
+
+    if not run:
+        return _signal("anchor_wait", "unknown", f"{here}, 위치 이력 없음", threshold, "shipfinder")
+    span = _hours_between(run[0]["at"], run[-1]["at"])
+    value = f"{here}, 이력 {len(run)}회 연속 정지 {span:.0f}시간"
+    if span >= wait_hours:
+        return _signal("anchor_wait", "triggered", value, threshold, "shipfinder")
+    if saw_moving:
+        return _signal("anchor_wait", "clear", value, threshold, "shipfinder")
+    return _signal("anchor_wait", "unknown", f"{value}, 지속 시간 미확인", threshold, "shipfinder")
+
+
+def _is_port_code(code: str) -> bool:
+    """UN/LOCODE 모양인가: 나라 2글자 + 항구 3글자(영문 또는 숫자 2~9). 예: KRPUS, JPOSA.
+
+    ShipFinder destcode는 AIS 목적지 글자를 항구 코드로 읽은 값이다. 이 모양이 아니면(비었거나 깨짐)
+    배가 어디로 간다고 말할 근거가 못 된다 (skills/ais-reliability "깨진 목적지").
+    """
+    return len(code) == 5 and code[:2].isalpha() and code[:2].isascii() \
+        and all(ch.isascii() and (ch.isalpha() or ch in "23456789") for ch in code[2:])
+
+
+def _other_port(position: dict | None) -> str | None:
+    """AIS 목적지가 부산이 아닌 '진짜' 다른 항구 코드면 그 코드. 부산이거나 깨졌거나 없으면 None."""
+    code = ((position or {}).get("destcode") or "").strip().upper()
+    return code if _is_port_code(code) and code != BUSAN_PORT_CODE else None
+
+
+def _dest_changed(position: dict) -> Signal:
+    """목적지가 부산이 아니면 triggered. 값에는 '다른 항구'인지 '깨짐'인지를 나눠 적는다.
+
+    둘 다 triggered지만 뜻이 다르다. 다른 항구(예: JPOSA)는 경로 변경 가능성이라 확인이 필요하고,
+    깨진 글자는 선원 입력 오류일 수 있어 다른 근거가 정상이면 근거로 쓰지 않는다 (SKILL.md 오류 사례 표).
+    전에는 둘 다 코드 그대로 또는 "비어 있음"으로만 넘겨 LLM이 구분하지 못했다 (평가셋 B03·B09, 09-29 확인).
+    AIS 목적지 원문은 값에 넣지 않는다. 지시문이 섞일 수 있는 자유 입력이라서다 (SDD 7절, 평가셋 주입 문항).
+    """
+    code = (position.get("destcode") or "").strip().upper()
+    if code == BUSAN_PORT_CODE:
+        return _signal("dest_changed", "clear", code, BUSAN_PORT_CODE, "shipfinder")
+    if _is_port_code(code):
+        value = f"다른 항구 {code}"
+    elif code or (position.get("dest") or "").strip():
+        value = DEST_BROKEN
+    else:
+        value = DEST_EMPTY
+    return _signal("dest_changed", "triggered", value, BUSAN_PORT_CODE, "shipfinder")
 
 
 def _navstat_mismatch(position: dict | None) -> Signal:
@@ -223,13 +313,14 @@ def trusted_eta(position: dict | None, schedule: dict | None) -> datetime | None
 
     해수부 실제 입항(actual_arrival) > 해수부 입항 예정(planned_arrival) > AIS ETA.
     AIS 목적지 문자열은 시각이 아니라서 여기엔 없다. 라우터도 이 함수를 불러 days_margin을 계산한다.
+    AIS 목적지가 다른 항구면 AIS ETA는 그 항구 도착 시각이라 부산 도착으로 쓰지 않는다 (eta_conflict와 같은 이유, 평가셋 B09).
     """
     position = position if position and "error" not in position else None
     schedule = schedule if schedule and "error" not in schedule else None
     for value in (
         (schedule or {}).get("actual_arrival"),
         (schedule or {}).get("planned_arrival"),
-        (position or {}).get("ais_eta"),
+        None if _other_port(position) else (position or {}).get("ais_eta"),
     ):
         found = _as_utc(_parse_dt(value))
         if found:

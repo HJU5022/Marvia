@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging
-from backend.app.routers import agent, history
+from backend.app.routers import agent, document, history
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ app.add_middleware(
 
 app.include_router(agent.router)
 app.include_router(history.router)
+app.include_router(document.router)  # 서류 사진 (docs/specs/document-extract.md)
 
 
 @app.get("/health")

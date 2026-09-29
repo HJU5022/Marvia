@@ -32,21 +32,26 @@ class ResponseCache:
         self._ttl = ttl
         self._store: dict[str, CacheEntry] = {}
 
-    def set(self, key: str, value: Any) -> None:
-        self._store[key] = CacheEntry(value=value, cached_at=datetime.now(timezone.utc))
+    def set(self, key: str, value: Any, cached_at: datetime | None = None) -> None:
+        """cached_at을 안 주면 지금 시각. 평가 실행기는 평가셋에 적힌 담긴 시각을 그대로 넣는다 (F02)."""
+        self._store[key] = CacheEntry(value=value, cached_at=cached_at or datetime.now(timezone.utc))
 
     def get(self, key: str) -> Any | None:
         """TTL 안이면 값을, 지났거나 없으면 None을 돌려준다."""
         entry = self.entry(key)
         return entry.value if entry else None
 
-    def entry(self, key: str) -> CacheEntry | None:
-        """값과 함께 언제 담겼는지도 알아야 할 때 쓴다. 근거 카드에 캐시 시각을 적는다 (SDD 8절)."""
+    def entry(self, key: str, ignore_ttl: bool = False) -> CacheEntry | None:
+        """값과 함께 언제 담겼는지도 알아야 할 때 쓴다. 근거 카드에 캐시 시각을 적는다 (SDD 8절).
+
+        TTL이 지난 값은 None으로 돌려주되 지우지는 않는다. ignore_ttl이면 지난 값도 돌려준다.
+        ShipFinder 시간 초과는 오래된 위치라도 "마지막 수신 위치"로 쓰기로 해서(09-29 결정) 남겨 둬야 한다.
+        같은 키에 새 값이 들어오면 덮이므로 키마다 하나만 남는다.
+        """
         entry = self._store.get(key)
         if entry is None:
             return None
-        if not entry.is_fresh(self._ttl):
-            del self._store[key]
+        if not ignore_ttl and not entry.is_fresh(self._ttl):
             return None
         return entry
 

@@ -5,6 +5,7 @@ B/L은 bl_masked로만 나간다 (SDD 3.5, 7절).
 
 DB가 없거나 꺼져 있으면 빈 목록을 돌려준다. 이력은 부가 기능이라 이것 때문에 화면이 죽으면 안 된다.
 """
+import os
 from datetime import datetime
 from typing import Literal
 
@@ -12,6 +13,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from backend.app.db import connect, recent_queries
+from backend.app.observability.logging import log_failure
 
 router = APIRouter(prefix="/api", tags=["history"])
 
@@ -41,11 +43,16 @@ def get_history(
     limit: int = Query(default=20, ge=1, le=100, description="가져올 개수. 최대 100"),
 ) -> HistoryResponse:
     """이 세션이 지금까지 무엇을 조회했는지 최신순으로 돌려준다."""
+    # DB 미설정·연결 실패. 이력이 없다는 것과 못 읽었다는 것을 available로 구분한다.
+    # 왜 못 읽었는지는 로그에 남긴다 (DB를 일부러 끈 것인지, 고장인지)
+    if not os.environ.get("DATABASE_URL"):
+        log_failure("history_read", "not_configured")
+        return HistoryResponse(items=[], available=False)
     try:
         with connect() as conn:
             rows = recent_queries(conn, session_id, limit)
-    except Exception:
-        # DB 미설정·연결 실패. 이력이 없다는 것과 못 읽었다는 것을 available로 구분한다
+    except Exception as e:
+        log_failure("history_read", type(e).__name__)
         return HistoryResponse(items=[], available=False)
 
     return HistoryResponse(items=[HistoryItem(**row) for row in rows])

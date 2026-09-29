@@ -1,6 +1,6 @@
 """services/llm.py 재시도 테스트 (C-6). 키 없이 돈다: OpenRouter 호출(_call_once)을 가짜로 바꾼다.
 
-확인하는 것: 503·429면 한 번 더 부르고, 400 같은 건 바로 올리고, 두 번 다 실패하면 포기한다.
+확인하는 것: 500·503·429면 한 번 더 부르고, 400 같은 건 바로 올리고, 두 번 다 실패하면 포기한다.
 모델 이름이 vertex/로 시작하면 Vertex AI로, 아니면 OpenRouter로 간다.
 """
 from types import SimpleNamespace
@@ -37,6 +37,14 @@ def test_retries_once_on_overload_then_succeeds(monkeypatch):
     result = llm.chat([{"role": "user", "content": "hi"}])
     assert result.content == "ok"
     assert result.attempts == 2
+    assert len(calls) == 2
+
+
+def test_retries_once_on_500_then_succeeds(monkeypatch):
+    """Vertex는 과부하를 500으로 준다 (09-29 평가 3.8 Flash B09). 503과 같이 한 번 더 부른다."""
+    calls = _fake(monkeypatch, [llm.LLMError("overloaded", code=500), llm.LLMResult(content="ok")])
+    result = llm.chat([{"role": "user", "content": "hi"}])
+    assert result.content == "ok" and result.attempts == 2
     assert len(calls) == 2
 
 
@@ -96,6 +104,7 @@ def _usage(prompt, completion, reasoning):
 
 
 def test_vertex_prefix_goes_to_vertex_without_openrouter_options(monkeypatch):
+    monkeypatch.delenv("VERTEX_THINKING_BUDGET", raising=False)
     fake = _FakeClient()
     monkeypatch.setattr(llm, "_vertex_client", lambda: fake)
     monkeypatch.setattr(llm, "_client", lambda: pytest.fail("OpenRouter로 가면 안 된다"))
@@ -103,6 +112,24 @@ def test_vertex_prefix_goes_to_vertex_without_openrouter_options(monkeypatch):
     assert fake.sent["model"] == "google/gemini-2.5-flash"  # Vertex는 앞머리 없는 이름을 받는다
     assert fake.sent["extra_body"] is None                   # provider 옵션은 OpenRouter 전용
     assert result.content == "ok"
+
+
+def test_vertex_thinking_budget_is_sent_only_when_set(monkeypatch):
+    """VERTEX_THINKING_BUDGET=0이면 생각을 끄는 Google 전용 칸을 붙인다 (09-29 실측: 597 → 0토큰)."""
+    fake = _FakeClient()
+    monkeypatch.setattr(llm, "_vertex_client", lambda: fake)
+    monkeypatch.setenv("VERTEX_THINKING_BUDGET", "0")
+    llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []})
+    assert fake.sent["extra_body"] == {"extra_body": {"google": {"thinking_config": {"thinking_budget": 0}}}}
+
+
+def test_thinking_budget_is_not_sent_to_openrouter(monkeypatch):
+    """OpenRouter 쪽 요청은 이 값과 상관없이 그대로다."""
+    fake = _FakeClient()
+    monkeypatch.setattr(llm, "_client", lambda: fake)
+    monkeypatch.setenv("VERTEX_THINKING_BUDGET", "0")
+    llm._call_once({"model": "openai/gpt-4o-mini", "messages": []})
+    assert fake.sent["extra_body"] == {"provider": {"require_parameters": True}}
 
 
 def test_other_models_still_go_to_openrouter(monkeypatch):
@@ -142,3 +169,31 @@ def test_vertex_without_login_is_llm_error(monkeypatch):
     monkeypatch.setattr(google.auth, "default", no_adc)
     with pytest.raises(llm.LLMError):
         llm.chat([{"role": "user", "content": "hi"}], model="vertex/google/gemini-2.5-flash")
+
+
+@pytest.mark.parametrize("status, kind", [(429, "rate_limited"), (503, "overloaded"), (500, "overloaded"),
+                                          (401, "auth"), (403, "auth"), (400, "bad_request")])
+def test_http_status_maps_to_failure_kind(status, kind):
+    """로그에 남길 LLM 실패 종류. 해결책이 종류마다 달라서 코드 대신 이름으로 나눈다 (09-29)."""
+    assert llm._status_kind(status) == kind
+
+
+def test_missing_model_is_not_configured(monkeypatch):
+    monkeypatch.delenv("MODEL_A", raising=False)
+    with pytest.raises(llm.LLMError) as e:
+        llm.chat([{"role": "user", "content": "hi"}])
+    assert e.value.kind == "not_configured"
+
+
+def test_vertex_answer_without_message_is_empty_not_crash(monkeypatch):
+    """Gemini가 생각 토큰으로 한도를 다 쓰면 message 없이 finish_reason=length만 온다 (09-29 실패 훈련 judge_truncated).
+    전에는 msg.tool_calls에서 AttributeError로 죽어 라우터가 못 잡고 500이 났다. 빈 답으로 받아 truncated로 가게 한다."""
+    fake = _FakeClient()
+    fake.chat.completions.create = lambda **kwargs: SimpleNamespace(
+        choices=[SimpleNamespace(message=None, finish_reason="length")], usage=None,
+        model=kwargs["model"], id="req-1", model_extra={})
+    monkeypatch.setattr(llm, "_vertex_client", lambda: fake)
+
+    result = llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []})
+
+    assert result.content is None and result.tool_calls == [] and result.finish_reason == "length"

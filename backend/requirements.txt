@@ -8,6 +8,9 @@ langfuse>=4,<5         # 필수 조건 4. v4부터 트레이스 쓰는 법(OpenT
 mcp>=1.29,<2          # 필수 조건 5 — FastMCP (2.x는 MCPServer로 API 변경, 강의·SDD 기준 v1 고정)
 httpx>=0.27          # 외부 API 호출 (ShipFinder 등)
 pytest>=8.0          # 단위 테스트
+freezegun>=1.5       # 평가 실행 때만 시계를 평가셋 clock으로 멈춘다 (evals/, 서버는 import 안 함. 09-28 설치본 1.5.5)
 searoute>=1.6        # 부산까지 남은 해상 거리 (B7). 키 불필요
+pycountry>=24.6      # 세관 국적 코드 ↔ ShipFinder 국적 이름 대조 (routers/agent.py). LGPL-2.1, 수정 없이 import만 (README 8절). 09-28 설치본 26.2.16
 # asyncpg>=0.30       # Postgres를 쓴다면
 psycopg[binary]>=3.2  # 수집 워커의 Postgres 저장 (D1). 동기 드라이버라 주기 실행 스크립트에 단순하다
+# 서류 사진 OCR 패키지는 requirements-doc.txt에 따로 둔다. api(app 스테이지)만 쓰고 mcp·worker는 안 쓴다 (09-29 결정 (a))

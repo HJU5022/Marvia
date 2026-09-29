@@ -78,3 +78,25 @@ def test_http_client_request_urls_are_not_logged(capsys):
 
     out = capsys.readouterr().out
     assert "SECRET-KEY-123" not in out and "REALBL0001" not in out
+
+
+def test_failure_line_carries_stage_and_error():
+    """D6 에러 로깅 한 줄이 JSON에 stage·error로 실린다 (Cloud Run 로그에서 필드로 검색)."""
+    record = logging.LogRecord("marvia.failure", logging.WARNING, "x", 1, "failure", None, None)
+    record.request_id = "abc"
+    record.stage = "customs"
+    record.error = "timeout"
+
+    payload = json.loads(JsonFormatter().format(record))
+    assert payload == {"level": "WARNING", "message": "failure", "request_id": "abc",
+                       "stage": "customs", "error": "timeout"}
+
+
+def test_failure_message_is_readable_without_json(caplog):
+    """JSON 핸들러가 없는 터미널(평가 실행기)에서도 무엇이 실패했는지 보인다. 전에는 "failure"만 찍혔다."""
+    from backend.app.observability.logging import log_failure
+
+    with caplog.at_level(logging.WARNING, logger="marvia.failure"):
+        log_failure("customs", "timeout")
+
+    assert caplog.records[-1].getMessage() == "failure stage=customs error=timeout"

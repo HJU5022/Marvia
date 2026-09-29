@@ -158,6 +158,60 @@ def test_llm_hold_asks_forwarder_eta(fake):
     assert body["verdict"] is None
 
 
+def _judge_must_not_run(monkeypatch):
+    """위치가 없으면 LLM을 부르지 않아야 한다. 불리면 테스트를 실패시킨다."""
+    monkeypatch.setattr(agent_router.llm, "judge", lambda *a, **k: pytest.fail("위치 없이 LLM을 불렀다"))
+
+
+def test_position_not_found_holds_and_asks_forwarder_eta(fake, monkeypatch):
+    """배는 찾았는데 위치 관측값이 없으면 LLM 없이 보류하고 포워더 입항 예정일을 묻는다 (09-29 결정, 평가셋 B13)."""
+    fake(candidates=[_candidate(440999001)], judge=JUDGED)  # position 기본값 = not_found
+    _judge_must_not_run(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"], body["vessel_match"]) == ("insufficient", None, "confirmed")
+    assert body["missing_inputs"] == ["forwarder_eta"]
+    assert body["days_margin"] is None  # 해수부 예정만으로 센 여유 일수를 내지 않는다
+    assert body["answer"] == agent_router.POSITION_MISSING
+
+
+def test_position_not_found_after_forwarder_eta_is_partial(fake, monkeypatch):
+    """포워더 입항 예정일을 이미 받았으면 더 물을 게 없어 partial (V5)."""
+    fake(candidates=[_candidate(440999001)], judge=JUDGED)
+    _judge_must_not_run(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(forwarder_eta="2026-10-01")).json()
+
+    assert (body["status"], body["verdict"]) == ("partial", None)
+    assert body["missing_inputs"] == []
+
+
+def test_position_tool_failure_is_partial_without_asking(fake, monkeypatch):
+    """권한 없음 같은 도구 고장은 우리 쪽 문제라 되묻지 않고 partial, 판정 보류 (09-29 결정, 평가셋 F04)."""
+    fake(candidates=[_candidate(440999001)], position={"error": {"code": "no_permission"}}, judge=JUDGED)
+    _judge_must_not_run(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"], body["days_margin"]) == ("partial", None, None)
+    assert body["missing_inputs"] == []
+    assert body["answer"] == agent_router.POSITION_TOOL_FAILED
+
+
+def test_cached_position_is_judged_but_partial(fake):
+    """실시간 조회가 실패해 캐시 위치로 판정했으면 판정은 두고 status만 partial (09-29 결정, 평가셋 F02)."""
+    fake(candidates=[_candidate(440999001)], position={**POSITION, "cached_at": NOW.isoformat()}, judge=JUDGED)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"], body["decided_by"]) == ("partial", "watch", "llm")
+
+
 def test_multiple_candidates_ask_back(fake):
     """동명 선박인데 LLM이 못 고르면(여기선 실패) 확정하지 않고 되묻는다 (PRD 6.2)."""
     fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")])
@@ -249,6 +303,41 @@ def test_non_busan_port_is_unsupported(fake, monkeypatch):
     assert body["verdict"] is None and body["missing_inputs"] == []
 
 
+def test_released_cargo_is_fine_by_rule_without_vessel(fake, monkeypatch):
+    """반출신고까지 끝난 화물은 배를 찾지 않고 LLM도 부르지 않고 규칙으로 fine (09-28 결정).
+    배를 찾으면 같은 배의 다음 항차로 여유 일수를 계산해 엉뚱한 act가 나왔다 (09-28 실제 B/L)."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", discharge_port="KRPUS", stage_name="반출신고",
+                               shed_name="모의 CY", bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], judge=JUDGED)
+
+    def must_not_call(*a, **k):
+        raise AssertionError("반출된 화물인데 배 검색이나 LLM을 불렀다")
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", must_not_call)
+    monkeypatch.setattr(agent_router.llm, "judge", must_not_call)
+
+    with TestClient(app) as client:
+        # 판매 예정일이 지났어도 fine. 반출 뒤 배송은 PRD 4절 범위 밖이다
+        body = client.post("/api/agent", json=_request(sale_due_date="2026-09-01")).json()
+
+    assert body["status"] == "ok" and body["verdict"] == "fine" and body["decided_by"] == "rule"
+    assert body["position"] is None and body["eta"] is None and body["days_margin"] is None
+    assert body["customs"]["stage_name"] == "반출신고" and body["customs"]["next_stage"] is None
+    assert body["berth"]["shed"] == "모의 CY"
+    assert any(e["field"] == "stage_name" and e["value"] == "반출신고" for e in body["evidence"])
+
+
+def test_not_yet_released_cargo_still_tracks_vessel(fake):
+    """반출 전 단계(수입신고수리)는 지금까지처럼 배를 찾는다. 건너뛰기는 반출신고부터만 (09-28 결정)."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", stage_name="수입신고수리",
+                               bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], position=POSITION)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["vessel_match"] == "confirmed"
+
+
 @pytest.mark.parametrize("port", ["KRPUS", None])
 def test_busan_or_unknown_port_goes_on(fake, port):
     """부산이면 진행한다. 양륙항 칸이 비어 있어도 범위 밖으로 단정하지 않고 진행한다."""
@@ -289,17 +378,58 @@ def test_mrn_call_sign_confirms_without_llm(fake, monkeypatch):
 
 
 def test_mrn_call_sign_without_live_vessel_falls_back_to_name(fake, monkeypatch):
-    """호출부호로 최근 배를 못 찾으면 지금까지처럼 이름으로 찾는다."""
+    """호출부호로 최근 배를 못 찾으면 이름으로 찾는다. 이름 후보의 호출부호를 모르면 어긋난다는 근거가 없어 확정한다."""
     fake(position=POSITION)
     calls = []
     monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
-    monkeypatch.setattr(agent_router, "get_vessel_candidates", _search_by([], [_candidate(440999001)], calls))
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", _search_by([], [_candidate(440999001, call_sign="")], calls))
 
     with TestClient(app) as client:
         body = client.post("/api/agent", json=_request()).json()
 
     assert [c.get("call_sign") for c in calls] == ["TST09", None]
     assert body["vessel_match"] == "confirmed" and body["vessel_candidates"][0]["mmsi"] == 440999001
+
+
+def test_name_candidate_with_other_call_sign_than_mrn_asks_back(fake, monkeypatch):
+    """MRN 호출부호는 TST09인데 이름으로 찾은 1척은 TST01이면 남의 배다. 확정하지 않고 되묻는다 (09-28 결정, 평가 B07)."""
+    fake(position=POSITION)
+    calls = []
+    monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", _search_by([], [_candidate(440999001, call_sign="TST01")], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
+    assert body["verdict"] is None and body["missing_inputs"] == ["voyage_no", "forwarder_eta"]
+    assert [c["mmsi"] for c in body["vessel_candidates"]] == [440999001]  # 후보는 보여 주고 사용자가 고른다
+
+
+def test_single_candidate_with_other_nationality_asks_back(fake, monkeypatch):
+    """세관은 한국 배(KR)인데 이름으로 찾은 1척이 파나마 배면 확정하지 않고 되묻는다 (09-28 결정, 평가 B14)."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", ship_nat="KR", bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[_candidate(440999001)], position=POSITION)  # _candidate의 flag는 Panama
+    searched = []
+    real = agent_router.get_vessel_candidates
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", lambda **k: (searched.append(k), real(**k))[1])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
+    assert "nationality" not in searched[0]  # 도구 필터로 말없이 빼지 않고 후보를 보여 준다
+
+
+def test_nationality_code_matches_english_flag_name(fake):
+    """세관 코드 KR과 ShipFinder 이름 "Korea, Republic of"는 같은 나라로 보고 확정한다."""
+    fake(customs=CustomsRecord(ship_name="TEST STAR", ship_nat="KR", bl_masked="TEST****0001", fetched_at=NOW),
+         candidates=[{**_candidate(440999001), "flag": "Korea, Republic of"}], position=POSITION)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["vessel_match"] == "confirmed"
 
 
 def test_resolved_mmsi_uses_mrn_call_sign_for_schedule(fake, monkeypatch):
@@ -365,6 +495,44 @@ def test_three_violations_end_in_failed_with_evidence(fake, monkeypatch):
     assert len(calls) == 3 and "JSON only" in calls[2]  # 3번째는 강화 문구 (SDD 5.7 2차 재시도)
     assert body["status"] == "failed" and body["verdict"] is None
     assert body["evidence"] and body["answer"] == agent_router.VALIDATION_FAILED
+
+
+def _broken_then(answers: list, calls: list):
+    """answers 차례대로: "broken"이면 형식 오류(LLMFormatError), dict면 그 판정. 받은 feedback을 calls에 남긴다."""
+    def judge(signal_set, customs, margin, feedback=None, **kwargs):
+        calls.append(feedback)
+        answer = answers[min(len(calls), len(answers)) - 1]
+        if answer == "broken":
+            raise llm.LLMFormatError("테스트: 모양 틀림", "Your answer did not match the JSON format. verdict: Field required")
+        return llm.LLMAnswer(output=llm.JudgeOutput.model_validate(answer),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+    return judge
+
+
+def test_broken_format_is_retried_like_a_violation(fake, monkeypatch):
+    """형식이 깨진 답도 무엇이 틀렸는지 붙여 다시 묻는다. 전에는 바로 partial이었다 (09-28 결정, 평가 B09)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    calls = []
+    monkeypatch.setattr(agent_router.llm, "judge", _broken_then(["broken", JUDGED], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert calls[0] is None and "JSON format" in calls[1]
+    assert body["status"] == "ok" and body["answer"] == JUDGED["answer"]
+
+
+def test_three_broken_formats_end_in_failed(fake, monkeypatch):
+    """세 번 다 형식이 깨지면 failed (SDD 5.7, 평가셋 F08). 호출 실패(LLMError)만 partial이다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    calls = []
+    monkeypatch.setattr(agent_router.llm, "judge", _broken_then(["broken"], calls))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert len(calls) == 3 and "JSON only" in calls[2]
+    assert body["status"] == "failed" and body["answer"] == agent_router.VALIDATION_FAILED
 
 
 def test_llm_pick_outside_candidates_is_not_confirmed(fake):
@@ -476,7 +644,8 @@ def _fake_follow(monkeypatch, answer: dict | None):
 def test_follow_up_uses_saved_result(fake, monkeypatch):
     """세션에 저장된 지난 결과가 있으면 다시 조회하지 않고 그 결과 안에서 답한다 (09-27 결정)."""
     fake(judge=JUDGED)
-    saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", answer="지난 답")
+    # 답의 "5"가 V7을 통과하도록 지난 결과에 여유 일수 5를 둔다 (후속 답도 V7 검증, 09-29)
+    saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", days_margin=5, answer="지난 답")
     monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
     monkeypatch.setattr(agent_router, "_assess", lambda request: pytest.fail("저장된 결과가 있으면 다시 조회하면 안 된다"))
     calls = _fake_follow(monkeypatch, {"in_scope": True, "answer": "여유는 5일입니다."})
@@ -486,6 +655,48 @@ def test_follow_up_uses_saved_result(fake, monkeypatch):
 
     assert body["answer"] == "여유는 5일입니다." and body["verdict"] == "watch"  # 판정은 지난 결과 그대로
     assert calls[0]["previous"].answer == "지난 답"
+
+
+def _follow_sequence(monkeypatch, answers: list[str]):
+    """후속 답을 차례로 돌려주는 가짜. 받은 feedback도 기록한다."""
+    calls = []
+
+    def follow(question, response, feedback=None, **kwargs):
+        calls.append(feedback)
+        text = answers[min(len(calls), len(answers)) - 1]
+        return llm.LLMAnswer(output=llm.FollowUpOutput.model_validate({"in_scope": True, "answer": text}),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+
+    monkeypatch.setattr(agent_router.llm, "answer_follow_up", follow)
+    return calls
+
+
+def test_follow_up_with_stray_number_is_retried(fake, monkeypatch):
+    """후속 답에 근거 없는 숫자가 있으면 V7 내용을 붙여 다시 묻는다 (09-29, 평가 F06 "9월 23일")."""
+    fake(judge=JUDGED)
+    saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", days_margin=-1, answer="지난 답")
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    calls = _follow_sequence(monkeypatch, ["판매 예정일인 9월 23일보다 늦습니다.", "판매 예정일보다 1일 늦게 도착합니다."])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(follow_up_question="언제 와?")).json()
+
+    assert body["answer"] == "판매 예정일보다 1일 늦게 도착합니다."
+    assert calls[0] is None and "V7" in calls[1]  # 두 번째 물을 때 어긴 내용을 붙인다
+
+
+def test_follow_up_gives_up_after_three_violations(fake, monkeypatch):
+    """세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정은 그대로."""
+    fake(judge=JUDGED)
+    saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", answer="지난 답")
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    calls = _follow_sequence(monkeypatch, ["9월 23일입니다."])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(follow_up_question="언제 와?")).json()
+
+    assert len(calls) == agent_router.JUDGE_ATTEMPTS
+    assert body["answer"] == agent_router.FOLLOW_UP_FAILED and body["verdict"] == "act"
 
 
 def test_follow_up_without_saved_result_assesses_again(fake, monkeypatch):
@@ -511,3 +722,86 @@ def test_follow_up_llm_failure_keeps_result(fake, monkeypatch):
         body = client.post("/api/agent", json=_request(follow_up_question="여유 며칠이야?")).json()
 
     assert body["answer"] == agent_router.FOLLOW_UP_FAILED and body["verdict"] == "watch"
+
+
+# ── D6 에러 로깅: 실패를 응답으로 바꿀 때 어디서 무엇이 실패했는지 로그 한 줄 ──
+
+def _failures(caplog) -> list[tuple[str, str]]:
+    return [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
+
+
+def test_tool_failure_is_logged_with_stage_and_code(fake, monkeypatch, caplog):
+    """응답은 partial(HTTP 200)이라 요청 로그만으로는 원인을 모른다. 도구 이름과 오류 코드를 남긴다."""
+    fake(judge=JUDGED)
+    monkeypatch.setattr(agent_router, "get_vessel_candidates",
+                        lambda **k: {"error": {"code": "timeout", "message": "key=SECRET", "retryable": True}})
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            client.post("/api/agent", json=_request())
+
+    assert ("vessel_candidates", "timeout") in _failures(caplog)
+    # 도구 message(외부 주소·키가 섞일 수 있음)와 B/L 원번호는 로그에 없다
+    assert not any("SECRET" in r.getMessage() or "TESTMBL0000001" in str(r.__dict__) for r in caplog.records)
+
+
+def test_judge_violations_and_give_up_are_logged(fake, monkeypatch, caplog):
+    """위반 재시도마다 규칙 번호를, 세 번 다 위반이면 포기를 남긴다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    bad = {**JUDGED, "answer": "10월 3일에 들어옵니다."}
+    monkeypatch.setattr(agent_router.llm, "judge", _judge_sequence([bad], []))
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            client.post("/api/agent", json=_request())
+
+    failures = _failures(caplog)
+    assert [stage for stage, _ in failures].count("validate") == 3
+    assert ("judge", "gave up after 3 attempts") in failures
+
+
+def test_llm_call_failure_is_logged_without_message(fake, monkeypatch, caplog):
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+
+    def fail(*a, **k):
+        raise llm.LLMError("provider said: 비밀 문장", code=503, kind="overloaded")
+    monkeypatch.setattr(agent_router.llm, "judge", fail)
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            client.post("/api/agent", json=_request())
+
+    assert ("judge", "overloaded 503") in _failures(caplog)
+    assert not any("비밀 문장" in str(r.__dict__) for r in caplog.records if r.name == "marvia.failure")
+
+
+def test_db_turned_off_is_logged_apart_from_db_errors(monkeypatch, caplog):
+    """DB를 일부러 끈 경우(평가 실행기·채점 환경)는 not_configured, 연결 실패는 예외 이름. 둘을 구분한다.
+    fake 픽스처는 _logged를 바꿔 끼우므로 여기서는 _logged를 직접 부른다."""
+    from backend.app.schemas.agent import AgentRequest
+
+    request, response = AgentRequest(**_request()), agent_router._response()
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        assert agent_router._logged(request, response) is response  # 저장 못 해도 응답은 그대로 나간다
+    assert _failures(caplog) == [("db_write", "not_configured")]
+
+    caplog.clear()
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test")
+
+    def broken():
+        raise ConnectionError("테스트")
+    monkeypatch.setattr(agent_router, "connect", broken)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        agent_router._logged(request, response)
+    assert _failures(caplog) == [("db_write", "ConnectionError")]
+
+
+def test_history_read_failure_is_logged(monkeypatch, caplog):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        with TestClient(app) as client:
+            body = client.get("/api/history", params={"session_id": "sess-1"}).json()
+    assert body["available"] is False
+    assert ("history_read", "not_configured") in _failures(caplog)

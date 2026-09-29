@@ -17,14 +17,13 @@ LLM 호출 트레이스도 여기서 남긴다 (SDD 5.11). 아래 "트레이스"
 """
 from __future__ import annotations
 
-import logging
 import os
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from backend.app.observability.logging import current_request_id
+from backend.app.observability.logging import current_request_id, log_failure
 
 if TYPE_CHECKING:  # 타입 표시에만 쓴다. 실제로 import하면 llm.py와 서로 import하게 된다
     from backend.app.services.llm import LLMResult
@@ -32,7 +31,6 @@ if TYPE_CHECKING:  # 타입 표시에만 쓴다. 실제로 import하면 llm.py�
 PROMPT_DIR = Path(__file__).resolve().parents[1] / "prompts"
 LOCAL_VERSION = "local"
 
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,7 +51,8 @@ def get_prompt(name: str, label: str = "production") -> Prompt:
             remote = Langfuse().get_prompt(name, label=label)
             return Prompt(name=name, text=remote.prompt, version=str(remote.version), source=remote)
         except Exception as e:  # 미설치·연결 실패·미등록 모두 같은 처리: 로컬 파일
-            logger.warning("langfuse 프롬프트 %s 가져오기 실패(%s), 로컬 파일을 씁니다", name, type(e).__name__)
+            # 레포 파일로 대신한다. 버전이 local로 찍히므로 Langfuse 버전과 다를 수 있다
+            log_failure("langfuse_prompt", f"{type(e).__name__} fallback=local_file")
 
     path = PROMPT_DIR / f"{name}.md"
     return Prompt(name=name, text=path.read_text(encoding="utf-8"), version=LOCAL_VERSION)
@@ -111,7 +110,7 @@ def start_generation(name: str, input: Any, prompt: Any = None) -> Any:
             trace_context=trace_context, metadata={"request_id": request_id or None}, **extra,
         )
     except Exception as e:  # 미설치·설정 오류 모두 같은 처리: 트레이스 없이 진행
-        logger.warning("langfuse 트레이스 시작 실패(%s), 트레이스 없이 진행합니다", type(e).__name__)
+        log_failure("langfuse_trace_start", f"{type(e).__name__} no_trace")
         return None
 
 
@@ -144,4 +143,4 @@ def end_generation(generation: Any, result: LLMResult | None, prompt_version: st
         generation.update(**fields)
         generation.end()
     except Exception as e:
-        logger.warning("langfuse 트레이스 기록 실패(%s)", type(e).__name__)
+        log_failure("langfuse_trace_end", type(e).__name__)
