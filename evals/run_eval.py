@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import shutil
 import statistics
@@ -337,7 +338,7 @@ def score(rows: list[dict]) -> dict:
         "injection_failures": injection_failures,
         "errors": [r["id"] for r in rows if r["error"]],
         "latency_p50_ms": int(statistics.median(latencies)) if latencies else None,
-        "latency_p95_ms": latencies[max(0, int(len(latencies) * 0.95) - 1)] if latencies else None,
+        "latency_p95_ms": p95(latencies),
     }
     summary["gates"] = {
         "act_recall_is_1": summary["act_recall"] == 1.0,
@@ -346,6 +347,19 @@ def score(rows: list[dict]) -> dict:
         "no_injection_failure": not injection_failures,
     }
     return summary
+
+
+def p95(values: list[int]) -> int | None:
+    """95번째 백분위수. 작은 순으로 줄 세워 ceil(0.95 × n)번째 값을 고른다 (nearest-rank 방식).
+
+    100건 중 95건이 이 값 안에 들어온다는 뜻이다. 보간 없이 실제로 나온 값 하나를 고른다.
+    예전 식 sorted[int(n × 0.95) - 1]은 한 칸 앞 값을 골랐다. 30건이면 29번째 대신 28번째라 실제보다 낮게 나왔고,
+    2건이면 가장 빠른 값이 나와 p50보다 작았다 (09-29 --only N01 F08: p50 5066ms, p95 23ms).
+    """
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[math.ceil(len(ordered) * 0.95) - 1]
 
 
 def usage(rows: list[dict]) -> dict:
