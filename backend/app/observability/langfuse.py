@@ -144,3 +144,20 @@ def end_generation(generation: Any, result: LLMResult | None, prompt_version: st
         generation.end()
     except Exception as e:
         log_failure("langfuse_trace_end", type(e).__name__)
+
+
+def flush() -> None:
+    """모아 둔 트레이스를 지금 Langfuse로 보낸다. 서버가 꺼질 때 main.py lifespan이 부른다.
+
+    Langfuse SDK는 트레이스를 모았다가 뒤에서 보낸다. 보내기 전에 서버가 꺼지면 그 트레이스는 사라진다
+    (09-29 데모: 서류 사진 두 번째 요청 직후 서버를 끄자 그 트레이스가 Langfuse에 없었다).
+    Cloud Run은 요청이 없으면 인스턴스를 끄므로 배포에서 더 자주 생긴다. 실패해도 종료는 막지 않는다.
+    """
+    if not _keys_set():
+        return
+    try:
+        from langfuse import get_client
+
+        get_client().flush()
+    except Exception as e:
+        log_failure("langfuse_flush", type(e).__name__)

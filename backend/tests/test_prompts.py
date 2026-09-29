@@ -32,3 +32,24 @@ def test_langfuse_fallback_is_logged(monkeypatch, caplog):
 
     logged = [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
     assert logged == [("langfuse_prompt", "ModuleNotFoundError fallback=local_file")]
+
+
+def test_flush_without_keys_does_nothing(monkeypatch):
+    """키가 없으면 아무것도 안 한다. 서버 종료를 막지 않는다."""
+    from backend.app.observability.langfuse import flush
+
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    flush()
+
+
+def test_flush_failure_is_logged_not_raised(monkeypatch, caplog):
+    """Langfuse가 안 되면 종료를 막지 않고 로그만 남긴다."""
+    from backend.app.observability.langfuse import flush
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.setitem(sys.modules, "langfuse", None)
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        flush()
+    assert [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"] == [("langfuse_flush", "ModuleNotFoundError")]

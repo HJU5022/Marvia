@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.db import apply_migrations, connect
+from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging
 from backend.app.routers import agent, document, history
 
@@ -41,6 +42,8 @@ def _migrate() -> None:
 async def lifespan(app: FastAPI):
     _migrate()
     yield
+    # 꺼질 때 남은 트레이스를 보낸다. 안 하면 마지막 요청들의 트레이스가 사라진다 (observability/langfuse.flush)
+    langfuse_flush()
 
 
 app = FastAPI(title="Marvia API", lifespan=lifespan)
