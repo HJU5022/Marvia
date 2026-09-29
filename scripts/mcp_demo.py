@@ -4,7 +4,7 @@
 화면 캡처를 염두에 두고 한 단계씩 제목을 붙여 출력한다.
 
     python -m scripts.mcp_demo --ship-name <선명> --mmsi <MMSI> --call-sign <호출부호>
-    python -m scripts.mcp_demo --url http://localhost:8001/mcp --token <MCP_TOKEN> --ship-name ... --mmsi ... --call-sign ...
+    python -m scripts.mcp_demo --url http://localhost:8000/mcp --token <MCP_TOKEN> --ship-name ... --mmsi ... --call-sign ...
 
 토큰을 생략하면 환경변수 MCP_TOKEN을 쓴다. 서버에 토큰이 걸려 있는데 안 주면 401이 난다.
 시연 선박은 실행할 때 인자로 준다. 실제 선명·MMSI·호출부호를 레포에 두지 않기 위해서다
@@ -60,7 +60,7 @@ async def run(url: str, token: str | None, ship_name: str, mmsi: int, call_sign:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MCP 도구 시연")
-    parser.add_argument("--url", default="http://localhost:8001/mcp")
+    parser.add_argument("--url", default="http://localhost:8000/mcp")
     parser.add_argument("--token", default=os.environ.get("MCP_TOKEN"))
     parser.add_argument("--ship-name", required=True, help="get_vessel_candidates에 넣을 선명")
     parser.add_argument("--mmsi", type=int, required=True, help="후보가 없을 때 get_live_position에 쓸 MMSI")

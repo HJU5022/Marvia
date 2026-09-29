@@ -237,22 +237,26 @@ python -c "import secrets; print(secrets.token_urlsafe(24))"
 
 ```bash
 python -m venv .venv && .venv/Scripts/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt
-.venv/Scripts/python -m uvicorn backend.app.main:app --port 8000     # API
-.venv/Scripts/python -m mcp_server.server --port 8001                # MCP 서버
+.venv/Scripts/python -m uvicorn backend.app.main:app --port 8000     # API + MCP(/mcp)
 ```
 
 ### MCP 서버 확인
 
+MCP 서버는 API 서버 안의 `/mcp` 경로다. 서버 하나, 배포 주소 하나로 `/api/agent`(화면용)와 `/mcp`(MCP 클라이언트용)가 같이 열린다.
+`MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401이다. 배포에서는 반드시 채운다.
+
 ```bash
-python -m scripts.mcp_check http://localhost:8001/mcp   # 연결과 도구 4종 목록
+python -m scripts.mcp_check http://localhost:8000/mcp   # 연결과 도구 4종 목록
 python -m scripts.mcp_demo                              # 도구 4종 실제 호출
 python -m scripts.mcp_auth_check                        # 토큰 없으면 401
 ```
 
+우리 서비스(`/api/agent`)는 `/mcp`를 거치지 않고 같은 도구 함수를 직접 부른다. 결과가 같고 HTTP 왕복만 늘어서다. `/mcp`는 Claude Desktop 같은 외부 MCP 클라이언트용 창구다.
+
 ### 테스트
 
 ```bash
-pytest          # 398건 (09-29). 외부 API 키 없이 돈다 (가공 응답으로 대체)
+pytest          # 402건 (09-29). 외부 API 키 없이 돈다 (가공 응답으로 대체)
 ```
 
 ### 아직 안 되는 것

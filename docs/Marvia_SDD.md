@@ -88,7 +88,7 @@ flowchart LR
   A --> L["services/llm: LLM 단일 진입점"]
   SK["skills/*.md"] -.->|"시스템 프롬프트"| L
   L <--> OR["OpenRouter: 모델 A / B / judge"]
-  L -->|"tool call"| M["mcp: FastMCP /mcp 토큰 인증"]
+  A -->|"도구 함수 직접 호출"| M["mcp_server/tools: 도구 4종 (같은 함수를 /mcp로도 공개, 토큰 인증)"]
   M --> SF["ShipFinder API"]
   M --> MOF["해수부 공공데이터"]
   M --> SR["searoute"]
@@ -117,12 +117,11 @@ flowchart LR
 | 실행 위치 | 구성 요소 | 포트/주기 | 통신 대상 |
 | --- | --- | --- | --- |
 | Vercel | frontend (Next.js) | HTTPS | app |
-| GCP Cloud Run 서비스 1 | app (FastAPI) | 8000 | UNI-PASS, mcp, OpenRouter, Langfuse, DB |
-| GCP Cloud Run 서비스 2 | mcp (FastMCP) | 8001, 토큰 인증 | ShipFinder, 해수부, DB |
+| GCP Cloud Run 서비스 | app (FastAPI + `/mcp`) | 8000. `/mcp`는 같은 서비스의 경로, 토큰 인증 | UNI-PASS, ShipFinder, 해수부, OpenRouter, Langfuse, DB |
 | GCP Cloud Run Job | worker (collector, arrivals) | Scheduler 3시간 | ShipFinder, 해수부, DB |
-| 관리형 DB | Postgres (Cloud SQL 또는 Supabase, 10/8 전 결정) | 5432 | app, mcp, worker |
+| 관리형 DB | Postgres (Cloud SQL 또는 Supabase, 10/8 전 결정) | 5432 | app, worker |
 | 외부 SaaS | OpenRouter, Langfuse Cloud | HTTPS | app |
-| 외부 API | ShipFinder, 해수부 공공데이터, UNI-PASS | HTTPS | mcp, worker, app |
+| 외부 API | ShipFinder, 해수부 공공데이터, UNI-PASS | HTTPS | app, worker |
 
 ```mermaid
 flowchart TB
@@ -130,8 +129,7 @@ flowchart TB
     W["frontend"]
   end
   subgraph gcp["GCP Cloud Run"]
-    A["app 서비스 :8000"]
-    M["mcp 서비스 :8001"]
+    A["app 서비스 :8000 (/api/agent, /health, /mcp)"]
     J["worker Job, 3시간 주기"]
   end
   subgraph db["관리형 DB"]
@@ -145,16 +143,14 @@ flowchart TB
     UP["UNI-PASS"]
   end
   W --> A
-  A --> M
   A --> UP
   A --> OR
   A --> LF
-  M --> SF
-  M --> MOF
+  A --> SF
+  A --> MOF
   J --> SF
   J --> MOF
   A --> DB
-  M --> DB
   J --> DB
 ```
 
@@ -512,7 +508,7 @@ sequenceDiagram
 
 - 버전은 Langfuse가 자동으로 매긴다. 코드는 label `production`만 부른다. 프롬프트 실험(D10)은 새 버전을 `staging`에 붙여 평가한 뒤 `production`으로 옮긴다. 모델 A/B 비교는 label이 아니라 아래 `model` 인자로 한다. 한 번에 하나만 바꾼다 (PRD 8절).
 - 시스템 프롬프트 = Langfuse prompt + skills/*.md 전문 (통째로).
-- 도구 호출: MCP 클라이언트로 `/mcp` 호출. LLM이 도구를 고르면 실행하고 결과를 messages에 붙여 재호출. 최대 6회.
+- 도구 호출: 코드가 순서대로 도구 함수를 부르고 결과를 자료로 넘긴다. LLM이 도구를 고르지 않는다 (4절 흐름, 09-29 확인. `/mcp`는 외부 공개용, 5.9).
 - 모델은 `MODEL_A` 기본, 인자로 교체 가능(평가용). 레이트 리밋 시 `MODEL_B`로 1회 라우팅.
 - 응답은 구조화 출력(JSON schema = AgentResponse 부분집합)으로 받는다.
 - 완료 기준: 모의 도구로 judge 1회 왕복, 트레이스에 prompt 버전·모델·토큰 표시.
@@ -540,6 +536,9 @@ sequenceDiagram
 ### 5.9 mcp_server/
 
 - FastMCP, Streamable HTTP, 경로 `/mcp`. 헤더 `Authorization: Bearer MCP_TOKEN` 없으면 401.
+- app(FastAPI)의 `/mcp` 경로로 붙인다. 서버·Cloud Run 서비스는 하나다 (09-29 결정, 가이드 v4 배포 구조 그림 "FastAPI ├─ /mcp"). `python -m mcp_server.server`로 따로 띄우는 길은 로컬 확인용으로 남긴다.
+- 서비스(routers/agent.py)는 `/mcp`를 거치지 않고 같은 도구 함수를 직접 부른다. 결과가 같고 HTTP 왕복만 늘기 때문이다. `/mcp`는 외부 MCP 클라이언트(Claude Desktop 등)용 공개 창구다 (09-29 결정. 가이드 필수 5는 "MCP 서버 구현 + 연결해서 도구가 불리는 증거").
+- MCP_TOKEN이 있으면 FastMCP의 localhost 전용 Host 검사(DNS 리바인딩 방지)를 끄고 토큰이 막는다. Cloud Run 주소는 미리 알 수 없어서다. 토큰이 없으면 localhost만 받는다.
 - 도구 4개(3.4). 각 tool description은 "언제 쓰는가" 한 문장 + 입력 설명.
 - 완료 기준: Claude Desktop 또는 langchain-mcp-adapters로 tool 목록 조회와 호출 1회 스크린샷.
 
@@ -631,7 +630,7 @@ FROM base AS worker  CMD python -m worker.run
 
 ### 6.4 Cloud Run
 
-- app과 mcp를 각각 서비스로 배포 (`gcloud run deploy` 2회). worker는 Cloud Run Job 또는 Cloud Scheduler + Job, 3시간 주기.
+- app 하나를 서비스로 배포한다 (`gcloud run deploy` 1회, `/mcp` 포함, 09-29 결정). worker는 Cloud Run Job 또는 Cloud Scheduler + Job, 3시간 주기.
 - 환경변수는 Cloud Run 콘솔 또는 Secret Manager. 레포에는 `.env.example`만.
 - postgres는 개발은 compose, 배포는 Cloud SQL 또는 Supabase 중 하나. 10/8 전에 결정 (가이드 4-2 선택 스택).
 - CORS: `ALLOWED_ORIGINS`에 Vercel 도메인만.

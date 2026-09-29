@@ -702,6 +702,8 @@ def test_history_reads_session_rows(monkeypatch):
         def __exit__(self, *a):
             return False
 
+    # DB가 설정된 것처럼 둔다. 전에는 mcp_server/server.py가 import 때 .env를 읽어 진짜 DATABASE_URL로 통과했다 (09-29 발견)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
     monkeypatch.setattr(history_router, "connect", lambda *a, **k: FakeConn())
     monkeypatch.setattr(history_router, "recent_queries", lambda conn, session_id, limit: rows if session_id == "sess-1" else [])
 
