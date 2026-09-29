@@ -23,6 +23,7 @@
   "vertex/"로 시작   Vertex AI (GCP 크레딧). 예: MODEL_A=vertex/google/gemini-2.5-flash
                      키 대신 `gcloud auth application-default login` 로그인 정보(ADC)를 쓴다.
                      Cloud Run에서는 서비스 계정에 Vertex AI 사용자 권한이 있어야 한다
+                     VERTEX_THINKING_BUDGET=0이면 Gemini가 생각 없이 바로 답한다. 비우면 모델 기본값 (_vertex_thinking)
   그 밖             OpenRouter. 예: MODEL_A=openai/gpt-4o-mini
   개발 중엔 크레딧(vertex/)으로 돌리고, 최종 테스트 때 .env 한 줄만 되돌리려고 두 길을 같이 둔다.
 """
@@ -163,6 +164,21 @@ def _vertex_client() -> OpenAI:
                   timeout=TIMEOUT_SEC, max_retries=0)
 
 
+def _vertex_thinking() -> dict | None:
+    """VERTEX_THINKING_BUDGET이 있으면 Gemini의 생각(thinking) 토큰 상한을 요청에 붙인다. 없으면 None(모델 기본값).
+
+    09-29 평가: Gemini 2.5 Flash는 답 전에 호출당 평균 1,863토큰을 생각에 써서 정상 질문 평균 10.1초였다
+    (gpt-4o-mini 3.3초). 0이면 생각을 끈다. 실측 1회: 생각 597 → 0토큰, 5.3초 → 1.1초.
+    OpenAI 형식의 reasoning_effort="none"은 Vertex가 400으로 거부해서(high·low·max·medium·minimal만 받음)
+    Google 전용 칸 thinking_config를 쓴다. 이 SDK 호출에서는 extra_body 안에 한 겹 더 extra_body로 넣어야
+    Vertex에 전달된다 (Vertex AI "OpenAI 라이브러리 사용" 문서 형식, 09-29 실측으로 확인).
+    """
+    budget = os.environ.get("VERTEX_THINKING_BUDGET")
+    if budget is None or budget == "":
+        return None
+    return {"extra_body": {"google": {"thinking_config": {"thinking_budget": int(budget)}}}}
+
+
 def _call_once(kwargs: dict) -> LLMResult:
     """OpenRouter 또는 Vertex AI를 딱 한 번 부른다. 실패는 전부 LLMError로 바꿔서 올린다."""
     model = kwargs["model"]
@@ -171,7 +187,7 @@ def _call_once(kwargs: dict) -> LLMResult:
         client = _vertex_client()
         # Vertex는 "google/gemini-2.5-flash"처럼 앞머리 없는 이름을 받는다
         kwargs = {**kwargs, "model": model.removeprefix(VERTEX_PREFIX)}
-        extra_body = None  # 아래 provider 옵션은 OpenRouter 전용이라 보내지 않는다
+        extra_body = _vertex_thinking()  # 아래 provider 옵션은 OpenRouter 전용이라 보내지 않는다
     else:
         client = _client()
         # require_parameters: 요청에 쓴 기능(구조화 출력, tool)을 지원하는 제공사로만 보낸다.
