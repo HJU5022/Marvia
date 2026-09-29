@@ -338,7 +338,7 @@ def _follow_up(request: AgentRequest) -> AgentResponse:
     previous = _previous_response(request) or _assess(request)
     failed = previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
 
-    # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거에 없는 숫자("9월 23일")가 사용자에게 갔다 (평가 F06).
+    # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거 카드에 없는 숫자("9월 23일", 사용자가 말한 판매일)가 그대로 갔다 (평가 F06).
     # 판정·근거는 지난 결과 그대로라 답 문장을 보는 규칙(FOLLOW_UP_RULES)만 건다. 재시도 방식은 판정과 같다 (SDD 5.7)
     feedback = None
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
