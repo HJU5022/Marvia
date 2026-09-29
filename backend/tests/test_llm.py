@@ -1,6 +1,6 @@
 """services/llm.py 재시도 테스트 (C-6). 키 없이 돈다: OpenRouter 호출(_call_once)을 가짜로 바꾼다.
 
-확인하는 것: 503·429면 한 번 더 부르고, 400 같은 건 바로 올리고, 두 번 다 실패하면 포기한다.
+확인하는 것: 500·503·429면 한 번 더 부르고, 400 같은 건 바로 올리고, 두 번 다 실패하면 포기한다.
 모델 이름이 vertex/로 시작하면 Vertex AI로, 아니면 OpenRouter로 간다.
 """
 from types import SimpleNamespace
@@ -37,6 +37,14 @@ def test_retries_once_on_overload_then_succeeds(monkeypatch):
     result = llm.chat([{"role": "user", "content": "hi"}])
     assert result.content == "ok"
     assert result.attempts == 2
+    assert len(calls) == 2
+
+
+def test_retries_once_on_500_then_succeeds(monkeypatch):
+    """Vertex는 과부하를 500으로 준다 (09-29 평가 3.8 Flash B09). 503과 같이 한 번 더 부른다."""
+    calls = _fake(monkeypatch, [llm.LLMError("overloaded", code=500), llm.LLMResult(content="ok")])
+    result = llm.chat([{"role": "user", "content": "hi"}])
+    assert result.content == "ok" and result.attempts == 2
     assert len(calls) == 2
 
 
