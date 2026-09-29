@@ -352,8 +352,10 @@ SCENARIOS = [
              False, "constructed (TestClient)", _history(bad_url=True)),
 
     # 도구 실패: 평가셋 재생 자료에서 자연히 나온다
-    Scenario("tool_timeout_f02", "평가셋 F02 (위치 조회 타임아웃 재생, 규칙 판정기)",
-             [("live_position", "timeout"), ("candidate_detail", "position timeout")],
+    # 09-29 결정: 시간 초과는 평가셋에 있는 예전 위치(캐시)로 대신하고 partial로 판정한다. 그래서 도구 실패
+    # 대신 "캐시로 대체" 줄이 남는다. 캐시도 없는 시간 초과는 backend/tests/test_cache.py가 본다
+    Scenario("tool_timeout_f02", "평가셋 F02 (위치 조회 타임아웃 재생, 캐시 위치로 대체, 규칙 판정기)",
+             [("shipfinder:pos", "timeout served_from_cache")],
              False, "평가셋 F02", _rules_case("F02")),
     Scenario("tool_no_permission_f04", "평가셋 F04 (위치 조회 권한 없음 status 21, 규칙 판정기)",
              [("live_position", "no_permission"), ("candidate_detail", "position no_permission")],
