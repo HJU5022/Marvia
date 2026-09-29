@@ -402,8 +402,10 @@ POST /api/agent
  5. signals = services.signals.compute(position, schedule, dist, customs, rules)   코드
  6. days_margin = sale_due_date - trusted_eta (코드, evidence에 기록)
  7. llm.judge(signals, customs, days_margin, skills) → verdict, reasons, conflicts, actions, answer
-      모든 신호 clear & 식별 confirmed → decided_by=rule (LLM은 answer 문장만)
-      하나라도 triggered 또는 unknown → decided_by=llm
+      등급은 코드가 판정 표(services/verdict.py, SKILL.md 표)로 먼저 정한다 → decided_by=rule (09-30 D7)
+      LLM은 그 등급에 맞춰 reasons·conflicts·actions·answer·통관 해설을 쓴다. 표가 틀렸다고 보면 table_disagree(기록만)
+      anchor_wait·customs_hold가 unknown(회색 지대)이면 LLM이 표 등급 이상에서 고른다. 올리면 decided_by=llm
+      LLM 등급이 허용 밖이면 V8로 다시 묻고, 세 번 모두 밖이면 표 등급으로 확정 (고정 문구)
  8. validate.run(response) 7규칙 → 위반 시 llm 재시도(최대 3) → 폴백
  9. Langfuse trace 종료, trace_id 반환
 ```

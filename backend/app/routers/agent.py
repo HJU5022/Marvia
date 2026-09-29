@@ -16,12 +16,14 @@
 
 6단계는 services/llm.judge()가 한다 (C-6, 09-27 연결). 결과를 어떻게 응답에 담나:
   - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
-  - 신호 7개가 전부 clear면 verdict=fine은 코드가 정한다(decided_by=rule). LLM 답은 문장만 쓴다 (SDD 4.1 7단계)
-  - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
+  - 등급은 코드가 판정 표로 정한다(decided_by=rule). LLM은 그 등급에 맞춰 설명·할 일·상충·통관 해설을 쓴다 (09-30 D7, services/verdict.py)
+  - 회색 지대(anchor_wait·customs_hold가 unknown)만 LLM이 표 등급 이상에서 고른다. 표보다 올리면 decided_by=llm
+  - LLM이 표가 틀렸다고 보면 table_disagree에 적는다. 응답에 쓰지 않고 기록만 한다 (Langfuse generation output, 로그)
   - 쓸 위치가 없으면 LLM을 부르지 않는다. 데이터 없음은 insufficient, 도구 고장은 partial (09-29 결정, _no_position)
   - 위치가 캐시에서 왔으면(실시간 조회 실패) 판정은 하되 status=partial (09-29 결정, 평가셋 F02)
 근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -36,6 +38,7 @@ from backend.app.schemas.agent import (
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
 from backend.app.services import identify, llm, validate
+from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
 from backend.app.services.rules import rule
@@ -46,6 +49,7 @@ from mcp_server.tools.port_schedule import get_port_schedule
 from mcp_server.tools.vessel_candidates import get_vessel_candidates
 
 router = APIRouter(prefix="/api", tags=["agent"])
+logger = logging.getLogger(__name__)
 
 NOT_JUDGED = "조회한 값을 정리했습니다. 판정은 아직 붙지 않았습니다."
 NO_CARGO = "조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요."
@@ -66,6 +70,9 @@ POSITION_TOOL_FAILED = "선박 위치 조회에 실패해 판정하지 않았습
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 VALIDATION_FAILED = "판정을 생성하지 못했습니다. 근거 카드를 확인하세요."  # SDD 5.7 3차 폴백 문구
+# LLM이 세 번 모두 허용 밖 등급을 냈을 때 표 등급으로 확정하며 쓰는 문구 (09-30 D7). 숫자를 넣지 않는다 (V7)
+TABLE_FALLBACK = "판정 표 기준으로 '{label}'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요."
+VERDICT_LABEL = {"fine": "괜찮음", "watch": "지켜볼 것", "act": "지금 조치"}
 
 # 반출된 화물 (09-28 결정). 반출신고는 통관의 마지막 단계다 (skills/customs-stages 표 "다음 단계 없음(끝)")
 RELEASED_STAGE = "반출신고"
@@ -199,60 +206,66 @@ def _assess(request: AgentRequest) -> AgentResponse:
     # 세 번 모두 위반이면 판정 없이 failed로 끝내고 근거 카드는 남긴다
     # 형식이 깨진 답(JSON 아님·필수 칸 누락)도 위반과 같이 다시 묻는다 (09-28 결정). 전에는 바로 partial로 끝나
     # 두 번째 답이 깨지면 세 번째 기회가 없었다 (09-28 평가 B09). 호출 자체가 실패하면 지금처럼 바로 partial
+    # 등급은 판정 표가 먼저 정한다 (09-30 D7). 회색 지대면 LLM이 표 이상에서 고를 수 있다
+    table = verdict_table.table_verdict(signal_set, margin)
+    gray = verdict_table.is_gray(signal_set)
     feedback = None
+    only_verdict_wrong = False  # 마지막 시도가 등급만 틀렸나. 그러면 실패 대신 표 등급으로 확정한다
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback,
-                               trusted_eta=trusted, sale_due_date=request.sale_due_date)
+                               trusted_eta=trusted, sale_due_date=request.sale_due_date,
+                               table_verdict=table, verdict_mode="raise_only" if gray else "fixed")
         except llm.LLMFormatError as e:
             log_failure("judge", f"{e.kind} attempt {attempt}")
-            feedback = e.detail
+            feedback, only_verdict_wrong = e.detail, False
         except llm.LLMError as e:
             log_failure("judge", _llm_error(e))
             return _response(status="partial", answer=LLM_FAILED, **collected)
         else:
-            response = _judged(judged.output, signal_set, request, customs, collected, from_cache=from_cache)
-            violations = validate.check(response)
-            if not violations:
-                return response
-            # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
-            log_failure("validate", f"{','.join(v.rule for v in violations)} attempt {attempt}")
-            feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+            out = judged.output
+            if out.table_disagree:
+                # LLM의 반대 의견은 기록만 한다. 본문은 Langfuse generation output에 남아 있어 여기서는 표 등급만 적는다
+                logger.info("table_disagree table=%s gray=%s", table, gray)
+            # V8 (09-30 D7): 등급이 표와 같아야 한다. 회색 지대면 표 이상이어야 한다 (위험을 낮추지 못하게)
+            if not verdict_table.allowed(out.verdict, table, gray):
+                log_failure("validate", f"V8 attempt {attempt}")
+                need = f"{table} or higher" if gray else table
+                feedback = (f"V8: verdict must be {need} (the judgment table decided {table}). "
+                            "Write reasons, actions, and answer for that verdict.")
+                only_verdict_wrong = True
+            else:
+                response = _judged(out, signal_set, request, customs, collected, table, from_cache=from_cache)
+                violations = validate.check(response)
+                if not violations:
+                    return response
+                # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
+                log_failure("validate", f"{','.join(v.rule for v in violations)} attempt {attempt}")
+                feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+                only_verdict_wrong = False
         if attempt == JUDGE_ATTEMPTS - 1:
             feedback += "\nReturn JSON only and follow every rule above."
     log_failure("judge", f"gave up after {JUDGE_ATTEMPTS} attempts")
+    if only_verdict_wrong:
+        return _table_fallback(signal_set, margin, table, customs, collected, from_cache)
     return _response(status="failed", answer=VALIDATION_FAILED, **collected)
 
 
-def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict,
+def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict, table: str,
             from_cache: bool = False) -> AgentResponse:
     """LLM 판정 1회분을 응답으로 옮긴다. 검증(validate.check)은 부르는 쪽이 한다.
 
     from_cache면 위치가 실시간이 아니라 캐시에서 왔다는 뜻이라, 판정이 나와도 status를 partial로 둔다.
     """
-    # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
-    # 판매일을 안 넣었으면 판매일 초과 신호는 늘 unknown이라 세지 않는다. 배 상태만으로 판정한다 (09-29 결정)
-    reasons = out.reasons
-    counted = [s for s in signal_set.signals
-               if not (s.id == "sales_date_exceeded" and request.sale_due_date is None)]
-    margin = collected.get("days_margin")
-    if all(s.state == "clear" for s in counted):
-        verdict, decided_by = "fine", "rule"
-        # D4 (09-29 결정): 신호가 다 정상이어도 판매일까지 여유가 margin_act_days(rules.md) 미만이면 watch.
-        # 여유 일수에는 통관·반출·배송 시간이 빠져 있어서(SDD 5.8) 0~1일이면 실제 입고는 판매일을 넘기기 쉽다
-        if margin is not None and margin < rule("margin_act_days"):
-            verdict = "watch"
-            # V2: watch면 이유가 1개 이상, 이름은 신호 id. 켜진 신호는 없으니 여유 일수를 본 신호를 triggered=False로 든다
-            reasons = reasons or [Reason(rule="sales_date_exceeded", value=f"여유 {margin}일", triggered=False)]
-    else:
-        verdict, decided_by = out.verdict, "llm"
+    # 등급은 부르는 쪽에서 허용 범위(verdict_table.allowed)를 이미 확인했다. 표보다 올렸을 때만 LLM이 정한 것이다
+    verdict = out.verdict
+    decided_by = "llm" if verdict_table.LEVEL[verdict] > verdict_table.LEVEL[table] else "rule"
+    # V2: watch·act면 이유가 1개 이상. LLM이 비워 두면 표의 근거(켜진 신호, D4 여유 일수)를 쓴다
+    reasons = out.reasons or (verdict_table.table_reasons(signal_set, collected.get("days_margin"))
+                              if verdict != "fine" else [])
 
-    # LLM이 판정을 보류하면 되묻는다 (skills/ais-reliability 되묻기 조건: 위치가 없으면 포워더 입항 예정일)
-    # 이미 포워더 입항 예정일을 받았는데도 보류면 더 물을 게 없어 partial로 둔다 (V5: insufficient면 물을 것 1개 이상)
     status, missing = "ok", []
-    if verdict is None:
-        status, missing = ("partial", []) if request.forwarder_eta else ("insufficient", ["forwarder_eta"])
-    elif from_cache:
+    if from_cache:
         status = "partial"  # 도구 실패를 캐시로 메웠다. 판정은 두되 실시간 확인이 아니었음을 알린다 (평가셋 F02)
 
     return _response(
@@ -265,6 +278,24 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
         actions=out.actions,
         answer=out.answer,
         customs=_customs_info(customs, out.customs),
+        **collected,
+    )
+
+
+def _table_fallback(signal_set, margin: int | None, table: str, customs: CustomsRecord, collected: dict,
+                    from_cache: bool) -> AgentResponse:
+    """LLM이 세 번 모두 허용 밖 등급(V8)을 냈을 때 표 등급으로 확정한다 (09-30 D7).
+
+    등급은 코드 표가 책임지므로 LLM 문장이 없어도 낼 수 있다. LLM 문장은 틀린 등급에 맞춰 쓰였을 수 있어 쓰지 않고
+    고정 문구를 쓴다. 통관 해설도 없어서 비운다 (_customs_info가 None).
+    """
+    return _response(
+        status="partial" if from_cache else "ok",
+        verdict=table,
+        decided_by="rule",
+        reasons=verdict_table.table_reasons(signal_set, margin) if table != "fine" else [],
+        answer=TABLE_FALLBACK.format(label=VERDICT_LABEL[table]),
+        customs=_customs_info(customs, None),
         **collected,
     )
 

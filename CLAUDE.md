@@ -45,7 +45,8 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 ## 할 것
 
 - 작업은 작업 리스트 ID 단위로 받고, 그 행의 "완료 기준"을 그대로 테스트 조건으로 쓴다. 테스트 통과 없이 완료라고 하지 않는다. 지시 형식은 SDD 10절
-- LLM이 만드는 것은 셋뿐이다: 복수 후보 중 선박 선택(confidence 포함), 2층 판정(verdict, reasons, conflicts, actions, answer), 후속 질문 답. 나머지는 코드다 (PRD 6.1)
+- LLM이 만드는 것은 셋뿐이다: 복수 후보 중 선박 선택(confidence 포함), 2층 판정의 설명(reasons, conflicts, actions, answer, 통관 해설), 후속 질문 답. 나머지는 코드다 (PRD 6.1)
+- 등급(verdict)은 코드가 판정 표로 정한다. LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다 (09-30 D7, services/verdict.py)
 - 모든 외부 호출(UNI-PASS, ShipFinder, 해수부, searoute, OpenRouter)은 타임아웃, 재시도 2회, 최종 실패 시 partial 경로가 있어야 한다 (SDD 8절 표). MCP 도구는 예외를 던지지 않고 {error: {code, message, retryable}}을 돌려준다 (SDD 3.4)
 - 모든 도구 응답에 source와 fetched_at을 붙이고 evidence로 남긴다
 - LLM 출력은 validate.py의 7규칙(V1~V7)을 통과해야 한다. 위반은 3단계 재시도 뒤 status=failed 폴백 (SDD 5.7)

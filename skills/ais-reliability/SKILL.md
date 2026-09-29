@@ -24,7 +24,10 @@ AIS는 배가 스스로 보내는 값이라 틀릴 수 있다. 아래 경우를 
 
 ## 2층 판정 원칙
 
-신호 7종의 상태(triggered·clear·unknown)는 코드가 정한다. 그 결과를 읽고 판정한다.
+신호 7종의 상태(triggered·clear·unknown)는 코드가 정한다. 등급도 코드가 아래 표로 먼저 정한다(table_verdict, 09-30 결정).
+
+- 표가 확실할 때(verdict_mode fixed): 그 등급을 그대로 쓰고, 왜 그 등급인지 사용자에게 설명한다. 이 사례에서 표가 틀렸다고 보면 table_disagree에 이유를 적는다. 사람이 보고 표를 고칠 후보가 된다
+- act를 가르는 신호(anchor_wait, customs_hold)가 unknown일 때(verdict_mode raise_only): 표는 unknown을 세지 않아 등급이 낮게 나올 수 있다. 상황을 보고 표 등급 이상에서 고른다 (fine < watch < act). 낮추지는 않는다
 
 | 판정 | 언제 |
 |---|---|

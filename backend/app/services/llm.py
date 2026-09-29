@@ -315,7 +315,7 @@ SKILL_DIR = Path(__file__).resolve().parents[3] / "skills"  # 레포 루트의 s
 JUDGE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["verdict", "reasons", "conflicts", "actions", "answer", "customs"],  # strict 모드는 모든 칸이 required
+    "required": ["verdict", "reasons", "conflicts", "actions", "answer", "customs", "table_disagree"],  # strict 모드는 모든 칸이 required
     "properties": {
         # null = 판정 보류. 위치가 아예 없을 때 등 (skills/ais-reliability 되묻기 조건)
         "verdict": {"type": ["string", "null"], "enum": ["fine", "watch", "act", None]},
@@ -367,6 +367,8 @@ JUDGE_SCHEMA = {
                 {"type": "null"},
             ]
         },
+        # 표 등급이 이 경우에 틀렸다고 볼 때 그 이유 (09-30 D7). 응답에 쓰지 않고 기록만 한다. 동의하면 null
+        "table_disagree": {"type": ["string", "null"]},
     },
 }
 
@@ -388,6 +390,7 @@ class JudgeOutput(BaseModel):
     actions: list[str]
     answer: str
     customs: CustomsExplanation | None
+    table_disagree: str | None = None  # 기록만 한다 (services/verdict.py). 녹화 답·베이스라인은 없어도 된다
 
 
 @dataclass
@@ -412,14 +415,19 @@ def _skills_text() -> str:
 
 
 def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None,
-                 trusted_eta: datetime | None = None, sale_due_date: date | None = None) -> str:
+                 trusted_eta: datetime | None = None, sale_due_date: date | None = None,
+                 table_verdict: str | None = None, verdict_mode: str | None = None) -> str:
     """LLM에 넘길 자료를 JSON 문자열로 만든다. B/L 번호(bl_masked)와 MRN은 판정에 필요 없어 뺀다 (CLAUDE.md, SDD 3.5).
 
     날짜는 한국 시각으로 준다 (09-29 D8). 전에는 여유 일수 숫자만 줘서 "언제 와요?"에 날짜로 답하지 못했고,
     사용자가 말한 판매일을 근거에 없는 숫자로 보고 검증(V7)이 막기도 했다 (평가 F06 "9월 23일"). 판매일이 없으면 null이다 (선택 입력, 09-29 결정).
     calc_eta는 남은 거리 ÷ 현재 속도로 코드가 계산한 대략값이다. 참고용이라 판정 근거로 쓰지 않게 지시문에 적는다.
+    table_verdict·verdict_mode (09-30 D7, services/verdict.py): 코드가 판정 표로 낸 등급과, LLM이 그 등급을
+    그대로 써야 하는지(fixed) 표 이상에서 고를 수 있는지(raise_only, 회색 지대)를 알려 준다.
     """
     data = {
+        "table_verdict": table_verdict,
+        "verdict_mode": verdict_mode,
         "signals": [s.model_dump() for s in signals.signals],
         "freshness": signals.freshness,
         "distance_nm": signals.distance_nm,
@@ -538,10 +546,13 @@ def judge(
     feedback: str | None = None,
     trusted_eta: datetime | None = None,
     sale_due_date: date | None = None,
+    table_verdict: str | None = None,
+    verdict_mode: str | None = None,
 ) -> LLMAnswer:
     """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계, 09-29 D8).
     feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도)."""
-    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date),
+    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date,
+                                                table_verdict, verdict_mode),
                      "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback)
 
 
