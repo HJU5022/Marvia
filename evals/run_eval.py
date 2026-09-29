@@ -13,6 +13,8 @@
   4. 문항마다 LLM 호출(모델·토큰·비용·지연·실패 종류)과 실패 로그(stage=error)를 남긴다.
      09-29 qwen 무료 실행에서 23건이 판정을 못 냈는데 왜 실패했는지 결과 파일에 없었다.
      요청당 비용은 README 지표 표·발표 질문 7에 필요하다 (Main_2 가이드 12장·13장)
+  5. Langfuse 키가 있으면 실행 한 번을 Dataset marvia-golden-30의 실험(Experiment)으로 남긴다 (_LangfuseRun, 09-29).
+     문항마다 호출을 한 트레이스로 묶어 그 문항에 잇고, 채점 결과를 점수로 붙인다. Experiments 탭에서 실행끼리 비교한다
 서버 코드는 고치지 않는다. 바꿔 끼우는 것(판정기, 재생 transport, 시계)은 이 실행 안에서만 유효하다.
 
 외부 API는 키 없이 재생한다. (b)(c)만 진짜 LLM을 부른다(비용이 든다). (a)는 LLM을 한 번도 부르지 않는다.
@@ -71,7 +73,10 @@ def main() -> None:
 
     work = Path(tempfile.mkdtemp(prefix="marvia_eval_"))
     try:
-        rows = [_run_one(rec, args.config, work) for rec in records]
+        # --only는 확인용 부분 실행이라 Langfuse 실행 기록으로 남기지 않는다 (30건 비교가 흐트러진다)
+        recorder = None if args.only else _LangfuseRun.start(args.config)
+        solve = lambda rec: _run_one(rec, args.config, work)  # noqa: E731
+        rows = recorder.run_all(records, solve) if recorder else [solve(rec) for rec in records]
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -97,6 +102,94 @@ def main() -> None:
             raise SystemExit(f"{path.name}이 이미 있습니다. 1분 뒤 다시 실행하세요 (덮어쓰지 않는다)")
         path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n결과 파일: {path.relative_to(ROOT)}")
+
+
+class _LangfuseRun:
+    """평가 실행 한 번을 Langfuse Dataset(evals/push_dataset.py로 올린 marvia-golden-30)의 실험(Experiment)으로 남긴다.
+
+    SDK의 dataset.run_experiment를 쓴다. 이 계정(09-16 이후 생성)은 옛 "dataset run" API로 만든 기록이
+    Experiments 화면에 안 잡혀서(09-29 확인, Experiments 0개) 공식 경로로 바꿨다.
+    max_concurrency=1로 한 문항씩 돈다. 이 실행기는 시계를 멈추고 서버 함수를 바꿔 끼워서 동시에 돌면 안 된다.
+    SDK가 문항마다 span을 열어 주므로, 그 안에서 서버가 남기는 LLM generation이 문항별 트레이스로 모인다.
+    Langfuse가 실패해도 평가는 계속한다. 못 돈 문항은 기록 없이 로컬에서 풀고, 결과 파일은 그대로 남는다.
+    """
+
+    def __init__(self, client, run_name: str, config: str):
+        self.client = client
+        self.run_name = run_name
+        self.config = config
+
+    @classmethod
+    def start(cls, config: str) -> "_LangfuseRun | None":
+        if not (os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")):
+            return None
+        try:
+            from langfuse import get_client
+        except ImportError:
+            return None
+        model = os.environ.get("MODEL_A") if config != "a" else "baseline/rules"
+        now = datetime.now(timezone.utc).astimezone(KST)
+        # 실행 이름만 보고 무엇을 잰 것인지 알게: 구성 · 모델 · 생각 설정 · 시각
+        thinking = f" thinking={os.environ['VERTEX_THINKING_BUDGET']}" if os.environ.get("VERTEX_THINKING_BUDGET") and config != "a" else ""
+        return cls(get_client(), f"{config} {model}{thinking} {now:%m-%d %H:%M}", config)
+
+    def run_all(self, records: list[dict], solve) -> list[dict]:
+        """모든 문항을 실험으로 푼다. solve(rec)는 문항 하나를 풀어 결과 줄(row)을 돌려준다. 결과는 평가셋 순서로."""
+        from evals.push_dataset import DATASET_NAME
+
+        by_case = {r["id"]: r for r in records}
+        rows: dict[str, dict] = {}
+
+        def task(*, item, **kwargs):
+            rec = by_case.get((item.metadata or {}).get("case_id"))
+            if rec is None:  # Langfuse에만 있고 이번 실행에 없는 문항(--only 등)은 건너뛴다
+                return None
+            rows[rec["id"]] = solve(rec)
+            return rows[rec["id"]]["got"]
+
+        def evaluator(*, input, output, expected_output=None, metadata=None, **kwargs):
+            from langfuse.experiment import Evaluation
+
+            row = rows.get((metadata or {}).get("case_id"))
+            return [Evaluation(name=k, value=v) for k, v in _scores(row).items()] if row else []
+
+        try:
+            result = self.client.get_dataset(DATASET_NAME).run_experiment(
+                name=f"eval {self.config}", run_name=self.run_name, description=CONFIGS[self.config],
+                task=task, evaluators=[evaluator], max_concurrency=1,
+                metadata={"config": self.config, "git_commit": _git_commit() or ""},
+            )
+            print(f"Langfuse 실험: {self.run_name} ({len(rows)}건) {getattr(result, 'dataset_run_url', '') or ''}")
+        except Exception as e:
+            log_failure_eval("langfuse_experiment", type(e).__name__)
+        # Langfuse에서 못 돈 문항(평가셋을 안 올렸거나 실패)은 기록 없이 로컬에서 푼다
+        for rec in records:
+            if rec["id"] not in rows:
+                rows[rec["id"]] = solve(rec)
+        self.client.flush()
+        return [rows[r["id"]] for r in records]
+
+
+def _scores(row: dict) -> dict[str, float]:
+    """문항 하나의 채점을 Langfuse 점수로. score()와 같은 기준이다 (1 맞음, 0 틀림).
+
+    verdict_match는 정답 판정이 있는 문항만 준다 (score의 verdict_accuracy 분모와 같게).
+    """
+    e, g = row["expected"], row["got"]
+    scores = {
+        "exact_match": float(all(g[k] == e[k] for k in ("status", "verdict", "vessel_match"))),
+        "schema_pass": float(not row["violations"]),
+    }
+    if e["verdict"] is not None:
+        scores["verdict_match"] = float(g["verdict"] == e["verdict"])
+    return scores
+
+
+def log_failure_eval(stage: str, error: str) -> None:
+    """실행기 안의 Langfuse 실패를 서버와 같은 형식으로 남긴다. 서버 모듈은 환경변수를 정한 뒤에 import한다."""
+    from backend.app.observability.logging import log_failure
+
+    log_failure(stage, error)
 
 
 def _git_commit() -> str | None:

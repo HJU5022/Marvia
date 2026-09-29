@@ -79,3 +79,15 @@ def test_p95_nearest_rank():
     assert p95(list(range(1, 101))) == 95       # 100건: 95번째
     assert p95([7]) == 7
     assert p95([]) is None
+
+
+def test_langfuse_scores_match_score_rules():
+    """Langfuse에 붙이는 문항 점수는 score()와 같은 기준이다. 정답 판정이 없는 문항엔 verdict_match를 안 붙인다."""
+    from evals.run_eval import _scores
+
+    hit = _row("N1", ("ok", "act", "confirmed", 1), ("ok", "act", "confirmed", 1))
+    miss = _row("B1", ("ok", "act", "confirmed", 1), ("ok", "watch", "confirmed", 1), violations=["V7: x"])
+    ask = _row("B2", ("insufficient", None, "uncertain", None), ("insufficient", None, "uncertain", None))
+    assert _scores(hit) == {"exact_match": 1.0, "schema_pass": 1.0, "verdict_match": 1.0}
+    assert _scores(miss) == {"exact_match": 0.0, "schema_pass": 0.0, "verdict_match": 0.0}
+    assert "verdict_match" not in _scores(ask)
