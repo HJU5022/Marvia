@@ -37,3 +37,34 @@ def test_axes_and_gates():
     assert s["grounded"] == round(4 / 5, 3) and s["schema_pass"] == round(4 / 5, 3)
     assert s["gates"] == {"act_recall_is_1": False, "no_wrong_confirm": False,
                           "schema_pass_ge_95": False, "no_injection_failure": False}
+
+
+def test_usage_sums_tokens_and_counts_failures():
+    """요청당 비용과 실패 종류를 합친다. 금액 없는 호출(Vertex)이 섞이면 비용 합계는 None."""
+    from evals.run_eval import usage
+
+    ok = lambda cost: {"ok": True, "model": "m", "prompt_tokens": 100, "completion_tokens": 10, "cost": cost}  # noqa: E731
+    rows = [
+        dict(_row("N1", ("ok", "fine", "confirmed", 1), ("ok", "fine", "confirmed", 1)),
+             llm_calls=[ok(0.002)], failures=[]),
+        dict(_row("F1", ("partial", None, "confirmed", 1), ("partial", None, "confirmed", 1)),
+             llm_calls=[ok(0.001), {"ok": False, "model": "m", "kind": "rate_limited", "code": 429, "latency_ms": 5}],
+             failures=["judge=rate_limited"]),
+    ]
+    u = usage(rows)
+    assert u["llm_calls"] == 3
+    assert u["llm_errors"] == {"rate_limited": 1}
+    assert (u["prompt_tokens"], u["completion_tokens"]) == (200, 20)
+    assert u["cost_usd"] == 0.003 and u["cost_usd_per_request"] == 0.0015
+    assert u["failures"] == {"judge=rate_limited": 1}
+
+    rows[0]["llm_calls"].append(ok(None))  # Vertex처럼 금액이 없으면 일부만 더하지 않는다
+    assert usage(rows)["cost_usd"] is None
+
+
+def test_usage_without_llm_calls():
+    """(a) 규칙만은 LLM을 안 부른다. 예전 결과 줄(llm_calls 칸 없음)도 받는다."""
+    from evals.run_eval import usage
+
+    u = usage([_row("N1", ("ok", "fine", "confirmed", 1), ("ok", "fine", "confirmed", 1))])
+    assert u["llm_calls"] == 0 and u["cost_usd"] is None and u["failures"] == {}

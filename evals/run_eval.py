@@ -7,7 +7,12 @@
 하는 일:
   1. dataset.jsonl 30건을 문항마다 REPLAY 재생 파일로 풀고 (evals/replay_fixtures.py)
   2. 시계를 문항의 clock(09-22 12:00)으로 맞춘 채 실제 라우터(run_agent)에 요청을 넣고
-  3. 응답을 정답과 대조해 축별 점수와 게이트를 계산해 evals/results/<config>.json에 쓴다
+  3. 응답을 정답과 대조해 축별 점수와 게이트를 계산해 evals/results/<config>_<한국시각>.json에 쓴다
+     (예: b_20260929_0343.json). 예전엔 <config>.json 하나를 덮어써서 09-28 Gemini 19/30 원본을 잃었다.
+     그래서 실행마다 새 파일을 만들고, 어떤 코드·프롬프트로 잰 점수인지(git 커밋·프롬프트 버전)도 같이 적는다
+  4. 문항마다 LLM 호출(모델·토큰·비용·지연·실패 종류)과 실패 로그(stage=error)를 남긴다.
+     09-29 qwen 무료 실행에서 23건이 판정을 못 냈는데 왜 실패했는지 결과 파일에 없었다.
+     요청당 비용은 README 지표 표·발표 질문 7에 필요하다 (Main_2 가이드 12장·13장)
 서버 코드는 고치지 않는다. 바꿔 끼우는 것(판정기, 재생 transport, 시계)은 이 실행 안에서만 유효하다.
 
 외부 API는 키 없이 재생한다. (b)(c)만 진짜 LLM을 부른다(비용이 든다). (a)는 LLM을 한 번도 부르지 않는다.
@@ -17,12 +22,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import statistics
+import subprocess
 import tempfile
 import time
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -40,6 +48,8 @@ SCHEMA_PASS_GATE = 0.95
 # 시계를 멈출 때 제외할 모듈. 트레이스·토큰 발급은 진짜 시각을 써야 Langfuse에서 찾기 쉽고 인증이 안 꼬인다
 FREEZE_IGNORE = ["langfuse", "opentelemetry", "google.auth"]
 
+KST = timezone(timedelta(hours=9))  # 결과 파일 이름은 한국 시각으로. 위키 근거 원장의 시각과 맞춘다
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Marvia 평가셋 30건 실행과 채점")
@@ -52,6 +62,7 @@ def main() -> None:
     from evals.replay_fixtures import use_error_replay
     use_error_replay()
     _setup_config(args.config)
+    prompt_versions = _spy_prompt_versions()
 
     records = [json.loads(line) for line in DATASET.read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.only:
@@ -64,20 +75,56 @@ def main() -> None:
         shutil.rmtree(work, ignore_errors=True)
 
     summary = score(rows)
+    summary["usage"] = usage(rows)
     _print(args.config, rows, summary)
     if not args.only:
         RESULTS.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(timezone.utc)
         result = {
             "config": args.config,
             "description": CONFIGS[args.config],
             "model": os.environ.get("MODEL_A") if args.config != "a" else "baseline/rules",
-            "run_at": datetime.now(timezone.utc).isoformat(),
+            "run_at": now.isoformat(),
+            "git_commit": _git_commit(),
+            "prompt_versions": prompt_versions,  # {"marvia-judge": "2", ...}. (a)는 LLM을 안 불러 비어 있다
             "summary": summary,
             "rows": rows,
         }
-        path = RESULTS / f"{args.config}.json"
+        # 실행마다 새 파일. 같은 분에 두 번 돌려도 덮지 않게 초까지 붙이지는 않고, 있으면 멈춘다
+        path = RESULTS / f"{args.config}_{now.astimezone(KST):%Y%m%d_%H%M}.json"
+        if path.exists():
+            raise SystemExit(f"{path.name}이 이미 있습니다. 1분 뒤 다시 실행하세요 (덮어쓰지 않는다)")
         path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n결과 파일: {path.relative_to(ROOT)}")
+
+
+def _git_commit() -> str | None:
+    """지금 코드의 커밋. 커밋 안 한 변경이 있으면 뒤에 -dirty를 붙인다. git이 없으면 None."""
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True,
+                              text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
+                               capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return f"{head}-dirty" if dirty else head
+
+
+def _spy_prompt_versions() -> dict[str, str]:
+    """실행 동안 LLM이 실제로 받은 프롬프트 버전을 모은다. Langfuse 번호, Langfuse가 안 되면 "local".
+    llm.py가 get_prompt를 이름으로 가져다 쓰므로 llm 모듈 안의 이름을 감싼다. 이 실행 안에서만 유효하다."""
+    from backend.app.services import llm
+
+    seen: dict[str, str] = {}
+    real_get_prompt = llm.get_prompt
+
+    def spy(name, *args, **kwargs):
+        prompt = real_get_prompt(name, *args, **kwargs)
+        seen[name] = prompt.version
+        return prompt
+
+    llm.get_prompt = spy
+    return seen
 
 
 def _setup_env() -> None:
@@ -116,6 +163,7 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
     from backend.app.clients import replay
     from backend.app.clients.cache import ResponseCache
     from backend.app.clients.shipfinder import ShipFinderClient
+    from backend.app.observability.logging import failure_logger
     from backend.app.routers import agent
     from backend.app.schemas.agent import AgentRequest
     from backend.app.services import validate
@@ -137,6 +185,12 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
 
     agent.get_live_position = spy_position
     restore_chat = _llm_failure_replay(rec, config)
+    # 실패 재현(broken_chat)을 끼운 뒤에 감싼다. 그래야 F08의 가짜 답도 호출 기록에 남는다
+    llm_calls: list[dict] = []
+    restore_spy = _spy_llm_calls(llm_calls)
+    failures: list[str] = []
+    collector = _FailureCollector(failures)
+    failure_logger.addHandler(collector)
     started = time.perf_counter()
     try:
         # tick=True: 시계는 clock에서 출발해 실제로 흐른다. 지연 측정이 0으로 멈추지 않게
@@ -147,7 +201,9 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
         response, error = None, f"{type(e).__name__}: {e}"
     finally:
         agent.get_live_position = real_position
+        restore_spy()
         restore_chat()
+        failure_logger.removeHandler(collector)
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     violations = [f"{v.rule}: {v.detail}" for v in validate.check(response)] if response else []
@@ -175,7 +231,50 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
         "violations": violations,
         "error": error,
         "latency_ms": latency_ms,
+        "failures": failures,    # 서버가 남긴 실패 로그 "stage=error" (D6). partial·failed가 왜 났는지
+        "llm_calls": llm_calls,  # 이 문항에서 부른 LLM 호출 하나당 한 줄 (_spy_llm_calls)
     }
+
+
+class _FailureCollector(logging.Handler):
+    """서버의 log_failure()가 남긴 줄(stage·error)을 문항별 목록에 모은다.
+    예외 메시지는 원래 로그에 안 들어가니(키·B/L 섞임 방지, logging.py) 여기에도 종류·코드만 남는다."""
+
+    def __init__(self, sink: list[str]):
+        super().__init__(level=logging.WARNING)
+        self.sink = sink
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.sink.append(f"{getattr(record, 'stage', '?')}={getattr(record, 'error', '?')}")
+
+
+def _spy_llm_calls(sink: list[dict]):
+    """llm.chat을 감싸 호출마다 모델·토큰·비용·지연을, 실패면 종류(kind)·코드를 sink에 적는다. 되돌리는 함수를 돌려준다.
+
+    cost는 OpenRouter가 준 실제 금액(USD)이다. Vertex는 금액을 안 줘서 None이다(llm.py LLMResult).
+    그때 요청당 비용은 토큰 수 × 가격표로 따로 계산한다. 가격표를 여기 박아 두면 가격이 바뀌어도 모르고 쓰게 된다.
+    """
+    from backend.app.services import llm
+
+    inner = llm.chat
+
+    def spy_chat(*args, **kwargs):
+        model = kwargs.get("model") or os.environ.get("MODEL_A")
+        try:
+            result = inner(*args, **kwargs)
+        except llm.LLMError as e:
+            sink.append({"ok": False, "model": model, "kind": e.kind, "code": e.code, "latency_ms": e.latency_ms})
+            raise
+        sink.append({
+            "ok": True, "model": result.model, "provider": result.provider,
+            "prompt_tokens": result.prompt_tokens, "completion_tokens": result.completion_tokens,
+            "cost": result.cost, "latency_ms": result.latency_ms, "attempts": result.attempts,
+            "finish_reason": result.finish_reason,
+        })
+        return result
+
+    llm.chat = spy_chat
+    return lambda: setattr(llm, "chat", inner)
 
 
 def _llm_failure_replay(rec: dict, config: str):
@@ -249,6 +348,27 @@ def score(rows: list[dict]) -> dict:
     return summary
 
 
+def usage(rows: list[dict]) -> dict:
+    """LLM 호출 수·토큰·비용 합계와 실패 종류별 개수. 요청당 비용은 README 지표 표·발표 질문 7에 쓴다.
+
+    비용은 모든 성공 호출에 금액이 있을 때만 합친다. 하나라도 없으면(Vertex) None으로 둔다.
+    일부만 더한 값을 합계처럼 적으면 실제보다 싸 보이기 때문이다. 그때는 토큰 합계로 계산한다.
+    """
+    calls = [c for r in rows for c in r.get("llm_calls", [])]
+    ok = [c for c in calls if c["ok"]]
+    costs = [c["cost"] for c in ok]
+    total_cost = round(sum(costs), 6) if ok and all(c is not None for c in costs) else None
+    return {
+        "llm_calls": len(calls),
+        "llm_errors": dict(Counter(c["kind"] for c in calls if not c["ok"])),
+        "prompt_tokens": sum(c["prompt_tokens"] or 0 for c in ok),
+        "completion_tokens": sum(c["completion_tokens"] or 0 for c in ok),  # Vertex는 생각 토큰 포함 (llm.py)
+        "cost_usd": total_cost,
+        "cost_usd_per_request": round(total_cost / len(rows), 6) if total_cost is not None and rows else None,
+        "failures": dict(Counter(f for r in rows for f in r.get("failures", []))),
+    }
+
+
 def _print(config: str, rows: list[dict], s: dict) -> None:
     """터미널에 문항별 O/X와 요약을 찍는다."""
     print(f"\n[{config}] {CONFIGS[config]}")
@@ -257,7 +377,8 @@ def _print(config: str, rows: list[dict], s: dict) -> None:
         hit = all(g[k] == e[k] for k in ("status", "verdict", "vessel_match"))
         print(f"  {r['id']:4} {'O' if hit else 'X'}  got=({g['status']}, {g['verdict']}, {g['vessel_match']})"
               f"  exp=({e['status']}, {e['verdict']}, {e['vessel_match']})"
-              + (f"  위반={len(r['violations'])}" if r["violations"] else "") + (f"  ERROR={r['error']}" if r["error"] else ""))
+              + (f"  위반={len(r['violations'])}" if r["violations"] else "") + (f"  ERROR={r['error']}" if r["error"] else "")
+              + (f"  실패={','.join(r['failures'])}" if r.get("failures") else ""))
     print(f"\n  정답과 완전히 일치 {s['exact_match']}/{s['count']}")
     for key in ("verdict_accuracy", "act_recall", "insufficient_precision", "vessel_match_accuracy",
                 "grounded", "schema_pass", "latency_p50_ms", "latency_p95_ms"):
@@ -265,6 +386,13 @@ def _print(config: str, rows: list[dict], s: dict) -> None:
     for key in ("insufficient_missed", "vessel_wrong_confirm", "injection_failures", "errors"):
         print(f"  {key:24} {s[key] or '-'}")
     print("  게이트:", ", ".join(f"{k}={'통과' if v else '걸림'}" for k, v in s["gates"].items()))
+    u = s.get("usage")
+    if u:
+        print(f"  LLM 호출 {u['llm_calls']}회 · 토큰 입력 {u['prompt_tokens']} / 출력 {u['completion_tokens']}"
+              f" · 비용 {u['cost_usd'] if u['cost_usd'] is not None else '금액 없음(토큰으로 계산)'}"
+              f" · 요청당 {u['cost_usd_per_request'] if u['cost_usd_per_request'] is not None else '-'}")
+        print(f"  LLM 실패 종류 {u['llm_errors'] or '-'}")
+        print(f"  실패 로그 {u['failures'] or '-'}")
 
 
 if __name__ == "__main__":
