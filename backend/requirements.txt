@@ -13,3 +13,6 @@ searoute>=1.6        # 부산까지 남은 해상 거리 (B7). 키 불필요
 pycountry>=24.6      # 세관 국적 코드 ↔ ShipFinder 국적 이름 대조 (routers/agent.py). LGPL-2.1, 수정 없이 import만 (README 8절). 09-28 설치본 26.2.16
 # asyncpg>=0.30       # Postgres를 쓴다면
 psycopg[binary]>=3.2  # 수집 워커의 Postgres 저장 (D1). 동기 드라이버라 주기 실행 스크립트에 단순하다
+rapidocr==3.9.2      # 서류 사진 OCR (docs/specs/document-extract.md). Apache-2.0. PaddleOCR 모델을 ONNX로 돌린다. 09-29 실험과 같은 버전
+onnxruntime==1.30.0  # rapidocr의 실행 엔진. MIT. Paddle 엔진 그대로보다 B/L 한 장 약 10배 빨랐다 (09-29 Mac M2 실측)
+python-multipart>=0.0.20  # FastAPI 파일 업로드(POST /api/document)에 필요. 09-29 설치본 0.0.32
