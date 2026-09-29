@@ -66,12 +66,12 @@ proj2-5/
   CLAUDE.md             AI 작업 규칙 (이 파일). AGENTS.md는 여기를 가리킨다
   README.md             채점자용. 한 줄 정의, 실행법, 지표 표
   EVAL_REPORT.md        제출물. 실행한 숫자만 적는다
-  Dockerfile            멀티스테이지. target app / mcp / worker (SDD 6.2)
-  docker-compose.yml    app, mcp, worker, postgres (+ langfuse profile) (SDD 6.1)
+  Dockerfile            멀티스테이지. target app / worker (SDD 6.2)
+  docker-compose.yml    app(/mcp 포함), worker, postgres (+ langfuse profile) (SDD 6.1)
   .dockerignore  .env.example(C8)  .gitignore
   docs/                 Marvia_PRD.md, Marvia_SDD.md, Marvia_개발_작업_리스트.md, specs/, evidence/(제출 스크린샷)
   backend/
-    requirements.txt    app, mcp, worker 공통. requirements-doc.txt는 서류 사진 OCR용이라 app 이미지에만
+    requirements.txt    app, worker 공통. requirements-doc.txt는 서류 사진 OCR용이라 app 이미지에만
     app/
       main.py           FastAPI 앱, 라우터 등록, 미들웨어(구조화 로그, CORS, 레이트 리밋)
       routers/          agent.py: POST /api/agent, GET /api/history, GET /health
@@ -106,7 +106,7 @@ proj2-5/
 
 ```
 cp .env.example .env         # 키만 채운다. REPLAY_MODE=true면 키 없이 데모 3건 동작
-docker compose up            # app :8000 (/api/agent, /health, /docs), mcp :8001 (/mcp), worker, postgres
+docker compose up            # app :8000 (/api/agent, /health, /docs, /mcp), worker, postgres
 cd web && npm run dev        # :3000
 ```
 

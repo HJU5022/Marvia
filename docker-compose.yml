@@ -1,5 +1,6 @@
 # 필수 조건 2. `docker compose up` 한 줄로 전체가 뜬다.
-# app(FastAPI)과 mcp(FastMCP)는 같은 이미지에서 target만 다르게 만든다 (SDD 6.1).
+# api와 worker는 같은 이미지에서 target만 다르게 만든다 (SDD 6.1).
+# MCP(/mcp)는 api 안의 경로다. 따로 도는 mcp 서비스는 09-29에 뺐다 (SDD 5.9)
 services:
   api:
     build:
@@ -11,7 +12,6 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://app:app@db:5432/app
-      MCP_URL: http://mcp:8001/mcp
     depends_on:
       db:
         condition: service_healthy
@@ -21,19 +21,6 @@ services:
       timeout: 5s
       retries: 5
     # Apple Silicon에서 이미지가 안 뜨면 주석을 푼다
-    # platform: linux/amd64
-
-  mcp:
-    build:
-      context: .
-      target: mcp
-    ports:
-      - "8001:8001"
-    env_file:
-      - .env
-    depends_on:
-      db:
-        condition: service_healthy
     # platform: linux/amd64
 
   worker:

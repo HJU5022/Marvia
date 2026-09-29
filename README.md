@@ -136,8 +136,8 @@ SDD 1.1절 기준 목표 구조입니다. 현재 레포는 스캐폴드(`backend
 ├── README.md             프로젝트 소개, 실행법 (이 파일)
 ├── CLAUDE.md · AGENTS.md AI 코딩 도구 작업 지침
 ├── EVAL_REPORT.md        베이스라인 대비 지표 (제출물)
-├── Dockerfile            멀티스테이지 하나 (app / mcp / worker)
-├── docker-compose.yml    app + mcp + worker + postgres
+├── Dockerfile            멀티스테이지 하나 (app / worker)
+├── docker-compose.yml    api(/mcp 포함) + worker + postgres
 ├── .env.example          필요한 키 목록 (값 없음)
 │
 ├── app/                  FastAPI (Cloud Run)
@@ -170,7 +170,7 @@ SDD 1.1절 기준 목표 구조입니다. 현재 레포는 스캐폴드(`backend
 ```bash
 git clone https://github.com/aihuman-7th/proj2-5.git && cd proj2-5
 cp .env.example .env     # 키를 채운다 (아래 표 참고)
-docker compose up        # api :8000, mcp :8001, worker, postgres
+docker compose up        # api :8000 (/api/agent, /mcp), worker, postgres
 ```
 
 뜨면 이렇게 확인한다.

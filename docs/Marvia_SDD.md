@@ -23,7 +23,7 @@
 ```
 repo/
   backend/
-    requirements.txt        app, mcp, worker가 같은 이미지를 쓰므로 하나
+    requirements.txt        app, worker가 같은 이미지를 쓰므로 하나
     app/
       main.py               FastAPI 앱, 라우터 등록, 미들웨어
       routers/agent.py      POST /api/agent, GET /api/history, GET /health
@@ -590,19 +590,18 @@ sequenceDiagram
 
 ## 6. 인프라와 배포
 
-**목표:** `git clone` → `cp .env.example .env`(키만 채움) → `docker compose up` 한 줄로 app, mcp, worker, postgres, langfuse(선택)가 뜬다. 10분 안에 `GET http://localhost:8000/health`가 200.
+**목표:** `git clone` → `cp .env.example .env`(키만 채움) → `docker compose up` 한 줄로 app(`/mcp` 포함), worker, postgres, langfuse(선택)가 뜬다. 10분 안에 `GET http://localhost:8000/health`가 200.
 
 ### 6.1 docker-compose.yml 서비스
 
 | 서비스 | 이미지 | 포트 | 의존 | 역할 |
 | --- | --- | --- | --- | --- |
-| app | `./Dockerfile` target app | 8000 | postgres | FastAPI, `/api/agent`, `/api/history`, `/health`, `/docs` |
-| mcp | 같은 이미지 target mcp | 8001 | postgres | FastMCP `/mcp` |
+| app | `./Dockerfile` target app | 8000 | postgres | FastAPI, `/api/agent`, `/api/history`, `/health`, `/docs`, FastMCP `/mcp` (09-29 합침, 5.9) |
 | worker | 같은 이미지 target worker | 없음 | postgres | collector, arrivals 주기 실행 |
 | postgres | `postgres:16-alpine` | 5432 | 없음 | positions, arrivals, 캐시 |
 | langfuse | 강의 자료 compose 재사용 (profile `local-langfuse`) | 3000 | postgres | 셀프호스팅 선택. 기본은 Langfuse Cloud, `LANGFUSE_HOST`로 전환 |
 
-- `healthcheck`: app은 `/health`, postgres는 `pg_isready`. app·mcp·worker는 `depends_on: condition: service_healthy`.
+- `healthcheck`: app은 `/health`, postgres는 `pg_isready`. app·worker는 `depends_on: condition: service_healthy`.
 - `.env` 하나를 모든 서비스가 `env_file`로 공유. 컨테이너 안에서 `DATABASE_URL=postgresql://…@postgres:5432/cargo`.
 - 볼륨: `pgdata` 하나. 코드는 개발 시 bind mount(`./app:/srv/app`)로 핫리로드, 배포 이미지에는 COPY.
 - `REPLAY_MODE=true`면 외부 API 대신 `evals/fixtures/`를 읽는다. 키 없이도 compose up 후 데모 3건이 동작해야 한다 (채점자 재현용).
@@ -615,7 +614,6 @@ FROM python:3.11-slim AS base
   pip install -r backend/requirements.txt
   COPY backend mcp_server worker evals skills
 FROM base AS app     CMD uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
-FROM base AS mcp     CMD python -m mcp_server.server --port 8001
 FROM base AS worker  CMD python -m worker.run
 ```
 
