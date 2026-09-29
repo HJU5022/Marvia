@@ -18,6 +18,8 @@
   - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
   - 신호 7개가 전부 clear면 verdict=fine은 코드가 정한다(decided_by=rule). LLM 답은 문장만 쓴다 (SDD 4.1 7단계)
   - LLM이 판정을 보류(null)하면 status=insufficient, 포워더 입항 예정일을 묻는다 (skills/ais-reliability 되묻기 조건)
+  - 쓸 위치가 없으면 LLM을 부르지 않는다. 데이터 없음은 insufficient, 도구 고장은 partial (09-29 결정, _no_position)
+  - 위치가 캐시에서 왔으면(실시간 조회 실패) 판정은 하되 status=partial (09-29 결정, 평가셋 F02)
 근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
 import os
@@ -50,6 +52,10 @@ ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워
 NO_VESSEL = "선박 위치 서비스에서 이 배를 찾지 못했습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
 NO_VESSEL_AFTER_ETA = "선박 위치 서비스에서 이 배를 찾지 못해 판정하지 못했습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
 VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하지 못했습니다. 잠시 뒤 다시 조회해 주세요."
+# 위치 없음 (09-29 결정, 09-27 "위치 없음 → 판정 보류" 문구: 조회되지 않는다고 그대로 말하고 포워더 입항 예정일을 묻는다)
+POSITION_MISSING = "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
+POSITION_MISSING_AFTER_ETA = "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
+POSITION_TOOL_FAILED = "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요."
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 VALIDATION_FAILED = "판정을 생성하지 못했습니다. 근거 카드를 확인하세요."  # SDD 5.7 3차 폴백 문구
@@ -145,7 +151,9 @@ def _assess(request: AgentRequest) -> AgentResponse:
     # 5. 1층 신호와 여유 일수는 코드가 계산한다 (SDD 4.1 5·6단계). LLM은 이 값을 바꾸지 않는다
     signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date)
     trusted = signals_service.trusted_eta(position, schedule)
-    margin = days_margin(trusted, request.sale_due_date)
+    # 쓸 위치가 없으면 여유 일수도 내지 않는다. 해수부 예정만으로 센 값을 판정 근거처럼 보이지 않게 (평가셋 B13·F04 days_margin=null)
+    has_position = bool(position) and "error" not in position
+    margin = days_margin(trusted, request.sale_due_date) if has_position else None
 
     # 판정이 붙든 안 붙든 같이 나가는 값
     collected = dict(
@@ -159,6 +167,14 @@ def _assess(request: AgentRequest) -> AgentResponse:
         # 근거 카드. LLM이 실패해 판정이 없어도 조회한 값은 보여준다 (C-8, SDD 5.8)
         evidence=build_evidence(customs, position, schedule, distance, trusted, margin, signals=signal_set),
     )
+
+    # 위치 없음: LLM을 부르지 않고 코드가 보류한다 (09-29 결정, 09-27 "위치 없음 → 판정 보류"를 코드로).
+    # 전에는 위치 없이 LLM에 넘겨 해수부 예정만 보고 watch를 냈다 (평가 B13·F04)
+    if not has_position:
+        return _no_position(position, request, collected)
+    # 실시간 조회는 실패하고 마지막으로 받은 위치(캐시)로 판정한다. 판정은 하되 partial로 알린다
+    # (평가셋 F02 정답 partial·watch, SDD 8절 "ShipFinder 타임아웃 → partial")
+    from_cache = bool(position.get("cached_at"))
 
     # 6·7. 2층 판정 (LLM)과 출력 검증 (C-7, SDD 5.7)
     # 위반이면 위반 내용을 붙여 다시 묻는다. 두 번째 재시도는 "JSON만, 규칙 준수"를 덧붙인다.
@@ -176,7 +192,7 @@ def _assess(request: AgentRequest) -> AgentResponse:
             log_failure("judge", _llm_error(e))
             return _response(status="partial", answer=LLM_FAILED, **collected)
         else:
-            response = _judged(judged.output, signal_set, request, customs, collected)
+            response = _judged(judged.output, signal_set, request, customs, collected, from_cache=from_cache)
             violations = validate.check(response)
             if not violations:
                 return response
@@ -189,8 +205,12 @@ def _assess(request: AgentRequest) -> AgentResponse:
     return _response(status="failed", answer=VALIDATION_FAILED, **collected)
 
 
-def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict) -> AgentResponse:
-    """LLM 판정 1회분을 응답으로 옮긴다. 검증(validate.check)은 부르는 쪽이 한다."""
+def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict,
+            from_cache: bool = False) -> AgentResponse:
+    """LLM 판정 1회분을 응답으로 옮긴다. 검증(validate.check)은 부르는 쪽이 한다.
+
+    from_cache면 위치가 실시간이 아니라 캐시에서 왔다는 뜻이라, 판정이 나와도 status를 partial로 둔다.
+    """
     # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
     if all(s.state == "clear" for s in signal_set.signals):
         verdict, decided_by = "fine", "rule"
@@ -202,6 +222,8 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
     status, missing = "ok", []
     if verdict is None:
         status, missing = ("partial", []) if request.forwarder_eta else ("insufficient", ["forwarder_eta"])
+    elif from_cache:
+        status = "partial"  # 도구 실패를 캐시로 메웠다. 판정은 두되 실시간 확인이 아니었음을 알린다 (평가셋 F02)
 
     return _response(
         status=status,
@@ -215,6 +237,24 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
         customs=_customs_info(customs, out.customs),
         **collected,
     )
+
+
+def _no_position(position: dict | None, request: AgentRequest, collected: dict) -> AgentResponse:
+    """쓸 위치가 없을 때 LLM 없이 보류 응답을 만든다 (09-29 결정). 조회한 값(해수부 예정·근거 카드)은 참고로 둔다.
+
+    둘로 나눈다. 해결책이 달라서다.
+      - 데이터 자체가 없음(도구는 성공, 관측값 없음 = not_found, 또는 MMSI가 없어 못 부름)
+        → 사용자가 포워더에게 알아 올 수 있다. insufficient로 입항 예정일을 묻는다 (평가셋 B13)
+      - 도구 고장(권한 없음, 시간 초과인데 캐시도 없음 등)
+        → 우리 쪽 문제라 사용자에게 되묻지 않는다. partial (평가셋 F04, SDD 8절 ShipFinder 21)
+    """
+    error_code = ((position or {}).get("error") or {}).get("code")
+    if position is None or error_code == "not_found":
+        # 이미 포워더 입항 예정일을 받았으면 더 물을 게 없어 partial (V5: insufficient면 물을 것이 1개 이상)
+        if request.forwarder_eta:
+            return _response(status="partial", answer=POSITION_MISSING_AFTER_ETA, **collected)
+        return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=POSITION_MISSING, **collected)
+    return _response(status="partial", answer=POSITION_TOOL_FAILED, **collected)
 
 
 def _released(customs: CustomsRecord) -> AgentResponse:

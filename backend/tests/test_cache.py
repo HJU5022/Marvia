@@ -89,3 +89,53 @@ def test_cache_fallback_is_logged(caplog):
 
     logged = [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
     assert logged == [("shipfinder:pos", "rate_limited served_from_cache")]
+
+
+def test_timeout_falls_back_to_last_success(monkeypatch, caplog):
+    """시간 초과도 마지막 성공 값으로 대신한다 (09-29 결정, 평가셋 F02). 대신했다는 사실은 로그와 last_cached_at에 남는다."""
+    from backend.app.clients import retry
+
+    monkeypatch.setattr(retry, "BACKOFF_SEC", 0)  # 재시도 대기를 없앤다
+    calls = {"n": 0}
+    ok_body = json.loads((FIXTURES / "position_busan_anchored.json").read_text(encoding="utf-8"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(200, json=ok_body)
+        raise httpx.ReadTimeout("테스트: 시간 초과", request=request)  # 두 번째 조회부터 전부 시간 초과
+
+    client = ShipFinderClient(key="test-key", transport=httpx.MockTransport(handler))
+    first = client.position(440999001)
+    assert client.last_cached_at is None
+
+    with caplog.at_level("WARNING", logger="marvia.failure"):
+        second = client.position(440999001)
+
+    assert second.mmsi == first.mmsi
+    assert client.last_cached_at is not None
+    assert [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"] == [
+        ("shipfinder:pos", "timeout served_from_cache")]
+
+
+def test_timeout_without_cache_raises(monkeypatch):
+    """캐시가 없으면 시간 초과를 그대로 올린다. 라우터가 위치 없음(도구 고장)으로 처리한다."""
+    from backend.app.clients import retry
+
+    monkeypatch.setattr(retry, "BACKOFF_SEC", 0)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("테스트: 시간 초과", request=request)
+
+    client = ShipFinderClient(key="test-key", transport=httpx.MockTransport(handler))
+    with pytest.raises(ShipFinderError) as e:
+        client.position(440999001)
+    assert e.value.code == "timeout"
+
+
+def test_set_keeps_given_cached_at():
+    """평가 실행기가 평가셋에 적힌 담긴 시각을 그대로 넣을 수 있다 (F02)."""
+    cache = ResponseCache()
+    when = datetime.now(timezone.utc) - timedelta(hours=1)
+    cache.set("k", "v", cached_at=when)
+    assert cache.entry("k").cached_at == when

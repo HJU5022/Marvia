@@ -37,6 +37,9 @@ _STATUS_CODES = {
     29: "rate_limited",
 }
 _RETRYABLE = {"busy", "rate_limited", "timeout"}
+# 마지막 성공 값으로 대신하는 실패. 빈도 초과(SDD 5.2)와 시간 초과(09-29 결정, 평가셋 F02 "마지막 수신 위치로 판정").
+# 둘 다 "지금 못 받았을 뿐 배의 정보는 있다"는 뜻이다. 권한 없음·없는 배는 사실이라 캐시로 가리지 않는다
+_CACHE_FALLBACK = {"rate_limited", "timeout"}
 
 
 class ShipFinderError(Exception):
@@ -130,14 +133,15 @@ class ShipFinderClient:
         self.last_cached_at = None
 
     def _cached(self, key: str, fetch):
-        """호출해 보고, 빈도 초과면 마지막 성공 값을 돌려준다 (SDD 5.2).
+        """호출해 보고, 빈도 초과·시간 초과면 마지막 성공 값을 돌려준다 (SDD 5.2, 09-29 결정).
 
         다른 실패(권한 없음, 없는 배 등)는 캐시로 가리지 않는다. 그 실패는 사실이기 때문이다.
+        캐시로 대신했으면 last_cached_at이 채워지고, 라우터는 그 판정을 partial로 알린다 (routers/agent.py).
         """
         try:
             value = fetch()
         except ShipFinderError as e:
-            if e.code != "rate_limited":
+            if e.code not in _CACHE_FALLBACK:
                 raise
             entry = self.cache.entry(key)
             if entry is None:
@@ -145,7 +149,7 @@ class ShipFinderClient:
             self.last_cached_at = entry.cached_at
             # 지난 값이 지금 값처럼 나간다. 판정이 이상할 때 추적할 수 있게 어느 호출이 캐시로 대체됐는지 남긴다.
             # key의 앞 두 칸(shipfinder:pos 등)만 쓴다. 뒤에는 검색어·MMSI가 붙는다
-            log_failure(":".join(key.split(":")[:2]), "rate_limited served_from_cache")
+            log_failure(":".join(key.split(":")[:2]), f"{e.code} served_from_cache")
             return entry.value
         self.cache.set(key, value)
         self.last_cached_at = None
@@ -211,23 +215,32 @@ class ShipFinderClient:
         d = body.get("data")
         if not d:
             raise ShipFinderError("not_found", f"MMSI {mmsi} 위치 없음", status=0)
-        return VesselPosition(
-            mmsi=int(d["mmsi"]),
-            imo=_none_if(d.get("imo"), 0),
-            call_sign=_text(d.get("call_sign")),
-            ship_name=d.get("ship_name", ""),
-            ship_type=d.get("ship_type"),
-            lat=d["lat"],
-            lng=d["lng"],
-            sog=_none_if(d.get("sog"), -1),
-            cog=_none_if(d.get("cog"), -1),
-            hdg=_none_if(d.get("hdg"), 511),
-            navistat=_none_if(d.get("navistat"), -1),
-            dest=_text(d.get("dest")),
-            destcode=_text(d.get("destcode")),
-            ais_eta=_ts(d.get("eta")),
-            draught=d.get("draught"),
-            last_time=_ts(d.get("last_time")),
-            fetched_at=datetime.now(timezone.utc),
-            raw=d,
-        )
+        return position_from_data(d)
+
+
+def position_from_data(d: dict) -> VesselPosition:
+    """VesselPositionSingle 응답의 data 칸을 VesselPosition으로 옮긴다.
+
+    클라이언트 안에서만 쓰던 변환을 밖으로 뺐다. 평가 실행기가 평가셋의 "캐시 위치"(F02)를
+    실제 응답과 같은 변환으로 캐시에 넣으려고 쓴다 (evals/run_eval.py).
+    """
+    return VesselPosition(
+        mmsi=int(d["mmsi"]),
+        imo=_none_if(d.get("imo"), 0),
+        call_sign=_text(d.get("call_sign")),
+        ship_name=d.get("ship_name", ""),
+        ship_type=d.get("ship_type"),
+        lat=d["lat"],
+        lng=d["lng"],
+        sog=_none_if(d.get("sog"), -1),
+        cog=_none_if(d.get("cog"), -1),
+        hdg=_none_if(d.get("hdg"), 511),
+        navistat=_none_if(d.get("navistat"), -1),
+        dest=_text(d.get("dest")),
+        destcode=_text(d.get("destcode")),
+        ais_eta=_ts(d.get("eta")),
+        draught=d.get("draught"),
+        last_time=_ts(d.get("last_time")),
+        fetched_at=datetime.now(timezone.utc),
+        raw=d,
+    )

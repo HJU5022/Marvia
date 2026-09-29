@@ -158,6 +158,60 @@ def test_llm_hold_asks_forwarder_eta(fake):
     assert body["verdict"] is None
 
 
+def _judge_must_not_run(monkeypatch):
+    """위치가 없으면 LLM을 부르지 않아야 한다. 불리면 테스트를 실패시킨다."""
+    monkeypatch.setattr(agent_router.llm, "judge", lambda *a, **k: pytest.fail("위치 없이 LLM을 불렀다"))
+
+
+def test_position_not_found_holds_and_asks_forwarder_eta(fake, monkeypatch):
+    """배는 찾았는데 위치 관측값이 없으면 LLM 없이 보류하고 포워더 입항 예정일을 묻는다 (09-29 결정, 평가셋 B13)."""
+    fake(candidates=[_candidate(440999001)], judge=JUDGED)  # position 기본값 = not_found
+    _judge_must_not_run(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"], body["vessel_match"]) == ("insufficient", None, "confirmed")
+    assert body["missing_inputs"] == ["forwarder_eta"]
+    assert body["days_margin"] is None  # 해수부 예정만으로 센 여유 일수를 내지 않는다
+    assert body["answer"] == agent_router.POSITION_MISSING
+
+
+def test_position_not_found_after_forwarder_eta_is_partial(fake, monkeypatch):
+    """포워더 입항 예정일을 이미 받았으면 더 물을 게 없어 partial (V5)."""
+    fake(candidates=[_candidate(440999001)], judge=JUDGED)
+    _judge_must_not_run(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(forwarder_eta="2026-10-01")).json()
+
+    assert (body["status"], body["verdict"]) == ("partial", None)
+    assert body["missing_inputs"] == []
+
+
+def test_position_tool_failure_is_partial_without_asking(fake, monkeypatch):
+    """권한 없음 같은 도구 고장은 우리 쪽 문제라 되묻지 않고 partial, 판정 보류 (09-29 결정, 평가셋 F04)."""
+    fake(candidates=[_candidate(440999001)], position={"error": {"code": "no_permission"}}, judge=JUDGED)
+    _judge_must_not_run(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"], body["days_margin"]) == ("partial", None, None)
+    assert body["missing_inputs"] == []
+    assert body["answer"] == agent_router.POSITION_TOOL_FAILED
+
+
+def test_cached_position_is_judged_but_partial(fake):
+    """실시간 조회가 실패해 캐시 위치로 판정했으면 판정은 두고 status만 partial (09-29 결정, 평가셋 F02)."""
+    fake(candidates=[_candidate(440999001)], position={**POSITION, "cached_at": NOW.isoformat()}, judge=JUDGED)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"], body["decided_by"]) == ("partial", "watch", "llm")
+
+
 def test_multiple_candidates_ask_back(fake):
     """동명 선박인데 LLM이 못 고르면(여기선 실패) 확정하지 않고 되묻는다 (PRD 6.2)."""
     fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")])

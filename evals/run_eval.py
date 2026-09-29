@@ -174,6 +174,7 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
     write_replay_files(rec, out)
     replay.REPLAY_DIR = out
     ShipFinderClient.cache = ResponseCache()  # 문항끼리 캐시가 섞이지 않게
+    _seed_position_cache(rec, ShipFinderClient.cache)
 
     # 라우터가 확정한 배의 MMSI는 응답에 따로 안 나온다(vessel 칸이 비어 있음).
     # 위치 조회에 넘긴 MMSI가 확정한 배이므로 그 호출을 엿봐서 오확정을 센다
@@ -235,6 +236,22 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
         "failures": failures,    # 서버가 남긴 실패 로그 "stage=error" (D6). partial·failed가 왜 났는지
         "llm_calls": llm_calls,  # 이 문항에서 부른 LLM 호출 하나당 한 줄 (_spy_llm_calls)
     }
+
+
+def _seed_position_cache(rec: dict, cache) -> None:
+    """평가셋 fixtures.shipfinder.cache(예전에 받아 둔 위치)를 캐시에 넣는다. 평가셋에 적힌 담긴 시각 그대로.
+
+    F02 "위치 조회가 시간 초과 → 마지막 수신 위치로 판정"을 재현하려면 조회 전에 캐시가 있어야 한다.
+    전에는 이 칸을 읽지 않아 F02가 캐시 없는 시간 초과로만 돌았다 (09-29 확인).
+    캐시가 TTL(clients/cache.py, SDD 5.2 6시간)을 넘겼으면 클라이언트가 버린다. 그 판단은 서버 코드에 맡긴다.
+    """
+    from backend.app.clients.shipfinder import position_from_data
+
+    cached = (rec["fixtures"].get("shipfinder") or {}).get("cache")
+    if not cached:
+        return
+    cache.set(f"shipfinder:pos:{cached['mmsi']}", position_from_data(cached),
+              cached_at=datetime.fromisoformat(cached["cached_at"]))
 
 
 class _FailureCollector(logging.Handler):

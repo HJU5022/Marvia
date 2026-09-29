@@ -32,8 +32,9 @@ class ResponseCache:
         self._ttl = ttl
         self._store: dict[str, CacheEntry] = {}
 
-    def set(self, key: str, value: Any) -> None:
-        self._store[key] = CacheEntry(value=value, cached_at=datetime.now(timezone.utc))
+    def set(self, key: str, value: Any, cached_at: datetime | None = None) -> None:
+        """cached_at을 안 주면 지금 시각. 평가 실행기는 평가셋에 적힌 담긴 시각을 그대로 넣는다 (F02)."""
+        self._store[key] = CacheEntry(value=value, cached_at=cached_at or datetime.now(timezone.utc))
 
     def get(self, key: str) -> Any | None:
         """TTL 안이면 값을, 지났거나 없으면 None을 돌려준다."""
