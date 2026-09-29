@@ -139,3 +139,38 @@ def test_set_keeps_given_cached_at():
     when = datetime.now(timezone.utc) - timedelta(hours=1)
     cache.set("k", "v", cached_at=when)
     assert cache.entry("k").cached_at == when
+
+
+def _stale_client(error: str, monkeypatch) -> ShipFinderClient:
+    """9시간 전에 담긴 위치가 캐시에 있고, 이번 조회는 error로 실패하는 클라이언트 (평가셋 F02와 같은 간격)."""
+    from backend.app.clients import retry
+    from backend.app.clients.shipfinder import position_from_data
+
+    monkeypatch.setattr(retry, "BACKOFF_SEC", 0)
+    body = json.loads((FIXTURES / "position_busan_anchored.json").read_text(encoding="utf-8"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if error == "timeout":
+            raise httpx.ReadTimeout("테스트: 시간 초과", request=request)
+        return httpx.Response(200, json=json.loads((FIXTURES / "rate_limited.json").read_text(encoding="utf-8")))
+
+    client = ShipFinderClient(key="test-key", transport=httpx.MockTransport(handler))
+    client.cache = ResponseCache()
+    client.cache.set("shipfinder:pos:440999001", position_from_data(body["data"]),
+                     cached_at=datetime.now(timezone.utc) - timedelta(hours=9))
+    return client
+
+
+def test_timeout_uses_cache_older_than_ttl(monkeypatch):
+    """시간 초과면 TTL(6시간)이 지난 캐시도 마지막 수신 위치로 쓴다 (09-29 결정 ①, 평가셋 F02)."""
+    client = _stale_client("timeout", monkeypatch)
+    assert client.position(440999001).mmsi == 440999001
+    assert client.last_cached_at is not None
+
+
+def test_rate_limited_still_respects_ttl(monkeypatch):
+    """빈도 초과는 SDD 5.2대로 TTL 안의 캐시만 쓴다. 9시간 된 값이면 실패를 올린다."""
+    client = _stale_client("rate_limited", monkeypatch)
+    with pytest.raises(ShipFinderError) as e:
+        client.position(440999001)
+    assert e.value.code == "rate_limited"

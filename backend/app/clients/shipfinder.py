@@ -143,7 +143,10 @@ class ShipFinderClient:
         except ShipFinderError as e:
             if e.code not in _CACHE_FALLBACK:
                 raise
-            entry = self.cache.entry(key)
+            # 시간 초과는 TTL(6시간)이 지난 값도 쓴다 (09-29 결정 ①, 평가셋 F02: 03:05 캐시로 12:00 판정).
+            # 오래된 위치는 signals의 position_stale이 "마지막 수신 위치"로 드러내므로 숨기는 것이 아니다
+            # (09-27 결정 "오래된 위치는 되묻지 않고 마지막 수신 위치로 판정"). 빈도 초과는 SDD 5.2대로 TTL 안에서만
+            entry = self.cache.entry(key, ignore_ttl=(e.code == "timeout"))
             if entry is None:
                 raise
             self.last_cached_at = entry.cached_at
