@@ -573,14 +573,16 @@ class FollowUpOutput(BaseModel):
     answer: str
 
 
-def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None) -> LLMAnswer:
+def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None,
+                     feedback: str | None = None) -> LLMAnswer:
     """이미 나온 판정(response)에 대한 후속 질문에 답한다. output은 FollowUpOutput.
 
     질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
+    feedback: 앞 답이 검증 규칙(V1·V7)을 어겼을 때 어긴 내용. judge()와 같은 방식으로 다시 묻는다 (09-29, 평가 F06)
     """
     data = {
         "result": response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"}),
         "question": question,
     }
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
-                     FOLLOW_UP_SCHEMA, FollowUpOutput, model)
+                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback)

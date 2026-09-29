@@ -644,7 +644,8 @@ def _fake_follow(monkeypatch, answer: dict | None):
 def test_follow_up_uses_saved_result(fake, monkeypatch):
     """세션에 저장된 지난 결과가 있으면 다시 조회하지 않고 그 결과 안에서 답한다 (09-27 결정)."""
     fake(judge=JUDGED)
-    saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", answer="지난 답")
+    # 답의 "5"가 V7을 통과하도록 지난 결과에 여유 일수 5를 둔다 (후속 답도 V7 검증, 09-29)
+    saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", days_margin=5, answer="지난 답")
     monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
     monkeypatch.setattr(agent_router, "_assess", lambda request: pytest.fail("저장된 결과가 있으면 다시 조회하면 안 된다"))
     calls = _fake_follow(monkeypatch, {"in_scope": True, "answer": "여유는 5일입니다."})
@@ -654,6 +655,48 @@ def test_follow_up_uses_saved_result(fake, monkeypatch):
 
     assert body["answer"] == "여유는 5일입니다." and body["verdict"] == "watch"  # 판정은 지난 결과 그대로
     assert calls[0]["previous"].answer == "지난 답"
+
+
+def _follow_sequence(monkeypatch, answers: list[str]):
+    """후속 답을 차례로 돌려주는 가짜. 받은 feedback도 기록한다."""
+    calls = []
+
+    def follow(question, response, feedback=None, **kwargs):
+        calls.append(feedback)
+        text = answers[min(len(calls), len(answers)) - 1]
+        return llm.LLMAnswer(output=llm.FollowUpOutput.model_validate({"in_scope": True, "answer": text}),
+                             llm=llm.LLMResult(content="", model="test/model"), prompt_version="test")
+
+    monkeypatch.setattr(agent_router.llm, "answer_follow_up", follow)
+    return calls
+
+
+def test_follow_up_with_stray_number_is_retried(fake, monkeypatch):
+    """후속 답에 근거 없는 숫자가 있으면 V7 내용을 붙여 다시 묻는다 (09-29, 평가 F06 "9월 23일")."""
+    fake(judge=JUDGED)
+    saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", days_margin=-1, answer="지난 답")
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    calls = _follow_sequence(monkeypatch, ["판매 예정일인 9월 23일보다 늦습니다.", "판매 예정일보다 1일 늦게 도착합니다."])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(follow_up_question="언제 와?")).json()
+
+    assert body["answer"] == "판매 예정일보다 1일 늦게 도착합니다."
+    assert calls[0] is None and "V7" in calls[1]  # 두 번째 물을 때 어긴 내용을 붙인다
+
+
+def test_follow_up_gives_up_after_three_violations(fake, monkeypatch):
+    """세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정은 그대로."""
+    fake(judge=JUDGED)
+    saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", answer="지난 답")
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    calls = _follow_sequence(monkeypatch, ["9월 23일입니다."])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(follow_up_question="언제 와?")).json()
+
+    assert len(calls) == agent_router.JUDGE_ATTEMPTS
+    assert body["answer"] == agent_router.FOLLOW_UP_FAILED and body["verdict"] == "act"
 
 
 def test_follow_up_without_saved_result_assesses_again(fake, monkeypatch):

@@ -72,6 +72,9 @@ JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 �
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
 FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
+# 후속 답에 거는 검증 규칙. 7규칙 중 answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기)과
+# V7(근거에 없는 숫자 금지)뿐이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
+FOLLOW_UP_RULES = {"V1", "V7"}
 
 
 def _response(**over) -> AgentResponse:
@@ -293,12 +296,30 @@ def _follow_up(request: AgentRequest) -> AgentResponse:
     판정·근거는 지난 결과 그대로 두고 answer만 질문의 답으로 바꿔 돌려준다.
     """
     previous = _previous_response(request) or _assess(request)
-    try:
-        out = llm.answer_follow_up(request.follow_up_question, previous).output
-    except llm.LLMError as e:
-        log_failure("follow_up", _llm_error(e))
-        return previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
-    return previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
+    failed = previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
+
+    # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거에 없는 숫자("9월 23일")가 사용자에게 갔다 (평가 F06).
+    # 판정·근거는 지난 결과 그대로라 답 문장을 보는 규칙(FOLLOW_UP_RULES)만 건다. 재시도 방식은 판정과 같다 (SDD 5.7)
+    feedback = None
+    for attempt in range(1, JUDGE_ATTEMPTS + 1):
+        try:
+            out = llm.answer_follow_up(request.follow_up_question, previous, feedback=feedback).output
+        except llm.LLMFormatError as e:
+            log_failure("follow_up", f"{e.kind} attempt {attempt}")
+            feedback = e.detail
+            continue
+        except llm.LLMError as e:
+            log_failure("follow_up", _llm_error(e))
+            return failed
+        answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
+        violations = [v for v in validate.check(answered) if v.rule in FOLLOW_UP_RULES]
+        if not violations:
+            return answered
+        log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")
+        feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+    # 세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정·근거는 그대로 둔다
+    log_failure("follow_up", f"gave up after {JUDGE_ATTEMPTS} attempts")
+    return failed
 
 
 def _previous_response(request: AgentRequest) -> AgentResponse | None:
