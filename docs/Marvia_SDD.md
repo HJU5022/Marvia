@@ -405,7 +405,7 @@ POST /api/agent
       등급은 코드가 판정 표(services/verdict.py, SKILL.md 표)로 먼저 정한다 → decided_by=rule (09-30 D7)
       LLM은 그 등급에 맞춰 reasons·conflicts·actions·answer·통관 해설을 쓴다. 표가 틀렸다고 보면 table_disagree(기록만)
       anchor_wait·customs_hold가 unknown(회색 지대)이면 LLM이 표 등급 이상에서 고른다. 올리면 decided_by=llm
-      LLM 등급이 허용 밖이면 V8로 다시 묻고, 세 번 모두 밖이면 표 등급으로 확정 (고정 문구)
+      LLM 등급이 허용 밖이면 V8로 다시 묻는다. LLM이 끝내 실패하면(위반·형식·호출) 표 등급 + 고정 문구로 partial, 회색 지대면 등급 없이 (5.7)
  8. validate.run(response) 7규칙 → 위반 시 llm 재시도(최대 3) → 폴백
  9. Langfuse trace 종료, trace_id 반환
 ```
@@ -529,7 +529,7 @@ sequenceDiagram
 | V6 | conflicts[].chosen이 evidence[].source에 존재 |
 | V7 | answer 안의 날짜·숫자(정규식)가 evidence value 또는 days_margin에 존재 |
 
-재시도: 1차 위반 detail 첨부 → 2차 "JSON만, 규칙 준수" 강화 프롬프트 → 3차 폴백 `status=failed, answer="판정을 생성하지 못했습니다. 근거 카드를 확인하세요.", evidence 유지`.
+재시도: 1차 위반 detail 첨부 → 2차 "JSON만, 규칙 준수" 강화 프롬프트 → 3차 폴백 `status=partial`, 판정 표 등급 + 고정 문구("판정 표 기준으로 '…'입니다. 설명 문장은 만들지 못했습니다…"), evidence 유지. 회색 지대면 등급 없이 partial (09-30 결정. 등급은 코드 판정 표가 정하므로 LLM이 못 만든 것은 문장뿐이다. 전에는 failed). LLM 호출 자체가 실패해도 같다. failed는 통관 정보(UNI-PASS)를 못 가져왔을 때만 쓴다.
 
 ### 5.8 services/evidence.py
 
@@ -690,7 +690,7 @@ open http://localhost:8000/docs
 | ShipFinder 23/29 | client | 캐시 값 + cached_at, 근거에 "캐시" |
 | ShipFinder 타임아웃 | 2회 재시도 | position None → position_stale unknown → partial |
 | 식별 uncertain | identify | insufficient, verdict None |
-| LLM 스키마 위반 | validate | 3단계 재시도 → 폴백 |
+| LLM 스키마 위반 · 검증 위반 · 호출 실패 | validate · llm.py | 3단계 재시도 → partial, 판정 표 등급 + 고정 문구 (회색 지대면 등급 없음, 5.7) |
 | LLM 429 | llm.py | MODEL_B 1회 |
 | 비용 상한 초과 | llm.py 누적 | 503, "일일 한도 초과" |
 | 프롬프트 주입(입력) | 라우터 | bl_no 외 자유 입력은 follow_up만, 길이 300자 제한 |

@@ -146,7 +146,7 @@ AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(IM
 
 **검증 7종(LLM 출력 검사, 위반 시 재시도):** stale이면 "현재 위치" 금지 / act·watch면 reasons 필수 / eta 있으면 evidence 필수 / uncertain이면 verdict 금지 / insufficient면 missing_inputs 필수 / conflicts 출처는 evidence에 있어야 / answer 숫자는 evidence에 있어야. 모델을 바꾸면 위반율이 달라지므로 모델 비교가 의미를 가진다.
 
-**재시도 3단계:** 오류 붙여 재요청 → 엄격 프롬프트로 재요청 → 폴백(status failed). 재시도는 트레이스에 남긴다.
+**재시도 3단계:** 오류 붙여 재요청 → 엄격 프롬프트로 재요청 → 폴백(status partial, 판정 표 등급 + 고정 문구. 09-30 결정, 전에는 failed). 재시도는 트레이스에 남긴다.
 
 | 실패 | 대응 |
 | --- | --- |

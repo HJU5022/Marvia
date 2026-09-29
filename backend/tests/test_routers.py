@@ -103,7 +103,8 @@ def _all_clear(monkeypatch):
     monkeypatch.setattr(agent_router.signals_service, "compute", lambda *a, **k: signal_set)
 
 
-def test_single_candidate_is_confirmed(fake):
+def test_single_candidate_is_confirmed(fake, monkeypatch):
+    _signals(monkeypatch, {"eta_conflict": "triggered"})  # 확실한 신호. 기본 위치는 부산 앞 정지라 회색 지대가 된다
     fake(candidates=[_candidate(440999001)],
          position={"mmsi": 440999001, "lat": 35.1, "lng": 129.05, "sog": 0.0, "cog": 10.0,
                    "navistat": 8, "dest": "BUSAN, KR", "destcode": "KRPUS", "ais_eta": None,
@@ -114,9 +115,8 @@ def test_single_candidate_is_confirmed(fake):
 
     assert body["vessel_match"] == "confirmed"
     assert body["position"]["lat"] == 35.1
-    assert body["status"] == "partial"  # LLM 실패면 판정 없이 partial (09-23 결정)
-    assert body["verdict"] is None
-    assert "sales_date_exceeded" not in body["answer"]  # 실패 안내 문장이 나간다
+    assert body["status"] == "partial"  # LLM 실패면 partial. 등급은 판정 표 것을 낸다 (09-30 결정)
+    assert body["decided_by"] == "rule" and body["answer"].startswith("판정 표 기준으로")
 
 
 POSITION = {"mmsi": 440999001, "lat": 35.1, "lng": 129.05, "sog": 0.0, "cog": 10.0,
@@ -169,8 +169,19 @@ def test_llm_keeps_wrong_verdict_falls_back_to_table(fake, monkeypatch):
     with TestClient(app) as client:
         body = client.post("/api/agent", json=_request()).json()
 
-    assert (body["status"], body["verdict"], body["decided_by"]) == ("ok", "fine", "rule")
+    assert (body["status"], body["verdict"], body["decided_by"]) == ("partial", "fine", "rule")
     assert body["answer"] == agent_router.TABLE_FALLBACK.format(label="괜찮음")
+
+
+def test_gray_zone_llm_failure_gives_no_verdict(fake, monkeypatch):
+    """회색 지대에서 LLM이 실패하면 등급 없이 partial. 표 등급은 "최소 이만큼"이라 낮을 수 있어 확정처럼 보이지 않게 한다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge=None)  # LLM 호출 실패
+    _signals(monkeypatch, {"anchor_wait": "unknown"})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"]) == ("partial", None)
 
 
 def test_gray_zone_llm_may_raise(fake, monkeypatch):
@@ -190,15 +201,14 @@ def test_gray_zone_llm_may_raise(fake, monkeypatch):
 
 
 def test_gray_zone_llm_cannot_lower(fake, monkeypatch):
-    """회색 지대라도 표보다 낮출 수 없다. 표 watch인데 LLM이 fine만 내면 표 등급으로 확정."""
+    """회색 지대라도 표보다 낮출 수 없다. 표 watch인데 LLM이 세 번 모두 fine이면 낮은 등급을 받지 않고 등급 없이 partial."""
     fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": "fine", "reasons": []})
     _signals(monkeypatch, {"anchor_wait": "unknown", "eta_conflict": "triggered"})  # 표: watch
 
     with TestClient(app) as client:
         body = client.post("/api/agent", json=_request()).json()
 
-    assert (body["verdict"], body["decided_by"]) == ("watch", "rule")
-    assert body["reasons"][0]["rule"] == "eta_conflict"
+    assert (body["status"], body["verdict"]) == ("partial", None)
 
 
 def _judge_must_not_run(monkeypatch):
@@ -268,7 +278,7 @@ def _signal_set(states: dict[str, str], values: dict[str, str] | None = None) ->
 
 def test_sale_date_is_optional(fake, monkeypatch):
     """판매일은 선택 입력이다 (09-29 결정). 없으면 판매일 초과 신호는 세지 않고 배 상태만으로 판정한다."""
-    fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED)
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": "fine", "reasons": []})
     monkeypatch.setattr(agent_router.signals_service, "compute",
                         lambda *a, **k: _signal_set({"sales_date_exceeded": "unknown"}, {"sales_date_exceeded": "판매 예정일 입력 없음"}))
     request = _request()
@@ -312,7 +322,7 @@ def test_forwarder_eta_becomes_arrival_date(fake, monkeypatch):
 
 def test_all_clear_but_tight_margin_is_watch(fake, monkeypatch):
     """D4 (09-29 결정): 신호가 다 정상이어도 여유가 margin_act_days 미만이면 규칙으로 watch."""
-    fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": "fine", "reasons": []},
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": "watch", "reasons": []},
          schedule={"planned_arrival": datetime(2026, 10, 4, 3, tzinfo=timezone.utc).isoformat(), "actual_arrival": None,
                    "fetched_at": NOW.isoformat()})
     _all_clear(monkeypatch)
@@ -612,8 +622,9 @@ def test_rule_violation_is_retried_with_detail(fake, monkeypatch):
     assert body["status"] == "ok" and body["answer"] == JUDGED["answer"]
 
 
-def test_three_violations_end_in_failed_with_evidence(fake, monkeypatch):
-    """세 번 모두 위반이면 판정 없이 failed. 근거 카드는 남긴다 (SDD 5.7 3차 폴백)."""
+def test_three_violations_end_in_table_verdict(fake, monkeypatch):
+    """세 번 모두 위반이면 판정 표 등급 + 고정 문구로 partial. 근거 카드는 남긴다 (09-30 결정, 전에는 failed)."""
+    _signals(monkeypatch, {"eta_conflict": "triggered"})  # 확실한 신호 (표: watch). 회색 지대면 등급 없이 끝난다
     fake(candidates=[_candidate(440999001)], position=POSITION)
     calls = []
     bad = {**JUDGED, "answer": "10월 3일에 들어옵니다."}
@@ -623,8 +634,8 @@ def test_three_violations_end_in_failed_with_evidence(fake, monkeypatch):
         body = client.post("/api/agent", json=_request()).json()
 
     assert len(calls) == 3 and "JSON only" in calls[2]  # 3번째는 강화 문구 (SDD 5.7 2차 재시도)
-    assert body["status"] == "failed" and body["verdict"] is None
-    assert body["evidence"] and body["answer"] == agent_router.VALIDATION_FAILED
+    assert (body["status"], body["decided_by"]) == ("partial", "rule") and body["verdict"] is not None
+    assert body["evidence"] and body["answer"].startswith("판정 표 기준으로")
 
 
 def _broken_then(answers: list, calls: list):
@@ -652,8 +663,9 @@ def test_broken_format_is_retried_like_a_violation(fake, monkeypatch):
     assert body["status"] == "ok" and body["answer"] == JUDGED["answer"]
 
 
-def test_three_broken_formats_end_in_failed(fake, monkeypatch):
-    """세 번 다 형식이 깨지면 failed (SDD 5.7, 평가셋 F08). 호출 실패(LLMError)만 partial이다."""
+def test_three_broken_formats_end_in_table_verdict(fake, monkeypatch):
+    """세 번 다 형식이 깨져도 판정 표 등급 + 고정 문구로 partial (09-30 결정, 평가셋 F08. 전에는 failed)."""
+    _signals(monkeypatch, {"eta_conflict": "triggered"})  # 확실한 신호 (표: watch). 회색 지대면 등급 없이 끝난다
     fake(candidates=[_candidate(440999001)], position=POSITION)
     calls = []
     monkeypatch.setattr(agent_router.llm, "judge", _broken_then(["broken"], calls))
@@ -662,7 +674,7 @@ def test_three_broken_formats_end_in_failed(fake, monkeypatch):
         body = client.post("/api/agent", json=_request()).json()
 
     assert len(calls) == 3 and "JSON only" in calls[2]
-    assert body["status"] == "failed" and body["answer"] == agent_router.VALIDATION_FAILED
+    assert body["status"] == "partial" and body["answer"].startswith("판정 표 기준으로")
 
 
 def test_llm_pick_outside_candidates_is_not_confirmed(fake):

@@ -49,7 +49,7 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 - 등급(verdict)은 코드가 판정 표로 정한다. LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다 (09-30 D7, services/verdict.py)
 - 모든 외부 호출(UNI-PASS, ShipFinder, 해수부, searoute, OpenRouter)은 타임아웃, 재시도 2회, 최종 실패 시 partial 경로가 있어야 한다 (SDD 8절 표). MCP 도구는 예외를 던지지 않고 {error: {code, message, retryable}}을 돌려준다 (SDD 3.4)
 - 모든 도구 응답에 source와 fetched_at을 붙이고 evidence로 남긴다
-- LLM 출력은 validate.py의 7규칙(V1~V7)을 통과해야 한다. 위반은 3단계 재시도 뒤 status=failed 폴백 (SDD 5.7)
+- LLM 출력은 검증 규칙(validate.py V1~V7, 라우터 V8)을 통과해야 한다. 위반은 3단계 재시도 뒤 판정 표 등급 + 고정 문구로 partial 폴백. failed는 통관 정보를 못 가져왔을 때만 (SDD 5.7, 09-30)
 - LLM 호출과 MCP 도구 호출마다 Langfuse span을 남긴다. user_id, session_id, model, tokens, latency, cost, retry_count, prompt_version (SDD 5.11)
 - 코드 파일마다 주석을 단다. 모듈 상단에 책임 한 줄, 함수마다 무엇을 왜 하는지, 규칙이나 숫자에는 출처 절(예: "SDD 5.4", "rules.md position_stale_hours"). 대화 기록 없이 파일만 읽는 팀원이 따라올 수 있어야 하고, 발표에서 "이거 왜 이렇게 했어요?"에 답하는 근거가 된다
 - 테스트는 키 없이 돈다. 외부 API는 evals/fixtures/의 가공 응답(공식 문서 예시 또는 실제와 형식만 같은 값)으로 대체한다. ShipFinder·UNI-PASS 약관상 실제 응답 원본은 레포에 커밋하지 않는다. 로컬 저장본은 .gitignore. 진짜 호출은 scripts/에 둔다

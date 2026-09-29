@@ -12,10 +12,10 @@
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
   6. 2층 판정 (LLM, services/llm.judge)
-  7. 출력 검증 7규칙 (services/validate.py). 위반이면 최대 3번까지 다시 묻고, 그래도 위반이면 failed
+  7. 출력 검증 V1~V8 (services/validate.py, V8은 여기). 위반이면 최대 3번까지 다시 묻고, 그래도 위반이면 판정 표 등급 + 고정 문구로 partial
 
 6단계는 services/llm.judge()가 한다 (C-6, 09-27 연결). 결과를 어떻게 응답에 담나:
-  - LLM 호출이 실패하면 판정 없이 status=partial. 신호·위치·여유 일수는 그대로 준다 (09-23 결정)
+  - LLM이 끝내 실패하면(호출 실패, 세 번 모두 위반) status=partial. 등급은 판정 표 것을 내고 문장은 고정 문구. 회색 지대면 등급 없이 (09-30 결정, _llm_gave_up)
   - 등급은 코드가 판정 표로 정한다(decided_by=rule). LLM은 그 등급에 맞춰 설명·할 일·상충·통관 해설을 쓴다 (09-30 D7, services/verdict.py)
   - 회색 지대(anchor_wait·customs_hold가 unknown)만 LLM이 표 등급 이상에서 고른다. 표보다 올리면 decided_by=llm
   - LLM이 표가 틀렸다고 보면 table_disagree에 적는다. 응답에 쓰지 않고 기록만 한다 (Langfuse generation output, 로그)
@@ -69,8 +69,7 @@ NO_ETA_WITH_ESTIMATE = ("판매 예정일은 받았지만 도착 예정일을 �
 POSITION_TOOL_FAILED = "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요."
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
-VALIDATION_FAILED = "판정을 생성하지 못했습니다. 근거 카드를 확인하세요."  # SDD 5.7 3차 폴백 문구
-# LLM이 세 번 모두 허용 밖 등급을 냈을 때 표 등급으로 확정하며 쓰는 문구 (09-30 D7). 숫자를 넣지 않는다 (V7)
+# 판정 LLM이 끝내 실패했을 때 표 등급으로 확정하며 쓰는 문구 (09-30 결정, _llm_gave_up). 숫자를 넣지 않는다 (V7)
 TABLE_FALLBACK = "판정 표 기준으로 '{label}'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요."
 VERDICT_LABEL = {"fine": "괜찮음", "watch": "지켜볼 것", "act": "지금 조치"}
 
@@ -203,14 +202,14 @@ def _assess(request: AgentRequest) -> AgentResponse:
 
     # 6·7. 2층 판정 (LLM)과 출력 검증 (C-7, SDD 5.7)
     # 위반이면 위반 내용을 붙여 다시 묻는다. 두 번째 재시도는 "JSON만, 규칙 준수"를 덧붙인다.
-    # 세 번 모두 위반이면 판정 없이 failed로 끝내고 근거 카드는 남긴다
     # 형식이 깨진 답(JSON 아님·필수 칸 누락)도 위반과 같이 다시 묻는다 (09-28 결정). 전에는 바로 partial로 끝나
-    # 두 번째 답이 깨지면 세 번째 기회가 없었다 (09-28 평가 B09). 호출 자체가 실패하면 지금처럼 바로 partial
+    # 두 번째 답이 깨지면 세 번째 기회가 없었다 (09-28 평가 B09).
+    # LLM이 끝내 실패하면(세 번 모두 위반·형식 오류, 또는 호출 실패) 판정 표 등급과 고정 문구로 partial (09-30 결정).
+    # 등급은 코드가 정하므로 LLM이 못 만든 것은 설명 문장뿐이다. 전에는 등급까지 버리고 failed였다 (_llm_gave_up)
     # 등급은 판정 표가 먼저 정한다 (09-30 D7). 회색 지대면 LLM이 표 이상에서 고를 수 있다
     table = verdict_table.table_verdict(signal_set, margin)
     gray = verdict_table.is_gray(signal_set)
     feedback = None
-    only_verdict_wrong = False  # 마지막 시도가 등급만 틀렸나. 그러면 실패 대신 표 등급으로 확정한다
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback,
@@ -218,10 +217,10 @@ def _assess(request: AgentRequest) -> AgentResponse:
                                table_verdict=table, verdict_mode="raise_only" if gray else "fixed")
         except llm.LLMFormatError as e:
             log_failure("judge", f"{e.kind} attempt {attempt}")
-            feedback, only_verdict_wrong = e.detail, False
+            feedback = e.detail
         except llm.LLMError as e:
             log_failure("judge", _llm_error(e))
-            return _response(status="partial", answer=LLM_FAILED, **collected)
+            return _llm_gave_up(signal_set, margin, table, gray, customs, collected)
         else:
             out = judged.output
             if out.table_disagree:
@@ -233,7 +232,6 @@ def _assess(request: AgentRequest) -> AgentResponse:
                 need = f"{table} or higher" if gray else table
                 feedback = (f"V8: verdict must be {need} (the judgment table decided {table}). "
                             "Write reasons, actions, and answer for that verdict.")
-                only_verdict_wrong = True
             else:
                 response = _judged(out, signal_set, request, customs, collected, table, from_cache=from_cache)
                 violations = validate.check(response)
@@ -242,13 +240,10 @@ def _assess(request: AgentRequest) -> AgentResponse:
                 # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
                 log_failure("validate", f"{','.join(v.rule for v in violations)} attempt {attempt}")
                 feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
-                only_verdict_wrong = False
         if attempt == JUDGE_ATTEMPTS - 1:
             feedback += "\nReturn JSON only and follow every rule above."
     log_failure("judge", f"gave up after {JUDGE_ATTEMPTS} attempts")
-    if only_verdict_wrong:
-        return _table_fallback(signal_set, margin, table, customs, collected, from_cache)
-    return _response(status="failed", answer=VALIDATION_FAILED, **collected)
+    return _llm_gave_up(signal_set, margin, table, gray, customs, collected)
 
 
 def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, collected: dict, table: str,
@@ -282,15 +277,19 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
     )
 
 
-def _table_fallback(signal_set, margin: int | None, table: str, customs: CustomsRecord, collected: dict,
-                    from_cache: bool) -> AgentResponse:
-    """LLM이 세 번 모두 허용 밖 등급(V8)을 냈을 때 표 등급으로 확정한다 (09-30 D7).
+def _llm_gave_up(signal_set, margin: int | None, table: str, gray: bool, customs: CustomsRecord,
+                 collected: dict) -> AgentResponse:
+    """판정 LLM이 끝내 실패했을 때의 응답 (09-30 결정). status는 늘 partial이다. 설명 문장을 못 만들었기 때문이다.
 
-    등급은 코드 표가 책임지므로 LLM 문장이 없어도 낼 수 있다. LLM 문장은 틀린 등급에 맞춰 쓰였을 수 있어 쓰지 않고
-    고정 문구를 쓴다. 통관 해설도 없어서 비운다 (_customs_info가 None).
+    - 표가 확실하면: 등급은 코드 판정 표가 책임지므로 그 등급을 낸다. LLM 문장은 위반했거나 틀린 등급에 맞춰
+      쓰였을 수 있어 쓰지 않고 고정 문구를 쓴다. 통관 해설도 없어 비운다 (_customs_info가 None)
+    - 회색 지대면: 표 등급은 "최소 이만큼"이라 실제보다 낮을 수 있다. 낮은 등급을 확정처럼 보이지 않게 등급 없이 둔다
+    전에는 세 번 모두 위반이면 등급까지 버리고 failed였다. 이제 failed는 통관 정보를 못 가져왔을 때만 쓴다.
     """
+    if gray:
+        return _response(status="partial", answer=LLM_FAILED, **collected)
     return _response(
-        status="partial" if from_cache else "ok",
+        status="partial",
         verdict=table,
         decided_by="rule",
         reasons=verdict_table.table_reasons(signal_set, margin) if table != "fine" else [],
