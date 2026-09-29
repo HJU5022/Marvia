@@ -288,7 +288,9 @@ def _llm_failure_replay(rec: dict, config: str):
     real_chat = llm.chat
 
     def broken_chat(*args, **kwargs):
-        return llm.LLMResult(content="{}", model="replay/invalid")  # 필수 칸 누락
+        # 필수 칸 누락. 실제로 부르지 않았으니 비용 0. None으로 두면 usage()가 "금액 모름"으로 보고
+        # 진짜 호출 금액 합계까지 버린다 (09-29 gpt-4o-mini 실행에서 요청당 비용이 이것 때문에 비었다)
+        return llm.LLMResult(content="{}", model="replay/invalid", cost=0.0)
 
     llm.chat = broken_chat
     return lambda: setattr(llm, "chat", real_chat)
