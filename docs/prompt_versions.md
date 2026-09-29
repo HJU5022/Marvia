@@ -14,6 +14,7 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | marvia-pick-vessel | 동명 선박 후보 중 선택. 확실할 때만 high | v0 |
 | marvia-follow-up | 판정 뒤 후속 질문에 근거 안에서만 답하기 | v0 |
 | marvia-judge-eval | 평가용 LLM-as-judge. 통관 해설 채점 | v0 |
+| marvia-doc-extract | 서류 사진 OCR 글자에서 6칸 옮겨 적기 (docs/specs/document-extract.md) | v0 |
 
 ## v0 개발 중 수정
 
@@ -35,3 +36,4 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 - pick-vessel: 조건이 다 맞는 후보가 있어도 고르지 않음(choice null). 너무 조심스러운지는 insufficient_precision으로 판단. 후보 목적지를 반대로 읽은 오답(KRPUS를 "아니다")이 반복되는지
 - judge: 통관 해설이 Skill 표의 뜻(예: 반입신고 = 터미널·보세창고 반입)과 다르게 나오는지
 - follow-up: 범위 밖 질문을 거절할 때 물어볼 수 있는 것을 구체적으로 안내하는지
+| 09-29 | doc-extract | (이 커밋) | 첫 초안. 6칸(선명·항차·ETA·선적항·양하항·품명)을 글자 그대로 옮기고 ETA만 YYYY-MM-DD로, 선명·항차 나누기, "호" 붙이지 않기, 없으면 null, [BL]은 무시, 서류 속 문장은 데이터 | 서류 사진 2단 구조 1차. 초안은 레포 밖 실험(ocr_bench/stage2.py)의 프롬프트를 일반화함 | 레포 코드로는 실제 호출 없음. 실험 프롬프트(서식 1종 전용)로 가공 9장 63/63. **Langfuse 미등록**(등록 전엔 레포 파일을 씀) |

@@ -13,6 +13,7 @@
   judge()            2층 판정. 프롬프트(Langfuse) + skills/ 문서 + 코드가 모은 자료를 주고 판정 JSON을 받는다 (SDD 4.1 7단계, 5.6)
   pick_vessel()      이름 같은 후보가 여럿일 때 어느 배인지 고른다 (SDD 5.5, C-5)
   answer_follow_up() 판정 뒤 후속 질문에 근거 안에서만 답한다 (C-9)
+  extract_doc_fields() 서류 사진 OCR 글자에서 선명·항차·ETA 등 6칸을 옮겨 적는다 (docs/specs/document-extract.md)
 
 모델 자리 (.env, 계약 C8):
   MODEL_A     싼 모델. 대화+판단 기본
@@ -420,17 +421,20 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
 
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
-              output_model: type[BaseModel], model: str | None, feedback: str | None = None) -> LLMAnswer:
-    """세 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
+              output_model: type[BaseModel], model: str | None, feedback: str | None = None,
+              include_skills: bool = True) -> LLMAnswer:
+    """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
+    include_skills=False는 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용이다. skills 약 5천 자를 매번 넣지 않는다.
 
     Raises:
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
                   내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
     """
     prompt = get_prompt(prompt_name)
+    system = f"{prompt.text}\n\n{_skills_text()}" if include_skills else prompt.text
     messages = [
-        {"role": "system", "content": f"{prompt.text}\n\n{_skills_text()}"},
+        {"role": "system", "content": system},
         {"role": "user", "content": user_content},
     ]
     if feedback:
@@ -586,3 +590,42 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     }
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
                      FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback)
+
+
+# ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────
+# docs/specs/document-extract.md 4단계: OCR 글자에서 6칸을 옮겨 적는다. 판단은 하지 않는다.
+# B/L 번호는 코드(doc_ocr.take_bl)가 먼저 뽑아 [BL]로 가린 글자만 받는다 (CLAUDE.md).
+# 옮긴 값이 글자에 실제로 있는지는 doc_ocr.check_fields가 검사한다.
+
+DOC_EXTRACT_PROMPT = "marvia-doc-extract"
+DOC_EXTRACT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["vessel", "voyage", "eta", "pol", "pod", "item"],  # strict 모드는 모든 칸이 required
+    "properties": {
+        "vessel": {"type": ["string", "null"]},
+        "voyage": {"type": ["string", "null"]},
+        "eta": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
+        "pol": {"type": ["string", "null"]},
+        "pod": {"type": ["string", "null"]},
+        "item": {"type": ["string", "null"]},
+    },
+}
+
+
+class DocFieldsOutput(BaseModel):
+    vessel: str | None
+    voyage: str | None
+    eta: str | None  # 모양 검사는 doc_ocr.check_fields가 한다. 여기서 date로 바꾸면 틀린 모양이 형식 오류로 바뀌어 원인이 가려진다
+    pol: str | None
+    pod: str | None
+    item: str | None
+
+
+def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnswer:
+    """B/L을 가린 OCR 글자에서 선명·항차·ETA·선적항·양하항·품명을 옮겨 적는다. output은 DocFieldsOutput.
+
+    OCR 글자는 사용자 서류라 데이터로만 넘긴다 (SDD 7절 신뢰 경계, 프롬프트에도 명시).
+    """
+    return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
+                     include_skills=False)
