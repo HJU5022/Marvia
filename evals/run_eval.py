@@ -75,7 +75,7 @@ def main() -> None:
     try:
         # --only는 확인용 부분 실행이라 Langfuse 실행 기록으로 남기지 않는다 (30건 비교가 흐트러진다)
         recorder = None if args.only else _LangfuseRun.start(args.config)
-        solve = lambda rec: _run_one(rec, args.config, work)  # noqa: E731
+        solve = lambda rec: _graded(_run_one(rec, args.config, work), args.config)  # noqa: E731
         rows = recorder.run_all(records, solve) if recorder else [solve(rec) for rec in records]
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -102,6 +102,16 @@ def main() -> None:
             raise SystemExit(f"{path.name}이 이미 있습니다. 1분 뒤 다시 실행하세요 (덮어쓰지 않는다)")
         path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n결과 파일: {path.relative_to(ROOT)}")
+
+
+def _graded(row: dict, config: str) -> dict:
+    """문항을 푼 직후 통관 해설을 검증 모델로 채점해 row["customs_grade"]에 넣는다 (evals/judge.py).
+    규칙만(a)은 LLM 해설이 없어 채점하지 않는다. (c)는 MODEL_A 자리에 MODEL_B가 들어가 있다 (_setup_config)."""
+    if config != "a":
+        from evals import judge
+
+        row["customs_grade"] = judge.grade(row, os.environ.get("MODEL_A"))
+    return row
 
 
 class _LangfuseRun:
@@ -182,6 +192,9 @@ def _scores(row: dict) -> dict[str, float]:
     }
     if e["verdict"] is not None:
         scores["verdict_match"] = float(g["verdict"] == e["verdict"])
+    grade = row.get("customs_grade") or {}
+    if grade.get("score") is not None:
+        scores["customs_explanation"] = float(grade["score"])  # 검증 모델 채점 (evals/judge.py)
     return scores
 
 
@@ -326,6 +339,8 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
             "missing_inputs": response.missing_inputs if response else [],
             "decided_by": response.decided_by if response else None,
             "answer": response.answer if response else None,
+            # 판정 LLM이 쓴 통관 해설. 검증 모델이 채점한다 (evals/judge.py). 이력은 길고 채점에 안 쓰여 뺀다
+            "customs": response.customs.model_dump(mode="json", exclude={"history"}) if response and response.customs else None,
             "trace_id": response.trace_id if response else None,
         },
         "violations": violations,
@@ -438,6 +453,7 @@ def score(rows: list[dict]) -> dict:
         and (got(r, "verdict") != exp(r, "verdict") or got(r, "status") != exp(r, "status"))
     ]
     latencies = sorted(r["latency_ms"] for r in rows)
+    graded = [r["customs_grade"] for r in rows if (r.get("customs_grade") or {}).get("score") is not None]
 
     summary = {
         "count": len(rows),
@@ -451,7 +467,9 @@ def score(rows: list[dict]) -> dict:
         "vessel_wrong_confirm": wrong_confirm,
         "grounded": ratio(sum(not any(v.startswith("V7") for v in r["violations"]) for r in rows), len(rows)),
         "schema_pass": ratio(sum(not r["violations"] for r in rows), len(rows)),
-        "customs_explanation": None,  # LLM-as-judge (D9, evals/judge.py) 전이라 비워 둔다
+        # 검증 모델(JUDGE_MODEL)이 채점한 통관 해설 통과율. 채점한 문항만 분모다. 채점이 없으면 None (evals/judge.py)
+        "customs_explanation": ratio(sum(g["score"] for g in graded), len(graded)),
+        "customs_graded": len(graded),
         "injection_failures": injection_failures,
         "errors": [r["id"] for r in rows if r["error"]],
         "latency_p50_ms": int(statistics.median(latencies)) if latencies else None,
@@ -500,6 +518,15 @@ def usage(rows: list[dict]) -> dict:
     }
 
 
+def _grade_note(grade: dict | None) -> str:
+    """통관 해설 채점을 한 줄 끝에 붙인다. 0점이면 이유도 (어느 조건을 어겼는지)."""
+    if not grade:
+        return ""
+    if grade.get("score") == 0:
+        return f"  해설=0 ({grade.get('reason')})"
+    return f"  해설={grade.get('score')}" if grade.get("score") is not None else f"  해설=채점실패 ({grade.get('reason')})"
+
+
 def _print(config: str, rows: list[dict], s: dict) -> None:
     """터미널에 문항별 O/X와 요약을 찍는다."""
     print(f"\n[{config}] {CONFIGS[config]}")
@@ -509,10 +536,11 @@ def _print(config: str, rows: list[dict], s: dict) -> None:
         print(f"  {r['id']:4} {'O' if hit else 'X'}  got=({g['status']}, {g['verdict']}, {g['vessel_match']})"
               f"  exp=({e['status']}, {e['verdict']}, {e['vessel_match']})"
               + (f"  위반={len(r['violations'])}" if r["violations"] else "") + (f"  ERROR={r['error']}" if r["error"] else "")
-              + (f"  실패={','.join(r['failures'])}" if r.get("failures") else ""))
+              + (f"  실패={','.join(r['failures'])}" if r.get("failures") else "")
+              + _grade_note(r.get("customs_grade")))
     print(f"\n  정답과 완전히 일치 {s['exact_match']}/{s['count']}")
     for key in ("verdict_accuracy", "act_recall", "insufficient_precision", "vessel_match_accuracy",
-                "grounded", "schema_pass", "latency_p50_ms", "latency_p95_ms"):
+                "grounded", "schema_pass", "customs_explanation", "latency_p50_ms", "latency_p95_ms"):
         print(f"  {key:24} {s[key]}")
     for key in ("insufficient_missed", "vessel_wrong_confirm", "injection_failures", "errors"):
         print(f"  {key:24} {s[key] or '-'}")

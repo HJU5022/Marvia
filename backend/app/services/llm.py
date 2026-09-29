@@ -651,3 +651,39 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
     """
     return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
                      include_skills=False)
+
+
+# ── 통관 해설 채점 grade_customs() ─────────────────────────────
+# 평가 전용 LLM-as-judge (SDD 5.12 customs_explanation, 가이드 평가 4축 ④ "생성 모델 ≠ 판정 모델").
+# 서비스 요청에서는 부르지 않는다. evals/judge.py가 평가 실행 때만 부른다.
+# 판정 LLM이 쓴 통관 해설(단계 뜻 · 다음 단계 · 관세사 필요 여부)을 customs-stages Skill 표 기준으로 0/1 채점한다.
+
+JUDGE_EVAL_PROMPT = "marvia-judge-eval"  # Langfuse 프롬프트 이름 (SDD 5.6 표)
+GRADE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["score", "reason"],
+    "properties": {
+        "score": {"type": "integer", "enum": [0, 1], "description": "지시문의 다섯 조건을 모두 지키면 1"},
+        "reason": {"type": "string", "description": "어긴 조건 번호와 이유 한 줄. 다 지키면 pass"},
+    },
+}
+
+
+class GradeOutput(BaseModel):
+    score: Literal[0, 1]
+    reason: str
+
+
+def grade_customs(customs: dict, *, model: str | None = None) -> LLMAnswer:
+    """통관 해설 하나를 채점한다. output은 GradeOutput. 모델은 JUDGE_MODEL(.env, 계약 C8).
+
+    customs: AgentResponse.customs를 dict로 (stage_name · plain_explanation · next_stage · needs_broker).
+    채점 모델은 판정 모델과 다른 회사여야 한다. 같은 모델은 자기 답을 후하게 채점한다(자기 선호 편향).
+    그 확인은 부르는 쪽(evals/judge.py)이 한다. 해설 문장은 채점할 데이터로만 넘긴다 (지시문 마지막 줄).
+    """
+    model = model or os.environ.get("JUDGE_MODEL")
+    if not model:
+        raise LLMError("JUDGE_MODEL이 없습니다", kind="not_configured")
+    data = {key: customs.get(key) for key in ("stage_name", "plain_explanation", "next_stage", "needs_broker")}
+    return _ask_json(JUDGE_EVAL_PROMPT, json.dumps(data, ensure_ascii=False), "grade", GRADE_SCHEMA, GradeOutput, model)
