@@ -5,11 +5,6 @@ FROM python:3.12-slim AS base
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
-# rapidocr가 설치하는 opencv-python은 slim 이미지에 없는 화면 라이브러리(libGL, glib)를 찾는다.
-# 없으면 import cv2에서 죽는다 (서류 사진 OCR, docs/specs/document-extract.md)
-RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
@@ -21,11 +16,21 @@ COPY skills/ ./skills/
 COPY scripts/ ./scripts/
 COPY evals/ ./evals/
 
+# 서류 사진 OCR은 api(app 스테이지)만 쓴다. OCR 패키지·시스템 라이브러리·모델을 base에 두면 mcp·worker 이미지까지
+# 458MB → 1.28GB로 커져서 app 스테이지로 옮겼다 (09-29 결정 (a), backend/requirements-doc.txt)
+FROM base AS app
+
+# rapidocr가 설치하는 opencv-python은 slim 이미지에 없는 화면 라이브러리(libGL, glib)를 찾는다.
+# 없으면 import cv2에서 죽는다 (서류 사진 OCR, docs/specs/document-extract.md)
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+COPY backend/requirements-doc.txt ./backend/requirements-doc.txt
+RUN pip install --no-cache-dir -r backend/requirements-doc.txt
+
 # OCR 모델(약 18MB)을 빌드 때 받아 이미지에 넣는다. 안 하면 첫 요청이 인터넷에서 모델을 받느라 느리고,
 # 네트워크가 막힌 곳에서는 실패한다. 엔진을 한 번 만들면 rapidocr가 패키지 폴더에 받아 둔다
 RUN python -c "from backend.app.services.doc_ocr import _get_engine; _get_engine()"
 
-FROM base AS app
 EXPOSE 8000
 CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 

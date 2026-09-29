@@ -71,7 +71,7 @@ proj2-5/
   .dockerignore  .env.example(C8)  .gitignore
   docs/                 Marvia_PRD.md, Marvia_SDD.md, Marvia_개발_작업_리스트.md, specs/, evidence/(제출 스크린샷)
   backend/
-    requirements.txt    app, mcp, worker가 같은 이미지를 쓰므로 하나
+    requirements.txt    app, mcp, worker 공통. requirements-doc.txt는 서류 사진 OCR용이라 app 이미지에만
     app/
       main.py           FastAPI 앱, 라우터 등록, 미들웨어(구조화 로그, CORS, 레이트 리밋)
       routers/          agent.py: POST /api/agent, GET /api/history, GET /health

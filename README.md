@@ -202,7 +202,7 @@ python -c "import secrets; print(secrets.token_urlsafe(24))"
 ### 로컬에서 직접 돌리기 (Docker 없이)
 
 ```bash
-python -m venv .venv && .venv/Scripts/python -m pip install -r backend/requirements.txt
+python -m venv .venv && .venv/Scripts/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt
 .venv/Scripts/python -m uvicorn backend.app.main:app --port 8000     # API
 .venv/Scripts/python -m mcp_server.server --port 8001                # MCP 서버
 ```
