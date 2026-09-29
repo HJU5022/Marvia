@@ -24,6 +24,8 @@ BUSAN_PORT_CODE = "KRPUS"
 # SKILL.md 판정 표 예외(watch 이유로 세지 않음)와 평가 베이스라인(evals/baseline_rules.py)이 같이 쓴다
 DEST_BROKEN = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
 DEST_EMPTY = "비어 있음"
+# 판매일을 안 넣었을 때 sales_date_exceeded 값. 라우터와 베이스라인이 이 값으로 "판매일 없음"을 알아본다
+SALE_DATE_MISSING = "판매 예정일 입력 없음"
 EARTH_RADIUS_NM = 3440.065
 
 # 항해상태(navistat) 코드. 1=정박, 5=계류, 0=항해 중(엔진 사용)
@@ -66,6 +68,7 @@ def compute(
     sale_due_date=None,
     now: datetime | None = None,
     history: list[dict] | None = None,
+    forwarder_eta=None,
 ) -> SignalSet:
     """도구 응답과 통관 정보를 받아 신호 7종을 판정한다.
 
@@ -78,6 +81,7 @@ def compute(
         now: 기준 시각. 테스트에서 고정하려고 받는다
         history: 워커가 6시간마다 모은 같은 배의 위치 이력 [{"at", "lat", "lng", "sog"}]. anchor_wait의
             정지 지속 시간을 잰다 (09-23 결정 "위치 이력 + 24시간"). 없으면 지속 시간은 unknown
+        forwarder_eta: 사용자가 되묻기에 답한 포워더 도착 통지서(A/N) 입항 예정일. 신뢰 ETA의 마지막 근거 (trusted_eta)
     """
     now = _as_utc(now) or datetime.now(timezone.utc)
     position = position if position and "error" not in position else None
@@ -136,7 +140,7 @@ def compute(
     signals.append(_customs_hold(customs))
 
     # 7. sales_date_exceeded: 신뢰 ETA가 판매 예정일을 넘기나
-    signals.append(_sales_date(trusted_eta(position, schedule), sale_due_date))
+    signals.append(_sales_date(trusted_eta(position, schedule, forwarder_eta), sale_due_date))
 
     return SignalSet(
         signals=signals,
@@ -308,12 +312,14 @@ def _eta_gap(ais_eta: datetime, mof_eta: datetime) -> tuple[float, bool]:
     return round(_hours_between(ais_eta, edge), 1), True
 
 
-def trusted_eta(position: dict | None, schedule: dict | None) -> datetime | None:
+def trusted_eta(position: dict | None, schedule: dict | None, forwarder_eta=None) -> datetime | None:
     """믿을 만한 도착 예정 시각. rules.md priority 순서로 첫 유효값을 쓴다 (SDD 5.8).
 
     해수부 실제 입항(actual_arrival) > 해수부 입항 예정(planned_arrival) > AIS ETA.
     AIS 목적지 문자열은 시각이 아니라서 여기엔 없다. 라우터도 이 함수를 불러 days_margin을 계산한다.
     AIS 목적지가 다른 항구면 AIS ETA는 그 항구 도착 시각이라 부산 도착으로 쓰지 않는다 (eta_conflict와 같은 이유, 평가셋 B09).
+    마지막 근거는 사용자가 알려 준 포워더 A/N 입항 예정일(날짜만, 한국 날짜 0시로 본다). 도착일을 몰라 되물었으면
+    받은 날짜로 여유 일수를 세야 되묻기가 쓸모 있다 (09-29 결정 D6. 전에는 받고도 쓰지 않았다)
     """
     position = position if position and "error" not in position else None
     schedule = schedule if schedule and "error" not in schedule else None
@@ -321,6 +327,7 @@ def trusted_eta(position: dict | None, schedule: dict | None) -> datetime | None
         (schedule or {}).get("actual_arrival"),
         (schedule or {}).get("planned_arrival"),
         None if _other_port(position) else (position or {}).get("ais_eta"),
+        datetime.combine(forwarder_eta, datetime.min.time(), tzinfo=KST) if forwarder_eta else None,
     ):
         found = _as_utc(_parse_dt(value))
         if found:
@@ -332,7 +339,9 @@ def _sales_date(trusted: datetime | None, sale_due_date) -> Signal:
     threshold = "판매 예정일"
     margin_days = days_margin(trusted, sale_due_date)  # 한국 날짜로 센다. 라우터와 같은 함수 (evidence.py)
     if margin_days is None:
-        return _signal("sales_date_exceeded", "unknown", "신뢰 ETA 또는 판매 예정일 없음", threshold, "rule")
+        # 판매일은 선택 입력이다 (09-29 결정). 없으면 이 신호는 판정에 쓰지 않는다 (routers/agent.py _judged)
+        missing = SALE_DATE_MISSING if sale_due_date is None else "신뢰 ETA 없음"
+        return _signal("sales_date_exceeded", "unknown", missing, threshold, "rule")
 
     value = f"여유 {margin_days}일"
     return _signal("sales_date_exceeded", "triggered" if margin_days < 0 else "clear", value, threshold, "rule")

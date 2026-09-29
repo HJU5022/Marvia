@@ -29,7 +29,9 @@ class AgentRequest(BaseModel):
 
     bl_no: str = Field(description="B/L 번호. 영문+숫자 8~20자, 공백 제거")
     bl_type: Literal["MASTER", "HOUSE"]
-    sale_due_date: date = Field(description="판매 예정일 (필요 입고일)")
+    # 선택 입력 (09-29 결정). 필수는 B/L 하나다. 판매일이 정해진 경우가 많지만 품목에 따라 안 정하는 경우도 많다
+    # (하정운 실무 경험). 없으면 여유 일수 없이 배 상태만으로 판정한다 (routers/agent.py, SKILL.md 판정 표)
+    sale_due_date: date | None = Field(default=None, description="판매 예정일 (필요 입고일). 선택")
     session_id: str
     follow_up_question: str | None = Field(default=None, max_length=300, description="후속 질의. 300자 제한 (SDD 7절)")
     resolved_mmsi: int | None = Field(default=None, description="되묻기 후 사용자가 고른 선박")

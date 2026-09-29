@@ -32,12 +32,13 @@ from backend.app.db import connect, latest_response, log_query, recent_positions
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
-    AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, VesselCandidate,
+    AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, Reason, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
 from backend.app.services import identify, llm, validate
 from backend.app.services import signals as signals_service
-from backend.app.services.evidence import build as build_evidence, days_margin
+from backend.app.services.evidence import KST, build as build_evidence, days_margin
+from backend.app.services.rules import rule
 from backend.app.services.customs import CustomsError, UnipassClient
 from mcp_server.tools.distance import estimate_distance
 from mcp_server.tools.live_position import get_live_position
@@ -55,6 +56,12 @@ VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하�
 # 위치 없음 (09-29 결정, 09-27 "위치 없음 → 판정 보류" 문구: 조회되지 않는다고 그대로 말하고 포워더 입항 예정일을 묻는다)
 POSITION_MISSING = "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
 POSITION_MISSING_AFTER_ETA = "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
+# 도착일 모름 (09-29 결정 D6). 대략값은 코드 계산이라 "참고용"을 반드시 붙인다 (정운: "신뢰하지 마세요")
+NO_ETA = ("판매 예정일은 받았지만 도착 예정일을 확인할 근거(해수부 입항 신고, AIS 도착 예정)가 아직 없어 판정하지 않았습니다. "
+          "포워더 도착 통지서(A/N)의 입항 예정일을 알려주시면 판매 예정일까지 여유를 봐 드립니다.")
+NO_ETA_WITH_ESTIMATE = ("판매 예정일은 받았지만 도착 예정일을 확인할 근거(해수부 입항 신고, AIS 도착 예정)가 아직 없어 판정하지 않았습니다. "
+                        "현재 위치와 속도로 계산한 대략적인 부산 도착은 {month}월 {day}일쯤입니다. 참고용이며 속도나 기항지에 따라 달라질 수 있습니다. "
+                        "포워더 도착 통지서(A/N)의 입항 예정일을 알려주시면 판매 예정일까지 여유를 봐 드립니다.")
 POSITION_TOOL_FAILED = "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요."
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
@@ -153,8 +160,9 @@ def _assess(request: AgentRequest) -> AgentResponse:
 
     # 5. 1층 신호와 여유 일수는 코드가 계산한다 (SDD 4.1 5·6단계). LLM은 이 값을 바꾸지 않는다
     signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date,
-                                         history=_position_history(mmsi))
-    trusted = signals_service.trusted_eta(position, schedule)
+                                         history=_position_history(mmsi), forwarder_eta=request.forwarder_eta)
+    # 사용자가 되묻기에 답한 포워더 A/N 입항 예정일도 마지막 근거로 쓴다 (09-29 D6, signals.trusted_eta)
+    trusted = signals_service.trusted_eta(position, schedule, request.forwarder_eta)
     # 쓸 위치가 없으면 여유 일수도 내지 않는다. 해수부 예정만으로 센 값을 판정 근거처럼 보이지 않게 (평가셋 B13·F04 days_margin=null)
     has_position = bool(position) and "error" not in position
     margin = days_margin(trusted, request.sale_due_date) if has_position else None
@@ -169,7 +177,8 @@ def _assess(request: AgentRequest) -> AgentResponse:
         berth=BerthInfo(facility=(schedule or {}).get("facility") if "error" not in (schedule or {}) else None,
                         shed=customs.shed_name),
         # 근거 카드. LLM이 실패해 판정이 없어도 조회한 값은 보여준다 (C-8, SDD 5.8)
-        evidence=build_evidence(customs, position, schedule, distance, trusted, margin, signals=signal_set),
+        evidence=build_evidence(customs, position, schedule, distance, trusted, margin, signals=signal_set,
+                                sale_due_date=request.sale_due_date, forwarder_eta=request.forwarder_eta),
     )
 
     # 위치 없음: LLM을 부르지 않고 코드가 보류한다 (09-29 결정, 09-27 "위치 없음 → 판정 보류"를 코드로).
@@ -180,6 +189,11 @@ def _assess(request: AgentRequest) -> AgentResponse:
     # (평가셋 F02 정답 partial·watch, SDD 8절 "ShipFinder 타임아웃 → partial")
     from_cache = bool(position.get("cached_at"))
 
+    # 판매일은 받았는데 믿을 도착일이 없어 여유 일수를 못 셌다 (해수부 신고 전 + AIS ETA 없음 등).
+    # 판매일 대비 판단이 핵심이라 LLM 없이 보류하고, 대략값만 참고로 보여 준다 (09-29 결정 D6)
+    if request.sale_due_date and margin is None:
+        return _no_eta(signal_set, collected)
+
     # 6·7. 2층 판정 (LLM)과 출력 검증 (C-7, SDD 5.7)
     # 위반이면 위반 내용을 붙여 다시 묻는다. 두 번째 재시도는 "JSON만, 규칙 준수"를 덧붙인다.
     # 세 번 모두 위반이면 판정 없이 failed로 끝내고 근거 카드는 남긴다
@@ -188,7 +202,8 @@ def _assess(request: AgentRequest) -> AgentResponse:
     feedback = None
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
-            judged = llm.judge(signal_set, customs, margin, feedback=feedback)
+            judged = llm.judge(signal_set, customs, margin, feedback=feedback,
+                               trusted_eta=trusted, sale_due_date=request.sale_due_date)
         except llm.LLMFormatError as e:
             log_failure("judge", f"{e.kind} attempt {attempt}")
             feedback = e.detail
@@ -216,8 +231,19 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
     from_cache면 위치가 실시간이 아니라 캐시에서 왔다는 뜻이라, 판정이 나와도 status를 partial로 둔다.
     """
     # 신호가 전부 clear면 판정은 규칙으로 fine. LLM 답에서는 문장·통관 해설만 쓴다 (SDD 4.1 7단계)
-    if all(s.state == "clear" for s in signal_set.signals):
+    # 판매일을 안 넣었으면 판매일 초과 신호는 늘 unknown이라 세지 않는다. 배 상태만으로 판정한다 (09-29 결정)
+    reasons = out.reasons
+    counted = [s for s in signal_set.signals
+               if not (s.id == "sales_date_exceeded" and request.sale_due_date is None)]
+    margin = collected.get("days_margin")
+    if all(s.state == "clear" for s in counted):
         verdict, decided_by = "fine", "rule"
+        # D4 (09-29 결정): 신호가 다 정상이어도 판매일까지 여유가 margin_act_days(rules.md) 미만이면 watch.
+        # 여유 일수에는 통관·반출·배송 시간이 빠져 있어서(SDD 5.8) 0~1일이면 실제 입고는 판매일을 넘기기 쉽다
+        if margin is not None and margin < rule("margin_act_days"):
+            verdict = "watch"
+            # V2: watch면 이유가 1개 이상, 이름은 신호 id. 켜진 신호는 없으니 여유 일수를 본 신호를 triggered=False로 든다
+            reasons = reasons or [Reason(rule="sales_date_exceeded", value=f"여유 {margin}일", triggered=False)]
     else:
         verdict, decided_by = out.verdict, "llm"
 
@@ -234,7 +260,7 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
         verdict=verdict,
         decided_by=decided_by,
         missing_inputs=missing,
-        reasons=out.reasons,
+        reasons=reasons,
         conflicts=out.conflicts,
         actions=out.actions,
         answer=out.answer,
@@ -259,6 +285,20 @@ def _no_position(position: dict | None, request: AgentRequest, collected: dict) 
             return _response(status="partial", answer=POSITION_MISSING_AFTER_ETA, **collected)
         return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=POSITION_MISSING, **collected)
     return _response(status="partial", answer=POSITION_TOOL_FAILED, **collected)
+
+
+def _no_eta(signal_set, collected: dict) -> AgentResponse:
+    """판매일은 있는데 믿을 도착일이 없어 여유 일수를 못 셀 때 (09-29 결정 D6). LLM 없이 보류한다.
+
+    남은 거리 ÷ 현재 속도로 코드가 계산한 대략 도착(calc_eta)이 있으면 "참고용"이라고 밝혀 같이 보여 준다.
+    판정 근거로는 쓰지 않는다. 속도가 바뀌거나 다른 항구에 들르면 크게 달라지기 때문이다.
+    사용자에게는 포워더 A/N 입항 예정일을 묻는다. 받으면 그 날짜로 여유 일수를 센다 (signals.trusted_eta)
+    """
+    answer = NO_ETA
+    if signal_set.calc_eta:
+        day = signal_set.calc_eta.astimezone(KST)
+        answer = NO_ETA_WITH_ESTIMATE.format(month=day.month, day=day.day)
+    return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=answer, **collected)
 
 
 def _released(customs: CustomsRecord) -> AgentResponse:

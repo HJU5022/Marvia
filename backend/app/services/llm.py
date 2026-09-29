@@ -48,6 +48,7 @@ from backend.app.observability.langfuse import end_generation, get_prompt, start
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
+from backend.app.services.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -409,17 +410,34 @@ def _skills_text() -> str:
     return "\n\n".join(parts)
 
 
-def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None) -> str:
-    """LLM에 넘길 자료를 JSON 문자열로 만든다. B/L 번호(bl_masked)와 MRN은 판정에 필요 없어 뺀다 (CLAUDE.md, SDD 3.5)."""
+def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None,
+                 trusted_eta: datetime | None = None, sale_due_date: date | None = None) -> str:
+    """LLM에 넘길 자료를 JSON 문자열로 만든다. B/L 번호(bl_masked)와 MRN은 판정에 필요 없어 뺀다 (CLAUDE.md, SDD 3.5).
+
+    날짜는 한국 시각으로 준다 (09-29 D8). 전에는 여유 일수 숫자만 줘서 "언제 와요?"에 날짜로 답하지 못했고,
+    날짜를 지어내기도 했다 (평가 F06 "9월 23일"). 판매일이 없으면 null이다 (선택 입력, 09-29 결정).
+    calc_eta는 남은 거리 ÷ 현재 속도로 코드가 계산한 대략값이다. 참고용이라 판정 근거로 쓰지 않게 지시문에 적는다.
+    """
     data = {
         "signals": [s.model_dump() for s in signals.signals],
         "freshness": signals.freshness,
         "distance_nm": signals.distance_nm,
-        "calc_eta": signals.calc_eta.isoformat() if signals.calc_eta else None,
+        "trusted_eta": _kst(trusted_eta),
+        "sale_due_date": sale_due_date.isoformat() if sale_due_date else None,
+        "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
         "customs": customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"}) if customs else None,
     }
     return json.dumps(data, ensure_ascii=False)
+
+
+def _kst(moment: datetime | None) -> str | None:
+    """시각을 한국 시각 "YYYY-MM-DD HH:MM"으로. 근거 카드(services/evidence.py)와 같은 모양이라 V7 대조가 맞는다."""
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(KST).strftime("%Y-%m-%d %H:%M")
 
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
@@ -476,11 +494,13 @@ def judge(
     *,
     model: str | None = None,
     feedback: str | None = None,
+    trusted_eta: datetime | None = None,
+    sale_due_date: date | None = None,
 ) -> LLMAnswer:
-    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수 (SDD 4.1 7단계).
+    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계, 09-29 D8).
     feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도)."""
-    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin), "judge", JUDGE_SCHEMA, JudgeOutput, model,
-                     feedback=feedback)
+    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date),
+                     "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback)
 
 
 # ── 선박 선택 pick_vessel() ─────────────────────────────────────

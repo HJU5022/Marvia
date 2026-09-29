@@ -2,7 +2,7 @@
 
 외부 API와 DB 없이 돈다. 서비스와 도구는 가짜로 바꿔 끼운다.
 """
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -54,7 +54,9 @@ def fake(monkeypatch):
         monkeypatch.setattr(agent_router, "get_vessel_candidates",
                             lambda **k: {"candidates": candidates or [], "source": "shipfinder", "fetched_at": NOW.isoformat()})
         monkeypatch.setattr(agent_router, "get_live_position", lambda mmsi: position or {"error": {"code": "not_found"}})
-        monkeypatch.setattr(agent_router, "get_port_schedule", lambda **k: schedule or {"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
+        # 기본 해수부 일정에 입항 예정을 둔다. 도착일이 하나도 없으면 판매일 대비 판정을 보류하므로(09-29 D6)
+        # LLM 판정 흐름을 보는 테스트가 그 앞에서 멈추지 않게 한다. 판매일(10-05)까지 여유 7일
+        monkeypatch.setattr(agent_router, "get_port_schedule", lambda **k: schedule or {"planned_arrival": (NOW + timedelta(days=5)).isoformat(), "actual_arrival": None, "fetched_at": NOW.isoformat()})
         monkeypatch.setattr(agent_router, "_logged", lambda request, response: response)  # DB 없이
         # MRN으로 호출부호 찾기는 기본으로 실패(None) → 지금까지처럼 이름 검색. MRN 경로는 테스트마다 따로 켠다
         monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: None)
@@ -210,6 +212,92 @@ def test_cached_position_is_judged_but_partial(fake):
         body = client.post("/api/agent", json=_request()).json()
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("partial", "watch", "llm")
+
+
+def _signal_set(states: dict[str, str], values: dict[str, str] | None = None) -> SignalSet:
+    """신호 7개. states에 없는 신호는 clear. 값은 values에서, 없으면 "-"."""
+    ids = ["position_stale", "eta_conflict", "anchor_wait", "dest_changed",
+           "navstat_mismatch", "customs_hold", "sales_date_exceeded"]
+    values = values or {}
+    return SignalSet(signals=[Signal(id=i, state=states.get(i, "clear"), value=values.get(i, "-"), threshold="-", source="test")
+                              for i in ids],
+                     freshness="fresh", distance_nm=None, calc_eta=None, eta_gap_hours=None, computed_at=NOW)
+
+
+def test_sale_date_is_optional(fake, monkeypatch):
+    """판매일은 선택 입력이다 (09-29 결정). 없으면 판매일 초과 신호는 세지 않고 배 상태만으로 판정한다."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED)
+    monkeypatch.setattr(agent_router.signals_service, "compute",
+                        lambda *a, **k: _signal_set({"sales_date_exceeded": "unknown"}, {"sales_date_exceeded": "판매 예정일 입력 없음"}))
+    request = _request()
+    del request["sale_due_date"]
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=request).json()
+
+    assert (body["status"], body["verdict"], body["decided_by"]) == ("ok", "fine", "rule")
+    assert body["days_margin"] is None
+
+
+def test_no_arrival_date_holds_with_estimate(fake, monkeypatch):
+    """판매일은 있는데 믿을 도착일(해수부·AIS)이 없으면 LLM 없이 보류하고 대략값을 참고로 보여 준다 (09-29 D6)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED,
+         schedule={"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
+    monkeypatch.setattr(agent_router.llm, "judge", lambda *a, **k: pytest.fail("도착일 없이 판정 LLM을 불렀다"))
+    estimate = _signal_set({"sales_date_exceeded": "unknown"}).model_copy(update={"calc_eta": datetime(2026, 10, 4, 3, tzinfo=timezone.utc)})
+    monkeypatch.setattr(agent_router.signals_service, "compute", lambda *a, **k: estimate)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert (body["status"], body["verdict"]) == ("insufficient", None)
+    assert body["missing_inputs"] == ["forwarder_eta"]
+    assert "10월 4일쯤" in body["answer"] and "참고용" in body["answer"]  # 한국 날짜로, 참고용 표시
+
+
+def test_forwarder_eta_becomes_arrival_date(fake, monkeypatch):
+    """되묻기에 답한 포워더 A/N 입항 예정일로 여유 일수를 센다. 그래서 다시 보류하지 않고 판정한다 (09-29 D6)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED,
+         schedule={"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(forwarder_eta="2026-10-01")).json()
+
+    assert body["days_margin"] == 4  # 10-05 판매 - 10-01 A/N
+    assert body["verdict"] == "watch" and body["status"] == "ok"
+    assert any(card["field"] == "forwarder_eta" and card["value"] == "2026-10-01" for card in body["evidence"])
+
+
+def test_all_clear_but_tight_margin_is_watch(fake, monkeypatch):
+    """D4 (09-29 결정): 신호가 다 정상이어도 여유가 margin_act_days 미만이면 규칙으로 watch."""
+    fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": "fine", "reasons": []},
+         schedule={"planned_arrival": datetime(2026, 10, 4, 3, tzinfo=timezone.utc).isoformat(), "actual_arrival": None,
+                   "fetched_at": NOW.isoformat()})
+    _all_clear(monkeypatch)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert body["days_margin"] == 1
+    assert (body["verdict"], body["decided_by"], body["status"]) == ("watch", "rule", "ok")
+    assert body["reasons"][0]["rule"] == "sales_date_exceeded"  # V2: watch에는 이유 1개 이상
+
+
+def test_judge_gets_dates(fake, monkeypatch):
+    """판정 LLM에 믿을 도착일과 판매일을 넘긴다 (09-29 D8)."""
+    fake(candidates=[_candidate(440999001)], position=POSITION)
+    seen = {}
+
+    def judge(signal_set, customs, margin, **kwargs):
+        seen.update(kwargs)
+        raise llm.LLMError("테스트: 입력만 본다")
+
+    monkeypatch.setattr(agent_router.llm, "judge", judge)
+    with TestClient(app) as client:
+        client.post("/api/agent", json=_request())
+
+    assert seen["sale_due_date"] == date(2026, 10, 5)
+    assert seen["trusted_eta"] is not None
 
 
 def test_multiple_candidates_ask_back(fake):
