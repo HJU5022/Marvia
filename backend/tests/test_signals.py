@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from backend.app.schemas.customs import CustomsRecord
-from backend.app.services.signals import compute
+from backend.app.services.signals import compute, trusted_eta
 
 NOW = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
 
@@ -151,6 +151,43 @@ def test_anchor_wait_stops_counting_at_unknown_speed():
 def test_dest_changed(destcode, expected):
     result = compute(_position(destcode=destcode), None, None, None, now=NOW)
     assert _state(result, "dest_changed") == expected
+
+
+@pytest.mark.parametrize(
+    "destcode, dest, words",
+    [
+        ("JPOSA", "OSAKA", "다른 항구 JPOSA"),                   # 평가셋 B09: 진짜 다른 항구
+        (None, "XX QZQZZZZZ", "깨진 목적지"),                    # 평가셋 B03: 코드로 못 읽는 글자
+        ("QZ Q", "QZ Q", "깨진 목적지"),                         # 코드 칸은 있는데 항구 코드 모양이 아님
+        (None, None, "비어 있음"),
+    ],
+)
+def test_dest_changed_tells_broken_from_other_port(destcode, dest, words):
+    """깨진 목적지와 다른 항구를 값으로 나눠 LLM에 넘긴다. 둘 다 triggered (평가셋 B03 fixture 설명)."""
+    result = compute(_position(destcode=destcode, dest=dest), None, None, None, now=NOW)
+    signal = next(s for s in result.signals if s.id == "dest_changed")
+    assert signal.state == "triggered" and words in signal.value
+    assert "XX QZQZZZZZ" not in signal.value  # 목적지 원문은 넣지 않는다 (SDD 7절 신뢰 경계)
+
+
+def test_eta_conflict_skips_eta_of_other_port():
+    """AIS 목적지가 다른 항구면 AIS ETA는 그 항구 도착 시각이라 부산 예정과 비교하지 않는다 (평가셋 B09)."""
+    osaka_eta = NOW + timedelta(hours=24)
+    schedule = {"planned_arrival": (NOW + timedelta(hours=72)).isoformat()}
+    result = compute(_position(destcode="JPOSA", ais_eta=osaka_eta.isoformat()), schedule, None, None, now=NOW)
+    signal = next(s for s in result.signals if s.id == "eta_conflict")
+    assert signal.state == "unknown" and "JPOSA" in signal.value
+    assert result.eta_gap_hours is None
+
+
+def test_trusted_eta_ignores_ais_eta_of_other_port():
+    """부산 도착 시각을 믿을 값으로 고를 때 다른 항구의 AIS ETA는 건너뛴다. 해수부 예정이 있으면 그것."""
+    osaka_eta = (NOW + timedelta(hours=24)).isoformat()
+    busan_plan = NOW + timedelta(hours=72)
+    position = _position(destcode="JPOSA", ais_eta=osaka_eta)
+    assert trusted_eta(position, {"planned_arrival": busan_plan.isoformat()}) == busan_plan
+    assert trusted_eta(position, None) is None  # 부산 도착을 말해 주는 값이 없다
+    assert trusted_eta(_position(destcode="KRPUS", ais_eta=osaka_eta), None) is not None  # 부산행이면 그대로 쓴다
 
 
 @pytest.mark.parametrize(

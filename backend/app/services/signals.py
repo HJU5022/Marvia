@@ -101,7 +101,13 @@ def compute(
     mof_eta = _as_utc(_parse_dt((schedule or {}).get("planned_arrival")))
     eta_gap_hours = None
     conflict_hours = rule("eta_conflict_hours")
-    if ais_eta and mof_eta:
+    elsewhere = _other_port(position)
+    if ais_eta and mof_eta and elsewhere:
+        # AIS ETA는 AIS 목적지 항구의 도착 시각이다. 목적지가 다른 항구면 부산 예정과 비교하지 않는다.
+        # 전에는 오사카 ETA를 부산 예정과 비교해 "48시간 차이"라는 가짜 충돌을 냈다 (평가셋 B09 판정 방식)
+        signals.append(_signal("eta_conflict", "unknown", f"AIS ETA는 {elsewhere} 도착 시각이라 비교 안 함",
+                               f"{conflict_hours}시간", "shipfinder+mof"))
+    elif ais_eta and mof_eta:
         eta_gap_hours, date_only = _eta_gap(ais_eta, mof_eta)
         state = "triggered" if eta_gap_hours > conflict_hours else "clear"
         value = f"{eta_gap_hours}시간 차이" + (" (해수부는 날짜만 신고)" if date_only else "")
@@ -117,9 +123,7 @@ def compute(
     if position is None:
         signals.append(_signal("dest_changed", "unknown", "위치 없음", BUSAN_PORT_CODE, "shipfinder"))
     else:
-        destcode = (position.get("destcode") or "").strip().upper()
-        state = "clear" if destcode == BUSAN_PORT_CODE else "triggered"
-        signals.append(_signal("dest_changed", state, destcode or "비어 있음", BUSAN_PORT_CODE, "shipfinder"))
+        signals.append(_dest_changed(position))
 
     # 5. navstat_mismatch: 항해상태와 속도가 서로 안 맞나
     signals.append(_navstat_mismatch(position))
@@ -220,6 +224,42 @@ def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetim
     return _signal("anchor_wait", "unknown", f"{value}, 지속 시간 미확인", threshold, "shipfinder")
 
 
+def _is_port_code(code: str) -> bool:
+    """UN/LOCODE 모양인가: 나라 2글자 + 항구 3글자(영문 또는 숫자 2~9). 예: KRPUS, JPOSA.
+
+    ShipFinder destcode는 AIS 목적지 글자를 항구 코드로 읽은 값이다. 이 모양이 아니면(비었거나 깨짐)
+    배가 어디로 간다고 말할 근거가 못 된다 (skills/ais-reliability "깨진 목적지").
+    """
+    return len(code) == 5 and code[:2].isalpha() and code[:2].isascii() \
+        and all(ch.isascii() and (ch.isalpha() or ch in "23456789") for ch in code[2:])
+
+
+def _other_port(position: dict | None) -> str | None:
+    """AIS 목적지가 부산이 아닌 '진짜' 다른 항구 코드면 그 코드. 부산이거나 깨졌거나 없으면 None."""
+    code = ((position or {}).get("destcode") or "").strip().upper()
+    return code if _is_port_code(code) and code != BUSAN_PORT_CODE else None
+
+
+def _dest_changed(position: dict) -> Signal:
+    """목적지가 부산이 아니면 triggered. 값에는 '다른 항구'인지 '깨짐'인지를 나눠 적는다.
+
+    둘 다 triggered지만 뜻이 다르다. 다른 항구(예: JPOSA)는 경로 변경 가능성이라 확인이 필요하고,
+    깨진 글자는 선원 입력 오류일 수 있어 다른 근거가 정상이면 근거로 쓰지 않는다 (SKILL.md 오류 사례 표).
+    전에는 둘 다 코드 그대로 또는 "비어 있음"으로만 넘겨 LLM이 구분하지 못했다 (평가셋 B03·B09, 09-29 확인).
+    AIS 목적지 원문은 값에 넣지 않는다. 지시문이 섞일 수 있는 자유 입력이라서다 (SDD 7절, 평가셋 주입 문항).
+    """
+    code = (position.get("destcode") or "").strip().upper()
+    if code == BUSAN_PORT_CODE:
+        return _signal("dest_changed", "clear", code, BUSAN_PORT_CODE, "shipfinder")
+    if _is_port_code(code):
+        value = f"다른 항구 {code}"
+    elif code or (position.get("dest") or "").strip():
+        value = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
+    else:
+        value = "비어 있음"
+    return _signal("dest_changed", "triggered", value, BUSAN_PORT_CODE, "shipfinder")
+
+
 def _navstat_mismatch(position: dict | None) -> Signal:
     threshold = f"정박·계류면 {MOORED_SPEED_KN}노트 이하, 항해 중이면 {UNDERWAY_SPEED_KN}노트 이상"
     if position is None or position.get("navistat") is None or position.get("sog") is None:
@@ -269,13 +309,14 @@ def trusted_eta(position: dict | None, schedule: dict | None) -> datetime | None
 
     해수부 실제 입항(actual_arrival) > 해수부 입항 예정(planned_arrival) > AIS ETA.
     AIS 목적지 문자열은 시각이 아니라서 여기엔 없다. 라우터도 이 함수를 불러 days_margin을 계산한다.
+    AIS 목적지가 다른 항구면 AIS ETA는 그 항구 도착 시각이라 부산 도착으로 쓰지 않는다 (eta_conflict와 같은 이유, 평가셋 B09).
     """
     position = position if position and "error" not in position else None
     schedule = schedule if schedule and "error" not in schedule else None
     for value in (
         (schedule or {}).get("actual_arrival"),
         (schedule or {}).get("planned_arrival"),
-        (position or {}).get("ais_eta"),
+        None if _other_port(position) else (position or {}).get("ais_eta"),
     ):
         found = _as_utc(_parse_dt(value))
         if found:
