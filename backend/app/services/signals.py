@@ -61,6 +61,7 @@ def compute(
     customs: CustomsRecord | None,
     sale_due_date=None,
     now: datetime | None = None,
+    history: list[dict] | None = None,
 ) -> SignalSet:
     """도구 응답과 통관 정보를 받아 신호 7종을 판정한다.
 
@@ -71,6 +72,8 @@ def compute(
         customs: UNI-PASS 정제본
         sale_due_date: 판매 예정일. 신뢰 ETA가 이 날을 넘기면 sales_date_exceeded
         now: 기준 시각. 테스트에서 고정하려고 받는다
+        history: 워커가 6시간마다 모은 같은 배의 위치 이력 [{"at", "lat", "lng", "sog"}]. anchor_wait의
+            정지 지속 시간을 잰다 (09-23 결정 "위치 이력 + 24시간"). 없으면 지속 시간은 unknown
     """
     now = _as_utc(now) or datetime.now(timezone.utc)
     position = position if position and "error" not in position else None
@@ -108,7 +111,7 @@ def compute(
         signals.append(_signal("eta_conflict", "unknown", missing, f"{conflict_hours}시간", "shipfinder+mof"))
 
     # 3. anchor_wait: 부산 인근에서 오래 서 있나
-    signals.append(_anchor_wait(position, last_time, now))
+    signals.append(_anchor_wait(position, last_time, now, history))
 
     # 4. dest_changed: 목적지가 부산이 아니거나 깨졌나
     if position is None:
@@ -152,10 +155,16 @@ def _calc_eta(distance: dict | None, now: datetime) -> datetime | None:
     return now + timedelta(hours=hours) if hours else None
 
 
-def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetime) -> Signal:
-    """부산 반경 안에서 느린 속도로 서 있는지. 지속 시간은 수집 이력이 있어야 알 수 있다 (D1).
+def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetime,
+                 history: list[dict] | None = None) -> Signal:
+    """부산 반경 안에서 느린 속도로 서 있는지, 서 있다면 얼마나 오래인지 (SDD 5.4, 09-23 결정 "위치 이력 + 24시간").
 
-    지금은 이력이 없어서, 조건에 맞으면 '정지 중'으로만 알리고 지속 시간 판정은 unknown으로 둔다.
+    지금 위치가 멈춤이 아니면 clear. 멈춤이면 위치 이력(워커 6시간 간격)을 최신부터 거슬러 올라가
+    멈춘 점이 이어진 구간의 길이(가장 오래된 멈춘 점 ~ 가장 최근 멈춘 점)를 잰다.
+      - 구간이 anchor_wait_hours 이상 → triggered (평가셋 B08: 30시간)
+      - 그보다 짧고, 그 앞에 움직이던 점이 있다 → clear. 멈추기 시작한 때를 봤다 (평가셋 B04: 18시간, N03)
+      - 그보다 짧고, 이력이 멈춘 채로 시작한다 → unknown. 언제부터 멈췄는지 모른다
+    전에는 이력을 받는 자리가 없어서 멈춰 있으면 늘 unknown이었고, B08(30시간 정박)을 놓쳤다 (09-29 확인).
     """
     speed_limit = rule("anchor_speed_kn")
     wait_hours = rule("anchor_wait_hours")
@@ -170,8 +179,45 @@ def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetim
     if distance_nm > radius or position["sog"] > speed_limit:
         return _signal("anchor_wait", "clear", f"{distance_nm:.1f}해리, {position['sog']}노트", threshold, "shipfinder")
 
-    # 부산 반경 안에서 멈춰 있다. 얼마나 오래인지는 수집 이력(D1)이 있어야 안다
-    return _signal("anchor_wait", "unknown", f"{distance_nm:.1f}해리에서 {position['sog']}노트, 지속 시간 미확인", threshold, "shipfinder")
+    # 부산 반경 안에서 멈춰 있다. 얼마나 오래인지는 위치 이력으로 잰다
+    here = f"{distance_nm:.1f}해리에서 {position['sog']}노트"
+
+    def stopped(point: dict) -> bool | None:
+        """이 점이 부산 반경 안 멈춤인가. 속도가 없으면 None(판단 불가)."""
+        if point.get("sog") is None:
+            return None
+        near = _great_circle_nm((point["lat"], point["lng"]), (ref["lat"], ref["lng"])) <= radius
+        return near and point["sog"] <= speed_limit
+
+    points = sorted(
+        ({**p, "at": _as_utc(_parse_dt(p.get("at")))} for p in (history or [])),
+        key=lambda p: p["at"] or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    points = [p for p in points if p["at"] is not None]
+    # 지금 위치도 한 점으로 넣는다. 이력의 마지막 점보다 새로울 때만 (같은 보고를 두 번 세지 않게)
+    if last_time and (not points or last_time > points[-1]["at"]):
+        points.append({"at": last_time, "lat": position["lat"], "lng": position["lng"], "sog": position["sog"]})
+
+    run: list[dict] = []  # 최신부터 이어진 멈춘 점들
+    saw_moving = False
+    for point in reversed(points):
+        state = stopped(point)
+        if state is None:
+            break  # 속도를 모르는 점에서 멈춘다. 그 앞은 이어졌는지 모른다
+        if not state:
+            saw_moving = True
+            break
+        run.append(point)
+
+    if not run:
+        return _signal("anchor_wait", "unknown", f"{here}, 위치 이력 없음", threshold, "shipfinder")
+    span = _hours_between(run[0]["at"], run[-1]["at"])
+    value = f"{here}, 이력 {len(run)}회 연속 정지 {span:.0f}시간"
+    if span >= wait_hours:
+        return _signal("anchor_wait", "triggered", value, threshold, "shipfinder")
+    if saw_moving:
+        return _signal("anchor_wait", "clear", value, threshold, "shipfinder")
+    return _signal("anchor_wait", "unknown", f"{value}, 지속 시간 미확인", threshold, "shipfinder")
 
 
 def _navstat_mismatch(position: dict | None) -> Signal:

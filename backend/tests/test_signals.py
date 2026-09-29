@@ -104,10 +104,44 @@ def test_anchor_wait_clear_when_moving_or_far():
 
 
 def test_anchor_wait_unknown_when_stopped_near_busan():
-    """지속 시간은 수집 이력(D1)이 있어야 알 수 있어 지금은 unknown이다."""
+    """위치 이력이 없으면 언제부터 멈췄는지 몰라 unknown이다."""
     result = compute(_position(sog=0.0), None, None, None, now=NOW)
     signal = next(s for s in result.signals if s.id == "anchor_wait")
     assert signal.state == "unknown" and "지속 시간 미확인" in signal.value
+
+
+def _history(*points) -> list[dict]:
+    """(몇 시간 전, 속도) 목록을 워커 위치 이력 모양으로. 위치는 부산 앞(평가셋 B08과 같은 35.0, 129.1)."""
+    return [{"at": (NOW - timedelta(hours=h)).isoformat(), "lat": 35.0, "lng": 129.1, "sog": sog} for h, sog in points]
+
+
+def test_anchor_wait_triggered_after_long_stop():
+    """평가셋 B08: 움직이다가 6시간 간격 6번 연속 정지, 30시간 → triggered."""
+    history = _history((37, 10.0), (31, 0.2), (25, 0.2), (19, 0.2), (13, 0.2), (7, 0.2), (1, 0.2))
+    result = compute(_position(lat=35.0, lng=129.1, sog=0.2), None, None, None, now=NOW, history=history)
+    signal = next(s for s in result.signals if s.id == "anchor_wait")
+    assert signal.state == "triggered" and "30시간" in signal.value
+
+
+def test_anchor_wait_clear_after_short_stop_seen_from_start():
+    """평가셋 B04: 움직이다가 18시간 정지. 멈추기 시작한 때를 봤고 기준(24시간) 미만 → clear."""
+    history = _history((25, 10.0), (19, 0.2), (13, 0.2), (7, 0.2), (1, 0.2))
+    result = compute(_position(lat=35.0, lng=129.1, sog=0.2), None, None, None, now=NOW, history=history)
+    assert _state(result, "anchor_wait") == "clear"
+
+
+def test_anchor_wait_unknown_when_history_starts_stopped():
+    """이력이 처음부터 멈춰 있고 기준보다 짧으면 언제부터인지 몰라 unknown."""
+    history = _history((13, 0.2), (7, 0.2), (1, 0.2))
+    result = compute(_position(lat=35.0, lng=129.1, sog=0.2), None, None, None, now=NOW, history=history)
+    assert _state(result, "anchor_wait") == "unknown"
+
+
+def test_anchor_wait_stops_counting_at_unknown_speed():
+    """속도가 없는 점에서 거슬러 오르기를 멈춘다. 그 앞 정지는 이어졌는지 모른다."""
+    history = _history((40, 0.2), (31, None), (7, 0.2), (1, 0.2))
+    result = compute(_position(lat=35.0, lng=129.1, sog=0.2), None, None, None, now=NOW, history=history)
+    assert _state(result, "anchor_wait") == "unknown"
 
 
 @pytest.mark.parametrize(

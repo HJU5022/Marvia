@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 import pycountry
 from fastapi import APIRouter
 
-from backend.app.db import connect, latest_response, log_query
+from backend.app.db import connect, latest_response, log_query, recent_positions
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
@@ -149,7 +149,8 @@ def _assess(request: AgentRequest) -> AgentResponse:
     _log_tool_error("distance", distance)
 
     # 5. 1층 신호와 여유 일수는 코드가 계산한다 (SDD 4.1 5·6단계). LLM은 이 값을 바꾸지 않는다
-    signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date)
+    signal_set = signals_service.compute(position, schedule, distance, customs, request.sale_due_date,
+                                         history=_position_history(mmsi))
     trusted = signals_service.trusted_eta(position, schedule)
     # 쓸 위치가 없으면 여유 일수도 내지 않는다. 해수부 예정만으로 센 값을 판정 근거처럼 보이지 않게 (평가셋 B13·F04 days_margin=null)
     has_position = bool(position) and "error" not in position
@@ -395,6 +396,21 @@ def _log_tool_error(stage: str, result: dict | None) -> None:
     """MCP 도구가 {"error": ToolError}를 돌려줬으면 코드만 로그에 남긴다. message는 예외 문장이라 넣지 않는다."""
     if result and "error" in result:
         log_failure(stage, result["error"].get("code") or "unknown")
+
+
+def _position_history(mmsi: int | None) -> list[dict]:
+    """워커가 DB에 모은 이 배의 위치 이력. anchor_wait 정지 시간을 재는 데 쓴다 (09-29, 평가셋 B08).
+
+    DB가 없거나 읽기가 실패해도 판정은 계속한다. 이력이 없으면 정지 시간 신호가 unknown이 될 뿐이다.
+    """
+    if not mmsi or not _db_configured("positions_read"):
+        return []
+    try:
+        with connect() as conn:
+            return recent_positions(conn, mmsi)
+    except Exception as e:
+        log_failure("positions_read", type(e).__name__)
+        return []
 
 
 def _llm_error(e: llm.LLMError) -> str:

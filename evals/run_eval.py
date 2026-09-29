@@ -186,6 +186,10 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
         return real_position(mmsi)
 
     agent.get_live_position = spy_position
+    # 워커 위치 이력은 DB 대신 평가셋 fixtures.worker_positions를 준다. 평가는 DB를 쓰지 않는다 (_setup_env).
+    # 이게 없으면 anchor_wait가 정지 시간을 못 재서 B08(30시간 정박)이 늘 unknown이었다 (09-29 확인)
+    real_history = agent._position_history
+    agent._position_history = lambda mmsi: list(rec["fixtures"].get("worker_positions") or [])
     restore_chat = _llm_failure_replay(rec, config)
     # 실패 재현(broken_chat)을 끼운 뒤에 감싼다. 그래야 F08의 가짜 답도 호출 기록에 남는다
     llm_calls: list[dict] = []
@@ -203,6 +207,7 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
         response, error = None, f"{type(e).__name__}: {e}"
     finally:
         agent.get_live_position = real_position
+        agent._position_history = real_history
         restore_spy()
         restore_chat()
         failure_logger.removeHandler(collector)
