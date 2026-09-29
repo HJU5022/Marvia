@@ -9,6 +9,7 @@ LLM 대신 if문으로 판정한다. 평가 때 llm.judge·llm.pick_vessel 자�
 from backend.app.schemas.agent import Reason
 from backend.app.services import llm
 from backend.app.services.rules import rule
+from backend.app.services.signals import DEST_BROKEN, DEST_EMPTY
 
 # SKILL.md 판정 표: 이 셋 중 하나라도 triggered면 act
 ACT_SIGNALS = {"anchor_wait", "customs_hold", "sales_date_exceeded"}
@@ -20,8 +21,9 @@ def verdict_for(signal_set, margin: int | None) -> str:
     act: ACT_SIGNALS 중 하나라도 켜짐, 또는 다른 신호가 켜졌는데 여유 일수가 margin_act_days(rules.md) 미만
     watch: ACT_SIGNALS는 꺼져 있고 다른 신호가 하나라도 켜짐
     fine: 켜진 신호 없음. unknown(판단 불가)은 켜진 것으로 세지 않는다
+    예외: 입력 오류로 설명되는 신호(깨진·빈 목적지, 항해상태 불일치)는 켜져도 세지 않는다 (SKILL.md 판정 표 예외, 09-29)
     """
-    on = {s.id for s in signal_set.signals if s.state == "triggered"}
+    on = {s.id for s in signal_set.signals if s.state == "triggered" and not _input_error(s)}
     if not on:
         return "fine"
     if on & ACT_SIGNALS:
@@ -58,3 +60,10 @@ def pick_vessel(candidates, customs, voyage_no=None, forwarder_eta=None, **kwarg
     """
     output = llm.PickOutput(choice=candidates[0].mmsi, confidence="high", reasons_per_candidate=[])
     return llm.LLMAnswer(output=output, llm=llm.LLMResult(content="", model=MODEL), prompt_version="baseline")
+
+
+def _input_error(signal) -> bool:
+    """SKILL.md 판정 표 예외. 배의 실제 상태가 아니라 AIS 입력 오류일 수 있는 신호."""
+    if signal.id == "navstat_mismatch":
+        return True  # 항해상태는 손으로 넣는 값. 실제 상태는 속도·위치 신호(anchor_wait 등)가 따로 본다
+    return signal.id == "dest_changed" and signal.value in (DEST_BROKEN, DEST_EMPTY)

@@ -20,6 +20,10 @@ from backend.app.services.evidence import KST, days_margin
 from backend.app.services.rules import rule
 
 BUSAN_PORT_CODE = "KRPUS"
+# dest_changed 값 가운데 "배의 실제 목적지가 아니라 입력 오류일 수 있다"는 뜻인 둘.
+# SKILL.md 판정 표 예외(watch 이유로 세지 않음)와 평가 베이스라인(evals/baseline_rules.py)이 같이 쓴다
+DEST_BROKEN = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
+DEST_EMPTY = "비어 있음"
 EARTH_RADIUS_NM = 3440.065
 
 # 항해상태(navistat) 코드. 1=정박, 5=계류, 0=항해 중(엔진 사용)
@@ -254,9 +258,9 @@ def _dest_changed(position: dict) -> Signal:
     if _is_port_code(code):
         value = f"다른 항구 {code}"
     elif code or (position.get("dest") or "").strip():
-        value = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
+        value = DEST_BROKEN
     else:
-        value = "비어 있음"
+        value = DEST_EMPTY
     return _signal("dest_changed", "triggered", value, BUSAN_PORT_CODE, "shipfinder")
 
 
