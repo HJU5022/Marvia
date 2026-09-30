@@ -1,4 +1,4 @@
-"""회원 탈퇴 테스트 (삭제 3단계: routers/account.py, clients/supabase_admin.py).
+"""회원 탈퇴 테스트 (삭제 3단계: routers/account.py 창구, services/account.py 순서 규칙, clients/supabase_admin.py).
 
 진짜 Supabase는 부르지 않는다. httpx.delete와 DB 함수를 가짜로 바꿔 끼운다.
 """
@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.clients import supabase_admin
 from backend.app.main import app
-from backend.app.routers import account as account_router
+from backend.app.services import account as account_service
 from backend.tests.test_routers import _login
 
 SECRET = "sb_secret_test-only-value"
@@ -71,7 +71,7 @@ def test_missing_key_is_not_configured(monkeypatch):
     assert e.value.kind == "not_configured"
 
 
-# ── 탈퇴 입구 (routers/account.py) ──
+# ── 탈퇴 순서 (services/account.py)와 입구 (routers/account.py) ──
 
 class FakeConn:
     def __enter__(self):
@@ -86,16 +86,16 @@ def _db(monkeypatch, steps: list, fail: bool = False):
     if fail:
         def broken(*a, **k):
             raise ConnectionError("테스트")
-        monkeypatch.setattr(account_router, "connect", broken)
+        monkeypatch.setattr(account_service, "connect", broken)
     else:
-        monkeypatch.setattr(account_router, "connect", lambda *a, **k: FakeConn())
-    monkeypatch.setattr(account_router, "delete_user_queries", lambda conn, user_id: steps.append(("records", user_id)) or 2)
+        monkeypatch.setattr(account_service, "connect", lambda *a, **k: FakeConn())
+    monkeypatch.setattr(account_service, "delete_user_queries", lambda conn, user_id: steps.append(("records", user_id)) or 2)
 
 
 def test_withdraw_deletes_records_then_account(monkeypatch):
     headers, steps = _login(monkeypatch), []
     _db(monkeypatch, steps)
-    monkeypatch.setattr(account_router, "delete_account", lambda user_id: steps.append(("account", user_id)))
+    monkeypatch.setattr(account_service, "delete_account", lambda user_id: steps.append(("account", user_id)))
 
     with TestClient(app) as client:
         resp = client.delete("/api/account", headers=headers)
@@ -108,7 +108,7 @@ def test_records_failure_keeps_account(monkeypatch):
     """기록을 못 지우면 계정은 건드리지 않는다. 계정이 먼저 사라지면 다시 탈퇴할 길이 없다."""
     headers, steps = _login(monkeypatch), []
     _db(monkeypatch, steps, fail=True)
-    monkeypatch.setattr(account_router, "delete_account", lambda user_id: pytest.fail("기록 삭제 실패인데 계정을 지우면 안 된다"))
+    monkeypatch.setattr(account_service, "delete_account", lambda user_id: pytest.fail("기록 삭제 실패인데 계정을 지우면 안 된다"))
 
     with TestClient(app) as client:
         assert client.delete("/api/account", headers=headers).status_code == 503
@@ -125,14 +125,14 @@ def test_account_failure_is_reported_and_retry_finishes(monkeypatch):
         if r:
             raise r
 
-    monkeypatch.setattr(account_router, "delete_account", delete_account)
+    monkeypatch.setattr(account_service, "delete_account", delete_account)
     with TestClient(app) as client:
         assert client.delete("/api/account", headers=headers).status_code == 503
         assert client.delete("/api/account", headers=headers).status_code == 200
 
 
 def test_withdraw_needs_login(monkeypatch):
-    monkeypatch.setattr(account_router, "delete_user_queries", lambda *a: pytest.fail("로그인 없이 삭제까지 가면 안 된다"))
+    monkeypatch.setattr(account_service, "delete_user_queries", lambda *a: pytest.fail("로그인 없이 삭제까지 가면 안 된다"))
     with TestClient(app) as client:
         assert client.delete("/api/account").status_code == 401  # 로그인 꺼짐(사용자 없음)
     _login(monkeypatch)
