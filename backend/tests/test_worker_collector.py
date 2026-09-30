@@ -193,3 +193,16 @@ def test_purge_calls_db_function_and_returns_count():
 
     conn = Conn()
     assert purge_positions(conn) == 3 and "purge_old_positions()" in conn.sql
+
+
+def test_query_purge_calls_db_function_and_returns_count():
+    """조회 기록 90일 삭제도 규칙은 DB 함수에 있다 (migrations/008). 파이썬은 부르기만 한다."""
+    from backend.app.db import purge_old_queries
+
+    class Conn:
+        def execute(self, sql, params=()):
+            self.sql = sql
+            return type("Cur", (), {"fetchall": lambda self: [(5,)]})()
+
+    conn = Conn()
+    assert purge_old_queries(conn) == 5 and "purge_old_queries()" in conn.sql

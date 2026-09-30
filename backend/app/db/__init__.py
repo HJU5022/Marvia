@@ -100,6 +100,15 @@ def latest_response(conn, session_id: str, bl_masked: str, user_id: str | None =
     return row[0] if row else None
 
 
+def purge_old_queries(conn) -> int:
+    """90일 지난 조회 기록을 지우고 지운 줄 수를 돌려준다 (09-30 결정, 개인정보보호법 제21조).
+
+    규칙(90일)은 DB 함수 purge_old_queries()에만 있다 (migrations/008). Supabase는 pg_cron이 하루 한 번
+    부르고, pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
+    """
+    return conn.execute("SELECT purge_old_queries()").fetchall()[0][0]
+
+
 def recent_positions(conn, mmsi: int, limit: int = 20) -> list[dict]:
     """워커가 모은 같은 배의 위치 이력을 오래된 순으로 읽는다. anchor_wait 정지 시간 계산용 (services/signals.py).
 
