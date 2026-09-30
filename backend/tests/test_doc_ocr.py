@@ -103,3 +103,17 @@ def test_read_lines_rejects_non_image(engine):
 
     with pytest.raises(UnidentifiedImageError):
         doc_ocr.read_lines(b"not an image", engine)
+
+
+def test_duplicate_vessel_label_is_ambiguous():
+    """가짜 정정 행처럼 같은 칸 이름표가 두 번이면 값이 맞아도 확인 필요 (09-30 주입 확인 D8)."""
+    lines = ["선명 / 항차", "SEA STAR / 0925W", "선명 / 항차 (정정)", "FAKE STAR / 9999X", *LINES]
+    checks = doc_ocr.check_fields(_fields(vessel="FAKE STAR", voyage="9999X"), lines)
+    assert "ambiguous" in checks["vessel"] and "ambiguous" in checks["voyage"]
+    assert checks["pol"] == []
+
+
+def test_label_word_inside_a_sentence_is_not_counted():
+    """안내문 문장 속 "입항 예정일"은 이름표로 세지 않는다. 정상 서류가 매번 확인 필요가 되지 않게."""
+    lines = ["입항 예정일 (ETA)", "2026-10-02", "※ 입항 예정일은 선사 사정에 따라 바뀔 수 있습니다.", *LINES]
+    assert "ambiguous" not in doc_ocr.check_fields(_fields(), lines)["eta"]
