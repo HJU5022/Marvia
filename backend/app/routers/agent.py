@@ -358,7 +358,7 @@ def _released(customs: CustomsRecord) -> AgentResponse:
             stage_name=customs.stage_name,
             plain_explanation=RELEASED_EXPLANATION,
             next_stage=None,
-            needs_broker=False,
+            needs_broker=signals_service.needs_broker(customs.stage_name),
             history=[s.model_dump(mode="json") for s in customs.stage_history],
         ),
         berth=BerthInfo(facility=None, shed=customs.shed_name),
@@ -604,7 +604,7 @@ def _eta(position: dict | None, schedule: dict | None, signal_set, trusted) -> E
 
 
 def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
-    """단계 이름·코드·이력은 UNI-PASS 값(코드), 해설 셋은 LLM 값으로 C1 CustomsInfo를 만든다.
+    """단계 이름·코드·이력은 UNI-PASS 값, 관세사 필요 여부는 코드 판단(10-01), 해설 둘은 LLM 값으로 C1 CustomsInfo를 만든다.
     단계 이름이 없거나 LLM이 해설을 안 냈으면 None."""
     if not customs.stage_name or explained is None:
         return None
@@ -613,7 +613,7 @@ def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
         stage_name=customs.stage_name,
         plain_explanation=explained.plain_explanation,
         next_stage=explained.next_stage,
-        needs_broker=explained.needs_broker,
+        needs_broker=signals_service.needs_broker(customs.stage_name),
         history=[s.model_dump(mode="json") for s in customs.stage_history],
     )
 

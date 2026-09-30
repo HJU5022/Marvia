@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import Freshness, Signal, SignalSet
 from backend.app.services.evidence import KST, days_margin
-from backend.app.services.rules import rule
+from backend.app.services.rules import customs_stage_names, rule, stage_key
 
 BUSAN_PORT_CODE = "KRPUS"
 # dest_changed 값 가운데 "배의 실제 목적지가 아니라 입력 오류일 수 있다"는 뜻인 둘.
@@ -291,6 +291,18 @@ def _customs_hold(customs: CustomsRecord | None) -> Signal:
     if any(word in stage for word in CUSTOMS_HOLD_WORDS):
         return _signal("customs_hold", "triggered", stage, threshold, "unipass")
     return _signal("customs_hold", "clear", stage, threshold, "unipass")
+
+
+def needs_broker(stage_name: str) -> bool:
+    """관세사가 봐야 하는 단계인가. 전에는 LLM이 정했고 프롬프트와 Skill에 조건이 따로 적혀 어긋났다.
+    결정은 코드 한 곳이 한다 (10-01 강사 피드백). LLM은 이 값을 입력으로 받아 설명만 한다.
+
+    true: 검사·보류·정지·반송·폐기가 들어간 단계(customs_hold와 같은 낱말), 또는 customs-stages Skill 표에 없는 단계
+    false: 표에 있는 정상 단계. 표의 "사용자가 할 일" 칸에 관세사가 나와도 정상 단계면 false다
+    """
+    if any(word in stage_name for word in CUSTOMS_HOLD_WORDS):
+        return True
+    return stage_key(stage_name) not in customs_stage_names()
 
 
 def _eta_gap(ais_eta: datetime, mof_eta: datetime) -> tuple[float, bool]:

@@ -51,6 +51,7 @@ from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason,
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 from backend.app.services.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
+from backend.app.services.signals import needs_broker  # 관세사 필요 여부는 코드가 정해 입력으로 준다 (10-01)
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -362,11 +363,11 @@ JUDGE_SCHEMA = {
                 {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["plain_explanation", "next_stage", "needs_broker"],
+                    # needs_broker는 코드가 정해 입력으로 준다 (10-01, signals.needs_broker). LLM은 쓰지 않는다
+                    "required": ["plain_explanation", "next_stage"],
                     "properties": {
                         "plain_explanation": {"type": "string"},
                         "next_stage": {"type": ["string", "null"]},
-                        "needs_broker": {"type": "boolean"},
                     },
                 },
                 {"type": "null"},
@@ -379,11 +380,11 @@ JUDGE_SCHEMA = {
 
 
 class CustomsExplanation(BaseModel):
-    """LLM이 쓴 통관 해설. 단계 이름·코드·이력은 코드 값(CustomsRecord)을 쓰고, 여기서는 설명 셋만 받는다 (C1 CustomsInfo)."""
+    """LLM이 쓴 통관 해설. 단계 이름·코드·이력과 관세사 필요 여부는 코드 값을 쓰고, 여기서는 설명 둘만 받는다 (C1 CustomsInfo).
+    예전 녹화 답(evals/fixtures/replay)에 needs_broker 칸이 남아 있어도 무시된다 (pydantic 기본값: 모르는 칸 무시)."""
 
     plain_explanation: str
     next_stage: str | None
-    needs_broker: bool
 
 
 class JudgeOutput(BaseModel):
@@ -439,6 +440,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
     calc_eta는 남은 거리 ÷ 현재 속도로 코드가 계산한 대략값이다. 참고용이라 판정 근거로 쓰지 않게 지시문에 적는다.
     table_verdict·verdict_mode (09-30 D7, services/verdict.py): 코드가 판정 표로 낸 등급과, LLM이 그 등급을
     그대로 써야 하는지(fixed) 표 이상에서 고를 수 있는지(raise_only, 회색 지대)를 알려 준다.
+    needs_broker (10-01): 관세사가 봐야 하는 단계인지 코드가 정한 값. LLM은 이 값에 맞춰 설명만 한다. 통관 정보가 없으면 null.
     """
     data = {
         "table_verdict": table_verdict,
@@ -451,6 +453,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
         "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
         "customs": customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"}) if customs else None,
+        "needs_broker": needs_broker(customs.stage_name) if customs and customs.stage_name else None,
     }
     return json.dumps(data, ensure_ascii=False)
 
