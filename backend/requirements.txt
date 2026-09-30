@@ -13,4 +13,5 @@ searoute>=1.6        # 부산까지 남은 해상 거리 (B7). 키 불필요
 pycountry>=24.6      # 세관 국적 코드 ↔ ShipFinder 국적 이름 대조 (routers/agent.py). LGPL-2.1, 수정 없이 import만 (README 8절). 09-28 설치본 26.2.16
 # asyncpg>=0.30       # Postgres를 쓴다면
 psycopg[binary]>=3.2  # 수집 워커의 Postgres 저장 (D1). 동기 드라이버라 주기 실행 스크립트에 단순하다
+PyJWT[crypto]>=2.8   # 로그인 출입증(ES256) 확인 (G3, auth.py). [crypto]가 cryptography를 같이 깐다. 09-30 설치본 2.15.0·cryptography 50.0.1
 # 서류 사진 OCR 패키지는 requirements-doc.txt에 따로 둔다. api(app 스테이지)만 쓰고 worker는 안 쓴다 (09-29 결정 (a))
