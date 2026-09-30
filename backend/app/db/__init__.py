@@ -47,7 +47,7 @@ def apply_migrations(conn) -> list[str]:
 def log_query(conn, session_id: str, **fields) -> None:
     """조회 이력 한 줄을 남긴다 (A12, SDD 3.9).
 
-    B/L 원본은 넣지 않는다. 부르는 쪽이 bl_masked만 넘긴다.
+    B/L 원본을 그대로 넣지 않는다. 부르는 쪽이 bl_masked와, 로그인했으면 잠긴 bl_encrypted만 넘긴다 (crypto.py, 007).
     이력 저장이 실패해도 판정 응답은 나가야 하므로 부르는 쪽에서 예외를 삼킨다.
     """
     columns = ["session_id", *fields.keys()]
@@ -58,33 +58,63 @@ def log_query(conn, session_id: str, **fields) -> None:
     )
 
 
-def recent_queries(conn, session_id: str, limit: int = 20) -> list[dict]:
-    """세션의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4)."""
+def _owner(session_id: str, user_id: str | None) -> tuple[str, str]:
+    """이력을 누구 기준으로 찾을지 WHERE 조건과 값으로 돌려준다 (G3, 006 마이그레이션).
+
+    로그인했으면 사용자 ID로 찾는다. 브라우저가 바뀌어도 이어진다.
+    사용자가 없으면(로그인 기능이 꺼진 채점 환경, 로그인은 09-30부터 필수) 세션 ID로 찾되 로그인한 채 남긴 줄은 뺀다.
+    같은 DB를 로그인 켠 환경과 같이 쓰더라도 사용자 기록이 세션 조회로 새지 않게 한다 (09-30 실제 DB 확인 중 발견).
+    조건 문자열은 이 두 가지로만 정해진다. 사용자 입력은 값(%s)으로만 들어간다.
+    """
+    return ("user_id = %s", user_id) if user_id else ("session_id = %s AND user_id IS NULL", session_id)
+
+
+def recent_queries(conn, session_id: str, limit: int = 20, user_id: str | None = None) -> list[dict]:
+    """세션(로그인했으면 사용자)의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4)."""
+    where, owner = _owner(session_id, user_id)
     rows = conn.execute(
-        """
+        f"""
         SELECT request_id, bl_masked, status, verdict, vessel_match, decided_by, model, trace_id, created_at
-        FROM query_log WHERE session_id = %s ORDER BY created_at DESC LIMIT %s
+        FROM query_log WHERE {where} ORDER BY created_at DESC LIMIT %s
         """,
-        [session_id, min(limit, 100)],
+        [owner, min(limit, 100)],
     ).fetchall()
     keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "model", "trace_id", "created_at")
     return [dict(zip(keys, row)) for row in rows]
 
 
-def latest_response(conn, session_id: str, bl_masked: str) -> dict | None:
-    """같은 세션·같은 B/L의 가장 최근 결과(AgentResponse JSON)를 읽는다. 후속 질문이 쓴다 (C-9, 004 마이그레이션).
+def latest_response(conn, session_id: str, bl_masked: str, user_id: str | None = None) -> dict | None:
+    """같은 세션(로그인했으면 사용자)·같은 B/L의 가장 최근 결과(AgentResponse JSON)를 읽는다. 후속 질문이 쓴다 (C-9, 004 마이그레이션).
 
     결과가 저장되지 않은 옛 줄(response가 NULL)은 건너뛴다. 없으면 None.
     """
+    where, owner = _owner(session_id, user_id)
     row = conn.execute(
-        """
+        f"""
         SELECT response FROM query_log
-        WHERE session_id = %s AND bl_masked = %s AND response IS NOT NULL
+        WHERE {where} AND bl_masked = %s AND response IS NOT NULL
         ORDER BY created_at DESC LIMIT 1
         """,
-        [session_id, bl_masked],
+        [owner, bl_masked],
     ).fetchone()
     return row[0] if row else None
+
+
+def delete_user_queries(conn, user_id: str) -> int:
+    """로그인 사용자의 조회 기록을 전부 지우고 지운 줄 수를 돌려준다 (삭제 2단계, 개인정보보호법 제36조).
+
+    잠긴 B/L(bl_encrypted)도 같은 줄에 있어 함께 지워진다. 다른 사용자 줄과 사용자 없는 줄은 건드리지 않는다.
+    """
+    return conn.execute("DELETE FROM query_log WHERE user_id = %s", [user_id]).rowcount
+
+
+def purge_old_queries(conn) -> int:
+    """90일 지난 조회 기록을 지우고 지운 줄 수를 돌려준다 (09-30 결정, 개인정보보호법 제21조).
+
+    규칙(90일)은 DB 함수 purge_old_queries()에만 있다 (migrations/008). Supabase는 pg_cron이 하루 한 번
+    부르고, pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
+    """
+    return conn.execute("SELECT purge_old_queries()").fetchall()[0][0]
 
 
 def recent_positions(conn, mmsi: int, limit: int = 20) -> list[dict]:

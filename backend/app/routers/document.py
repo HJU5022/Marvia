@@ -3,16 +3,18 @@
 처리 순서 (Spec "흐름"):
   1~2. 전처리 + OCR               services/doc_ocr.read_lines (로컬, 외부 호출 없음)
   3.   B/L 번호를 코드로 뽑고 가림   doc_ocr.take_bl, mask_bl. 가려지지 않으면 LLM을 부르지 않는다
-  4.   나머지 6칸                   services/llm.extract_doc_fields (소형 모델, MODEL_A)
+  4.   나머지 6칸                   services/llm.extract_doc_fields (소형 모델, LLM_MODEL)
   5.   칸 검사                      doc_ocr.check_fields
 여기서 판정하지 않고 LLM SDK를 import하지 않는다 (CLAUDE.md). 뽑은 값으로 /api/agent를 부르지도 않는다. 사용자가 확인한 뒤 프론트가 부른다.
 대형 비전 모델로 넘기기는 2차다. 지금은 검사에 걸리면 needs_review=true로 사용자에게 맡긴다.
 """
 from contextlib import nullcontext
+from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from PIL import UnidentifiedImageError
 
+from backend.app.auth import current_user_id
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.document import DocumentFields, DocumentResponse, FieldResult, OcrInfo
@@ -26,8 +28,10 @@ LLM_FIELDS = ("vessel", "voyage", "eta", "pol", "pod", "item")
 
 
 @router.post("/document", response_model=DocumentResponse)
-def read_document(file: UploadFile = File(...), session_id: str | None = Form(None)) -> DocumentResponse:
-    """사진을 받아 7칸을 채운다. def(동기)로 둔 이유: OCR이 CPU를 1~2초 쓰므로 FastAPI가 스레드풀에서 돌리게 한다."""
+def read_document(file: UploadFile = File(...), session_id: str | None = Form(None),
+                  user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DocumentResponse:
+    """사진을 받아 7칸을 채운다. def(동기)로 둔 이유: OCR이 CPU를 1~2초 쓰므로 FastAPI가 스레드풀에서 돌리게 한다.
+    로그인 필수다 (09-30 결정, auth.py). 로그인 기능이 꺼진 채점 환경에서만 user_id 없이 돈다."""
     data = file.file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=400, detail="too_large")
@@ -47,7 +51,7 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
         masked, status = None, "partial"
 
     if masked is not None and ocr.lines:
-        with session_scope(session_id) if session_id else nullcontext():  # session 없이 오면 트레이스만 남긴다
+        with session_scope(session_id, user_id) if session_id else nullcontext():  # session 없이 오면 트레이스만 남긴다
             try:
                 out = llm.extract_doc_fields(masked).output
                 values.update({k: getattr(out, k) for k in LLM_FIELDS})

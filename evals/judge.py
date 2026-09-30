@@ -5,8 +5,8 @@ evals/run_eval.py가 문항을 푼 직후 grade(row, 판정 모델)를 부른다
 
 채점하지 않는 경우 (None을 돌려준다)
   - 통관 해설이 없다: 규칙만(a) 실행, 되묻기·실패처럼 판정 LLM을 안 부른 응답
-  - JUDGE_MODEL이 없다
-  - JUDGE_MODEL이 판정 모델과 같다: 같은 모델은 자기 답을 후하게 채점한다 (자기 선호 편향, Zheng 외 2023)
+  - EVAL_GRADER_MODEL이 없다
+  - EVAL_GRADER_MODEL이 판정 모델과 같다: 같은 모델은 자기 답을 후하게 채점한다 (자기 선호 편향, Zheng 외 2023)
 채점 호출이 실패하면 score None과 실패 종류를 남긴다. 평가는 멈추지 않는다.
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ def grade(row: dict, generation_model: str | None) -> dict | None:
     customs = (row.get("got") or {}).get("customs")
     if not customs or not customs.get("plain_explanation"):
         return None
-    judge_model = os.environ.get("JUDGE_MODEL")
+    judge_model = os.environ.get("EVAL_GRADER_MODEL")
     if not judge_model or same_model(judge_model, generation_model):
         return None
 

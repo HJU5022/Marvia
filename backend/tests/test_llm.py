@@ -14,7 +14,7 @@ from backend.app.services import llm
 def no_wait(monkeypatch):
     # 재시도 대기(2초)를 테스트에서는 없앤다
     monkeypatch.setattr(llm, "RETRY_WAIT_SEC", 0)
-    monkeypatch.setenv("MODEL_A", "test/model")
+    monkeypatch.setenv("LLM_MODEL", "test/model")
 
 
 def _fake(monkeypatch, outcomes):
@@ -75,7 +75,7 @@ def test_missing_key_or_model_is_llm_error(monkeypatch):
     with pytest.raises(llm.LLMError):
         llm.chat([{"role": "user", "content": "hi"}])
 
-    monkeypatch.delenv("MODEL_A", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     with pytest.raises(llm.LLMError):
         llm.chat([{"role": "user", "content": "hi"}])
 
@@ -194,7 +194,7 @@ def test_http_status_maps_to_failure_kind(status, kind):
 
 
 def test_missing_model_is_not_configured(monkeypatch):
-    monkeypatch.delenv("MODEL_A", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     with pytest.raises(llm.LLMError) as e:
         llm.chat([{"role": "user", "content": "hi"}])
     assert e.value.kind == "not_configured"

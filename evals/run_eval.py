@@ -1,8 +1,8 @@
 """평가 실행기 (D8, SDD 5.12, PRD 8절).
 
     python -m evals.run_eval --config a     # 규칙만 (evals/baseline_rules.py)
-    python -m evals.run_eval --config b     # 규칙 + LLM 모델 A (.env MODEL_A)
-    python -m evals.run_eval --config c     # 규칙 + LLM 모델 B (.env MODEL_B)
+    python -m evals.run_eval --config b     # 규칙 + 서비스 모델 (.env LLM_MODEL)
+    python -m evals.run_eval --config c     # 규칙 + 비교 모델 (.env EVAL_COMPARE_MODEL)
 
 하는 일:
   1. dataset.jsonl 30건을 문항마다 REPLAY 재생 파일로 풀고 (evals/replay_fixtures.py)
@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATASET = ROOT / "evals" / "dataset.jsonl"
 RESULTS = ROOT / "evals" / "results"
 
-CONFIGS = {"a": "규칙만 (baseline_rules)", "b": "규칙 + LLM 모델 A (MODEL_A)", "c": "규칙 + LLM 모델 B (MODEL_B)"}
+CONFIGS = {"a": "규칙만 (baseline_rules)", "b": "규칙 + 서비스 모델 (LLM_MODEL)", "c": "규칙 + 비교 모델 (EVAL_COMPARE_MODEL)"}
 
 # 게이트 (PRD 8절, SDD 5.12). 하나라도 걸리면 배포하지 않는다
 SCHEMA_PASS_GATE = 0.95
@@ -89,7 +89,7 @@ def main() -> None:
         result = {
             "config": args.config,
             "description": CONFIGS[args.config],
-            "model": os.environ.get("MODEL_A") if args.config != "a" else "baseline/rules",
+            "model": os.environ.get("LLM_MODEL") if args.config != "a" else "baseline/rules",
             "run_at": now.isoformat(),
             "git_commit": _git_commit(),
             "prompt_versions": prompt_versions,  # {"marvia-judge": "2", ...}. (a)는 LLM을 안 불러 비어 있다
@@ -106,11 +106,11 @@ def main() -> None:
 
 def _graded(row: dict, config: str) -> dict:
     """문항을 푼 직후 통관 해설을 검증 모델로 채점해 row["customs_grade"]에 넣는다 (evals/judge.py).
-    규칙만(a)은 LLM 해설이 없어 채점하지 않는다. (c)는 MODEL_A 자리에 MODEL_B가 들어가 있다 (_setup_config)."""
+    규칙만(a)은 LLM 해설이 없어 채점하지 않는다. (c)는 LLM_MODEL 자리에 EVAL_COMPARE_MODEL이 들어가 있다 (_setup_config)."""
     if config != "a":
         from evals import judge
 
-        row["customs_grade"] = judge.grade(row, os.environ.get("MODEL_A"))
+        row["customs_grade"] = judge.grade(row, os.environ.get("LLM_MODEL"))
     return row
 
 
@@ -137,7 +137,7 @@ class _LangfuseRun:
             from langfuse import get_client
         except ImportError:
             return None
-        model = os.environ.get("MODEL_A") if config != "a" else "baseline/rules"
+        model = os.environ.get("LLM_MODEL") if config != "a" else "baseline/rules"
         now = datetime.now(timezone.utc).astimezone(KST)
         # 실행 이름만 보고 무엇을 잰 것인지 알게: 구성 · 모델 · 생각 설정 · 시각
         thinking = f" thinking={os.environ['VERTEX_THINKING_BUDGET']}" if os.environ.get("VERTEX_THINKING_BUDGET") and config != "a" else ""
@@ -246,7 +246,7 @@ def _setup_env() -> None:
 def _setup_config(config: str) -> None:
     """구성별로 판정기를 정한다.
     (a) llm 함수 셋을 규칙으로 바꾼다. 후속 질문 답은 규칙으로 못 하므로 LLM 실패로 둔다 (판정은 그대로 남는다).
-    (c) MODEL_A 자리에 MODEL_B를 넣는다. 라우터는 모델을 따로 지정하지 않고 MODEL_A를 쓰기 때문이다.
+    (c) LLM_MODEL 자리에 EVAL_COMPARE_MODEL을 넣는다. 라우터는 모델을 따로 지정하지 않고 LLM_MODEL을 쓰기 때문이다.
     """
     from backend.app.routers import agent
     from backend.app.services import llm
@@ -260,9 +260,9 @@ def _setup_config(config: str) -> None:
             raise llm.LLMError("베이스라인 (a)는 후속 질문에 답하지 않는다")
         agent.llm.answer_follow_up = no_follow_up
     elif config == "c":
-        if not os.environ.get("MODEL_B"):
-            raise SystemExit("MODEL_B가 .env에 없습니다")
-        os.environ["MODEL_A"] = os.environ["MODEL_B"]
+        if not os.environ.get("EVAL_COMPARE_MODEL"):
+            raise SystemExit("EVAL_COMPARE_MODEL이 .env에 없습니다")
+        os.environ["LLM_MODEL"] = os.environ["EVAL_COMPARE_MODEL"]
 
 
 def _run_one(rec: dict, config: str, work: Path) -> dict:
@@ -390,7 +390,7 @@ def _spy_llm_calls(sink: list[dict]):
     inner = llm.chat
 
     def spy_chat(*args, **kwargs):
-        model = kwargs.get("model") or os.environ.get("MODEL_A")
+        model = kwargs.get("model") or os.environ.get("LLM_MODEL")
         try:
             result = inner(*args, **kwargs)
         except llm.LLMError as e:
@@ -468,7 +468,7 @@ def score(rows: list[dict]) -> dict:
         "vessel_wrong_confirm": wrong_confirm,
         "grounded": ratio(sum(not any(v.startswith("V7") for v in r["violations"]) for r in rows), len(rows)),
         "schema_pass": ratio(sum(not r["violations"] for r in rows), len(rows)),
-        # 검증 모델(JUDGE_MODEL)이 채점한 통관 해설 통과율. 채점한 문항만 분모다. 채점이 없으면 None (evals/judge.py)
+        # 검증 모델(EVAL_GRADER_MODEL)이 채점한 통관 해설 통과율. 채점한 문항만 분모다. 채점이 없으면 None (evals/judge.py)
         "customs_explanation": ratio(sum(g["score"] for g in graded), len(graded)),
         "customs_graded": len(graded),
         "injection_failures": injection_failures,

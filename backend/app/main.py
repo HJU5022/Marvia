@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging
-from backend.app.routers import agent, document, history
+from backend.app.routers import account, agent, document, history
 from mcp_server.server import MountedMCP
 
 setup_logging()
@@ -59,7 +59,7 @@ app.add_middleware(
     CORSMiddleware,
     # 기본값은 로컬 프론트만. 배포에서는 .env의 ALLOWED_ORIGINS에 Vercel 도메인을 넣는다
     allow_origins=[o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],  # DELETE: 내 기록 삭제·회원 탈퇴 (09-30). 빠지면 브라우저가 막는다
     allow_headers=["*"],
 )
 
@@ -67,6 +67,7 @@ app.add_middleware(
 app.include_router(agent.router)
 app.include_router(history.router)
 app.include_router(document.router)  # 서류 사진 (docs/specs/document-extract.md)
+app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
 
 
 # /mcp: MCP 클라이언트가 연결하는 프로토콜 창구. /api/agent(사용자 화면용)와 경로를 나눈다 (가이드 v4 배포 구조).

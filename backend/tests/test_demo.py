@@ -57,9 +57,9 @@ def test_build_writes_three_cases(tmp_path):
 
 @pytest.fixture
 def recorded(tmp_path, monkeypatch):
-    """REPLAY_MODE, MODEL_A 없음, 재생 폴더에 녹화 답 파일만 둔다."""
+    """REPLAY_MODE, LLM_MODEL 없음, 재생 폴더에 녹화 답 파일만 둔다."""
     monkeypatch.setenv("REPLAY_MODE", "true")
-    monkeypatch.delenv("MODEL_A", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     monkeypatch.setattr(replay, "REPLAY_DIR", tmp_path)
     (tmp_path / "llm").mkdir()
     shutil.copy(RECORDING, tmp_path / "llm" / RECORDING.name)
@@ -86,8 +86,8 @@ def test_replay_refuses_other_input(recorded):
 
 
 def test_model_set_calls_real_llm(recorded, monkeypatch):
-    # MODEL_A가 있으면 재생 모드에서도 녹화 답이 아니라 진짜 모델을 부른다
-    monkeypatch.setenv("MODEL_A", "some/model")
+    # LLM_MODEL이 있으면 재생 모드에서도 녹화 답이 아니라 진짜 모델을 부른다
+    monkeypatch.setenv("LLM_MODEL", "some/model")
 
     def fake_chat(*args, **kwargs):
         raise llm.LLMError("real call")
@@ -103,7 +103,7 @@ def test_demo_cases_end_to_end(tmp_path, monkeypatch):
     from backend.app.routers import agent
     from backend.app.schemas.agent import AgentRequest
 
-    for key in ("MODEL_A", "OPENROUTER_API_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
+    for key in ("LLM_MODEL", "OPENROUTER_API_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
                 "DATABASE_URL", "SHIPFINDER_KEY", "UNIPASS_KEY", "DATA_GO_KR_KEY"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("REPLAY_MODE", "true")

@@ -16,16 +16,17 @@
   extract_doc_fields() 서류 사진 OCR 글자에서 선명·항차·ETA 등 6칸을 옮겨 적는다 (docs/specs/document-extract.md)
 
 모델 자리 (.env, 계약 C8):
-  MODEL_A     싼 모델. 대화+판단 기본
-  MODEL_B     강한 모델. 어려운 건 + 비전
-  JUDGE_MODEL 평가 때만. A·B와 다른 회사
+  LLM_MODEL           서비스가 쓰는 모델. 위 네 함수 전부 (09-30 이름 바꿈, 전 MODEL_A)
+  EVAL_COMPARE_MODEL  평가에서 비교할 두 번째 모델. run_eval --config c에서만 LLM_MODEL 자리에 들어간다 (전 MODEL_B)
+  EVAL_GRADER_MODEL   평가 채점자. 통관 해설 채점(grade_customs)만. 채점받는 모델과 달라야 한다 (전 JUDGE_MODEL.
+                      판정 함수 judge()와 헷갈려서 바꿈)
 
 어디로 보내나 (모델 이름 앞머리로 가른다, 09-28):
-  "vertex/"로 시작   Vertex AI (GCP 크레딧). 예: MODEL_A=vertex/google/gemini-2.5-flash
+  "vertex/"로 시작   Vertex AI (GCP 크레딧). 예: LLM_MODEL=vertex/google/gemini-2.5-flash
                      키 대신 `gcloud auth application-default login` 로그인 정보(ADC)를 쓴다.
                      Cloud Run에서는 서비스 계정에 Vertex AI 사용자 권한이 있어야 한다
                      VERTEX_THINKING_BUDGET=0이면 Gemini가 생각 없이 바로 답한다. 비우면 모델 기본값 (_vertex_thinking)
-  그 밖             OpenRouter. 예: MODEL_A=openai/gpt-4o-mini
+  그 밖             OpenRouter. 예: LLM_MODEL=openai/gpt-4o-mini
   개발 중엔 크레딧(vertex/)으로 돌리고, 최종 테스트 때 .env 한 줄만 되돌리려고 두 길을 같이 둔다.
 """
 from __future__ import annotations
@@ -273,7 +274,7 @@ def chat(
 
     Args:
         messages: [{"role": "system"|"user"|..., "content": ...}]
-        model: 생략하면 MODEL_A
+        model: 생략하면 LLM_MODEL
         response_format: 구조화 출력. {"type": "json_schema", "json_schema": {...}}
         tools: tool 정의 목록 (OpenAI 형식)
         max_tokens: 출력 상한
@@ -281,9 +282,9 @@ def chat(
     Raises:
         LLMError: 재시도해도 안 되거나, 다시 불러도 소용없는 실패(400·401 등)
     """
-    model = model or os.environ.get("MODEL_A")
+    model = model or os.environ.get("LLM_MODEL")
     if not model:
-        raise LLMError("MODEL_A가 없습니다", kind="not_configured")
+        raise LLMError("LLM_MODEL이 없습니다", kind="not_configured")
     kwargs: dict = {"model": model, "messages": messages}
     if response_format:
         kwargs["response_format"] = response_format
@@ -474,7 +475,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
                   내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
     """
-    if replay.replay_enabled() and not (model or os.environ.get("MODEL_A")):
+    if replay.replay_enabled() and not (model or os.environ.get("LLM_MODEL")):
         return _replay_answer(prompt_name, user_content, output_model)
     prompt = get_prompt(prompt_name)
     system = f"{prompt.text}\n\n{_skills_text(skills)}" if skills else prompt.text
@@ -514,7 +515,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
 
 # ── LLM 녹화 답 재생 (09-29 결정) ─────────────────────────────
 # 채점자가 키 없이 데모 3건을 돌리게 하는 장치다 (SDD 6.1, CLAUDE.md "REPLAY_MODE=true면 키 없이").
-# REPLAY_MODE이고 MODEL_A가 비어 있을 때만 탄다. MODEL_A가 있으면 재생 모드에서도 진짜 LLM을 부른다.
+# REPLAY_MODE이고 LLM_MODEL이 비어 있을 때만 탄다. LLM_MODEL이 있으면 재생 모드에서도 진짜 LLM을 부른다.
 # 녹화 파일: evals/fixtures/replay/llm/<프롬프트 이름>.json. 실제 모델로 데모 입력을 한 번 돌려 받은 답이다.
 # 녹화 답은 그 입력에만 맞다. 입력이 다르면(판매일을 다르게 넣는 등) 녹화 답을 쓰지 않고 LLMError를 낸다.
 # 틀린 답을 그럴듯하게 보여 주는 것보다, 라우터가 평소처럼 "판정 없이 partial"로 끝나는 편이 정직하다.
@@ -744,15 +745,15 @@ class GradeOutput(BaseModel):
 
 
 def grade_customs(customs: dict, *, model: str | None = None) -> LLMAnswer:
-    """통관 해설 하나를 채점한다. output은 GradeOutput. 모델은 JUDGE_MODEL(.env, 계약 C8).
+    """통관 해설 하나를 채점한다. output은 GradeOutput. 모델은 EVAL_GRADER_MODEL(.env, 계약 C8).
 
     customs: AgentResponse.customs를 dict로 (stage_name · plain_explanation · next_stage · needs_broker).
     채점 모델은 판정 모델과 다른 회사여야 한다. 같은 모델은 자기 답을 후하게 채점한다(자기 선호 편향).
     그 확인은 부르는 쪽(evals/judge.py)이 한다. 해설 문장은 채점할 데이터로만 넘긴다 (지시문 마지막 줄).
     """
-    model = model or os.environ.get("JUDGE_MODEL")
+    model = model or os.environ.get("EVAL_GRADER_MODEL")
     if not model:
-        raise LLMError("JUDGE_MODEL이 없습니다", kind="not_configured")
+        raise LLMError("EVAL_GRADER_MODEL이 없습니다", kind="not_configured")
     data = {key: customs.get(key) for key in ("stage_name", "plain_explanation", "next_stage", "needs_broker")}
     return _ask_json(JUDGE_EVAL_PROMPT, json.dumps(data, ensure_ascii=False), "grade", GRADE_SCHEMA, GradeOutput, model,
                      skills=GRADE_SKILLS)

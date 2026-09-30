@@ -3,7 +3,7 @@
 services/llm.py의 chat()을 불러서 모델이 붙는지, 구조화 출력(JSON 스키마)을 지키는지 본다.
 사례는 가공값이다. 실제 B/L·고객 서류는 넣지 않는다 (무료 모델은 입력이 로깅될 수 있음).
 
-    python -m scripts.smoke_llm                 # .env의 MODEL_A
+    python -m scripts.smoke_llm                 # .env의 LLM_MODEL
     python -m scripts.smoke_llm --model qwen/qwen3.8-27b:free
 
 무료 모델은 하루 50회 한도(한국 시각 오전 9시 초기화). 한 번 실행 = 1회.
@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from backend.app.services.llm import chat
 
-load_dotenv()  # OPENROUTER_API_KEY, MODEL_A를 .env에서 읽는다
+load_dotenv()  # OPENROUTER_API_KEY, LLM_MODEL을 .env에서 읽는다
 
 # 가공 사례. 기대 답: 판매일까지 여유 3일이라 act는 아님 (fine/watch는 하정운 확인 대기)
 CASE = (
@@ -74,5 +74,5 @@ def main(model: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLM 연결·구조화 출력 확인")
-    parser.add_argument("--model", default=os.environ.get("MODEL_A"))
+    parser.add_argument("--model", default=os.environ.get("LLM_MODEL"))
     main(parser.parse_args().model)

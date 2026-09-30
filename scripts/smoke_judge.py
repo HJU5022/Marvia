@@ -7,7 +7,7 @@ services/llm.py의 judge()·pick_vessel()·answer_follow_up()을 실제 모델�
     python -m scripts.smoke_judge pick      # 동명 선박 2척. 기대: 국적이 맞는 440999001 또는 애매하면 null
     python -m scripts.smoke_judge follow    # 범위 밖 질문. 기대: in_scope false
 
-모델은 .env의 MODEL_A. 프롬프트는 Langfuse(production), 안 되면 backend/app/prompts/ 파일.
+모델은 .env의 LLM_MODEL. 프롬프트는 Langfuse(production), 안 되면 backend/app/prompts/ 파일.
 한 번 실행 = LLM 호출 1회(과부하 재시도 시 2회).
 """
 import argparse
