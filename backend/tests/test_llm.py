@@ -157,6 +157,21 @@ def test_openrouter_does_not_add_reasoning_tokens(monkeypatch):
     assert result.completion_tokens == 219
 
 
+def test_cached_tokens_are_read_from_prompt_details(monkeypatch):
+    """캐시에서 읽은 입력 토큰을 prompt_tokens_details.cached_tokens에서 꺼낸다 (09-30 실측: 4,348 중 3,514)."""
+    usage = SimpleNamespace(prompt_tokens=4348, completion_tokens=238, completion_tokens_details=None,
+                            prompt_tokens_details=SimpleNamespace(cached_tokens=3514))
+    monkeypatch.setattr(llm, "_vertex_client", lambda: _FakeClient(usage=usage))
+    result = llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []})
+    assert (result.prompt_tokens, result.cached_tokens) == (4348, 3514)
+
+
+def test_no_cache_details_means_none(monkeypatch):
+    """첫 호출처럼 캐시 정보가 없으면 None. 0과 구분한다 (캐시 칸이 아예 안 온 것)."""
+    monkeypatch.setattr(llm, "_vertex_client", lambda: _FakeClient(usage=_usage(14, 28, 0)))
+    assert llm._call_once({"model": "vertex/google/gemini-2.5-flash", "messages": []}).cached_tokens is None
+
+
 def test_vertex_without_login_is_llm_error(monkeypatch):
     """ADC 로그인 정보가 없으면 LLMError. OpenRouter 키가 없을 때와 같이 라우터가 partial로 받는다 (09-23 결정)."""
     import google.auth

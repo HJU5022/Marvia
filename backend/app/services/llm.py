@@ -87,6 +87,9 @@ class LLMResult:
     completion_tokens: int | None = None
     latency_ms: int = 0                 # 마지막 시도 하나의 지연. 재시도 대기는 빠진다
     attempts: int = 1                   # 몇 번 만에 답을 받았나. Langfuse retry_count 자리 (SDD 5.11)
+    # 입력 중 제공사 캐시에서 읽은 토큰. 프롬프트 + Skill처럼 매번 같은 앞부분이 자동 캐시된다 (09-30 확인: Vertex
+    # Gemini 2.5 Flash 판정 입력 4,348 중 두 번째 호출부터 3,514). 요청 옵션 없이 응답 usage.prompt_tokens_details에 온다
+    cached_tokens: int | None = None
     cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0. Vertex는 안 줘서 None
     finish_reason: str | None = None    # "length"면 토큰 한도에서 잘린 답. 형식 오류와 구분한다 (truncated)
 
@@ -239,6 +242,7 @@ def _call_once(kwargs: dict) -> LLMResult:
         request_id=resp.id,
         prompt_tokens=usage.prompt_tokens if usage else None,
         completion_tokens=completion_tokens,  # 생각 토큰 포함 (위 주석)
+        cached_tokens=getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None) if usage else None,
         # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
         cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,

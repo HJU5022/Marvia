@@ -134,6 +134,9 @@ def end_generation(generation: Any, result: LLMResult | None, prompt_version: st
                 fields["cost_details"] = {"total": result.cost}  # OpenRouter가 준 실제 금액 (크레딧 = USD)
             fields["metadata"].update({
                 "retry_count": result.attempts - 1,  # 첫 시도는 재시도가 아니다
+                # 입력 중 캐시에서 읽은 토큰 (09-30). usage_details가 아니라 metadata에 둔다. usage에 넣으면 Langfuse가
+                # 모델 가격표로 비용을 계산할 때 입력 토큰과 겹쳐 두 번 셀 수 있어서다 (가격표 키 대응은 확인 안 함)
+                "cached_tokens": result.cached_tokens,
                 "provider": result.provider,
                 "openrouter_id": result.request_id,
             })

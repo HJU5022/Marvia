@@ -399,6 +399,7 @@ def _spy_llm_calls(sink: list[dict]):
         sink.append({
             "ok": True, "model": result.model, "provider": result.provider,
             "prompt_tokens": result.prompt_tokens, "completion_tokens": result.completion_tokens,
+            "cached_tokens": result.cached_tokens,
             "cost": result.cost, "latency_ms": result.latency_ms, "attempts": result.attempts,
             "finish_reason": result.finish_reason,
         })
@@ -512,6 +513,8 @@ def usage(rows: list[dict]) -> dict:
         "llm_errors": dict(Counter(c["kind"] for c in calls if not c["ok"])),
         "prompt_tokens": sum(c["prompt_tokens"] or 0 for c in ok),
         "completion_tokens": sum(c["completion_tokens"] or 0 for c in ok),  # Vertex는 생각 토큰 포함 (llm.py)
+        # 입력 중 제공사 캐시에서 읽은 토큰 합 (09-30). 캐시된 입력은 싸게 계산된다. 할인율은 제공사 가격표를 따른다
+        "cached_tokens": sum(c.get("cached_tokens") or 0 for c in ok),
         "cost_usd": total_cost,
         "cost_usd_per_request": round(total_cost / len(rows), 6) if total_cost is not None and rows else None,
         "failures": dict(Counter(f for r in rows for f in r.get("failures", []))),
@@ -547,7 +550,7 @@ def _print(config: str, rows: list[dict], s: dict) -> None:
     print("  게이트:", ", ".join(f"{k}={'통과' if v else '걸림'}" for k, v in s["gates"].items()))
     u = s.get("usage")
     if u:
-        print(f"  LLM 호출 {u['llm_calls']}회 · 토큰 입력 {u['prompt_tokens']} / 출력 {u['completion_tokens']}"
+        print(f"  LLM 호출 {u['llm_calls']}회 · 토큰 입력 {u['prompt_tokens']} (캐시 {u.get('cached_tokens', 0)}) / 출력 {u['completion_tokens']}"
               f" · 비용 {u['cost_usd'] if u['cost_usd'] is not None else '금액 없음(토큰으로 계산)'}"
               f" · 요청당 {u['cost_usd_per_request'] if u['cost_usd_per_request'] is not None else '-'}")
         print(f"  LLM 실패 종류 {u['llm_errors'] or '-'}")
