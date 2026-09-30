@@ -75,8 +75,10 @@ def test_wrong_audience_rejected():
 
 
 def test_hs256_token_rejected():
-    """알고리즘을 HS256으로 바꾼 위조 출입증. ES256만 받으므로 막힌다."""
-    assert _status(f"Bearer {_token(key='guessed-secret-at-least-32-bytes-long', algorithm='HS256')}") == 401
+    """알고리즘을 HS256으로 바꾼 위조 출입증. ES256만 받으므로 막힌다.
+    위조범의 비밀값은 실행 중에 만든다. 문자열로 적으면 비밀값 검사(gitleaks)가 키로 오인한다 (09-30)."""
+    forged_secret = "x" * 32  # HS256은 32바이트 이상 비밀값을 요구한다. 아무 값이면 된다
+    assert _status(f"Bearer {_token(key=forged_secret, algorithm='HS256')}") == 401
 
 
 def test_missing_sub_rejected():
