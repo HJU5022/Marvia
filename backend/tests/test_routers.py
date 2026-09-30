@@ -1045,3 +1045,51 @@ def test_owner_column_follows_login():
 
     assert _owner("sess-1", "user-123") == ("user_id = %s", "user-123")
     assert _owner("sess-1", None) == ("session_id = %s AND user_id IS NULL", "sess-1")
+
+
+# ── B/L 잠가서 저장 (② 암호화) ──
+
+def _saved_row(monkeypatch, user_id, key: bool = True) -> dict:
+    """_logged가 DB에 넘기는 한 줄을 가로챈다. 열쇠는 테스트용으로 새로 만든다."""
+    from cryptography.fernet import Fernet
+
+    from backend.app.schemas.agent import AgentRequest
+
+    if key:
+        monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    else:
+        monkeypatch.delenv("BL_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    rows = []
+    monkeypatch.setattr(agent_router, "connect", lambda *a, **k: FakeConn())
+    monkeypatch.setattr(agent_router, "log_query", lambda conn, session_id, **fields: rows.append(fields))
+    agent_router._logged(AgentRequest(**_request()), agent_router._response(), user_id)
+    return rows[0]
+
+
+def test_logged_in_row_keeps_locked_bl_only(monkeypatch):
+    from backend.app import crypto
+
+    row = _saved_row(monkeypatch, "user-123")
+    assert row["bl_encrypted"] and "TESTMBL0000001" not in row["bl_encrypted"]  # 원본은 안 보인다
+    assert crypto.decrypt(row["bl_encrypted"]) == "TESTMBL0000001"  # 같은 열쇠로는 열린다
+    assert "TESTMBL0000001" not in str(row)  # 줄 어디에도 원본이 없다
+
+
+def test_guest_row_has_no_bl(monkeypatch):
+    row = _saved_row(monkeypatch, None)
+    assert row["bl_encrypted"] is None and "TESTMBL0000001" not in str(row)
+
+
+def test_no_key_saves_row_without_bl(monkeypatch):
+    """열쇠가 없어도 이력은 남는다. 잠근 B/L만 빈다 (메모리의 다시 조회만 안 됨)."""
+    row = _saved_row(monkeypatch, "user-123", key=False)
+    assert row["bl_encrypted"] is None and row["user_id"] == "user-123"

@@ -47,7 +47,7 @@ def apply_migrations(conn) -> list[str]:
 def log_query(conn, session_id: str, **fields) -> None:
     """조회 이력 한 줄을 남긴다 (A12, SDD 3.9).
 
-    B/L 원본은 넣지 않는다. 부르는 쪽이 bl_masked만 넘긴다.
+    B/L 원본을 그대로 넣지 않는다. 부르는 쪽이 bl_masked와, 로그인했으면 잠긴 bl_encrypted만 넘긴다 (crypto.py, 007).
     이력 저장이 실패해도 판정 응답은 나가야 하므로 부르는 쪽에서 예외를 삼킨다.
     """
     columns = ["session_id", *fields.keys()]
