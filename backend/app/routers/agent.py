@@ -26,10 +26,13 @@
 import logging
 import os
 from datetime import datetime, timezone
+from typing import Annotated
 
 import pycountry
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from backend.app import crypto
+from backend.app.auth import current_user_id
 from backend.app.db import connect, latest_response, log_query, recent_positions
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
@@ -111,14 +114,19 @@ def _response(**over) -> AgentResponse:
 
 
 @router.post("/agent", response_model=AgentResponse)
-def run_agent(request: AgentRequest) -> AgentResponse:
+def run_agent(request: AgentRequest,
+              user_id: Annotated[str | None, Depends(current_user_id)] = None) -> AgentResponse:
     """B/L과 판매 예정일을 받아 화물 상태를 정리해 돌려준다. 후속 질문이 오면 지난 결과를 보고 답한다.
     어느 쪽이든 결과를 조회 이력(query_log)에 남긴다.
-    이 요청에서 부르는 LLM 트레이스에는 session_id가 붙는다 (SDD 5.11). 키가 없으면 아무 일도 안 한다."""
-    with session_scope(request.session_id):
+    이 요청에서 부르는 LLM 트레이스에는 session_id가 붙는다 (SDD 5.11). 키가 없으면 아무 일도 안 한다.
+
+    user_id: 로그인했으면 출입증에서 꺼낸 사용자 ID, 손님이면 None (G3, auth.py). 판정 자체는 똑같고
+    이력을 누구 것으로 남기고 후속 질문이 누구 결과를 꺼내는지만 달라진다.
+    평가 실행기·데모처럼 코드에서 직접 부르면 None(손님)이다."""
+    with session_scope(request.session_id, user_id):
         if request.follow_up_question:
-            return _logged(request, _follow_up(request))
-        return _logged(request, _assess(request))
+            return _logged(request, _follow_up(request, user_id), user_id)
+        return _logged(request, _assess(request), user_id)
 
 
 def _assess(request: AgentRequest) -> AgentResponse:
@@ -358,14 +366,15 @@ def _released(customs: CustomsRecord) -> AgentResponse:
     )
 
 
-def _follow_up(request: AgentRequest) -> AgentResponse:
+def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentResponse:
     """후속 질문 (C-9). 같은 세션·같은 B/L의 가장 최근 결과를 DB에서 꺼내 그 안에서만 답한다.
 
-    세션별로 지난 결과를 저장해 두는 방식이다 (09-27 결정). 로그인이 붙으면 session_id 자리가 사용자 ID가 된다.
+    세션별로 지난 결과를 저장해 두는 방식이다 (09-27 결정). 로그인했으면 세션 대신 사용자 ID로 찾는다 (G3).
+    폰에서 조회하고 노트북에서 물어도 이어진다.
     DB가 없거나 지난 결과가 없으면 조회·판정을 한 번 더 해서 그 결과로 답한다 (채점 환경은 DB 없이 돌 수 있다).
     판정·근거는 지난 결과 그대로 두고 answer만 질문의 답으로 바꿔 돌려준다.
     """
-    previous = _previous_response(request) or _assess(request)
+    previous = _previous_response(request, user_id) or _assess(request)
     failed = previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
 
     # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거 카드에 없는 숫자("9월 23일", 사용자가 말한 판매일)가 그대로 갔다 (평가 F06).
@@ -392,13 +401,13 @@ def _follow_up(request: AgentRequest) -> AgentResponse:
     return failed
 
 
-def _previous_response(request: AgentRequest) -> AgentResponse | None:
+def _previous_response(request: AgentRequest, user_id: str | None = None) -> AgentResponse | None:
     """DB에 저장된 지난 결과. 없거나 DB에 못 붙으면 None (그러면 다시 조회한다)."""
     if not _db_configured("db_read"):
         return None
     try:
         with connect() as conn:
-            saved = latest_response(conn, request.session_id, mask_bl(request.bl_no))
+            saved = latest_response(conn, request.session_id, mask_bl(request.bl_no), user_id)
     except Exception as e:
         log_failure("db_read", type(e).__name__)
         return None
@@ -616,8 +625,11 @@ def _as_jsonb(data: dict):
     return Jsonb(data)
 
 
-def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
-    """조회 이력 한 줄을 남기고 응답을 그대로 돌려준다 (A12).
+def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None = None) -> AgentResponse:
+    """조회 이력 한 줄을 남기고 응답을 그대로 돌려준다 (A12). 로그인했으면 user_id도 같이 남긴다 (G3, 006 마이그레이션).
+
+    로그인했으면 B/L 원본을 잠가서(bl_encrypted) 같이 남긴다. 메모리의 다시 조회가 쓴다 (② 암호화, 007 마이그레이션).
+    손님은 원본을 남기지 않는다. 열쇠가 없으면 crypto.encrypt가 None을 돌려줘 빈 칸으로 남는다.
 
     이력 저장이 실패해도 응답은 나가야 한다. DB 없이도 서비스가 돌아야 하기 때문이다.
     """
@@ -628,6 +640,8 @@ def _logged(request: AgentRequest, response: AgentResponse) -> AgentResponse:
             log_query(
                 conn,
                 request.session_id,
+                user_id=user_id,
+                bl_encrypted=crypto.encrypt(request.bl_no) if user_id else None,
                 request_id=current_request_id(),
                 bl_masked=mask_bl(request.bl_no),
                 status=response.status,

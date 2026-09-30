@@ -68,11 +68,11 @@ def _keys_set() -> bool:
     return bool(os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"))
 
 
-def session_scope(session_id: str) -> AbstractContextManager:
+def session_scope(session_id: str, user_id: str | None = None) -> AbstractContextManager:
     """이 with 안에서 남기는 트레이스에 session_id를 붙인다. 라우터가 요청 하나를 이걸로 감싼다.
 
     같은 세션의 조회·후속 질문을 Langfuse Sessions 화면에서 한 줄로 볼 수 있다.
-    로그인이 붙으면 user_id도 여기서 붙인다 (지금은 넣을 값이 없다).
+    로그인했으면 user_id도 붙인다 (G3). Supabase 사용자 ID(무작위 UUID)라 이메일·이름은 Langfuse에 가지 않는다.
     잘못된 값(ASCII가 아니거나 200자 초과)은 langfuse가 경고만 남기고 버린다. 요청은 막히지 않는다.
     """
     if not _keys_set():
@@ -80,7 +80,7 @@ def session_scope(session_id: str) -> AbstractContextManager:
     try:
         from langfuse import propagate_attributes
 
-        return propagate_attributes(session_id=session_id)
+        return propagate_attributes(session_id=session_id, user_id=user_id)
     except ImportError:  # 키 없는 테스트 환경처럼 langfuse가 설치돼 있지 않을 때
         return nullcontext()
 
