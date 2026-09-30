@@ -39,6 +39,17 @@ MONTHS = {m: i for i, m in enumerate(["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], start=1)}
 VOYAGE_PATTERN = re.compile(r"[A-Z0-9]{3,8}")  # 항차: 0925W, 2634E, 108A (09-29 가공·웹 서류에서 본 모양)
 FIELDS = ("bl_no", "vessel", "voyage", "eta", "pol", "pod", "item")
+# 칸 이름표. 이름표처럼 짧은 줄에 같은 칸 이름이 두 번 이상 나오면(예: "선명 / 항차"와 "선명 / 항차 (정정)")
+# 어느 값이 맞는지 서류만으로 알 수 없다. 09-30 주입 확인 D8: LLM이 3번 모두 "(정정)" 쪽 위조 값을 골랐고,
+# 그 값도 서류 글자라 not_in_text로 못 잡았다. 이럴 때는 사용자 확인으로 넘긴다 (ambiguous)
+FIELD_LABELS = {
+    "vessel": re.compile(r"선명|\bVESSEL\b", re.I),
+    "voyage": re.compile(r"항차|\bVOY(AGE)?\b", re.I),
+    "eta": re.compile(r"입항\s*예정일|도착\s*예정일|\bETA\b", re.I),
+}
+# 이름표 줄로 보는 최대 길이(공백 · 문장부호 뺀 글자 수). 긴 문장 속 단어("입항 예정일은 바뀔 수 있습니다")는 세지 않는다.
+# 안내문에 흔한 문장까지 세면 정상 서류도 매번 확인 필요가 된다. 가공 서식의 이름표는 6~14자다 (09-30)
+LABEL_MAX_CHARS = 20
 
 _engine = None
 _engine_lock = threading.Lock()
@@ -178,12 +189,19 @@ def strip_ship_suffix(vessel: str | None) -> str | None:
     return vessel
 
 
+def label_lines(lines: list[str], key: str) -> int:
+    """그 칸의 이름표로 보이는 줄 수. 이름표 줄 = 칸 이름이 들어 있고 짧은 줄 (LABEL_MAX_CHARS)."""
+    pattern = FIELD_LABELS[key]
+    return sum(1 for line in lines if pattern.search(line) and len(norm(line)) <= LABEL_MAX_CHARS)
+
+
 def check_fields(fields: dict[str, str | None], lines: list[str]) -> dict[str, list[str]]:
     """칸마다 걸린 검사 이름 목록. 빈 목록이면 통과. 하나라도 걸리면 사용자 확인이 필요하다.
 
     missing      값이 없다
     not_in_text  OCR 글자에 그 값이 없다. LLM이 지어냈거나 고쳐 쓴 경우 (날짜는 날짜끼리 비교)
     format       항차·날짜 모양이 아니다
+    ambiguous    그 칸의 이름표가 서류에 두 번 이상 있다 (가짜 정정 행 등). 값이 맞아도 사용자 확인으로 넘긴다
     칸끼리 뒤바뀐 경우(선명 자리에 선적항)는 여기서 못 잡는다. 사용자 확인 화면이 막는다 (Spec EC-07).
     """
     text = "\n".join(lines)
@@ -205,5 +223,7 @@ def check_fields(fields: dict[str, str | None], lines: list[str]) -> dict[str, l
                 fails.append("not_in_text")
             if key == "voyage" and not VOYAGE_PATTERN.fullmatch(value):
                 fails.append("format")
+        if key in FIELD_LABELS and label_lines(lines, key) > 1:
+            fails.append("ambiguous")
         result[key] = fails
     return result

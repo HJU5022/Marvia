@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # 검사 이름은 services/doc_ocr.check_fields와 같다. 빈 목록이면 통과
-Check = Literal["missing", "not_in_text", "format"]
+Check = Literal["missing", "not_in_text", "format", "ambiguous"]  # ambiguous: 같은 칸 이름표가 두 번 이상 (09-30)
 
 
 class FieldResult(BaseModel):
