@@ -1,0 +1,50 @@
+"""Supabase 계정 삭제 (삭제 3단계, 회원 탈퇴).
+
+구글 계정 연결 정보는 Supabase Auth가 갖고 있다. 사용자는 보안상 자기 계정을 스스로 못 지우므로
+서버가 관리자 키로 대신 지운다 (09-30 결정 (가): 사용자가 늘면 사람이 일일이 지울 수 없다).
+
+왜 이렇게 했나:
+- 관리자 키는 새 방식 secret 키(sb_secret_..., 이름 marvia-api)다. 옛 service_role 키는 쓰지 않는다 (Supabase API keys 문서)
+- 키는 apikey 헤더 하나로 보낸다. 09-30 읽기 전용 요청(회원 목록)으로 이 방식이 200인 것을 확인했다
+- 가장 강한 키라 주소·로그에 넣지 않는다. httpx 요청 로그는 main에서 WARNING으로 꺼 두었다 (b3b1825)
+- 외부 호출 규칙대로 타임아웃과 재시도(clients/retry.py)를 건다 (SDD 8절)
+- 이미 없는 계정(404)은 성공으로 본다. 탈퇴를 두 번 눌러도 같은 결과여야 한다
+"""
+from __future__ import annotations
+
+import os
+
+import httpx
+
+from backend.app.auth import supabase_url
+from backend.app.clients.retry import with_retry
+
+TIMEOUT_SEC = 10  # 계정 삭제는 가벼운 요청이다. ShipFinder 타임아웃(10초)과 맞춘다
+
+
+class AdminError(Exception):
+    """계정을 지우지 못했다. kind: not_configured(키·주소 없음) / failed(요청 실패)."""
+
+    def __init__(self, kind: str, code: int | None = None):
+        super().__init__(kind)
+        self.kind, self.code = kind, code
+
+
+def delete_account(user_id: str) -> None:
+    """Supabase에서 이 사용자 계정을 지운다. 이미 없으면 그대로 끝낸다. 못 지우면 AdminError."""
+    base, key = supabase_url(), os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+    if not base or not key:
+        raise AdminError("not_configured")
+
+    def call() -> httpx.Response:
+        resp = httpx.delete(f"{base}/auth/v1/admin/users/{user_id}", headers={"apikey": key}, timeout=TIMEOUT_SEC)
+        if resp.status_code != 404:  # 404 = 이미 없는 계정. 재시도하지 않고 성공으로 본다
+            resp.raise_for_status()
+        return resp
+
+    try:
+        with_retry(call, name="supabase:delete_user")
+    except httpx.HTTPStatusError as e:
+        raise AdminError("failed", e.response.status_code) from None
+    except httpx.HTTPError:
+        raise AdminError("failed") from None
