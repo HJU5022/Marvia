@@ -136,8 +136,8 @@ SDD 1.1절 기준 목표 구조입니다. 현재 레포는 스캐폴드(`backend
 ├── README.md             프로젝트 소개, 실행법 (이 파일)
 ├── CLAUDE.md · AGENTS.md AI 코딩 도구 작업 지침
 ├── EVAL_REPORT.md        베이스라인 대비 지표 (제출물)
-├── Dockerfile            멀티스테이지 하나 (app / mcp / worker)
-├── docker-compose.yml    app + mcp + worker + postgres
+├── Dockerfile            멀티스테이지 하나 (app / worker)
+├── docker-compose.yml    api(/mcp 포함) + worker + postgres
 ├── .env.example          필요한 키 목록 (값 없음)
 │
 ├── app/                  FastAPI (Cloud Run)
@@ -170,7 +170,7 @@ SDD 1.1절 기준 목표 구조입니다. 현재 레포는 스캐폴드(`backend
 ```bash
 git clone https://github.com/aihuman-7th/proj2-5.git && cd proj2-5
 cp .env.example .env     # 키를 채운다 (아래 표 참고)
-docker compose up        # api :8000, mcp :8001, worker, postgres
+docker compose up        # api :8000 (/api/agent, /mcp), worker, postgres
 ```
 
 뜨면 이렇게 확인한다.
@@ -181,6 +181,40 @@ open http://localhost:8000/docs          # API 문서
 ```
 
 한글 경로에서는 Docker BuildKit이 죽는다. 그때는 `DOCKER_BUILDKIT=0 docker compose build` 후에 올린다.
+
+### 키 없이 데모 3건 (10분 재현)
+
+키를 하나도 넣지 않고 정상·되묻기·실패 세 경우를 끝까지 돌려 본다. 외부 API 응답은 가공값 재생 파일(`evals/fixtures/replay/`), 판정 LLM은 녹화 답이다.
+
+```bash
+cp .env.example .env
+# .env에서 REPLAY_MODE=false 를 REPLAY_MODE=true 로 바꾼다. 다른 칸은 비워 둔다
+docker compose up -d --build
+docker compose exec api python -m scripts.make_demo      # 데모 재생 파일을 지금 시각 기준으로 만든다
+```
+
+`make_demo`가 B/L 번호와 넣을 판매 예정일을 표로 보여 준다. 판매 예정일은 실행한 날에 따라 달라진다(아래 `<판매일>`).
+
+| B/L | 시나리오 | 기대 결과 |
+|---|---|---|
+| `TESTBL01` | 정상 | `ok` · 괜찮음(`fine`), 여유 4일 |
+| `TESTBL04` | 되묻기 | `insufficient` · 같은 이름 배 2척, 항차나 포워더 입항 예정일을 묻는다 |
+| `TESTBL26` | 실패 | `partial` · 위치 조회 권한 없음, 판정 보류 |
+
+```bash
+curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
+  -d '{"bl_no":"TESTBL01","bl_type":"HOUSE","sale_due_date":"<판매일>","session_id":"demo"}'
+```
+
+`TESTBL04`, `TESTBL26`도 `bl_no`만 바꿔 같은 명령으로 부른다. `/docs` 화면에서 넣어 봐도 된다.
+
+알아 둘 것
+
+- 판매 예정일은 선택이다. 비우면 정상 건은 여유 일수 없이 괜찮음과 "판매 예정일을 넣으면 여유까지 볼 수 있다"는 안내가 나온다
+- 녹화 답은 이 입력에만 맞다. 판매 예정일을 다른 날짜로 넣으면 녹화 답을 쓰지 않고 판정 없이 `partial`로 끝난다. 틀린 답을 그럴듯하게 보이지 않게 한 것이다
+- `.env`에 `MODEL_A`를 넣으면 같은 데모를 진짜 LLM이 판정한다 (녹화 답을 쓰지 않는다)
+- 위치 수신 시각이 "만든 시각 30분 전"이라 약 5시간 반 뒤에는 오래된 위치가 된다. 그때는 `make_demo`를 다시 돌린다
+- Docker 없이: `python -m scripts.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
 
 ### 키
 
@@ -203,32 +237,33 @@ python -c "import secrets; print(secrets.token_urlsafe(24))"
 
 ```bash
 python -m venv .venv && .venv/Scripts/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt
-.venv/Scripts/python -m uvicorn backend.app.main:app --port 8000     # API
-.venv/Scripts/python -m mcp_server.server --port 8001                # MCP 서버
+.venv/Scripts/python -m uvicorn backend.app.main:app --port 8000     # API + MCP(/mcp)
 ```
 
 ### MCP 서버 확인
 
+MCP 서버는 API 서버 안의 `/mcp` 경로다. 서버 하나, 배포 주소 하나로 `/api/agent`(화면용)와 `/mcp`(MCP 클라이언트용)가 같이 열린다.
+`MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401이다. 배포에서는 반드시 채운다.
+
 ```bash
-python -m scripts.mcp_check http://localhost:8001/mcp   # 연결과 도구 4종 목록
+python -m scripts.mcp_check http://localhost:8000/mcp   # 연결과 도구 4종 목록
 python -m scripts.mcp_demo                              # 도구 4종 실제 호출
 python -m scripts.mcp_auth_check                        # 토큰 없으면 401
 ```
 
+우리 서비스(`/api/agent`)는 `/mcp`를 거치지 않고 같은 도구 함수를 직접 부른다. 결과가 같고 HTTP 왕복만 늘어서다. `/mcp`는 Claude Desktop 같은 외부 MCP 클라이언트용 창구다.
+
 ### 테스트
 
 ```bash
-pytest          # 179건. 외부 API 키 없이 돈다 (저장된 응답으로 대체)
+pytest          # 402건 (09-29). 외부 API 키 없이 돈다 (가공 응답으로 대체)
 ```
 
 ### 아직 안 되는 것
 
 | 항목 | 상태 |
 |---|---|
-| `POST /api/agent` 판정 | 조회까지만 동작한다. LLM 판정(C-6)과 출력 검증(C-7)이 붙으면 verdict가 나온다 |
-| `REPLAY_MODE` | 미구현. 지금은 키가 있어야 실제 조회가 된다 |
 | 웹 화면 | `web/` 미착수 |
-| 평가 실행기 | `evals/run_eval.py` 미착수 |
 
 ### 기술 스택
 

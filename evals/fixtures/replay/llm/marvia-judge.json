@@ -1,0 +1,60 @@
+[
+  {
+    "note": "데모 정상(TESTBL01), 판매 예정일 입력: 여유 4일",
+    "recorded_at": "2026-09-29",
+    "model": "google/gemini-2.5-flash",
+    "match": {
+      "days_margin": 4,
+      "signals": {
+        "position_stale": "clear",
+        "eta_conflict": "clear",
+        "anchor_wait": "clear",
+        "dest_changed": "clear",
+        "navstat_mismatch": "clear",
+        "customs_hold": "clear",
+        "sales_date_exceeded": "clear"
+      }
+    },
+    "output": {
+      "verdict": "fine",
+      "reasons": [],
+      "conflicts": [],
+      "actions": [],
+      "answer": "현재 고객님의 화물은 판매 예정일보다 4일 일찍 부산항에 도착할 예정이며, 모든 신호가 양호합니다. 지금은 특별히 조치할 사항이 없습니다.",
+      "customs": {
+        "plain_explanation": "배에 실린 화물 목록을 세관에 제출했고, 세관이 그 목록을 확인했습니다.",
+        "next_stage": "하선신고 수리",
+        "needs_broker": false
+      }
+    }
+  },
+  {
+    "note": "데모 정상(TESTBL01), 판매 예정일 비움",
+    "recorded_at": "2026-09-29",
+    "model": "google/gemini-2.5-flash",
+    "match": {
+      "days_margin": null,
+      "signals": {
+        "position_stale": "clear",
+        "eta_conflict": "clear",
+        "anchor_wait": "clear",
+        "dest_changed": "clear",
+        "navstat_mismatch": "clear",
+        "customs_hold": "clear",
+        "sales_date_exceeded": "unknown"
+      }
+    },
+    "output": {
+      "verdict": "fine",
+      "reasons": [],
+      "conflicts": [],
+      "actions": [],
+      "answer": "화물은 순조롭게 부산항으로 오고 있으며, 세관 목록 심사도 완료되었습니다. 현재로서는 특별히 걱정할 필요는 없습니다. 판매 예정일을 입력하시면 판매 일정과의 여유를 더 정확히 알려드릴 수 있습니다.",
+      "customs": {
+        "plain_explanation": "배에 실린 화물 목록을 세관에서 확인했습니다.",
+        "next_stage": "하선신고 수리",
+        "needs_broker": false
+      }
+    }
+  }
+]

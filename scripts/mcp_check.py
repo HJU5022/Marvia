@@ -2,7 +2,7 @@
 
 서버에 붙어 initialize와 tool 목록 조회를 한다.
 
-    python -m scripts.mcp_check http://localhost:8001/mcp --token <MCP_TOKEN>
+    python -m scripts.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>
 
 토큰을 생략하면 환경변수 MCP_TOKEN을 쓴다. 서버에 토큰이 걸려 있는데 안 주면 401이 난다 (A10).
 """
@@ -33,7 +33,7 @@ async def list_tools(url: str, token: str | None = None) -> list[str]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MCP 서버 연결 확인")
-    parser.add_argument("url", nargs="?", default="http://localhost:8001/mcp")
+    parser.add_argument("url", nargs="?", default="http://localhost:8000/mcp")
     parser.add_argument("--token", default=os.environ.get("MCP_TOKEN"))
     args = parser.parse_args()
     asyncio.run(list_tools(args.url, args.token))

@@ -32,7 +32,8 @@ def days_margin(trusted_eta: datetime | None, sale_due_date: date | None) -> int
 
 def build(customs: CustomsRecord | None, position: dict | None, schedule: dict | None, distance: dict | None,
           trusted: datetime | None, margin: int | None, now: datetime | None = None,
-          signals: SignalSet | None = None) -> list[Evidence]:
+          signals: SignalSet | None = None, sale_due_date: date | None = None,
+          forwarder_eta: date | None = None) -> list[Evidence]:
     """도구 응답과 코드 계산값을 근거 카드 목록으로 만든다.
 
     값이 없거나 도구가 실패한 곳은 카드를 만들지 않는다. 없는 값을 근거로 쓰지 못하게 하려는 것이다.
@@ -78,6 +79,13 @@ def build(customs: CustomsRecord | None, position: dict | None, schedule: dict |
             add("rule", signal.id, signal.value, signals.computed_at)
     add("rule", "trusted_eta", trusted, now)
     add("rule", "days_margin", margin, now)
+    # 남은 거리 ÷ 현재 속도로 계산한 대략 도착. 참고용이지만 답에 "10월 5일쯤"으로 나올 수 있어 카드로 둔다 (09-29 D6·D8)
+    add("rule", "calc_eta", signals.calc_eta if signals else None, now)
+    # 사용자가 넣은 날짜도 카드로 둔다. LLM이 "판매 예정일 10월 7일"처럼 말하면 V7이 이 카드로 숫자를 확인한다 (09-29 D8).
+    # 날짜만 있는 값이라 _text(시각 변환)를 거치지 않는다. 거치면 UTC 0시로 읽혀 한국 시각 9시가 붙는다
+    for field, day in (("sale_due_date", sale_due_date), ("forwarder_eta", forwarder_eta)):
+        if day is not None:
+            cards.append(Evidence(source="rule", field=field, value=day.isoformat(), fetched_at=now))
     return cards
 
 

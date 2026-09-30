@@ -44,10 +44,12 @@ import openai
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
+from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
 from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
+from backend.app.services.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -85,6 +87,9 @@ class LLMResult:
     completion_tokens: int | None = None
     latency_ms: int = 0                 # 마지막 시도 하나의 지연. 재시도 대기는 빠진다
     attempts: int = 1                   # 몇 번 만에 답을 받았나. Langfuse retry_count 자리 (SDD 5.11)
+    # 입력 중 제공사 캐시에서 읽은 토큰. 프롬프트 + Skill처럼 매번 같은 앞부분이 자동 캐시된다 (09-30 확인: Vertex
+    # Gemini 2.5 Flash 판정 입력 4,348 중 두 번째 호출부터 3,514). 요청 옵션 없이 응답 usage.prompt_tokens_details에 온다
+    cached_tokens: int | None = None
     cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0. Vertex는 안 줘서 None
     finish_reason: str | None = None    # "length"면 토큰 한도에서 잘린 답. 형식 오류와 구분한다 (truncated)
 
@@ -237,6 +242,7 @@ def _call_once(kwargs: dict) -> LLMResult:
         request_id=resp.id,
         prompt_tokens=usage.prompt_tokens if usage else None,
         completion_tokens=completion_tokens,  # 생각 토큰 포함 (위 주석)
+        cached_tokens=getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None) if usage else None,
         # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
         cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,
@@ -313,7 +319,7 @@ SKILL_DIR = Path(__file__).resolve().parents[3] / "skills"  # 레포 루트의 s
 JUDGE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["verdict", "reasons", "conflicts", "actions", "answer", "customs"],  # strict 모드는 모든 칸이 required
+    "required": ["verdict", "reasons", "conflicts", "actions", "answer", "customs", "table_disagree"],  # strict 모드는 모든 칸이 required
     "properties": {
         # null = 판정 보류. 위치가 아예 없을 때 등 (skills/ais-reliability 되묻기 조건)
         "verdict": {"type": ["string", "null"], "enum": ["fine", "watch", "act", None]},
@@ -365,6 +371,8 @@ JUDGE_SCHEMA = {
                 {"type": "null"},
             ]
         },
+        # 표 등급이 이 경우에 틀렸다고 볼 때 그 이유 (09-30 D7). 응답에 쓰지 않고 기록만 한다. 동의하면 null
+        "table_disagree": {"type": ["string", "null"]},
     },
 }
 
@@ -386,6 +394,7 @@ class JudgeOutput(BaseModel):
     actions: list[str]
     answer: str
     customs: CustomsExplanation | None
+    table_disagree: str | None = None  # 기록만 한다 (services/verdict.py). 녹화 답·베이스라인은 없어도 된다
 
 
 @dataclass
@@ -398,10 +407,20 @@ class LLMAnswer:
     prompt_version: str
 
 
-def _skills_text() -> str:
-    """skills/ 아래 .md 전부를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
+# 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 4개 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
+# 각 호출이 받는 자료를 기준으로, 그 자료를 읽는 데 필요한 Skill만 넣는다. 넣는 Skill은 여전히 통째로다 (RAG 아님)
+AIS, CUSTOMS, PORT = "ais-reliability", "customs-stages", "port-busan"
+ALL_SKILLS = (AIS, CUSTOMS, PORT)
+JUDGE_SKILLS = (AIS, CUSTOMS)       # 신호 · 판정 표 · 통관 해설. 판정 입력에 부두 · 하역 장소가 없어 부두 Skill은 안 넣는다
+PICK_SKILLS = (AIS,)                # 동명 선박 · 후보 판단. 통관 · 부두는 쓰지 않는다
+FOLLOW_UP_SKILLS = ALL_SKILLS       # 이전 응답 전체(통관 · 하역 장소 포함)를 근거로 답하므로 전부
+GRADE_SKILLS = (CUSTOMS,)           # 통관 해설 채점은 통관 단계 표만 기준으로 한다 (평가 때만)
+
+
+def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
+    """고른 Skill 폴더의 .md를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
     parts = []
-    for path in sorted(SKILL_DIR.rglob("*.md")):
+    for path in sorted(p for folder in folders for p in (SKILL_DIR / folder).rglob("*.md")):
         # Windows 문제: relative_to()를 그대로 문자열로 쓰면 Windows에서 "ais-reliability\SKILL.md"처럼 역슬래시가 된다.
         # 그러면 LLM이 보는 파일 이름이 OS마다 달라지고 test_judge.py::test_system_has_prompt_and_all_skills가 Windows에서만 깨진다.
         # as_posix()로 어느 OS에서든 "/"로 맞춘다 (Docker·Mac은 원래 "/"라 동작 변화 없음)
@@ -409,32 +428,56 @@ def _skills_text() -> str:
     return "\n\n".join(parts)
 
 
-def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None) -> str:
-    """LLM에 넘길 자료를 JSON 문자열로 만든다. B/L 번호(bl_masked)와 MRN은 판정에 필요 없어 뺀다 (CLAUDE.md, SDD 3.5)."""
+def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None,
+                 trusted_eta: datetime | None = None, sale_due_date: date | None = None,
+                 table_verdict: str | None = None, verdict_mode: str | None = None) -> str:
+    """LLM에 넘길 자료를 JSON 문자열로 만든다. B/L 번호(bl_masked)와 MRN은 판정에 필요 없어 뺀다 (CLAUDE.md, SDD 3.5).
+
+    날짜는 한국 시각으로 준다 (09-29 D8). 전에는 여유 일수 숫자만 줘서 "언제 와요?"에 날짜로 답하지 못했고,
+    사용자가 말한 판매일을 근거에 없는 숫자로 보고 검증(V7)이 막기도 했다 (평가 F06 "9월 23일"). 판매일이 없으면 null이다 (선택 입력, 09-29 결정).
+    calc_eta는 남은 거리 ÷ 현재 속도로 코드가 계산한 대략값이다. 참고용이라 판정 근거로 쓰지 않게 지시문에 적는다.
+    table_verdict·verdict_mode (09-30 D7, services/verdict.py): 코드가 판정 표로 낸 등급과, LLM이 그 등급을
+    그대로 써야 하는지(fixed) 표 이상에서 고를 수 있는지(raise_only, 회색 지대)를 알려 준다.
+    """
     data = {
+        "table_verdict": table_verdict,
+        "verdict_mode": verdict_mode,
         "signals": [s.model_dump() for s in signals.signals],
         "freshness": signals.freshness,
         "distance_nm": signals.distance_nm,
-        "calc_eta": signals.calc_eta.isoformat() if signals.calc_eta else None,
+        "trusted_eta": _kst(trusted_eta),
+        "sale_due_date": sale_due_date.isoformat() if sale_due_date else None,
+        "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
         "customs": customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"}) if customs else None,
     }
     return json.dumps(data, ensure_ascii=False)
 
 
+def _kst(moment: datetime | None) -> str | None:
+    """시각을 한국 시각 "YYYY-MM-DD HH:MM"으로. 근거 카드(services/evidence.py)와 같은 모양이라 V7 대조가 맞는다."""
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(KST).strftime("%Y-%m-%d %H:%M")
+
+
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
               output_model: type[BaseModel], model: str | None, feedback: str | None = None,
-              include_skills: bool = True) -> LLMAnswer:
+              skills: tuple[str, ...] = ALL_SKILLS) -> LLMAnswer:
     """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
-    include_skills=False는 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용이다. skills 약 5천 자를 매번 넣지 않는다.
+    skills는 넣을 Skill 폴더다 (JUDGE_SKILLS 등). 빈 튜플이면 넣지 않는다: 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용.
 
     Raises:
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
                   내용 규칙(V1~V7) 검사와 재시도는 C-7 validate.py가 맡는다.
     """
+    if replay.replay_enabled() and not (model or os.environ.get("MODEL_A")):
+        return _replay_answer(prompt_name, user_content, output_model)
     prompt = get_prompt(prompt_name)
-    system = f"{prompt.text}\n\n{_skills_text()}" if include_skills else prompt.text
+    system = f"{prompt.text}\n\n{_skills_text(skills)}" if skills else prompt.text
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user_content},
@@ -469,6 +512,45 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     return LLMAnswer(output=output, llm=result, prompt_version=prompt.version)
 
 
+# ── LLM 녹화 답 재생 (09-29 결정) ─────────────────────────────
+# 채점자가 키 없이 데모 3건을 돌리게 하는 장치다 (SDD 6.1, CLAUDE.md "REPLAY_MODE=true면 키 없이").
+# REPLAY_MODE이고 MODEL_A가 비어 있을 때만 탄다. MODEL_A가 있으면 재생 모드에서도 진짜 LLM을 부른다.
+# 녹화 파일: evals/fixtures/replay/llm/<프롬프트 이름>.json. 실제 모델로 데모 입력을 한 번 돌려 받은 답이다.
+# 녹화 답은 그 입력에만 맞다. 입력이 다르면(판매일을 다르게 넣는 등) 녹화 답을 쓰지 않고 LLMError를 낸다.
+# 틀린 답을 그럴듯하게 보여 주는 것보다, 라우터가 평소처럼 "판정 없이 partial"로 끝나는 편이 정직하다.
+
+REPLAY_LLM_DIR = "llm"  # replay.REPLAY_DIR 아래 폴더. 평가 실행기가 REPLAY_DIR를 바꿔 끼워도 같이 따라간다
+
+
+def _replay_matches(expected: dict, data: dict) -> bool:
+    """녹화의 match 칸이 이번 입력과 같은가. signals는 {신호 id: 상태}로 줄여서 비교한다 (값·거리는 시각에 따라 조금씩 달라진다)."""
+    for key, value in expected.items():
+        actual = data.get(key)
+        if key == "signals":
+            actual = {s["id"]: s["state"] for s in actual or []}
+        if actual != value:
+            return False
+    return True
+
+
+def _replay_answer(prompt_name: str, user_content: str, output_model: type[BaseModel]) -> LLMAnswer:
+    """녹화 파일에서 이번 입력에 맞는 답을 찾아 돌려준다. 없으면 키가 없을 때와 같은 LLMError (kind=not_configured).
+
+    Langfuse 트레이스는 남기지 않는다. 모델을 부르지 않았고, 키 없는 데모라 보낼 곳도 없다.
+    """
+    # REPLAY_DIR는 부를 때 읽는다. 평가 실행기가 문항마다 바꿔 끼운다
+    path = replay.REPLAY_DIR / REPLAY_LLM_DIR / f"{prompt_name}.json"
+    # 녹화가 없는 프롬프트(선박 선택, 서류 칸 옮겨 적기 등)는 입력을 읽지 않고 바로 끝낸다. 서류 글자처럼 JSON이 아닌 입력도 있다
+    if path.is_file():
+        data = json.loads(user_content)
+        for recording in json.loads(path.read_text(encoding="utf-8")):
+            if _replay_matches(recording["match"], data):
+                output = output_model.model_validate(recording["output"])
+                return LLMAnswer(output=output, llm=LLMResult(content=None, model=f"replay/{recording['model']}"),
+                                 prompt_version="replay")
+    raise LLMError(f"REPLAY_MODE: {prompt_name} 녹화 답 중 이번 입력에 맞는 것이 없습니다", kind="not_configured")
+
+
 def judge(
     signals: SignalSet,
     customs: CustomsRecord | None,
@@ -476,11 +558,16 @@ def judge(
     *,
     model: str | None = None,
     feedback: str | None = None,
+    trusted_eta: datetime | None = None,
+    sale_due_date: date | None = None,
+    table_verdict: str | None = None,
+    verdict_mode: str | None = None,
 ) -> LLMAnswer:
-    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수 (SDD 4.1 7단계).
+    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계, 09-29 D8).
     feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도)."""
-    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin), "judge", JUDGE_SCHEMA, JudgeOutput, model,
-                     feedback=feedback)
+    return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date,
+                                                table_verdict, verdict_mode),
+                     "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback, skills=JUDGE_SKILLS)
 
 
 # ── 선박 선택 pick_vessel() ─────────────────────────────────────
@@ -552,7 +639,8 @@ def pick_vessel(
         "user_voyage_no": voyage_no,
         "user_forwarder_eta": forwarder_eta.isoformat() if forwarder_eta else None,
     }
-    answer = _ask_json(PICK_PROMPT, json.dumps(data, ensure_ascii=False), "pick_vessel", PICK_SCHEMA, PickOutput, model)
+    answer = _ask_json(PICK_PROMPT, json.dumps(data, ensure_ascii=False), "pick_vessel", PICK_SCHEMA, PickOutput, model,
+                       skills=PICK_SKILLS)
     choice = answer.output.choice
     if choice is not None and choice not in {c.mmsi for c in candidates}:
         raise LLMError(f"{answer.llm.model}: 후보에 없는 MMSI {choice}를 골랐음")
@@ -591,7 +679,7 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
         "question": question,
     }
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
-                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback)
+                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS)
 
 
 # ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────
@@ -630,4 +718,41 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
     OCR 글자는 사용자 서류라 데이터로만 넘긴다 (SDD 7절 신뢰 경계, 프롬프트에도 명시).
     """
     return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
-                     include_skills=False)
+                     skills=())
+
+
+# ── 통관 해설 채점 grade_customs() ─────────────────────────────
+# 평가 전용 LLM-as-judge (SDD 5.12 customs_explanation, 가이드 평가 4축 ④ "생성 모델 ≠ 판정 모델").
+# 서비스 요청에서는 부르지 않는다. evals/judge.py가 평가 실행 때만 부른다.
+# 판정 LLM이 쓴 통관 해설(단계 뜻 · 다음 단계 · 관세사 필요 여부)을 customs-stages Skill 표 기준으로 0/1 채점한다.
+
+JUDGE_EVAL_PROMPT = "marvia-judge-eval"  # Langfuse 프롬프트 이름 (SDD 5.6 표)
+GRADE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["score", "reason"],
+    "properties": {
+        "score": {"type": "integer", "enum": [0, 1], "description": "지시문의 다섯 조건을 모두 지키면 1"},
+        "reason": {"type": "string", "description": "어긴 조건 번호와 이유 한 줄. 다 지키면 pass"},
+    },
+}
+
+
+class GradeOutput(BaseModel):
+    score: Literal[0, 1]
+    reason: str
+
+
+def grade_customs(customs: dict, *, model: str | None = None) -> LLMAnswer:
+    """통관 해설 하나를 채점한다. output은 GradeOutput. 모델은 JUDGE_MODEL(.env, 계약 C8).
+
+    customs: AgentResponse.customs를 dict로 (stage_name · plain_explanation · next_stage · needs_broker).
+    채점 모델은 판정 모델과 다른 회사여야 한다. 같은 모델은 자기 답을 후하게 채점한다(자기 선호 편향).
+    그 확인은 부르는 쪽(evals/judge.py)이 한다. 해설 문장은 채점할 데이터로만 넘긴다 (지시문 마지막 줄).
+    """
+    model = model or os.environ.get("JUDGE_MODEL")
+    if not model:
+        raise LLMError("JUDGE_MODEL이 없습니다", kind="not_configured")
+    data = {key: customs.get(key) for key in ("stage_name", "plain_explanation", "next_stage", "needs_broker")}
+    return _ask_json(JUDGE_EVAL_PROMPT, json.dumps(data, ensure_ascii=False), "grade", GRADE_SCHEMA, GradeOutput, model,
+                     skills=GRADE_SKILLS)

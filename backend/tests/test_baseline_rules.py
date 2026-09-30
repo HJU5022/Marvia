@@ -39,3 +39,11 @@ def test_navstat_mismatch_alone_is_fine():
 def test_act_signal_still_wins():
     """예외 신호가 있어도 act 신호가 켜지면 act."""
     assert verdict_for(_set(navstat_mismatch="-", anchor_wait="30시간"), margin=4) == "act"
+
+
+def test_all_clear_but_tight_margin_is_watch():
+    """D4 (09-29 결정): 켜진 신호가 없어도 여유가 margin_act_days(2) 미만이면 watch. 판매일이 없으면(None) fine."""
+    assert verdict_for(_set(), margin=1) == "watch"
+    assert verdict_for(_set(), margin=2) == "fine"
+    assert verdict_for(_set(), margin=None) == "fine"
+

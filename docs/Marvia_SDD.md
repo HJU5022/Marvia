@@ -23,7 +23,7 @@
 ```
 repo/
   backend/
-    requirements.txt        app, mcp, worker가 같은 이미지를 쓰므로 하나
+    requirements.txt        app, worker가 같은 이미지를 쓰므로 하나
     app/
       main.py               FastAPI 앱, 라우터 등록, 미들웨어
       routers/agent.py      POST /api/agent, GET /api/history, GET /health
@@ -88,7 +88,7 @@ flowchart LR
   A --> L["services/llm: LLM 단일 진입점"]
   SK["skills/*.md"] -.->|"시스템 프롬프트"| L
   L <--> OR["OpenRouter: 모델 A / B / judge"]
-  L -->|"tool call"| M["mcp: FastMCP /mcp 토큰 인증"]
+  A -->|"도구 함수 직접 호출"| M["mcp_server/tools: 도구 4종 (같은 함수를 /mcp로도 공개, 토큰 인증)"]
   M --> SF["ShipFinder API"]
   M --> MOF["해수부 공공데이터"]
   M --> SR["searoute"]
@@ -117,12 +117,11 @@ flowchart LR
 | 실행 위치 | 구성 요소 | 포트/주기 | 통신 대상 |
 | --- | --- | --- | --- |
 | Vercel | frontend (Next.js) | HTTPS | app |
-| GCP Cloud Run 서비스 1 | app (FastAPI) | 8000 | UNI-PASS, mcp, OpenRouter, Langfuse, DB |
-| GCP Cloud Run 서비스 2 | mcp (FastMCP) | 8001, 토큰 인증 | ShipFinder, 해수부, DB |
+| GCP Cloud Run 서비스 | app (FastAPI + `/mcp`) | 8000. `/mcp`는 같은 서비스의 경로, 토큰 인증 | UNI-PASS, ShipFinder, 해수부, OpenRouter, Langfuse, DB |
 | GCP Cloud Run Job | worker (collector, arrivals) | Scheduler 3시간 | ShipFinder, 해수부, DB |
-| 관리형 DB | Postgres (Cloud SQL 또는 Supabase, 10/8 전 결정) | 5432 | app, mcp, worker |
+| 관리형 DB | Postgres (Cloud SQL 또는 Supabase, 10/8 전 결정) | 5432 | app, worker |
 | 외부 SaaS | OpenRouter, Langfuse Cloud | HTTPS | app |
-| 외부 API | ShipFinder, 해수부 공공데이터, UNI-PASS | HTTPS | mcp, worker, app |
+| 외부 API | ShipFinder, 해수부 공공데이터, UNI-PASS | HTTPS | app, worker |
 
 ```mermaid
 flowchart TB
@@ -130,8 +129,7 @@ flowchart TB
     W["frontend"]
   end
   subgraph gcp["GCP Cloud Run"]
-    A["app 서비스 :8000"]
-    M["mcp 서비스 :8001"]
+    A["app 서비스 :8000 (/api/agent, /health, /mcp)"]
     J["worker Job, 3시간 주기"]
   end
   subgraph db["관리형 DB"]
@@ -145,16 +143,14 @@ flowchart TB
     UP["UNI-PASS"]
   end
   W --> A
-  A --> M
   A --> UP
   A --> OR
   A --> LF
-  M --> SF
-  M --> MOF
+  A --> SF
+  A --> MOF
   J --> SF
   J --> MOF
   A --> DB
-  M --> DB
   J --> DB
 ```
 
@@ -406,8 +402,10 @@ POST /api/agent
  5. signals = services.signals.compute(position, schedule, dist, customs, rules)   코드
  6. days_margin = sale_due_date - trusted_eta (코드, evidence에 기록)
  7. llm.judge(signals, customs, days_margin, skills) → verdict, reasons, conflicts, actions, answer
-      모든 신호 clear & 식별 confirmed → decided_by=rule (LLM은 answer 문장만)
-      하나라도 triggered 또는 unknown → decided_by=llm
+      등급은 코드가 판정 표(services/verdict.py, SKILL.md 표)로 먼저 정한다 → decided_by=rule (09-30 D7)
+      LLM은 그 등급에 맞춰 reasons·conflicts·actions·answer·통관 해설을 쓴다. 표가 틀렸다고 보면 table_disagree(기록만)
+      anchor_wait·customs_hold가 unknown(회색 지대)이면 LLM이 표 등급 이상에서 고른다. 올리면 decided_by=llm
+      LLM 등급이 허용 밖이면 V8로 다시 묻는다. LLM이 끝내 실패하면(위반·형식·호출) 표 등급 + 고정 문구로 partial, 회색 지대면 등급 없이 (5.7)
  8. validate.run(response) 7규칙 → 위반 시 llm 재시도(최대 3) → 폴백
  9. Langfuse trace 종료, trace_id 반환
 ```
@@ -511,8 +509,8 @@ sequenceDiagram
   | `marvia-judge-eval` | evals/judge.py LLM-as-judge (통관 해설 채점) |
 
 - 버전은 Langfuse가 자동으로 매긴다. 코드는 label `production`만 부른다. 프롬프트 실험(D10)은 새 버전을 `staging`에 붙여 평가한 뒤 `production`으로 옮긴다. 모델 A/B 비교는 label이 아니라 아래 `model` 인자로 한다. 한 번에 하나만 바꾼다 (PRD 8절).
-- 시스템 프롬프트 = Langfuse prompt + skills/*.md 전문 (통째로).
-- 도구 호출: MCP 클라이언트로 `/mcp` 호출. LLM이 도구를 고르면 실행하고 결과를 messages에 붙여 재호출. 최대 6회.
+- 시스템 프롬프트 = Langfuse prompt + 그 호출에 필요한 skills/ 문서 전문 (통째로, RAG 아님). 판정 = AIS 신뢰도 · 통관 단계, 배 고르기 = AIS 신뢰도, 후속 질문 = 전부, 통관 해설 채점 = 통관 단계, 서류 칸 옮겨 적기 = 없음 (09-30, llm.py JUDGE_SKILLS 등).
+- 도구 호출: 코드가 순서대로 도구 함수를 부르고 결과를 자료로 넘긴다. LLM이 도구를 고르지 않는다 (4절 흐름, 09-29 확인. `/mcp`는 외부 공개용, 5.9).
 - 모델은 `MODEL_A` 기본, 인자로 교체 가능(평가용). 레이트 리밋 시 `MODEL_B`로 1회 라우팅.
 - 응답은 구조화 출력(JSON schema = AgentResponse 부분집합)으로 받는다.
 - 완료 기준: 모의 도구로 judge 1회 왕복, 트레이스에 prompt 버전·모델·토큰 표시.
@@ -531,7 +529,7 @@ sequenceDiagram
 | V6 | conflicts[].chosen이 evidence[].source에 존재 |
 | V7 | answer 안의 날짜·숫자(정규식)가 evidence value 또는 days_margin에 존재 |
 
-재시도: 1차 위반 detail 첨부 → 2차 "JSON만, 규칙 준수" 강화 프롬프트 → 3차 폴백 `status=failed, answer="판정을 생성하지 못했습니다. 근거 카드를 확인하세요.", evidence 유지`.
+재시도: 1차 위반 detail 첨부 → 2차 "JSON만, 규칙 준수" 강화 프롬프트 → 3차 폴백 `status=partial`, 판정 표 등급 + 고정 문구("판정 표 기준으로 '…'입니다. 설명 문장은 만들지 못했습니다…"), evidence 유지. 회색 지대면 등급 없이 partial (09-30 결정. 등급은 코드 판정 표가 정하므로 LLM이 못 만든 것은 문장뿐이다. 전에는 failed). LLM 호출 자체가 실패해도 같다. failed는 통관 정보(UNI-PASS)를 못 가져왔을 때만 쓴다.
 
 ### 5.8 services/evidence.py
 
@@ -540,6 +538,9 @@ sequenceDiagram
 ### 5.9 mcp_server/
 
 - FastMCP, Streamable HTTP, 경로 `/mcp`. 헤더 `Authorization: Bearer MCP_TOKEN` 없으면 401.
+- app(FastAPI)의 `/mcp` 경로로 붙인다. 서버·Cloud Run 서비스는 하나다 (09-29 결정, 가이드 v4 배포 구조 그림 "FastAPI ├─ /mcp"). `python -m mcp_server.server`로 따로 띄우는 길은 로컬 확인용으로 남긴다.
+- 서비스(routers/agent.py)는 `/mcp`를 거치지 않고 같은 도구 함수를 직접 부른다. 결과가 같고 HTTP 왕복만 늘기 때문이다. `/mcp`는 외부 MCP 클라이언트(Claude Desktop 등)용 공개 창구다 (09-29 결정. 가이드 필수 5는 "MCP 서버 구현 + 연결해서 도구가 불리는 증거").
+- MCP_TOKEN이 있으면 FastMCP의 localhost 전용 Host 검사(DNS 리바인딩 방지)를 끄고 토큰이 막는다. Cloud Run 주소는 미리 알 수 없어서다. 토큰이 없으면 localhost만 받는다.
 - 도구 4개(3.4). 각 tool description은 "언제 쓰는가" 한 문장 + 입력 설명.
 - 완료 기준: Claude Desktop 또는 langchain-mcp-adapters로 tool 목록 조회와 호출 1회 스크린샷.
 
@@ -591,19 +592,18 @@ sequenceDiagram
 
 ## 6. 인프라와 배포
 
-**목표:** `git clone` → `cp .env.example .env`(키만 채움) → `docker compose up` 한 줄로 app, mcp, worker, postgres, langfuse(선택)가 뜬다. 10분 안에 `GET http://localhost:8000/health`가 200.
+**목표:** `git clone` → `cp .env.example .env`(키만 채움) → `docker compose up` 한 줄로 app(`/mcp` 포함), worker, postgres, langfuse(선택)가 뜬다. 10분 안에 `GET http://localhost:8000/health`가 200.
 
 ### 6.1 docker-compose.yml 서비스
 
 | 서비스 | 이미지 | 포트 | 의존 | 역할 |
 | --- | --- | --- | --- | --- |
-| app | `./Dockerfile` target app | 8000 | postgres | FastAPI, `/api/agent`, `/api/history`, `/health`, `/docs` |
-| mcp | 같은 이미지 target mcp | 8001 | postgres | FastMCP `/mcp` |
+| app | `./Dockerfile` target app | 8000 | postgres | FastAPI, `/api/agent`, `/api/history`, `/health`, `/docs`, FastMCP `/mcp` (09-29 합침, 5.9) |
 | worker | 같은 이미지 target worker | 없음 | postgres | collector, arrivals 주기 실행 |
 | postgres | `postgres:16-alpine` | 5432 | 없음 | positions, arrivals, 캐시 |
 | langfuse | 강의 자료 compose 재사용 (profile `local-langfuse`) | 3000 | postgres | 셀프호스팅 선택. 기본은 Langfuse Cloud, `LANGFUSE_HOST`로 전환 |
 
-- `healthcheck`: app은 `/health`, postgres는 `pg_isready`. app·mcp·worker는 `depends_on: condition: service_healthy`.
+- `healthcheck`: app은 `/health`, postgres는 `pg_isready`. app·worker는 `depends_on: condition: service_healthy`.
 - `.env` 하나를 모든 서비스가 `env_file`로 공유. 컨테이너 안에서 `DATABASE_URL=postgresql://…@postgres:5432/cargo`.
 - 볼륨: `pgdata` 하나. 코드는 개발 시 bind mount(`./app:/srv/app`)로 핫리로드, 배포 이미지에는 COPY.
 - `REPLAY_MODE=true`면 외부 API 대신 `evals/fixtures/`를 읽는다. 키 없이도 compose up 후 데모 3건이 동작해야 한다 (채점자 재현용).
@@ -616,7 +616,6 @@ FROM python:3.11-slim AS base
   pip install -r backend/requirements.txt
   COPY backend mcp_server worker evals skills
 FROM base AS app     CMD uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
-FROM base AS mcp     CMD python -m mcp_server.server --port 8001
 FROM base AS worker  CMD python -m worker.run
 ```
 
@@ -631,7 +630,7 @@ FROM base AS worker  CMD python -m worker.run
 
 ### 6.4 Cloud Run
 
-- app과 mcp를 각각 서비스로 배포 (`gcloud run deploy` 2회). worker는 Cloud Run Job 또는 Cloud Scheduler + Job, 3시간 주기.
+- app 하나를 서비스로 배포한다 (`gcloud run deploy` 1회, `/mcp` 포함, 09-29 결정). worker는 Cloud Run Job 또는 Cloud Scheduler + Job, 3시간 주기.
 - 환경변수는 Cloud Run 콘솔 또는 Secret Manager. 레포에는 `.env.example`만.
 - postgres는 개발은 compose, 배포는 Cloud SQL 또는 Supabase 중 하나. 10/8 전에 결정 (가이드 4-2 선택 스택).
 - CORS: `ALLOWED_ORIGINS`에 Vercel 도메인만.
@@ -691,7 +690,7 @@ open http://localhost:8000/docs
 | ShipFinder 23/29 | client | 캐시 값 + cached_at, 근거에 "캐시" |
 | ShipFinder 타임아웃 | 2회 재시도 | position None → position_stale unknown → partial |
 | 식별 uncertain | identify | insufficient, verdict None |
-| LLM 스키마 위반 | validate | 3단계 재시도 → 폴백 |
+| LLM 스키마 위반 · 검증 위반 · 호출 실패 | validate · llm.py | 3단계 재시도 → partial, 판정 표 등급 + 고정 문구 (회색 지대면 등급 없음, 5.7) |
 | LLM 429 | llm.py | MODEL_B 1회 |
 | 비용 상한 초과 | llm.py 누적 | 503, "일일 한도 초과" |
 | 프롬프트 주입(입력) | 라우터 | bl_no 외 자유 입력은 follow_up만, 길이 300자 제한 |

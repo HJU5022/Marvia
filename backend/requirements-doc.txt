@@ -1,5 +1,5 @@
 # 서류 사진 읽기(POST /api/document, docs/specs/document-extract.md)에만 필요한 패키지.
-# Dockerfile의 app 스테이지(api 서버)에서만 설치한다. mcp·worker 이미지까지 1.28GB로 커지는 것을 막으려고
+# Dockerfile의 app 스테이지(api 서버)에서만 설치한다. worker 이미지까지 1.28GB로 커지는 것을 막으려고
 # requirements.txt에서 뗐다 (09-29 결정 (a), 이미지 458MB → 1.28GB 실측). 로컬 개발은 두 파일을 같이 설치한다
 rapidocr==3.9.2      # 서류 사진 OCR (docs/specs/document-extract.md). Apache-2.0. PaddleOCR 모델을 ONNX로 돌린다. 09-29 실험과 같은 버전
 onnxruntime==1.30.0  # rapidocr의 실행 엔진. MIT. Paddle 엔진 그대로보다 B/L 한 장 약 10배 빨랐다 (09-29 Mac M2 실측)

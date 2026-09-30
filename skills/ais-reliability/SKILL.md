@@ -24,13 +24,16 @@ AIS는 배가 스스로 보내는 값이라 틀릴 수 있다. 아래 경우를 
 
 ## 2층 판정 원칙
 
-신호 7종의 상태(triggered·clear·unknown)는 코드가 정한다. 그 결과를 읽고 판정한다.
+신호 7종의 상태(triggered·clear·unknown)는 코드가 정한다. 등급도 코드가 아래 표로 먼저 정한다(table_verdict, 09-30 결정).
+
+- 표가 확실할 때(verdict_mode fixed): 그 등급을 그대로 쓰고, 왜 그 등급인지 사용자에게 설명한다. 이 사례에서 표가 틀렸다고 보면 table_disagree에 이유를 적는다. 사람이 보고 표를 고칠 후보가 된다
+- act를 가르는 신호(anchor_wait, customs_hold)가 unknown일 때(verdict_mode raise_only): 표는 unknown을 세지 않아 등급이 낮게 나올 수 있다. 상황을 보고 표 등급 이상에서 고른다 (fine < watch < act). 낮추지는 않는다
 
 | 판정 | 언제 |
 |---|---|
 | act | anchor_wait·customs_hold·sales_date_exceeded 중 하나라도 triggered. 또는 다른 신호가 triggered인데 days_margin이 margin_act_days(rules.md) 미만 |
 | watch | 위 셋은 clear이고 다른 신호가 하나라도 triggered (아래 예외는 세지 않는다) |
-| fine | 모든 신호 clear이거나 triggered가 아래 예외뿐이고, ETA 근거 2개 이상이 일치 |
+| fine | 모든 신호 clear이거나 triggered가 아래 예외뿐이고, ETA 근거 2개 이상이 일치. 단 days_margin이 margin_act_days 미만이면 watch (통관·반출·배송 시간이 여유 일수에 빠져 있어 실제 입고가 판매일을 넘기기 쉽다) |
 
 예외: 위 오류 사례 표로 설명되는 신호는 watch 이유로 세지 않는다. 그 값은 배의 실제 상태가 아니라 입력 오류일 수 있어서다.
 
@@ -38,6 +41,19 @@ AIS는 배가 스스로 보내는 값이라 틀릴 수 있다. 아래 경우를 
 - navstat_mismatch: 불일치 자체는 판정 이유가 아니다. 속도·위치로 본 실제 상태(움직이는지, 부산 앞에 서 있는지)로 판정한다
 
 예외로 넘긴 신호도 reasons나 conflicts에 남겨 무엇을 왜 믿지 않았는지 적는다.
+
+### 판매 예정일이 없을 때
+
+판매 예정일은 사용자가 넣지 않을 수 있다(품목에 따라 정하지 않는 경우가 많다). 그러면 sales_date_exceeded는 unknown이고 days_margin은 null이다. 이때는 배 상태만으로 판정한다.
+
+- anchor_wait나 customs_hold가 triggered면 act
+- 그 밖에 triggered가 있으면 watch (위 예외는 세지 않는다)
+- 모두 clear면 fine
+- answer에 판매 예정일을 넣으면 여유까지 볼 수 있다고 한 줄 안내한다. 여유가 있다거나 판매일을 넘긴다고 말하지 않는다
+
+### 날짜 말하기
+
+trusted_eta가 부산 도착 예정이다. 사용자는 "언제 오나"를 가장 궁금해하므로 answer에 날짜로 말한다. calc_eta는 남은 거리 ÷ 현재 속도로 계산한 대략값이라 판정 근거로 쓰지 않는다. 말할 때는 "대략", "참고용"을 붙인다.
 
 ### 목적지가 어긋날 때 (dest_changed)
 
@@ -54,6 +70,7 @@ AIS는 배가 스스로 보내는 값이라 틀릴 수 있다. 아래 경우를 
 |---|---|
 | 배를 확정 못 함: 후보가 여럿이거나, 후보가 1척이어도 UNI-PASS 정보와 어긋남 | 후보 목록을 보여 주고 사용자가 고르게 한다. "포워더 도착 통지서(A/N)의 배 이름·항차·입항 예정일로 확인"을 안내한다 |
 | 위치가 아예 없음 | 지금 배 위치가 조회되지 않는다고 그대로 말한다. 포워더에게 입항 예정일을 문의하라고 안내한다 |
+| 판매 예정일은 있는데 도착 예정일 근거가 없음 (해수부 신고 전, AIS ETA 없음) | 판정하지 않고 포워더 도착 통지서(A/N)의 입항 예정일을 묻는다. 대략 도착(calc_eta)이 있으면 참고용으로 알려 준다. 코드가 LLM 전에 처리한다 |
 
 오래된 위치(position_stale)는 위치가 없는 것과 다르다. 되묻지 않고 "마지막 수신 위치"로 판정한다.
 

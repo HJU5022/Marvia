@@ -134,6 +134,9 @@ def end_generation(generation: Any, result: LLMResult | None, prompt_version: st
                 fields["cost_details"] = {"total": result.cost}  # OpenRouter가 준 실제 금액 (크레딧 = USD)
             fields["metadata"].update({
                 "retry_count": result.attempts - 1,  # 첫 시도는 재시도가 아니다
+                # 입력 중 캐시에서 읽은 토큰 (09-30). usage_details가 아니라 metadata에 둔다. usage에 넣으면 Langfuse가
+                # 모델 가격표로 비용을 계산할 때 입력 토큰과 겹쳐 두 번 셀 수 있어서다 (가격표 키 대응은 확인 안 함)
+                "cached_tokens": result.cached_tokens,
                 "provider": result.provider,
                 "openrouter_id": result.request_id,
             })
@@ -144,3 +147,20 @@ def end_generation(generation: Any, result: LLMResult | None, prompt_version: st
         generation.end()
     except Exception as e:
         log_failure("langfuse_trace_end", type(e).__name__)
+
+
+def flush() -> None:
+    """모아 둔 트레이스를 지금 Langfuse로 보낸다. 서버가 꺼질 때 main.py lifespan이 부른다.
+
+    Langfuse SDK는 트레이스를 모았다가 뒤에서 보낸다. 보내기 전에 서버가 꺼지면 그 트레이스는 사라진다
+    (09-29 데모: 서류 사진 두 번째 요청 직후 서버를 끄자 그 트레이스가 Langfuse에 없었다).
+    Cloud Run은 요청이 없으면 인스턴스를 끄므로 배포에서 더 자주 생긴다. 실패해도 종료는 막지 않는다.
+    """
+    if not _keys_set():
+        return
+    try:
+        from langfuse import get_client
+
+        get_client().flush()
+    except Exception as e:
+        log_failure("langfuse_flush", type(e).__name__)

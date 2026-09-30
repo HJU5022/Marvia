@@ -16,7 +16,7 @@ COPY skills/ ./skills/
 COPY scripts/ ./scripts/
 COPY evals/ ./evals/
 
-# 서류 사진 OCR은 api(app 스테이지)만 쓴다. OCR 패키지·시스템 라이브러리·모델을 base에 두면 mcp·worker 이미지까지
+# 서류 사진 OCR은 api(app 스테이지)만 쓴다. OCR 패키지·시스템 라이브러리·모델을 base에 두면 worker 이미지까지
 # 458MB → 1.28GB로 커져서 app 스테이지로 옮겼다 (09-29 결정 (a), backend/requirements-doc.txt)
 FROM base AS app
 
@@ -33,11 +33,6 @@ RUN python -c "from backend.app.services.doc_ocr import _get_engine; _get_engine
 
 EXPOSE 8000
 CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-FROM base AS mcp
-EXPOSE 8001
-ENV MCP_HOST=0.0.0.0 MCP_PORT=8001
-CMD ["python", "-m", "mcp_server.server"]
 
 # 수집 워커 (D1, SDD 6.2). 스케줄러는 기본 꺼짐(WORKER_SCHEDULE=off). 한 번 돌리려면
 # docker compose run --rm worker python -m worker.run --once

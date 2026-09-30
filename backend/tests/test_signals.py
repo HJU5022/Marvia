@@ -248,3 +248,18 @@ def test_distance_and_calc_eta_carried():
     result = compute(_position(), None, distance, None, now=NOW)
     assert result.distance_nm == 120.0
     assert result.calc_eta == NOW + timedelta(hours=10)
+
+
+def test_trusted_eta_falls_back_to_forwarder_eta():
+    """해수부·AIS 도착일이 없으면 사용자가 알려 준 포워더 A/N 입항 예정일(한국 날짜 0시)을 쓴다 (09-29 D6)."""
+    found = trusted_eta(_position(ais_eta=None), None, date(2026, 10, 1))
+    assert found is not None and found.astimezone(timezone(timedelta(hours=9))).date() == date(2026, 10, 1)
+    assert trusted_eta(_position(ais_eta=None), {"planned_arrival": NOW.isoformat()}, date(2026, 10, 1)) == NOW  # 해수부가 먼저
+
+
+def test_sales_date_signal_says_when_sale_date_missing():
+    """판매일을 안 넣으면 판매일 초과 신호는 unknown, 값으로 이유를 알린다 (선택 입력, 09-29 결정)."""
+    result = compute(_position(), {"planned_arrival": NOW.isoformat()}, None, None, None, now=NOW)
+    signal = next(s for s in result.signals if s.id == "sales_date_exceeded")
+    assert signal.state == "unknown" and signal.value == "판매 예정일 입력 없음"
+

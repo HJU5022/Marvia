@@ -26,7 +26,7 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 
 ## 하지 말 것
 
-- langgraph를 설치하거나 import하지 않는다. 문서를 청킹해 검색하고 프롬프트에 붙이는 RAG를 만들지 않는다. 지식은 skills/*/SKILL.md를 시스템 프롬프트에 통째로 넣고, 실시간 데이터는 MCP 도구로 가져온다
+- langgraph를 설치하거나 import하지 않는다. 문서를 청킹해 검색하고 프롬프트에 붙이는 RAG를 만들지 않는다. 지식은 호출마다 필요한 skills/ 문서를 시스템 프롬프트에 통째로 넣고(llm.py JUDGE_SKILLS 등, 09-30), 실시간 데이터는 MCP 도구로 가져온다
 - LLM SDK(openai 등)는 backend/app/services/llm.py에서만 import한다. 라우터, MCP 도구, 워커, 프론트는 LLM을 직접 부르지 않는다
 - 프롬프트를 코드에 문자열로 두지 않는다. Langfuse Prompt에서 이름으로 가져온다 (SDD 5.6)
 - 임계값(6시간, 12시간, 0.5노트, 24시간, 부산 반경, 여유 일수)을 코드에 숫자로 적지 않는다. rules.md 프론트매터를 코드가 읽는다
@@ -45,10 +45,11 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 ## 할 것
 
 - 작업은 작업 리스트 ID 단위로 받고, 그 행의 "완료 기준"을 그대로 테스트 조건으로 쓴다. 테스트 통과 없이 완료라고 하지 않는다. 지시 형식은 SDD 10절
-- LLM이 만드는 것은 셋뿐이다: 복수 후보 중 선박 선택(confidence 포함), 2층 판정(verdict, reasons, conflicts, actions, answer), 후속 질문 답. 나머지는 코드다 (PRD 6.1)
+- LLM이 만드는 것은 셋뿐이다: 복수 후보 중 선박 선택(confidence 포함), 2층 판정의 설명(reasons, conflicts, actions, answer, 통관 해설), 후속 질문 답. 나머지는 코드다 (PRD 6.1)
+- 등급(verdict)은 코드가 판정 표로 정한다. LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다 (09-30 D7, services/verdict.py)
 - 모든 외부 호출(UNI-PASS, ShipFinder, 해수부, searoute, OpenRouter)은 타임아웃, 재시도 2회, 최종 실패 시 partial 경로가 있어야 한다 (SDD 8절 표). MCP 도구는 예외를 던지지 않고 {error: {code, message, retryable}}을 돌려준다 (SDD 3.4)
 - 모든 도구 응답에 source와 fetched_at을 붙이고 evidence로 남긴다
-- LLM 출력은 validate.py의 7규칙(V1~V7)을 통과해야 한다. 위반은 3단계 재시도 뒤 status=failed 폴백 (SDD 5.7)
+- LLM 출력은 검증 규칙(validate.py V1~V7, 라우터 V8)을 통과해야 한다. 위반은 3단계 재시도 뒤 판정 표 등급 + 고정 문구로 partial 폴백. failed는 통관 정보를 못 가져왔을 때만 (SDD 5.7, 09-30)
 - LLM 호출과 MCP 도구 호출마다 Langfuse span을 남긴다. user_id, session_id, model, tokens, latency, cost, retry_count, prompt_version (SDD 5.11)
 - 코드 파일마다 주석을 단다. 모듈 상단에 책임 한 줄, 함수마다 무엇을 왜 하는지, 규칙이나 숫자에는 출처 절(예: "SDD 5.4", "rules.md position_stale_hours"). 대화 기록 없이 파일만 읽는 팀원이 따라올 수 있어야 하고, 발표에서 "이거 왜 이렇게 했어요?"에 답하는 근거가 된다
 - 테스트는 키 없이 돈다. 외부 API는 evals/fixtures/의 가공 응답(공식 문서 예시 또는 실제와 형식만 같은 값)으로 대체한다. ShipFinder·UNI-PASS 약관상 실제 응답 원본은 레포에 커밋하지 않는다. 로컬 저장본은 .gitignore. 진짜 호출은 scripts/에 둔다
@@ -66,12 +67,12 @@ proj2-5/
   CLAUDE.md             AI 작업 규칙 (이 파일). AGENTS.md는 여기를 가리킨다
   README.md             채점자용. 한 줄 정의, 실행법, 지표 표
   EVAL_REPORT.md        제출물. 실행한 숫자만 적는다
-  Dockerfile            멀티스테이지. target app / mcp / worker (SDD 6.2)
-  docker-compose.yml    app, mcp, worker, postgres (+ langfuse profile) (SDD 6.1)
+  Dockerfile            멀티스테이지. target app / worker (SDD 6.2)
+  docker-compose.yml    app(/mcp 포함), worker, postgres (+ langfuse profile) (SDD 6.1)
   .dockerignore  .env.example(C8)  .gitignore
   docs/                 Marvia_PRD.md, Marvia_SDD.md, Marvia_개발_작업_리스트.md, specs/, evidence/(제출 스크린샷)
   backend/
-    requirements.txt    app, mcp, worker 공통. requirements-doc.txt는 서류 사진 OCR용이라 app 이미지에만
+    requirements.txt    app, worker 공통. requirements-doc.txt는 서류 사진 OCR용이라 app 이미지에만
     app/
       main.py           FastAPI 앱, 라우터 등록, 미들웨어(구조화 로그, CORS, 레이트 리밋)
       routers/          agent.py: POST /api/agent, GET /api/history, GET /health
@@ -106,7 +107,7 @@ proj2-5/
 
 ```
 cp .env.example .env         # 키만 채운다. REPLAY_MODE=true면 키 없이 데모 3건 동작
-docker compose up            # app :8000 (/api/agent, /health, /docs), mcp :8001 (/mcp), worker, postgres
+docker compose up            # app :8000 (/api/agent, /health, /docs, /mcp), worker, postgres
 cd web && npm run dev        # :3000
 ```
 

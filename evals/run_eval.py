@@ -13,6 +13,8 @@
   4. 문항마다 LLM 호출(모델·토큰·비용·지연·실패 종류)과 실패 로그(stage=error)를 남긴다.
      09-29 qwen 무료 실행에서 23건이 판정을 못 냈는데 왜 실패했는지 결과 파일에 없었다.
      요청당 비용은 README 지표 표·발표 질문 7에 필요하다 (Main_2 가이드 12장·13장)
+  5. Langfuse 키가 있으면 실행 한 번을 Dataset marvia-golden-30의 실험(Experiment)으로 남긴다 (_LangfuseRun, 09-29).
+     문항마다 호출을 한 트레이스로 묶어 그 문항에 잇고, 채점 결과를 점수로 붙인다. Experiments 탭에서 실행끼리 비교한다
 서버 코드는 고치지 않는다. 바꿔 끼우는 것(판정기, 재생 transport, 시계)은 이 실행 안에서만 유효하다.
 
 외부 API는 키 없이 재생한다. (b)(c)만 진짜 LLM을 부른다(비용이 든다). (a)는 LLM을 한 번도 부르지 않는다.
@@ -71,7 +73,10 @@ def main() -> None:
 
     work = Path(tempfile.mkdtemp(prefix="marvia_eval_"))
     try:
-        rows = [_run_one(rec, args.config, work) for rec in records]
+        # --only는 확인용 부분 실행이라 Langfuse 실행 기록으로 남기지 않는다 (30건 비교가 흐트러진다)
+        recorder = None if args.only else _LangfuseRun.start(args.config)
+        solve = lambda rec: _graded(_run_one(rec, args.config, work), args.config)  # noqa: E731
+        rows = recorder.run_all(records, solve) if recorder else [solve(rec) for rec in records]
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -97,6 +102,107 @@ def main() -> None:
             raise SystemExit(f"{path.name}이 이미 있습니다. 1분 뒤 다시 실행하세요 (덮어쓰지 않는다)")
         path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n결과 파일: {path.relative_to(ROOT)}")
+
+
+def _graded(row: dict, config: str) -> dict:
+    """문항을 푼 직후 통관 해설을 검증 모델로 채점해 row["customs_grade"]에 넣는다 (evals/judge.py).
+    규칙만(a)은 LLM 해설이 없어 채점하지 않는다. (c)는 MODEL_A 자리에 MODEL_B가 들어가 있다 (_setup_config)."""
+    if config != "a":
+        from evals import judge
+
+        row["customs_grade"] = judge.grade(row, os.environ.get("MODEL_A"))
+    return row
+
+
+class _LangfuseRun:
+    """평가 실행 한 번을 Langfuse Dataset(evals/push_dataset.py로 올린 marvia-golden-30)의 실험(Experiment)으로 남긴다.
+
+    SDK의 dataset.run_experiment를 쓴다. 이 계정(09-16 이후 생성)은 옛 "dataset run" API로 만든 기록이
+    Experiments 화면에 안 잡혀서(09-29 확인, Experiments 0개) 공식 경로로 바꿨다.
+    max_concurrency=1로 한 문항씩 돈다. 이 실행기는 시계를 멈추고 서버 함수를 바꿔 끼워서 동시에 돌면 안 된다.
+    SDK가 문항마다 span을 열어 주므로, 그 안에서 서버가 남기는 LLM generation이 문항별 트레이스로 모인다.
+    Langfuse가 실패해도 평가는 계속한다. 못 돈 문항은 기록 없이 로컬에서 풀고, 결과 파일은 그대로 남는다.
+    """
+
+    def __init__(self, client, run_name: str, config: str):
+        self.client = client
+        self.run_name = run_name
+        self.config = config
+
+    @classmethod
+    def start(cls, config: str) -> "_LangfuseRun | None":
+        if not (os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")):
+            return None
+        try:
+            from langfuse import get_client
+        except ImportError:
+            return None
+        model = os.environ.get("MODEL_A") if config != "a" else "baseline/rules"
+        now = datetime.now(timezone.utc).astimezone(KST)
+        # 실행 이름만 보고 무엇을 잰 것인지 알게: 구성 · 모델 · 생각 설정 · 시각
+        thinking = f" thinking={os.environ['VERTEX_THINKING_BUDGET']}" if os.environ.get("VERTEX_THINKING_BUDGET") and config != "a" else ""
+        return cls(get_client(), f"{config} {model}{thinking} {now:%m-%d %H:%M}", config)
+
+    def run_all(self, records: list[dict], solve) -> list[dict]:
+        """모든 문항을 실험으로 푼다. solve(rec)는 문항 하나를 풀어 결과 줄(row)을 돌려준다. 결과는 평가셋 순서로."""
+        from evals.push_dataset import DATASET_NAME
+
+        by_case = {r["id"]: r for r in records}
+        rows: dict[str, dict] = {}
+
+        def task(*, item, **kwargs):
+            rec = by_case.get((item.metadata or {}).get("case_id"))
+            if rec is None:  # Langfuse에만 있고 이번 실행에 없는 문항(--only 등)은 건너뛴다
+                return None
+            rows[rec["id"]] = solve(rec)
+            return rows[rec["id"]]["got"]
+
+        def evaluator(*, input, output, expected_output=None, metadata=None, **kwargs):
+            from langfuse.experiment import Evaluation
+
+            row = rows.get((metadata or {}).get("case_id"))
+            return [Evaluation(name=k, value=v) for k, v in _scores(row).items()] if row else []
+
+        try:
+            result = self.client.get_dataset(DATASET_NAME).run_experiment(
+                name=f"eval {self.config}", run_name=self.run_name, description=CONFIGS[self.config],
+                task=task, evaluators=[evaluator], max_concurrency=1,
+                metadata={"config": self.config, "git_commit": _git_commit() or ""},
+            )
+            print(f"Langfuse 실험: {self.run_name} ({len(rows)}건) {getattr(result, 'dataset_run_url', '') or ''}")
+        except Exception as e:
+            log_failure_eval("langfuse_experiment", type(e).__name__)
+        # Langfuse에서 못 돈 문항(평가셋을 안 올렸거나 실패)은 기록 없이 로컬에서 푼다
+        for rec in records:
+            if rec["id"] not in rows:
+                rows[rec["id"]] = solve(rec)
+        self.client.flush()
+        return [rows[r["id"]] for r in records]
+
+
+def _scores(row: dict) -> dict[str, float]:
+    """문항 하나의 채점을 Langfuse 점수로. score()와 같은 기준이다 (1 맞음, 0 틀림).
+
+    verdict_match는 정답 판정이 있는 문항만 준다 (score의 verdict_accuracy 분모와 같게).
+    """
+    e, g = row["expected"], row["got"]
+    scores = {
+        "exact_match": float(all(g[k] == e[k] for k in ("status", "verdict", "vessel_match"))),
+        "schema_pass": float(not row["violations"]),
+    }
+    if e["verdict"] is not None:
+        scores["verdict_match"] = float(g["verdict"] == e["verdict"])
+    grade = row.get("customs_grade") or {}
+    if grade.get("score") is not None:
+        scores["customs_explanation"] = float(grade["score"])  # 검증 모델 채점 (evals/judge.py)
+    return scores
+
+
+def log_failure_eval(stage: str, error: str) -> None:
+    """실행기 안의 Langfuse 실패를 서버와 같은 형식으로 남긴다. 서버 모듈은 환경변수를 정한 뒤에 import한다."""
+    from backend.app.observability.logging import log_failure
+
+    log_failure(stage, error)
 
 
 def _git_commit() -> str | None:
@@ -233,6 +339,8 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
             "missing_inputs": response.missing_inputs if response else [],
             "decided_by": response.decided_by if response else None,
             "answer": response.answer if response else None,
+            # 판정 LLM이 쓴 통관 해설. 검증 모델이 채점한다 (evals/judge.py). 이력은 길고 채점에 안 쓰여 뺀다
+            "customs": response.customs.model_dump(mode="json", exclude={"history"}) if response and response.customs else None,
             "trace_id": response.trace_id if response else None,
         },
         "violations": violations,
@@ -291,6 +399,7 @@ def _spy_llm_calls(sink: list[dict]):
         sink.append({
             "ok": True, "model": result.model, "provider": result.provider,
             "prompt_tokens": result.prompt_tokens, "completion_tokens": result.completion_tokens,
+            "cached_tokens": result.cached_tokens,
             "cost": result.cost, "latency_ms": result.latency_ms, "attempts": result.attempts,
             "finish_reason": result.finish_reason,
         })
@@ -345,6 +454,7 @@ def score(rows: list[dict]) -> dict:
         and (got(r, "verdict") != exp(r, "verdict") or got(r, "status") != exp(r, "status"))
     ]
     latencies = sorted(r["latency_ms"] for r in rows)
+    graded = [r["customs_grade"] for r in rows if (r.get("customs_grade") or {}).get("score") is not None]
 
     summary = {
         "count": len(rows),
@@ -358,7 +468,9 @@ def score(rows: list[dict]) -> dict:
         "vessel_wrong_confirm": wrong_confirm,
         "grounded": ratio(sum(not any(v.startswith("V7") for v in r["violations"]) for r in rows), len(rows)),
         "schema_pass": ratio(sum(not r["violations"] for r in rows), len(rows)),
-        "customs_explanation": None,  # LLM-as-judge (D9, evals/judge.py) 전이라 비워 둔다
+        # 검증 모델(JUDGE_MODEL)이 채점한 통관 해설 통과율. 채점한 문항만 분모다. 채점이 없으면 None (evals/judge.py)
+        "customs_explanation": ratio(sum(g["score"] for g in graded), len(graded)),
+        "customs_graded": len(graded),
         "injection_failures": injection_failures,
         "errors": [r["id"] for r in rows if r["error"]],
         "latency_p50_ms": int(statistics.median(latencies)) if latencies else None,
@@ -401,10 +513,21 @@ def usage(rows: list[dict]) -> dict:
         "llm_errors": dict(Counter(c["kind"] for c in calls if not c["ok"])),
         "prompt_tokens": sum(c["prompt_tokens"] or 0 for c in ok),
         "completion_tokens": sum(c["completion_tokens"] or 0 for c in ok),  # Vertex는 생각 토큰 포함 (llm.py)
+        # 입력 중 제공사 캐시에서 읽은 토큰 합 (09-30). 캐시된 입력은 싸게 계산된다. 할인율은 제공사 가격표를 따른다
+        "cached_tokens": sum(c.get("cached_tokens") or 0 for c in ok),
         "cost_usd": total_cost,
         "cost_usd_per_request": round(total_cost / len(rows), 6) if total_cost is not None and rows else None,
         "failures": dict(Counter(f for r in rows for f in r.get("failures", []))),
     }
+
+
+def _grade_note(grade: dict | None) -> str:
+    """통관 해설 채점을 한 줄 끝에 붙인다. 0점이면 이유도 (어느 조건을 어겼는지)."""
+    if not grade:
+        return ""
+    if grade.get("score") == 0:
+        return f"  해설=0 ({grade.get('reason')})"
+    return f"  해설={grade.get('score')}" if grade.get("score") is not None else f"  해설=채점실패 ({grade.get('reason')})"
 
 
 def _print(config: str, rows: list[dict], s: dict) -> None:
@@ -416,17 +539,18 @@ def _print(config: str, rows: list[dict], s: dict) -> None:
         print(f"  {r['id']:4} {'O' if hit else 'X'}  got=({g['status']}, {g['verdict']}, {g['vessel_match']})"
               f"  exp=({e['status']}, {e['verdict']}, {e['vessel_match']})"
               + (f"  위반={len(r['violations'])}" if r["violations"] else "") + (f"  ERROR={r['error']}" if r["error"] else "")
-              + (f"  실패={','.join(r['failures'])}" if r.get("failures") else ""))
+              + (f"  실패={','.join(r['failures'])}" if r.get("failures") else "")
+              + _grade_note(r.get("customs_grade")))
     print(f"\n  정답과 완전히 일치 {s['exact_match']}/{s['count']}")
     for key in ("verdict_accuracy", "act_recall", "insufficient_precision", "vessel_match_accuracy",
-                "grounded", "schema_pass", "latency_p50_ms", "latency_p95_ms"):
+                "grounded", "schema_pass", "customs_explanation", "latency_p50_ms", "latency_p95_ms"):
         print(f"  {key:24} {s[key]}")
     for key in ("insufficient_missed", "vessel_wrong_confirm", "injection_failures", "errors"):
         print(f"  {key:24} {s[key] or '-'}")
     print("  게이트:", ", ".join(f"{k}={'통과' if v else '걸림'}" for k, v in s["gates"].items()))
     u = s.get("usage")
     if u:
-        print(f"  LLM 호출 {u['llm_calls']}회 · 토큰 입력 {u['prompt_tokens']} / 출력 {u['completion_tokens']}"
+        print(f"  LLM 호출 {u['llm_calls']}회 · 토큰 입력 {u['prompt_tokens']} (캐시 {u.get('cached_tokens', 0)}) / 출력 {u['completion_tokens']}"
               f" · 비용 {u['cost_usd'] if u['cost_usd'] is not None else '금액 없음(토큰으로 계산)'}"
               f" · 요청당 {u['cost_usd_per_request'] if u['cost_usd_per_request'] is not None else '-'}")
         print(f"  LLM 실패 종류 {u['llm_errors'] or '-'}")
