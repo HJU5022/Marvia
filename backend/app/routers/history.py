@@ -9,11 +9,11 @@ import os
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.app.auth import current_user_id
-from backend.app.db import connect, recent_queries
+from backend.app.db import connect, delete_user_queries, recent_queries
 from backend.app.observability.logging import log_failure
 
 router = APIRouter(prefix="/api", tags=["history"])
@@ -59,3 +59,29 @@ def get_history(
         return HistoryResponse(items=[], available=False)
 
     return HistoryResponse(items=[HistoryItem(**row) for row in rows])
+
+
+class DeleteResponse(BaseModel):
+    deleted: int  # 지운 줄 수. 사용자에게 결과를 알리는 값이다 (제36조 ②)
+
+
+@router.delete("/history", response_model=DeleteResponse)
+def delete_history(user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DeleteResponse:
+    """로그인한 사용자가 자기 조회 기록을 전부 지운다 (삭제 2단계, 개인정보보호법 제36조 삭제 요구).
+
+    손님은 못 쓴다. 손님 기록은 브라우저 세션 번호에만 묶여 사람과 연결되지 않고, 90일 자동 삭제(008)로 정리된다.
+    조회(GET)와 달리 실패를 빈 결과로 숨기지 않는다. 지운 줄 알았는데 남아 있으면 안 되므로 503으로 알린다.
+    """
+    if not user_id:
+        raise HTTPException(status_code=401, detail="로그인한 사용자만 기록을 삭제할 수 있습니다",
+                            headers={"WWW-Authenticate": "Bearer"})
+    if not os.environ.get("DATABASE_URL"):
+        log_failure("history_delete", "not_configured")
+        raise HTTPException(status_code=503, detail="기록 저장소에 연결하지 못해 삭제하지 못했습니다. 잠시 뒤 다시 시도하세요")
+    try:
+        with connect() as conn:
+            deleted = delete_user_queries(conn, user_id)
+    except Exception as e:
+        log_failure("history_delete", type(e).__name__)
+        raise HTTPException(status_code=503, detail="기록 저장소에 연결하지 못해 삭제하지 못했습니다. 잠시 뒤 다시 시도하세요")
+    return DeleteResponse(deleted=deleted)

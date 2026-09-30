@@ -100,6 +100,14 @@ def latest_response(conn, session_id: str, bl_masked: str, user_id: str | None =
     return row[0] if row else None
 
 
+def delete_user_queries(conn, user_id: str) -> int:
+    """로그인 사용자의 조회 기록을 전부 지우고 지운 줄 수를 돌려준다 (삭제 2단계, 개인정보보호법 제36조).
+
+    잠긴 B/L(bl_encrypted)도 같은 줄에 있어 함께 지워진다. 다른 사용자·손님 줄은 건드리지 않는다.
+    """
+    return conn.execute("DELETE FROM query_log WHERE user_id = %s", [user_id]).rowcount
+
+
 def purge_old_queries(conn) -> int:
     """90일 지난 조회 기록을 지우고 지운 줄 수를 돌려준다 (09-30 결정, 개인정보보호법 제21조).
 

@@ -1093,3 +1093,48 @@ def test_no_key_saves_row_without_bl(monkeypatch):
     """열쇠가 없어도 이력은 남는다. 잠근 B/L만 빈다 (메모리의 다시 조회만 안 됨)."""
     row = _saved_row(monkeypatch, "user-123", key=False)
     assert row["bl_encrypted"] is None and row["user_id"] == "user-123"
+
+
+
+# ── 내 기록 삭제 (삭제 2단계) ──
+
+def test_logged_in_user_deletes_own_history(monkeypatch):
+    headers = _login(monkeypatch)
+    asked = []
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
+    monkeypatch.setattr(history_router, "connect", lambda *a, **k: FakeConn())
+    monkeypatch.setattr(history_router, "delete_user_queries", lambda conn, user_id: asked.append(user_id) or 3)
+
+    with TestClient(app) as client:
+        resp = client.delete("/api/history", headers=headers)
+
+    assert resp.status_code == 200 and resp.json() == {"deleted": 3} and asked == ["user-123"]
+
+
+def test_guest_cannot_delete_history(monkeypatch):
+    monkeypatch.setattr(history_router, "delete_user_queries", lambda *a: pytest.fail("손님 요청이 삭제까지 가면 안 된다"))
+    with TestClient(app) as client:
+        assert client.delete("/api/history").status_code == 401
+
+
+def test_delete_failure_is_reported_not_hidden(monkeypatch):
+    """DB가 없거나 실패하면 0건으로 숨기지 않고 503. 지운 줄 알았는데 남아 있으면 안 된다."""
+    headers = _login(monkeypatch)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with TestClient(app) as client:
+        assert client.delete("/api/history", headers=headers).status_code == 503
+
+    def broken(*a, **k):
+        raise ConnectionError("테스트")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
+    monkeypatch.setattr(history_router, "connect", broken)
+    with TestClient(app) as client:
+        assert client.delete("/api/history", headers=headers).status_code == 503
