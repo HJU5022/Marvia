@@ -2,7 +2,7 @@
 
     python -m scripts.failure_drill --list            # 시나리오 목록: 무엇을 바꾸나 · 기대 줄 · LLM 필요 여부
     python -m scripts.failure_drill --no-llm          # LLM 없이 도는 것만 (비용 0, 외부 API 호출 0)
-    python -m scripts.failure_drill                   # 전부. LLM 시나리오는 .env의 MODEL_A를 실제로 부른다 (비용이 든다)
+    python -m scripts.failure_drill                   # 전부. LLM 시나리오는 .env의 LLM_MODEL을 실제로 부른다 (비용이 든다)
     python -m scripts.failure_drill --only judge_truncated judge_connection
 
 책임:
@@ -11,7 +11,7 @@
   결과는 터미널과 evals/results/failure_drill.txt(깃에서 빠지는 폴더)에 같은 내용으로 쓴다.
 
 왜 필요한가:
-  단위 테스트는 가짜 LLM·가짜 응답으로 함수 하나씩 본다. 실제 모델(MODEL_A)이 진짜로 실패했을 때
+  단위 테스트는 가짜 LLM·가짜 응답으로 함수 하나씩 본다. 실제 모델(LLM_MODEL)이 진짜로 실패했을 때
   라우터까지 올라와 같은 줄이 찍히는지는 요청 하나를 끝까지 돌려 봐야 안다.
   09-29 평가 실행에서 터미널에 "failure" 한 단어만 찍혀 원인을 몰랐던 일(logging.py log_failure 설명)이
   다시 없는지, 명령 하나로 다시 확인하려는 장치다.
@@ -20,7 +20,7 @@
   평가 실행기(evals/run_eval.py)를 그대로 다시 쓴다. 외부 API는 REPLAY 재생, 시계는 문항의 clock, DB는 끈다.
   시나리오마다 딱 하나만 바꾸고(환경변수 또는 함수 바꿔 끼우기) 요청 하나를 돌린 다음 원래대로 되돌린다.
   바꾸는 것은 이 프로세스 안에서만 유효하다. 서버 코드와 .env는 고치지 않는다.
-  - LLM 시나리오: 실제 MODEL_A를 부른다. --no-llm이면 돌리지 않는다
+  - LLM 시나리오: 실제 LLM_MODEL을 부른다. --no-llm이면 돌리지 않는다
   - LLM 없는 시나리오: 그 시나리오 동안 LLM·Langfuse 키를 비운다. 실수로 LLM 길을 타도 not_configured로 끝나고 밖으로 나가지 않는다
   - 출처 "평가셋": 평가셋 문항의 재생 자료에서 자연히 나오는 실패
   - 출처 "constructed": 평가셋에서는 안 나와서 작은 가짜 응답(httpx.MockTransport·가짜 chat)으로 만든 것. 단위 테스트와 같은 방식
@@ -61,7 +61,7 @@ BAD_PROJECT = "marvia-drill-no-such-project"  # 없는 GCP 프로젝트. 어떤 
 BAD_DB_URL = "postgresql://127.0.0.1:1/drill?connect_timeout=2"
 
 # LLM 없는 시나리오에서 비워 두는 키. 비우면 LLM은 not_configured, Langfuse는 로컬 파일로 가서 밖으로 나가는 호출이 없다
-NO_LLM_ENV = ("MODEL_A", "MODEL_B", "JUDGE_MODEL", "OPENROUTER_API_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")
+NO_LLM_ENV = ("LLM_MODEL", "EVAL_COMPARE_MODEL", "EVAL_GRADER_MODEL", "OPENROUTER_API_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")
 
 SHIPFINDER_FIXTURES = ROOT / "evals" / "fixtures" / "shipfinder"
 MOF_FIXTURES = ROOT / "evals" / "fixtures" / "mof"
@@ -150,7 +150,7 @@ def _rules_case(case_id: str) -> Callable[[], dict]:
     return run
 
 
-# ── LLM 시나리오 (실제 MODEL_A를 부른다) ───────────────────────────
+# ── LLM 시나리오 (실제 LLM_MODEL을 부른다) ───────────────────────────
 
 def _judge_truncated() -> dict:
     """llm.chat을 감싸 max_tokens만 작게 넣는다. 모델·프롬프트·자료는 그대로다."""
@@ -167,7 +167,7 @@ def _judge_truncated() -> dict:
 
 
 def _judge_bad_request() -> dict:
-    os.environ["MODEL_A"] = BAD_MODEL  # 환경변수는 시나리오가 끝나면 _run_scenario가 되돌린다
+    os.environ["LLM_MODEL"] = BAD_MODEL  # 환경변수는 시나리오가 끝나면 _run_scenario가 되돌린다
     return _run_case(BASE_CASE, "b")
 
 
@@ -192,7 +192,7 @@ def _judge_connection() -> dict:
 # ── LLM 없는 시나리오 ──────────────────────────────────────────────
 
 def _judge_not_configured() -> dict:
-    # MODEL_A는 _run_scenario가 이미 비웠다 (NO_LLM_ENV). 판정기는 실제 llm.judge 그대로다
+    # LLM_MODEL은 _run_scenario가 이미 비웠다 (NO_LLM_ENV). 판정기는 실제 llm.judge 그대로다
     return _run_case(BASE_CASE, "b")
 
 
@@ -252,7 +252,7 @@ def _history(bad_url: bool) -> Callable[[], str]:
 
 def _langfuse_fallback() -> dict:
     """Langfuse 키는 가짜 값으로 채우고 langfuse 패키지 import만 실패하게 한다. Langfuse 서버에 붙지 않는다.
-    MODEL_A는 비워 둔 채라 판정은 not_configured로 끝난다 (LLM을 부르지 않으려는 것)."""
+    LLM_MODEL은 비워 둔 채라 판정은 not_configured로 끝난다 (LLM을 부르지 않으려는 것)."""
     os.environ["LANGFUSE_PUBLIC_KEY"] = "drill-dummy"
     os.environ["LANGFUSE_SECRET_KEY"] = "drill-dummy"
     # sys.modules에 None을 넣으면 그 이름의 import가 ModuleNotFoundError로 막힌다. 끝나면 원래대로 둔다
@@ -315,11 +315,11 @@ def _mof_page_cap_hit() -> None:
 # ── 시나리오 목록 ─────────────────────────────────────────────────
 
 SCENARIOS = [
-    # LLM 시나리오: 실제 MODEL_A. 사용자가 직접 돌린다
+    # LLM 시나리오: 실제 LLM_MODEL. 사용자가 직접 돌린다
     Scenario("judge_truncated", f"llm.chat에 max_tokens={SMALL_MAX_TOKENS}을 끼워 넣음", [("judge", "truncated")],
              True, f"평가셋 {BASE_CASE}", _judge_truncated,
              note="Gemini 생각(reasoning) 토큰이 한도를 먼저 먹으면 본문 없이 잘린다. 3번 다 잘리면 gave up 줄도 나온다"),
-    Scenario("judge_bad_request", f"MODEL_A={BAD_MODEL}", [("judge", "bad_request")],
+    Scenario("judge_bad_request", f"LLM_MODEL={BAD_MODEL}", [("judge", "bad_request")],
              True, f"평가셋 {BASE_CASE}", _judge_bad_request),
     Scenario("judge_auth", f"GOOGLE_CLOUD_PROJECT={BAD_PROJECT} (Vertex 로그인 캐시 비움)", [("judge", "")],
              True, f"평가셋 {BASE_CASE}", _judge_auth,
@@ -330,7 +330,7 @@ SCENARIOS = [
              True, "SKIP", skip="natural only: 요청이 몰릴 때만 Vertex·OpenRouter가 429를 준다. 부하 중 평가 실행(run_eval b·c) 로그에서 확인"),
 
     # LLM 없는 시나리오: 판정 LLM 경로
-    Scenario("judge_not_configured", "MODEL_A 비움", [("judge", "not_configured")],
+    Scenario("judge_not_configured", "LLM_MODEL 비움", [("judge", "not_configured")],
              False, f"평가셋 {BASE_CASE}", _judge_not_configured),
     Scenario("judge_gave_up_f08", "평가셋 F08 (평가 실행기가 llm.chat을 '{}' 가짜로 바꿈)",
              [("judge", "bad_format attempt 1"), ("judge", "gave up after 3 attempts")],
@@ -367,7 +367,7 @@ SCENARIOS = [
              False, "평가셋 B13", _rules_case("B13")),
 
     # Langfuse
-    Scenario("langfuse_fallback", "Langfuse 키는 가짜 값, langfuse import만 실패 (MODEL_A 비움)",
+    Scenario("langfuse_fallback", "Langfuse 키는 가짜 값, langfuse import만 실패 (LLM_MODEL 비움)",
              [("langfuse_prompt", "fallback=local_file"), ("langfuse_trace_start", "no_trace")],
              False, f"평가셋 {BASE_CASE}", _langfuse_fallback),
     Scenario("langfuse_trace_end", "update가 실패하는 가짜 generation을 end_generation에 넘김", [("langfuse_trace_end", "RuntimeError")],
@@ -385,7 +385,7 @@ SCENARIOS = [
     Scenario("llm_overloaded", "없음", [("judge", "overloaded 5xx")], False, "SKIP",
              skip="Gemini/Vertex의 5xx는 일부러 일으킬 수 없다. kind 매핑은 단위 테스트(_status_kind)가 본다"),
     Scenario("llm_no_choices", "없음", [("judge", "no_choices")], False, "SKIP",
-             skip="200 안에 choices 없이 error만 오는 것은 OpenRouter 전용이다. MODEL_A는 Vertex라 나올 수 없다. 단위 테스트가 본다"),
+             skip="200 안에 choices 없이 error만 오는 것은 OpenRouter 전용이다. LLM_MODEL은 Vertex라 나올 수 없다. 단위 테스트가 본다"),
 ]
 
 
@@ -477,7 +477,7 @@ def main() -> None:
         print(text, flush=True)
         lines.append(text)
 
-    mode = "--no-llm (LLM 시나리오 제외)" if args.no_llm else "전체 (LLM 시나리오는 MODEL_A를 실제로 부른다)"
+    mode = "--no-llm (LLM 시나리오 제외)" if args.no_llm else "전체 (LLM 시나리오는 LLM_MODEL을 실제로 부른다)"
     out(f"에러 로깅 실패 훈련 · {mode} · 기본 문항 {BASE_CASE}")
     results = [_run_scenario(s, catcher, out) for s in chosen]
 

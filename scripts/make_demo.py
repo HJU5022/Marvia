@@ -25,7 +25,7 @@ F04만 배를 바꾼다:
   평가셋 파일은 고치지 않는다 (CLAUDE.md: 평가셋은 사람만 고친다).
 
 판정 LLM:
-  MODEL_A가 비어 있으면 evals/fixtures/replay/llm/marvia-judge.json의 녹화 답을 쓴다 (services/llm.py _replay_answer).
+  LLM_MODEL이 비어 있으면 evals/fixtures/replay/llm/marvia-judge.json의 녹화 답을 쓴다 (services/llm.py _replay_answer).
   녹화 답은 이 데모 입력(판매 예정일을 안내한 날짜로 넣거나 비움)에만 맞다.
 """
 from __future__ import annotations

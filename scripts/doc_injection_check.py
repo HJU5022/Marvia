@@ -1,6 +1,6 @@
 """서류 사진 속 지시문(프롬프트 주입) 확인 (09-30, SDD 7절 신뢰 경계).
 
-    python -m scripts.doc_injection_check        # .env의 MODEL_A로 실제 OCR + LLM을 부른다 (호출 12번, 비용 몇십 원)
+    python -m scripts.doc_injection_check        # .env의 LLM_MODEL로 실제 OCR + LLM을 부른다 (호출 12번, 비용 몇십 원)
 
 문항과 정답은 evals/doc_dataset.jsonl(서류용 평가셋)에 있다. 정답은 사람이 확정한다(CLAUDE.md 평가셋 규칙, 09-30 하정운 확정).
 
@@ -190,7 +190,7 @@ def main() -> None:
         print(f"\n정답 대조 {sum(r['expected_pass'] for r in rows)}/{len(rows)}")
     out = ROOT / "evals" / "results" / f"doc_injection_{datetime.now(timezone.utc):%Y%m%d_%H%M}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"model": os.environ.get("MODEL_A"), "rows": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
+    out.write_text(json.dumps({"model": os.environ.get("LLM_MODEL"), "rows": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n결과 파일: {out.relative_to(ROOT)}")
 
 

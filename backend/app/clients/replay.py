@@ -5,7 +5,7 @@
 실제 호출과 똑같이 돈다. 테스트가 MockTransport로 fixture를 먹이는 방식과 같다.
 
 재생하는 외부 API는 ShipFinder, 해수부, UNI-PASS다. searoute는 원래 외부 호출이 없다.
-LLM은 여기서 재생하지 않는다. MODEL_A가 비어 있으면 services/llm.py가 replay/llm/의 녹화 답을 쓴다 (_replay_answer).
+LLM은 여기서 재생하지 않는다. LLM_MODEL이 비어 있으면 services/llm.py가 replay/llm/의 녹화 답을 쓴다 (_replay_answer).
 
 재생 파일 위치 (값은 전부 실제와 형식만 같은 가공값, SDD 7절):
   shipfinder/<엔드포인트>/<키>.json   VesselSearch는 keywords, VesselPositionSingle·VesselFlagInfo는 mmsi가 키

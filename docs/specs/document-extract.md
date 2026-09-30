@@ -22,7 +22,7 @@ SDD 1절은 F9를 "인터페이스만 남기고 구현하지 않는다"고 적�
 1. **전처리 (코드)**: 빨간 픽셀을 흰색으로 지운다(빨간 도장·워터마크). 0°로 읽어 확신도가 낮으면 180°·270°도 읽어 가장 잘 읽힌 방향을 쓴다.
 2. **OCR (코드, 로컬)**: RapidOCR + ONNX Runtime, PaddleOCR PP-OCRv5 mobile 모델(글자 위치 `ch_PP-OCRv5_det_mobile`, 읽기 `korean_PP-OCRv5_rec_mobile`). 한국어 모델이 영어도 읽는다.
 3. **B/L 번호 (코드)**: "B/L NO.", "B/L 번호", "Bill of Lading No" 이름표의 같은 줄, 뒤 두 줄, 앞 두 줄에서 `schemas/agent.py`의 B/L 형식(`^[A-Z0-9]{8,20}$`)에 맞는 값. 찾으면 OCR 글자에서 `[BL]`로 가린다.
-4. **나머지 6칸 (소형 LLM, MODEL_A)**: 가린 OCR 글자를 넘겨 JSON으로 받는다. 프롬프트는 Langfuse `marvia-doc-extract`.
+4. **나머지 6칸 (소형 LLM, LLM_MODEL)**: 가린 OCR 글자를 넘겨 JSON으로 받는다. 프롬프트는 Langfuse `marvia-doc-extract`.
 5. **검사 (코드)**: 빈칸, OCR 글자에 실제로 있나(지어낸 값 차단), 항차 형식, 날짜는 OCR 글자 속 날짜와 날짜로 비교(`02-OCT-2026` = `2026년 10월 2일` = `2026-10-02`). 영문 선명 뒤 "호"는 뗀다.
 6. **응답**: 칸마다 값과 검사 결과. 하나라도 걸리면 `needs_review=true`.
 

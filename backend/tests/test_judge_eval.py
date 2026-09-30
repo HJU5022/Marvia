@@ -32,7 +32,7 @@ def _fake_grade(monkeypatch, score=1, reason="pass", fail=False):
 
 
 def test_grades_with_judge_model(monkeypatch):
-    monkeypatch.setenv("JUDGE_MODEL", "openai/gpt-4o-mini")
+    monkeypatch.setenv("EVAL_GRADER_MODEL", "openai/gpt-4o-mini")
     calls = _fake_grade(monkeypatch, score=0, reason="2: next stage is wrong")
     result = judge.grade(_row(), "vertex/google/gemini-2.5-flash")
     assert result == {"score": 0, "reason": "2: next stage is wrong", "model": "openai/gpt-4o-mini"}
@@ -41,7 +41,7 @@ def test_grades_with_judge_model(monkeypatch):
 
 def test_same_model_is_not_graded(monkeypatch):
     """채점 모델이 판정 모델과 같으면 채점하지 않는다 (자기 선호 편향). vertex/ 앞머리는 무시하고 비교한다."""
-    monkeypatch.setenv("JUDGE_MODEL", "google/gemini-2.5-flash")
+    monkeypatch.setenv("EVAL_GRADER_MODEL", "google/gemini-2.5-flash")
     calls = _fake_grade(monkeypatch)
     assert judge.grade(_row(), "vertex/google/gemini-2.5-flash") is None
     assert calls == []
@@ -50,14 +50,14 @@ def test_same_model_is_not_graded(monkeypatch):
 @pytest.mark.parametrize("customs", [None, {**CUSTOMS, "plain_explanation": ""}])
 def test_no_explanation_is_not_graded(monkeypatch, customs):
     """규칙만 실행이나 되묻기처럼 해설이 없으면 채점하지 않는다."""
-    monkeypatch.setenv("JUDGE_MODEL", "openai/gpt-4o-mini")
+    monkeypatch.setenv("EVAL_GRADER_MODEL", "openai/gpt-4o-mini")
     calls = _fake_grade(monkeypatch)
     assert judge.grade(_row(customs=customs), "vertex/google/gemini-2.5-flash") is None
     assert calls == []
 
 
 def test_judge_failure_keeps_going(monkeypatch):
-    monkeypatch.setenv("JUDGE_MODEL", "openai/gpt-4o-mini")
+    monkeypatch.setenv("EVAL_GRADER_MODEL", "openai/gpt-4o-mini")
     _fake_grade(monkeypatch, fail=True)
     result = judge.grade(_row(), "vertex/google/gemini-2.5-flash")
     assert result["score"] is None and "rate_limited" in result["reason"]

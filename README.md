@@ -212,7 +212,7 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 
 - 판매 예정일은 선택이다. 비우면 정상 건은 여유 일수 없이 괜찮음과 "판매 예정일을 넣으면 여유까지 볼 수 있다"는 안내가 나온다
 - 녹화 답은 이 입력에만 맞다. 판매 예정일을 다른 날짜로 넣으면 녹화 답을 쓰지 않고 판정 없이 `partial`로 끝난다. 틀린 답을 그럴듯하게 보이지 않게 한 것이다
-- `.env`에 `MODEL_A`를 넣으면 같은 데모를 진짜 LLM이 판정한다 (녹화 답을 쓰지 않는다)
+- `.env`에 `LLM_MODEL`를 넣으면 같은 데모를 진짜 LLM이 판정한다 (녹화 답을 쓰지 않는다)
 - 위치 수신 시각이 "만든 시각 30분 전"이라 약 5시간 반 뒤에는 오래된 위치가 된다. 그때는 `make_demo`를 다시 돌린다
 - Docker 없이: `python -m scripts.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
 

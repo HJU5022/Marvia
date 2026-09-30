@@ -3,7 +3,7 @@
 처리 순서 (Spec "흐름"):
   1~2. 전처리 + OCR               services/doc_ocr.read_lines (로컬, 외부 호출 없음)
   3.   B/L 번호를 코드로 뽑고 가림   doc_ocr.take_bl, mask_bl. 가려지지 않으면 LLM을 부르지 않는다
-  4.   나머지 6칸                   services/llm.extract_doc_fields (소형 모델, MODEL_A)
+  4.   나머지 6칸                   services/llm.extract_doc_fields (소형 모델, LLM_MODEL)
   5.   칸 검사                      doc_ocr.check_fields
 여기서 판정하지 않고 LLM SDK를 import하지 않는다 (CLAUDE.md). 뽑은 값으로 /api/agent를 부르지도 않는다. 사용자가 확인한 뒤 프론트가 부른다.
 대형 비전 모델로 넘기기는 2차다. 지금은 검사에 걸리면 needs_review=true로 사용자에게 맡긴다.

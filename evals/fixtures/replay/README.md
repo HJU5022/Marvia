@@ -31,7 +31,7 @@ B/L은 `TESTBL01`·`TESTBL04`·`TESTBL26`. 만든 파일(`shipfinder/`·`mof/`·
 
 ## LLM 녹화 답
 
-`llm/<프롬프트 이름>.json`. REPLAY_MODE이고 `MODEL_A`가 비어 있으면 모델 대신 이 파일의 답을 쓴다 (`services/llm.py` `_replay_answer`).
+`llm/<프롬프트 이름>.json`. REPLAY_MODE이고 `LLM_MODEL`가 비어 있으면 모델 대신 이 파일의 답을 쓴다 (`services/llm.py` `_replay_answer`).
 
 - 한 파일에 녹화 여러 개. `match`(여유 일수, 신호 7종 상태)가 이번 입력과 같은 녹화의 `output`을 돌려준다
 - 맞는 녹화가 없으면 키가 없을 때와 같은 실패(not_configured)로 끝난다. 라우터는 판정 없이 partial을 돌려준다
