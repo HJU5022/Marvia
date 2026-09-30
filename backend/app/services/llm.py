@@ -403,10 +403,20 @@ class LLMAnswer:
     prompt_version: str
 
 
-def _skills_text() -> str:
-    """skills/ 아래 .md 전부를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
+# 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 4개 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
+# 각 호출이 받는 자료를 기준으로, 그 자료를 읽는 데 필요한 Skill만 넣는다. 넣는 Skill은 여전히 통째로다 (RAG 아님)
+AIS, CUSTOMS, PORT = "ais-reliability", "customs-stages", "port-busan"
+ALL_SKILLS = (AIS, CUSTOMS, PORT)
+JUDGE_SKILLS = (AIS, CUSTOMS)       # 신호 · 판정 표 · 통관 해설. 판정 입력에 부두 · 하역 장소가 없어 부두 Skill은 안 넣는다
+PICK_SKILLS = (AIS,)                # 동명 선박 · 후보 판단. 통관 · 부두는 쓰지 않는다
+FOLLOW_UP_SKILLS = ALL_SKILLS       # 이전 응답 전체(통관 · 하역 장소 포함)를 근거로 답하므로 전부
+GRADE_SKILLS = (CUSTOMS,)           # 통관 해설 채점은 통관 단계 표만 기준으로 한다 (평가 때만)
+
+
+def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
+    """고른 Skill 폴더의 .md를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
     parts = []
-    for path in sorted(SKILL_DIR.rglob("*.md")):
+    for path in sorted(p for folder in folders for p in (SKILL_DIR / folder).rglob("*.md")):
         # Windows 문제: relative_to()를 그대로 문자열로 쓰면 Windows에서 "ais-reliability\SKILL.md"처럼 역슬래시가 된다.
         # 그러면 LLM이 보는 파일 이름이 OS마다 달라지고 test_judge.py::test_system_has_prompt_and_all_skills가 Windows에서만 깨진다.
         # as_posix()로 어느 OS에서든 "/"로 맞춘다 (Docker·Mac은 원래 "/"라 동작 변화 없음)
@@ -451,10 +461,10 @@ def _kst(moment: datetime | None) -> str | None:
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
               output_model: type[BaseModel], model: str | None, feedback: str | None = None,
-              include_skills: bool = True) -> LLMAnswer:
+              skills: tuple[str, ...] = ALL_SKILLS) -> LLMAnswer:
     """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
-    include_skills=False는 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용이다. skills 약 5천 자를 매번 넣지 않는다.
+    skills는 넣을 Skill 폴더다 (JUDGE_SKILLS 등). 빈 튜플이면 넣지 않는다: 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용.
 
     Raises:
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
@@ -463,7 +473,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     if replay.replay_enabled() and not (model or os.environ.get("MODEL_A")):
         return _replay_answer(prompt_name, user_content, output_model)
     prompt = get_prompt(prompt_name)
-    system = f"{prompt.text}\n\n{_skills_text()}" if include_skills else prompt.text
+    system = f"{prompt.text}\n\n{_skills_text(skills)}" if skills else prompt.text
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user_content},
@@ -553,7 +563,7 @@ def judge(
     feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도)."""
     return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date,
                                                 table_verdict, verdict_mode),
-                     "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback)
+                     "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback, skills=JUDGE_SKILLS)
 
 
 # ── 선박 선택 pick_vessel() ─────────────────────────────────────
@@ -625,7 +635,8 @@ def pick_vessel(
         "user_voyage_no": voyage_no,
         "user_forwarder_eta": forwarder_eta.isoformat() if forwarder_eta else None,
     }
-    answer = _ask_json(PICK_PROMPT, json.dumps(data, ensure_ascii=False), "pick_vessel", PICK_SCHEMA, PickOutput, model)
+    answer = _ask_json(PICK_PROMPT, json.dumps(data, ensure_ascii=False), "pick_vessel", PICK_SCHEMA, PickOutput, model,
+                       skills=PICK_SKILLS)
     choice = answer.output.choice
     if choice is not None and choice not in {c.mmsi for c in candidates}:
         raise LLMError(f"{answer.llm.model}: 후보에 없는 MMSI {choice}를 골랐음")
@@ -664,7 +675,7 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
         "question": question,
     }
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
-                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback)
+                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS)
 
 
 # ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────
@@ -703,7 +714,7 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
     OCR 글자는 사용자 서류라 데이터로만 넘긴다 (SDD 7절 신뢰 경계, 프롬프트에도 명시).
     """
     return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
-                     include_skills=False)
+                     skills=())
 
 
 # ── 통관 해설 채점 grade_customs() ─────────────────────────────
@@ -739,4 +750,5 @@ def grade_customs(customs: dict, *, model: str | None = None) -> LLMAnswer:
     if not model:
         raise LLMError("JUDGE_MODEL이 없습니다", kind="not_configured")
     data = {key: customs.get(key) for key in ("stage_name", "plain_explanation", "next_stage", "needs_broker")}
-    return _ask_json(JUDGE_EVAL_PROMPT, json.dumps(data, ensure_ascii=False), "grade", GRADE_SCHEMA, GradeOutput, model)
+    return _ask_json(JUDGE_EVAL_PROMPT, json.dumps(data, ensure_ascii=False), "grade", GRADE_SCHEMA, GradeOutput, model,
+                     skills=GRADE_SKILLS)

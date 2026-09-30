@@ -64,14 +64,27 @@ def _fake_chat(monkeypatch, content: str):
     return calls
 
 
-def test_system_has_prompt_and_all_skills(monkeypatch):
+def test_system_has_prompt_and_judge_skills(monkeypatch):
+    """판정에는 AIS 신뢰도(판정 표 · 기준 숫자)와 통관 단계 Skill만 넣는다. 판정 입력에 하역 장소가 없어 부두 Skill은 뺀다 (09-30)."""
     calls = _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
     llm.judge(_signals(), _customs(), days_margin=5)
 
     system = calls[0]["messages"][0]["content"]
     assert "The verdict is one of three" in system  # 프롬프트 파일 앞부분
-    for skill in ("ais-reliability/SKILL.md", "ais-reliability/rules.md", "customs-stages/SKILL.md", "port-busan/SKILL.md"):
+    for skill in ("ais-reliability/SKILL.md", "ais-reliability/rules.md", "customs-stages/SKILL.md"):
         assert f"skills/{skill}" in system
+    assert "skills/port-busan/SKILL.md" not in system
+
+
+@pytest.mark.parametrize("folders, present, absent", [
+    (llm.PICK_SKILLS, ["ais-reliability/SKILL.md"], ["customs-stages/SKILL.md", "port-busan/SKILL.md"]),
+    (llm.GRADE_SKILLS, ["customs-stages/SKILL.md"], ["ais-reliability/SKILL.md", "port-busan/SKILL.md"]),
+    (llm.FOLLOW_UP_SKILLS, ["ais-reliability/SKILL.md", "customs-stages/SKILL.md", "port-busan/SKILL.md"], []),
+])
+def test_skills_per_call(folders, present, absent):
+    """호출마다 필요한 Skill 폴더만 붙인다 (09-30). 붙이는 문서는 통째로다."""
+    text = llm._skills_text(folders)
+    assert all(f"skills/{f}" in text for f in present) and not any(f"skills/{f}" in text for f in absent)
 
 
 def test_user_has_signals_and_margin_but_no_bl(monkeypatch):

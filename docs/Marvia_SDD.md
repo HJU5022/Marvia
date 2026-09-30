@@ -509,7 +509,7 @@ sequenceDiagram
   | `marvia-judge-eval` | evals/judge.py LLM-as-judge (통관 해설 채점) |
 
 - 버전은 Langfuse가 자동으로 매긴다. 코드는 label `production`만 부른다. 프롬프트 실험(D10)은 새 버전을 `staging`에 붙여 평가한 뒤 `production`으로 옮긴다. 모델 A/B 비교는 label이 아니라 아래 `model` 인자로 한다. 한 번에 하나만 바꾼다 (PRD 8절).
-- 시스템 프롬프트 = Langfuse prompt + skills/*.md 전문 (통째로).
+- 시스템 프롬프트 = Langfuse prompt + 그 호출에 필요한 skills/ 문서 전문 (통째로, RAG 아님). 판정 = AIS 신뢰도 · 통관 단계, 배 고르기 = AIS 신뢰도, 후속 질문 = 전부, 통관 해설 채점 = 통관 단계, 서류 칸 옮겨 적기 = 없음 (09-30, llm.py JUDGE_SKILLS 등).
 - 도구 호출: 코드가 순서대로 도구 함수를 부르고 결과를 자료로 넘긴다. LLM이 도구를 고르지 않는다 (4절 흐름, 09-29 확인. `/mcp`는 외부 공개용, 5.9).
 - 모델은 `MODEL_A` 기본, 인자로 교체 가능(평가용). 레이트 리밋 시 `MODEL_B`로 1회 라우팅.
 - 응답은 구조화 출력(JSON schema = AgentResponse 부분집합)으로 받는다.
