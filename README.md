@@ -178,7 +178,7 @@ worker는 `WORKER_SCHEDULE=off`(기본)이면 안내 한 줄을 남기고 바로
 뜨면 이렇게 확인한다.
 
 ```bash
-curl http://localhost:8000/health        # {"status":"ok"}
+curl http://localhost:8000/health        # {"status":"ok","db":"ok"}. DB가 끊기면 503
 open http://localhost:8000/docs          # API 문서
 ```
 
@@ -272,7 +272,7 @@ python -m scripts.mcp_auth_check                        # 토큰 없으면 401
 ### 테스트
 
 ```bash
-pytest          # 461건 (09-30). 외부 API 키 없이 돈다 (가공 응답으로 대체)
+pytest          # 464건 (10-01). 외부 API 키 없이 돈다 (가공 응답으로 대체)
 ```
 
 ### 아직 안 되는 것

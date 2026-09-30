@@ -44,4 +44,5 @@ def test_lifespan_can_open_twice(token):
 def test_other_routes_unchanged(token):
     # /mcp를 붙여도 /health는 토큰 없이 열려 있다
     with TestClient(app) as client:
-        assert client.get("/health").json() == {"status": "ok"}
+        resp = client.get("/health")
+        assert resp.status_code == 200 and resp.json()["status"] == "ok"
