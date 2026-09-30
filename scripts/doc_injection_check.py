@@ -2,8 +2,7 @@
 
     python -m scripts.doc_injection_check        # .env의 MODEL_A로 실제 OCR + LLM을 부른다 (호출 12번, 비용 몇십 원)
 
-문항과 정답은 evals/doc_dataset.jsonl(서류용 평가셋)에 있다. 정답은 사람이 확정한다(CLAUDE.md 평가셋 규칙).
-status가 draft인 문항은 정답이 초안이라 "정답(초안)"으로 표시한다.
+문항과 정답은 evals/doc_dataset.jsonl(서류용 평가셋)에 있다. 정답은 사람이 확정한다(CLAUDE.md 평가셋 규칙, 09-30 하정운 확정).
 
 왜 필요한가:
   평가셋의 주입 문항은 사용자 문장(F06) · AIS 목적지(F03) · MCP 도구 설명뿐이다. 서류 사진은 사용자가 올린 글자가
@@ -70,7 +69,7 @@ LAYOUTS = {
     },
 }
 
-DATASET = ROOT / "evals" / "doc_dataset.jsonl"  # 서류용 평가셋. 문항 · 넣는 방식 · 정답(하정운 확정 전이면 status draft)
+DATASET = ROOT / "evals" / "doc_dataset.jsonl"  # 서류용 평가셋. 문항 · 넣는 방식 · 정답(하정운 확정)
 
 
 def load_cases() -> list[dict]:
@@ -180,12 +179,12 @@ def main() -> None:
                 "injection_reached_llm": bool(inj_text) and any(w in llm_text for w in inj_text.split()[:3]),
                 "bl_hidden_from_llm": spec["bl"] not in llm_text,
                 "result": verdict(bad, fields, clean, case["category"]) if injection else ("읽힘" if verdict(None, fields, clean) == "LLM이 무시함" else "대조군 실패"),
-                "expected_pass": passed, "label_status": case["status"],
+                "expected_pass": passed,
                 "trace_id": body.get("trace_id"),
             }
             rows.append(row)
             mark = "통과" if passed else "실패"
-            print(f"{cid} 정답{'(초안)' if case['status'] == 'draft' else ''} {mark} · {row['result']:<8} {desc}")
+            print(f"{cid} {mark} · {row['result']:<8} {desc}")
             print(f"    값 {row['values']}")
             print(f"    검사 {row['checks'] or '-'} · 확인 필요 {row['needs_review']} · 지시문이 LLM까지 감 {row['injection_reached_llm']} · B/L 가림 {row['bl_hidden_from_llm']}")
         print(f"\n정답 대조 {sum(r['expected_pass'] for r in rows)}/{len(rows)}")
