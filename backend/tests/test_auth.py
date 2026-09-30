@@ -30,7 +30,7 @@ def login_on(monkeypatch):
     monkeypatch.setattr(auth, "_signing_key", lambda token, base_url: PRIVATE.public_key())
 
 
-def _status(header: str) -> int:
+def _status(header: str | None) -> int:
     with pytest.raises(HTTPException) as e:
         auth.current_user_id(authorization=header)
     return e.value.status_code
@@ -40,7 +40,14 @@ def test_valid_token_gives_user_id():
     assert auth.current_user_id(authorization=f"Bearer {_token()}") == "user-123"
 
 
-def test_no_header_is_guest():
+def test_no_header_is_rejected_when_login_on():
+    """로그인 필수 (09-30 결정). 손님으로 넘기지 않는다."""
+    assert _status(None) == 401
+
+
+def test_login_off_without_header_passes(monkeypatch):
+    """SUPABASE_URL이 없으면(채점용 compose) 로그인 기능이 꺼져 헤더 없이도 돈다."""
+    monkeypatch.delenv("SUPABASE_URL")
     assert auth.current_user_id(authorization=None) is None
 
 

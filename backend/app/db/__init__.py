@@ -62,8 +62,8 @@ def _owner(session_id: str, user_id: str | None) -> tuple[str, str]:
     """이력을 누구 기준으로 찾을지 WHERE 조건과 값으로 돌려준다 (G3, 006 마이그레이션).
 
     로그인했으면 사용자 ID로 찾는다. 브라우저가 바뀌어도 이어진다.
-    손님이면 세션 ID로 찾되, 로그인한 채 남긴 줄은 뺀다. 공용 PC에서 로그아웃한 뒤 같은 브라우저의 손님에게
-    앞 사람 이력이 보이면 안 된다 (09-30 실제 DB 확인 중 발견). 로그인 전 손님 조회도 사용자 이력에 섞지 않는다.
+    사용자가 없으면(로그인 기능이 꺼진 채점 환경, 로그인은 09-30부터 필수) 세션 ID로 찾되 로그인한 채 남긴 줄은 뺀다.
+    같은 DB를 로그인 켠 환경과 같이 쓰더라도 사용자 기록이 세션 조회로 새지 않게 한다 (09-30 실제 DB 확인 중 발견).
     조건 문자열은 이 두 가지로만 정해진다. 사용자 입력은 값(%s)으로만 들어간다.
     """
     return ("user_id = %s", user_id) if user_id else ("session_id = %s AND user_id IS NULL", session_id)
@@ -103,7 +103,7 @@ def latest_response(conn, session_id: str, bl_masked: str, user_id: str | None =
 def delete_user_queries(conn, user_id: str) -> int:
     """로그인 사용자의 조회 기록을 전부 지우고 지운 줄 수를 돌려준다 (삭제 2단계, 개인정보보호법 제36조).
 
-    잠긴 B/L(bl_encrypted)도 같은 줄에 있어 함께 지워진다. 다른 사용자·손님 줄은 건드리지 않는다.
+    잠긴 B/L(bl_encrypted)도 같은 줄에 있어 함께 지워진다. 다른 사용자 줄과 사용자 없는 줄은 건드리지 않는다.
     """
     return conn.execute("DELETE FROM query_log WHERE user_id = %s", [user_id]).rowcount
 

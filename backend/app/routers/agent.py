@@ -120,9 +120,9 @@ def run_agent(request: AgentRequest,
     어느 쪽이든 결과를 조회 이력(query_log)에 남긴다.
     이 요청에서 부르는 LLM 트레이스에는 session_id가 붙는다 (SDD 5.11). 키가 없으면 아무 일도 안 한다.
 
-    user_id: 로그인했으면 출입증에서 꺼낸 사용자 ID, 손님이면 None (G3, auth.py). 판정 자체는 똑같고
+    user_id: 출입증에서 꺼낸 사용자 ID (G3, auth.py). 로그인은 필수라 로그인 기능이 꺼진 채점 환경에서만 None. 판정 자체는 똑같고
     이력을 누구 것으로 남기고 후속 질문이 누구 결과를 꺼내는지만 달라진다.
-    평가 실행기·데모처럼 코드에서 직접 부르면 None(손님)이다."""
+    평가 실행기·데모처럼 코드에서 직접 부르면 None이다."""
     with session_scope(request.session_id, user_id):
         if request.follow_up_question:
             return _logged(request, _follow_up(request, user_id), user_id)
@@ -629,7 +629,7 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
     """조회 이력 한 줄을 남기고 응답을 그대로 돌려준다 (A12). 로그인했으면 user_id도 같이 남긴다 (G3, 006 마이그레이션).
 
     로그인했으면 B/L 원본을 잠가서(bl_encrypted) 같이 남긴다. 메모리의 다시 조회가 쓴다 (② 암호화, 007 마이그레이션).
-    손님은 원본을 남기지 않는다. 열쇠가 없으면 crypto.encrypt가 None을 돌려줘 빈 칸으로 남는다.
+    사용자가 없으면(로그인 꺼진 채점 환경) 원본을 남기지 않는다. 열쇠가 없으면 crypto.encrypt가 None을 돌려줘 빈 칸으로 남는다.
 
     이력 저장이 실패해도 응답은 나가야 한다. DB 없이도 서비스가 돌아야 하기 때문이다.
     """

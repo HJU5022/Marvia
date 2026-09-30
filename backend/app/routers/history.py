@@ -69,7 +69,7 @@ class DeleteResponse(BaseModel):
 def delete_history(user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DeleteResponse:
     """로그인한 사용자가 자기 조회 기록을 전부 지운다 (삭제 2단계, 개인정보보호법 제36조 삭제 요구).
 
-    손님은 못 쓴다. 손님 기록은 브라우저 세션 번호에만 묶여 사람과 연결되지 않고, 90일 자동 삭제(008)로 정리된다.
+    로그인 필수다(09-30). 로그인 기능이 꺼진 채점 환경은 사용자가 없어 401이다. 그 환경의 기록은 90일 자동 삭제(008)로 정리된다.
     조회(GET)와 달리 실패를 빈 결과로 숨기지 않는다. 지운 줄 알았는데 남아 있으면 안 되므로 503으로 알린다.
     """
     if not user_id:

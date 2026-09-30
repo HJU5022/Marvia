@@ -981,9 +981,9 @@ def test_logged_in_query_is_saved_with_user_id(fake, monkeypatch):
 
     with TestClient(app) as client:
         assert client.post("/api/agent", json=_request(), headers=headers).status_code == 200
-        assert client.post("/api/agent", json=_request()).status_code == 200  # 같은 서버, 헤더 없는 손님
+        assert client.post("/api/agent", json=_request()).status_code == 401  # 로그인 필수, 손님 없음 (09-30)
 
-    assert saved == ["user-123", None]
+    assert saved == ["user-123"]
 
 
 def test_bad_token_is_rejected_before_assessing(fake, monkeypatch):
@@ -1032,11 +1032,11 @@ def test_logged_in_history_reads_user_rows(monkeypatch):
 
     with TestClient(app) as client:
         client.get("/api/history", params={"session_id": "sess-1"}, headers=headers)
-        client.get("/api/history", params={"session_id": "sess-1"})
+        no_login = client.get("/api/history", params={"session_id": "sess-1"})
         rejected = client.get("/api/history", params={"session_id": "sess-1"}, headers={"Authorization": "Bearer bad"})
 
-    assert asked == [("sess-1", "user-123"), ("sess-1", None)]
-    assert rejected.status_code == 401
+    assert asked == [("sess-1", "user-123")]
+    assert no_login.status_code == 401 and rejected.status_code == 401
 
 
 def test_owner_column_follows_login():
@@ -1119,10 +1119,25 @@ def test_logged_in_user_deletes_own_history(monkeypatch):
     assert resp.status_code == 200 and resp.json() == {"deleted": 3} and asked == ["user-123"]
 
 
-def test_guest_cannot_delete_history(monkeypatch):
-    monkeypatch.setattr(history_router, "delete_user_queries", lambda *a: pytest.fail("손님 요청이 삭제까지 가면 안 된다"))
+def test_delete_needs_login(monkeypatch):
+    """로그인 켜짐 + 헤더 없음, 로그인 꺼짐(사용자 없음) 둘 다 삭제까지 가지 않는다."""
+    monkeypatch.setattr(history_router, "delete_user_queries", lambda *a: pytest.fail("로그인 없이 삭제까지 가면 안 된다"))
     with TestClient(app) as client:
-        assert client.delete("/api/history").status_code == 401
+        assert client.delete("/api/history").status_code == 401  # 로그인 꺼짐
+    _login(monkeypatch)
+    with TestClient(app) as client:
+        assert client.delete("/api/history").status_code == 401  # 로그인 켜짐, 헤더 없음
+
+
+def test_document_needs_login(monkeypatch):
+    """서류 사진도 사용자 기능이라 로그인 필수 (09-30). OCR까지 가지 않는다."""
+    from backend.app.routers import document as document_router
+
+    _login(monkeypatch)
+    monkeypatch.setattr(document_router.doc_ocr, "read_lines", lambda data: pytest.fail("로그인 없이 OCR까지 가면 안 된다"))
+    with TestClient(app) as client:
+        resp = client.post("/api/document", files={"file": ("a.png", b"not-an-image", "image/png")})
+    assert resp.status_code == 401
 
 
 def test_delete_failure_is_reported_not_hidden(monkeypatch):

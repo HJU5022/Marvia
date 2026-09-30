@@ -7,10 +7,11 @@
 우리 .env에 JWT_SECRET 같은 비밀값을 두지 않는다. 필요한 설정은 SUPABASE_URL(비밀 아님) 하나다.
 09-30 실제 JWKS를 읽어 ES256 공개키 1개를 확인했다. 서명 계산은 직접 짜지 않고 PyJWT에 맡긴다 (Supabase 문서 권고).
 
-세 갈래로 나뉜다:
-- 헤더 없음 → None(손님). 지금처럼 session_id로만 구분한다
-- SUPABASE_URL 없음 → None(로그인 꺼짐). 채점용 compose·키 없는 데모가 그대로 돈다
-- 헤더가 있는데 가짜·만료·다른 발급처 → 401. 조용히 손님으로 넘기면 로그인이 풀린 걸 사용자가 모른다
+로그인은 필수다 (09-30 결정). 손님으로 쓰는 길은 없다. 세 갈래로 나뉜다:
+- SUPABASE_URL 없음 → None(로그인 기능 자체가 꺼짐). 채점용 compose는 Supabase가 없어 이 길로 데모가 돈다.
+  이때만 예전처럼 session_id로 구분한다
+- 로그인 켜짐 + 헤더 없음 → 401. 메모리·등록·알림이 전부 사람에 묶이는 기능이라 주인 없는 기록을 만들지 않는다
+- 헤더가 있는데 가짜·만료·다른 발급처 → 401
 """
 from __future__ import annotations
 
@@ -61,10 +62,14 @@ def verify_token(token: str, base_url: str) -> str:
 
 
 def current_user_id(authorization: str | None = Header(default=None)) -> str | None:
-    """라우터가 Depends로 쓰는 입구. 로그인했으면 사용자 ID, 손님이면 None."""
+    """라우터가 Depends로 쓰는 입구. 사용자 ID를 돌려준다. 로그인 기능이 꺼져 있을 때만 None."""
     base_url = supabase_url()
-    if not authorization or not base_url:
+    if not base_url:
         return None
+    if not authorization:
+        log_failure("auth", "missing")
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다",
+                            headers={"WWW-Authenticate": "Bearer"})
 
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
