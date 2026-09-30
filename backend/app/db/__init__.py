@@ -58,31 +58,44 @@ def log_query(conn, session_id: str, **fields) -> None:
     )
 
 
-def recent_queries(conn, session_id: str, limit: int = 20) -> list[dict]:
-    """세션의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4)."""
+def _owner(session_id: str, user_id: str | None) -> tuple[str, str]:
+    """이력을 누구 기준으로 찾을지 WHERE 조건과 값으로 돌려준다 (G3, 006 마이그레이션).
+
+    로그인했으면 사용자 ID로 찾는다. 브라우저가 바뀌어도 이어진다.
+    손님이면 세션 ID로 찾되, 로그인한 채 남긴 줄은 뺀다. 공용 PC에서 로그아웃한 뒤 같은 브라우저의 손님에게
+    앞 사람 이력이 보이면 안 된다 (09-30 실제 DB 확인 중 발견). 로그인 전 손님 조회도 사용자 이력에 섞지 않는다.
+    조건 문자열은 이 두 가지로만 정해진다. 사용자 입력은 값(%s)으로만 들어간다.
+    """
+    return ("user_id = %s", user_id) if user_id else ("session_id = %s AND user_id IS NULL", session_id)
+
+
+def recent_queries(conn, session_id: str, limit: int = 20, user_id: str | None = None) -> list[dict]:
+    """세션(로그인했으면 사용자)의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4)."""
+    where, owner = _owner(session_id, user_id)
     rows = conn.execute(
-        """
+        f"""
         SELECT request_id, bl_masked, status, verdict, vessel_match, decided_by, model, trace_id, created_at
-        FROM query_log WHERE session_id = %s ORDER BY created_at DESC LIMIT %s
+        FROM query_log WHERE {where} ORDER BY created_at DESC LIMIT %s
         """,
-        [session_id, min(limit, 100)],
+        [owner, min(limit, 100)],
     ).fetchall()
     keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "model", "trace_id", "created_at")
     return [dict(zip(keys, row)) for row in rows]
 
 
-def latest_response(conn, session_id: str, bl_masked: str) -> dict | None:
-    """같은 세션·같은 B/L의 가장 최근 결과(AgentResponse JSON)를 읽는다. 후속 질문이 쓴다 (C-9, 004 마이그레이션).
+def latest_response(conn, session_id: str, bl_masked: str, user_id: str | None = None) -> dict | None:
+    """같은 세션(로그인했으면 사용자)·같은 B/L의 가장 최근 결과(AgentResponse JSON)를 읽는다. 후속 질문이 쓴다 (C-9, 004 마이그레이션).
 
     결과가 저장되지 않은 옛 줄(response가 NULL)은 건너뛴다. 없으면 None.
     """
+    where, owner = _owner(session_id, user_id)
     row = conn.execute(
-        """
+        f"""
         SELECT response FROM query_log
-        WHERE session_id = %s AND bl_masked = %s AND response IS NOT NULL
+        WHERE {where} AND bl_masked = %s AND response IS NOT NULL
         ORDER BY created_at DESC LIMIT 1
         """,
-        [session_id, bl_masked],
+        [owner, bl_masked],
     ).fetchone()
     return row[0] if row else None
 

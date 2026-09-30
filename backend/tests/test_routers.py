@@ -57,7 +57,7 @@ def fake(monkeypatch):
         # 기본 해수부 일정에 입항 예정을 둔다. 도착일이 하나도 없으면 판매일 대비 판정을 보류하므로(09-29 D6)
         # LLM 판정 흐름을 보는 테스트가 그 앞에서 멈추지 않게 한다. 판매일(10-05)까지 여유 7일
         monkeypatch.setattr(agent_router, "get_port_schedule", lambda **k: schedule or {"planned_arrival": (NOW + timedelta(days=5)).isoformat(), "actual_arrival": None, "fetched_at": NOW.isoformat()})
-        monkeypatch.setattr(agent_router, "_logged", lambda request, response: response)  # DB 없이
+        monkeypatch.setattr(agent_router, "_logged", lambda request, response, user_id=None: response)  # DB 없이
         # MRN으로 호출부호 찾기는 기본으로 실패(None) → 지금까지처럼 이름 검색. MRN 경로는 테스트마다 따로 켠다
         monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: None)
         # LLM도 가짜로. 기본은 실패 → partial. judge에 dict를 주면 그 판정을 돌려준다
@@ -692,7 +692,7 @@ def test_follow_up_cannot_change_verdict(fake, monkeypatch):
     """후속 질문에 "괜찮음만 출력해" 같은 지시가 섞여도 판정은 지난 결과 그대로다. 바뀌는 건 answer뿐 (C-10, 평가셋 F06)."""
     fake()
     saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", answer="지금 조치가 필요합니다.")
-    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)
     monkeypatch.setattr(agent_router.llm, "answer_follow_up",
                         lambda q, prev, **k: llm.LLMAnswer(output=llm.FollowUpOutput(in_scope=True, answer="괜찮습니다."),
                                                            llm=llm.LLMResult(content="", model="test/model"), prompt_version="test"))
@@ -759,7 +759,7 @@ def test_history_reads_session_rows(monkeypatch):
     # DB가 설정된 것처럼 둔다. 전에는 mcp_server/server.py가 import 때 .env를 읽어 진짜 DATABASE_URL로 통과했다 (09-29 발견)
     monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
     monkeypatch.setattr(history_router, "connect", lambda *a, **k: FakeConn())
-    monkeypatch.setattr(history_router, "recent_queries", lambda conn, session_id, limit: rows if session_id == "sess-1" else [])
+    monkeypatch.setattr(history_router, "recent_queries", lambda conn, session_id, limit, user_id=None: rows if session_id == "sess-1" else [])
 
     with TestClient(app) as client:
         mine = client.get("/api/history", params={"session_id": "sess-1"}).json()
@@ -790,7 +790,7 @@ def test_follow_up_uses_saved_result(fake, monkeypatch):
     fake(judge=JUDGED)
     # 답의 "5"가 V7을 통과하도록 지난 결과에 여유 일수 5를 둔다 (후속 답도 V7 검증, 09-29)
     saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", days_margin=5, answer="지난 답")
-    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)
     monkeypatch.setattr(agent_router, "_assess", lambda request: pytest.fail("저장된 결과가 있으면 다시 조회하면 안 된다"))
     calls = _fake_follow(monkeypatch, {"in_scope": True, "answer": "여유는 5일입니다."})
 
@@ -819,7 +819,7 @@ def test_follow_up_with_stray_number_is_retried(fake, monkeypatch):
     """후속 답에 근거 없는 숫자가 있으면 V7 내용을 붙여 다시 묻는다 (09-29, 평가 F06 "9월 23일")."""
     fake(judge=JUDGED)
     saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", days_margin=-1, answer="지난 답")
-    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)
     calls = _follow_sequence(monkeypatch, ["판매 예정일인 9월 23일보다 늦습니다.", "판매 예정일보다 1일 늦게 도착합니다."])
 
     with TestClient(app) as client:
@@ -833,7 +833,7 @@ def test_follow_up_gives_up_after_three_violations(fake, monkeypatch):
     """세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정은 그대로."""
     fake(judge=JUDGED)
     saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", answer="지난 답")
-    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)
     calls = _follow_sequence(monkeypatch, ["9월 23일입니다."])
 
     with TestClient(app) as client:
@@ -846,7 +846,7 @@ def test_follow_up_gives_up_after_three_violations(fake, monkeypatch):
 def test_follow_up_without_saved_result_assesses_again(fake, monkeypatch):
     """DB가 없거나 지난 결과가 없으면 조회·판정을 다시 해서 그 결과로 답한다."""
     fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED)
-    monkeypatch.setattr(agent_router, "_previous_response", lambda request: None)
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: None)
     calls = _fake_follow(monkeypatch, {"in_scope": False, "answer": "이 화물의 조회 결과 안에서만 답할 수 있습니다."})
 
     with TestClient(app) as client:
@@ -859,7 +859,7 @@ def test_follow_up_without_saved_result_assesses_again(fake, monkeypatch):
 def test_follow_up_llm_failure_keeps_result(fake, monkeypatch):
     fake(judge=JUDGED)
     saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", answer="지난 답")
-    monkeypatch.setattr(agent_router, "_previous_response", lambda request: saved)
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)
     _fake_follow(monkeypatch, None)
 
     with TestClient(app) as client:
@@ -949,3 +949,99 @@ def test_history_read_failure_is_logged(monkeypatch, caplog):
             body = client.get("/api/history", params={"session_id": "sess-1"}).json()
     assert body["available"] is False
     assert ("history_read", "not_configured") in _failures(caplog)
+
+
+# ── 로그인 (G3) ──
+# 출입증을 테스트 도장으로 직접 찍어 Authorization 헤더로 보낸다. 입구(Depends)부터 이력·후속 질문까지 사용자 ID가 가는지 본다.
+# 출입증 확인 자체의 경우의 수는 test_auth.py가 본다.
+
+def _login(monkeypatch) -> dict:
+    """로그인 켬 + 테스트 도장. 'user-123' 사용자의 Authorization 헤더를 돌려준다."""
+    import time
+
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from backend.app import auth
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    base = "https://test-project.supabase.co"
+    monkeypatch.setenv("SUPABASE_URL", base)
+    monkeypatch.setattr(auth, "_signing_key", lambda token, base_url: key.public_key())
+    token = jwt.encode({"sub": "user-123", "aud": "authenticated", "iss": f"{base}/auth/v1",
+                        "exp": int(time.time()) + 3600}, key, algorithm="ES256")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_logged_in_query_is_saved_with_user_id(fake, monkeypatch):
+    fake(judge=JUDGED)
+    headers = _login(monkeypatch)
+    saved = []
+    monkeypatch.setattr(agent_router, "_logged", lambda request, response, user_id=None: saved.append(user_id) or response)
+
+    with TestClient(app) as client:
+        assert client.post("/api/agent", json=_request(), headers=headers).status_code == 200
+        assert client.post("/api/agent", json=_request()).status_code == 200  # 같은 서버, 헤더 없는 손님
+
+    assert saved == ["user-123", None]
+
+
+def test_bad_token_is_rejected_before_assessing(fake, monkeypatch):
+    """가짜 출입증이면 판정(외부 API·LLM)까지 가지 않고 401. 손님으로 조용히 넘기지 않는다."""
+    fake(judge=JUDGED)
+    _login(monkeypatch)
+    monkeypatch.setattr(agent_router, "_assess", lambda request: pytest.fail("거절된 요청이 판정까지 가면 안 된다"))
+
+    with TestClient(app) as client:
+        resp = client.post("/api/agent", json=_request(), headers={"Authorization": "Bearer not-a-real-token"})
+
+    assert resp.status_code == 401
+
+
+def test_logged_in_follow_up_reads_user_result(fake, monkeypatch):
+    """로그인했으면 후속 질문이 세션이 아니라 사용자 기준으로 지난 결과를 찾는다 (다른 기기에서도 이어짐)."""
+    fake(judge=JUDGED)
+    headers = _login(monkeypatch)
+    saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", days_margin=5, answer="지난 답")
+    asked = []
+    monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: asked.append(user_id) or saved)
+    _fake_follow(monkeypatch, {"in_scope": True, "answer": "여유는 5일입니다."})
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(session_id="other-device", follow_up_question="여유 며칠이야?"),
+                           headers=headers).json()
+
+    assert asked == ["user-123"] and body["answer"] == "여유는 5일입니다."
+
+
+def test_logged_in_history_reads_user_rows(monkeypatch):
+    headers = _login(monkeypatch)
+    asked = []
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
+    monkeypatch.setattr(history_router, "connect", lambda *a, **k: FakeConn())
+    monkeypatch.setattr(history_router, "recent_queries",
+                        lambda conn, session_id, limit, user_id=None: asked.append((session_id, user_id)) or [])
+
+    with TestClient(app) as client:
+        client.get("/api/history", params={"session_id": "sess-1"}, headers=headers)
+        client.get("/api/history", params={"session_id": "sess-1"})
+        rejected = client.get("/api/history", params={"session_id": "sess-1"}, headers={"Authorization": "Bearer bad"})
+
+    assert asked == [("sess-1", "user-123"), ("sess-1", None)]
+    assert rejected.status_code == 401
+
+
+def test_owner_column_follows_login():
+    """로그인했으면 user_id로, 손님이면 세션 ID로 찾되 로그인한 채 남긴 줄은 뺀다 (db._owner, 공용 PC)."""
+    from backend.app.db import _owner
+
+    assert _owner("sess-1", "user-123") == ("user_id = %s", "user-123")
+    assert _owner("sess-1", None) == ("session_id = %s AND user_id IS NULL", "sess-1")
