@@ -508,7 +508,14 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
             return candidates, "uncertain", None, None
         return candidates, "confirmed", candidates[0].mmsi, only.get("call_sign")
 
-    # 여럿이면 LLM이 고른다. 사용자가 되묻기에 답한 항차·포워더 입항 예정일도 같이 넘긴다
+    # 여럿인데 사용자가 준 근거(항차·포워더 입항 예정일)가 없으면 LLM을 부르지 않고 바로 되묻는다 (10-01, 평가 B01·B12).
+    # 이름·목적지·위치는 어느 배가 내 화물을 실었는지의 근거가 아니다. 그런데 gpt-4o-mini는 근거 없이도 high로 골라
+    # 남의 배를 확정했다(B01 매번, B12 3번 중 2~3번, 데모 TESTBL04). 확정은 근거가 있을 때만 한다 (PRD 6.2 되묻기가 낫다).
+    # SDD 5.5("2척 이상이면 LLM")와 다르다. 문서는 팀이 나중에 몰아서 현행화한다
+    if not (request.voyage_no or request.forwarder_eta):
+        return candidates, "uncertain", None, None
+
+    # 되묻기에 답한 항차·포워더 입항 예정일이 있으면 LLM이 그 근거로 고른다
     try:
         picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
     except llm.LLMError as e:
