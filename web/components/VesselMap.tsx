@@ -2,7 +2,7 @@
 /** 선박 자세히 보기 전용 지도 (docs/specs/chat-search.md "선박 자세히 보기"). 화물 화면의 MapPanel은 그대로 둔다.
  *
  * MapPanel과 다른 점 (10-01 사용자 요청: 확대해서 배가 어디서 어디로 움직이는지 읽히게)
- * - 배를 가운데 두고 확대해서 시작한다. 부산까지 가까울수록 더 확대한다
+ * - 배를 가운데 두고 확대해서 시작한다(30해리 안 10, 150해리 안 9, 그 밖 7단계). 부산까지 가까울수록 더 확대한다
  * - 배 모양을 침로(cog) 방향으로 돌리고, 선명·속력·침로를 라벨로 붙인다
  * - 부산까지 남은 예상 바닷길(서버 searoute 계산)을 점선으로 그린다. 실제 항적이 아니다
  * 외부 지도 타일을 부르지 않는다. 레포에 넣은 Natural Earth 해안선만 쓰므로 너무 확대하면 해안선이 거칠다(최대 10단계).
@@ -24,12 +24,13 @@ export interface VesselMapProps {
   distanceNm: number | null;
 }
 
-/** 부산까지 거리로 시작 확대 단계를 고른다. 가까우면 항만 앞까지, 멀면 해협 단위로 */
+/** 부산까지 거리로 시작 확대 단계를 고른다. 가까우면 항만 앞까지, 멀면 해협 단위로.
+ * 10-01 사용자 요청으로 한 단계씩 더 확대(9/8/6 → 10/9/7). 10은 이 지도의 최대라 해안선이 조금 거칠다 */
 function startZoom(distanceNm: number | null) {
-  if (distanceNm == null) return 7;
-  if (distanceNm < 30) return 9;
-  if (distanceNm < 150) return 8;
-  return 6;
+  if (distanceNm == null) return 8;
+  if (distanceNm < 30) return 10;
+  if (distanceNm < 150) return 9;
+  return 7;
 }
 
 export function VesselMap(p: VesselMapProps) {
