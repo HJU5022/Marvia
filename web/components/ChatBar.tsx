@@ -11,9 +11,10 @@ import {isLive} from '@/lib/api';
 
 const MAX = 500;  // routers/chat.py ChatRequest.message max_length
 
-/** 처음 보는 사람을 위한 예시 문장. 실제 모드는 백엔드 데모 B/L, 데모 모드는 가공 B/L */
+/** 처음 보는 사람을 위한 예시 문장. 실제 모드는 누구나 바로 결과를 볼 수 있는 입항 선박 검색만 둔다
+ * (데모 B/L을 실제 사용자에게 보여 주지 않는다, 10-01). 데모 모드는 가공 B/L */
 const EXAMPLES = isLive
-  ? ['TESTBL01 화물 괜찮아?', 'TESTBL04 하우스 비엘 10월 7일 판매 예정', '중국에서 부산 들어오는 배 보여줘', '네덜란드에서 한국 오는 배 뭐야?']
+  ? ['이번 주 일본에서 부산 들어오는 배 보여줘', '상하이에서 출발해서 부산 오는 배 있어?', '2주 안에 베트남에서 들어오는 배 알려줘', '3일 안에 부산 들어오는 배 전부']
   : ['MRVDEMO1101 화물 괜찮아?', 'MRVDEMO1107 지금 조치해야 해?', '중국에서 부산 들어오는 배 보여줘'];
 
 export function ChatBar() {
@@ -62,7 +63,7 @@ export function ChatBar() {
     <form className="chat-form" onSubmit={submit}>
       <label htmlFor="chat-input" className="sr-only">무엇이든 물어보세요</label>
       <textarea id="chat-input" value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={2} maxLength={MAX}
-        placeholder={result && request.bl_no ? '이 화물에 대해 묻거나, 다른 B/L·입항 선박을 물어보세요' : 'B/L 번호와 함께 물어보세요. 예: TESTBL01 화물 괜찮아? / 중국에서 오는 배 보여줘'}
+        placeholder={result && request.bl_no ? '이 화물에 대해 묻거나, 다른 B/L·입항 선박을 물어보세요' : 'B/L 번호와 함께 물어보세요. 예: 내 B/L 번호 + 화물 괜찮아? / 일본에서 부산 오는 배 보여줘'}
         disabled={loading} autoComplete="off" spellCheck={false}/>
       <div className="chat-tools">
         <button type="button" className="doc-trigger" onClick={() => setDocOpen(o => !o)} aria-expanded={docOpen} disabled={loading}><Camera size={13}/>서류 사진</button>
