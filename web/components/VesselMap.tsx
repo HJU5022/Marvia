@@ -49,6 +49,9 @@ export function VesselMap(p: VesselMapProps) {
       const port: L.LatLngTuple = [demo.port.lat, demo.port.lng];
 
       const map = L.map(host.current, {zoomControl: true, scrollWheelZoom: true, minZoom: 4, maxZoom: 10, attributionControl: true});
+      // 중심·확대를 먼저 정해야 한다. 정하기 전에 선(해안선·경로)을 올리면 Leaflet이 화면 범위를 몰라 멈춘다
+      // (10-01 "Cannot read properties of undefined (reading 'min')", 배가 아예 안 보였다)
+      map.setView(ship, startZoom(p.distanceNm), {animate: false});
       L.geoJSON(getGeography() as GeoJsonObject, {
         style: {color: color('--coast'), weight: 1, fillColor: color('--land'), fillOpacity: 1}, interactive: false,
       }).addTo(map);
@@ -72,7 +75,6 @@ export function VesselMap(p: VesselMapProps) {
 
       focus.current = () => map.setView(ship, startZoom(p.distanceNm), {animate: true});
       fitAll.current = () => map.fitBounds(L.latLngBounds(line ? line.getLatLngs() as L.LatLng[] : [L.latLng(ship), L.latLng(port)]).pad(.15), {maxZoom: 9, animate: true});
-      map.setView(ship, startZoom(p.distanceNm), {animate: false});
 
       // 펼침 애니메이션 뒤 크기를 다시 잰다
       const ro = new ResizeObserver(() => map.invalidateSize());
