@@ -132,6 +132,12 @@ class CustomsInfo(BaseModel):
     next_stage: str | None
     needs_broker: bool
     history: list[dict] = Field(default_factory=list, description="{code, name, at}")
+    # 화물이 어디서 어디로 가나. UNI-PASS 값 그대로 (코드가 채움, LLM 아님). 10-01 추가, 없으면 null
+    loading_port: str | None = Field(default=None, description="적재항 코드 ldprCd (예: CNTAO)")
+    loading_port_name: str | None = Field(default=None, description="적재항 이름 ldprNm (예: Qingdao)")
+    loading_country: str | None = Field(default=None, description="적출국 코드 lodCntyCd (예: CN)")
+    discharge_port: str | None = Field(default=None, description="양륙항 코드 dsprCd (예: KRPUS)")
+    discharge_port_name: str | None = Field(default=None, description="양륙항 이름 dsprNm (예: 부산항)")
 
 
 class BerthInfo(BaseModel):

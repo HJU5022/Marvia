@@ -113,3 +113,13 @@ def test_mrn_is_first_11_chars_of_cargo_number():
     """화물관리번호 19자리 중 앞 11자리가 MRN이다. 해수부 mrNum과 이어 배를 특정한다 (09-23 실측)."""
     record = _client("progress_ok.xml").fetch("TESTMBL0000001")
     assert record.mrn == "26TEST0099I"
+
+
+def test_reads_loading_and_discharge_ports():
+    """어디서 어디로 (10-01). 실제 응답 상단 칸 이름: ldprCd·ldprNm·lodCntyCd·dsprNm. 값은 가공 예시"""
+    xml = (FIXTURES / "progress_ok.xml").read_text(encoding="utf-8")
+    xml = xml.replace("<dsprCd>", "<ldprCd>CNTAO</ldprCd><ldprNm>Qingdao</ldprNm><lodCntyCd>CN</lodCntyCd><dsprCd>", 1)
+    client = UnipassClient(key="test-key", transport=httpx.MockTransport(lambda r: httpx.Response(200, text=xml)))
+    record = client.fetch("TESTMBL0000001")
+    assert (record.loading_port, record.loading_port_name, record.loading_country) == ("CNTAO", "Qingdao", "CN")
+    assert record.route_fields()["loading_port_name"] == "Qingdao" and record.discharge_port_name is not None

@@ -31,12 +31,23 @@ class CustomsRecord(BaseModel):
     stage_name: str | None = Field(default=None, description="현재 단계명. 가장 최근 이력 줄의 처리구분(cargTrcnRelaBsopTpcd), 이력이 없으면 csclPrgsStts")
     shed_name: str | None = Field(default=None, description="shedNm, 장치장명")
     discharge_port: str | None = Field(default=None, description="dsprCd, 양륙항 코드(예: KRPUS). 부산이 아니면 unsupported (09-28 추가)")
+    # 화물이 어디서 어디로 가나 (10-01 추가, 실제 응답에서 칸 이름 확인: ldprCd=CNTAO, ldprNm=Qingdao, lodCntyCd=CN)
+    discharge_port_name: str | None = Field(default=None, description="dsprNm, 양륙항 이름(예: 부산항)")
+    loading_port: str | None = Field(default=None, description="ldprCd, 적재항 코드(예: CNTAO)")
+    loading_port_name: str | None = Field(default=None, description="ldprNm, 적재항 이름(예: Qingdao)")
+    loading_country: str | None = Field(default=None, description="lodCntyCd, 적출국 코드(예: CN)")
     mrn: str | None = Field(
         default=None,
         description="cargMtNo 앞 11자리, 입항 적하목록 관리번호. 해수부 선박운항정보 mrNum과 같아서 배(호출부호)를 특정한다 (09-23 추가)",
     )
     stage_history: list[CustomsStage] = Field(default_factory=list)
     bl_masked: str = Field(description="앞4자+****+뒤4자. 로그·트레이스용")
+
+    def route_fields(self) -> dict:
+        """C1 CustomsInfo에 넣을 "어디서 어디로" 칸. 응답을 만드는 곳(routers/agent.py)이 그대로 펼쳐 넣는다 (10-01)."""
+        return {"loading_port": self.loading_port, "loading_port_name": self.loading_port_name,
+                "loading_country": self.loading_country, "discharge_port": self.discharge_port,
+                "discharge_port_name": self.discharge_port_name}
     fetched_at: datetime
 
 

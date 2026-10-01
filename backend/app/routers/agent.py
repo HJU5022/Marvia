@@ -360,6 +360,7 @@ def _released(customs: CustomsRecord) -> AgentResponse:
             next_stage=None,
             needs_broker=False,
             history=[s.model_dump(mode="json") for s in customs.stage_history],
+            **customs.route_fields(),
         ),
         berth=BerthInfo(facility=None, shed=customs.shed_name),
         evidence=build_evidence(customs, None, None, None, None, None),
@@ -615,6 +616,7 @@ def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
         next_stage=explained.next_stage,
         needs_broker=explained.needs_broker,
         history=[s.model_dump(mode="json") for s in customs.stage_history],
+        **customs.route_fields(),  # 어디서 어디로 (10-01)
     )
 
 
