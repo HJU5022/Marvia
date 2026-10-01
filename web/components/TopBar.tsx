@@ -3,19 +3,21 @@
  * 판매 예정일은 선택이다 (09-29 계약 변경). 요청에 status나 fixture ID 같은 칸을 더하지 않는다.
  */
 import {useEffect, useState, type FormEvent} from 'react';
-import {ArrowRight, Check, ChevronDown, LoaderCircle, Search} from 'lucide-react';
+import {ArrowRight, Camera, Check, ChevronDown, LoaderCircle, Search, X} from 'lucide-react';
 import {useApp} from './AppProvider';
+import {DocumentPanel, type DocumentValues} from './DocumentPanel';
 import {isLive, liveExamples, selectFixture} from '@/lib/api';
 import type {AgentRequest} from '@/lib/types';
 import {maskBl} from '@/lib/format';
 
 export function TopBar() {
-  const {request, lookup, loading, stage, data, error} = useApp();
+  const {request, lookup, loading, stage, data, error, docHints, setDocHints} = useApp();
   const [bl, setBl] = useState(request.bl_no);
   const [type, setType] = useState(request.bl_type);
   const [date, setDate] = useState(request.sale_due_date ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [choice, setChoice] = useState('');
+  const [docOpen, setDocOpen] = useState(false);
 
   useEffect(() => { setBl(request.bl_no); setType(request.bl_type); setDate(request.sale_due_date ?? ''); }, [request]);
 
@@ -47,6 +49,12 @@ export function TopBar() {
     setErrors({}); setBl(c.bl_no); setType(c.bl_type); setDate('');
   }
 
+  /** 서류 사진에서 확인한 값: B/L은 폼에, 항차·입항 예정일은 되묻기 화면용으로 둔다. 조회는 사용자가 누른다. */
+  function applyDocument(v: DocumentValues) {
+    setBl(v.bl_no); setErrors({}); setDocOpen(false);
+    setDocHints(v.voyage_no || v.forwarder_eta ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta} : null);
+  }
+
   return <section className="query-section" aria-label="화물 조회">
     <form className="query-form" onSubmit={submit} noValidate>
       <div className="form-field bl-field">
@@ -67,11 +75,20 @@ export function TopBar() {
     </form>
     <div className="query-foot">
       <p id="bl-help">{isLive ? 'B/L을 입력하세요. 판매 예정일을 넣으면 여유 일수까지 봅니다.' : 'B/L과 필요한 입고일을 입력하세요. 지금은 저장된 예시 화물로 체험할 수 있습니다.'}</p>
+      <div className="query-foot-actions">
+      <button type="button" className="doc-trigger" onClick={() => setDocOpen(o => !o)} aria-expanded={docOpen} disabled={loading}><Camera size={13}/>서류 사진으로 채우기</button>
       <label className="example-select">예시 화물 {isLive
         ? <select aria-label="예시 화물" value="" disabled={loading} onChange={e => chooseLive(e.target.value)}><option value="">선택하기</option>{liveExamples.map(c => <option value={c.id} key={c.id}>{c.label} · {c.bl_no}</option>)}</select>
         : <select aria-label="예시 화물" value="" disabled={loading} onChange={e => chooseDemo(e.target.value)}><option value="">선택하기</option>{data.demo.choices.slice(0, 3).map(c => <option value={c.id} key={c.id}>{c.label} · {maskBl(c.request.bl_no)}</option>)}</select>}
         <ChevronDown size={12}/></label>
+      </div>
     </div>
+    {docOpen && <DocumentPanel onApply={applyDocument} onClose={() => setDocOpen(false)} disabled={loading}/>}
+    {docHints && !docOpen && <p className="doc-hint"><Camera size={13}/>서류에서 확인한 값
+      {docHints.voyage_no && <> · 항차 <strong>{docHints.voyage_no}</strong></>}
+      {docHints.forwarder_eta && <> · 입항 예정 <strong>{docHints.forwarder_eta}</strong></>}
+      <span>배를 되물을 때 자동으로 채웁니다.</span>
+      <button type="button" onClick={() => setDocHints(null)} aria-label="서류 값 지우기"><X size={14}/></button></p>}
     {!isLive && process.env.NODE_ENV === 'development' && <div className="dev-switch"><span className="mono">DEV</span><label htmlFor="fixture">상태 미리보기</label><select id="fixture" value={choice} onChange={e => chooseDemo(e.target.value)} disabled={loading}><option value="">B/L에 따른 fixture</option>{data.demo.choices.map(c => <option key={c.id} value={c.id}>{c.id} · {c.label}</option>)}</select></div>}
     {/* 진행 단계는 화면 타이머다. 백엔드는 진행 이벤트를 보내지 않는다 (REST 응답 하나) */}
     {loading && <ol className="progress-steps" aria-label="조회 진행" aria-live="polite">{['식별', '위치', '판정'].map((s, i) => <li key={s} className={i === stage ? 'current' : i < stage ? 'complete' : ''}>{i < stage ? <Check size={14}/> : <span>{i + 1}</span>}{s}{i === stage && <small>{isLive ? '확인 중' : '저장 데이터 확인 중'}</small>}</li>)}</ol>}

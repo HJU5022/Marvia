@@ -6,7 +6,8 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, HistoryResponse } from './types';
+import type { AgentRequest, AgentResponse, DocumentResponse, HistoryResponse } from './types';
+import {accessToken} from './auth';
 import ok from './fixtures/ok.json';
 import partial from './fixtures/partial.json';
 import insufficient from './fixtures/insufficient.json';
@@ -19,6 +20,7 @@ import demo from './fixtures/demo.json';
 import metrics from './fixtures/metrics.json';
 import settings from './fixtures/settings.json';
 import geography from './fixtures/geography.json';
+import documentFixture from './fixtures/document.json';
 
 /** 끝 슬래시를 뗀 백엔드 주소. 비어 있으면 데모 모드다. */
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').trim().replace(/\/+$/, '');
@@ -27,6 +29,10 @@ export const isLive = API_BASE !== '';
 /** 판정은 LLM 호출과 재시도(validate 3단계, SDD 5.7)까지 기다려야 해서 넉넉히 잡는다. 이력은 DB 읽기뿐이다. */
 const AGENT_TIMEOUT_MS = 90_000;
 const HISTORY_TIMEOUT_MS = 15_000;
+/** 서류 사진은 OCR(1~2초, 누운 사진은 3번)과 소형 LLM 한 번이다 (routers/document.py). */
+const DOCUMENT_TIMEOUT_MS = 60_000;
+/** routers/document.py MAX_BYTES와 같다. 보내기 전에 막아 큰 파일을 올리느라 기다리지 않게 한다 */
+export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 /** 실제 모드의 예시 B/L. 백엔드 REPLAY_MODE 데모 3건과 같다 (README "키 없이 데모 3건", scripts/make_demo.py).
  * 판매 예정일은 make_demo를 돌린 날에 따라 달라지므로 넣지 않는다. 비워도 조회된다(09-29 선택 입력).
@@ -72,7 +78,10 @@ async function errorMessage(res: Response): Promise<string> {
     // 422는 detail이 [{loc, msg}] 목록이다. 첫 칸 이름만 보여 준다
     else if (Array.isArray(body?.detail) && body.detail[0]) detail = `입력값을 확인해 주세요 (${String(body.detail[0].loc?.at(-1) ?? '')}).`;
   } catch { /* 본문이 JSON이 아니면 상태 코드로만 안내한다 */ }
-  if (res.status === 401) return '로그인이 필요한 서버입니다. 이 화면에는 아직 로그인 기능이 없습니다.';
+  if (res.status === 401) return '로그인이 필요합니다. 로그인한 뒤 다시 시도해 주세요.';
+  if (res.status === 413 || detail === 'too_large') return '사진이 너무 큽니다. 10MB 이하로 올려 주세요.';
+  if (detail === 'invalid_image') return '사진을 읽지 못했습니다. JPG·PNG 사진인지 확인해 주세요.';
+  if (res.status === 503) return detail || '저장소에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
   if (res.status === 429) return '요청이 많습니다. 잠시 뒤 다시 시도해 주세요.';
   if (res.status === 400 || res.status === 422) return detail || '입력값을 확인해 주세요.';
   return detail || `서버가 요청을 처리하지 못했습니다 (HTTP ${res.status}). 잠시 뒤 다시 시도해 주세요.`;
@@ -83,7 +92,11 @@ async function call(path: string, init: RequestInit, timeoutMs: number): Promise
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${API_BASE}${path}`, {...init, signal: controller.signal});
+    // 로그인했으면 출입증을 붙인다 (backend/app/auth.py). 로그인이 꺼져 있으면 헤더 없이 간다
+    const token = await accessToken();
+    const headers = new Headers(init.headers);
+    if (token) headers.set('authorization', `Bearer ${token}`);
+    const res = await fetch(`${API_BASE}${path}`, {...init, headers, signal: controller.signal});
     if (!res.ok) throw new Error(await errorMessage(res));
     return res;
   } catch (e) {
@@ -129,6 +142,21 @@ async function liveHistory(): Promise<HistoryResponse> {
   }
 }
 
+/** 서류 사진 한 장을 보내 7칸을 받는다. 판정으로 바로 넘기지 않는다. 사용자가 확인한 값만 조회에 쓴다 (docs/specs/document-extract.md). */
+async function liveDocument(file: File): Promise<DocumentResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('session_id', currentSessionId());
+  const res = await call('/api/document', {method: 'POST', body: form}, DOCUMENT_TIMEOUT_MS);
+  return res.json();
+}
+
+/** 이력 삭제·탈퇴는 실패를 숨기지 않는다. 지운 줄 알았는데 남아 있으면 안 되므로 오류를 그대로 올린다 (routers/history.py). */
+async function liveDelete<T>(path: string): Promise<T> {
+  const res = await call(path, {method: 'DELETE'}, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
+
 /* ---------- 데모 모드 (fixture) ---------- */
 
 const responses: Record<string, AgentResponse> = {ok, partial, insufficient, failed, unsupported, watch, act} as Record<string, AgentResponse>;
@@ -167,6 +195,12 @@ async function demoHistory(sessionId: string): Promise<HistoryResponse> {
   return sessionId === demo.session_id ? structuredClone(history) as HistoryResponse : {items: [], available: true};
 }
 
+/** 데모: 사진 내용과 상관없이 저장된 가공 추출 결과를 돌려준다. 화면에 가공 예시임을 표시한다. */
+async function demoDocument(): Promise<DocumentResponse> {
+  await pause();
+  return structuredClone(documentFixture) as DocumentResponse;
+}
+
 /* ---------- 화면이 쓰는 함수 ---------- */
 
 /** POST /api/agent. 첫 조회, 되묻기 답, 후속 질문이 모두 이 하나로 간다 (SDD 4.3). */
@@ -177,6 +211,25 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
 /** GET /api/history. available:false(못 읽음)와 빈 목록을 구분한다. */
 export async function getHistory(sessionId: string = currentSessionId()): Promise<HistoryResponse> {
   return isLive ? liveHistory() : demoHistory(sessionId);
+}
+
+/** POST /api/document. 서류 사진에서 조회 값 후보를 읽는다. 크기는 보내기 전에 먼저 본다. */
+export async function readDocument(file: File): Promise<DocumentResponse> {
+  if (file.size > DOCUMENT_MAX_BYTES) throw new Error('사진이 너무 큽니다. 10MB 이하로 올려 주세요.');
+  if (file.type && !file.type.startsWith('image/')) throw new Error('사진 파일(JPG·PNG)만 올릴 수 있습니다.');
+  return isLive ? liveDocument(file) : demoDocument();
+}
+
+/** DELETE /api/history. 로그인한 사용자의 조회 기록을 전부 지운다. 데모 모드에는 지울 실제 기록이 없다. */
+export async function deleteMyHistory(): Promise<{deleted: number}> {
+  if (!isLive) throw new Error('데모 모드에는 지울 실제 기록이 없습니다.');
+  return liveDelete('/api/history');
+}
+
+/** DELETE /api/account. 기록과 계정을 지운다. 실패하면 503이고 다시 누르면 이어서 끝난다 (services/account.py). */
+export async function deleteMyAccount(): Promise<{deleted_records: number; account_deleted: boolean}> {
+  if (!isLive) throw new Error('데모 모드에는 탈퇴할 계정이 없습니다.');
+  return liveDelete('/api/account');
 }
 
 /** 화면 보조 자료(예시 입력, 지표, 설정). 백엔드 endpoint가 아니다. */

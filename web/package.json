@@ -14,24 +14,25 @@
     "node": ">=20.9.0"
   },
   "dependencies": {
-    "next": "16.3.6",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "@fontsource-variable/manrope": "^5.2.8",
+    "@fontsource-variable/noto-sans-kr": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@supabase/supabase-js": "^2.117.2",
     "leaflet": "1.9.4",
     "lucide-react": "^0.577.0",
-    "@fontsource-variable/noto-sans-kr": "^5.2.8",
-    "@fontsource-variable/manrope": "^5.2.8",
-    "@fontsource/ibm-plex-mono": "^5.2.7"
+    "next": "16.3.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
+    "@axe-core/playwright": "^4.11.1",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^22.19.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "@types/leaflet": "^1.9.21",
     "playwright": "^1.58.2",
-    "@axe-core/playwright": "^4.11.1",
-    "world-atlas": "2.0.2",
-    "topojson-client": "3.1.0"
+    "topojson-client": "3.1.0",
+    "typescript": "^5.9.3",
+    "world-atlas": "2.0.2"
   }
 }

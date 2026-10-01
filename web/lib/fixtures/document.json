@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "needs_review": true,
+  "fields": {
+    "bl_no": {"value": "MRVDEMO1101", "checks": []},
+    "vessel": {"value": "MARVIA DEMO STAR", "checks": []},
+    "voyage": {"value": "0042E", "checks": []},
+    "eta": {"value": "2026-10-21", "checks": []},
+    "pol": {"value": "SHANGHAI", "checks": []},
+    "pod": {"value": "BUSAN", "checks": []},
+    "item": {"value": null, "checks": ["missing"]}
+  },
+  "ocr": {"lines": 38, "rotation": 0, "runs": 1, "ocr_ms": 1240},
+  "trace_id": "demo-document-trace"
+}

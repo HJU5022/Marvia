@@ -61,3 +61,14 @@ export interface HistoryItem {
   model: string | null; trace_id: string | null; created_at: string;
 }
 export interface HistoryResponse { items: HistoryItem[]; available: boolean }
+
+/** POST /api/document 응답. backend/app/schemas/document.py 그대로 (C1~C8 밖의 새 계약, 09-29). */
+export type DocumentCheck = 'missing' | 'not_in_text' | 'format' | 'ambiguous';
+export interface DocumentField { value: string | null; checks: DocumentCheck[] }
+export interface DocumentResponse {
+  status: 'ok' | 'partial';
+  needs_review: boolean;
+  fields: Record<'bl_no' | 'vessel' | 'voyage' | 'eta' | 'pol' | 'pod' | 'item', DocumentField>;
+  ocr: { lines: number; rotation: 0 | 180 | 270; runs: number; ocr_ms: number };
+  trace_id: string;
+}
