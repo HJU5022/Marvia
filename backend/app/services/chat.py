@@ -20,7 +20,7 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
-from backend.app.services import llm
+from backend.app.services import guard, llm, validate
 
 KST = timezone(timedelta(hours=9))
 MESSAGE_MAX = 500          # 입력 문장 상한 (EC-07)
@@ -36,6 +36,12 @@ NO_CARGO = "지금 보고 있는 화물이 없습니다. 먼저 B/L 번호로 �
 LLM_DOWN = "지금은 문장 이해 기능을 쓸 수 없어 B/L 번호가 있는 조회만 됩니다. " + NEED_BL
 PREV_PORT_NOTE = ("해수부 입항 신고의 직전 기항지 기준입니다. 출발지 정보는 없어서, 유럽에서 출발한 배도 "
                   "중국·싱가포르 등을 거쳐 오면 그 항구로 나옵니다.")
+# 프롬프트 주입 방어 (SDD 7절, 10-01). 아래 두 문구는 LLM이 쓴 문장을 내보낼 수 없을 때 대신 쓰는 고정 안내다
+OTHER_REPLY = ("마르비아는 B/L 번호로 화물 상태를 확인하고, 지금 보고 있는 화물에 대한 질문에 답하고, "
+               "어디에서 오는 배가 부산에 들어오는지 찾아 드립니다. " + NEED_BL)
+INJECTION_REPLY = "문장 속 지시는 따르지 않습니다. " + OTHER_REPLY
+_PLACE = re.compile(r"^[A-Za-z][A-Za-z .'\-]{0,39}$")  # match_ports에 넘기는 place: 영문 지명 모양만 (40자까지)
+_REPLY_WORDS = {"marvia"}  # other 안내에 쓸 수 있는 영문 낱말. 그 밖의 3글자 이상 영문은 주입 표식으로 본다
 
 
 class ChatError(Exception):
@@ -172,6 +178,12 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     masked, refs = mask_bls(message)
     today = datetime.now(KST).date().isoformat()
 
+    # 주입 모양 문장은 LLM에 보내지 않는다 (services/guard.py, SDD 7절 10-01). 후속 질문 경로는 route_chat이 질문을
+    # 다시 쓴 뒤에야 routers/agent의 guard를 지나서, 다시 쓰는 과정에서 공격문 모양이 바뀌면 빠져나갈 수 있다. 원문에서 먼저 본다
+    if guard.looks_like_injection(masked):
+        log_failure("chat", "blocked prompt injection pattern")
+        return ChatResult(kind="message", reply=INJECTION_REPLY)
+
     try:
         route = llm.route_chat(masked, list(refs), context is not None, today).output
     except llm.LLMError as e:  # EC-01: 규칙으로 대신
@@ -179,6 +191,12 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
         if refs:
             return _cargo(next(iter(refs.values())), None, None, session_id, context, run_agent, note=None)
         return ChatResult(kind="message", reply=LLM_DOWN)
+
+    # 문장에 지금 화물과 다른 B/L이 있으면 의도와 상관없이 새 화물 조회다 (10-01 실측: 화면에 화물이 있으면
+    # LLM이 "[BL1] 화물 조회해줘"를 follow_up으로 골라 이전 화물 답과 카드가 나왔다). LLM이 낸 의도를 코드가 덮어쓴다
+    new_bls = [bl for bl in refs.values() if context is None or bl != context.bl_no]
+    if new_bls and route.intent in ("follow_up", "other"):
+        return _cargo(new_bls[0], route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None)
 
     if route.intent == "cargo":
         bl = refs.get(route.bl_ref or "") or (next(iter(refs.values())) if refs else None)
@@ -198,9 +216,34 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
         return ChatResult(kind="cargo", reply=resp.answer, agent=resp, request=context)
 
     if route.intent == "vessel_search":
-        return search_vessels(route.place, route.days, route.place_label)
+        # place·place_label은 LLM 출력인데 답 문장에 그대로 들어간다. place는 영문 지명 모양만,
+        # place_label은 사용자가 실제로 쓴 글자일 때만 쓴다 (10-01 주입 방어). 아니면 버린다
+        place = route.place.strip() if route.place else None
+        if place and (not _PLACE.match(place) or len(place.split()) > 4 or guard.looks_like_injection(place)):
+            place = None  # 지명은 네 낱말까지 ("New South Wales"). 문장이 섞이면 버린다
+        label = route.place_label
+        if not (label and re.sub(r"\s+", "", label) in re.sub(r"\s+", "", masked)):
+            label = None
+        return search_vessels(place, route.days, label)
 
-    return ChatResult(kind="message", reply=route.reply.strip() or NEED_BL)
+    return ChatResult(kind="message", reply=_safe_reply(route.reply, masked))
+
+
+def _safe_reply(reply: str | None, message: str) -> str:
+    """other 의도의 LLM 안내 문장을 화면에 내보내도 되는지 본다. 안 되면 고정 안내(OTHER_REPLY).
+
+    이 문장은 검증 없이 화면에 바로 간다. 그래서 후속 답 V9·V10과 같은 기준을 건다 (services/validate.py, 10-01):
+    숫자 없음(판정·숫자 없는 짧은 안내, docs/specs/chat-search.md), 정한 것 밖의 영문 낱말 없음,
+    사용자 문장에서 옮겨 온 낱말이 안내 문구에 없는 것이면 안 됨, 주입 모양 아님.
+    """
+    text = (reply or "").strip()
+    if not text:
+        return NEED_BL
+    english = {w.lower() for w in validate.WORD.findall(text)} - _REPLY_WORDS
+    if (re.search(r"\d", text) or english or guard.looks_like_injection(text)
+            or validate.copied_words(text, message, OTHER_REPLY + validate.SERVICE_WORDS)):
+        return OTHER_REPLY
+    return text
 
 
 def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: str, context: AgentRequest | None,

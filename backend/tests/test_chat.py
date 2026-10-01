@@ -145,3 +145,16 @@ def test_port_match_is_cached_per_place_and_list(monkeypatch):
     assert svc._match_ports_cached(" china ", ["KOBE", "SHANGHAI"]) == ["SHANGHAI"]  # 같은 지역은 다시 안 부른다
     svc._match_ports_cached("China", ["KOBE", "SHANGHAI", "NINGBO"])  # 항구 목록이 바뀌면 다시 고른다
     assert calls == ["China", "China"]
+
+
+def test_new_bl_overrides_follow_up(monkeypatch):
+    """화면에 화물이 있어도 다른 B/L이 든 문장은 새 조회다. LLM이 follow_up을 골라도 코드가 덮어쓴다 (10-01)."""
+    _route(monkeypatch, intent="follow_up", bl_ref="[BL1]", question="조회해줘")
+    agent, run = _agent_calls()
+    ctx = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s")
+    r = svc.handle("ZZZZ99998888 화물 조회해줘", "s1", ctx, run)
+    assert r.kind == "cargo" and agent[0].bl_no == "ZZZZ99998888" and agent[0].follow_up_question is None
+    # 같은 B/L을 다시 말하면 후속 질문 그대로
+    agent.clear()
+    svc.handle("TESTBL01 언제 와?", "s1", ctx, run)
+    assert agent[0].bl_no == "TESTBL01" and agent[0].follow_up_question == "조회해줘"
