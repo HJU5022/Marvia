@@ -123,3 +123,12 @@ def test_operator_sees_only_masked_profile(db, monkeypatch):
     assert second["name_masked"] == "이**" and second["phone_masked"] is None and second["profile_complete"] is False
     for raw in ["김승욱", "01012345678", "010-1234-5678", "테헤란로", "Google Name", "kim@example.com"]:
         assert raw not in r.text
+
+
+@pytest.mark.parametrize("method,path", [("PUT", "/api/profile"), ("DELETE", "/api/history"), ("POST", "/api/admin/operators")])
+def test_browser_preflight_allows_methods_the_screen_uses(method, path):
+    """화면이 쓰는 메서드가 CORS에서 빠지면 브라우저는 사전 요청(OPTIONS)에서 막고 '연결 실패'로 보인다 (10-01 PUT 누락)."""
+    with TestClient(app) as client:
+        r = client.options(path, headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": method,
+                                          "Access-Control-Request-Headers": "authorization,content-type"})
+    assert r.status_code == 200 and method in r.headers["access-control-allow-methods"]

@@ -59,7 +59,8 @@ app.add_middleware(
     CORSMiddleware,
     # 기본값은 로컬 프론트만. 배포에서는 .env의 ALLOWED_ORIGINS에 Vercel 도메인을 넣는다
     allow_origins=[o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
-    allow_methods=["GET", "POST", "DELETE"],  # DELETE: 내 기록 삭제·회원 탈퇴 (09-30). 빠지면 브라우저가 막는다
+    # DELETE: 내 기록 삭제·회원 탈퇴 (09-30), PUT: 회원 정보 저장 (10-01, user-profile). 빠지면 브라우저가 사전 요청에서 막는다
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
