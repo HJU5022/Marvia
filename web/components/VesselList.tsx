@@ -25,21 +25,25 @@ export function VesselList({data}: {data: ChatResponse}) {
   const [page, setPage] = useState(1);
   // 펼친 배 (호출부호·선명). 한 번에 하나만 연다
   const [open, setOpen] = useState<string | null>(null);
+  // 기본은 수입 화물선만. 서버가 배마다 is_cargo를 붙여 보낸다(기준 목록은 skills/port-busan/cargo-vessels.md)
+  const [allKinds, setAllKinds] = useState(false);
   // 기본은 서버가 준 순서(부산 입항 예정 빠른 순)
   const [sort, setSort] = useState<{key: keyof VesselItem; dir: 'asc' | 'desc'} | null>(null);
   // 새 검색 결과가 오면 첫 페이지, 정렬 처음으로
-  useEffect(() => { setPage(1); setSort(null); setOpen(null); }, [data]);
+  useEffect(() => { setPage(1); setSort(null); setOpen(null); setAllKinds(false); }, [data]);
 
   const sorted = useMemo(() => {
-    if (!sort) return data.vessels;
+    const base = allKinds ? data.vessels : data.vessels.filter(v => v.is_cargo !== false);
+    if (!sort) return base;
     const sign = sort.dir === 'asc' ? 1 : -1;
-    return [...data.vessels].sort((a, b) => {
+    return [...base].sort((a, b) => {
       const x = a[sort.key], y = b[sort.key];
       if (x == null || x === '') return y == null || y === '' ? 0 : 1;  // 빈 값은 방향과 상관없이 뒤로
       if (y == null || y === '') return -1;
       return sign * String(x).localeCompare(String(y), 'ko', {numeric: true});
     });
-  }, [data.vessels, sort]);
+  }, [data.vessels, sort, allKinds]);
+  const cargoCount = data.vessels.filter(v => v.is_cargo !== false).length;
   function toggle(key: keyof VesselItem) {
     setSort(s => s?.key === key ? (s.dir === 'asc' ? {key, dir: 'desc'} : null) : {key, dir: 'asc'});
     setPage(1);
@@ -56,6 +60,7 @@ export function VesselList({data}: {data: ChatResponse}) {
   return <section className="history-panel vessel-results" aria-label="입항 예정 선박">
     <div className="table-toolbar">
       <SectionTitle label={data.place ? `${data.place}에서 들른 배` : '부산 입항 예정 배'} kicker="ARRIVALS TO BUSAN" side={<span className="subtle-badge">{total}척 · {data.days ?? 7}일</span>}/>
+      <label className="kind-toggle"><input type="checkbox" checked={allKinds} onChange={e => { setAllKinds(e.target.checked); setPage(1); setOpen(null); }}/>모든 선종 보기 <span className="muted">(수입 화물선 {cargoCount}척 · 전체 {data.vessels.length}척)</span></label>
       {data.ports.length > 0 && <div className="port-chips">{data.ports.map(p => <span key={p} className="role-chip"><Anchor size={11}/>{p}</span>)}</div>}
     </div>
     {total ? <>
@@ -88,7 +93,7 @@ export function VesselList({data}: {data: ChatResponse}) {
           <button type="button" className="icon-button" onClick={() => setPage(current + 1)} disabled={current >= pages} aria-label="다음 페이지"><ChevronRight size={15}/></button>
         </div>
       </nav>
-    </> : <div className="empty-state"><Ship/><h2>조건에 맞는 입항 예정 선박이 없습니다.</h2><p>{data.reply}</p></div>}
+    </> : <div className="empty-state"><Ship/><h2>{!allKinds && data.vessels.length ? '수입 화물선은 없습니다.' : '조건에 맞는 입항 예정 선박이 없습니다.'}</h2><p>{!allKinds && data.vessels.length ? `모든 선종 보기를 켜면 ${data.vessels.length}척이 보입니다.` : data.reply}</p></div>}
     <div className="table-bottom"><span>출처: 해양수산부 선박운항정보(입항 신고)</span><span>직전 기항지 기준이며 처음 출발한 항구·시각은 신고에 없습니다. 내 화물은 B/L 번호로 물어보세요.</span></div>
   </section>;
 }

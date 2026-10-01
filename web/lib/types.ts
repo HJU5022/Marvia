@@ -105,6 +105,8 @@ export interface VesselItem {
   expected_arrival: string | null; facility: string | null;
   /** 부산 출항 예정. 처음 출발한 항구의 출발 시각은 해수부 신고에 없다 */
   planned_departure?: string | null;
+  /** 수입 화물선(컨테이너·일반화물·냉동냉장, 양하·양적하). 화면 기본값은 이 배들만 (skills/port-busan/cargo-vessels.md) */
+  is_cargo?: boolean;
 }
 export interface ChatResponse {
   kind: 'cargo' | 'vessels' | 'message'; reply: string;

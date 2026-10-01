@@ -117,7 +117,8 @@
         "purpose": "양하",
         "expected_arrival": "2026-10-21T06:00:00+09:00",
         "facility": "신선대부두",
-        "planned_departure": "2026-10-22T02:00:00+09:00"
+        "planned_departure": "2026-10-22T02:00:00+09:00",
+        "is_cargo": true
       },
       {
         "ship_name": "MARVIA DEMO WAVE",
@@ -129,7 +130,8 @@
         "purpose": "양하",
         "expected_arrival": "2026-10-22T14:00:00+09:00",
         "facility": "감만부두",
-        "planned_departure": "2026-10-23T09:00:00+09:00"
+        "planned_departure": "2026-10-23T09:00:00+09:00",
+        "is_cargo": true
       }
     ]
   }
