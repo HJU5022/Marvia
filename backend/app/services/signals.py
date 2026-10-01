@@ -31,12 +31,8 @@ EARTH_RADIUS_NM = 3440.065
 # 항해상태(navistat) 코드. 1=정박, 5=계류, 0=항해 중(엔진 사용)
 NAVSTAT_MOORED = (1, 5)
 NAVSTAT_UNDERWAY = 0
-MOORED_SPEED_KN = 2.0  # 정박·계류라면서 이보다 빠르면 값이 안 맞는다
-UNDERWAY_SPEED_KN = 0.3  # 항해 중이라면서 이보다 느리면 값이 안 맞는다
-
-# 통관 단계가 검사·보류로 잡혔는지 본다. 단계 코드 목록은 C-2에서 확정되므로
-# 지금은 단계명에 이 낱말이 있는지로 가린다.
-CUSTOMS_HOLD_WORDS = ("검사", "보류", "정지", "반송", "폐기")
+# 항해상태 불일치 속도 기준(navstat_moored_max_kn, navstat_underway_min_kn)과
+# 통관 보류 낱말(customs_hold_words)은 rules.md에서 읽는다 (10-01: 판정 기준은 rules.md 한 곳)
 
 
 def _great_circle_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -269,26 +265,28 @@ def _dest_changed(position: dict) -> Signal:
 
 
 def _navstat_mismatch(position: dict | None) -> Signal:
-    threshold = f"정박·계류면 {MOORED_SPEED_KN}노트 이하, 항해 중이면 {UNDERWAY_SPEED_KN}노트 이상"
+    moored_max, underway_min = rule("navstat_moored_max_kn"), rule("navstat_underway_min_kn")
+    threshold = f"정박·계류면 {moored_max}노트 이하, 항해 중이면 {underway_min}노트 이상"
     if position is None or position.get("navistat") is None or position.get("sog") is None:
         return _signal("navstat_mismatch", "unknown", "항해상태·속도 없음", threshold, "shipfinder")
 
     navistat, sog = position["navistat"], position["sog"]
     value = f"상태 {navistat}, {sog}노트"
-    if navistat in NAVSTAT_MOORED and sog > MOORED_SPEED_KN:
+    if navistat in NAVSTAT_MOORED and sog > moored_max:
         return _signal("navstat_mismatch", "triggered", f"{value} (정박인데 움직임)", threshold, "shipfinder")
-    if navistat == NAVSTAT_UNDERWAY and sog < UNDERWAY_SPEED_KN:
+    if navistat == NAVSTAT_UNDERWAY and sog < underway_min:
         return _signal("navstat_mismatch", "triggered", f"{value} (항해 중인데 멈춤)", threshold, "shipfinder")
     return _signal("navstat_mismatch", "clear", value, threshold, "shipfinder")
 
 
 def _customs_hold(customs: CustomsRecord | None) -> Signal:
-    threshold = "·".join(CUSTOMS_HOLD_WORDS)
+    hold_words = rule("customs_hold_words")
+    threshold = "·".join(hold_words)
     if customs is None or not customs.stage_name:
         return _signal("customs_hold", "unknown", "통관 정보 없음", threshold, "unipass")
 
     stage = customs.stage_name
-    if any(word in stage for word in CUSTOMS_HOLD_WORDS):
+    if any(word in stage for word in hold_words):
         return _signal("customs_hold", "triggered", stage, threshold, "unipass")
     return _signal("customs_hold", "clear", stage, threshold, "unipass")
 
@@ -297,10 +295,10 @@ def needs_broker(stage_name: str) -> bool:
     """관세사가 봐야 하는 단계인가. 전에는 LLM이 정했고 프롬프트와 Skill에 조건이 따로 적혀 어긋났다.
     결정은 코드 한 곳이 한다 (10-01 강사 피드백). LLM은 이 값을 입력으로 받아 설명만 한다.
 
-    true: 검사·보류·정지·반송·폐기가 들어간 단계(customs_hold와 같은 낱말), 또는 customs-stages Skill 표에 없는 단계
+    true: rules.md customs_hold_words(검사·보류 등) 낱말이 들어간 단계(customs_hold 신호와 같은 기준), 또는 customs-stages Skill 표에 없는 단계
     false: 표에 있는 정상 단계. 표의 "사용자가 할 일" 칸에 관세사가 나와도 정상 단계면 false다
     """
-    if any(word in stage_name for word in CUSTOMS_HOLD_WORDS):
+    if any(word in stage_name for word in rule("customs_hold_words")):
         return True
     return stage_key(stage_name) not in customs_stage_names()
 
