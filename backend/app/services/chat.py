@@ -12,6 +12,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
@@ -21,8 +22,17 @@ from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import guard, llm, validate
+from backend.app.services.rules import load_rules
 
 KST = timezone(timedelta(hours=9))
+# 수입 화물선 기준(선종·입항 목적) 원본. 코드에 목록을 적지 않는다 (skills/port-busan/cargo-vessels.md, 10-01)
+CARGO_RULES_PATH = Path(__file__).resolve().parents[3] / "skills" / "port-busan" / "cargo-vessels.md"
+
+
+def is_cargo_ship(ship_kind: str | None, purpose: str | None) -> bool:
+    """소량 수입 화물을 싣고 내리는 배인가. 선종과 입항 목적이 둘 다 목록에 있어야 한다."""
+    rules = load_rules(CARGO_RULES_PATH)
+    return ship_kind in rules["cargo_ship_kinds"] and purpose in rules["cargo_purposes"]
 MESSAGE_MAX = 500          # 입력 문장 상한 (EC-07)
 DAYS_DEFAULT, DAYS_MAX = 7, 14  # 입항 예정 검색 기간. 해수부 한 번 조회가 20쪽까지라 길게 잡지 않는다
 DEFAULT_BL_TYPE = "HOUSE"  # 구분을 말하지 않으면 House로 조회하고 답에 알린다 (소량 수입자는 보통 House B/L)
@@ -158,13 +168,16 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
         "expected_arrival": p.expected_arrival.isoformat() if p.expected_arrival else None, "facility": p.facility,
         # 부산을 떠나는 예정 시각 (입항 신고의 출항 detail). 처음 출발한 항구의 출발 시각은 신고에 없다
         "planned_departure": p.planned_departure.isoformat() if p.planned_departure else None,
+        "is_cargo": is_cargo_ship(p.ship_kind, p.purpose),  # 화면 기본값은 이 배들만 (모든 선종 보기로 전체)
     } for p in chosen]
+    cargo = sum(v["is_cargo"] for v in vessels)
     if place and not vessels:
         reply = f"앞으로 {days}일 동안 {name} 항구를 직전에 들른 부산 입항 예정 선박은 없습니다. {PREV_PORT_NOTE}"
     elif place:
-        reply = f"앞으로 {days}일 동안 {name}({', '.join(ports)})를 직전에 들른 부산 입항 예정 선박 {len(vessels)}척입니다. {PREV_PORT_NOTE}"
+        reply = (f"앞으로 {days}일 동안 {name}({', '.join(ports)})를 직전에 들른 부산 입항 예정 선박 {len(vessels)}척 중 "
+                 f"수입 화물선(컨테이너·일반화물·냉동냉장, 양하)은 {cargo}척입니다. {PREV_PORT_NOTE}")
     else:
-        reply = f"앞으로 {days}일 동안 부산 입항 예정 선박 {len(vessels)}척입니다. {PREV_PORT_NOTE}"
+        reply = f"앞으로 {days}일 동안 부산 입항 예정 선박 {len(vessels)}척 중 수입 화물선은 {cargo}척입니다. {PREV_PORT_NOTE}"
     return ChatResult(kind="vessels", reply=reply, vessels=vessels, place=name, ports=ports, days=days)
 
 

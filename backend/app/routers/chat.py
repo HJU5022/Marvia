@@ -44,6 +44,7 @@ class VesselItem(BaseModel):
     purpose: str | None
     expected_arrival: str | None
     planned_departure: str | None = None  # 부산 출항 예정
+    is_cargo: bool = True  # 수입 화물선(skills/port-busan/cargo-vessels.md). 화면 기본값은 이 배들만
     facility: str | None
 
 

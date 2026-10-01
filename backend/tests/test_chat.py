@@ -16,7 +16,7 @@ from backend.app.services import llm
 
 class _Plan:
     def __init__(self, name, port, day):
-        self.ship_name, self.call_sign, self.nationality, self.ship_kind = name, "CS" + name[-1], "KR", "컨테이너선"
+        self.ship_name, self.call_sign, self.nationality, self.ship_kind = name, "CS" + name[-1], "KR", "풀컨테이너선"
         self.previous_port, self.next_port, self.purpose, self.facility = port, None, "양하", "신선대"
         self.expected_arrival = datetime(2026, 10, day, tzinfo=timezone.utc)
         self.planned_departure = datetime(2026, 10, day + 1, tzinfo=timezone.utc)
@@ -158,3 +158,11 @@ def test_new_bl_overrides_follow_up(monkeypatch):
     agent.clear()
     svc.handle("TESTBL01 언제 와?", "s1", ctx, run)
     assert agent[0].bl_no == "TESTBL01" and agent[0].follow_up_question == "조회해줘"
+
+
+
+def test_cargo_ship_flag_follows_skill_list():
+    """선종·목적 목록은 skills/port-busan/cargo-vessels.md에서 읽는다 (10-01)."""
+    assert svc.is_cargo_ship("풀컨테이너선", "양적하") and svc.is_cargo_ship("냉동.냉장선", "양하")
+    assert not svc.is_cargo_ship("원양 어선", "양하") and not svc.is_cargo_ship("풀컨테이너선", "급유")
+    assert not svc.is_cargo_ship(None, None)
