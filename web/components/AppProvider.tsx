@@ -22,7 +22,9 @@ interface AppState {
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
   /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다 */
   ask: (message: string) => Promise<boolean>;
-  thread: ChatTurn[]; vessels: ChatResponse | null; view: 'cargo' | 'vessels';
+  thread: ChatTurn[]; vessels: ChatResponse | null;
+  /** 아래 결과 칸에 무엇을 보여 줄지. none이면 안내·실패라 지난 결과를 숨긴다 (지난 화물은 후속 질문용으로 기억만) */
+  view: 'cargo' | 'vessels' | 'none';
   /** 로그인 기능이 켜졌는지, 세션 확인이 끝났는지, 누가 로그인했는지 */
   authEnabled: boolean; authReady: boolean; user: AuthUser | null;
   /** 운영자면 관리 탭을 보여 준다. 서버(GET /api/me)가 정한 값이고, 관리 API는 서버가 다시 확인한다 */
@@ -48,7 +50,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   const [isOperator,setIsOperator] = useState(false);
   const [thread,setThread] = useState<ChatTurn[]>([]);
   const [vessels,setVessels] = useState<ChatResponse|null>(null);
-  const [view,setView] = useState<'cargo'|'vessels'>('cargo');
+  const [view,setView] = useState<'cargo'|'vessels'|'none'>('cargo');
   const [profileComplete,setProfileComplete] = useState(true);
   const [suspended,setSuspended] = useState(false);
   const [meReady,setMeReady] = useState(!authEnabled);
@@ -77,7 +79,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     inflight.current = true; setLoading(true); setError(''); setStage(0); setReplaying(false);
     // 화면 타이머다. 백엔드는 진행 이벤트를 보내지 않는다
     const a = setTimeout(()=>setStage(1),350); const b = setTimeout(()=>setStage(2),700);
-    try { const response = await getAgentResponse(req); setResult(response); setRequest(req); return true; }
+    try { const response = await getAgentResponse(req); setResult(response); setRequest(req); setView('cargo'); return true; }
     catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했습니다. 다시 시도해 주세요.'); return false; }
     finally {clearTimeout(a);clearTimeout(b);setLoading(false);inflight.current=false;}
   }
@@ -92,10 +94,12 @@ export function AppProvider({children}:{children:ReactNode}) {
       setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind}]);
       if (res.kind === 'cargo' && res.agent && res.request) { setResult(res.agent); setRequest(res.request); setView('cargo'); }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
+      // 안내 문장(B/L 없음 등)이면 아래의 지난 결과를 숨긴다. 새 답과 지난 카드가 섞여 보이지 않게
+      if (res.kind === 'message') setView('none');
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : '답하지 못했습니다. 다시 시도해 주세요.';
-      setError(msg); setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
+      setError(msg); setView('none'); setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
     } finally { clearTimeout(a); clearTimeout(b); setLoading(false); inflight.current = false; }
   }
   function replay(id: string) {
