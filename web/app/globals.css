@@ -62,3 +62,43 @@
 .document-result .help-text{font-size:10px;color:var(--muted);margin-top:12px}
 @media(max-width:900px){.document-fields{grid-template-columns:1fr}}
 @media(max-width:700px){.document-panel{margin:0 -16px;padding:18px 16px}.document-field{grid-template-columns:1fr auto}.document-field label{grid-column:1/-1}.query-foot-actions{flex-wrap:wrap;gap:8px}}
+
+/* Sign in (G3): the same rail colour and editorial type as the cargo desk, one action only. */
+.login-page{display:grid;place-items:center;min-height:calc(100vh - 160px);padding:40px 16px}
+.login-card{width:min(460px,100%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:38px 36px 30px;box-shadow:var(--shadow)}
+.login-brand{display:flex;align-items:center;gap:8px;font-family:'Manrope Variable',sans-serif;font-size:26px;font-weight:720;letter-spacing:-1.2px;color:var(--rail);margin-bottom:26px}
+.login-brand .brand-symbol{color:var(--accent-dark)}
+.login-brand .brand-dot{color:var(--accent-dark)}
+.login-card h1{font-size:25px;line-height:1.35;margin:4px 0 12px}
+.login-card>p{font-size:12px;color:var(--muted);line-height:1.9}
+.login-google{width:100%;margin:24px 0 8px;min-height:48px;font-size:13px}
+.login-google svg{background:#fff;border-radius:50%;padding:1px}
+.login-points{list-style:none;padding:18px 0 0;margin:14px 0 18px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:10px}
+.login-points li{display:flex;gap:9px;align-items:flex-start;font-size:11px;color:var(--muted);line-height:1.7}
+.login-points svg{flex:none;margin-top:3px;color:var(--accent-dark)}
+.user-menu{position:relative}
+button.avatar{cursor:pointer;font-family:inherit;color:var(--ink)}
+button.avatar:hover{background:var(--accent)}
+.user-popover{position:absolute;right:0;top:38px;z-index:20;width:230px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 10px 30px #203b3318;padding:12px;display:flex;flex-direction:column}
+.user-popover .user-name{font-weight:650;font-size:12px}
+.user-popover .user-email{font-size:10px;color:var(--muted);font-family:var(--mono);overflow-wrap:anywhere;padding-bottom:10px;margin-bottom:6px;border-bottom:1px solid var(--border)}
+.user-popover a,.user-popover button{display:flex;align-items:center;gap:7px;padding:8px 6px;border-radius:5px;font-size:11px;border:0;background:transparent;text-align:left;cursor:pointer;color:var(--ink)}
+.user-popover a:hover,.user-popover button:hover{background:var(--soft)}
+@media(max-width:700px){.login-card{padding:28px 20px 22px}.login-card h1{font-size:21px}}
+
+/* Account and records: destructive actions stay quiet until a second, explicit confirmation. */
+.account-panel{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:25px 27px;margin-top:25px}
+.account-off{font-size:11px;padding:0}
+.account-who{font-size:11px;color:var(--muted);margin-bottom:6px}
+.account-who strong{font-family:var(--mono);font-weight:500;color:var(--ink);margin-left:6px}
+.danger-row{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:18px 0;border-top:1px solid var(--border)}
+.danger-row h3{display:flex;align-items:center;gap:7px;font-size:13px}
+.danger-row p{font-size:11px;color:var(--muted);margin-top:4px}
+.danger-actions{display:flex;gap:8px;flex:none}
+.button.danger{background:var(--danger);color:#fff}
+.button.danger:hover:not(:disabled){filter:brightness(.92)}
+.button.danger-outline{color:var(--danger);border-color:#e6c4ba}
+.button:disabled{opacity:.55;cursor:not-allowed}
+.confirm-field{margin-top:12px;max-width:260px}
+.account-message{margin-top:14px;padding:12px;border-radius:5px;background:var(--success-bg);color:var(--success);font-size:12px}
+@media(max-width:700px){.account-panel{padding:20px 18px}.danger-row{flex-direction:column}.danger-actions{width:100%}}

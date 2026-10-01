@@ -86,7 +86,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
 - 예시 화물 메뉴는 백엔드 데모 B/L(TESTBL01 정상, TESTBL04 되묻기, TESTBL26 판정 보류)을 폼에 채웁니다. 판매 예정일은 비우거나 make_demo가 알려 준 날을 넣습니다.
 - 백엔드 CORS `ALLOWED_ORIGINS`에 화면 주소(기본 http://localhost:3000)가 있어야 합니다.
 - 세션 ID는 브라우저마다 만들어 localStorage에 둡니다. 이력이 이 값으로 묶입니다.
-- 백엔드가 로그인(SUPABASE_URL)을 켜 두면 401이 납니다. 화면에는 아직 로그인 기능이 없어 안내 문구만 보여 줍니다.
+- 로그인은 아래 "로그인 (G3)" 절을 봅니다.
 - 이력 행의 상세 다시 보기는 실제 모드에서 동작하지 않습니다. GET /api/history는 요약만 주고, 새로 조회해서 과거 결과인 척하지 않습니다.
 
 | 함수 | 실제 endpoint | 형식 |
@@ -99,6 +99,20 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
 - `available: false`는 이력이 빈 경우와 다릅니다. 이력을 못 읽으면 화면을 죽이지 않고 이 값으로 표시합니다.
 - `getPresentationData`, `selectFixture`, `getReplaySnapshot`, `getGeography`는 로컬 UI/데모 보조 함수입니다. 백엔드 endpoint가 아닙니다.
 - 서버 API 키를 브라우저 코드나 `NEXT_PUBLIC_*` 값에 넣지 마세요.
+
+## 로그인 (G3)
+
+백엔드가 `SUPABASE_URL`로 로그인을 켜면 화면도 아래 두 값을 넣어 켭니다. 둘 다 브라우저에 보여도 되는 값입니다. secret 키는 절대 넣지 않습니다.
+
+```bash
+NEXT_PUBLIC_API_BASE=http://localhost:8000 NEXT_PUBLIC_SUPABASE_URL=https://<프로젝트>.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable 키> npm run dev
+```
+
+- 값이 없으면 로그인이 꺼지고 세션 ID로만 돕니다. 채점용 compose(로그인 꺼짐)와 같습니다.
+- 켜져 있으면 로그인 전에는 조회 화면 대신 로그인 화면이 나옵니다. 소개 페이지는 예외입니다.
+- 요청마다 `Authorization: Bearer <JWT>`를 붙입니다. 백엔드는 ES256 공개키로 확인합니다 (backend/app/auth.py).
+- Supabase 대시보드에서 Google 공급자를 켜고, Redirect URL에 화면 주소(예: http://localhost:3000/**)를 넣어야 돌아올 수 있습니다.
+- 설정 화면 맨 아래 "계정과 기록"에서 내 기록 삭제(DELETE /api/history)와 회원 탈퇴(DELETE /api/account)를 합니다.
 
 ## fixture 수정
 
