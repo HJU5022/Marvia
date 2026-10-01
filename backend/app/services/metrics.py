@@ -5,7 +5,7 @@ evals/run_eval.py가 실행마다 evals/results/<config>_<한국시각>.json을 
 - KPI·게이트는 서비스에 실제로 쓰는 구성 b 기준. b가 없으면 값은 null(화면은 "미측정")
 - 실행 기록은 파일 전부를 최신순으로 (실험 이력)
 숫자를 만들거나 고치지 않는다. 실행하지 않은 값은 null 그대로다 (CLAUDE.md "실행하지 않은 결과 숫자를 적지 않는다").
-결과 폴더는 gitignore라 배포 서버에 파일이 없으면 전부 null이다.
+보고에 쓴 실행 결과는 레포에 커밋한다(10-01 재감사). 폴더가 비어 있으면 전부 null이다. 주입 측정(injection/ 하위 폴더)은 읽지 않는다.
 """
 from __future__ import annotations
 
