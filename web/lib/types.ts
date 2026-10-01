@@ -111,3 +111,15 @@ export interface ChatResponse {
   agent: AgentResponse | null; request: AgentRequest | null;
   vessels: VesselItem[]; place: string | null; ports: string[]; days: number | null;
 }
+
+/** GET /api/vessels/detail (services/vessel_detail.py). 도구가 실패한 칸은 null, 이유는 errors */
+export interface VesselDetailResponse {
+  call_sign: string | null; ship_name: string | null;
+  vessel: {mmsi: number; name: string; flag: string | null; call_sign: string | null; ship_type: number | null} | null;
+  position: {lat: number; lng: number; sog: number | null; cog: number | null; navistat: number | null; dest: string | null;
+    ais_eta: string | null; last_time: string | null; freshness: Freshness} | null;
+  distance: {distance_nm: number; calc_hours_at_sog: number | null; calc_eta?: string | null} | null;
+  schedule: {planned_arrival: string | null; actual_arrival: string | null; facility: string | null;
+    control_events: {kind: string; at: string | null; facility: string | null}[]} | null;
+  errors: {source: string; code: string | null; message: string | null}[];
+}

@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
 import {accessToken} from './auth';
 import ok from './fixtures/ok.json';
 import partial from './fixtures/partial.json';
@@ -264,6 +264,19 @@ export async function sendChat(message: string, context: AgentRequest | null): P
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({message, session_id: currentSessionId(), context: ctx})}, AGENT_TIMEOUT_MS);
   return res.json();
+}
+
+/** GET /api/vessels/detail. 선박 표에서 선명을 눌렀을 때. 데모 모드는 가공 예시 */
+export async function getVesselDetail(callSign: string | null, shipName: string): Promise<VesselDetailResponse> {
+  if (!isLive) {
+    await pause();
+    return {call_sign: callSign, ship_name: shipName, vessel: {mmsi: 990000001, name: shipName, flag: 'Panama', call_sign: callSign, ship_type: 70},
+      position: {lat: 33.2, lng: 127.6, sog: 13.5, cog: 82, navistat: 0, dest: 'KRPUS', ais_eta: null, last_time: new Date().toISOString(), freshness: 'fresh'},
+      distance: {distance_nm: 140, calc_hours_at_sog: 10.4, calc_eta: null}, schedule: null,
+      errors: [{source: 'mof', code: 'demo', message: '가공 예시라 해수부 일정은 없습니다'}]};
+  }
+  const q = new URLSearchParams({ship_name: shipName, ...(callSign ? {call_sign: callSign} : {})});
+  return (await call(`/api/vessels/detail?${q}`, {}, AGENT_TIMEOUT_MS)).json();
 }
 
 /** GET /api/history. available:false(못 읽음)와 빈 목록을 구분한다. */

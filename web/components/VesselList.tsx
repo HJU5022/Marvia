@@ -3,9 +3,10 @@
  * 출발지가 아니라는 점을 표 위에 밝힌다 (EC-04). 판정은 하지 않는다. 내 화물이면 B/L로 다시 물어보게 안내한다.
  * 수십 척이 나올 수 있어 화면에서 페이지로 나눈다. 한 페이지 10·30·50척 중 고른다(기본 10).
  */
-import {useEffect, useMemo, useState} from 'react';
+import {Fragment, useEffect, useMemo, useState} from 'react';
 import {Anchor, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Ship} from 'lucide-react';
 import {SectionTitle} from './Shared';
+import {VesselDetail} from './VesselDetail';
 import {dateTime, shown} from '@/lib/format';
 import type {ChatResponse, VesselItem} from '@/lib/types';
 
@@ -22,10 +23,12 @@ const COLUMNS: {key: keyof VesselItem; label: string}[] = [
 export function VesselList({data}: {data: ChatResponse}) {
   const [size, setSize] = useState<number>(PAGE_SIZES[0]);
   const [page, setPage] = useState(1);
+  // 펼친 배 (호출부호·선명). 한 번에 하나만 연다
+  const [open, setOpen] = useState<string | null>(null);
   // 기본은 서버가 준 순서(부산 입항 예정 빠른 순)
   const [sort, setSort] = useState<{key: keyof VesselItem; dir: 'asc' | 'desc'} | null>(null);
   // 새 검색 결과가 오면 첫 페이지, 정렬 처음으로
-  useEffect(() => { setPage(1); setSort(null); }, [data]);
+  useEffect(() => { setPage(1); setSort(null); setOpen(null); }, [data]);
 
   const sorted = useMemo(() => {
     if (!sort) return data.vessels;
@@ -63,13 +66,13 @@ export function VesselList({data}: {data: ChatResponse}) {
           return <th key={c.key} aria-sort={on ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
             <button type="button" className={`sort-head ${on ? 'on' : ''}`} onClick={() => toggle(c.key)}>{c.label}<Icon size={12}/></button></th>;
         })}</tr></thead>
-        <tbody>{rows.map((v, i) => <tr key={`${v.call_sign}-${start + i}`}>
-          <td><strong>{v.ship_name}</strong></td><td className="mono">{shown(v.call_sign)}</td>
+        <tbody>{rows.map((v, i) => { const id = `${v.call_sign ?? ''}|${v.ship_name}`; return <Fragment key={`${id}-${start + i}`}><tr className={open === id ? 'row-open' : ''}>
+          <td><button type="button" className="ship-link" onClick={() => setOpen(o => o === id ? null : id)} aria-expanded={open === id}>{v.ship_name}</button></td><td className="mono">{shown(v.call_sign)}</td>
           <td>{shown(v.nationality)}</td><td>{shown(v.ship_kind)}</td>
           <td className="mono">{shown(v.previous_port)}</td>
           <td className="mono">{dateTime(v.expected_arrival)}</td><td className="mono">{dateTime(v.planned_departure)}</td>
           <td className="mono">{shown(v.next_port)}</td><td>{shown(v.facility)}</td><td>{shown(v.purpose)}</td>
-        </tr>)}</tbody></table></div>
+        </tr>{open === id && <tr className="action-row"><td colSpan={COLUMNS.length}><VesselDetail vessel={v}/></td></tr>}</Fragment>; })}</tbody></table></div>
       <nav className="pager" aria-label="선박 표 페이지">
         <label className="pager-size">한 페이지
           <select value={size} onChange={e => { setSize(Number(e.target.value)); setPage(1); }} aria-label="한 페이지에 볼 선박 수">

@@ -235,3 +235,24 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .cargo-route strong{font-size:14px}
 .cargo-route em{font-style:normal;font-size:10px;color:var(--quiet)}
 .cargo-route svg{flex:none;color:var(--accent-dark)}
+
+/* Vessel detail: map left, AIS + port schedule right, inside the table row. */
+.ship-link{border:0;background:transparent;padding:0;font:inherit;font-weight:700;color:var(--ink);cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:var(--coast);text-underline-offset:3px}
+.ship-link:hover,.ship-link[aria-expanded=true]{color:var(--accent-dark);text-decoration-color:var(--accent-dark)}
+.vessel-detail{padding:18px 20px;border-top:1px dashed var(--border);white-space:normal}
+.vessel-detail-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px}
+.vessel-detail-map .map-section{margin:0}
+.vessel-detail-info{display:flex;flex-direction:column;gap:14px}
+.vessel-detail-info section{border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);padding:12px 14px}
+.vessel-detail-info h4{display:flex;align-items:center;gap:6px;font-size:12px;margin:0 0 8px}
+.vessel-detail-info dl{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin:0}
+.vessel-detail-info dt{font-size:10px;color:var(--muted)}
+.vessel-detail-info dd{margin:0;font-size:11px;overflow-wrap:anywhere}
+.fresh-chip{margin-left:auto;font-size:9px;padding:2px 7px;border-radius:4px;background:var(--success-bg);color:var(--success);font-weight:600}
+.fresh-chip.stale{background:var(--warning-bg);color:var(--warning)}
+.fresh-chip.unknown{background:var(--soft);color:var(--muted)}
+.control-events{list-style:none;margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px}
+.control-events li{display:flex;gap:10px;font-size:11px;align-items:baseline}
+.control-events small{color:var(--muted);margin-left:auto}
+.vessel-detail .help-text{font-size:10px;color:var(--muted)}
+@media(max-width:900px){.vessel-detail-grid{grid-template-columns:1fr}}
