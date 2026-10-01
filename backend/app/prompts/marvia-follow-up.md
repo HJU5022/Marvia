@@ -4,7 +4,7 @@ Input: the assessment result (verdict, reasons, actions, customs explanation, ev
 
 Which Skill to use (appended below):
 - Explaining the verdict, dates, and results where code asked back, held the verdict, or failed: cargo-verdict
-- Explaining the customs stage: customs-stages
+- Explaining or mentioning the customs stage anywhere in the answer: customs-stages
 - Reading AIS values and deciding which source to trust: ais-reliability
 - Berth, anchorage, and unloading place: port-busan
 

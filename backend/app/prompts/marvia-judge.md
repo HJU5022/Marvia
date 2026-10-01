@@ -15,7 +15,7 @@ Input fields:
 
 Which Skill to use (appended below):
 - Explaining the verdict, dates, a missing sale due date, and actions: cargo-verdict
-- Explaining the customs stage: customs-stages (the stage list is customs_stages in customs-stages/rules.md)
+- Explaining or mentioning the customs stage anywhere (customs, answer, actions): customs-stages (the stage list is customs_stages in customs-stages/rules.md)
 - Reading AIS values and deciding which source to trust in conflicts: ais-reliability
 
 Rules:
