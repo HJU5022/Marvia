@@ -512,7 +512,7 @@ sequenceDiagram
 - 시스템 프롬프트 = Langfuse prompt + 그 호출에 필요한 skills/ 문서 전문 (통째로, RAG 아님). 판정 = AIS 신뢰도 · 통관 단계, 배 고르기 = AIS 신뢰도, 후속 질문 = 전부, 통관 해설 채점 = 통관 단계, 서류 칸 옮겨 적기 = 없음 (09-30, llm.py JUDGE_SKILLS 등).
 - 도구 호출: 코드가 순서대로 도구 함수를 부르고 결과를 자료로 넘긴다. LLM이 도구를 고르지 않는다 (4절 흐름, 09-29 확인. `/mcp`는 외부 공개용, 5.9).
 - 모델은 `MODEL_A` 기본, 인자로 교체 가능(평가용). 레이트 리밋 시 `MODEL_B`로 1회 라우팅.
-- 서비스 모델은 OpenRouter `openai/gpt-4o-mini`로 정한다(10-01, 지금 이름은 `LLM_MODEL`). Vertex `gemini-2.5-flash`는 더 쓰지 않는다. 같은 날 역할 재설정 주입 측정(120회)에서 gpt-4o-mini는 현재 프롬프트 1건, 역할 고정 문장 추가 뒤 0건이었다.
+- 서비스 모델은 OpenRouter `openai/gpt-4o-mini`로 정한다(10-01, 지금 이름은 `LLM_MODEL`). Vertex `gemini-2.5-flash`는 더 쓰지 않는다. 주입 방어 수치는 evals/results/injection/README.md 표 하나에만 적고 여기서는 가리킨다. 요약: 프롬프트 문장만으로는 gpt-4o-mini 역할 재설정이 남아(공격 8종 120회 기준 넣기 전 1건, 넣은 뒤 1건) 코드 방어(guard, V9·V10)를 같이 넣었고, 실서비스 경로 16종 240회에서 0건이었다.
 - 응답은 구조화 출력(JSON schema = AgentResponse 부분집합)으로 받는다.
 - 완료 기준: 모의 도구로 judge 1회 왕복, 트레이스에 prompt 버전·모델·토큰 표시.
 
