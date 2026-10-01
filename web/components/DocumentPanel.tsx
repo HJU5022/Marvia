@@ -30,7 +30,7 @@ const CHECK_LABELS: Record<DocumentCheck, string> = {
 };
 const EDITABLE = new Set(['bl_no', 'voyage', 'eta']);
 
-export interface DocumentValues { bl_no: string; voyage_no: string | null; forwarder_eta: string | null }
+export interface DocumentValues { bl_no: string; voyage_no: string | null; forwarder_eta: string | null; mrn: string | null }
 
 export function DocumentPanel({onApply, onClose, disabled}: {onApply: (v: DocumentValues) => void; onClose: () => void; disabled: boolean}) {
   const inputId = useId();
@@ -48,7 +48,7 @@ export function DocumentPanel({onApply, onClose, disabled}: {onApply: (v: Docume
     try {
       const r = await readDocument(file);
       setResult(r);
-      setValues(Object.fromEntries(Object.entries(r.fields).map(([k, f]) => [k, f.value ?? ''])));
+      setValues({...Object.fromEntries(Object.entries(r.fields).map(([k, f]) => [k, f.value ?? ''])), mrn: r.mrn ?? ''});
     } catch (e) {
       setError(e instanceof Error ? e.message : '사진을 읽지 못했습니다. 다시 시도해 주세요.');
     } finally {
@@ -63,10 +63,13 @@ export function DocumentPanel({onApply, onClose, disabled}: {onApply: (v: Docume
   const blValid = /^[A-Z0-9]{8,20}$/.test(bl);  // schemas/agent.py _BL_PATTERN
   const eta = values.eta ?? '';
   const etaValid = !eta || /^\d{4}-\d{2}-\d{2}$/.test(eta);
+  const mrn = (values.mrn ?? '').replace(/\s/g, '').toUpperCase();
+  const mrnValid = !mrn || /^[0-9]{2}[A-Z0-9]{8}[IE]$/.test(mrn);  // schemas/agent.py _MRN_PATTERN
 
   function apply() {
     if (!blValid || !etaValid) return;
-    onApply({bl_no: bl, voyage_no: values.voyage?.trim() || null, forwarder_eta: eta || null});
+    // MRN은 세관에 아직 없는 화물을 해수부 입항 신고로 찾을 때 쓴다 (docs/specs/mrn-fallback.md)
+    onApply({bl_no: bl, voyage_no: values.voyage?.trim() || null, forwarder_eta: eta || null, mrn: mrnValid ? mrn || null : null});
   }
 
   return <section className="document-panel" aria-label="서류 사진으로 채우기">
@@ -111,9 +114,13 @@ export function DocumentPanel({onApply, onClose, disabled}: {onApply: (v: Docume
           </div>;
         })}
       </div>
+      <div className="document-field mrn-field"><label htmlFor={`${inputId}-mrn`}>MRN<small>세관 미등록 때 배 찾기</small></label>
+        <input id={`${inputId}-mrn`} value={values.mrn ?? ''} spellCheck={false} placeholder="예: 26ABCD1234I" aria-invalid={!mrnValid}
+          onChange={e => setValues(v => ({...v, mrn: e.target.value}))}/>
+        <span className="document-checks">{values.mrn ? (mrnValid ? <span className="check-ok"><Check size={12}/>형식 맞음</span> : <span className="check-chip">형식 확인</span>) : <span className="check-chip">읽지 못함</span>}</span></div>
       {!blValid && <p className="field-error">B/L 번호를 영문·숫자 8~20자로 고쳐 주세요.</p>}
       <div className="button-row">
-        <button type="button" className="button primary" onClick={apply} disabled={!blValid || !etaValid || disabled}><Check size={16}/>확인한 값으로 채우기</button>
+        <button type="button" className="button primary" onClick={apply} disabled={!blValid || !etaValid || !mrnValid || disabled}><Check size={16}/>확인한 값으로 채우기</button>
         <button type="button" className="button secondary" onClick={() => { setResult(null); setError(''); }}><RotateCcw size={15}/>다른 사진</button>
       </div>
       <p className="help-text">서류의 지시문은 따르지 않고 글자로만 읽습니다. 칸이 서로 바뀌어 읽혔을 수 있으니 서류와 한 번 맞춰 보세요.</p>

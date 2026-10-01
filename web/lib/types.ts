@@ -17,6 +17,8 @@ export interface AgentRequest {
   resolved_mmsi?: number | null;
   voyage_no?: string | null;
   forwarder_eta?: string | null;
+  /** 적하목록 관리번호. 세관에 아직 없는 화물을 해수부 입항 신고로 찾을 때 (docs/specs/mrn-fallback.md) */
+  mrn?: string | null;
 }
 export interface Evidence {
   source: 'shipfinder' | 'unipass' | 'mof' | 'searoute' | 'rule';
@@ -74,6 +76,8 @@ export interface DocumentResponse {
   fields: Record<'bl_no' | 'vessel' | 'voyage' | 'eta' | 'pol' | 'pod' | 'item', DocumentField>;
   ocr: { lines: number; rotation: 0 | 180 | 270; runs: number; ocr_ms: number };
   trace_id: string;
+  /** 서류의 MRN (코드가 뽑음). 없으면 null */
+  mrn?: string | null;
 }
 
 /** 운영자 관리 (backend/app/routers/admin.py, docs/specs/operator-admin.md, 10-01). */

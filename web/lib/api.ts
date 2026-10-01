@@ -260,7 +260,7 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
 /** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다) */
 export async function sendChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
-  const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null} : null;
+  const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({message, session_id: currentSessionId(), context: ctx})}, AGENT_TIMEOUT_MS);
   return res.json();

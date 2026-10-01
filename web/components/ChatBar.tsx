@@ -47,7 +47,8 @@ export function ChatBar() {
   }
   function applyDocument(v: DocumentValues) {
     setDocOpen(false);
-    setText(t => `${v.bl_no} ${t}`.trim());
+    // MRN이 있으면 문장에 같이 넣는다. 서버가 코드로 뽑아 세관 미등록 때 배를 찾는다 (LLM에는 안 감)
+    setText(t => `${v.bl_no}${v.mrn ? ` MRN ${v.mrn}` : ''} ${t}`.trim());
     setDocHints(v.voyage_no || v.forwarder_eta ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta} : null);
   }
 

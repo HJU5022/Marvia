@@ -285,3 +285,4 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .chat-turn.pending .dots{display:inline-block;animation:chat-dots 1.2s steps(3,end) infinite;overflow:hidden;vertical-align:bottom;width:1.2em}
 @keyframes chat-dots{from{width:0}to{width:1.2em}}
 @media(max-width:700px){.chat-thread{max-height:260px}}
+.mrn-field{border-bottom:1px solid var(--border);margin-bottom:4px}
