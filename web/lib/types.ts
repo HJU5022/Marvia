@@ -86,3 +86,9 @@ export interface CustomersResponse { items: CustomerItem[]; total: number }
 export interface OperatorItem { email: string; granted_by: string; granted_at: string }
 export interface AuditItem { action: 'grant' | 'revoke'; target_email: string; actor_user_id: string; actor_email: string | null; created_at: string }
 export interface OperatorsResponse { operators: OperatorItem[]; audit: AuditItem[] }
+/** 운영자의 고객 동작 (operator-admin 추가 절). 마스킹 해제는 사유를 남기고 한 명만 원문 */
+export interface UnmaskResponse { email: string | null; name: string | null; phone: string | null; address: string | null }
+export interface ActionItem {
+  action: 'customer_update' | 'customer_delete' | 'unmask'; target_user_id: string; target_email_masked: string | null;
+  actor_user_id: string; actor_email: string | null; reason: string | null; created_at: string;
+}

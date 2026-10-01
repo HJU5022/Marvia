@@ -146,3 +146,34 @@ button.avatar:hover{background:var(--accent)}
 .profile-edit{margin-top:6px}
 .profile-edit .profile-form{margin-top:12px}
 @media(max-width:700px){.profile-form{grid-template-columns:1fr}}
+
+/* Customer actions: inline row panel, never a modal. Reveal is timed and visibly logged. */
+.row-buttons{display:flex;gap:5px}
+.row-buttons .icon-button{width:30px;height:30px}
+.icon-button:disabled{opacity:.35;cursor:not-allowed}
+.icon-button.danger-icon{color:var(--danger)}
+tr.row-open>td{background:var(--soft)}
+tr.action-row>td{padding:0!important;background:var(--canvas)}
+.customer-actions{padding:18px 22px;border-top:1px dashed var(--border)}
+.unmask-form textarea{width:100%;margin-top:8px;border:1px solid var(--border);border-radius:var(--small-radius);padding:10px 12px;font:inherit;font-size:12px;resize:vertical;background:var(--surface)}
+.unmask-form label{font-size:12px}
+.unmask-form label .muted{font-size:10px;padding:0}
+.row-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px}
+.row-actions .mono{margin-right:auto;font-size:10px}
+.unmask-result{border:1px solid #e6c4ba;background:var(--danger-bg);border-radius:var(--small-radius);padding:14px 16px}
+.unmask-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.unmask-head strong{display:inline-flex;align-items:center;gap:6px;color:var(--danger)}
+.unmask-head .mono{font-size:10px;color:var(--danger);margin-right:auto}
+.unmask-result dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 20px;margin:0}
+.unmask-result dt{font-size:10px;color:var(--muted)}
+.unmask-result dd{margin:0;font-size:12px;overflow-wrap:anywhere}
+.edit-form>p{font-size:11px;padding:0}
+.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin-top:10px}
+.edit-grid .wide{grid-column:1/-1}
+.delete-box p{font-size:12px}
+.delete-box .form-field{margin-top:10px;max-width:420px}
+.role-chip.unmask{background:var(--warning-bg);color:var(--warning)}
+.reason-cell{max-width:340px;white-space:normal;font-size:11px}
+.table-message{margin:12px 20px}
+.admin-audit{margin-top:24px}
+@media(max-width:700px){.edit-grid,.unmask-result dl{grid-template-columns:1fr}.customer-actions{padding:14px}}

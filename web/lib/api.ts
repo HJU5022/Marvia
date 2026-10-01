@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem } from './types';
 import {accessToken} from './auth';
 import ok from './fixtures/ok.json';
 import partial from './fixtures/partial.json';
@@ -266,6 +266,25 @@ async function changeOperator(path: string, email: string): Promise<OperatorsRes
 }
 export const grantOperator = (email: string) => changeOperator('/api/admin/operators', email);
 export const revokeOperator = (email: string) => changeOperator('/api/admin/operators/revoke', email);
+
+/** 고객 한 명 동작 (operator-admin 추가 절). 데모 모드에는 실제 고객이 없어 막는다. */
+async function customerCall<T>(path: string, init: RequestInit): Promise<T> {
+  if (!isLive) throw new Error('데모 모드에서는 고객 정보를 바꾸거나 열 수 없습니다.');
+  const res = await call(path, init, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
+const json = (method: string, body: unknown): RequestInit => ({method, headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
+/** 사유를 남기고 원문을 받는다. 서버가 먼저 기록하고, 기록에 실패하면 원문을 주지 않는다 */
+export const unmaskCustomer = (id: string, reason: string) =>
+  customerCall<UnmaskResponse>(`/api/admin/customers/${encodeURIComponent(id)}/unmask`, json('POST', {reason}));
+export const updateCustomer = (id: string, p: ProfileData) =>
+  customerCall<{ok: boolean}>(`/api/admin/customers/${encodeURIComponent(id)}/profile`, json('PUT', p));
+export const deleteCustomer = (id: string) =>
+  customerCall<{deleted_records: number}>(`/api/admin/customers/${encodeURIComponent(id)}`, {method: 'DELETE'});
+export async function getAdminActions(): Promise<ActionItem[]> {
+  if (!isLive) return [];
+  return (await call('/api/admin/actions', {}, HISTORY_TIMEOUT_MS)).json();
+}
 
 /* ---------- 회원 정보 (docs/specs/user-profile.md) ---------- */
 

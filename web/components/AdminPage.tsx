@@ -5,16 +5,18 @@
  * 운영자: 이메일로 등록, 목록에서 해지(화면 안에서 한 번 더 확인), 아래에 누가 언제 등록·해지했는지 이력.
  * 운영자가 아닌 사람이 주소로 들어오면 안내만 한다. 데이터는 서버가 403으로 막는다 (EC-01).
  */
-import {useEffect, useMemo, useState, type FormEvent} from 'react';
-import {LoaderCircle, Search, ShieldCheck, ShieldUser, UserPlus, UserRoundMinus, Users} from 'lucide-react';
+import {Fragment, useCallback, useEffect, useMemo, useState, type FormEvent} from 'react';
+import {Eye, LoaderCircle, PencilLine, Search, ShieldCheck, ShieldUser, UserPlus, UserRoundMinus, UserRoundX, Users} from 'lucide-react';
+import {CustomerActions, type CustomerMode} from './CustomerActions';
 import {useApp} from './AppProvider';
 import {SectionTitle} from './Shared';
-import {getCustomers, getOperators, grantOperator, isLive, revokeOperator} from '@/lib/api';
+import {getAdminActions, getCustomers, getOperators, grantOperator, isLive, revokeOperator} from '@/lib/api';
 import {dateTime} from '@/lib/format';
-import type {CustomersResponse, OperatorsResponse} from '@/lib/types';
+import type {ActionItem, CustomersResponse, OperatorsResponse} from '@/lib/types';
 
 type Tab = 'customers' | 'operators';
 const DAY_MS = 86_400_000;
+const ACTION_LABELS: Record<ActionItem['action'], string> = {unmask: '마스킹 해제', customer_update: '수정', customer_delete: '강제 탈퇴'};
 
 export function AdminPage() {
   const {isOperator, authReady} = useApp();
@@ -42,10 +44,17 @@ function CustomersPanel() {
   const [data, setData] = useState<CustomersResponse | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [open, setOpen] = useState<{id: string; mode: CustomerMode} | null>(null);
+  const [message, setMessage] = useState('');
+  const [actions, setActions] = useState<ActionItem[]>([]);
 
-  useEffect(() => {
+  // 목록과 작업 이력을 같이 다시 읽는다. 수정·탈퇴·마스킹 해제 뒤에 부른다
+  const reload = useCallback(() => {
     getCustomers().then(setData).catch(e => setError(e instanceof Error ? e.message : '고객 목록을 불러오지 못했습니다.'));
+    getAdminActions().then(setActions).catch(() => setActions([]));
   }, []);
+  useEffect(reload, [reload]);
+  const close = useCallback(() => { setOpen(null); getAdminActions().then(setActions).catch(() => {}); }, []);
 
   const rows = useMemo(() => (data?.items ?? []).filter(c =>
     !query.trim() || (c.email_masked ?? '').toLowerCase().includes(query.trim().toLowerCase())), [data, query]);
@@ -67,18 +76,43 @@ function CustomersPanel() {
       {error && <p role="alert" className="request-error">{error}</p>}
       {!data && !error ? <div className="empty-state"><LoaderCircle className="spin"/><h2>고객 목록을 불러오는 중입니다.</h2></div>
       : data && <div className="table-scroll" role="region" aria-label="고객 목록" tabIndex={0}><table>
-        <thead><tr><th>이메일</th><th>이름</th><th>휴대전화</th><th>주소</th><th>가입일</th><th>마지막 로그인</th><th>구분</th></tr></thead>
-        <tbody>{rows.map(c => <tr key={c.user_id}>
+        <thead><tr><th>이메일</th><th>이름</th><th>휴대전화</th><th>주소</th><th>가입일</th><th>마지막 로그인</th><th>구분</th><th>작업</th></tr></thead>
+        <tbody>{rows.map(c => <Fragment key={c.user_id}><tr className={open?.id === c.user_id ? 'row-open' : ''}>
           <td className="mono">{c.email_masked ?? '없음'}</td><td>{c.name_masked ?? '-'}</td>
           <td className="mono">{c.phone_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td><td>{c.address_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td>
           <td className="mono">{dateTime(c.created_at)}</td>
           <td className="mono">{c.last_sign_in_at ? dateTime(c.last_sign_in_at) : '로그인 기록 없음'}</td>
           <td>{c.is_operator ? <span className="role-chip operator"><ShieldCheck size={12}/>운영자</span> : <span className="role-chip">고객</span>}</td>
-        </tr>)}</tbody></table>
+          <td><div className="row-buttons">
+            {([['unmask', Eye, '마스킹 해제'], ['edit', PencilLine, '수정'], ['delete', UserRoundX, '탈퇴']] as const).map(([mode, Icon, label]) =>
+              <button key={mode} type="button" className={`icon-button ${mode === 'delete' ? 'danger-icon' : ''}`} aria-label={`${c.email_masked ?? '고객'} ${label}`} title={label}
+                aria-expanded={open?.id === c.user_id && open.mode === mode} disabled={!isLive || (mode === 'delete' && c.is_operator)}
+                onClick={() => { setMessage(''); setOpen(o => o?.id === c.user_id && o.mode === mode ? null : {id: c.user_id, mode}); }}><Icon size={15}/></button>)}
+          </div></td>
+        </tr>
+        {open?.id === c.user_id && <tr className="action-row"><td colSpan={8}>
+          <CustomerActions customer={c} mode={open.mode} onClose={close} onDone={msg => { setMessage(msg); setOpen(null); reload(); }}/>
+        </td></tr>}</Fragment>)}</tbody></table>
         {!rows.length && <div className="empty-state"><Search/><h2>조건에 맞는 고객이 없습니다.</h2></div>}
       </div>}
-      <div className="table-bottom"><span>{rows.length}명 표시</span><span>이메일·이름·전화·주소는 서버에서 가려서 받습니다. 원문은 화면에 오지 않습니다.</span></div>
+      {message && <p role="status" className="account-message table-message">{message}</p>}
+      <div className="table-bottom"><span>{rows.length}명 표시</span><span>원문은 마스킹 해제(사유서)로만 봅니다. 운영자 계정은 운영자 해지 뒤에 탈퇴시킬 수 있습니다.</span></div>
     </div>
+    <section className="history-panel admin-audit">
+      <div className="table-toolbar"><SectionTitle label="고객 작업 이력" kicker="CUSTOMER ACTIONS"/></div>
+      <div className="table-scroll" role="region" aria-label="고객 작업 이력" tabIndex={0}><table>
+        <thead><tr><th>시각</th><th>작업</th><th>대상</th><th>처리한 운영자</th><th>사유</th></tr></thead>
+        <tbody>{actions.map((a, i) => <tr key={`${a.created_at}-${i}`}>
+          <td className="mono">{dateTime(a.created_at)}</td>
+          <td><span className={`role-chip ${a.action === 'customer_delete' ? 'revoked' : a.action === 'unmask' ? 'unmask' : 'operator'}`}>{ACTION_LABELS[a.action]}</span></td>
+          <td className="mono">{a.target_email_masked ?? a.target_user_id}</td>
+          <td className="mono">{a.actor_email ?? a.actor_user_id}</td>
+          <td className="reason-cell">{a.reason ?? '-'}</td>
+        </tr>)}</tbody></table>
+        {!actions.length && <div className="empty-state"><ShieldUser/><h2>아직 작업 기록이 없습니다.</h2></div>}
+      </div>
+      <div className="table-bottom"><span>최근 {actions.length}건</span><span>이력은 지우거나 고칠 수 없습니다.</span></div>
+    </section>
   </section>;
 }
 
