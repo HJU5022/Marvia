@@ -134,6 +134,8 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
         "ship_name": p.ship_name, "call_sign": p.call_sign, "nationality": p.nationality, "ship_kind": p.ship_kind,
         "previous_port": p.previous_port, "next_port": p.next_port, "purpose": p.purpose,
         "expected_arrival": p.expected_arrival.isoformat() if p.expected_arrival else None, "facility": p.facility,
+        # 부산을 떠나는 예정 시각 (입항 신고의 출항 detail). 처음 출발한 항구의 출발 시각은 신고에 없다
+        "planned_departure": p.planned_departure.isoformat() if p.planned_departure else None,
     } for p in chosen]
     if place and not vessels:
         reply = f"앞으로 {days}일 동안 {name} 항구를 직전에 들른 부산 입항 예정 선박은 없습니다. {PREV_PORT_NOTE}"

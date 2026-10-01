@@ -42,6 +42,7 @@ class VesselItem(BaseModel):
     next_port: str | None
     purpose: str | None
     expected_arrival: str | None
+    planned_departure: str | None = None  # 부산 출항 예정
     facility: str | None
 
 

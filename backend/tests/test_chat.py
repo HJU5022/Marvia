@@ -19,6 +19,7 @@ class _Plan:
         self.ship_name, self.call_sign, self.nationality, self.ship_kind = name, "CS" + name[-1], "KR", "컨테이너선"
         self.previous_port, self.next_port, self.purpose, self.facility = port, None, "양하", "신선대"
         self.expected_arrival = datetime(2026, 10, day, tzinfo=timezone.utc)
+        self.planned_departure = datetime(2026, 10, day + 1, tzinfo=timezone.utc)
 
 
 PLANS = [_Plan("SHIP A", "SHANGHAI", 3), _Plan("SHIP B", "KOBE", 2), _Plan("SHIP C", "NINGBO PT", 4)]
@@ -106,6 +107,7 @@ def test_vessel_search_keeps_only_listed_ports(monkeypatch):
     assert seen["ports"] == ["KOBE", "NINGBO PT", "SHANGHAI"]
     assert r.kind == "vessels" and r.ports == ["SHANGHAI", "NINGBO PT"] and r.days == svc.DAYS_MAX  # 목록 밖 BEIJING 버림, 기간 상한
     assert [v["ship_name"] for v in r.vessels] == ["SHIP A", "SHIP C"]  # 입항 예정 순
+    assert r.vessels[0]["planned_departure"].startswith("2026-10-04")  # 부산 출항 예정도 같이
 
 
 def test_vessel_search_no_match_explains_previous_port(monkeypatch):
