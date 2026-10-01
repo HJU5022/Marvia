@@ -222,3 +222,8 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .pager-gap{font-size:11px;color:var(--quiet);padding:0 2px}
 @media(max-width:700px){.pager{padding:12px 14px}.pager-buttons{margin-left:0;width:100%;justify-content:center}}
 .cell-sub{display:block;font-size:10px;color:var(--quiet);font-weight:400}
+/* Sortable vessel headers: the whole label is the button; the active column shows its direction. */
+.sort-head{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;padding:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer;white-space:nowrap}
+.sort-head svg{opacity:.35}
+.sort-head:hover svg,.sort-head.on svg{opacity:1}
+.sort-head.on{color:var(--accent-dark)}
