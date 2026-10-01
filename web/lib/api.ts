@@ -381,6 +381,14 @@ export async function saveProfile(p: ProfileData & {consent: boolean}): Promise<
   return res.json();
 }
 
+/** GET /api/metrics (운영자 전용). 서버가 evals/results의 구성별 최신 결과를 화면 모양으로 준다.
+ * 데모 모드는 가공 fixture(값 없음). 못 읽으면 null을 돌려 화면이 fixture(미측정)로 남는다 */
+export async function getMetrics(): Promise<typeof metrics | null> {
+  if (!isLive) return null;
+  try { return await (await call('/api/metrics', {}, HISTORY_TIMEOUT_MS)).json(); }
+  catch { return null; }
+}
+
 /** 화면 보조 자료(예시 입력, 지표, 설정). 백엔드 endpoint가 아니다. */
 export function getPresentationData() { return structuredClone({demo, metrics, settings}); }
 

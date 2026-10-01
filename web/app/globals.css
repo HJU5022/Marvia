@@ -286,3 +286,9 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 @keyframes chat-dots{from{width:0}to{width:1.2em}}
 @media(max-width:700px){.chat-thread{max-height:260px}}
 .mrn-field{border-bottom:1px solid var(--border);margin-bottom:4px}
+
+/* Experiment log: one row per eval run (config, model, time·commit, exact match, gate). */
+.experiment-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.experiment-list li{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border);font-size:12px}
+.experiment-list li div{display:flex;flex-direction:column;min-width:0}
+.experiment-list small{font-size:10px;color:var(--muted)}

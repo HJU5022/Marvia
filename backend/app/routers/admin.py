@@ -291,3 +291,10 @@ def resume_customer(user_id: str, user: Annotated[CurrentUser, Depends(require_o
     """정지 해제."""
     _customer_call("admin_resume", lambda c: customers_svc.resume(c, user_id, user.id, user.email))
     return {"ok": True}
+
+
+@router.get("/metrics")
+def metrics(_: Annotated[CurrentUser, Depends(require_operator)]) -> dict:
+    """평가지표 화면용. evals/results의 구성별 최신 결과를 읽기만 한다 (services/metrics.py). 운영자 전용."""
+    from backend.app.services import metrics as metrics_svc  # 이 화면에서만 쓴다
+    return metrics_svc.build()
