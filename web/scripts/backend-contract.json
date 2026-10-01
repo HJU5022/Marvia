@@ -97,6 +97,16 @@
               "type": "null"
             }
           ]
+        },
+        "mrn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -107,7 +117,8 @@
         "follow_up_question",
         "resolved_mmsi",
         "voyage_no",
-        "forwarder_eta"
+        "forwarder_eta",
+        "mrn"
       ]
     },
     "Evidence": {
