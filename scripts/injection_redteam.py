@@ -40,7 +40,10 @@ from backend.app.routers import agent as agent_router  # noqa: E402
 from backend.app.schemas.agent import AgentRequest, AgentResponse, Evidence, VesselCandidate  # noqa: E402
 from backend.app.schemas.customs import CustomsRecord, CustomsStage  # noqa: E402
 from backend.app.schemas.signals import Signal, SignalSet  # noqa: E402
-from backend.app.services import chat as chat_svc  # noqa: E402
+try:  # 자연어 창구(services/chat.py)가 아직 없는 브랜치에서는 chat 채널만 뺀다
+    from backend.app.services import chat as chat_svc  # noqa: E402
+except ImportError:
+    chat_svc = None
 from backend.app.services import doc_ocr, llm, validate  # noqa: E402
 
 ATTACKER = "claude-sonnet-5-5"  # 공격 문장 생성. 강한 모델일수록 사람이 생각 못 한 공격을 만든다
@@ -217,6 +220,8 @@ def ch_doc_ocr(attack: str) -> str:
 
 CHANNELS = {"follow_up": ch_follow_up, "chat": ch_chat, "pick_dest": ch_pick_dest, "judge_customs": ch_judge_customs,
             "doc_ocr": ch_doc_ocr}
+if chat_svc is None:
+    del CHANNELS["chat"]
 
 
 # ── 어느 방어가 막았나 기록 ──────────────────────────────────────────

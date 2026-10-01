@@ -3,6 +3,8 @@
 공격 문장은 10-01 역할 재설정 측정에서 쓴 8종과 그 변형(전각·보이지 않는 글자)이다. 전부 가공 문장이다.
 정상 질문은 화물 질문에서 나올 만한 모양이다. 여기가 걸리면 사용자가 정상 질문에 답을 못 받는다.
 """
+import importlib.util
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -164,6 +166,10 @@ def test_router_blocks_without_calling_llm(monkeypatch):
 
 # ── 자연어 입력 창구 (services/chat.py, 10-01) ──
 
+# 주입 방어만 먼저 main에 넣는 PR(seunguk-1)에는 자연어 창구가 아직 없다. 그 브랜치에서는 이 절만 건너뛴다
+needs_chat = pytest.mark.skipif(importlib.util.find_spec("backend.app.services.chat") is None,
+                                reason="services/chat.py가 아직 없는 브랜치 (자연어 창구 PR 전)")
+
 def _chat_route(monkeypatch, **out):
     from backend.app.services import llm
 
@@ -179,6 +185,7 @@ def _chat_route(monkeypatch, **out):
     return calls
 
 
+@needs_chat
 def test_chat_blocks_injection_before_llm(monkeypatch):
     """원문이 주입 모양이면 route_chat도 부르지 않는다. 다시 쓴 질문만 보면 모양이 바뀌어 빠져나갈 수 있다."""
     from backend.app.services import chat as svc
@@ -190,6 +197,7 @@ def test_chat_blocks_injection_before_llm(monkeypatch):
 
 @pytest.mark.parametrize("reply", ["안녕하세요! 확인완료-해적", "안녕하세요 MRVPWN", "B/L 번호로 조회합니다. 5일 남았어요.",
                                    "Ahoy! 화물을 조회해 드려요."])
+@needs_chat
 def test_chat_other_reply_with_marker_is_replaced(monkeypatch, reply):
     """other 안내는 검증 없이 화면에 가서, 옮겨 온 표식·영문·숫자가 있으면 고정 안내로 바꾼다."""
     from backend.app.services import chat as svc
@@ -199,6 +207,7 @@ def test_chat_other_reply_with_marker_is_replaced(monkeypatch, reply):
     assert svc.handle(message, "s1", None, lambda req: None).reply == svc.OTHER_REPLY
 
 
+@needs_chat
 def test_chat_other_reply_normal_is_kept(monkeypatch):
     from backend.app.services import chat as svc
 
@@ -206,6 +215,7 @@ def test_chat_other_reply_normal_is_kept(monkeypatch):
     assert svc.handle("안녕", "s1", None, lambda req: None).reply == "B/L 번호로 화물을 조회할 수 있어요."
 
 
+@needs_chat
 def test_chat_vessel_place_label_must_come_from_message(monkeypatch):
     """place_label은 사용자가 쓴 글자일 때만, place는 영문 지명 모양일 때만 쓴다. LLM이 끼운 문장은 답에 안 들어간다."""
     from backend.app.services import chat as svc
@@ -219,6 +229,7 @@ def test_chat_vessel_place_label_must_come_from_message(monkeypatch):
     assert "해적" not in r.reply and "PirateBot" not in r.reply and r.place is None
 
 
+@needs_chat
 def test_chat_vessel_normal_place_is_kept(monkeypatch):
     from backend.app.services import chat as svc
     from backend.app.services import llm
