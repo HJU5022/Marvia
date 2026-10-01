@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from backend.app.services.rules import rule
-from mcp_server.tools.distance import estimate_distance
+from mcp_server.tools.distance import estimate_distance, route_points
 from mcp_server.tools.live_position import get_live_position
 from mcp_server.tools.port_schedule import get_port_schedule
 from mcp_server.tools.vessel_candidates import get_vessel_candidates
@@ -72,6 +72,8 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
         else:
             position = {**pos, "freshness": _freshness(pos.get("last_time"))}
             dist = estimate_distance(pos["lat"], pos["lng"], pos.get("sog"))
+            # 지도에 그릴 남은 예상 바닷길. 실제 항적이 아니다 (화면에도 그렇게 적는다)
+            position["route"] = route_points(pos["lat"], pos["lng"])
             if (e := _err("searoute", dist)):
                 errors.append(e)
             else:

@@ -20,6 +20,7 @@ def _fake(monkeypatch, *, pos_age_hours=1, candidates=True, schedule_error=False
         "mmsi": mmsi, "lat": 33.0, "lng": 128.0, "sog": 12.0, "dest": "BUSAN",
         "last_time": (NOW - timedelta(hours=pos_age_hours)).isoformat()})
     monkeypatch.setattr(svc, "estimate_distance", lambda lat, lng, sog: {"distance_nm": 120.0, "calc_hours_at_sog": 10.0})
+    monkeypatch.setattr(svc, "route_points", lambda lat, lng: [[lat, lng], [35.1, 129.0]])
     svc._cache.clear()
     return calls
 
@@ -52,3 +53,15 @@ def test_api_requires_identifier(monkeypatch):
     with TestClient(app) as client:
         assert client.get("/api/vessels/detail").status_code == 400
         assert client.get("/api/vessels/detail", params={"call_sign": "TST01"}).json()["vessel"]["call_sign"] == "TST01"
+
+
+def test_route_points_end_at_busan_and_are_capped():
+    """지도용 남은 바닷길: 첫 점은 배, 마지막 점은 부산 기준점(rules.md busan_ref), 점 수 상한."""
+    from backend.app.services.rules import rule
+    from mcp_server.tools.distance import ROUTE_MAX_POINTS, route_points
+    ref = rule("busan_ref")
+    far = route_points(31.2, 121.9)  # 상하이 앞바다
+    assert far[-1] == [ref["lat"], ref["lng"]] and 2 < len(far) <= ROUTE_MAX_POINTS
+    assert abs(far[0][0] - 31.2) < 1 and abs(far[0][1] - 121.9) < 1
+    near = route_points(ref["lat"] + 0.01, ref["lng"])
+    assert near == [[ref["lat"] + 0.01, ref["lng"]], [ref["lat"], ref["lng"]]]
