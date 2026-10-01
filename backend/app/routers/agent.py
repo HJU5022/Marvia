@@ -40,7 +40,7 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, Reason, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import identify, llm, validate
+from backend.app.services import guard, identify, llm, validate
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
@@ -88,8 +88,11 @@ JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 �
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
 FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
+# 질문이 역할 재설정·지시 무시 모양이면 LLM을 부르지 않고 이 문구로 답한다 (services/guard.py, SDD 7절 10-01)
+FOLLOW_UP_BLOCKED = "이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다. 예: 여유가 며칠인가요? 지금 통관 단계는 무엇인가요?"
 # 후속 답에 거는 검증 규칙. 7규칙 중 answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기)과
 # V7(근거에 없는 숫자 금지)뿐이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
+# 여기에 후속 답 전용 V9(근거에 없는 영문 낱말 금지, validate.check_follow_up_words)를 더 건다 (10-01)
 FOLLOW_UP_RULES = {"V1", "V7"}
 
 
@@ -377,6 +380,12 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
     previous = _previous_response(request, user_id) or _assess(request)
     failed = previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
 
+    # 프롬프트 주입 차단 (SDD 7절, 10-01). 측정에서 "지금부터 너는 ~" 질문이 프롬프트 방어만으로는 20회 중 4회 뚫려
+    # 검증을 통과한 채 사용자에게 갔다. 모양이 걸리면 LLM을 부르지 않는다. 질문 원문은 로그에 남기지 않는다
+    if guard.looks_like_injection(request.follow_up_question):
+        log_failure("follow_up", "blocked prompt injection pattern")
+        return previous.model_copy(update={"answer": FOLLOW_UP_BLOCKED, "trace_id": current_request_id()})
+
     # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거 카드에 없는 숫자("9월 23일", 사용자가 말한 판매일)가 그대로 갔다 (평가 F06).
     # 판정·근거는 지난 결과 그대로라 답 문장을 보는 규칙(FOLLOW_UP_RULES)만 건다. 재시도 방식은 판정과 같다 (SDD 5.7)
     feedback = None
@@ -392,6 +401,11 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
             return failed
         answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
         violations = [v for v in validate.check(answered) if v.rule in FOLLOW_UP_RULES]
+        # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
+        violations += validate.check_follow_up_words(out.answer, previous)
+        # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
+        violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, previous,
+                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS))
         if not violations:
             return answered
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")

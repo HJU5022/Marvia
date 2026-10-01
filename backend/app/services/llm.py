@@ -418,6 +418,12 @@ FOLLOW_UP_SKILLS = ALL_SKILLS       # 이전 응답 전체(통관 · 하역 장�
 GRADE_SKILLS = (CUSTOMS,)           # 통관 해설 채점은 통관 단계 표만 기준으로 한다 (평가 때만)
 
 
+def skills_reference(folders: tuple[str, ...] = ALL_SKILLS) -> str:
+    """후속 답 검증 V10(validate.check_follow_up_echo)이 "답에 써도 되는 낱말"의 출처로 쓰는 Skill 원문.
+    LLM이 받은 것과 같은 문서다 (10-01)."""
+    return _skills_text(folders)
+
+
 def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
     """고른 Skill 폴더의 .md를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
     parts = []
@@ -674,11 +680,15 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
 
     질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
     feedback: 앞 답이 검증 규칙(V1·V7)을 어겼을 때 어긴 내용. judge()와 같은 방식으로 다시 묻는다 (09-29, 평가 F06)
+
+    AIS 목적지 원문(shipfinder dest 근거 카드)은 빼고 넘긴다 (SDD 7절, 10-01). 아무 배나 AIS에 쓸 수 있는 글자라
+    "지금부터 너는 ~" 같은 역할 재설정 문장이 들어올 수 있다. 판정 LLM처럼 코드가 destcode로 계산한
+    dest_changed 신호 카드만 남긴다. 화면의 근거 카드에는 그대로 있다 (여기서 빼는 것은 LLM 입력뿐).
     """
-    data = {
-        "result": response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"}),
-        "question": question,
-    }
+    result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"})
+    result["evidence"] = [e for e in result.get("evidence") or []
+                          if not (e["source"] == "shipfinder" and e["field"] == "dest")]
+    data = {"result": result, "question": question}
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
                      FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS)
 
