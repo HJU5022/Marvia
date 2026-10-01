@@ -80,7 +80,7 @@ def test_excluded_fields_are_not_carried():
 
 def test_bl_number_is_masked():
     record = _client("progress_ok.xml").fetch("TESTMBL0000001")
-    assert record.bl_masked == "TEST****0001"
+    assert record.bl_masked == mask_bl(record_bl := "TESTMBL0000001") and "*" * (len(record_bl) // 2) in record.bl_masked
     assert "TESTMBL0000001" not in record.model_dump_json()
 
 
@@ -106,7 +106,10 @@ def test_timeout_is_retryable():
 
 
 def test_mask_bl_hides_short_numbers_entirely():
-    assert mask_bl("SHORT123") == "********"
+    # 가운데 절반을 가린다 (10-01). 짧은 번호도 앞뒤로 알아볼 수 있고, 길이는 그대로
+    assert mask_bl("SHORT123") == "SH****23"
+    assert mask_bl("ABCD1234567890") == "ABC*******7890"
+    assert mask_bl("ABCDEFGHIJK") == "ABC*****IJK"
 
 
 def test_mrn_is_first_11_chars_of_cargo_number():

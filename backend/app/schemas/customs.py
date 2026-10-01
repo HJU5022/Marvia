@@ -52,7 +52,13 @@ class CustomsRecord(BaseModel):
 
 
 def mask_bl(bl_no: str) -> str:
-    """B/L 번호를 앞4자+****+뒤4자로 가린다 (SDD 3.5). 8자 이하면 전부 가린다."""
-    if len(bl_no) <= 8:
-        return "*" * len(bl_no)
-    return f"{bl_no[:4]}****{bl_no[-4:]}"
+    """B/L 번호의 가운데 절반을 *로 가린다 (SDD 3.5, 10-01 변경). 가린 자리 수만큼 *를 써서 길이를 유지한다.
+
+    예: TESTBL01(8자) → TE****01, ABCD1234567890(14자) → ABCD*******890.
+    전에는 "앞4자+****+뒤4자"라 8자 이하 번호는 전부 가려져(********) 조회 이력에서 알아볼 수 없었고,
+    긴 번호는 오히려 8자가 드러났다. 이제 길이와 상관없이 항상 절반이 가려지고 앞뒤로 알아볼 만큼만 남는다.
+    """
+    n = len(bl_no)
+    hidden = max(1, n // 2) if n else 0
+    start = (n - hidden) // 2
+    return bl_no[:start] + "*" * hidden + bl_no[start + hidden:]

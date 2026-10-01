@@ -116,13 +116,14 @@ def test_signal_set_accepts_seven_ids_and_rejects_unknown():
 
 def test_customs_record_has_no_sensitive_fields():
     rec = CustomsRecord(ship_name="TEST CARGO A", ship_nat="KR", bl_masked=mask_bl("TESTBL0001"), fetched_at=NOW)
-    assert rec.bl_masked == "TEST****0001"
+    assert rec.bl_masked == "TE*****001"  # 가운데 절반을 가린다 (SDD 3.5, 10-01). 홀수 남는 자리는 뒤로
     for banned in ("prnm", "wght", "goods", "consignee", "customs_office"):
         assert banned not in CustomsRecord.model_fields
 
 
-def test_mask_bl_short_is_fully_masked():
-    assert mask_bl("ABCD1234") == "********"
+def test_mask_bl_short_keeps_ends_readable():
+    """10-01 변경: 8자 이하도 전부 가리지 않는다. 조회 이력에서 알아볼 수 있게 가운데 절반만"""
+    assert mask_bl("ABCD1234") == "AB****34"
 
 
 def test_mcp_tool_results_and_error():
