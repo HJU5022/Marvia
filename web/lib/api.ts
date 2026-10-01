@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, DocumentResponse, HistoryResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse } from './types';
 import {accessToken} from './auth';
 import ok from './fixtures/ok.json';
 import partial from './fixtures/partial.json';
@@ -21,6 +21,7 @@ import metrics from './fixtures/metrics.json';
 import settings from './fixtures/settings.json';
 import geography from './fixtures/geography.json';
 import documentFixture from './fixtures/document.json';
+import adminFixture from './fixtures/admin.json';
 
 /** 끝 슬래시를 뗀 백엔드 주소. 비어 있으면 데모 모드다. */
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').trim().replace(/\/+$/, '');
@@ -82,6 +83,8 @@ async function errorMessage(res: Response): Promise<string> {
   if (res.status === 413 || detail === 'too_large') return '사진이 너무 큽니다. 10MB 이하로 올려 주세요.';
   if (detail === 'invalid_image') return '사진을 읽지 못했습니다. JPG·PNG 사진인지 확인해 주세요.';
   if (res.status === 503) return detail || '저장소에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+  if (res.status === 403) return detail || '운영자만 쓸 수 있습니다.';
+  if (res.status === 409) return detail || '이미 처리된 요청입니다.';
   if (res.status === 429) return '요청이 많습니다. 잠시 뒤 다시 시도해 주세요.';
   if (res.status === 400 || res.status === 422) return detail || '입력값을 확인해 주세요.';
   return detail || `서버가 요청을 처리하지 못했습니다 (HTTP ${res.status}). 잠시 뒤 다시 시도해 주세요.`;
@@ -231,6 +234,37 @@ export async function deleteMyAccount(): Promise<{deleted_records: number; accou
   if (!isLive) throw new Error('데모 모드에는 탈퇴할 계정이 없습니다.');
   return liveDelete('/api/account');
 }
+
+/* ---------- 운영자 관리 (docs/specs/operator-admin.md) ---------- */
+
+/** GET /api/me. 탭을 나누는 데만 쓴다. 관리 API는 서버가 다시 확인한다.
+ * 데모 모드는 관리 화면도 볼 수 있게 운영자로 둔다(가공 데이터). 못 읽으면 일반 사용자로 본다. */
+export async function getMe(): Promise<MeResponse> {
+  if (!isLive) return {user_id: 'demo', email: null, is_operator: true};
+  try { return await (await call('/api/me', {}, HISTORY_TIMEOUT_MS)).json(); }
+  catch { return {user_id: null, email: null, is_operator: false}; }
+}
+
+/** GET /api/admin/customers. 이메일·이름은 서버가 가려서 준다. */
+export async function getCustomers(): Promise<CustomersResponse> {
+  if (!isLive) { await pause(); return structuredClone(adminFixture.customers) as CustomersResponse; }
+  return (await call('/api/admin/customers', {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** GET /api/admin/operators. 활성 운영자와 등록·해지 이력. */
+export async function getOperators(): Promise<OperatorsResponse> {
+  if (!isLive) { await pause(); return structuredClone(adminFixture.operators) as OperatorsResponse; }
+  return (await call('/api/admin/operators', {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** 등록·해지는 바뀐 목록을 바로 돌려받는다. 데모 모드에는 바꿀 실제 권한이 없다. */
+async function changeOperator(path: string, email: string): Promise<OperatorsResponse> {
+  if (!isLive) throw new Error('데모 모드에서는 운영자를 바꿀 수 없습니다.');
+  const res = await call(path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({email: email.trim()})}, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
+export const grantOperator = (email: string) => changeOperator('/api/admin/operators', email);
+export const revokeOperator = (email: string) => changeOperator('/api/admin/operators/revoke', email);
 
 /** 화면 보조 자료(예시 입력, 지표, 설정). 백엔드 endpoint가 아니다. */
 export function getPresentationData() { return structuredClone({demo, metrics, settings}); }

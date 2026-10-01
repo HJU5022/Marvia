@@ -72,3 +72,14 @@ export interface DocumentResponse {
   ocr: { lines: number; rotation: 0 | 180 | 270; runs: number; ocr_ms: number };
   trace_id: string;
 }
+
+/** 운영자 관리 (backend/app/routers/admin.py, docs/specs/operator-admin.md, 10-01). */
+export interface MeResponse { user_id: string | null; email: string | null; is_operator: boolean }
+export interface CustomerItem {
+  user_id: string; email_masked: string | null; name_masked: string | null;
+  created_at: string | null; last_sign_in_at: string | null; is_operator: boolean;
+}
+export interface CustomersResponse { items: CustomerItem[]; total: number }
+export interface OperatorItem { email: string; granted_by: string; granted_at: string }
+export interface AuditItem { action: 'grant' | 'revoke'; target_email: string; actor_user_id: string; actor_email: string | null; created_at: string }
+export interface OperatorsResponse { operators: OperatorItem[]; audit: AuditItem[] }

@@ -3,7 +3,7 @@
  * 응답은 받은 그대로 둔다. 화면이 스키마 값을 고치지 않는다.
  */
 import {createContext, useContext, useEffect, useRef, useState, type ReactNode} from 'react';
-import {getAgentResponse, getPresentationData, getReplaySnapshot, isLive} from '@/lib/api';
+import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, isLive} from '@/lib/api';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
 import type {AgentRequest, AgentResponse} from '@/lib/types';
 const presentation = getPresentationData();
@@ -19,6 +19,8 @@ interface AppState {
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
   /** 로그인 기능이 켜졌는지, 세션 확인이 끝났는지, 누가 로그인했는지 */
   authEnabled: boolean; authReady: boolean; user: AuthUser | null;
+  /** 운영자면 관리 탭을 보여 준다. 서버(GET /api/me)가 정한 값이고, 관리 API는 서버가 다시 확인한다 */
+  isOperator: boolean;
   docHints: DocHints | null; setDocHints: (h: DocHints | null) => void;
   /** 탈퇴·로그아웃 뒤 이전 사용자의 결과가 화면에 남지 않게 비운다 */
   reset: () => void;
@@ -33,6 +35,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   const [user,setUser] = useState<AuthUser|null>(null);
   const [authReady,setAuthReady] = useState(!authEnabled);
   const [docHints,setDocHints] = useState<DocHints|null>(null);
+  const [isOperator,setIsOperator] = useState(false);
   const inflight = useRef(false);
 
   // 로그인 상태는 브라우저에서만 안다. 첫 확인이 끝나기 전에는 로그인 화면을 깜빡 보여 주지 않도록 authReady로 막는다
@@ -43,6 +46,14 @@ export function AppProvider({children}:{children:ReactNode}) {
     const off = onAuthChange(u => setUser(u));
     return () => { alive = false; off(); };
   }, []);
+
+  // 로그인한 사람이 바뀔 때마다 운영자인지 다시 묻는다. 로그인 전이면 묻지 않는다(어차피 401)
+  useEffect(() => {
+    if (!authReady || (authEnabled && !user)) { setIsOperator(false); return; }
+    let alive = true;
+    void getMe().then(me => { if (alive) setIsOperator(me.is_operator); });
+    return () => { alive = false; };
+  }, [authReady, user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function lookup(req: AgentRequest) {
     if (inflight.current) return false;
@@ -60,6 +71,6 @@ export function AppProvider({children}:{children:ReactNode}) {
   }
   function reset() { setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stage,error,replaying,lookup,replay,authEnabled,authReady,user,docHints,setDocHints,reset}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stage,error,replaying,lookup,replay,authEnabled,authReady,user,isOperator,docHints,setDocHints,reset}}>{children}</Context.Provider>;
 }
 export function useApp() { const ctx=useContext(Context);if(!ctx)throw new Error('AppProvider is required');return ctx; }
