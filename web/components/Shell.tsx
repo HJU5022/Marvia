@@ -10,11 +10,12 @@ import {signOut} from '@/lib/auth';
 import {SUSPENDED_MESSAGE} from '@/lib/api';
 import {useApp} from './AppProvider';
 import {isLive} from '@/lib/api';
-const links=[{href:'/',label:'내 화물',en:'MY CARGO',icon:Boxes},{href:'/history',label:'조회 이력',en:'HISTORY',icon:History},{href:'/metrics',label:'평가 지표',en:'EVALUATION',icon:ChartNoAxesCombined},{href:'/settings',label:'설정',en:'SETTINGS',icon:Settings2}];
+// operatorOnly: 운영자에게만 보이는 탭 (10-01). 평가 지표는 일반 사용자에게 필요 없는 시스템 품질 화면이다
+const links=[{href:'/',label:'내 화물',en:'MY CARGO',icon:Boxes},{href:'/history',label:'조회 이력',en:'HISTORY',icon:History},{href:'/metrics',label:'평가 지표',en:'EVALUATION',icon:ChartNoAxesCombined,operatorOnly:true},{href:'/settings',label:'설정',en:'SETTINGS',icon:Settings2}];
 // 운영자에게만 보이는 탭 (docs/specs/operator-admin.md). 숨김은 편의이고 권한은 서버가 막는다
 const adminLink={href:'/admin',label:'관리',en:'ADMIN',icon:ShieldUser};
 export function Shell({children}:{children:React.ReactNode}) {
- const path=usePathname();const {data,authEnabled,authReady,user,reset,isOperator,profileComplete,meReady,suspended}=useApp();const nav=isOperator?[...links,adminLink]:links;const [menu,setMenu]=useState(false);
+ const path=usePathname();const {data,authEnabled,authReady,user,reset,isOperator,profileComplete,meReady,suspended}=useApp();const nav=isOperator?[...links,adminLink]:links.filter(l=>!l.operatorOnly);const [menu,setMenu]=useState(false);
  // 로그인 확인 전(authReady=false)에는 빈 본문. 로그인 화면이 잠깐 깜빡이지 않게 한다
  const gated=authEnabled&&path!=='/about'&&(!authReady||!user);
  // 로그인했지만 회원 정보가 없으면 입력 화면 (docs/specs/user-profile.md). 확인 전(meReady=false)에는 빈 본문
