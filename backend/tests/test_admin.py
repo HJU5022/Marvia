@@ -36,6 +36,7 @@ class FakeConn:
         self.operators: dict[str, dict] = {}
         self.audit: list[dict] = []
         self.profiles: dict[str, tuple] = {}  # user_id -> (name_enc, phone_enc, address_enc), test_profile.py도 쓴다
+        self.actions: list[tuple] = []  # admin_actions 줄, test_customers_admin.py가 쓴다
 
     def __enter__(self):
         return self
@@ -77,6 +78,11 @@ class FakeConn:
             rows = [(a["action"], a["target_email"], a["actor_user_id"], a["actor_email"], a["created_at"])
                     for a in reversed(self.audit)]
             return _Result(rows[: params[0]])
+        if q.startswith("INSERT INTO admin_actions"):
+            self.actions.append((*params, now))
+            return _Result(rowcount=1)
+        if q.startswith("SELECT action, target_user_id"):
+            return _Result(list(reversed(self.actions))[: params[0]])
         if q.startswith("SELECT 1 FROM user_profiles"):
             return _Result([(1,)] if params[0] in self.profiles else [])
         if q.startswith("INSERT INTO user_profiles"):

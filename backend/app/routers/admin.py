@@ -17,7 +17,9 @@ from backend.app.auth import CurrentUser, current_user
 from backend.app.clients.supabase_admin import AdminError, list_users
 from backend.app.observability.logging import log_failure
 from backend.app.services import operators as ops
+from backend.app.services import customers as customers_svc
 from backend.app.services import profile as profile_svc
+from backend.app.services.account import WithdrawError
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -176,3 +178,93 @@ def grant_operator(body: EmailBody, user: Annotated[CurrentUser, Depends(require
 def revoke_operator(body: EmailBody, user: Annotated[CurrentUser, Depends(require_operator)]) -> OperatorsResponse:
     """운영자 해지. 자기 자신은 안 된다 (EC-04)."""
     return _change(ops.revoke, body, user)
+
+
+# ── 고객 수정·강제 탈퇴·마스킹 해제 (docs/specs/operator-admin.md 추가 절) ──
+
+class UnmaskBody(BaseModel):
+    reason: str
+
+
+class UnmaskResponse(BaseModel):
+    email: str | None
+    name: str | None
+    phone: str | None
+    address: str | None
+
+
+class CustomerProfileBody(BaseModel):
+    name: str
+    phone: str
+    address: str
+
+
+class CustomerDeleteResponse(BaseModel):
+    deleted_records: int
+
+
+class ActionItem(BaseModel):
+    action: Literal["customer_update", "customer_delete", "unmask"]
+    target_user_id: str
+    target_email_masked: str | None
+    actor_user_id: str
+    actor_email: str | None
+    reason: str | None
+    created_at: datetime
+
+
+_CUSTOMER_ERRORS = {
+    "reason": (400, "마스킹 해제 사유를 10~500자로 적어 주세요"),
+    "not_found": (404, "없는 고객입니다"),
+    "is_operator": (409, "운영자 계정입니다. 운영자 해지를 먼저 하세요"),
+    "self": (400, "자기 자신은 여기서 탈퇴시킬 수 없습니다. 설정에서 탈퇴하세요"),
+}
+
+
+def _customer_call(stage: str, fn):
+    """고객 동작 공통 오류 처리. 규칙 위반은 4xx, Supabase·DB 실패는 503."""
+    try:
+        with ops.open_conn() as conn:
+            return fn(conn)
+    except customers_svc.CustomerError as e:
+        status, detail = _CUSTOMER_ERRORS[e.kind]
+        raise HTTPException(status_code=status, detail=detail)
+    except profile_svc.ProfileError as e:
+        if e.kind == "no_key":
+            raise HTTPException(status_code=503, detail="회원 정보를 안전하게 저장할 수 없습니다")
+        raise HTTPException(status_code=400, detail={"name": "이름을 1~30자로 입력해 주세요",
+                                                     "phone": "휴대전화 번호를 확인해 주세요",
+                                                     "address": "주소를 5~200자로 입력해 주세요"}.get(e.kind, "입력값을 확인해 주세요"))
+    except (AdminError, WithdrawError) as e:
+        log_failure(stage, type(e).__name__)
+        raise HTTPException(status_code=503, detail="처리하지 못했습니다. 잠시 뒤 다시 시도하세요")
+    except Exception as e:
+        log_failure(stage, type(e).__name__)
+        raise HTTPException(status_code=503, detail=DB_DOWN)
+
+
+@router.post("/admin/customers/{user_id}/unmask", response_model=UnmaskResponse)
+def unmask_customer(user_id: str, body: UnmaskBody, user: Annotated[CurrentUser, Depends(require_operator)]) -> UnmaskResponse:
+    """사유를 남기고 한 명의 원문. 기록이 먼저 되고, 기록 실패면 원문을 주지 않는다."""
+    return UnmaskResponse(**_customer_call("admin_unmask",
+                                           lambda c: customers_svc.unmask(c, user_id, user.id, user.email, body.reason)))
+
+
+@router.put("/admin/customers/{user_id}/profile")
+def update_customer(user_id: str, body: CustomerProfileBody, user: Annotated[CurrentUser, Depends(require_operator)]) -> dict:
+    """이름·휴대전화·주소 수정. 응답은 가린 값 (화면은 목록을 다시 부른다)."""
+    _customer_call("admin_update", lambda c: customers_svc.update(c, user_id, user.id, user.email, body.name, body.phone, body.address))
+    return {"ok": True}
+
+
+@router.delete("/admin/customers/{user_id}", response_model=CustomerDeleteResponse)
+def delete_customer(user_id: str, user: Annotated[CurrentUser, Depends(require_operator)]) -> CustomerDeleteResponse:
+    """강제 탈퇴. 기록 → 회원 정보 → 계정 순서 (services/account.withdraw)."""
+    return CustomerDeleteResponse(deleted_records=_customer_call("admin_delete",
+                                                                 lambda c: customers_svc.delete(c, user_id, user.id, user.email)))
+
+
+@router.get("/admin/actions", response_model=list[ActionItem])
+def admin_actions(_: Annotated[CurrentUser, Depends(require_operator)]) -> list[ActionItem]:
+    """운영자 작업 이력 (수정·강제 탈퇴·마스킹 해제와 사유)."""
+    return _customer_call("admin_actions", customers_svc.list_actions)

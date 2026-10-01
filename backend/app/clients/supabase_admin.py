@@ -74,3 +74,38 @@ def list_users(page: int = 1, per_page: int = LIST_PER_PAGE) -> list[dict]:
     except (httpx.HTTPError, ValueError):
         raise AdminError("failed") from None
     return body.get("users", []) if isinstance(body, dict) else []
+
+
+def _admin_call(method: str, path: str, *, name: str, json: dict | None = None) -> httpx.Response | None:
+    """관리자 API 한 번 (재시도 포함). 404면 None. 키가 없거나 실패하면 AdminError."""
+    base, key = supabase_url(), os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+    if not base or not key:
+        raise AdminError("not_configured")
+
+    def call() -> httpx.Response:
+        resp = httpx.request(method, f"{base}{path}", json=json, headers={"apikey": key}, timeout=TIMEOUT_SEC)
+        if resp.status_code != 404:
+            resp.raise_for_status()
+        return resp
+
+    try:
+        resp = with_retry(call, name=name)
+    except httpx.HTTPStatusError as e:
+        raise AdminError("failed", e.response.status_code) from None
+    except httpx.HTTPError:
+        raise AdminError("failed") from None
+    return None if resp.status_code == 404 else resp
+
+
+def get_user(user_id: str) -> dict | None:
+    """사용자 한 명 (GET /auth/v1/admin/users/{id}). 없으면 None. 원문 이메일이 들어 있다. 마스킹 해제·강제 탈퇴에서만 쓴다."""
+    resp = _admin_call("GET", f"/auth/v1/admin/users/{user_id}", name="supabase:get_user")
+    return resp.json() if resp is not None else None
+
+
+def create_user(email: str, full_name: str, metadata: dict | None = None) -> dict:
+    """확인된 계정을 만든다 (POST /auth/v1/admin/users). 테스트 고객 만들기(scripts/seed_test_users.py)에서만 쓴다.
+    비밀번호는 넣지 않는다. 그 계정으로 로그인할 일이 없는 가공 고객이다."""
+    resp = _admin_call("POST", "/auth/v1/admin/users", name="supabase:create_user",
+                       json={"email": email, "email_confirm": True, "user_metadata": {"full_name": full_name, **(metadata or {})}})
+    return resp.json() if resp is not None else {}

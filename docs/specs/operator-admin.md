@@ -65,3 +65,28 @@
 **화면 (web/)**: 사이드바 링크를 is_operator로 나눈다. /admin 한 페이지에 "고객 관리"와 "운영자" 두 탭. 해지는 화면 안에서 한 번 더 확인한다
 
 **테스트**: backend/tests/test_admin.py. 마스킹, 권한(403), 중복 등록(409), 자기 해지(400), 이력 기록을 가짜 DB·가짜 Supabase로 확인한다. 키 없이 돈다
+
+## 추가 (10-01): 고객 수정·강제 탈퇴·마스킹 해제, 테스트 고객
+
+사용자 지시: 고객 관리에서 운영자가 직접 수정·탈퇴하고, 사유서를 쓰고 마스킹을 풀 수 있게. 테스트 고객 3명을 넣어 둔다.
+
+**동작**
+
+| 동작 | API | 규칙 |
+|---|---|---|
+| 수정 | PUT /api/admin/customers/{user_id}/profile | 이름·휴대전화·주소만. 검사 규칙은 본인 입력과 같다(services/profile.clean). 동의 시각은 바꾸지 않는다. 이메일은 구글 계정이라 못 바꾼다 |
+| 강제 탈퇴 | DELETE /api/admin/customers/{user_id} | 기록 → 회원 정보 → 계정 순서(services/account.withdraw와 같다). 운영자 계정은 해지 먼저(409), 자기 자신은 안 됨(400) |
+| 마스킹 해제 | POST /api/admin/customers/{user_id}/unmask {reason} | 사유 10~500자 필수. 그 고객 한 명의 이메일·이름·전화·주소 원문을 돌려준다. 화면은 60초 뒤 다시 가린다 |
+
+**이력 (011_admin_actions.sql)**: admin_actions(id, action: customer_update / customer_delete / unmask, target_user_id, target_email_masked, actor_user_id, actor_email, reason, created_at). INSERT만. 마스킹 해제는 원문을 보기 전에 먼저 기록한다(기록 실패면 원문을 주지 않는다). 대상은 탈퇴 뒤에도 알아볼 수 있게 가린 이메일로 남긴다
+
+**Edge Cases (추가)**
+
+| # | 상황 | 처리 방식 |
+|---|---|---|
+| EC-09 | 사유 10자 미만 | 400, 원문 안 줌, 기록 안 남김 |
+| EC-10 | 없는 고객 | 404 |
+| EC-11 | 회원 정보가 없는 고객을 수정 | 운영자가 새로 입력할 수 있다. 동의 시각은 운영자 입력 시각, 이력에 남는다 |
+| EC-12 | 운영자 계정 강제 탈퇴 | 409. 운영자 해지 먼저 |
+
+**테스트 고객**: scripts/seed_test_users.py가 testuser1~3@marvia.test 계정(Supabase 관리자 API, user_metadata.test=true)과 가공 회원 정보를 만든다. 실제 사람이 아님을 이름(testUser1~3)으로 드러낸다. 다시 돌리면 이미 있는 계정은 건너뛴다

@@ -80,17 +80,19 @@ def mask_address(address: str | None) -> str | None:
     return " ".join(parts[:2]) + " ***" if len(parts) > 2 else parts[0] + " ***"
 
 
-def save(conn, user_id: str, profile: Profile) -> None:
-    """잠가서 저장한다. 하나라도 못 잠그면(열쇠 없음) 아무것도 저장하지 않는다 (EC-04)."""
+def save(conn, user_id: str, profile: Profile, *, by_operator: bool = False) -> None:
+    """잠가서 저장한다. 하나라도 못 잠그면(열쇠 없음) 아무것도 저장하지 않는다 (EC-04).
+    by_operator: 운영자가 고친 경우. 본인 동의 시각(consent_at)은 그대로 둔다 (operator-admin 추가 절)."""
     sealed = [crypto.encrypt(v) for v in (profile.name, profile.phone, profile.address)]
     if any(s is None for s in sealed):
         raise ProfileError("no_key")
+    consent = "user_profiles.consent_at" if by_operator else "now()"
     conn.execute(
-        """
+        f"""
         INSERT INTO user_profiles (user_id, name_enc, phone_enc, address_enc, consent_at)
         VALUES (%s, %s, %s, %s, now())
         ON CONFLICT (user_id) DO UPDATE SET name_enc = EXCLUDED.name_enc, phone_enc = EXCLUDED.phone_enc,
-          address_enc = EXCLUDED.address_enc, consent_at = now(), updated_at = now()
+          address_enc = EXCLUDED.address_enc, consent_at = {consent}, updated_at = now()
         """,
         [user_id, *sealed],
     )
