@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import Freshness, Signal, SignalSet
 from backend.app.services.evidence import KST, days_margin
-from backend.app.services.rules import customs_stage_names, rule, stage_key
+from backend.app.services.rules import is_listed_stage, rule
 
 # 부산 항구 코드(UN/LOCODE)는 skills/port-busan/rules.md busan_port_code에서 읽는다 (10-01: 코드 상수였다)
 # dest_changed 값 가운데 "배의 실제 목적지가 아니라 입력 오류일 수 있다"는 뜻인 둘.
@@ -304,7 +304,7 @@ def needs_broker(stage_name: str) -> bool:
     """
     if any(word in stage_name for word in rule("customs_hold_words")):
         return True
-    return stage_key(stage_name) not in customs_stage_names()
+    return not is_listed_stage(stage_name)
 
 
 def _eta_gap(ais_eta: datetime, mof_eta: datetime) -> tuple[float, bool]:

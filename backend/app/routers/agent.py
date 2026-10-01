@@ -44,7 +44,7 @@ from backend.app.services import identify, llm, validate
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
-from backend.app.services.rules import rule
+from backend.app.services.rules import is_listed_stage, rule
 from backend.app.services.customs import CustomsError, UnipassClient
 from mcp_server.tools.distance import estimate_distance
 from mcp_server.tools.live_position import get_live_position
@@ -82,6 +82,10 @@ RELEASED = "이 화물은 이미 보세창고에서 반출됐습니다. 통관�
 RELEASED_EXPLANATION = "화물이 보세창고에서 나갔고 세관 절차가 모두 끝났습니다."
 # 할 일은 customs-stages/rules.md 반출신고 todo("입고를 확인한다")를 따르고, 범위 밖인 배송 일정은 운송사로 넘긴다 (PRD 4절 창고 수령일 예측)
 RELEASED_ACTIONS = ["배송 일정은 운송사에 확인하세요.", "물건이 도착하면 입고를 확인하세요."]
+
+# 목록에 없는 통관 단계의 설명 문장 (10-01). customs-stages/rules.md에 뜻이 없어 LLM이 설명할 근거가 없다.
+# LLM에 맡기면 이름만 보고 뜻을 지어내거나 "지연될 수 있다" 같은 평가를 덧붙였다 (평가 B10 "검사지정", 09-30·10-01 매번)
+UNLISTED_STAGE_EXPLANATION = "{stage} 단계입니다. 목록에 없는 단계라 뜻을 확인할 수 없어 관세사 확인이 필요합니다."
 
 JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 첨부 + 강화 (SDD 5.7)
 
@@ -604,16 +608,34 @@ def _eta(position: dict | None, schedule: dict | None, signal_set, trusted) -> E
     )
 
 
+def code_written_explanation(stage_name: str | None) -> bool:
+    """통관 설명 문장을 LLM이 아니라 코드가 쓰는 단계인가: 반출신고(_released)와 목록에 없는 단계.
+    평가 실행기(evals/judge.py)가 이 단계들은 LLM 해설 채점에서 뺀다. 코드가 쓴 고정 문장이라 LLM 품질이 아니다 (10-01)."""
+    if not stage_name:
+        return False
+    return stage_name == RELEASED_STAGE or not is_listed_stage(stage_name)
+
+
 def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
     """단계 이름·코드·이력은 UNI-PASS 값, 관세사 필요 여부는 코드 판단(10-01), 해설 둘은 LLM 값으로 C1 CustomsInfo를 만든다.
-    단계 이름이 없거나 LLM이 해설을 안 냈으면 None."""
-    if not customs.stage_name or explained is None:
+
+    목록에 없는 단계는 해설 둘도 코드가 쓴다: 고정 문장 + 다음 단계 null (10-01, UNLISTED_STAGE_EXPLANATION).
+    뜻을 모르는 단계라 LLM 해설이 필요 없어서, LLM이 해설을 못 냈어도 이 경우는 채운다.
+    그 밖에 단계 이름이 없거나 LLM이 해설을 안 냈으면 None."""
+    if not customs.stage_name:
         return None
+    if not is_listed_stage(customs.stage_name):
+        plain_explanation = UNLISTED_STAGE_EXPLANATION.format(stage=customs.stage_name)
+        next_stage = None
+    elif explained is None:
+        return None
+    else:
+        plain_explanation, next_stage = explained.plain_explanation, explained.next_stage
     return CustomsInfo(
         stage_code=customs.stage_code or "",
         stage_name=customs.stage_name,
-        plain_explanation=explained.plain_explanation,
-        next_stage=explained.next_stage,
+        plain_explanation=plain_explanation,
+        next_stage=next_stage,
         needs_broker=signals_service.needs_broker(customs.stage_name),
         history=[s.model_dump(mode="json") for s in customs.stage_history],
     )

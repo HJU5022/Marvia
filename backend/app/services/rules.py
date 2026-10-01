@@ -66,6 +66,11 @@ def stage_key(name: str) -> str:
     return "".join(name.split())
 
 
+def is_listed_stage(name: str) -> bool:
+    """customs-stages/rules.md customs_stages 목록에 있는 단계인가. 관세사 필요 여부와 통관 설명 고정 문장이 같이 쓴다."""
+    return stage_key(name) in customs_stage_names()
+
+
 @cache
 def customs_stage_names() -> frozenset[str]:
     """customs-stages/rules.md customs_stages 목록의 name들을 stage_key 모양으로 돌려준다.
