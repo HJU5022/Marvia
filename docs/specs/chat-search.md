@@ -49,3 +49,12 @@
 - 테스트: backend/tests/test_chat.py (가리기, 라우팅별 실행, 폴백, 덮어쓰기, 항구 필터)
 
 **추가 (10-01)**: 입항 예정 목록은 공개 정보이고 데모 B/L 3건과 무관하므로, DATA_GO_KR_KEY가 있으면 REPLAY_MODE에서도 선박 검색만 실제 해수부를 부른다. 키가 없으면 녹화본. 답에는 사용자가 쓴 지역 이름(place_label)을 쓴다
+
+## 추가 (10-01): 선박 자세히 보기
+
+선박 표에서 선명을 누르면 GET /api/vessels/detail?call_sign=&ship_name= 로 한 척을 자세히 본다. 새 데이터 소스 없이 기존 MCP 도구 넷을 묶는다(services/vessel_detail.py).
+- 해수부 get_port_schedule: 입항 예정·실적, 접안 시설, 관제 이벤트 (호출부호 우선)
+- ShipFinder get_vessel_candidates → get_live_position: MMSI, 국적, 실시간 위치·속력·AIS 목적지·AIS ETA·마지막 수신
+- searoute estimate_distance: 부산까지 남은 바닷길, 지금 속력이면 걸리는 시간(계산 도착)
+- 위치 신선도는 rules.md position_stale_hours로 코드가 정한다. 판정은 하지 않는다
+- 도구 하나가 실패해도 나머지를 보여 주고 errors에 출처별로 남긴다. ShipFinder 한도 때문에 같은 배는 10분 캐시

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.app.auth import current_user_id
@@ -15,6 +15,7 @@ from backend.app.observability.langfuse import session_scope
 from backend.app.routers.agent import run_agent
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import chat as svc
+from backend.app.services import vessel_detail
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -73,3 +74,13 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
         except svc.ChatError as e:
             raise HTTPException(status_code=400, detail="문장을 1~500자로 입력해 주세요") from e
     return ChatResponse(**result.__dict__)
+
+
+@router.get("/vessels/detail")
+def vessel_detail_view(call_sign: str | None = Query(default=None, max_length=20),
+                       ship_name: str | None = Query(default=None, max_length=100),
+                       user_id: Annotated[str | None, Depends(current_user_id)] = None) -> dict:
+    """선박 표에서 선명을 눌렀을 때. 해수부 일정 + AIS 위치 + 부산까지 거리. 판정은 하지 않는다 (services/vessel_detail.py)."""
+    if not (call_sign or ship_name):
+        raise HTTPException(status_code=400, detail="호출부호나 선명이 필요합니다")
+    return vessel_detail.detail(call_sign, ship_name)
