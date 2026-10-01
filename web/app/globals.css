@@ -102,3 +102,4 @@ button.avatar:hover{background:var(--accent)}
 .confirm-field{margin-top:12px;max-width:260px}
 .account-message{margin-top:14px;padding:12px;border-radius:5px;background:var(--success-bg);color:var(--success);font-size:12px}
 @media(max-width:700px){.account-panel{padding:20px 18px}.danger-row{flex-direction:column}.danger-actions{width:100%}}
+.idle-ship{color:var(--accent-dark);margin-bottom:14px;opacity:.8}
