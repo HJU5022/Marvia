@@ -3,9 +3,12 @@
  * 응답은 받은 그대로 둔다. 화면이 스키마 값을 고치지 않는다.
  */
 import {createContext, useContext, useEffect, useRef, useState, type ReactNode} from 'react';
-import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, isLive} from '@/lib/api';
+import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, isLive, sendChat} from '@/lib/api';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
-import type {AgentRequest, AgentResponse} from '@/lib/types';
+import type {AgentRequest, AgentResponse, ChatResponse} from '@/lib/types';
+
+/** 입력창 대화 한 줄. 화면에만 두고 저장하지 않는다 (docs/specs/chat-search.md Out of Scope: 대화 기억) */
+export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: ChatResponse['kind'] }
 const presentation = getPresentationData();
 // 실제 모드는 빈 폼으로 시작한다. 세션 ID는 lib/api.ts가 요청 때 브라우저 값으로 채운다
 const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: null, session_id: ''};
@@ -17,6 +20,9 @@ interface AppState {
   data: typeof presentation; request: AgentRequest; result: AgentResponse | null;
   loading: boolean; stage: number; error: string; replaying: boolean;
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
+  /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다 */
+  ask: (message: string) => Promise<boolean>;
+  thread: ChatTurn[]; vessels: ChatResponse | null; view: 'cargo' | 'vessels';
   /** 로그인 기능이 켜졌는지, 세션 확인이 끝났는지, 누가 로그인했는지 */
   authEnabled: boolean; authReady: boolean; user: AuthUser | null;
   /** 운영자면 관리 탭을 보여 준다. 서버(GET /api/me)가 정한 값이고, 관리 API는 서버가 다시 확인한다 */
@@ -40,6 +46,9 @@ export function AppProvider({children}:{children:ReactNode}) {
   const [authReady,setAuthReady] = useState(!authEnabled);
   const [docHints,setDocHints] = useState<DocHints|null>(null);
   const [isOperator,setIsOperator] = useState(false);
+  const [thread,setThread] = useState<ChatTurn[]>([]);
+  const [vessels,setVessels] = useState<ChatResponse|null>(null);
+  const [view,setView] = useState<'cargo'|'vessels'>('cargo');
   const [profileComplete,setProfileComplete] = useState(true);
   const [suspended,setSuspended] = useState(false);
   const [meReady,setMeReady] = useState(!authEnabled);
@@ -72,13 +81,30 @@ export function AppProvider({children}:{children:ReactNode}) {
     catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했습니다. 다시 시도해 주세요.'); return false; }
     finally {clearTimeout(a);clearTimeout(b);setLoading(false);inflight.current=false;}
   }
+  async function ask(message: string) {
+    if (inflight.current) return false;
+    inflight.current = true; setLoading(true); setError(''); setStage(0); setReplaying(false);
+    setThread(t => [...t.slice(-9), {role: 'user', text: message}]);
+    const a = setTimeout(()=>setStage(1),350); const b = setTimeout(()=>setStage(2),700);
+    try {
+      // 지금 보고 있는 화물이 있으면 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다
+      const res = await sendChat(message, result && request.bl_no ? request : null);
+      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind}]);
+      if (res.kind === 'cargo' && res.agent && res.request) { setResult(res.agent); setRequest(res.request); setView('cargo'); }
+      if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '답하지 못했습니다. 다시 시도해 주세요.';
+      setError(msg); setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
+    } finally { clearTimeout(a); clearTimeout(b); setLoading(false); inflight.current = false; }
+  }
   function replay(id: string) {
     if (inflight.current) return false;
     const snapshot = getReplaySnapshot(id); if (!snapshot) return false;
     setResult(snapshot.response);setRequest(snapshot.request);setReplaying(true);setError('');return true;
   }
-  function reset() { setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); }
+  function reset() { setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stage,error,replaying,lookup,replay,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stage,error,replaying,lookup,replay,ask,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset}}>{children}</Context.Provider>;
 }
 export function useApp() { const ctx=useContext(Context);if(!ctx)throw new Error('AppProvider is required');return ctx; }

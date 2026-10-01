@@ -97,5 +97,40 @@
       "lng": 130.1
     }
   ],
-  "follow_up_answer": "이 화면은 저장된 예시 답변을 재생합니다. 입항 예정은 상품 수령일을 보장하지 않습니다. 해수부 입항 예정과 UNI-PASS 통관 단계 근거를 확인하고, 실제 반출 일정은 포워더에게 문의하세요."
+  "follow_up_answer": "이 화면은 저장된 예시 답변을 재생합니다. 입항 예정은 상품 수령일을 보장하지 않습니다. 해수부 입항 예정과 UNI-PASS 통관 단계 근거를 확인하고, 실제 반출 일정은 포워더에게 문의하세요.",
+  "vessel_search": {
+    "reply": "가공 예시: 앞으로 7일 동안 중국 항구(SHANGHAI, NINGBO PT)를 직전에 들른 부산 입항 예정 선박 2척입니다. 해수부 입항 신고의 직전 기항지 기준입니다.",
+    "place": "China",
+    "ports": [
+      "SHANGHAI",
+      "NINGBO PT"
+    ],
+    "days": 7,
+    "vessels": [
+      {
+        "ship_name": "MARVIA DEMO STAR",
+        "call_sign": "DEMO1",
+        "nationality": "PANAMA",
+        "ship_kind": "컨테이너선",
+        "previous_port": "SHANGHAI",
+        "next_port": "TOKYO",
+        "purpose": "양하",
+        "expected_arrival": "2026-10-21T06:00:00+09:00",
+        "facility": "신선대부두",
+        "planned_departure": "2026-10-22T02:00:00+09:00"
+      },
+      {
+        "ship_name": "MARVIA DEMO WAVE",
+        "call_sign": "DEMO2",
+        "nationality": "KOREA",
+        "ship_kind": "컨테이너선",
+        "previous_port": "NINGBO PT",
+        "next_port": null,
+        "purpose": "양하",
+        "expected_arrival": "2026-10-22T14:00:00+09:00",
+        "facility": "감만부두",
+        "planned_departure": "2026-10-23T09:00:00+09:00"
+      }
+    ]
+  }
 }

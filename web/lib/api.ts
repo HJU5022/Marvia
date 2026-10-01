@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse } from './types';
 import {accessToken} from './auth';
 import ok from './fixtures/ok.json';
 import partial from './fixtures/partial.json';
@@ -95,7 +95,11 @@ async function errorMessage(res: Response): Promise<string> {
 }
 
 /** 타임아웃을 건 fetch. 연결 자체가 안 되면 주소를 알려 줘서 백엔드가 떠 있는지 확인하게 한다. */
-async function call(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+/** 연결 자체가 안 될 때 다시 시도하는 간격. 서버 재시작(몇 초) 중에 보낸 요청이 바로 실패하지 않게 한다 */
+const RETRY_DELAYS_MS = [1500, 3000];
+
+/** fetch 한 번. 연결 실패(TypeError)는 그대로 올려 call이 다시 시도하게 한다. */
+async function callOnce(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -108,10 +112,26 @@ async function call(path: string, init: RequestInit, timeoutMs: number): Promise
     return res;
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw new Error('응답이 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.');
-    if (e instanceof TypeError) throw new Error(`백엔드(${API_BASE})에 연결하지 못했습니다. 서버가 켜져 있는지 확인해 주세요.`);
     throw e;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** 타임아웃과 재시도를 건 fetch.
+ * 연결 자체가 안 되면(서버 재시작·잠깐 끊김) 1.5초, 3초 뒤 두 번 더 해 본다. 응답이 온 오류(4xx·5xx)는 다시 하지 않는다.
+ * 연결 실패는 응답이 없으니 서버가 요청을 처리하지 않은 것이라, 다시 보내도 같은 일이 두 번 되지 않는다. */
+async function call(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await callOnce(path, init, timeoutMs);
+    } catch (e) {
+      if (!(e instanceof TypeError)) throw e;
+      if (attempt >= RETRY_DELAYS_MS.length) {
+        throw new Error('서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요. 계속되면 백엔드가 켜져 있는지 확인해 주세요.');
+      }
+      await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+    }
   }
 }
 
@@ -208,11 +228,42 @@ async function demoDocument(): Promise<DocumentResponse> {
   return structuredClone(documentFixture) as DocumentResponse;
 }
 
+/** 데모: LLM 없이 문장 속 예시 B/L만 알아본다. 배 검색은 가공 예시 표 (실제 모드에서는 서버가 LLM으로 처리) */
+async function demoChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
+  const empty = {agent: null, request: null, vessels: [], place: null, ports: [], days: null};
+  const bl = message.toUpperCase().match(/MRVDEMO\d{4}/)?.[0];
+  const choice = bl ? demo.choices.find(c => c.request.bl_no === bl) : undefined;
+  if (choice) {
+    const request = choice.request as AgentRequest;
+    const agent = await demoAgentResponse(request);
+    return {...empty, kind: 'cargo', reply: agent.answer, agent, request};
+  }
+  if (/배|선박|입항/.test(message)) {
+    await pause();
+    return {...empty, kind: 'vessels', ...structuredClone(demo.vessel_search), reply: demo.vessel_search.reply} as ChatResponse;
+  }
+  if (context) {
+    const agent = await demoAgentResponse({...context, follow_up_question: message.slice(0, 300)});
+    return {...empty, kind: 'cargo', reply: agent.answer, agent, request: context};
+  }
+  await pause();
+  return {...empty, kind: 'message', reply: '데모에서는 예시 B/L(MRVDEMO1101~1107)이 든 문장이나 "중국에서 오는 배"처럼 물어볼 수 있습니다.'};
+}
+
 /* ---------- 화면이 쓰는 함수 ---------- */
 
 /** POST /api/agent. 첫 조회, 되묻기 답, 후속 질문이 모두 이 하나로 간다 (SDD 4.3). */
 export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse> {
   return isLive ? liveAgentResponse(req) : demoAgentResponse(req);
+}
+
+/** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다) */
+export async function sendChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
+  if (!isLive) return demoChat(message, context);
+  const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null} : null;
+  const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({message, session_id: currentSessionId(), context: ctx})}, AGENT_TIMEOUT_MS);
+  return res.json();
 }
 
 /** GET /api/history. available:false(못 읽음)와 빈 목록을 구분한다. */
@@ -300,16 +351,15 @@ export async function getAdminActions(): Promise<ActionItem[]> {
 /** GET /api/profile. 아직 입력하지 않았으면 null(404). 본인에게만 원문이 온다. */
 export async function getProfile(): Promise<ProfileData | null> {
   if (!isLive) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HISTORY_TIMEOUT_MS);
   try {
-    const token = await accessToken();
-    const res = await fetch(`${API_BASE}/api/profile`, {headers: token ? {authorization: `Bearer ${token}`} : {}, signal: controller.signal});
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(await errorMessage(res));
-    return res.json();
-  } finally { clearTimeout(timer); }
+    return await (await call('/api/profile', {}, HISTORY_TIMEOUT_MS)).json();
+  } catch (e) {
+    // 아직 입력 전이면 서버가 404 "회원 정보가 없습니다"를 준다 (routers/profile.py). 그때만 null
+    if (e instanceof Error && e.message === PROFILE_MISSING) return null;
+    throw e;
+  }
 }
+const PROFILE_MISSING = '회원 정보가 없습니다';
 
 /** PUT /api/profile. 동의(consent)가 없으면 서버가 거절한다. 저장은 서버에서 암호화된다. */
 export async function saveProfile(p: ProfileData & {consent: boolean}): Promise<ProfileData> {

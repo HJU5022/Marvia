@@ -1,0 +1,67 @@
+'use client';
+/** 문장 입력창 (docs/specs/chat-search.md). "내 화물" 화면의 검색 폼(B/L·구분·판매 예정일·예시 메뉴)을 대신한다.
+ * 문장은 POST /api/chat으로 가고, 서버가 B/L을 가린 뒤 LLM이 의도(화물 조회·후속 질문·입항 선박 검색)를 고른다.
+ * 서류 사진 버튼은 남긴다: 읽은 B/L을 문장에 넣어 주고, 항차·입항 예정일은 되묻기 화면에 미리 채운다.
+ */
+import {useState, type FormEvent, type KeyboardEvent} from 'react';
+import {ArrowUp, Camera, Check, LoaderCircle, Sparkles} from 'lucide-react';
+import {useApp} from './AppProvider';
+import {DocumentPanel, type DocumentValues} from './DocumentPanel';
+import {isLive} from '@/lib/api';
+
+const MAX = 500;  // routers/chat.py ChatRequest.message max_length
+
+/** 처음 보는 사람을 위한 예시 문장. 실제 모드는 백엔드 데모 B/L, 데모 모드는 가공 B/L */
+const EXAMPLES = isLive
+  ? ['TESTBL01 화물 괜찮아?', 'TESTBL04 하우스 비엘 10월 7일 판매 예정', '중국에서 부산 들어오는 배 보여줘', '네덜란드에서 한국 오는 배 뭐야?']
+  : ['MRVDEMO1101 화물 괜찮아?', 'MRVDEMO1107 지금 조치해야 해?', '중국에서 부산 들어오는 배 보여줘'];
+
+export function ChatBar() {
+  const {ask, loading, stage, thread, result, request, setDocHints} = useApp();
+  const [text, setText] = useState('');
+  const [docOpen, setDocOpen] = useState(false);
+
+  function send(message: string) {
+    const m = message.trim();
+    if (!m || loading || m.length > MAX) return;
+    setText('');
+    void ask(m);
+  }
+  function submit(e: FormEvent) { e.preventDefault(); send(text); }
+  // Enter로 보내고, Shift+Enter는 줄바꿈 (한글 조합 중 Enter는 무시)
+  function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(text); }
+  }
+  function applyDocument(v: DocumentValues) {
+    setDocOpen(false);
+    setText(t => `${v.bl_no} ${t}`.trim());
+    setDocHints(v.voyage_no || v.forwarder_eta ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta} : null);
+  }
+
+  const lastTurns = thread.slice(-4);
+
+  return <section className="query-section chat-section" aria-label="화물에 대해 묻기">
+    {lastTurns.length > 0 && <ol className="chat-thread" aria-live="polite">
+      {lastTurns.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
+        {t.role === 'assistant' && <span className="chat-avatar"><Sparkles size={12}/></span>}<p>{t.text}</p></li>)}
+    </ol>}
+    <form className="chat-form" onSubmit={submit}>
+      <label htmlFor="chat-input" className="sr-only">무엇이든 물어보세요</label>
+      <textarea id="chat-input" value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={2} maxLength={MAX}
+        placeholder={result && request.bl_no ? '이 화물에 대해 묻거나, 다른 B/L·입항 선박을 물어보세요' : 'B/L 번호와 함께 물어보세요. 예: TESTBL01 화물 괜찮아? / 중국에서 오는 배 보여줘'}
+        disabled={loading} autoComplete="off" spellCheck={false}/>
+      <div className="chat-tools">
+        <button type="button" className="doc-trigger" onClick={() => setDocOpen(o => !o)} aria-expanded={docOpen} disabled={loading}><Camera size={13}/>서류 사진</button>
+        <span className="mono chat-count">{text.length}/{MAX}</span>
+        <button type="submit" className="button primary chat-send" disabled={loading || !text.trim()} aria-label="보내기">
+          {loading ? <LoaderCircle size={17} className="spin"/> : <ArrowUp size={17}/>}</button>
+      </div>
+    </form>
+    {!thread.length && <div className="chat-examples" aria-label="예시 문장">{EXAMPLES.map(e =>
+      <button key={e} type="button" onClick={() => send(e)} disabled={loading}>{e}</button>)}</div>}
+    {docOpen && <DocumentPanel onApply={applyDocument} onClose={() => setDocOpen(false)} disabled={loading}/>}
+    {/* 진행 단계는 화면 타이머다. 서버는 진행 이벤트를 보내지 않는다 */}
+    {loading && <ol className="progress-steps" aria-label="처리 진행" aria-live="polite">{['이해', '조회', '정리'].map((s, i) =>
+      <li key={s} className={i === stage ? 'current' : i < stage ? 'complete' : ''}>{i < stage ? <Check size={14}/> : <span>{i + 1}</span>}{s}</li>)}</ol>}
+  </section>;
+}

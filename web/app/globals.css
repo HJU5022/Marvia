@@ -182,3 +182,43 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .role-chip+.role-chip{margin-left:4px}
 .admin-tabs+section .history-stats{grid-template-columns:repeat(5,1fr)}
 @media(max-width:700px){.admin-tabs+section .history-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* Natural-language bar (chat-search): one calm input replacing the field form, recent turns above it. */
+.chat-section{padding:18px 22px 16px}
+.chat-thread{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
+.chat-turn{display:flex;gap:8px;align-items:flex-start;max-width:86%}
+.chat-turn p{margin:0;padding:9px 13px;border-radius:10px;font-size:12px;line-height:1.75;white-space:pre-line}
+.chat-turn.user{align-self:flex-end}
+.chat-turn.user p{background:var(--rail);color:var(--rail-text);border-bottom-right-radius:3px}
+.chat-turn.assistant p{background:var(--soft);color:var(--body);border-bottom-left-radius:3px}
+.chat-avatar{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--rail);margin-top:4px}
+.chat-form{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:10px 12px 8px;transition:border-color .15s}
+.chat-form:focus-within{border-color:var(--accent-dark);box-shadow:0 0 0 3px #d5e9ad55}
+.chat-form textarea{width:100%;border:0;resize:none;background:transparent;font:inherit;font-size:13px;line-height:1.7;color:var(--ink);outline:none}
+.chat-tools{display:flex;align-items:center;gap:12px}
+.chat-count{margin-left:auto;font-size:10px;color:var(--quiet)}
+.chat-send{min-height:36px;width:36px;padding:0;border-radius:50%}
+.chat-examples{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chat-examples button{border:1px solid var(--border);background:var(--canvas);border-radius:999px;padding:6px 12px;font-size:11px;color:var(--body);cursor:pointer}
+.chat-examples button:hover:not(:disabled){background:var(--success-bg);border-color:var(--accent-dark)}
+.chat-section .progress-steps{margin-top:12px;padding-bottom:0}
+.chat-section .document-panel{margin:14px -22px 0;padding:20px 22px}
+.vessel-results{margin-top:24px}
+.vessel-results .table-toolbar{flex-direction:column;align-items:stretch}
+.port-chips{display:flex;flex-wrap:wrap;gap:6px}
+@media(max-width:700px){.chat-section{padding:14px}.chat-turn{max-width:100%}.chat-section .document-panel{margin:14px -14px 0}}
+.cargo-page .bottom-grid{grid-template-columns:1fr}
+/* Vessel table pager: size box (10/30/50) on the left, page numbers on the right. */
+.pager{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 20px;border-top:1px solid var(--border)}
+.pager-size{display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.pager-size select{border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);padding:6px 10px;font-size:11px;color:var(--ink);cursor:pointer}
+.pager-range{font-size:10px;color:var(--quiet)}
+.pager-buttons{display:flex;align-items:center;gap:4px;margin-left:auto}
+.pager-buttons .icon-button{width:30px;height:30px}
+.pager-num-wrap{display:inline-flex;align-items:center;gap:4px}
+.pager-num{min-width:30px;height:30px;border:1px solid transparent;border-radius:var(--small-radius);background:transparent;font:11px var(--mono);color:var(--body);cursor:pointer}
+.pager-num:hover{background:var(--soft)}
+.pager-num.active{background:var(--rail);color:var(--rail-text)}
+.pager-gap{font-size:11px;color:var(--quiet);padding:0 2px}
+@media(max-width:700px){.pager{padding:12px 14px}.pager-buttons{margin-left:0;width:100%;justify-content:center}}
+.cell-sub{display:block;font-size:10px;color:var(--quiet);font-weight:400}

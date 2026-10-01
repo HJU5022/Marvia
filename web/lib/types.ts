@@ -94,3 +94,17 @@ export interface ActionItem {
   action: 'customer_update' | 'customer_delete' | 'unmask' | 'customer_suspend' | 'customer_resume'; target_user_id: string; target_email_masked: string | null;
   actor_user_id: string; actor_email: string | null; reason: string | null; created_at: string;
 }
+
+/** POST /api/chat (backend/app/routers/chat.py, docs/specs/chat-search.md). 문장 하나에 대한 답 */
+export interface VesselItem {
+  ship_name: string; call_sign: string | null; nationality: string | null; ship_kind: string | null;
+  previous_port: string | null; next_port: string | null; purpose: string | null;
+  expected_arrival: string | null; facility: string | null;
+  /** 부산 출항 예정. 처음 출발한 항구의 출발 시각은 해수부 신고에 없다 */
+  planned_departure?: string | null;
+}
+export interface ChatResponse {
+  kind: 'cargo' | 'vessels' | 'message'; reply: string;
+  agent: AgentResponse | null; request: AgentRequest | null;
+  vessels: VesselItem[]; place: string | null; ports: string[]; days: number | null;
+}
