@@ -4,6 +4,7 @@
 - 같은 키가 두 파일에 있으면 실패한다 (결정마다 권한자 하나, 10-01 강사 피드백)
 - 통관 정상 단계 목록은 customs-stages/rules.md YAML에서 읽는다
 - 부산 항구 코드는 코드 상수가 아니라 port-busan/rules.md busan_port_code다
+- Skill 폴더마다 SKILL.md와 rules.md가 있고, SKILL.md 프론트매터 name은 폴더 이름과 같다 (Agent Skills 규격)
 """
 import pytest
 
@@ -78,3 +79,13 @@ def test_busan_port_code_change_is_followed(monkeypatch):
     monkeypatch.setattr(rules, "load_rules", lambda *a, **k: {**original, "busan_port_code": "KRXXX"})
     assert _dest_changed({"destcode": "KRPUS"}).state == "triggered"
     assert _dest_changed({"destcode": "KRXXX"}).state == "clear"
+
+
+def test_every_skill_folder_has_skill_and_rules_with_spec_front_matter():
+    folders = sorted(p for p in rules.SKILLS_DIR.iterdir() if p.is_dir())
+    assert {f.name for f in folders} == {"ais-reliability", "customs-stages", "port-busan", "cargo-verdict"}
+    for folder in folders:
+        assert (folder / "rules.md").is_file(), folder.name
+        front = rules._front_matter(folder / "SKILL.md")
+        assert front["name"] == folder.name
+        assert front["description"].strip()

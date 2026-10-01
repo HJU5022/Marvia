@@ -72,7 +72,7 @@ def test_system_has_prompt_and_judge_skills(monkeypatch):
     system = calls[0]["messages"][0]["content"]
     assert "The verdict is one of three" in system  # 프롬프트 파일 앞부분
     for skill in ("ais-reliability/SKILL.md", "ais-reliability/rules.md", "customs-stages/SKILL.md",
-                  "customs-stages/rules.md", "cargo-verdict/rules.md"):
+                  "customs-stages/rules.md", "cargo-verdict/SKILL.md", "cargo-verdict/rules.md"):
         assert f"skills/{skill}" in system
     assert "skills/port-busan/SKILL.md" not in system
 
@@ -84,7 +84,7 @@ def test_system_has_prompt_and_judge_skills(monkeypatch):
     (llm.GRADE_SKILLS, ["customs-stages/SKILL.md", "customs-stages/rules.md"],
      ["ais-reliability/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/"]),
     (llm.FOLLOW_UP_SKILLS, ["ais-reliability/SKILL.md", "customs-stages/SKILL.md", "port-busan/SKILL.md",
-                            "cargo-verdict/rules.md"], []),
+                            "cargo-verdict/SKILL.md"], []),
 ])
 def test_skills_per_call(folders, present, absent):
     """호출마다 필요한 Skill 폴더만 붙인다 (09-30). 붙이는 문서는 통째로다."""
