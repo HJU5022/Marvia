@@ -454,6 +454,56 @@
           "items": {
             "type": "object"
           }
+        },
+        "loading_port": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "loading_port_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "loading_country": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "discharge_port": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "discharge_port_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -462,7 +512,12 @@
         "plain_explanation",
         "next_stage",
         "needs_broker",
-        "history"
+        "history",
+        "loading_port",
+        "loading_port_name",
+        "loading_country",
+        "discharge_port",
+        "discharge_port_name"
       ]
     },
     "BerthInfo": {

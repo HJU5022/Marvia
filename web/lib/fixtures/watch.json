@@ -68,7 +68,12 @@
         "name": "입항적재화물목록 심사완료",
         "at": "2026-10-20T08:50:00+09:00"
       }
-    ]
+    ],
+    "loading_port": "CNSHA",
+    "loading_port_name": "Shanghai",
+    "loading_country": "CN",
+    "discharge_port": "KRPUS",
+    "discharge_port_name": "부산항"
   },
   "berth": {
     "facility": "부산 신항 · 가상 선석 A",

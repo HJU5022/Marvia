@@ -45,6 +45,9 @@ export interface CustomsInfo {
   next_stage: string | null; needs_broker: boolean;
   // Backend is list[dict], not a stronger invented timeline contract.
   history: Record<string, unknown>[];
+  /** 어디서 어디로 (UNI-PASS 적재항·양륙항, 10-01). 없으면 null */
+  loading_port?: string | null; loading_port_name?: string | null; loading_country?: string | null;
+  discharge_port?: string | null; discharge_port_name?: string | null;
 }
 export interface BerthInfo { facility: string | null; shed: string | null }
 export interface AgentResponse {

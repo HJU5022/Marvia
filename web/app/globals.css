@@ -227,3 +227,11 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .sort-head svg{opacity:.35}
 .sort-head:hover svg,.sort-head.on svg{opacity:1}
 .sort-head.on{color:var(--accent-dark)}
+
+/* Cargo route (loading port → discharge port) on top of the customs card. */
+.cargo-route{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:14px;border-radius:var(--small-radius);background:var(--soft)}
+.cargo-route>span{display:flex;flex-direction:column;min-width:0}
+.cargo-route small{font-size:9px;color:var(--muted);letter-spacing:.04em}
+.cargo-route strong{font-size:14px}
+.cargo-route em{font-style:normal;font-size:10px;color:var(--quiet)}
+.cargo-route svg{flex:none;color:var(--accent-dark)}
