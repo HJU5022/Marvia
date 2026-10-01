@@ -94,3 +94,62 @@ def test_customer_api_forbids_non_operator(db, monkeypatch):
         assert client.post("/api/admin/customers/u1/unmask", json={"reason": REASON}, headers=headers).status_code == 403
         assert client.delete("/api/admin/customers/u1", headers=headers).status_code == 403
     assert db.actions == []
+
+
+# ── 일시 정지 ──
+
+def test_suspend_rules_and_ban(db, monkeypatch):
+    bans = []
+    monkeypatch.setattr(svc, "set_ban", lambda user_id, banned: bans.append((user_id, banned)))
+    for args, kind in [(("u1", "a", OPERATOR, "짧음"), "reason"), (("op", "a", OPERATOR, REASON), "is_operator"),
+                       (("u1", "u1", OPERATOR, REASON), "self")]:
+        with pytest.raises(svc.CustomerError) as e:
+            svc.suspend(db, *args)
+        assert e.value.kind == kind
+    assert bans == []  # 규칙 위반이면 Supabase도 건드리지 않는다
+    svc.suspend(db, "u1", "a", OPERATOR, REASON)
+    assert svc.is_suspended(db, "u1") and bans == [("u1", True)] and db.actions[-1][0] == "customer_suspend"
+    with pytest.raises(svc.CustomerError) as e:
+        svc.suspend(db, "u1", "a", OPERATOR, REASON)
+    assert e.value.kind == "already_suspended"
+    svc.resume(db, "u1", "a", OPERATOR)
+    assert not svc.is_suspended(db, "u1") and bans[-1] == ("u1", False) and db.actions[-1][0] == "customer_resume"
+
+
+def test_ban_failure_leaves_db_untouched(db, monkeypatch):
+    from backend.app.clients.supabase_admin import AdminError
+
+    def broken(user_id, banned):
+        raise AdminError("failed", 500)
+    monkeypatch.setattr(svc, "set_ban", broken)
+    with pytest.raises(AdminError):
+        svc.suspend(db, "u1", "a", OPERATOR, REASON)
+    assert not svc.is_suspended(db, "u1") and db.actions == []
+
+
+def test_suspended_user_is_blocked_everywhere(db, monkeypatch):
+    """정지되면 이미 받은 출입증으로도 403 account_suspended (auth.current_user)."""
+    monkeypatch.setattr(svc, "set_ban", lambda *a: None)
+    svc.suspend(db, "u1", "a", OPERATOR, REASON)
+    import jwt as _jwt
+    headers = _login(monkeypatch, "testuser1@marvia.test")
+    token = headers["Authorization"].split()[1]
+    assert _jwt.decode(token, options={"verify_signature": False})["sub"] == "user-123"
+    db.suspended["user-123"] = ("a", REASON)  # 도장의 sub(user-123)를 정지 목록에
+    with TestClient(app) as client:
+        r = client.get("/api/me", headers=headers)
+        assert r.status_code == 403 and r.json()["detail"] == "account_suspended"
+        assert client.post("/api/agent", headers=headers, json={"bl_no": "TESTBL01", "bl_type": "HOUSE", "session_id": "s"}).status_code == 403
+
+
+def test_suspend_api_and_list_flag(db, monkeypatch):
+    monkeypatch.setattr(svc, "set_ban", lambda *a: None)
+    from backend.app.routers import admin as admin_router
+    monkeypatch.setattr(admin_router, "list_users", lambda: [{"id": "u1", "email": "testuser1@marvia.test", "user_metadata": {}}])
+    headers = _login(monkeypatch, OPERATOR)
+    with TestClient(app) as client:
+        assert client.post("/api/admin/customers/u1/suspend", json={"reason": "짧음"}, headers=headers).status_code == 400
+        assert client.post("/api/admin/customers/u1/suspend", json={"reason": REASON}, headers=headers).status_code == 200
+        assert client.get("/api/admin/customers", headers=headers).json()["items"][0]["is_suspended"] is True
+        assert client.post("/api/admin/customers/u1/resume", headers=headers).status_code == 200
+        assert client.post("/api/admin/customers/u1/resume", headers=headers).status_code == 409

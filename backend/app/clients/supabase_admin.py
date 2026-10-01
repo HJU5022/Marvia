@@ -109,3 +109,16 @@ def create_user(email: str, full_name: str, metadata: dict | None = None) -> dic
     resp = _admin_call("POST", "/auth/v1/admin/users", name="supabase:create_user",
                        json={"email": email, "email_confirm": True, "user_metadata": {"full_name": full_name, **(metadata or {})}})
     return resp.json() if resp is not None else {}
+
+
+# Supabase가 받는 기간 문자열. 정지는 사실상 무기한(100년), 해제는 "none" (Supabase Auth admin updateUserById ban_duration)
+BAN_FOREVER, BAN_NONE = "876000h", "none"
+
+
+def set_ban(user_id: str, banned: bool) -> None:
+    """계정을 차단하거나 푼다 (PUT /auth/v1/admin/users/{id}). 차단되면 새 로그인과 출입증 갱신이 막힌다.
+    없는 계정이면 AdminError(failed, 404). 고객 일시 정지(services/customers.py)에서만 쓴다."""
+    resp = _admin_call("PUT", f"/auth/v1/admin/users/{user_id}", name="supabase:set_ban",
+                       json={"ban_duration": BAN_FOREVER if banned else BAN_NONE})
+    if resp is None:
+        raise AdminError("failed", 404)

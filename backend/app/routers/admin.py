@@ -76,6 +76,7 @@ class CustomerItem(BaseModel):
     phone_masked: str | None = None
     address_masked: str | None = None
     profile_complete: bool = False  # 회원 정보를 입력했나
+    is_suspended: bool = False  # 운영자가 일시 정지했나 (012)
     created_at: datetime | None
     last_sign_in_at: datetime | None
     is_operator: bool
@@ -98,6 +99,7 @@ def customers(_: Annotated[CurrentUser, Depends(require_operator)]) -> Customers
         with ops.open_conn() as conn:
             operator_emails = ops.active_operator_emails(conn)
             profiles = profile_svc.masked_by_user(conn)  # 이미 가린 값만 온다
+            suspended = customers_svc.suspended_ids(conn)
     except Exception as e:
         log_failure("admin_customers", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN)
@@ -107,7 +109,7 @@ def customers(_: Annotated[CurrentUser, Depends(require_operator)]) -> Customers
         # 이름은 직접 입력한 값을 먼저, 없으면 구글 이름 (user-profile Goal)
         items.append(CustomerItem(**{**c.__dict__, "name_masked": (p or {}).get("name") or c.name_masked,
                                      "phone_masked": (p or {}).get("phone"), "address_masked": (p or {}).get("address"),
-                                     "profile_complete": p is not None}))
+                                     "profile_complete": p is not None, "is_suspended": c.user_id in suspended}))
     return CustomersResponse(items=items, total=len(items))
 
 
@@ -204,7 +206,7 @@ class CustomerDeleteResponse(BaseModel):
 
 
 class ActionItem(BaseModel):
-    action: Literal["customer_update", "customer_delete", "unmask"]
+    action: Literal["customer_update", "customer_delete", "unmask", "customer_suspend", "customer_resume"]
     target_user_id: str
     target_email_masked: str | None
     actor_user_id: str
@@ -214,10 +216,12 @@ class ActionItem(BaseModel):
 
 
 _CUSTOMER_ERRORS = {
-    "reason": (400, "마스킹 해제 사유를 10~500자로 적어 주세요"),
+    "reason": (400, "사유를 10~500자로 적어 주세요"),
     "not_found": (404, "없는 고객입니다"),
     "is_operator": (409, "운영자 계정입니다. 운영자 해지를 먼저 하세요"),
-    "self": (400, "자기 자신은 여기서 탈퇴시킬 수 없습니다. 설정에서 탈퇴하세요"),
+    "self": (400, "자기 자신에게는 할 수 없습니다"),
+    "already_suspended": (409, "이미 정지된 고객입니다"),
+    "not_suspended": (409, "정지된 고객이 아닙니다"),
 }
 
 
@@ -268,3 +272,21 @@ def delete_customer(user_id: str, user: Annotated[CurrentUser, Depends(require_o
 def admin_actions(_: Annotated[CurrentUser, Depends(require_operator)]) -> list[ActionItem]:
     """운영자 작업 이력 (수정·강제 탈퇴·마스킹 해제와 사유)."""
     return _customer_call("admin_actions", customers_svc.list_actions)
+
+
+class ReasonBody(BaseModel):
+    reason: str
+
+
+@router.post("/admin/customers/{user_id}/suspend")
+def suspend_customer(user_id: str, body: ReasonBody, user: Annotated[CurrentUser, Depends(require_operator)]) -> dict:
+    """일시 정지. 사유 필수. Supabase 차단 + suspended_users (operator-admin 일시 정지 절)."""
+    _customer_call("admin_suspend", lambda c: customers_svc.suspend(c, user_id, user.id, user.email, body.reason))
+    return {"ok": True}
+
+
+@router.post("/admin/customers/{user_id}/resume")
+def resume_customer(user_id: str, user: Annotated[CurrentUser, Depends(require_operator)]) -> dict:
+    """정지 해제."""
+    _customer_call("admin_resume", lambda c: customers_svc.resume(c, user_id, user.id, user.email))
+    return {"ok": True}

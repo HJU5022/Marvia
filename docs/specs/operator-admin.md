@@ -90,3 +90,18 @@
 | EC-12 | 운영자 계정 강제 탈퇴 | 409. 운영자 해지 먼저 |
 
 **테스트 고객**: scripts/seed_test_users.py가 testuser1~3@marvia.test 계정(Supabase 관리자 API, user_metadata.test=true)과 가공 회원 정보를 만든다. 실제 사람이 아님을 이름(testUser1~3)으로 드러낸다. 다시 돌리면 이미 있는 계정은 건너뛴다
+
+## 추가 (10-01): 고객 계정 일시 정지
+
+사용자 지시: 고객 관리에 일시 정지 버튼. 정지하면 그 고객은 로그인·조회를 못 하고, 해제하면 되돌린다.
+
+| 동작 | API | 규칙 |
+|---|---|---|
+| 정지 | POST /api/admin/customers/{user_id}/suspend {reason} | 사유 10~500자 필수. 운영자 계정은 해지 먼저(409), 자기 자신 불가(400). 이미 정지면 409 |
+| 해제 | POST /api/admin/customers/{user_id}/resume | 정지 중이 아니면 409 |
+
+- 두 곳을 같이 막는다. (1) Supabase 관리자 API로 계정 차단(ban_duration): 새 로그인·출입증 갱신 불가. (2) suspended_users 표: 이미 발급된 출입증(최대 1시간)으로 와도 auth.current_user가 403. 차단 확인은 요청마다 DB 한 번
+- DB를 못 읽으면 정지 확인을 건너뛴다(서비스를 멈추지 않음, 실패 로그). Supabase 차단은 그대로 유효하다
+- 정지·해제는 admin_actions에 customer_suspend, customer_resume으로 남는다 (012에서 CHECK 확장)
+- 강제 탈퇴하면 정지 줄도 지운다
+- 정지된 사람이 화면에 들어오면 "정지된 계정" 안내만 보인다 (GET /api/me가 403 account_suspended)

@@ -98,7 +98,7 @@ def current_user(authorization: str | None = Header(default=None)) -> CurrentUse
     try:
         claims = verify_claims(token.strip(), base_url)
         email = claims.get("email")
-        return CurrentUser(id=claims["sub"], email=email.strip().lower() if isinstance(email, str) and email.strip() else None)
+        user = CurrentUser(id=claims["sub"], email=email.strip().lower() if isinstance(email, str) and email.strip() else None)
     except jwt.PyJWKClientConnectionError:
         # 공개키를 못 받은 것은 사용자 잘못이 아니다. 401을 주면 다시 로그인해도 안 풀린다
         log_failure("auth", "jwks_unreachable")
@@ -107,6 +107,30 @@ def current_user(authorization: str | None = Header(default=None)) -> CurrentUse
         # 오류 종류만 남긴다. 출입증 원문은 로그에 넣지 않는다
         log_failure("auth", type(e).__name__)
         raise _unauthorized()
+    if _suspended(user.id):
+        log_failure("auth", "suspended")
+        raise HTTPException(status_code=403, detail=SUSPENDED)
+    return user
+
+
+SUSPENDED = "account_suspended"  # 화면이 이 값으로 정지 안내를 띄운다 (lib/api.ts)
+
+
+def _suspended(user_id: str) -> bool:
+    """운영자가 정지한 계정인가 (docs/specs/operator-admin.md 일시 정지, 012).
+    Supabase 차단은 새 로그인만 막고, 이미 받은 출입증은 기한(최대 1시간)까지 통과한다. 그래서 여기서 한 번 더 본다.
+    DB가 없거나 못 읽으면 건너뛴다. 서비스 전체를 멈추지 않으려는 것이고, Supabase 차단은 그대로 유효하다."""
+    if not os.environ.get("DATABASE_URL"):
+        return False
+    try:
+        # 함수 안에서 불러온다. 순환 import를 피하고, 테스트는 operators.open_conn을 가짜로 바꿔 끼운다
+        from backend.app.services.customers import is_suspended
+        from backend.app.services.operators import open_conn
+        with open_conn() as conn:
+            return is_suspended(conn, user_id)
+    except Exception as e:
+        log_failure("suspension_check", type(e).__name__)
+        return False
 
 
 def _unauthorized() -> HTTPException:

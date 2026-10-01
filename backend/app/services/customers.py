@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from backend.app.clients.supabase_admin import get_user
+from backend.app.clients.supabase_admin import get_user, set_ban
 from backend.app.services import operators as ops
 from backend.app.services import profile as profile_svc
 from backend.app.services.account import withdraw
@@ -17,7 +17,7 @@ ACTION_LIMIT = 100  # 화면에 보여 줄 이력 수
 
 
 class CustomerError(Exception):
-    """kind: reason / not_found / is_operator / self."""
+    """kind: reason / not_found / is_operator / self / already_suspended / not_suspended."""
 
     def __init__(self, kind: str):
         super().__init__(kind)
@@ -77,6 +77,7 @@ def delete(conn, user_id: str, actor_id: str, actor_email: str | None) -> int:
     if ops.is_operator(conn, email):
         raise CustomerError("is_operator")
     deleted = withdraw(user_id)  # 기록 → 회원 정보 → 계정. 실패하면 WithdrawError (다시 누르면 이어서)
+    conn.execute("DELETE FROM suspended_users WHERE user_id = %s", [user_id])  # 정지 중이었으면 함께 정리
     _record(conn, "customer_delete", user_id, email, actor_id, actor_email)
     return deleted
 
@@ -88,3 +89,47 @@ def list_actions(conn, limit: int = ACTION_LIMIT) -> list[dict]:
         "FROM admin_actions ORDER BY created_at DESC, id DESC LIMIT %s", [limit]).fetchall()
     keys = ("action", "target_user_id", "target_email_masked", "actor_user_id", "actor_email", "reason", "created_at")
     return [dict(zip(keys, r)) for r in rows]
+
+
+# ── 일시 정지 (operator-admin "고객 계정 일시 정지") ──
+
+def is_suspended(conn, user_id: str) -> bool:
+    """지금 정지 중인가. auth.current_user가 요청마다 부른다."""
+    return conn.execute("SELECT 1 FROM suspended_users WHERE user_id = %s", [user_id]).fetchone() is not None
+
+
+def suspended_ids(conn) -> set[str]:
+    """정지 중인 사람 전부. 고객 목록에 표시할 때."""
+    return {r[0] for r in conn.execute("SELECT user_id FROM suspended_users").fetchall()}
+
+
+def suspend(conn, user_id: str, actor_id: str, actor_email: str | None, reason: str) -> None:
+    """정지. 사유 필수. 운영자·자기 자신 불가. Supabase 차단을 먼저 걸고(실패면 DB를 건드리지 않음) 우리 표와 이력에 남긴다."""
+    reason = " ".join((reason or "").split())
+    if not REASON_MIN <= len(reason) <= REASON_MAX:
+        raise CustomerError("reason")
+    if user_id == actor_id:
+        raise CustomerError("self")
+    user = _user_or_404(user_id)
+    email = (user.get("email") or "").lower() or None
+    if ops.is_operator(conn, email):
+        raise CustomerError("is_operator")
+    if is_suspended(conn, user_id):
+        raise CustomerError("already_suspended")
+    set_ban(user_id, True)
+    with conn.transaction():
+        conn.execute("INSERT INTO suspended_users (user_id, suspended_by, reason) VALUES (%s, %s, %s)",
+                     [user_id, actor_id, reason])
+        _record(conn, "customer_suspend", user_id, email, actor_id, actor_email, reason)
+
+
+def resume(conn, user_id: str, actor_id: str, actor_email: str | None) -> None:
+    """정지 해제. Supabase 차단을 먼저 풀고 우리 표에서 지운다."""
+    if not is_suspended(conn, user_id):
+        raise CustomerError("not_suspended")
+    user = get_user(user_id)  # 이미 탈퇴한 계정이면 None. 그래도 우리 표는 정리한다
+    if user:
+        set_ban(user_id, False)
+    with conn.transaction():
+        conn.execute("DELETE FROM suspended_users WHERE user_id = %s", [user_id])
+        _record(conn, "customer_resume", user_id, (user or {}).get("email"), actor_id, actor_email)
