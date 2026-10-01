@@ -105,3 +105,12 @@
 - 정지·해제는 admin_actions에 customer_suspend, customer_resume으로 남는다 (012에서 CHECK 확장)
 - 강제 탈퇴하면 정지 줄도 지운다
 - 정지된 사람이 화면에 들어오면 "정지된 계정" 안내만 보인다 (GET /api/me가 403 account_suspended)
+
+## 추가 (10-01): 운영자 이메일 암호화 (013)
+
+처음 설계는 operators.email(평문)을 출입증 email과 비교해 운영자를 가렸다. Fernet 암호문은 같은 값도 매번 달라 비교할 수 없어서였다. 운영자 이메일도 개인정보라 고객 정보와 기준을 맞춘다(사용자 지시).
+- operators: email_hash(HMAC-SHA256 지문, 찾기·중복 확인용, crypto.fingerprint) + email_enc(Fernet, 화면용) + email_masked. 평문 칸은 비운다
+- operator_audit: target/actor 이메일을 암호문 + 가린 값으로. admin_actions의 처리자 이메일도 같다
+- 지문 열쇠는 BL_ENCRYPTION_KEY에서 용도 이름을 붙여 갈라 쓴다(.env.example 변경 없음). 열쇠가 없으면 운영자 기능은 닫힌 쪽으로 실패(운영자 아님, 등록 503)
+- 화면 응답 모양은 그대로(서버가 풀어서 준다). 열쇠가 바뀌어 못 풀면 가린 값
+- 기존 행은 scripts/encrypt_operator_emails.py로 옮기고 평문을 비웠다. INSERT만 하는 이력 표를 고친 유일한 예외다

@@ -54,3 +54,22 @@ def decrypt(token: str) -> str | None:
     except InvalidToken:  # 열쇠가 다르거나 누가 글자를 고쳤다. 위조 검사가 여기서 잡는다
         log_failure("crypto_decrypt", "invalid_token")
         return None
+
+
+# ── 찾기용 지문 (10-01, docs/specs/operator-admin.md "이메일 암호화") ──
+# Fernet은 같은 값도 매번 다르게 잠가서 WHERE 비교를 할 수 없다. 운영자 이메일처럼 "같은지"만 알면 되는 값은
+# HMAC-SHA256 지문으로 찾고, 화면에 보여 줄 원문은 encrypt()로 따로 잠근다.
+# 지문 열쇠는 BL_ENCRYPTION_KEY에서 용도 이름을 붙여 갈라 쓴다. 같은 열쇠를 두 용도에 그대로 쓰지 않으려는 것이다.
+# 원문으로 되돌릴 수 없다. 열쇠가 없으면 None (부르는 쪽은 저장·비교를 하지 않는다).
+
+def fingerprint(text: str) -> str | None:
+    """같은 글자면 늘 같은 64자 16진수. 소문자·앞뒤 공백 정리는 부르는 쪽이 한다."""
+    import hashlib
+    import hmac
+
+    key = os.environ.get("BL_ENCRYPTION_KEY", "").strip()
+    if not key:
+        log_failure("crypto_fingerprint", "no_key")
+        return None
+    sub_key = hashlib.sha256(b"marvia-fingerprint:" + key.encode("utf-8")).digest()
+    return hmac.new(sub_key, text.encode("utf-8"), hashlib.sha256).hexdigest()

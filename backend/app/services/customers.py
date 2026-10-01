@@ -27,10 +27,12 @@ class CustomerError(Exception):
 def _record(conn, action: str, target_user_id: str, target_email: str | None, actor_id: str,
             actor_email: str | None, reason: str | None = None) -> None:
     """이력 한 줄. 대상은 가린 이메일로만 남긴다 (탈퇴 뒤에도 누구였는지 알아볼 정도만)."""
+    # 처리한 운영자 이메일도 평문으로 두지 않는다 (013, 10-01). 암호문 + 가린 값
+    a_enc, a_masked = ops._seal(actor_email)
     conn.execute(
-        "INSERT INTO admin_actions (action, target_user_id, target_email_masked, actor_user_id, actor_email, reason) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        [action, target_user_id, ops.mask_email(target_email), actor_id, actor_email, reason],
+        "INSERT INTO admin_actions (action, target_user_id, target_email_masked, actor_user_id, actor_email_enc, "
+        "actor_email_masked, reason) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        [action, target_user_id, ops.mask_email(target_email), actor_id, a_enc, a_masked, reason],
     )
 
 
@@ -85,10 +87,10 @@ def delete(conn, user_id: str, actor_id: str, actor_email: str | None) -> int:
 def list_actions(conn, limit: int = ACTION_LIMIT) -> list[dict]:
     """운영자 작업 이력, 최신순."""
     rows = conn.execute(
-        "SELECT action, target_user_id, target_email_masked, actor_user_id, actor_email, reason, created_at "
-        "FROM admin_actions ORDER BY created_at DESC, id DESC LIMIT %s", [limit]).fetchall()
-    keys = ("action", "target_user_id", "target_email_masked", "actor_user_id", "actor_email", "reason", "created_at")
-    return [dict(zip(keys, r)) for r in rows]
+        "SELECT action, target_user_id, target_email_masked, actor_user_id, actor_email_enc, actor_email_masked, reason, "
+        "created_at FROM admin_actions ORDER BY created_at DESC, id DESC LIMIT %s", [limit]).fetchall()
+    return [{"action": r[0], "target_user_id": r[1], "target_email_masked": r[2], "actor_user_id": r[3],
+             "actor_email": ops._open(r[4], r[5]), "reason": r[6], "created_at": r[7]} for r in rows]
 
 
 # ── 일시 정지 (operator-admin "고객 계정 일시 정지") ──

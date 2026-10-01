@@ -38,9 +38,10 @@ def test_unmask_needs_reason_and_records_first(db, monkeypatch):
     raw = svc.unmask(db, "u1", "actor", OPERATOR, REASON)
     assert raw == {"email": "testuser1@marvia.test", "name": "테스트유저", "phone": "010-1111-2222",
                    "address": "서울특별시 중구 세종대로 1"}
-    action, target, masked, actor, actor_email, reason = db.actions[0][:6]
+    action, target, masked, actor, actor_enc, actor_masked, reason = db.actions[0][:7]
     assert (action, target, masked, reason) == ("unmask", "u1", "te***@m***.test", REASON)
-    assert "testuser1@marvia.test" not in str(db.actions)  # 이력에도 원문 이메일 없음
+    assert "testuser1@marvia.test" not in str(db.actions) and OPERATOR not in str(db.actions)  # 이력에 원문 이메일 없음
+    assert actor_masked == ops.mask_email(OPERATOR) and svc.list_actions(db)[0]["actor_email"] == OPERATOR
 
 
 def test_unmask_fails_closed_when_record_fails(db, monkeypatch):

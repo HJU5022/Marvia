@@ -97,14 +97,14 @@ def customers(_: Annotated[CurrentUser, Depends(require_operator)]) -> Customers
         raise HTTPException(status_code=503, detail="고객 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요")
     try:
         with ops.open_conn() as conn:
-            operator_emails = ops.active_operator_emails(conn)
+            operator_hashes = ops.active_operator_hashes(conn)
             profiles = profile_svc.masked_by_user(conn)  # 이미 가린 값만 온다
             suspended = customers_svc.suspended_ids(conn)
     except Exception as e:
         log_failure("admin_customers", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN)
     items = []
-    for c in ops.mask_customers(users, operator_emails):
+    for c in ops.mask_customers(users, operator_hashes):
         p = profiles.get(c.user_id)
         # 이름은 직접 입력한 값을 먼저, 없으면 구글 이름 (user-profile Goal)
         items.append(CustomerItem(**{**c.__dict__, "name_masked": (p or {}).get("name") or c.name_masked,
@@ -153,6 +153,7 @@ _ERRORS = {
     "already": (409, "이미 운영자입니다"),
     "not_found": (404, "활성 운영자가 아닙니다"),
     "self_revoke": (400, "자기 자신은 해지할 수 없습니다. 다른 운영자에게 요청하세요"),
+    "no_key": (503, "암호화 열쇠가 설정되지 않아 운영자 정보를 저장할 수 없습니다"),
 }
 
 

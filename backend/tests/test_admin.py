@@ -12,9 +12,17 @@ from fastapi.testclient import TestClient
 from backend.app.clients import supabase_admin
 from backend.app.main import app
 from backend.app.routers import admin as admin_router
+from backend.app import crypto
 from backend.app.services import operators as ops
 
 OPERATOR = "boss@marvia.test"
+
+
+@pytest.fixture(autouse=True)
+def _key(monkeypatch):
+    """운영자 찾기에 이메일 지문이 필요하다 (crypto.fingerprint). 테스트용 열쇠"""
+    from cryptography.fernet import Fernet
+    monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
 CUSTOMER = "kim@example.com"
 
 
@@ -52,16 +60,18 @@ class FakeConn:
     def execute(self, sql, params=()):
         q = " ".join(sql.split())
         now = datetime.now(timezone.utc)
+        # operators는 이메일 지문(email_hash)을 열쇠로 둔다 (013). 평문은 들어오지 않는다
         if q.startswith("SELECT 1 FROM operators"):
             row = self.operators.get(params[0])
             return _Result([(1,)] if row and row["revoked_at"] is None else [])
-        if q.startswith("SELECT email FROM operators"):
-            return _Result([(e,) for e, r in self.operators.items() if r["revoked_at"] is None])
+        if q.startswith("SELECT email_hash FROM operators"):
+            return _Result([(h,) for h, r in self.operators.items() if r["revoked_at"] is None])
         if q.startswith("SELECT revoked_at FROM operators"):
             row = self.operators.get(params[0])
             return _Result([(row["revoked_at"],)] if row else [])
         if q.startswith("INSERT INTO operators"):
-            self.operators[params[0]] = {"granted_by": params[1], "granted_at": now, "revoked_by": None, "revoked_at": None}
+            self.operators[params[0]] = {"email_enc": params[1], "email_masked": params[2], "granted_by": params[3],
+                                         "granted_at": now, "revoked_by": None, "revoked_at": None}
             return _Result(rowcount=1)
         if q.startswith("UPDATE operators SET revoked_by"):
             row = self.operators.get(params[1])
@@ -70,14 +80,16 @@ class FakeConn:
             row.update(revoked_by=params[0], revoked_at=now)
             return _Result(rowcount=1)
         if q.startswith("INSERT INTO operator_audit"):
-            self.audit.append({"action": params[0], "target_email": params[1], "actor_user_id": params[2],
-                               "actor_email": params[3], "created_at": now})
+            self.audit.append({"action": params[0], "actor_user_id": params[1], "target_email_enc": params[2],
+                               "target_email_masked": params[3], "actor_email_enc": params[4],
+                               "actor_email_masked": params[5], "created_at": now})
             return _Result(rowcount=1)
-        if q.startswith("SELECT email, granted_by, granted_at"):
-            return _Result([(e, r["granted_by"], r["granted_at"]) for e, r in self.operators.items() if r["revoked_at"] is None])
-        if q.startswith("SELECT action, target_email"):
-            rows = [(a["action"], a["target_email"], a["actor_user_id"], a["actor_email"], a["created_at"])
-                    for a in reversed(self.audit)]
+        if q.startswith("SELECT email_enc, email_masked, granted_by, granted_at"):
+            return _Result([(r["email_enc"], r["email_masked"], r["granted_by"], r["granted_at"])
+                            for r in self.operators.values() if r["revoked_at"] is None])
+        if q.startswith("SELECT action, target_email_enc"):
+            rows = [(a["action"], a["target_email_enc"], a["target_email_masked"], a["actor_user_id"], a["actor_email_enc"],
+                     a["actor_email_masked"], a["created_at"]) for a in reversed(self.audit)]
             return _Result(rows[: params[0]])
         if q.startswith("SELECT 1 FROM suspended_users"):
             return _Result([(1,)] if params[0] in self.suspended else [])
@@ -132,7 +144,7 @@ def test_normalize_email_lowercases_and_rejects_typos():
 def test_customers_never_carry_raw_email_or_name():
     users = [{"id": "u1", "email": "Kim@Example.com", "user_metadata": {"full_name": "김승욱"},
               "created_at": "2026-09-30T01:00:00Z", "last_sign_in_at": "2026-10-01T01:00:00Z"}]
-    [c] = ops.mask_customers(users, {"kim@example.com"})
+    [c] = ops.mask_customers(users, {crypto.fingerprint("kim@example.com")})
     assert c.is_operator  # 대문자 이메일도 운영자 표와 맞춘다
     assert "kim@example.com" not in str(c.__dict__).lower() and "김승욱" not in str(c.__dict__)
 
@@ -147,9 +159,28 @@ def test_grant_revoke_and_audit_trail():
     ops.revoke(conn, "new@marvia.test", "user-1", OPERATOR)
     assert not ops.is_operator(conn, "new@marvia.test")
     ops.grant(conn, "new@marvia.test", "user-1", OPERATOR)  # EC-05 다시 등록
-    assert [(a["action"], a["target_email"]) for a in conn.audit] == [
+    assert [(a["action"], a["target_email"]) for a in ops.list_audit(conn)][::-1] == [
         ("grant", OPERATOR), ("grant", "new@marvia.test"), ("revoke", "new@marvia.test"), ("grant", "new@marvia.test")]
     assert conn.audit[0]["actor_user_id"] == "bootstrap"
+
+
+def test_operator_emails_are_never_stored_in_plain_text():
+    """운영자 표와 이력에는 지문·암호문·가린 값만 (013, 10-01). 화면 응답은 풀어서 같은 모양"""
+    conn = FakeConn()
+    ops.grant(conn, OPERATOR, "bootstrap", None)
+    ops.grant(conn, "new@marvia.test", "user-1", OPERATOR)
+    stored = str(conn.operators) + str(conn.audit)
+    assert OPERATOR not in stored and "new@marvia.test" not in stored
+    assert conn.audit[1]["target_email_masked"] == "ne***@m***.test"
+    assert {o["email"] for o in ops.list_operators(conn)} == {OPERATOR, "new@marvia.test"}
+
+
+def test_operator_features_fail_closed_without_key(monkeypatch):
+    monkeypatch.delenv("BL_ENCRYPTION_KEY", raising=False)
+    conn = FakeConn()
+    with pytest.raises(ops.OperatorError) as e:
+        ops.grant(conn, OPERATOR, "bootstrap", None)
+    assert e.value.kind == "no_key" and conn.operators == {} and not ops.is_operator(conn, OPERATOR)
 
 
 def test_duplicate_grant_is_rejected_without_audit():

@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from backend.app import crypto
 from backend.app.db import connect
 
 BOOTSTRAP_ACTOR = "bootstrap"  # 스크립트로 넣은 최초 운영자의 등록자 (scripts/grant_operator.py)
@@ -20,7 +21,7 @@ _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class OperatorError(Exception):
-    """등록·해지를 할 수 없다. kind: invalid_email / already / not_found / self_revoke."""
+    """등록·해지를 할 수 없다. kind: invalid_email / already / not_found / self_revoke / no_key."""
 
     def __init__(self, kind: str):
         super().__init__(kind)
@@ -55,35 +56,63 @@ def mask_name(name: str | None) -> str | None:
     return name[0] + "*" * (len(name) - 1)
 
 
+def _seal(email: str | None) -> tuple[str | None, str | None]:
+    """이메일을 (암호문, 가린 값)으로. 평문은 DB에 넣지 않는다 (013, 10-01). 열쇠가 없으면 암호문은 None."""
+    if not email:
+        return None, None
+    return crypto.encrypt(email), mask_email(email)
+
+
+def _open(enc: str | None, masked: str | None) -> str | None:
+    """화면용 이메일. 풀 수 있으면 원문, 열쇠가 바뀌었으면 가린 값."""
+    return (crypto.decrypt(enc) if enc else None) or masked
+
+
+def _hash(email: str) -> str:
+    """운영자 찾기용 지문. 열쇠가 없으면 OperatorError(no_key): 평문으로 대신 저장·비교하지 않는다."""
+    h = crypto.fingerprint(email)
+    if h is None:
+        raise OperatorError("no_key")
+    return h
+
+
 def is_operator(conn, email: str | None) -> bool:
-    """지금 활성 운영자인가. 이메일이 없으면(출입증에 없음) 운영자가 아니다."""
+    """지금 활성 운영자인가. 출입증 이메일의 지문을 operators.email_hash와 비교한다 (013).
+    이메일이 없거나 열쇠가 없으면 운영자가 아니다(닫힌 쪽으로 실패)."""
     if not email:
         return False
-    row = conn.execute("SELECT 1 FROM operators WHERE email = %s AND revoked_at IS NULL", [email.lower()]).fetchone()
+    h = crypto.fingerprint(email.lower())
+    if h is None:
+        return False
+    row = conn.execute("SELECT 1 FROM operators WHERE email_hash = %s AND revoked_at IS NULL", [h]).fetchone()
     return row is not None
 
 
-def active_operator_emails(conn) -> set[str]:
-    """활성 운영자 이메일 전부. 고객 목록에 운영자 표시를 붙일 때 쓴다."""
-    return {r[0] for r in conn.execute("SELECT email FROM operators WHERE revoked_at IS NULL").fetchall()}
+def active_operator_hashes(conn) -> set[str]:
+    """활성 운영자 이메일 지문 전부. 고객 목록에 운영자 표시를 붙일 때 고객 이메일 지문과 대조한다."""
+    return {r[0] for r in conn.execute("SELECT email_hash FROM operators WHERE revoked_at IS NULL").fetchall() if r[0]}
 
 
 def grant(conn, email: str, actor_user_id: str, actor_email: str | None) -> None:
     """운영자로 등록한다. 이미 활성이면 OperatorError(already), 이력은 남기지 않는다 (Spec EC-03).
-    해지됐던 사람이면 같은 줄을 다시 활성으로 돌리고 이력은 한 줄 더 쌓는다 (EC-05)."""
+    해지됐던 사람이면 같은 줄을 다시 활성으로 돌리고 이력은 한 줄 더 쌓는다 (EC-05). 평문 이메일은 저장하지 않는다."""
     target = normalize_email(email)
+    h = _hash(target)
+    enc, masked = _seal(target)
+    if enc is None:
+        raise OperatorError("no_key")
     with conn.transaction():
-        row = conn.execute("SELECT revoked_at FROM operators WHERE email = %s FOR UPDATE", [target]).fetchone()
+        row = conn.execute("SELECT revoked_at FROM operators WHERE email_hash = %s FOR UPDATE", [h]).fetchone()
         if row is not None and row[0] is None:
             raise OperatorError("already")
         conn.execute(
             """
-            INSERT INTO operators (email, granted_by, granted_at, revoked_by, revoked_at)
-            VALUES (%s, %s, now(), NULL, NULL)
-            ON CONFLICT (email) DO UPDATE SET granted_by = EXCLUDED.granted_by, granted_at = now(),
-                                              revoked_by = NULL, revoked_at = NULL
+            INSERT INTO operators (email_hash, email_enc, email_masked, granted_by, granted_at, revoked_by, revoked_at)
+            VALUES (%s, %s, %s, %s, now(), NULL, NULL)
+            ON CONFLICT (email_hash) DO UPDATE SET email_enc = EXCLUDED.email_enc, email_masked = EXCLUDED.email_masked,
+              granted_by = EXCLUDED.granted_by, granted_at = now(), revoked_by = NULL, revoked_at = NULL
             """,
-            [target, actor_user_id],
+            [h, enc, masked, actor_user_id],
         )
         _audit(conn, "grant", target, actor_user_id, actor_email)
 
@@ -93,10 +122,11 @@ def revoke(conn, email: str, actor_user_id: str, actor_email: str | None) -> Non
     target = normalize_email(email)
     if actor_email and target == actor_email.lower():
         raise OperatorError("self_revoke")
+    h = _hash(target)
     with conn.transaction():
         updated = conn.execute(
-            "UPDATE operators SET revoked_by = %s, revoked_at = now() WHERE email = %s AND revoked_at IS NULL",
-            [actor_user_id, target],
+            "UPDATE operators SET revoked_by = %s, revoked_at = now() WHERE email_hash = %s AND revoked_at IS NULL",
+            [actor_user_id, h],
         ).rowcount
         if not updated:
             raise OperatorError("not_found")
@@ -104,30 +134,33 @@ def revoke(conn, email: str, actor_user_id: str, actor_email: str | None) -> Non
 
 
 def _audit(conn, action: str, target_email: str, actor_user_id: str, actor_email: str | None) -> None:
-    """이력 한 줄. INSERT만 한다. 이 표를 고치거나 지우는 함수는 두지 않는다 (Spec "이력은 쌓기만")."""
+    """이력 한 줄. INSERT만 한다 (Spec "이력은 쌓기만"). 이메일은 암호문과 가린 값으로만 (013)."""
+    t_enc, t_masked = _seal(target_email)
+    a_enc, a_masked = _seal(actor_email)
     conn.execute(
-        "INSERT INTO operator_audit (action, target_email, actor_user_id, actor_email) VALUES (%s, %s, %s, %s)",
-        [action, target_email, actor_user_id, actor_email],
+        "INSERT INTO operator_audit (action, actor_user_id, target_email_enc, target_email_masked, actor_email_enc, actor_email_masked) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        [action, actor_user_id, t_enc, t_masked, a_enc, a_masked],
     )
 
 
 def list_operators(conn) -> list[dict]:
-    """활성 운영자. 운영자끼리는 누가 권한을 가졌는지 알아야 하므로 이메일 원문을 보여 준다 (Spec "마스킹")."""
+    """활성 운영자. 운영자끼리는 누가 권한을 가졌는지 알아야 하므로 풀어서 보여 준다 (화면 응답 모양은 그대로)."""
     rows = conn.execute(
-        "SELECT email, granted_by, granted_at FROM operators WHERE revoked_at IS NULL ORDER BY granted_at"
+        "SELECT email_enc, email_masked, granted_by, granted_at FROM operators WHERE revoked_at IS NULL ORDER BY granted_at"
     ).fetchall()
-    return [{"email": r[0], "granted_by": r[1], "granted_at": r[2]} for r in rows]
+    return [{"email": _open(r[0], r[1]) or "", "granted_by": r[2], "granted_at": r[3]} for r in rows]
 
 
 def list_audit(conn, limit: int = AUDIT_LIMIT) -> list[dict]:
-    """등록·해지 이력, 최신순."""
+    """등록·해지 이력, 최신순. 이메일은 풀어서 (열쇠가 바뀌었으면 가린 값)."""
     rows = conn.execute(
-        "SELECT action, target_email, actor_user_id, actor_email, created_at FROM operator_audit "
-        "ORDER BY created_at DESC, id DESC LIMIT %s",
+        "SELECT action, target_email_enc, target_email_masked, actor_user_id, actor_email_enc, actor_email_masked, created_at "
+        "FROM operator_audit ORDER BY created_at DESC, id DESC LIMIT %s",
         [limit],
     ).fetchall()
-    return [{"action": r[0], "target_email": r[1], "actor_user_id": r[2], "actor_email": r[3], "created_at": r[4]}
-            for r in rows]
+    return [{"action": r[0], "target_email": _open(r[1], r[2]) or "", "actor_user_id": r[3],
+             "actor_email": _open(r[4], r[5]), "created_at": r[6]} for r in rows]
 
 
 @dataclass(frozen=True)
@@ -142,8 +175,8 @@ class Customer:
     is_operator: bool
 
 
-def mask_customers(users: list[dict], operator_emails: set[str]) -> list[Customer]:
-    """Supabase 관리자 API의 사용자 목록을 가려서 옮긴다. 운영자 여부는 원문 이메일로 대조한 뒤 원문은 버린다."""
+def mask_customers(users: list[dict], operator_hashes: set[str]) -> list[Customer]:
+    """Supabase 관리자 API의 사용자 목록을 가려서 옮긴다. 운영자 여부는 이메일 지문으로 대조한 뒤 원문은 버린다."""
     out = []
     for u in users:
         email = (u.get("email") or "").lower() or None
@@ -154,7 +187,7 @@ def mask_customers(users: list[dict], operator_emails: set[str]) -> list[Custome
             name_masked=mask_name(meta.get("full_name") or meta.get("name")),
             created_at=u.get("created_at"),
             last_sign_in_at=u.get("last_sign_in_at"),
-            is_operator=bool(email and email in operator_emails),
+            is_operator=bool(email and crypto.fingerprint(email) in operator_hashes),
         ))
     # 최근 가입이 위로. 가입일 없는 줄은 아래로
     return sorted(out, key=lambda c: c.created_at or "", reverse=True)
