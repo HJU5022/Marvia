@@ -5,7 +5,7 @@ description: 코드가 낸 등급(fine·watch·act)과 되묻기·보류·실패
 
 # 화물 등급 설명 Skill
 
-> 시스템 프롬프트에 통째로 들어간다 (RAG 아님). 10-01에 ais-reliability SKILL.md(작업 C-1, 검수: 하정운)의 판정 설명 부분과 판정 프롬프트의 등급 뜻을 옮겨 만들었다. 결과별 문구는 backend/app/routers/agent.py 고정 문구를 따른다.
+> 시스템 프롬프트에 통째로 들어간다 (RAG 아님). 10-01에 ais-reliability SKILL.md(작업 C-1)의 판정 설명 부분과 판정 프롬프트의 등급 뜻을 옮겨 만들었다. 결과별 문구는 backend/app/routers/agent.py 고정 문구를 따른다.
 > 등급은 코드(services/verdict.py)가 rules.md 판정 표로 정한다. 이 문서는 등급을 정하지 않고, 코드가 낸 결과를 설명하는 법만 적는다.
 
 ## 등급의 뜻
