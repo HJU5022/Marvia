@@ -1,0 +1,106 @@
+{
+  "status": "partial",
+  "verdict": null,
+  "vessel_match": "confirmed",
+  "vessel_candidates": [],
+  "missing_inputs": [],
+  "reasons": [],
+  "conflicts": [],
+  "actions": [],
+  "days_margin": 4,
+  "decided_by": null,
+  "vessel": {
+    "mmsi": 990001101,
+    "imo": null,
+    "name": "MARVIA HORIZON",
+    "call_sign": null,
+    "flag": "KR",
+    "ship_type": 70,
+    "voyage_no": null
+  },
+  "position": {
+    "lat": 33.82,
+    "lng": 128.64,
+    "sog": 14.6,
+    "cog": 18.0,
+    "navistat": 0,
+    "last_time": "2026-10-19T22:32:00+09:00",
+    "freshness": "stale"
+  },
+  "eta": {
+    "ais_eta": "2026-10-21T06:00:00+09:00",
+    "mof_eta": "2026-10-21T08:00:00+09:00",
+    "calc_eta": null,
+    "trusted_eta": "2026-10-21T08:00:00+09:00",
+    "distance_nm": 81.6
+  },
+  "customs": null,
+  "berth": {
+    "facility": "부산 신항 · 가상 선석 A",
+    "shed": null
+  },
+  "evidence": [
+    {
+      "source": "shipfinder",
+      "field": "position",
+      "value": "33.82 N / 128.64 E",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "last_time",
+      "value": "2026-10-19T22:32:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "sog",
+      "value": "14.6 kn",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "cog",
+      "value": "18°",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "ais_eta",
+      "value": "2026-10-21T06:00:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "mof",
+      "field": "planned_arrival",
+      "value": "2026-10-21T08:00:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "searoute",
+      "field": "distance_nm",
+      "value": "81.6",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "rule",
+      "field": "trusted_eta",
+      "value": "2026-10-21T08:00:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "rule",
+      "field": "days_margin",
+      "value": "4",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "mof",
+      "field": "facility",
+      "value": "부산 신항 · 가상 선석 A",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    }
+  ],
+  "answer": "판정을 만들지 못했습니다. 조회한 값과 근거만 보여 드립니다. 마지막 수신 위치는 오래된 기록이며 현재 위치가 아닙니다.",
+  "trace_id": "fixture-partial-20261020"
+}

@@ -1,0 +1,13 @@
+'use client';
+/** E8 follow-up keeps the C2 session/B/L and renders the returned evidence with the answer. */
+import {useState,type FormEvent} from 'react';
+import {ArrowUp,MessageSquareText} from 'lucide-react';
+import {getAgentResponse} from '@/lib/api';
+import {dateTime,sourceLabels} from '@/lib/format';
+import type {AgentRequest,AgentResponse} from '@/lib/types';
+import {SectionTitle} from './Shared';
+export function AskPanel({request,disabled}:{request:AgentRequest;disabled:boolean}) {
+ const [question,setQuestion]=useState(''),[answer,setAnswer]=useState<AgentResponse|null>(null),[sent,setSent]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ async function ask(e:FormEvent){e.preventDefault();const q=question.trim();if(!q||q.length>300){setError('질문을 1~300자로 입력해 주세요.');return;}setBusy(true);setError('');try{const response=await getAgentResponse({...request,follow_up_question:q});setAnswer(response);setSent(q);setQuestion('');}catch(e){setError(e instanceof Error?e.message:'답변을 가져오지 못했습니다.');}finally{setBusy(false);}}
+ return <section className="ask-section"><SectionTitle label="이 화물에 대해 물어보세요" kicker="ASK MARVIA" side={<MessageSquareText size={21}/>}/><p className="muted">확인된 근거 안에서, 이해하기 쉽게.</p>{answer?<div className="conversation" aria-live="polite"><div className="user-message">{sent}</div><div className="agent-message"><strong>MARVIA <span>저장 답변 재생</span></strong><p>{answer.answer}</p><details><summary>이 답변과 함께 반환된 근거 · {answer.evidence.length}개</summary>{answer.evidence.length?answer.evidence.map((e,i)=><p className="chat-source" key={i}>{sourceLabels[e.source]} · {e.field}: {e.value}<small>{dateTime(e.fetched_at)}</small></p>):<p>반환된 근거가 없습니다. 추가 내용을 추정하지 않습니다.</p>}</details></div></div>:<div className="ask-prompt"><span>예를 들어</span><button onClick={()=>setQuestion('판매 일정에서 무엇을 확인해야 하나요?')} disabled={disabled}>판매 일정에서 무엇을 확인해야 하나요? <ArrowUp size={14}/></button></div>}<form onSubmit={ask}><label className="sr-only" htmlFor="question">후속 질문</label><div className="question-input"><textarea id="question" rows={2} placeholder="궁금한 내용을 입력하세요" value={question} onChange={e=>setQuestion(e.target.value)} maxLength={300} disabled={busy||disabled}/><button className="send-button" aria-label="질문 보내기" disabled={busy||disabled||!question.trim()}><ArrowUp size={20}/></button></div><div className="question-meta"><span>{busy?'저장된 답변을 확인하고 있습니다.':'데모에서는 질문에 관계없이 저장된 답변을 재생합니다.'}</span><span>{question.length}/300</span></div>{error&&<p className="field-error" role="alert">{error}</p>}</form></section>;
+}

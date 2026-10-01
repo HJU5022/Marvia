@@ -1,0 +1,54 @@
+{
+  "source": "skills/ais-reliability/rules.md",
+  "read_at": "2026-09-28",
+  "thresholds": [
+    {
+      "key": "position_stale_hours",
+      "label": "위치 갱신 끊김",
+      "value": 6,
+      "unit": "시간"
+    },
+    {
+      "key": "eta_conflict_hours",
+      "label": "ETA 근거 차이",
+      "value": 12,
+      "unit": "시간"
+    },
+    {
+      "key": "anchor_speed_kn",
+      "label": "정박 대기 속도",
+      "value": 0.5,
+      "unit": "kn"
+    },
+    {
+      "key": "anchor_wait_hours",
+      "label": "정박 대기 지속",
+      "value": 24,
+      "unit": "시간"
+    },
+    {
+      "key": "busan_radius_nm",
+      "label": "부산항 기준 반경",
+      "value": 30,
+      "unit": "해리"
+    },
+    {
+      "key": "margin_act_days",
+      "label": "판매 예정일 여유",
+      "value": 2,
+      "unit": "일"
+    }
+  ],
+  "priority": [
+    "해수부 관제 실적",
+    "해수부 입항 예정",
+    "AIS ETA",
+    "AIS 목적지 문자열"
+  ],
+  "model": null,
+  "judge_model": null,
+  "prompt_version": null,
+  "token_limit": null,
+  "daily_budget": null,
+  "notification_connected": false
+}

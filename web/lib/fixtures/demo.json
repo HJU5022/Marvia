@@ -1,0 +1,101 @@
+{
+  "default_id": "ok",
+  "session_id": "marvia-demo-session",
+  "reference_time": "2026-10-20T09:40:00+09:00",
+  "choices": [
+    {
+      "id": "ok",
+      "label": "정상 · 괜찮음",
+      "request": {
+        "bl_no": "MRVDEMO1101",
+        "bl_type": "MASTER",
+        "sale_due_date": "2026-10-25",
+        "session_id": "marvia-demo-session"
+      }
+    },
+    {
+      "id": "insufficient",
+      "label": "정보 부족 · 되묻기",
+      "request": {
+        "bl_no": "MRVDEMO1102",
+        "bl_type": "MASTER",
+        "sale_due_date": "2026-10-25",
+        "session_id": "marvia-demo-session"
+      }
+    },
+    {
+      "id": "partial",
+      "label": "부분 응답 · 판정 없음",
+      "request": {
+        "bl_no": "MRVDEMO1103",
+        "bl_type": "MASTER",
+        "sale_due_date": "2026-10-25",
+        "session_id": "marvia-demo-session"
+      }
+    },
+    {
+      "id": "failed",
+      "label": "처리 실패",
+      "request": {
+        "bl_no": "MRVDEMO1104",
+        "bl_type": "MASTER",
+        "sale_due_date": "2026-10-25",
+        "session_id": "marvia-demo-session"
+      }
+    },
+    {
+      "id": "unsupported",
+      "label": "지원 범위 밖",
+      "request": {
+        "bl_no": "MRVDEMO1105",
+        "bl_type": "MASTER",
+        "sale_due_date": "2026-10-25",
+        "session_id": "marvia-demo-session"
+      }
+    },
+    {
+      "id": "watch",
+      "label": "정상 응답 · 지켜볼 것",
+      "request": {
+        "bl_no": "MRVDEMO1106",
+        "bl_type": "MASTER",
+        "sale_due_date": "2026-10-25",
+        "session_id": "marvia-demo-session"
+      }
+    },
+    {
+      "id": "act",
+      "label": "정상 응답 · 지금 조치",
+      "request": {
+        "bl_no": "MRVDEMO1107",
+        "bl_type": "MASTER",
+        "sale_due_date": "2026-10-20",
+        "session_id": "marvia-demo-session"
+      }
+    }
+  ],
+  "port": {
+    "name": "부산항",
+    "code": "KRPUS",
+    "lat": 35.1,
+    "lng": 129.05
+  },
+  "map_labels": [
+    {
+      "name": "대한민국",
+      "lat": 35.8,
+      "lng": 127.6
+    },
+    {
+      "name": "일본",
+      "lat": 32.9,
+      "lng": 131.3
+    },
+    {
+      "name": "대한해협",
+      "lat": 34.1,
+      "lng": 130.1
+    }
+  ],
+  "follow_up_answer": "이 화면은 저장된 예시 답변을 재생합니다. 입항 예정은 상품 수령일을 보장하지 않습니다. 해수부 입항 예정과 UNI-PASS 통관 단계 근거를 확인하고, 실제 반출 일정은 포워더에게 문의하세요."
+}

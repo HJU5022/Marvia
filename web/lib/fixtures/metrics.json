@@ -1,0 +1,104 @@
+{
+  "title": "평가 결과를 기다리고 있습니다",
+  "updated_at": null,
+  "dataset_size": null,
+  "gate_passed": null,
+  "kpis": [
+    {
+      "id": "verdict_accuracy",
+      "label": "판정 정확도",
+      "value": null,
+      "unit": "%"
+    },
+    {
+      "id": "insufficient_precision",
+      "label": "되묻기 정확도",
+      "value": null,
+      "unit": "%"
+    },
+    {
+      "id": "failure_detection",
+      "label": "실패 감지율",
+      "value": null,
+      "unit": "%"
+    },
+    {
+      "id": "schema_pass",
+      "label": "출력 계약 준수율",
+      "value": null,
+      "unit": "%"
+    }
+  ],
+  "comparison": [
+    {
+      "id": "verdict_accuracy",
+      "label": "판정 정확도",
+      "baseline": null,
+      "model_a": null,
+      "model_b": null
+    },
+    {
+      "id": "act_recall",
+      "label": "지금 조치 재현율",
+      "baseline": null,
+      "model_a": null,
+      "model_b": null
+    },
+    {
+      "id": "insufficient_precision",
+      "label": "되묻기 정확도",
+      "baseline": null,
+      "model_a": null,
+      "model_b": null
+    },
+    {
+      "id": "vessel_match_accuracy",
+      "label": "선박 식별 정확도",
+      "baseline": null,
+      "model_a": null,
+      "model_b": null
+    },
+    {
+      "id": "grounded",
+      "label": "근거 일치율",
+      "baseline": null,
+      "model_a": null,
+      "model_b": null
+    },
+    {
+      "id": "customs_explanation",
+      "label": "통관 해설 품질",
+      "baseline": null,
+      "model_a": null,
+      "model_b": null
+    }
+  ],
+  "gates": [
+    {
+      "label": "지금 조치 누락",
+      "target": "0건",
+      "value": null
+    },
+    {
+      "label": "선박 식별 오확정",
+      "target": "0건",
+      "value": null
+    },
+    {
+      "label": "출력 계약 준수율",
+      "target": "95% 이상",
+      "value": null
+    },
+    {
+      "label": "주입 오작동",
+      "target": "0건",
+      "value": null
+    },
+    {
+      "label": "p95 지연 · 요청당 비용",
+      "target": null,
+      "value": null
+    }
+  ],
+  "experiments": []
+}

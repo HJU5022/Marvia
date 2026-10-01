@@ -1,0 +1,768 @@
+{
+  "source": "Read-only AST snapshot of schemas/agent.py and routers/history.py, 2026-09-28. All serialized fields required for fixture verification.",
+  "definitions": {
+    "Verdict": {
+      "enum": [
+        "fine",
+        "watch",
+        "act"
+      ]
+    },
+    "Status": {
+      "enum": [
+        "ok",
+        "partial",
+        "insufficient",
+        "failed",
+        "unsupported"
+      ]
+    },
+    "VesselMatch": {
+      "enum": [
+        "confirmed",
+        "uncertain",
+        "none"
+      ]
+    },
+    "Freshness": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ]
+    },
+    "AgentRequest": {
+      "type": "object",
+      "properties": {
+        "bl_no": {
+          "type": "string"
+        },
+        "bl_type": {
+          "enum": [
+            "MASTER",
+            "HOUSE"
+          ]
+        },
+        "sale_due_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "follow_up_question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resolved_mmsi": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "voyage_no": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forwarder_eta": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "bl_no",
+        "bl_type",
+        "sale_due_date",
+        "session_id",
+        "follow_up_question",
+        "resolved_mmsi",
+        "voyage_no",
+        "forwarder_eta"
+      ]
+    },
+    "Evidence": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "shipfinder",
+            "unipass",
+            "mof",
+            "searoute",
+            "rule"
+          ]
+        },
+        "field": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "fetched_at": {
+          "type": "string",
+          "format": "datetime"
+        }
+      },
+      "required": [
+        "source",
+        "field",
+        "value",
+        "fetched_at"
+      ]
+    },
+    "Reason": {
+      "type": "object",
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "triggered": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "rule",
+        "value",
+        "triggered"
+      ]
+    },
+    "Conflict": {
+      "type": "object",
+      "properties": {
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "chosen": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "signals",
+        "chosen",
+        "why"
+      ]
+    },
+    "VesselCandidate": {
+      "type": "object",
+      "properties": {
+        "mmsi": {
+          "type": "integer"
+        },
+        "imo": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "flag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_time": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "ship_type": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "match_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "mmsi",
+        "imo",
+        "name",
+        "flag",
+        "dest",
+        "last_time",
+        "ship_type",
+        "match_reasons"
+      ]
+    },
+    "VesselInfo": {
+      "type": "object",
+      "properties": {
+        "mmsi": {
+          "type": "integer"
+        },
+        "imo": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "call_sign": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "flag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ship_type": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "voyage_no": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "mmsi",
+        "imo",
+        "name",
+        "call_sign",
+        "flag",
+        "ship_type",
+        "voyage_no"
+      ]
+    },
+    "Position": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "sog": {
+          "type": "number"
+        },
+        "cog": {
+          "type": "number"
+        },
+        "navistat": {
+          "type": "integer"
+        },
+        "last_time": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "freshness": {
+          "ref": "Freshness"
+        }
+      },
+      "required": [
+        "lat",
+        "lng",
+        "sog",
+        "cog",
+        "navistat",
+        "last_time",
+        "freshness"
+      ]
+    },
+    "EtaInfo": {
+      "type": "object",
+      "properties": {
+        "ais_eta": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mof_eta": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "calc_eta": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trusted_eta": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "distance_nm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ais_eta",
+        "mof_eta",
+        "calc_eta",
+        "trusted_eta",
+        "distance_nm"
+      ]
+    },
+    "CustomsInfo": {
+      "type": "object",
+      "properties": {
+        "stage_code": {
+          "type": "string"
+        },
+        "stage_name": {
+          "type": "string"
+        },
+        "plain_explanation": {
+          "type": "string"
+        },
+        "next_stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "needs_broker": {
+          "type": "boolean"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "stage_code",
+        "stage_name",
+        "plain_explanation",
+        "next_stage",
+        "needs_broker",
+        "history"
+      ]
+    },
+    "BerthInfo": {
+      "type": "object",
+      "properties": {
+        "facility": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "facility",
+        "shed"
+      ]
+    },
+    "AgentResponse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "ref": "Status"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "ref": "Verdict"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vessel_match": {
+          "ref": "VesselMatch"
+        },
+        "vessel_candidates": {
+          "type": "array",
+          "items": {
+            "ref": "VesselCandidate"
+          }
+        },
+        "missing_inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "ref": "Reason"
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "ref": "Conflict"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "days_margin": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decided_by": {
+          "anyOf": [
+            {
+              "enum": [
+                "rule",
+                "llm"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vessel": {
+          "anyOf": [
+            {
+              "ref": "VesselInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "position": {
+          "anyOf": [
+            {
+              "ref": "Position"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eta": {
+          "anyOf": [
+            {
+              "ref": "EtaInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "customs": {
+          "anyOf": [
+            {
+              "ref": "CustomsInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "berth": {
+          "anyOf": [
+            {
+              "ref": "BerthInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "ref": "Evidence"
+          }
+        },
+        "answer": {
+          "type": "string"
+        },
+        "trace_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "verdict",
+        "vessel_match",
+        "vessel_candidates",
+        "missing_inputs",
+        "reasons",
+        "conflicts",
+        "actions",
+        "days_margin",
+        "decided_by",
+        "vessel",
+        "position",
+        "eta",
+        "customs",
+        "berth",
+        "evidence",
+        "answer",
+        "trace_id"
+      ]
+    },
+    "HistoryItem": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bl_masked": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vessel_match": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decided_by": {
+          "anyOf": [
+            {
+              "enum": [
+                "rule",
+                "llm"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "datetime"
+        }
+      },
+      "required": [
+        "request_id",
+        "bl_masked",
+        "status",
+        "verdict",
+        "vessel_match",
+        "decided_by",
+        "model",
+        "trace_id",
+        "created_at"
+      ]
+    },
+    "HistoryResponse": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "ref": "HistoryItem"
+          }
+        },
+        "available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "available"
+      ]
+    }
+  }
+}

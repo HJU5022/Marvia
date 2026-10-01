@@ -1,0 +1,20 @@
+{
+  "status": "unsupported",
+  "verdict": null,
+  "vessel_match": "none",
+  "vessel_candidates": [],
+  "missing_inputs": [],
+  "reasons": [],
+  "conflicts": [],
+  "actions": [],
+  "days_margin": null,
+  "decided_by": null,
+  "vessel": null,
+  "position": null,
+  "eta": null,
+  "customs": null,
+  "berth": null,
+  "evidence": [],
+  "answer": "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다. 포워더에게 양륙항을 확인해 주세요.",
+  "trace_id": "fixture-unsupported-20261020"
+}

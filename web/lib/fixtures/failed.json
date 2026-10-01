@@ -1,0 +1,20 @@
+{
+  "status": "failed",
+  "verdict": null,
+  "vessel_match": "none",
+  "vessel_candidates": [],
+  "missing_inputs": [],
+  "reasons": [],
+  "conflicts": [],
+  "actions": [],
+  "days_margin": null,
+  "decided_by": null,
+  "vessel": null,
+  "position": null,
+  "eta": null,
+  "customs": null,
+  "berth": null,
+  "evidence": [],
+  "answer": "통관 정보를 가져오지 못했습니다. 잠시 뒤 다시 조회해 주세요.",
+  "trace_id": "fixture-failed-20261020"
+}
