@@ -137,7 +137,7 @@ def test_parses_answer_into_judge_output(monkeypatch):
 
 
 def test_null_verdict_and_customs_are_allowed(monkeypatch):
-    """판정 보류(null)와 통관 정보 없음(customs null)은 정상 답이다 (skills/ais-reliability 되묻기 조건)."""
+    """판정 보류(null)와 통관 정보 없음(customs null)은 정상 답이다 (skills/cargo-verdict 되묻기·보류 결과)."""
     _fake_chat(monkeypatch, json.dumps({**GOOD_ANSWER, "verdict": None, "reasons": [], "conflicts": [], "customs": None}))
     output = llm.judge(_signals(), None, days_margin=None).output
     assert output.verdict is None and output.customs is None

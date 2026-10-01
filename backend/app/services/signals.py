@@ -3,11 +3,13 @@
 도구가 가져온 원본 값을 보고 신호 7종을 triggered·clear·unknown으로 가른다.
 외부 호출이 없는 순수 함수라 같은 입력이면 항상 같은 결과가 나온다 (SDD 5.4).
 
-여기서 판정하는 것은 "사실이 어떤가"까지다. "그래서 괜찮은가"는 2층 LLM이 정한다.
+여기서 판정하는 것은 "사실이 어떤가"까지다. "그래서 괜찮은가"(등급)는 services/verdict.py가
+skills/cargo-verdict/rules.md 판정 표로 정한다 (09-30 D7, 10-01).
 임계값은 코드에 적지 않고 skills/*/rules.md 프론트매터에서 읽는다 (C6, services/rules.py가 합쳐 읽는다).
 
 unknown과 clear를 구분한다. clear는 확인했고 문제가 없다는 뜻이고,
-unknown은 확인할 값 자체가 없다는 뜻이다. 결정적 신호가 unknown이면 2층은 판정하지 않고 되묻는다.
+unknown은 확인할 값 자체가 없다는 뜻이다. act를 가르는 신호(cargo-verdict/rules.md gray_signals)가 unknown이면
+회색 지대라 LLM이 표 등급 이상에서 고른다 (services/verdict.py).
 """
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ from backend.app.services.rules import customs_stage_names, rule, stage_key
 
 # 부산 항구 코드(UN/LOCODE)는 skills/port-busan/rules.md busan_port_code에서 읽는다 (10-01: 코드 상수였다)
 # dest_changed 값 가운데 "배의 실제 목적지가 아니라 입력 오류일 수 있다"는 뜻인 둘.
-# SKILL.md 판정 표 예외(watch 이유로 세지 않음)와 평가 베이스라인(evals/baseline_rules.py)이 같이 쓴다
+# 판정 표의 세지 않는 목적지(cargo-verdict/rules.md ignore_dest_values, services/verdict.py)와 평가 베이스라인이 같이 쓴다
 DEST_BROKEN = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
 DEST_EMPTY = "비어 있음"
 # 판매일을 안 넣었을 때 sales_date_exceeded 값. 라우터와 베이스라인이 이 값으로 "판매일 없음"을 알아본다

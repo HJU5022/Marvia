@@ -323,7 +323,7 @@ JUDGE_SCHEMA = {
     "additionalProperties": False,
     "required": ["verdict", "reasons", "conflicts", "actions", "answer", "customs", "table_disagree"],  # strict 모드는 모든 칸이 required
     "properties": {
-        # null = 판정 보류. 위치가 아예 없을 때 등 (skills/ais-reliability 되묻기 조건)
+        # null = 판정 보류. 위치가 아예 없을 때 등 (skills/cargo-verdict "코드가 낸 되묻기·보류·실패 결과")
         "verdict": {"type": ["string", "null"], "enum": ["fine", "watch", "act", None]},
         "reasons": {
             "type": "array",
@@ -733,7 +733,7 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
 # ── 통관 해설 채점 grade_customs() ─────────────────────────────
 # 평가 전용 LLM-as-judge (SDD 5.12 customs_explanation, 가이드 평가 4축 ④ "생성 모델 ≠ 판정 모델").
 # 서비스 요청에서는 부르지 않는다. evals/judge.py가 평가 실행 때만 부른다.
-# 판정 LLM이 쓴 통관 해설(단계 뜻 · 다음 단계 · 관세사 필요 여부)을 customs-stages Skill 표 기준으로 0/1 채점한다.
+# 판정 LLM이 쓴 통관 해설(단계 뜻 · 다음 단계 · 관세사 필요 여부)을 customs-stages Skill(단계 목록은 rules.md customs_stages) 기준으로 0/1 채점한다.
 
 JUDGE_EVAL_PROMPT = "marvia-judge-eval"  # Langfuse 프롬프트 이름 (SDD 5.6 표)
 GRADE_SCHEMA = {
