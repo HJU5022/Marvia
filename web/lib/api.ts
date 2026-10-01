@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData } from './types';
 import {accessToken} from './auth';
 import ok from './fixtures/ok.json';
 import partial from './fixtures/partial.json';
@@ -240,9 +240,10 @@ export async function deleteMyAccount(): Promise<{deleted_records: number; accou
 /** GET /api/me. 탭을 나누는 데만 쓴다. 관리 API는 서버가 다시 확인한다.
  * 데모 모드는 관리 화면도 볼 수 있게 운영자로 둔다(가공 데이터). 못 읽으면 일반 사용자로 본다. */
 export async function getMe(): Promise<MeResponse> {
-  if (!isLive) return {user_id: 'demo', email: null, is_operator: true};
+  if (!isLive) return {user_id: 'demo', email: null, is_operator: true, profile_complete: true};
   try { return await (await call('/api/me', {}, HISTORY_TIMEOUT_MS)).json(); }
-  catch { return {user_id: null, email: null, is_operator: false}; }
+  // 못 읽으면 일반 사용자로 보고, 회원 정보 입력 화면으로 막지도 않는다 (user-profile EC-06)
+  catch { return {user_id: null, email: null, is_operator: false, profile_complete: true}; }
 }
 
 /** GET /api/admin/customers. 이메일·이름은 서버가 가려서 준다. */
@@ -265,6 +266,29 @@ async function changeOperator(path: string, email: string): Promise<OperatorsRes
 }
 export const grantOperator = (email: string) => changeOperator('/api/admin/operators', email);
 export const revokeOperator = (email: string) => changeOperator('/api/admin/operators/revoke', email);
+
+/* ---------- 회원 정보 (docs/specs/user-profile.md) ---------- */
+
+/** GET /api/profile. 아직 입력하지 않았으면 null(404). 본인에게만 원문이 온다. */
+export async function getProfile(): Promise<ProfileData | null> {
+  if (!isLive) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HISTORY_TIMEOUT_MS);
+  try {
+    const token = await accessToken();
+    const res = await fetch(`${API_BASE}/api/profile`, {headers: token ? {authorization: `Bearer ${token}`} : {}, signal: controller.signal});
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return res.json();
+  } finally { clearTimeout(timer); }
+}
+
+/** PUT /api/profile. 동의(consent)가 없으면 서버가 거절한다. 저장은 서버에서 암호화된다. */
+export async function saveProfile(p: ProfileData & {consent: boolean}): Promise<ProfileData> {
+  if (!isLive) throw new Error('데모 모드에서는 회원 정보를 저장하지 않습니다.');
+  const res = await call('/api/profile', {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(p)}, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
 
 /** 화면 보조 자료(예시 입력, 지표, 설정). 백엔드 endpoint가 아니다. */
 export function getPresentationData() { return structuredClone({demo, metrics, settings}); }

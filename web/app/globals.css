@@ -129,3 +129,20 @@ button.avatar:hover{background:var(--accent)}
 .admin-denied{min-height:50vh;justify-content:center}
 @media(max-width:900px){.admin-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.admin-card{padding:20px 18px}.grant-form{flex-direction:column;align-items:stretch}.operator-list li{flex-direction:column;align-items:flex-start}.admin-tabs button{flex:1;justify-content:center}}
+
+/* Member profile (required after sign-in): two-column form inside the sign-in card language. */
+.profile-card{width:min(620px,100%)}
+.profile-card .eyebrow{display:flex;align-items:center;gap:6px}
+.profile-form{display:grid;grid-template-columns:1fr 1fr;gap:16px 18px;margin-top:22px}
+.profile-form .wide{grid-column:1/-1}
+.profile-form .req{font-size:9px;color:var(--danger);font-weight:600;margin-left:4px}
+.consent-box{border:1px solid var(--border);border-radius:var(--small-radius);background:var(--canvas);padding:14px 16px;font-size:11px;color:var(--body)}
+.consent-box ul{margin:6px 0 10px;padding-left:18px;color:var(--muted);line-height:1.8}
+.consent-check{display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer}
+.consent-check input{width:16px;height:16px;accent-color:var(--rail)}
+.profile-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.profile-actions .muted{display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:0}
+.profile-row>div{width:100%}
+.profile-edit{margin-top:6px}
+.profile-edit .profile-form{margin-top:12px}
+@media(max-width:700px){.profile-form{grid-template-columns:1fr}}

@@ -9,6 +9,7 @@ import {useState} from 'react';
 import {LoaderCircle, Trash2, UserRoundX} from 'lucide-react';
 import {useApp} from './AppProvider';
 import {SectionTitle} from './Shared';
+import {ProfileForm} from './ProfileForm';
 import {deleteMyAccount, deleteMyHistory, isLive} from '@/lib/api';
 import {signOut} from '@/lib/auth';
 
@@ -51,6 +52,7 @@ export function AccountPanel() {
         : '로그인하면 내 기록을 지우거나 탈퇴할 수 있습니다.'}</p>
     : <>
       <p className="account-who">로그인 계정 <strong>{user.email ?? user.name ?? user.id}</strong></p>
+      <div className="danger-row profile-row"><div><h3>내 회원 정보</h3><p>이름, 휴대전화, 주소. 본인에게만 원문이 보이고 운영자에게는 가린 값만 보입니다.</p><ProfileForm mode="edit"/></div></div>
       <div className="danger-row">
         <div><h3><Trash2 size={16}/>내 조회 기록 지우기</h3><p>지금까지 조회한 기록을 모두 지웁니다. 계정은 남습니다. 되돌릴 수 없습니다.</p></div>
         {historyStep === 'confirm' || historyStep === 'busy'

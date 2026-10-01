@@ -56,27 +56,28 @@ function CustomersPanel() {
     ['전체 고객', data.total],
     ['최근 7일 가입', data.items.filter(c => recent(c.created_at)).length],
     ['최근 7일 로그인', data.items.filter(c => recent(c.last_sign_in_at)).length],
-    ['운영자', data.items.filter(c => c.is_operator).length],
+    ['정보 미입력', data.items.filter(c => !c.profile_complete).length],
   ] as const : null;
 
   return <section aria-label="고객 관리">
-    <div className="history-stats">{(stats ?? [['전체 고객', null], ['최근 7일 가입', null], ['최근 7일 로그인', null], ['운영자', null]]).map(([label, value]) =>
+    <div className="history-stats">{(stats ?? [['전체 고객', null], ['최근 7일 가입', null], ['최근 7일 로그인', null], ['정보 미입력', null]]).map(([label, value]) =>
       <div key={label} className="history-stat neutral"><span>{label}</span><strong>{value ?? '-'}<small>명</small></strong></div>)}</div>
     <div className="history-panel">
       <div className="table-toolbar"><label className="search-history"><Search size={16}/><input aria-label="이메일 앞부분 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="이메일 앞 두 글자로 검색"/></label></div>
       {error && <p role="alert" className="request-error">{error}</p>}
       {!data && !error ? <div className="empty-state"><LoaderCircle className="spin"/><h2>고객 목록을 불러오는 중입니다.</h2></div>
       : data && <div className="table-scroll" role="region" aria-label="고객 목록" tabIndex={0}><table>
-        <thead><tr><th>이메일</th><th>이름</th><th>가입일</th><th>마지막 로그인</th><th>구분</th></tr></thead>
+        <thead><tr><th>이메일</th><th>이름</th><th>휴대전화</th><th>주소</th><th>가입일</th><th>마지막 로그인</th><th>구분</th></tr></thead>
         <tbody>{rows.map(c => <tr key={c.user_id}>
           <td className="mono">{c.email_masked ?? '없음'}</td><td>{c.name_masked ?? '-'}</td>
+          <td className="mono">{c.phone_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td><td>{c.address_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td>
           <td className="mono">{dateTime(c.created_at)}</td>
           <td className="mono">{c.last_sign_in_at ? dateTime(c.last_sign_in_at) : '로그인 기록 없음'}</td>
           <td>{c.is_operator ? <span className="role-chip operator"><ShieldCheck size={12}/>운영자</span> : <span className="role-chip">고객</span>}</td>
         </tr>)}</tbody></table>
         {!rows.length && <div className="empty-state"><Search/><h2>조건에 맞는 고객이 없습니다.</h2></div>}
       </div>}
-      <div className="table-bottom"><span>{rows.length}명 표시</span><span>이메일·이름은 서버에서 가려서 받습니다. 원문은 화면에 오지 않습니다.</span></div>
+      <div className="table-bottom"><span>{rows.length}명 표시</span><span>이메일·이름·전화·주소는 서버에서 가려서 받습니다. 원문은 화면에 오지 않습니다.</span></div>
     </div>
   </section>;
 }

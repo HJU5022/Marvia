@@ -2,20 +2,82 @@
   "customers": {
     "total": 4,
     "items": [
-      {"user_id": "demo-u4", "email_masked": "pa***@n***.com", "name_masked": "박**", "created_at": "2026-10-01T00:40:00Z", "last_sign_in_at": "2026-10-01T00:41:00Z", "is_operator": false},
-      {"user_id": "demo-u3", "email_masked": "le***@g***.com", "name_masked": "이**", "created_at": "2026-09-30T08:10:00Z", "last_sign_in_at": "2026-09-30T23:05:00Z", "is_operator": false},
-      {"user_id": "demo-u2", "email_masked": "ch***@d***.net", "name_masked": "최**", "created_at": "2026-09-30T02:00:00Z", "last_sign_in_at": null, "is_operator": false},
-      {"user_id": "demo-u1", "email_masked": "op***@m***.test", "name_masked": "운***", "created_at": "2026-09-29T05:00:00Z", "last_sign_in_at": "2026-10-01T00:30:00Z", "is_operator": true}
+      {
+        "user_id": "demo-u4",
+        "email_masked": "pa***@n***.com",
+        "name_masked": "박**",
+        "created_at": "2026-10-01T00:40:00Z",
+        "last_sign_in_at": "2026-10-01T00:41:00Z",
+        "is_operator": false,
+        "phone_masked": "010-****-1234",
+        "address_masked": "서울특별시 마포구 ***",
+        "profile_complete": true
+      },
+      {
+        "user_id": "demo-u3",
+        "email_masked": "le***@g***.com",
+        "name_masked": "이**",
+        "created_at": "2026-09-30T08:10:00Z",
+        "last_sign_in_at": "2026-09-30T23:05:00Z",
+        "is_operator": false,
+        "phone_masked": "010-****-9876",
+        "address_masked": "부산광역시 해운대구 ***",
+        "profile_complete": true
+      },
+      {
+        "user_id": "demo-u2",
+        "email_masked": "ch***@d***.net",
+        "name_masked": "최**",
+        "created_at": "2026-09-30T02:00:00Z",
+        "last_sign_in_at": null,
+        "is_operator": false,
+        "phone_masked": null,
+        "address_masked": null,
+        "profile_complete": false
+      },
+      {
+        "user_id": "demo-u1",
+        "email_masked": "op***@m***.test",
+        "name_masked": "운***",
+        "created_at": "2026-09-29T05:00:00Z",
+        "last_sign_in_at": "2026-10-01T00:30:00Z",
+        "is_operator": true,
+        "phone_masked": "010-****-5555",
+        "address_masked": "경기도 성남시 ***",
+        "profile_complete": true
+      }
     ]
   },
   "operators": {
     "operators": [
-      {"email": "operator@marvia.test", "granted_by": "bootstrap", "granted_at": "2026-09-29T05:10:00Z"}
+      {
+        "email": "operator@marvia.test",
+        "granted_by": "bootstrap",
+        "granted_at": "2026-09-29T05:10:00Z"
+      }
     ],
     "audit": [
-      {"action": "revoke", "target_email": "former@marvia.test", "actor_user_id": "demo-u1", "actor_email": "operator@marvia.test", "created_at": "2026-09-30T09:00:00Z"},
-      {"action": "grant", "target_email": "former@marvia.test", "actor_user_id": "demo-u1", "actor_email": "operator@marvia.test", "created_at": "2026-09-29T06:00:00Z"},
-      {"action": "grant", "target_email": "operator@marvia.test", "actor_user_id": "bootstrap", "actor_email": null, "created_at": "2026-09-29T05:10:00Z"}
+      {
+        "action": "revoke",
+        "target_email": "former@marvia.test",
+        "actor_user_id": "demo-u1",
+        "actor_email": "operator@marvia.test",
+        "created_at": "2026-09-30T09:00:00Z"
+      },
+      {
+        "action": "grant",
+        "target_email": "former@marvia.test",
+        "actor_user_id": "demo-u1",
+        "actor_email": "operator@marvia.test",
+        "created_at": "2026-09-29T06:00:00Z"
+      },
+      {
+        "action": "grant",
+        "target_email": "operator@marvia.test",
+        "actor_user_id": "bootstrap",
+        "actor_email": null,
+        "created_at": "2026-09-29T05:10:00Z"
+      }
     ]
   }
 }
