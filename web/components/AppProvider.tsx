@@ -86,7 +86,8 @@ export function AppProvider({children}:{children:ReactNode}) {
   async function ask(message: string) {
     if (inflight.current) return false;
     inflight.current = true; setLoading(true); setError(''); setStage(0); setReplaying(false);
-    setThread(t => [...t.slice(-9), {role: 'user', text: message}]);
+    // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
+    setThread(t => [...t.slice(-49), {role: 'user', text: message}]);
     const a = setTimeout(()=>setStage(1),350); const b = setTimeout(()=>setStage(2),700);
     try {
       // 지금 보고 있는 화물이 있으면 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다

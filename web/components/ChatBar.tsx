@@ -3,7 +3,7 @@
  * 문장은 POST /api/chat으로 가고, 서버가 B/L을 가린 뒤 LLM이 의도(화물 조회·후속 질문·입항 선박 검색)를 고른다.
  * 서류 사진 버튼은 남긴다: 읽은 B/L을 문장에 넣어 주고, 항차·입항 예정일은 되묻기 화면에 미리 채운다.
  */
-import {useState, type FormEvent, type KeyboardEvent} from 'react';
+import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent} from 'react';
 import {ArrowUp, Camera, Check, LoaderCircle, Sparkles} from 'lucide-react';
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentValues} from './DocumentPanel';
@@ -20,11 +20,24 @@ export function ChatBar() {
   const {ask, loading, stage, thread, result, request, setDocHints} = useApp();
   const [text, setText] = useState('');
   const [docOpen, setDocOpen] = useState(false);
+  const threadRef = useRef<HTMLOListElement>(null);
+  const stick = useRef(true);  // 맨 아래를 보고 있으면 true. 위로 올려 읽는 중에는 새 메시지가 와도 끌어내리지 않는다
+
+  // 새 메시지·답 대기 표시가 생기면 맨 아래로 (위 대화를 읽는 중이면 그대로)
+  useEffect(() => {
+    const el = threadRef.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [thread, loading]);
+  function onScroll() {
+    const el = threadRef.current;
+    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  }
 
   function send(message: string) {
     const m = message.trim();
     if (!m || loading || m.length > MAX) return;
     setText('');
+    stick.current = true;  // 내가 보낸 것은 항상 보이게
     void ask(m);
   }
   function submit(e: FormEvent) { e.preventDefault(); send(text); }
@@ -38,12 +51,12 @@ export function ChatBar() {
     setDocHints(v.voyage_no || v.forwarder_eta ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta} : null);
   }
 
-  const lastTurns = thread.slice(-4);
 
   return <section className="query-section chat-section" aria-label="화물에 대해 묻기">
-    {lastTurns.length > 0 && <ol className="chat-thread" aria-live="polite">
-      {lastTurns.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
+    {thread.length > 0 && <ol className="chat-thread" ref={threadRef} onScroll={onScroll} aria-live="polite" aria-label="대화" tabIndex={0}>
+      {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
         {t.role === 'assistant' && <span className="chat-avatar"><Sparkles size={12}/></span>}<p>{t.text}</p></li>)}
+      {loading && <li className="chat-turn assistant pending"><span className="chat-avatar"><Sparkles size={12}/></span><p>확인하고 있어요<span className="dots">…</span></p></li>}
     </ol>}
     <form className="chat-form" onSubmit={submit}>
       <label htmlFor="chat-input" className="sr-only">무엇이든 물어보세요</label>

@@ -271,3 +271,17 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .vessel-map-note{display:flex;align-items:center;gap:8px;margin:8px 2px 0;font-size:10px;color:var(--muted)}
 .legend-line{display:inline-block;width:26px;border-top:2.5px dashed var(--accent-dark)}
 @media(max-width:700px){.vessel-map-frame{height:280px}}
+
+/* Chat thread scrolls inside a fixed height; thin visible scrollbar in both engines. */
+.chat-thread{max-height:340px;overflow-y:scroll;padding:4px 10px 4px 2px;scroll-behavior:smooth;overscroll-behavior:contain}
+/* Chrome·Edge는 scrollbar-width가 있으면 ::-webkit-scrollbar를 무시한다. 표준 속성은 그것을 모르는 브라우저(Firefox)에만 */
+@supports not selector(::-webkit-scrollbar){.chat-thread{scrollbar-width:thin;scrollbar-color:var(--coast) transparent}}
+.chat-thread::-webkit-scrollbar{width:8px}
+.chat-thread::-webkit-scrollbar-track{background:transparent}
+.chat-thread::-webkit-scrollbar-thumb{background:var(--coast);border-radius:8px;border:2px solid var(--surface);min-height:40px}
+.chat-thread::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+.chat-thread:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px;border-radius:6px}
+.chat-turn.pending p{color:var(--muted);font-style:italic}
+.chat-turn.pending .dots{display:inline-block;animation:chat-dots 1.2s steps(3,end) infinite;overflow:hidden;vertical-align:bottom;width:1.2em}
+@keyframes chat-dots{from{width:0}to{width:1.2em}}
+@media(max-width:700px){.chat-thread{max-height:260px}}
