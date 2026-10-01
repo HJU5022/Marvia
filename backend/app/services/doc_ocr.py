@@ -272,3 +272,23 @@ def check_fields(fields: dict[str, str | None], lines: list[str]) -> dict[str, l
             fails.append("ambiguous")  # 지시문 줄에서만 나온 값 (10-01, INSTRUCTION_LINE)
         result[key] = fails
     return result
+
+
+
+# MRN: 연도 2자리 + 영숫자 8자 + I/E. OCR이 O를 0으로, I를 1로 읽는 경우가 있어 끝 글자는 1·l도 I로 본다 (10-01 실제 팩스 사진)
+_MRN_VALUE = re.compile(r"([0-9]{2}[A-Za-z0-9]{8}[IiEe1l|])(?![A-Za-z0-9])")
+
+
+def take_mrn(lines: list[str]) -> str | None:
+    """"MRN" 이름표가 있는 줄(또는 다음 줄)에서 MRN 값을 뽑는다 (docs/specs/mrn-fallback.md). 없으면 None.
+    B/L과 달리 개인을 가리키는 번호가 아니라 배·항차의 적하목록 번호라 가리지 않지만, LLM에는 보내지 않는다."""
+    for i, line in enumerate(lines):
+        m = re.search(r"MRN\s*[:：.]?\s*", line, re.I)
+        if not m:
+            continue
+        for cand in [line[m.end():]] + lines[i + 1:i + 2]:
+            v = _MRN_VALUE.search(cand.replace(" ", ""))
+            if v:
+                value = v.group(1).upper()
+                return value[:-1] + ("I" if value[-1] in "1L|" else value[-1])
+    return None

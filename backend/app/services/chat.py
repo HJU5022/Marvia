@@ -40,6 +40,19 @@ CACHE_SEC = 600            # 같은 기간 입항 예정은 10분 동안 다시 
 
 # B/L 모양: 영문·숫자 8~20자, 숫자를 하나 이상 포함 (schemas/agent.py _BL_PATTERN + 일반 영어 단어 제외)
 _BL = re.compile(r"(?<![A-Za-z0-9])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{8,20}(?![A-Za-z0-9])")
+# 적하목록 관리번호(MRN): 연도 2자리 + 영숫자 8자 + 입항 I/출항 E (docs/specs/mrn-fallback.md). B/L 모양과 겹치므로 먼저 뽑는다
+_MRN = re.compile(r"(?<![A-Za-z0-9])([0-9]{2}[A-Za-z0-9]{8}[IEie])(?![A-Za-z0-9])")
+
+
+def extract_mrn(message: str) -> tuple[str | None, str]:
+    """문장에서 MRN 하나를 뽑고 그 자리를 [MRN]으로 바꾼 문장을 돌려준다. MRN은 LLM에 보내지 않는다(코드만 쓴다).
+    "MRN" 이름표가 있으면 그 뒤 값을, 없으면 MRN 모양 중 숫자 2자리로 시작하는 첫 값을 쓴다."""
+    labeled = re.search(r"MRN\s*[:：]?\s*([0-9]{2}[A-Za-z0-9]{8}[IEie])(?![A-Za-z0-9])", message, re.I)
+    m = labeled or _MRN.search(message)
+    if not m:
+        return None, message
+    value = m.group(1)
+    return value.upper(), message.replace(value, "[MRN]")
 
 NEED_BL = "조회할 B/L 번호를 문장에 넣어 주세요. 예: TESTBL01 화물 괜찮아?"
 NO_CARGO = "지금 보고 있는 화물이 없습니다. 먼저 B/L 번호로 화물을 조회해 주세요."
@@ -188,6 +201,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
         raise ChatError("empty")
     if len(message) > MESSAGE_MAX:
         raise ChatError("too_long")
+    mrn, message = extract_mrn(message)  # B/L 가리기보다 먼저 (MRN도 B/L 모양이라 [BL]로 잘못 가려진다)
     masked, refs = mask_bls(message)
     today = datetime.now(KST).date().isoformat()
 
@@ -202,14 +216,14 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     except llm.LLMError as e:  # EC-01: 규칙으로 대신
         log_failure("chat_route", e.kind)
         if refs:
-            return _cargo(next(iter(refs.values())), None, None, session_id, context, run_agent, note=None)
+            return _cargo(next(iter(refs.values())), None, None, session_id, context, run_agent, note=None, mrn=mrn)
         return ChatResult(kind="message", reply=LLM_DOWN)
 
     # 문장에 지금 화물과 다른 B/L이 있으면 의도와 상관없이 새 화물 조회다 (10-01 실측: 화면에 화물이 있으면
     # LLM이 "[BL1] 화물 조회해줘"를 follow_up으로 골라 이전 화물 답과 카드가 나왔다). LLM이 낸 의도를 코드가 덮어쓴다
     new_bls = [bl for bl in refs.values() if context is None or bl != context.bl_no]
     if new_bls and route.intent in ("follow_up", "other"):
-        return _cargo(new_bls[0], route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None)
+        return _cargo(new_bls[0], route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn)
 
     if route.intent == "cargo":
         bl = refs.get(route.bl_ref or "") or (next(iter(refs.values())) if refs else None)
@@ -217,7 +231,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
             if context is None:
                 return ChatResult(kind="message", reply=NEED_BL)  # EC-02
             bl = context.bl_no
-        return _cargo(bl, route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None)
+        return _cargo(bl, route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn)
 
     if route.intent == "follow_up":
         if context is None:
@@ -260,12 +274,14 @@ def _safe_reply(reply: str | None, message: str) -> str:
 
 
 def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: str, context: AgentRequest | None,
-           run_agent, note: str | None) -> ChatResult:
-    """B/L 조회. 같은 화물을 다시 물으면 지금 화물의 구분·판매일을 이어 쓴다."""
+           run_agent, note: str | None, mrn: str | None = None) -> ChatResult:
+    """B/L 조회. 같은 화물을 다시 물으면 지금 화물의 구분·판매일·MRN을 이어 쓴다.
+    MRN이 있으면 세관에 아직 없는 화물도 배 상태까지 볼 수 있다 (docs/specs/mrn-fallback.md)."""
     same = context is not None and context.bl_no == bl
     kind = bl_type or (context.bl_type if same else None)
     req = AgentRequest(bl_no=bl, bl_type=kind or DEFAULT_BL_TYPE, session_id=session_id,
-                       sale_due_date=sale_due_date or (context.sale_due_date if same else None))
+                       sale_due_date=sale_due_date or (context.sale_due_date if same else None),
+                       mrn=mrn or (context.mrn if same else None))
     resp = run_agent(req)
     reply = resp.answer
     if not kind:

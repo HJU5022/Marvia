@@ -26,6 +26,7 @@ class ChatContext(BaseModel):
     bl_no: str
     bl_type: Literal["MASTER", "HOUSE"]
     sale_due_date: str | None = None
+    mrn: str | None = None  # 세관에 아직 없는 화물의 대체 조회용 (docs/specs/mrn-fallback.md)
 
 
 class ChatRequest(BaseModel):
@@ -66,7 +67,8 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
     if body.context:
         try:
             context = AgentRequest(bl_no=body.context.bl_no, bl_type=body.context.bl_type,
-                                   sale_due_date=body.context.sale_due_date, session_id=body.session_id)
+                                   sale_due_date=body.context.sale_due_date, session_id=body.session_id,
+                                   mrn=body.context.mrn)
         except ValueError:
             context = None  # 화면이 보낸 화물 정보가 틀렸으면 없는 것으로 본다
     with session_scope(body.session_id, user_id):

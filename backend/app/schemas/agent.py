@@ -22,6 +22,7 @@ Freshness = Literal["fresh", "stale", "unknown"]
 
 # B/L 번호 형식: 영문 대문자+숫자 8~20자 (SDD 3.1). 공백은 검증 전에 제거한다.
 _BL_PATTERN = re.compile(r"^[A-Z0-9]{8,20}$")
+_MRN_PATTERN = re.compile(r"^[0-9]{2}[A-Z0-9]{8}[IE]$")  # 적하목록 관리번호 (mrn-fallback, 10-01)
 
 
 class AgentRequest(BaseModel):
@@ -37,6 +38,19 @@ class AgentRequest(BaseModel):
     resolved_mmsi: int | None = Field(default=None, description="되묻기 후 사용자가 고른 선박")
     voyage_no: str | None = Field(default=None, description="되묻기 후 입력")
     forwarder_eta: date | None = None
+    # 적하목록 관리번호(예: 26PCLUVK37I). UNI-PASS에 B/L이 아직 없을 때 해수부 입항 신고로 배를 찾는 데만 쓴다 (docs/specs/mrn-fallback.md, 10-01)
+    mrn: str | None = Field(default=None, description="MRN 11자. 선택")
+
+    @field_validator("mrn")
+    @classmethod
+    def _normalize_mrn(cls, v: str | None) -> str | None:
+        """공백 제거·대문자. 모양이 아니면 422 (EC-01). 연도 2자리 + 영숫자 8자 + 입항 I/출항 E"""
+        if v is None or not v.strip():
+            return None
+        v = re.sub(r"\s+", "", v).upper()
+        if not _MRN_PATTERN.match(v):
+            raise ValueError("mrn은 11자(예: 26ABCD1234I)여야 합니다")
+        return v
 
     @field_validator("bl_no")
     @classmethod

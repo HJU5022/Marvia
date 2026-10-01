@@ -136,6 +136,13 @@ def _assess(request: AgentRequest) -> AgentResponse:
     """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다."""
     customs, failure = _fetch_customs(request)
     if failure is not None:
+        # 세관에 아직 없는 B/L이고 MRN이 있으면 해수부 입항 신고로 배 상태까지는 보여 준다 (docs/specs/mrn-fallback.md).
+        # 세관 장애(failed)는 대체하지 않는다 (EC-04)
+        if failure.status == "insufficient" and request.mrn:
+            from backend.app.services import mrn_fallback  # 이 경우에만 불러온다
+            alternative = mrn_fallback.assess(request)
+            if alternative is not None:
+                return alternative
         return failure
 
     # 지원 범위는 부산항이다 (PRD 4절). 양륙항이 부산이 아니면 배를 찾지 않고 끝낸다 (평가셋 F05).
