@@ -119,7 +119,9 @@ export interface VesselDetailResponse {
   call_sign: string | null; ship_name: string | null;
   vessel: {mmsi: number; name: string; flag: string | null; call_sign: string | null; ship_type: number | null} | null;
   position: {lat: number; lng: number; sog: number | null; cog: number | null; navistat: number | null; dest: string | null;
-    ais_eta: string | null; last_time: string | null; freshness: Freshness} | null;
+    ais_eta: string | null; last_time: string | null; freshness: Freshness;
+    /** 배 → 부산 남은 예상 바닷길 [위도, 경도] (searoute 계산, 실제 항적 아님) */
+    route?: [number, number][]} | null;
   distance: {distance_nm: number; calc_hours_at_sog: number | null; calc_eta?: string | null} | null;
   schedule: {planned_arrival: string | null; actual_arrival: string | null; facility: string | null;
     control_events: {kind: string; at: string | null; facility: string | null}[]} | null;

@@ -1,24 +1,17 @@
 'use client';
 /** 입항 예정 선박 자세히 보기 (docs/specs/chat-search.md "선박 자세히 보기"). 선박 표에서 선명을 누르면 행 아래에 펼친다.
  * GET /api/vessels/detail 한 번으로 해수부 일정, AIS 위치, 부산까지 거리를 받는다. 판정은 하지 않는다.
- * 지도는 화물 화면의 MapPanel을 그대로 쓴다(위치와 선명만 읽는다). 위치 신선도는 서버가 rules.md로 정한 값이다.
+ * 지도는 자세히 보기 전용 VesselMap(배 중심 확대, 진행 방향, 남은 예상 바닷길). 위치 신선도는 서버가 rules.md로 정한 값이다.
  */
 import {useEffect, useState} from 'react';
 import {Anchor, LoaderCircle, Navigation, TriangleAlert} from 'lucide-react';
-import {MapPanel} from './MapPanel';
+import {VesselMap} from './VesselMap';
 import {getVesselDetail} from '@/lib/api';
 import {dateTime, shown} from '@/lib/format';
-import type {AgentResponse, VesselDetailResponse, VesselItem} from '@/lib/types';
+import type {VesselDetailResponse, VesselItem} from '@/lib/types';
 
 const SOURCE_LABEL: Record<string, string> = {mof: '해양수산부', shipfinder: 'ShipFinder(AIS)', searoute: '해상 거리 계산'};
 
-/** MapPanel은 응답의 position과 vessel.name만 읽는다. 그 두 칸만 채운 모양으로 넘긴다 */
-function asMapInput(d: VesselDetailResponse, name: string): AgentResponse | null {
-  const p = d.position;
-  if (!p) return null;
-  return {position: {lat: p.lat, lng: p.lng, sog: p.sog ?? 0, cog: p.cog ?? 0, navistat: p.navistat ?? 0,
-    last_time: p.last_time ?? '', freshness: p.freshness}, vessel: {name}} as unknown as AgentResponse;
-}
 
 export function VesselDetail({vessel}: {vessel: VesselItem}) {
   const [data, setData] = useState<VesselDetailResponse | null>(null);
@@ -36,10 +29,9 @@ export function VesselDetail({vessel}: {vessel: VesselItem}) {
   if (!data) return <div className="vessel-detail"><div className="empty-inline"><LoaderCircle size={16} className="spin"/>해수부 일정과 AIS 위치를 불러오는 중</div></div>;
 
   const p = data.position, s = data.schedule, d = data.distance, v = data.vessel;
-  const map = asMapInput(data, vessel.ship_name);
   return <div className="vessel-detail">
     <div className="vessel-detail-grid">
-      <div className="vessel-detail-map">{map ? <MapPanel response={map}/> : <div className="empty-state"><Navigation/><h2>AIS 위치를 받지 못했습니다.</h2></div>}</div>
+      <div className="vessel-detail-map">{p ? <VesselMap name={vessel.ship_name} lat={p.lat} lng={p.lng} sog={p.sog} cog={p.cog} freshness={p.freshness} lastTime={p.last_time} route={p.route ?? []} distanceNm={d?.distance_nm ?? null}/> : <div className="empty-state"><Navigation/><h2>AIS 위치를 받지 못했습니다.</h2></div>}</div>
       <div className="vessel-detail-info">
         <section><h4><Navigation size={14}/>실시간 AIS {p && <span className={`fresh-chip ${p.freshness}`}>{p.freshness === 'fresh' ? '수신 정상' : p.freshness === 'stale' ? '오래된 위치' : '신선도 미확인'}</span>}</h4>
           <dl>{([
