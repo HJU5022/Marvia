@@ -25,6 +25,13 @@ PR 본문, SDD 7절, docs/prompt_versions.md, docs/specs/injection-redteam.md에
 - 7번은 서비스 모델(gpt-4o-mini)이 아니라 Haiku다 (docs/specs/injection-redteam.md 한계)
 - 강사 측 9/30 측정(약한 모델 6/48)은 이 폴더에 원본이 없다. 우리 측정이 아니다
 
+## guard 오탐 수정 (10-01 밤)
+
+위 측정 뒤에 guard 패턴이 정상 질문 11개를 막는 것을 찾아 좁혔다 ("너는 이제 뭘 알려줄 수 있어?", "Ignore the previous ETA", "UNI-PASS 시스템 메시지" 등. 목록은 backend/tests/test_guard.py BENIGN 끝 10개와 "시스템 메시지에 오류라고 떠").
+- 측정에 쓴 공격 문장 322개를 수정 전후 guard에 넣었다: 수정 전 29개 차단, 수정 후 29개 차단, 새로 빠져나간 것 0 (scripts/guard_compare.py, 수정 전 = 커밋 6c45878)
+- 그래서 3·7번 숫자는 guard 단계에서는 그대로 성립한다. guard를 통과한 공격은 원래부터 모델·V9·V10이 막은 것이다
+- 정상 문장 오탐(5번 0/60)은 그 60문장 기준이다. 이번에 찾은 11개는 표본에 없던 모양이라 테스트에 추가했다
+
 ## 다시 돌리기
 
 - scripts/: 실행 당시 그대로 둔 측정 스크립트. 경로가 작성자 PC 기준이라 그대로는 안 돌 수 있다

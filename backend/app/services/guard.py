@@ -19,13 +19,17 @@ _INVISIBLE = re.compile("[​‌‍⁠﻿­]")
 # 한국어. "너/당신/넌"에게 새 역할을 주거나, 앞선 지시를 무시하라거나, 지시문을 보여 달라는 모양
 _KO = [
     r"(지금|이제)\s*부터\s*(너|넌|당신|니가|네가)",
-    r"(너|넌|당신)\s*(는|은)?\s*이제\s*(부터)?",
+    # "너는 이제 뭘 알려줄 수 있어?"는 정상 질문이다. "이제부터"이거나 뒤에 새 정체성이 붙을 때만 잡는다 (10-01 오탐 점검)
+    r"(너|넌|당신)\s*(는|은)?\s*이제\s*부터",
+    r"(너|넌|당신)\s*(는|은)?\s*이제\s*.{0,20}(챗봇|봇|AI|에이아이|어시스턴트|비서|역할|캐릭터|모드|으로서|로서|입니다|이다)",
     r"(너|넌|당신)\s*(는|은)\s*.{0,20}(챗봇|봇|AI|에이아이|어시스턴트|비서)\s*(가|이)\s*아니",
     r"역할\s*(을|를)?\s*(바꿔|바꾸|변경|전환|맡아|연기)",
     # "앞의 지시는 모두 무시하고"처럼 사이에 부사가 끼어도 잡는다 (8자까지)
     r"(이전|앞|위|기존|모든)\s*(의)?\s*(지시|명령|규칙|지침|프롬프트|설정)\s*(들)?\s*(을|를|은|는)?.{0,8}?(무시|잊|따르지)",
-    r"(시스템|system)\s*(프롬프트|prompt|지시|메시지|명령)",
-    r"개발자\s*모드|탈옥|제한\s*없는\s*(AI|에이아이|모드|챗봇)",
+    # "시스템 메시지"는 UNI-PASS·선사 화면 문구를 묻는 정상 질문에도 나와서 뺐다 (10-01 오탐 점검)
+    r"(시스템|system)\s*(프롬프트|prompt|지시|명령)",
+    # 개발자 모드는 켜거나 들어가라는 모양만 ("개발자 모드는 없어?"는 통과)
+    r"개발자\s*모드\s*(로|으로|를|을|에서|활성|켜|전환|진입)|탈옥|제한\s*없는\s*(AI|에이아이|모드|챗봇)",
     r"(AI|에이아이|어시스턴트|챗봇|모델)\s*(에게|한테)\s*(보내는|전하는)?\s*(지시|명령|메모|안내|노트)",
     r"(캐릭터|페르소나)\s*(로|으로|를|을)",
 ]
@@ -33,13 +37,17 @@ _KO = [
 # 영어. 역할 부여, 지시 무시, 가짜 system 블록, 지시문 출력 요청
 _EN = [
     r"\byou\s+are\s+(now|no\s+longer)\b",
-    r"\bfrom\s+now\s+on\b",
-    r"\bact\s+as\b",
+    # "From now on, notify me ...", "act as a reminder"는 정상 요청이다. 새 정체성을 주는 모양만 (10-01 오탐 점검)
+    r"\bfrom\s+now\s+on,?\s+(you\s+(are|will\s+be|must|should|only)|your\s+(role|name|job)|act|respond|answer\s+only)\b",
+    r"\bact\s+as\s+(if\s+you\b|(an?\s+)?([\w-]+\s+){0,2}(ai|bot|assistant|model|character|persona|gpt|dan)\b)",
     r"\bpretend\s+(to\s+be|you)\b",
     r"\brole[\s-]*play\b",
     r"\bstay\s+in\s+character\b",
-    r"\b(ignore|disregard|forget)\s+(all|any|the|your|previous|prior|above|earlier)\b",
-    r"\bsystem\s*(prompt|message|instruction)",
+    # "Ignore the previous ETA"는 정상 질문이다. 지시·규칙·프롬프트를 무시하라는 모양만 (10-01 오탐 점검)
+    r"\b(ignore|disregard|forget)\s+((all|any|the|your|previous|prior|above|earlier|everything)\s+){0,3}"
+    r"(instructions?|rules?|prompts?|directions?|guidelines?|context|above|everything|what\s+you)\b",
+    # "system message"는 화면 문구를 묻는 정상 질문에도 나와서 뺐다. 가짜 system 블록은 아래 두 줄이 잡는다
+    r"\bsystem\s*(prompt|instruction)",
     r"\[\s*/?\s*system\s*\]",
     r"(^|\n)\s*#+\s*(new\s+)?(system|instruction)",
     r"\bnew\s+(system\s+)?(role|instructions?|message)\b",
