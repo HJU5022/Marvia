@@ -246,6 +246,13 @@ def _assess(request: AgentRequest) -> AgentResponse:
             else:
                 response = _judged(out, signal_set, request, customs, collected, table, from_cache=from_cache)
                 violations = validate.check(response)
+                # V9·V10 판정판 (10-01): 통관 단계명(외부 데이터)에 넣은 주입이 설명 칸에 섞이지 않게 한다 (validate.py)
+                texts = [out.answer, *out.actions, *[c.why for c in out.conflicts]]
+                if out.customs:
+                    texts += [out.customs.plain_explanation, out.customs.next_stage or ""]
+                external = " ".join([customs.stage_name or "", *[s.name for s in customs.stage_history]]) if customs else ""
+                violations += validate.check_judge_text(texts, response, external,
+                                                         llm.skills_reference(llm.JUDGE_SKILLS, llm.JUDGE_PROMPT))
                 if not violations:
                     return response
                 # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
@@ -402,10 +409,10 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
         answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
         violations = [v for v in validate.check(answered) if v.rule in FOLLOW_UP_RULES]
         # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
-        violations += validate.check_follow_up_words(out.answer, previous)
+        violations += validate.check_follow_up_words(out.answer, previous, llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
         # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
         violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, previous,
-                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS))
+                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT))
         if not violations:
             return answered
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")
