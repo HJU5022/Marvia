@@ -757,3 +757,64 @@ def grade_customs(customs: dict, *, model: str | None = None) -> LLMAnswer:
     data = {key: customs.get(key) for key in ("stage_name", "plain_explanation", "next_stage", "needs_broker")}
     return _ask_json(JUDGE_EVAL_PROMPT, json.dumps(data, ensure_ascii=False), "grade", GRADE_SCHEMA, GradeOutput, model,
                      skills=GRADE_SKILLS)
+
+
+# ── 자연어 입력 라우팅 route_chat(), 항구 고르기 match_ports() ──────────
+# docs/specs/chat-search.md. 검색 폼 대신 문장 하나를 받는다. LLM은 의도와 칸만 고르고 실행은 코드(services/chat.py)가 한다.
+# B/L은 코드가 [BL1]처럼 가린 뒤에만 넘어온다 (CLAUDE.md). Skill 문서는 넣지 않는다(판단 기준이 필요 없는 분류).
+
+CHAT_ROUTE_PROMPT = "marvia-chat-route"
+CHAT_ROUTE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["intent", "bl_ref", "bl_type", "sale_due_date", "question", "place", "days", "reply"],
+    "properties": {
+        "intent": {"type": "string", "enum": ["cargo", "follow_up", "vessel_search", "other"]},
+        "bl_ref": {"type": ["string", "null"]},
+        "bl_type": {"type": ["string", "null"], "enum": ["MASTER", "HOUSE", None]},
+        "sale_due_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
+        "question": {"type": ["string", "null"]},
+        "place": {"type": ["string", "null"]},
+        "days": {"type": ["integer", "null"]},
+        "reply": {"type": "string"},
+    },
+}
+
+
+class ChatRouteOutput(BaseModel):
+    intent: Literal["cargo", "follow_up", "vessel_search", "other"]
+    bl_ref: str | None
+    bl_type: Literal["MASTER", "HOUSE"] | None
+    sale_due_date: str | None  # 모양 검사는 services/chat.py가 한다
+    question: str | None
+    place: str | None
+    days: int | None
+    reply: str
+
+
+def route_chat(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, *,
+               model: str | None = None) -> LLMAnswer:
+    """가린 문장을 의도 하나와 칸으로 나눈다. output은 ChatRouteOutput. 칸 값은 services/chat.py가 다시 검사한다."""
+    data = {"message": masked_message, "bl_refs": bl_refs, "has_current_cargo": has_current_cargo, "today": today}
+    return _ask_json(CHAT_ROUTE_PROMPT, json.dumps(data, ensure_ascii=False), "chat_route", CHAT_ROUTE_SCHEMA,
+                     ChatRouteOutput, model, skills=())
+
+
+PORT_MATCH_PROMPT = "marvia-port-match"
+PORT_MATCH_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["ports"],
+    "properties": {"ports": {"type": "array", "items": {"type": "string"}}},
+}
+
+
+class PortMatchOutput(BaseModel):
+    ports: list[str]
+
+
+def match_ports(place: str, ports: list[str], *, model: str | None = None) -> LLMAnswer:
+    """place에 있는 항구를 주어진 목록 안에서만 고른다 (pick_vessel처럼 고르기만). 목록 밖 이름은 코드가 버린다."""
+    data = {"place": place, "ports": ports}
+    return _ask_json(PORT_MATCH_PROMPT, json.dumps(data, ensure_ascii=False), "port_match", PORT_MATCH_SCHEMA,
+                     PortMatchOutput, model, skills=())

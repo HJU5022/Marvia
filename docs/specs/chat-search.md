@@ -1,0 +1,49 @@
+# Spec: 자연어 입력 하나로 조회 (검색 폼 대체, 입항 선박 검색)
+
+작성 2026-10-01 김승욱. 사용자 지시: "내 화물" 화면의 검색 조건(B/L, 구분, 판매 예정일, 예시 메뉴)을 지우고 LLM 자연어로만 처리한다. "네덜란드에서 한국으로 들어오는 배 뭐야?" 같은 질문도 받는다.
+
+## Why
+
+- 칸을 채우는 폼은 B/L 하나 조회만 된다. 사용자는 말로 묻고 싶어 하고, 배 단위 질문("중국에서 오는 배")은 폼으로는 아예 못 한다
+- docs/specs/memory.md(G4)의 채팅 입구와 방향이 같다. 이번에는 기억(메모장·화물 표) 없이 입구와 라우팅, 입항 선박 검색만 만든다
+
+## Goal
+
+- 입력창 하나. 문장을 보내면 코드가 B/L을 가리고 LLM이 의도를 고른다. 실행은 코드가 한다
+- 의도 4가지: 화물 조회(cargo), 지금 화물 후속 질문(follow_up), 부산 입항 예정 선박 검색(vessel_search), 그 밖(other: 짧은 안내)
+- 선박 검색은 해수부 선박운항정보의 직전 기항지(previous_port) 기준이다. 출발지 데이터는 없다고 답에 밝힌다
+- **Out of Scope**: 대화 기억, 여러 화물 비교, 웹 검색, 출발지(최초 적재항) 기준 검색, 스트리밍
+
+## What
+
+**Happy Path**
+1. 화면이 POST /api/chat {message, session_id, context(지금 보고 있는 화물: bl_no·bl_type·sale_due_date, 없으면 null)}
+2. 코드: 문장 속 B/L 모양(영문·숫자 8~20자, 숫자 포함)을 [BL1]처럼 바꾼다. LLM은 가린 문장과 has_current_cargo만 본다 (CLAUDE.md B/L 비노출)
+3. LLM(marvia-chat-route): intent, bl_ref, bl_type, sale_due_date, question, place, days, reply
+4. 코드 실행
+   - cargo: bl_ref를 원래 B/L로 되돌려 기존 /api/agent 흐름(run_agent). 구분을 말하지 않으면 HOUSE로 조회하고 답에 알린다
+   - follow_up: context의 화물로 run_agent(follow_up_question=가린 문장)
+   - vessel_search: 해수부 입항 예정(오늘부터 days일, 기본 7, 최대 14)을 받아 직전 기항지 목록을 만든다. LLM(marvia-port-match)이 place에 해당하는 항구를 이 목록 안에서만 고른다. 코드가 걸러 표로 돌려준다
+   - other: reply를 그대로 (짧은 안내, 판정·숫자 없음)
+5. 응답 ChatResponse: kind(cargo / vessels / message), reply, agent(AgentResponse), request(AgentRequest), vessels, place, ports
+
+**Edge Cases**
+
+| # | 상황 | 처리 방식 |
+|---|---|---|
+| EC-01 | LLM 없음·실패 (키 없는 데모, 과부하) | 규칙 대신: 문장에 B/L이 있으면 cargo, 없으면 "B/L 번호를 넣어 주세요" |
+| EC-02 | cargo인데 B/L 없음 | 지금 화물이 있으면 그 화물, 없으면 B/L을 물어본다 |
+| EC-03 | follow_up인데 지금 화물 없음 | B/L을 먼저 알려 달라고 답한다 |
+| EC-04 | 선박 검색에서 맞는 항구 없음 (예: 네덜란드) | 빈 표 + "직전 기항지 기준이라 유럽에서 출발한 배도 중국·싱가포르를 거쳐 오면 그 항구로 나온다" 안내 |
+| EC-05 | 해수부 실패 | 503이 아니라 message로 실패를 알린다 |
+| EC-06 | 문장 속 지시문 ("이전 지시 무시") | 데이터로만 넘긴다. 의도는 4개로 고정, 실행은 코드 |
+| EC-07 | 문장 500자 초과 | 400 |
+
+## How
+
+- 프롬프트 2개(backend/app/prompts/marvia-chat-route.md, marvia-port-match.md), llm.route_chat / llm.match_ports. Skill 문서는 넣지 않는다
+- services/chat.py: 가리기, 라우팅, 실행, 해수부 결과 10분 캐시(같은 기간을 여러 번 묻는 경우)
+- routers/chat.py: POST /api/chat. 로그인·정지 확인은 auth.current_user 그대로
+- LLM 출력에서 코드가 덮어쓰는 것: bl_ref는 가린 목록에 있는 것만, ports는 주어진 목록 안의 것만, days는 1~14로 자른다
+- 화면: TopBar 폼을 입력창 하나로 바꾸고 예시 문장 칩, 서류 사진 버튼은 남긴다(B/L을 문장에 넣어 준다). 결과는 kind별로 기존 카드 / 선박 표 / 안내 문장
+- 테스트: backend/tests/test_chat.py (가리기, 라우팅별 실행, 폴백, 덮어쓰기, 항구 필터)

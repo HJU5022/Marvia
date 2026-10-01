@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging
-from backend.app.routers import account, admin, agent, document, history, profile
+from backend.app.routers import account, admin, agent, chat, document, history, profile
 from mcp_server.server import MountedMCP
 
 setup_logging()
@@ -66,6 +66,7 @@ app.add_middleware(
 
 
 app.include_router(agent.router)
+app.include_router(chat.router)  # 자연어 입력 (docs/specs/chat-search.md)
 app.include_router(history.router)
 app.include_router(document.router)  # 서류 사진 (docs/specs/document-extract.md)
 app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
