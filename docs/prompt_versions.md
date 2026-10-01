@@ -15,6 +15,8 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | marvia-follow-up | 판정 뒤 후속 질문에 근거 안에서만 답하기 | v0 |
 | marvia-judge-eval | 평가용 LLM-as-judge. 통관 해설 채점 | v0 |
 | marvia-doc-extract | 서류 사진 OCR 글자에서 6칸 옮겨 적기 (docs/specs/document-extract.md) | v0 (Langfuse 4) |
+| marvia-chat-route | 자연어 입력 한 문장의 의도(화물 조회·후속 질문·입항 선박 검색·그 밖)와 칸 고르기. B/L은 가린 토큰만 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
+| marvia-port-match | 지역 이름에 해당하는 항구를 해수부 직전 기항지 목록 안에서만 고르기 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
 
 ## v0 개발 중 수정
 

@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
-from backend.app.clients.mof import MofClient, MofError, MAX_PAGES
+from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
@@ -100,11 +100,27 @@ def _arrivals(days: int) -> list:
     live = replay_enabled() and os.environ.get("DATA_GO_KR_KEY")
     client = MofClient(transport=httpx.HTTPTransport()) if live else MofClient()
     try:
-        plans = client.sailing_plans(today, today + timedelta(days=days), max_pages=MAX_PAGES)
+        plans = client.sailing_plans_all(today, today + timedelta(days=days))  # 쪽을 동시에 받는다
     finally:
         client.close()
     _plans_cache[key] = (time.monotonic(), plans)
     return plans
+
+
+# ── 항구 고르기 캐시 ──
+# 같은 지역을 같은 항구 목록으로 다시 물으면 LLM을 부르지 않는다 (10분, 입항 예정 캐시와 같은 수명).
+# 열쇠에 항구 목록을 넣는다: 목록이 바뀌면(새 배가 신고) 새로 고른다
+_ports_cache: dict[tuple[str, tuple[str, ...]], tuple[float, list[str]]] = {}
+
+
+def _match_ports_cached(place: str, available: list[str]) -> list[str]:
+    key = (place.strip().lower(), tuple(available))
+    hit = _ports_cache.get(key)
+    if hit and time.monotonic() - hit[0] < CACHE_SEC:
+        return hit[1]
+    picked = llm.match_ports(place, available).output.ports
+    _ports_cache[key] = (time.monotonic(), picked)
+    return picked
 
 
 def search_vessels(place: str | None, days: int | None, label: str | None = None) -> ChatResult:
@@ -120,7 +136,7 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
     ports: list[str] = []
     if place:
         try:
-            picked = llm.match_ports(place, available).output.ports
+            picked = _match_ports_cached(place, available)
             ports = [p for p in picked if p in set(available)]  # 목록 밖 이름은 버린다
         except llm.LLMError as e:
             log_failure("chat_port_match", e.kind)

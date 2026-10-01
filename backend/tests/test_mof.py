@@ -136,3 +136,22 @@ def test_page_cap_hit_is_logged_only_when_pages_run_out(caplog):
 
     logged = [(r.stage, r.error) for r in caplog.records if r.name == "marvia.failure"]
     assert logged == [("mof_control", "page_cap_hit 2")]
+
+
+def test_sailing_plans_all_fetches_rest_pages_together():
+    """첫 쪽 totalCount로 쪽 수를 알고 나머지를 동시에 받는다 (자연어 선박 검색, 10-01). 쪽 순서는 유지."""
+    from datetime import date
+    from urllib.parse import parse_qs, urlparse
+
+    def item(n):
+        return f"<item><clsgn>CS{n}</clsgn><vsslNm>SHIP {n}</vsslNm><prvsPrtNm>PORT {n}</prvsPrtNm></item>"
+
+    def handler(request):
+        page = int(parse_qs(urlparse(str(request.url)).query)["pageNo"][0])
+        items = "".join(item((page - 1) * 50 + i) for i in range(50 if page < 3 else 7))
+        body = f"<response><header><resultCode>00</resultCode></header><body><items>{items}</items><totalCount>107</totalCount></body></response>"
+        return httpx.Response(200, text=body)
+
+    client = MofClient(key="test-key", transport=httpx.MockTransport(handler))
+    plans = client.sailing_plans_all(date(2026, 10, 1), date(2026, 10, 8))
+    assert len(plans) == 107 and plans[0].ship_name == "SHIP 0" and plans[-1].ship_name == "SHIP 106"

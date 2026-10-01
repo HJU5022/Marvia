@@ -134,3 +134,14 @@ def test_api(monkeypatch):
         assert r.status_code == 200 and r.json()["kind"] == "cargo" and r.json()["request"]["bl_no"] == "TESTBL01"
         assert client.post("/api/chat", json={"message": "가" * 501, "session_id": "s1"}).status_code == 422  # EC-07
         assert client.post("/api/chat", json={"message": "  ", "session_id": "s1"}).status_code == 400
+
+
+def test_port_match_is_cached_per_place_and_list(monkeypatch):
+    svc._ports_cache.clear()
+    calls = []
+    monkeypatch.setattr(llm, "match_ports", lambda place, ports, **kw: calls.append(place) or llm.LLMAnswer(
+        output=llm.PortMatchOutput(ports=["SHANGHAI"]), llm=None, prompt_version="test"))
+    assert svc._match_ports_cached("China", ["KOBE", "SHANGHAI"]) == ["SHANGHAI"]
+    assert svc._match_ports_cached(" china ", ["KOBE", "SHANGHAI"]) == ["SHANGHAI"]  # 같은 지역은 다시 안 부른다
+    svc._match_ports_cached("China", ["KOBE", "SHANGHAI", "NINGBO"])  # 항구 목록이 바뀌면 다시 고른다
+    assert calls == ["China", "China"]
