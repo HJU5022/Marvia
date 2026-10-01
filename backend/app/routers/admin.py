@@ -17,6 +17,7 @@ from backend.app.auth import CurrentUser, current_user
 from backend.app.clients.supabase_admin import AdminError, list_users
 from backend.app.observability.logging import log_failure
 from backend.app.services import operators as ops
+from backend.app.services import profile as profile_svc
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -27,21 +28,25 @@ class MeResponse(BaseModel):
     user_id: str | None
     email: str | None
     is_operator: bool
+    # 회원 정보(이름·전화·주소)를 입력했나. false면 화면이 입력 화면을 띄운다 (docs/specs/user-profile.md)
+    profile_complete: bool = True
 
 
 @router.get("/me", response_model=MeResponse)
 def me(user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> MeResponse:
     """화면이 탭을 나눌 때 묻는다. DB를 못 읽으면 운영자가 아닌 것으로 답한다 (EC-08). 관리 API는 따로 다시 확인한다."""
-    if not user:  # 로그인 기능이 꺼진 환경 (EC-02)
+    if not user:  # 로그인 기능이 꺼진 환경 (EC-02). 회원 정보도 묻지 않는다 (user-profile EC-05)
         return MeResponse(user_id=None, email=None, is_operator=False)
-    flag = False
+    flag, complete = False, True
     if os.environ.get("DATABASE_URL"):
         try:
             with ops.open_conn() as conn:
                 flag = ops.is_operator(conn, user.email)
-        except Exception as e:
+                complete = profile_svc.exists(conn, user.id)
+        except Exception as e:  # DB를 못 읽으면 입력 화면으로 막지 않는다 (user-profile EC-06)
             log_failure("operator_check", type(e).__name__)
-    return MeResponse(user_id=user.id, email=user.email, is_operator=flag)
+            complete = True
+    return MeResponse(user_id=user.id, email=user.email, is_operator=flag, profile_complete=complete)
 
 
 def require_operator(user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> CurrentUser:
@@ -66,6 +71,9 @@ class CustomerItem(BaseModel):
     user_id: str
     email_masked: str | None
     name_masked: str | None
+    phone_masked: str | None = None
+    address_masked: str | None = None
+    profile_complete: bool = False  # 회원 정보를 입력했나
     created_at: datetime | None
     last_sign_in_at: datetime | None
     is_operator: bool
@@ -87,10 +95,17 @@ def customers(_: Annotated[CurrentUser, Depends(require_operator)]) -> Customers
     try:
         with ops.open_conn() as conn:
             operator_emails = ops.active_operator_emails(conn)
+            profiles = profile_svc.masked_by_user(conn)  # 이미 가린 값만 온다
     except Exception as e:
         log_failure("admin_customers", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN)
-    items = [CustomerItem(**c.__dict__) for c in ops.mask_customers(users, operator_emails)]
+    items = []
+    for c in ops.mask_customers(users, operator_emails):
+        p = profiles.get(c.user_id)
+        # 이름은 직접 입력한 값을 먼저, 없으면 구글 이름 (user-profile Goal)
+        items.append(CustomerItem(**{**c.__dict__, "name_masked": (p or {}).get("name") or c.name_masked,
+                                     "phone_masked": (p or {}).get("phone"), "address_masked": (p or {}).get("address"),
+                                     "profile_complete": p is not None}))
     return CustomersResponse(items=items, total=len(items))
 
 

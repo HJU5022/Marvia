@@ -3,7 +3,7 @@
 라우터(routers/account.py)는 로그인 확인과 HTTP 응답만 하고, 무엇을 어떤 순서로 지우는지는 여기서 정한다
 (CLAUDE.md 폴더 책임: 라우터는 요청 검증·서비스 호출·응답, 로직은 services).
 
-순서가 중요하다: 우리 조회 기록을 먼저 지우고, 그다음 Supabase 계정을 지운다.
+순서가 중요하다: 우리 조회 기록과 회원 정보(10-01)를 먼저 지우고, 그다음 Supabase 계정을 지운다.
 두 곳은 창구가 다르다. 기록은 DATABASE_URL로 DB에 바로, 계정은 Supabase 로그인 서버(Auth)에 인터넷 요청으로 지운다.
 그래서 한 번에 같이 처리되지 않고, 중간에 한쪽만 실패할 수 있다 (연결 끊김, Auth 점검, 관리자 키 삭제 등).
   - 계정을 먼저 지웠는데 기록 삭제가 실패하면, 그 사람은 로그인을 못 해 다시 탈퇴할 수도 없고 기록만 주인 없이 남는다
@@ -20,6 +20,7 @@ import os
 
 from backend.app.clients.supabase_admin import AdminError, delete_account
 from backend.app.db import connect, delete_user_queries
+from backend.app.services.profile import delete as delete_profile
 
 
 class WithdrawError(Exception):
@@ -38,6 +39,8 @@ def withdraw(user_id: str) -> int:
     try:
         with connect() as conn:
             deleted = delete_user_queries(conn, user_id)
+            # 회원 정보(이름·전화·주소, 잠긴 글자)도 계정보다 먼저 지운다 (docs/specs/user-profile.md EC-08)
+            delete_profile(conn, user_id)
     except Exception as e:  # 연결·SQL 실패 모두. 오류 종류만 남긴다
         raise WithdrawError("account_records", type(e).__name__) from None
 

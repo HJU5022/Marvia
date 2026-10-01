@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging
-from backend.app.routers import account, admin, agent, document, history
+from backend.app.routers import account, admin, agent, document, history, profile
 from mcp_server.server import MountedMCP
 
 setup_logging()
@@ -69,6 +69,7 @@ app.include_router(history.router)
 app.include_router(document.router)  # 서류 사진 (docs/specs/document-extract.md)
 app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
 app.include_router(admin.router)  # 운영자 관리 (docs/specs/operator-admin.md)
+app.include_router(profile.router)  # 회원 정보 (docs/specs/user-profile.md)
 
 
 # /mcp: MCP 클라이언트가 연결하는 프로토콜 창구. /api/agent(사용자 화면용)와 경로를 나눈다 (가이드 v4 배포 구조).

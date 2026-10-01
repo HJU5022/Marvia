@@ -35,6 +35,7 @@ class FakeConn:
     def __init__(self):
         self.operators: dict[str, dict] = {}
         self.audit: list[dict] = []
+        self.profiles: dict[str, tuple] = {}  # user_id -> (name_enc, phone_enc, address_enc), test_profile.py도 쓴다
 
     def __enter__(self):
         return self
@@ -76,6 +77,18 @@ class FakeConn:
             rows = [(a["action"], a["target_email"], a["actor_user_id"], a["actor_email"], a["created_at"])
                     for a in reversed(self.audit)]
             return _Result(rows[: params[0]])
+        if q.startswith("SELECT 1 FROM user_profiles"):
+            return _Result([(1,)] if params[0] in self.profiles else [])
+        if q.startswith("INSERT INTO user_profiles"):
+            self.profiles[params[0]] = tuple(params[1:4])
+            return _Result(rowcount=1)
+        if q.startswith("SELECT name_enc, phone_enc, address_enc FROM user_profiles"):
+            row = self.profiles.get(params[0])
+            return _Result([row] if row else [])
+        if q.startswith("SELECT user_id, name_enc, phone_enc, address_enc FROM user_profiles"):
+            return _Result([(u, *v) for u, v in self.profiles.items()])
+        if q.startswith("DELETE FROM user_profiles"):
+            return _Result(rowcount=1 if self.profiles.pop(params[0], None) else 0)
         raise AssertionError(f"예상하지 못한 SQL: {q}")
 
 
@@ -174,7 +187,7 @@ def db(monkeypatch):
 def test_me_reports_operator_flag(db, monkeypatch):
     with TestClient(app) as client:
         r = client.get("/api/me", headers=_login(monkeypatch, OPERATOR.upper()))
-        assert r.json() == {"user_id": "user-123", "email": OPERATOR, "is_operator": True}
+        assert r.json() == {"user_id": "user-123", "email": OPERATOR, "is_operator": True, "profile_complete": False}
         r = client.get("/api/me", headers=_login(monkeypatch, CUSTOMER))
         assert r.json()["is_operator"] is False
 
@@ -182,7 +195,8 @@ def test_me_reports_operator_flag(db, monkeypatch):
 def test_me_without_login_feature(monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     with TestClient(app) as client:
-        assert client.get("/api/me").json() == {"user_id": None, "email": None, "is_operator": False}  # EC-02
+        assert client.get("/api/me").json() == {"user_id": None, "email": None, "is_operator": False,
+                                                  "profile_complete": True}  # EC-02, 회원 정보도 묻지 않음
 
 
 def test_admin_api_forbids_non_operators(db, monkeypatch):
