@@ -21,7 +21,7 @@ REASON = "고객 전화 문의로 본인 확인이 필요함"
 
 @pytest.fixture
 def db(monkeypatch):
-    monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("PII_ENCRYPTION_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
     conn = FakeConn()
     ops.grant(conn, OPERATOR, "bootstrap", None)

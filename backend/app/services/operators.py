@@ -60,12 +60,12 @@ def _seal(email: str | None) -> tuple[str | None, str | None]:
     """이메일을 (암호문, 가린 값)으로. 평문은 DB에 넣지 않는다 (013, 10-01). 열쇠가 없으면 암호문은 None."""
     if not email:
         return None, None
-    return crypto.encrypt(email), mask_email(email)
+    return crypto.encrypt_pii(email), mask_email(email)  # PII 열쇠 (10-01 분리)
 
 
 def _open(enc: str | None, masked: str | None) -> str | None:
     """화면용 이메일. 풀 수 있으면 원문, 열쇠가 바뀌었으면 가린 값."""
-    return (crypto.decrypt(enc) if enc else None) or masked
+    return (crypto.decrypt_pii(enc) if enc else None) or masked
 
 
 def _hash(email: str) -> str:

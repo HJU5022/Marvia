@@ -22,7 +22,7 @@ OPERATOR = "boss@marvia.test"
 def _key(monkeypatch):
     """운영자 찾기에 이메일 지문이 필요하다 (crypto.fingerprint). 테스트용 열쇠"""
     from cryptography.fernet import Fernet
-    monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("PII_ENCRYPTION_KEY", Fernet.generate_key().decode())
 CUSTOMER = "kim@example.com"
 
 
@@ -176,7 +176,7 @@ def test_operator_emails_are_never_stored_in_plain_text():
 
 
 def test_operator_features_fail_closed_without_key(monkeypatch):
-    monkeypatch.delenv("BL_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("PII_ENCRYPTION_KEY", raising=False)
     conn = FakeConn()
     with pytest.raises(ops.OperatorError) as e:
         ops.grant(conn, OPERATOR, "bootstrap", None)

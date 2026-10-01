@@ -17,7 +17,7 @@ GOOD = {"name": "김승욱", "phone": "010-1234-5678", "address": "서울특별�
 
 @pytest.fixture
 def key(monkeypatch):
-    monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("PII_ENCRYPTION_KEY", Fernet.generate_key().decode())
 
 
 @pytest.fixture
@@ -72,7 +72,7 @@ def test_db_gets_only_sealed_values(key):
 
 
 def test_no_key_saves_nothing(monkeypatch):
-    monkeypatch.delenv("BL_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("PII_ENCRYPTION_KEY", raising=False)
     conn = FakeConn()
     with pytest.raises(svc.ProfileError) as e:
         svc.save(conn, "u1", svc.clean(**GOOD))
@@ -82,7 +82,7 @@ def test_no_key_saves_nothing(monkeypatch):
 def test_changed_key_is_unreadable_not_crash(key, monkeypatch):
     conn = FakeConn()
     svc.save(conn, "u1", svc.clean(**GOOD))
-    monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("PII_ENCRYPTION_KEY", Fernet.generate_key().decode())
     assert svc.load(conn, "u1") is None  # EC-07
     assert svc.masked_by_user(conn)["u1"]["unreadable"] is True
 
@@ -132,3 +132,15 @@ def test_browser_preflight_allows_methods_the_screen_uses(method, path):
         r = client.options(path, headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": method,
                                           "Access-Control-Request-Headers": "authorization,content-type"})
     assert r.status_code == 200 and method in r.headers["access-control-allow-methods"]
+
+
+def test_pii_key_is_separate_from_bl_key(monkeypatch):
+    """개인정보는 PII 열쇠로만 잠근다. B/L 열쇠만 있으면 저장하지 않는다 (10-01 분리)."""
+    from backend.app import crypto
+    monkeypatch.delenv("PII_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    assert crypto.encrypt_pii("김승욱") is None and crypto.fingerprint("a@b.com") is None
+    assert crypto.encrypt("TESTBL01") is not None  # B/L 쪽은 그대로
+    monkeypatch.setenv("PII_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    sealed = crypto.encrypt_pii("김승욱")
+    assert crypto.decrypt(sealed) is None and crypto.decrypt_pii(sealed) == "김승욱"  # 서로 다른 열쇠

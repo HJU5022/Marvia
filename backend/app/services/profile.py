@@ -1,6 +1,6 @@
 """회원 정보(이름, 전화번호, 주소) 검사, 암호화 저장, 마스킹 (docs/specs/user-profile.md).
 
-- 저장: 형식 검사 → crypto.encrypt로 잠금 → DB에는 잠긴 글자만. 열쇠가 없으면 원문을 저장하지 않고 ProfileError(no_key)
+- 저장: 형식 검사 → crypto.encrypt_pii(PII_ENCRYPTION_KEY)로 잠금 → DB에는 잠긴 글자만. 열쇠가 없으면 원문을 저장하지 않고 ProfileError(no_key)
 - 읽기: 본인 화면에만 원문(decrypt). 운영자 고객 관리에는 mask_*로 가린 값만
 - 지우기: 탈퇴(services/account.py)가 부른다
 """
@@ -83,7 +83,7 @@ def mask_address(address: str | None) -> str | None:
 def save(conn, user_id: str, profile: Profile, *, by_operator: bool = False) -> None:
     """잠가서 저장한다. 하나라도 못 잠그면(열쇠 없음) 아무것도 저장하지 않는다 (EC-04).
     by_operator: 운영자가 고친 경우. 본인 동의 시각(consent_at)은 그대로 둔다 (operator-admin 추가 절)."""
-    sealed = [crypto.encrypt(v) for v in (profile.name, profile.phone, profile.address)]
+    sealed = [crypto.encrypt_pii(v) for v in (profile.name, profile.phone, profile.address)]  # PII 열쇠 (10-01 분리)
     if any(s is None for s in sealed):
         raise ProfileError("no_key")
     consent = "user_profiles.consent_at" if by_operator else "now()"
@@ -100,7 +100,7 @@ def save(conn, user_id: str, profile: Profile, *, by_operator: bool = False) -> 
 
 def _open(row) -> Profile | None:
     """잠긴 세 칸을 연다. 하나라도 못 열면(열쇠 바뀜) None (EC-07)."""
-    values = [crypto.decrypt(v) for v in row]
+    values = [crypto.decrypt_pii(v) for v in row]
     return None if any(v is None for v in values) else Profile(*values)
 
 
