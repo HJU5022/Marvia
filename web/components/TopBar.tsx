@@ -1,17 +1,80 @@
 'use client';
-/** C2 form mirrors Python normalization and validation (E2/E3); no status in request. */
+/** 조회 입력 폼 (SDD 5.13 TopBar, 계약 C2). 백엔드와 같은 B/L 정규화·검사를 먼저 해서 400을 줄인다.
+ * 판매 예정일은 선택이다 (09-29 계약 변경). 요청에 status나 fixture ID 같은 칸을 더하지 않는다.
+ */
 import {useEffect, useState, type FormEvent} from 'react';
 import {ArrowRight, Check, ChevronDown, LoaderCircle, Search} from 'lucide-react';
 import {useApp} from './AppProvider';
-import {selectFixture} from '@/lib/api';
+import {isLive, liveExamples, selectFixture} from '@/lib/api';
 import type {AgentRequest} from '@/lib/types';
 import {maskBl} from '@/lib/format';
+
 export function TopBar() {
- const {request,lookup,loading,stage,data,error}=useApp();
- const [bl,setBl]=useState(request.bl_no),[type,setType]=useState(request.bl_type),[date,setDate]=useState(request.sale_due_date);
- const [errors,setErrors]=useState<Record<string,string>>({});const [choice,setChoice]=useState('');
- useEffect(()=>{setBl(request.bl_no);setType(request.bl_type);setDate(request.sale_due_date);},[request]);
- function submit(e:FormEvent){e.preventDefault();const no=bl.replace(/\s/g,'').toUpperCase();const next:Record<string,string>={};if(!/^[A-Z0-9]{8,20}$/.test(no))next.bl='영문·숫자 8~20자로 입력해 주세요.';if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date)))next.date='판매 예정일을 선택해 주세요.';setErrors(next);if(Object.keys(next).length)return;setBl(no);selectFixture(null);setChoice('');void lookup({bl_no:no,bl_type:type,sale_due_date:date,session_id:request.session_id});}
- function choose(id:string){const c=data.demo.choices.find(c=>c.id===id);if(!c)return;setErrors({});setChoice(id);selectFixture(id);void lookup(c.request as AgentRequest);}
- return <section className="query-section" aria-label="화물 조회"><form className="query-form" onSubmit={submit} noValidate><div className="form-field bl-field"><label htmlFor="bl">B/L 번호</label><div className="input-icon"><Search size={16}/><input id="bl" value={bl} onChange={e=>setBl(e.target.value)} autoComplete="off" spellCheck={false} aria-invalid={!!errors.bl} aria-describedby={errors.bl?'bl-error':'bl-help'} disabled={loading}/></div>{errors.bl&&<span id="bl-error" className="field-error">{errors.bl}</span>}</div><div className="form-field"><label htmlFor="bl-type">구분</label><select id="bl-type" value={type} onChange={e=>setType(e.target.value as AgentRequest['bl_type'])} disabled={loading}><option value="MASTER">Master B/L</option><option value="HOUSE">House B/L</option></select></div><div className="form-field"><label htmlFor="sale-date">판매 예정일</label><input id="sale-date" type="date" value={date} onChange={e=>setDate(e.target.value)} aria-invalid={!!errors.date} aria-describedby={errors.date?'date-error':undefined} disabled={loading}/>{errors.date&&<span id="date-error" className="field-error">{errors.date}</span>}</div><button type="submit" className="button primary query-button" disabled={loading}>{loading?<LoaderCircle size={17} className="spin"/>:<Search size={17}/>}<span>{loading?'조회 중':'화물 조회'}</span>{!loading&&<ArrowRight size={16}/>}</button></form><div className="query-foot"><p id="bl-help">B/L과 필요한 입고일을 입력하세요. 지금은 저장된 예시 화물로 체험할 수 있습니다.</p><label className="example-select">예시 화물 <select aria-label="예시 화물" value="" disabled={loading} onChange={e=>choose(e.target.value)}><option value="">선택하기</option>{data.demo.choices.slice(0,3).map(c=><option value={c.id} key={c.id}>{c.label} · {maskBl(c.request.bl_no)}</option>)}</select><ChevronDown size={12}/></label></div>{process.env.NODE_ENV==='development'&&<div className="dev-switch"><span className="mono">DEV</span><label htmlFor="fixture">상태 미리보기</label><select id="fixture" value={choice} onChange={e=>choose(e.target.value)} disabled={loading}><option value="">B/L에 따른 fixture</option>{data.demo.choices.map(c=><option key={c.id} value={c.id}>{c.id} · {c.label}</option>)}</select></div>}{loading&&<ol className="progress-steps" aria-label="예시 조회 진행" aria-live="polite">{['식별','위치','판정'].map((s,i)=><li key={s} className={i===stage?'current':i<stage?'complete':''}>{i<stage?<Check size={14}/>:<span>{i+1}</span>}{s}{i===stage&&<small>저장 데이터 확인 중</small>}</li>)}</ol>}{error&&<p role="alert" className="request-error">{error} <span>아래에 결과가 있다면 이전 조회의 결과입니다.</span></p>}</section>;
+  const {request, lookup, loading, stage, data, error} = useApp();
+  const [bl, setBl] = useState(request.bl_no);
+  const [type, setType] = useState(request.bl_type);
+  const [date, setDate] = useState(request.sale_due_date ?? '');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [choice, setChoice] = useState('');
+
+  useEffect(() => { setBl(request.bl_no); setType(request.bl_type); setDate(request.sale_due_date ?? ''); }, [request]);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const no = bl.replace(/\s/g, '').toUpperCase();
+    const next: Record<string, string> = {};
+    // backend/app/schemas/agent.py _BL_PATTERN과 같은 규칙
+    if (!/^[A-Z0-9]{8,20}$/.test(no)) next.bl = '영문·숫자 8~20자로 입력해 주세요.';
+    if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)))) next.date = '날짜 형식을 확인해 주세요.';
+    setErrors(next);
+    if (Object.keys(next).length) return;
+    setBl(no); selectFixture(null); setChoice('');
+    void lookup({bl_no: no, bl_type: type, sale_due_date: date || null, session_id: request.session_id});
+  }
+
+  /** 데모 모드: 저장된 예시를 바로 재생한다. */
+  function chooseDemo(id: string) {
+    const c = data.demo.choices.find(c => c.id === id);
+    if (!c) return;
+    setErrors({}); setChoice(id); selectFixture(id);
+    void lookup(c.request as AgentRequest);
+  }
+
+  /** 실제 모드: 백엔드 데모 B/L을 폼에 채우기만 한다. 판매 예정일은 make_demo가 알려 준 날을 넣거나 비운다. */
+  function chooseLive(id: string) {
+    const c = liveExamples.find(c => c.id === id);
+    if (!c) return;
+    setErrors({}); setBl(c.bl_no); setType(c.bl_type); setDate('');
+  }
+
+  return <section className="query-section" aria-label="화물 조회">
+    <form className="query-form" onSubmit={submit} noValidate>
+      <div className="form-field bl-field">
+        <label htmlFor="bl">B/L 번호</label>
+        <div className="input-icon"><Search size={16}/><input id="bl" value={bl} onChange={e => setBl(e.target.value)} autoComplete="off" spellCheck={false} aria-invalid={!!errors.bl} aria-describedby={errors.bl ? 'bl-error' : 'bl-help'} disabled={loading}/></div>
+        {errors.bl && <span id="bl-error" className="field-error">{errors.bl}</span>}
+      </div>
+      <div className="form-field">
+        <label htmlFor="bl-type">구분</label>
+        <select id="bl-type" value={type} onChange={e => setType(e.target.value as AgentRequest['bl_type'])} disabled={loading}><option value="MASTER">Master B/L</option><option value="HOUSE">House B/L</option></select>
+      </div>
+      <div className="form-field">
+        <label htmlFor="sale-date">판매 예정일 <small>(선택)</small></label>
+        <input id="sale-date" type="date" value={date} onChange={e => setDate(e.target.value)} aria-invalid={!!errors.date} aria-describedby={errors.date ? 'date-error' : undefined} disabled={loading}/>
+        {errors.date && <span id="date-error" className="field-error">{errors.date}</span>}
+      </div>
+      <button type="submit" className="button primary query-button" disabled={loading}>{loading ? <LoaderCircle size={17} className="spin"/> : <Search size={17}/>}<span>{loading ? '조회 중' : '화물 조회'}</span>{!loading && <ArrowRight size={16}/>}</button>
+    </form>
+    <div className="query-foot">
+      <p id="bl-help">{isLive ? 'B/L을 입력하세요. 판매 예정일을 넣으면 여유 일수까지 봅니다.' : 'B/L과 필요한 입고일을 입력하세요. 지금은 저장된 예시 화물로 체험할 수 있습니다.'}</p>
+      <label className="example-select">예시 화물 {isLive
+        ? <select aria-label="예시 화물" value="" disabled={loading} onChange={e => chooseLive(e.target.value)}><option value="">선택하기</option>{liveExamples.map(c => <option value={c.id} key={c.id}>{c.label} · {c.bl_no}</option>)}</select>
+        : <select aria-label="예시 화물" value="" disabled={loading} onChange={e => chooseDemo(e.target.value)}><option value="">선택하기</option>{data.demo.choices.slice(0, 3).map(c => <option value={c.id} key={c.id}>{c.label} · {maskBl(c.request.bl_no)}</option>)}</select>}
+        <ChevronDown size={12}/></label>
+    </div>
+    {!isLive && process.env.NODE_ENV === 'development' && <div className="dev-switch"><span className="mono">DEV</span><label htmlFor="fixture">상태 미리보기</label><select id="fixture" value={choice} onChange={e => chooseDemo(e.target.value)} disabled={loading}><option value="">B/L에 따른 fixture</option>{data.demo.choices.map(c => <option key={c.id} value={c.id}>{c.id} · {c.label}</option>)}</select></div>}
+    {/* 진행 단계는 화면 타이머다. 백엔드는 진행 이벤트를 보내지 않는다 (REST 응답 하나) */}
+    {loading && <ol className="progress-steps" aria-label="조회 진행" aria-live="polite">{['식별', '위치', '판정'].map((s, i) => <li key={s} className={i === stage ? 'current' : i < stage ? 'complete' : ''}>{i < stage ? <Check size={14}/> : <span>{i + 1}</span>}{s}{i === stage && <small>{isLive ? '확인 중' : '저장 데이터 확인 중'}</small>}</li>)}</ol>}
+    {error && <p role="alert" className="request-error">{error} <span>아래에 결과가 있다면 이전 조회의 결과입니다.</span></p>}
+  </section>;
 }

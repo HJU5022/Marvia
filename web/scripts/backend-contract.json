@@ -44,8 +44,15 @@
           ]
         },
         "sale_due_date": {
-          "type": "string",
-          "format": "date"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "session_id": {
           "type": "string"

@@ -1,4 +1,4 @@
-/** Wire contracts transcribed from backend/app/schemas/agent.py (2026-09-28).
+/** Wire contracts transcribed from backend/app/schemas/agent.py (2026-09-28, sale_due_date 선택 입력은 10-01 반영).
  * Dates/datetimes serialize as ISO strings. Nullable required fields stay required.
  * Python defaulted fields are optional on request, populated on serialized response.
  * History contracts come from backend/app/routers/history.py, not the mockup.
@@ -10,7 +10,8 @@ export type Freshness = 'fresh' | 'stale' | 'unknown';
 export interface AgentRequest {
   bl_no: string;
   bl_type: 'MASTER' | 'HOUSE';
-  sale_due_date: string;
+  // 선택 입력 (09-29 계약 변경). 없으면 null로 보내고 백엔드는 배 상태만으로 판정한다
+  sale_due_date: string | null;
   session_id: string;
   follow_up_question?: string | null;
   resolved_mmsi?: number | null;

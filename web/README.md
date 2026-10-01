@@ -1,7 +1,7 @@
 # Marvia frontend
 
 B/L 하나로 내 화물이 제때 오는지 판정하고, 왜 그런지 근거까지 보여주는 프론트엔드입니다.
-**Next.js App Router + TypeScript · 모든 화물 데이터는 로컬 fixture · 백엔드/LLM 연결 없음.**
+**Next.js App Router + TypeScript · 기본은 로컬 fixture 데모, NEXT_PUBLIC_API_BASE를 주면 실제 백엔드에 연결.**
 
 ## 바로 실행
 
@@ -70,21 +70,34 @@ THIRD_PARTY.md         지도·폰트 출처와 라이선스
 
 필수 컴포넌트: TopBar, VerdictCard, VesselCard, EtaCompare, MapPanel, CustomsTimeline, EvidenceCards, AskPanel, CandidatePicker, FailureBanner, HistoryTable, MetricsPage, SettingsPage.
 
-## 백엔드 붙이기
+## 백엔드 붙이기 (실제 모드)
 
-**교체 위치는 `lib/api.ts`의 다음 함수 두 개입니다.** 현재 함수 본문 전체를 실제 fetch 구현으로 교체하면 컴포넌트의 요청·응답 타입은 유지됩니다.
+`NEXT_PUBLIC_API_BASE`가 있으면 실제 모드, 없으면 위의 fixture 데모 모드입니다. 값은 빌드할 때 들어가므로 바꾸면 dev 서버를 다시 켭니다.
+
+```bash
+# 레포 루트: 키 없이 백엔드 데모 3건 (루트 README "키 없이 데모 3건")
+docker compose up -d --build
+docker compose exec api python -m scripts.make_demo
+
+# web/
+NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
+```
+
+- 예시 화물 메뉴는 백엔드 데모 B/L(TESTBL01 정상, TESTBL04 되묻기, TESTBL26 판정 보류)을 폼에 채웁니다. 판매 예정일은 비우거나 make_demo가 알려 준 날을 넣습니다.
+- 백엔드 CORS `ALLOWED_ORIGINS`에 화면 주소(기본 http://localhost:3000)가 있어야 합니다.
+- 세션 ID는 브라우저마다 만들어 localStorage에 둡니다. 이력이 이 값으로 묶입니다.
+- 백엔드가 로그인(SUPABASE_URL)을 켜 두면 401이 납니다. 화면에는 아직 로그인 기능이 없어 안내 문구만 보여 줍니다.
+- 이력 행의 상세 다시 보기는 실제 모드에서 동작하지 않습니다. GET /api/history는 요약만 주고, 새로 조회해서 과거 결과인 척하지 않습니다.
 
 | 함수 | 실제 endpoint | 형식 |
 | --- | --- | --- |
 | `getAgentResponse(req)` | `POST /api/agent` | JSON AgentRequest → AgentResponse |
-| `getHistory(sessionId)` | `GET /api/history?session_id=` | `{items: HistoryItem[], available: boolean}` |
+| `getHistory()` | `GET /api/history?session_id=` | `{items: HistoryItem[], available: boolean}` |
 
-- C2에 존재하는 필드만 보내세요. status, fixture ID, 해수부 전용 조회 모드를 요청에 추가하지 않습니다.
+- C2에 존재하는 필드만 보냅니다. 빈 날짜·빈 문자열은 null로 바꿔 보냅니다(빈 문자열 날짜는 422).
 - 날짜는 ISO 문자열, 위치는 `lng`·`navistat`, ETA는 별도 4개 필드를 사용합니다. `null`은 0이나 정상으로 바꾸지 않습니다.
-- `available: false`는 이력이 빈 경우와 다릅니다. HistoryTable에서 구분해 렌더링합니다.
-- `getPresentationData`, `selectFixture`, `getReplaySnapshot`, `getGeography`는 **로컬 UI/데모 보조 함수**입니다. 추가 백엔드 endpoint가 아닙니다. 화면 컴포넌트는 fixture를 직접 import하지 않습니다.
-- 실제 history API에는 과거 응답 전체가 없습니다. **현재의 상세 재생은 로컬 스냅샷 기능**입니다. 실제 과거 결과를 재현하려면 팀에서 상세 endpoint를 추가하고 `getReplaySnapshot` 경로를 교체해야 합니다. 현재 두 endpoint만으로 가능한 것처럼 처리하지 않았습니다.
-- 서비스용 session ID 발급, 인증, 실제 진행 이벤트, 알림 저장, 실제 평가 결과 매핑은 연동 작업에서 별도로 결정하세요.
+- `available: false`는 이력이 빈 경우와 다릅니다. 이력을 못 읽으면 화면을 죽이지 않고 이 값으로 표시합니다.
+- `getPresentationData`, `selectFixture`, `getReplaySnapshot`, `getGeography`는 로컬 UI/데모 보조 함수입니다. 백엔드 endpoint가 아닙니다.
 - 서버 API 키를 브라우저 코드나 `NEXT_PUBLIC_*` 값에 넣지 마세요.
 
 ## fixture 수정
