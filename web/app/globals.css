@@ -177,3 +177,8 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .table-message{margin:12px 20px}
 .admin-audit{margin-top:24px}
 @media(max-width:700px){.edit-grid,.unmask-result dl{grid-template-columns:1fr}.customer-actions{padding:14px}}
+
+/* Suspended chip sits next to the role chip; stat strip has five cells on the admin page. */
+.role-chip+.role-chip{margin-left:4px}
+.admin-tabs+section .history-stats{grid-template-columns:repeat(5,1fr)}
+@media(max-width:700px){.admin-tabs+section .history-stats{grid-template-columns:repeat(2,1fr)}}

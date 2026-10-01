@@ -11,7 +11,8 @@
         "is_operator": false,
         "phone_masked": "010-****-1234",
         "address_masked": "서울특별시 마포구 ***",
-        "profile_complete": true
+        "profile_complete": true,
+        "is_suspended": false
       },
       {
         "user_id": "demo-u3",
@@ -22,7 +23,8 @@
         "is_operator": false,
         "phone_masked": "010-****-9876",
         "address_masked": "부산광역시 해운대구 ***",
-        "profile_complete": true
+        "profile_complete": true,
+        "is_suspended": false
       },
       {
         "user_id": "demo-u2",
@@ -33,7 +35,8 @@
         "is_operator": false,
         "phone_masked": null,
         "address_masked": null,
-        "profile_complete": false
+        "profile_complete": false,
+        "is_suspended": true
       },
       {
         "user_id": "demo-u1",
@@ -44,7 +47,8 @@
         "is_operator": true,
         "phone_masked": "010-****-5555",
         "address_masked": "경기도 성남시 ***",
-        "profile_complete": true
+        "profile_complete": true,
+        "is_suspended": false
       }
     ]
   },

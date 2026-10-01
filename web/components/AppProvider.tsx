@@ -23,6 +23,8 @@ interface AppState {
   isOperator: boolean;
   /** 회원 정보 입력을 마쳤나(GET /api/me). meReady 전에는 판단하지 않는다 (docs/specs/user-profile.md) */
   profileComplete: boolean; meReady: boolean; setProfileComplete: (v: boolean) => void;
+  /** 운영자가 일시 정지한 계정 (GET /api/me 403 account_suspended) */
+  suspended: boolean;
   docHints: DocHints | null; setDocHints: (h: DocHints | null) => void;
   /** 탈퇴·로그아웃 뒤 이전 사용자의 결과가 화면에 남지 않게 비운다 */
   reset: () => void;
@@ -39,6 +41,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   const [docHints,setDocHints] = useState<DocHints|null>(null);
   const [isOperator,setIsOperator] = useState(false);
   const [profileComplete,setProfileComplete] = useState(true);
+  const [suspended,setSuspended] = useState(false);
   const [meReady,setMeReady] = useState(!authEnabled);
   const inflight = useRef(false);
 
@@ -56,7 +59,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     if (!authReady || (authEnabled && !user)) { setIsOperator(false); setMeReady(!authEnabled); return; }
     let alive = true;
     setMeReady(false);
-    void getMe().then(me => { if (alive) { setIsOperator(me.is_operator); setProfileComplete(me.profile_complete); setMeReady(true); } });
+    void getMe().then(me => { if (alive) { setIsOperator(me.is_operator); setProfileComplete(me.profile_complete); setSuspended(!!me.suspended); setMeReady(true); } });
     return () => { alive = false; };
   }, [authReady, user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -76,6 +79,6 @@ export function AppProvider({children}:{children:ReactNode}) {
   }
   function reset() { setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stage,error,replaying,lookup,replay,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,docHints,setDocHints,reset}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stage,error,replaying,lookup,replay,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset}}>{children}</Context.Provider>;
 }
 export function useApp() { const ctx=useContext(Context);if(!ctx)throw new Error('AppProvider is required');return ctx; }

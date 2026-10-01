@@ -6,7 +6,7 @@
  * 운영자가 아닌 사람이 주소로 들어오면 안내만 한다. 데이터는 서버가 403으로 막는다 (EC-01).
  */
 import {Fragment, useCallback, useEffect, useMemo, useState, type FormEvent} from 'react';
-import {Eye, LoaderCircle, PencilLine, Search, ShieldCheck, ShieldUser, UserPlus, UserRoundMinus, UserRoundX, Users} from 'lucide-react';
+import {Eye, LoaderCircle, Pause, PencilLine, Play, Search, ShieldCheck, ShieldUser, UserPlus, UserRoundMinus, UserRoundX, Users} from 'lucide-react';
 import {CustomerActions, type CustomerMode} from './CustomerActions';
 import {useApp} from './AppProvider';
 import {SectionTitle} from './Shared';
@@ -16,7 +16,7 @@ import type {ActionItem, CustomersResponse, OperatorsResponse} from '@/lib/types
 
 type Tab = 'customers' | 'operators';
 const DAY_MS = 86_400_000;
-const ACTION_LABELS: Record<ActionItem['action'], string> = {unmask: '마스킹 해제', customer_update: '수정', customer_delete: '강제 탈퇴'};
+const ACTION_LABELS: Record<ActionItem['action'], string> = {unmask: '마스킹 해제', customer_update: '수정', customer_delete: '강제 탈퇴', customer_suspend: '일시 정지', customer_resume: '정지 해제'};
 
 export function AdminPage() {
   const {isOperator, authReady} = useApp();
@@ -66,10 +66,11 @@ function CustomersPanel() {
     ['최근 7일 가입', data.items.filter(c => recent(c.created_at)).length],
     ['최근 7일 로그인', data.items.filter(c => recent(c.last_sign_in_at)).length],
     ['정보 미입력', data.items.filter(c => !c.profile_complete).length],
+    ['정지', data.items.filter(c => c.is_suspended).length],
   ] as const : null;
 
   return <section aria-label="고객 관리">
-    <div className="history-stats">{(stats ?? [['전체 고객', null], ['최근 7일 가입', null], ['최근 7일 로그인', null], ['정보 미입력', null]]).map(([label, value]) =>
+    <div className="history-stats">{(stats ?? [['전체 고객', null], ['최근 7일 가입', null], ['최근 7일 로그인', null], ['정보 미입력', null], ['정지', null]]).map(([label, value]) =>
       <div key={label} className="history-stat neutral"><span>{label}</span><strong>{value ?? '-'}<small>명</small></strong></div>)}</div>
     <div className="history-panel">
       <div className="table-toolbar"><label className="search-history"><Search size={16}/><input aria-label="이메일 앞부분 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="이메일 앞 두 글자로 검색"/></label></div>
@@ -82,11 +83,11 @@ function CustomersPanel() {
           <td className="mono">{c.phone_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td><td>{c.address_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td>
           <td className="mono">{dateTime(c.created_at)}</td>
           <td className="mono">{c.last_sign_in_at ? dateTime(c.last_sign_in_at) : '로그인 기록 없음'}</td>
-          <td>{c.is_operator ? <span className="role-chip operator"><ShieldCheck size={12}/>운영자</span> : <span className="role-chip">고객</span>}</td>
+          <td>{c.is_operator ? <span className="role-chip operator"><ShieldCheck size={12}/>운영자</span> : <span className="role-chip">고객</span>}{c.is_suspended && <span className="role-chip revoked"><Pause size={11}/>정지</span>}</td>
           <td><div className="row-buttons">
-            {([['unmask', Eye, '마스킹 해제'], ['edit', PencilLine, '수정'], ['delete', UserRoundX, '탈퇴']] as const).map(([mode, Icon, label]) =>
+            {([['unmask', Eye, '마스킹 해제'], ['edit', PencilLine, '수정'], ['suspend', c.is_suspended ? Play : Pause, c.is_suspended ? '정지 해제' : '일시 정지'], ['delete', UserRoundX, '탈퇴']] as const).map(([mode, Icon, label]) =>
               <button key={mode} type="button" className={`icon-button ${mode === 'delete' ? 'danger-icon' : ''}`} aria-label={`${c.email_masked ?? '고객'} ${label}`} title={label}
-                aria-expanded={open?.id === c.user_id && open.mode === mode} disabled={!isLive || (mode === 'delete' && c.is_operator)}
+                aria-expanded={open?.id === c.user_id && open.mode === mode} disabled={!isLive || ((mode === 'delete' || (mode === 'suspend' && !c.is_suspended)) && c.is_operator)}
                 onClick={() => { setMessage(''); setOpen(o => o?.id === c.user_id && o.mode === mode ? null : {id: c.user_id, mode}); }}><Icon size={15}/></button>)}
           </div></td>
         </tr>
@@ -104,7 +105,7 @@ function CustomersPanel() {
         <thead><tr><th>시각</th><th>작업</th><th>대상</th><th>처리한 운영자</th><th>사유</th></tr></thead>
         <tbody>{actions.map((a, i) => <tr key={`${a.created_at}-${i}`}>
           <td className="mono">{dateTime(a.created_at)}</td>
-          <td><span className={`role-chip ${a.action === 'customer_delete' ? 'revoked' : a.action === 'unmask' ? 'unmask' : 'operator'}`}>{ACTION_LABELS[a.action]}</span></td>
+          <td><span className={`role-chip ${a.action === 'customer_delete' || a.action === 'customer_suspend' ? 'revoked' : a.action === 'unmask' ? 'unmask' : 'operator'}`}>{ACTION_LABELS[a.action]}</span></td>
           <td className="mono">{a.target_email_masked ?? a.target_user_id}</td>
           <td className="mono">{a.actor_email ?? a.actor_user_id}</td>
           <td className="reason-cell">{a.reason ?? '-'}</td>

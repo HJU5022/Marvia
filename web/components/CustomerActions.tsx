@@ -7,13 +7,13 @@
  * 모든 동작은 서버 이력(admin_actions)에 남는다. 화면이 따로 남기지 않는다.
  */
 import {useEffect, useState, type FormEvent} from 'react';
-import {Eye, EyeOff, LoaderCircle, PencilLine, UserRoundX} from 'lucide-react';
-import {deleteCustomer, unmaskCustomer, updateCustomer} from '@/lib/api';
+import {Eye, EyeOff, LoaderCircle, Pause, PencilLine, Play, UserRoundX} from 'lucide-react';
+import {deleteCustomer, resumeCustomer, suspendCustomer, unmaskCustomer, updateCustomer} from '@/lib/api';
 import type {CustomerItem, UnmaskResponse} from '@/lib/types';
 
 const REVEAL_SECONDS = 60;  // 원문을 보여 두는 시간. 자리를 비워도 화면에 남아 있지 않게
 
-export type CustomerMode = 'unmask' | 'edit' | 'delete';
+export type CustomerMode = 'unmask' | 'edit' | 'delete' | 'suspend';
 
 export function CustomerActions({customer, mode, onDone, onClose}: {
   customer: CustomerItem; mode: CustomerMode; onDone: (msg: string) => void; onClose: () => void;
@@ -93,6 +93,22 @@ export function CustomerActions({customer, mode, onDone, onClose}: {
           onClick={() => void run(async () => { const r = await deleteCustomer(customer.user_id); onDone(`강제 탈퇴했습니다. 조회 기록 ${r.deleted_records}건을 함께 지웠습니다.`); })}>
           {busy ? <LoaderCircle size={14} className="spin"/> : <UserRoundX size={14}/>}탈퇴시키기</button></div>
     </div>}
+
+    {mode === 'suspend' && (customer.is_suspended
+      ? <div className="delete-box"><p><strong>정지 해제</strong> 이 고객은 다시 로그인하고 조회할 수 있게 됩니다.</p>
+          <div className="row-actions"><button type="button" className="button secondary" onClick={onClose} disabled={busy}>취소</button>
+            <button type="button" className="button primary" disabled={busy}
+              onClick={() => void run(async () => { await resumeCustomer(customer.user_id); onDone('정지를 해제했습니다.'); })}>
+              {busy ? <LoaderCircle size={14} className="spin"/> : <Play size={14}/>}정지 해제</button></div></div>
+      : <form className="unmask-form" onSubmit={e => { e.preventDefault(); if (reason.trim().length < 10) { setError('사유를 10자 이상 적어 주세요.'); return; }
+          void run(async () => { await suspendCustomer(customer.user_id, reason.trim()); onDone('계정을 일시 정지했습니다. 이 고객은 바로 로그인·조회가 막힙니다.'); }); }}>
+          <label htmlFor={`susp-${customer.user_id}`}><strong>일시 정지 사유</strong> <span className="muted">10~500자, 작업 이력에 남습니다. 해제할 때까지 로그인·조회가 막힙니다</span></label>
+          <textarea id={`susp-${customer.user_id}`} value={reason} onChange={e => setReason(e.target.value)} maxLength={500} rows={3}
+            placeholder="예: 이용약관 위반 신고가 접수되어 확인 기간 동안 정지" disabled={busy}/>
+          <div className="row-actions"><span className="mono muted">{reason.trim().length}/500</span>
+            <button type="button" className="button secondary" onClick={onClose} disabled={busy}>취소</button>
+            <button className="button danger" disabled={busy || reason.trim().length < 10}>{busy ? <LoaderCircle size={14} className="spin"/> : <Pause size={14}/>}일시 정지</button></div>
+        </form>)}
 
     {error && <p role="alert" className="request-error">{error}</p>}
   </div>;

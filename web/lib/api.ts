@@ -24,6 +24,9 @@ import documentFixture from './fixtures/document.json';
 import adminFixture from './fixtures/admin.json';
 
 /** 끝 슬래시를 뗀 백엔드 주소. 비어 있으면 데모 모드다. */
+/** 정지된 계정에 서버가 403 account_suspended를 줄 때 보여 줄 문장. getMe가 이 문장으로 정지를 알아본다 */
+export const SUSPENDED_MESSAGE = '운영자가 이 계정을 일시 정지했습니다. 문의가 필요하면 운영자에게 연락해 주세요.';
+
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').trim().replace(/\/+$/, '');
 export const isLive = API_BASE !== '';
 
@@ -83,6 +86,7 @@ async function errorMessage(res: Response): Promise<string> {
   if (res.status === 413 || detail === 'too_large') return '사진이 너무 큽니다. 10MB 이하로 올려 주세요.';
   if (detail === 'invalid_image') return '사진을 읽지 못했습니다. JPG·PNG 사진인지 확인해 주세요.';
   if (res.status === 503) return detail || '저장소에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+  if (detail === 'account_suspended') return SUSPENDED_MESSAGE;
   if (res.status === 403) return detail || '운영자만 쓸 수 있습니다.';
   if (res.status === 409) return detail || '이미 처리된 요청입니다.';
   if (res.status === 429) return '요청이 많습니다. 잠시 뒤 다시 시도해 주세요.';
@@ -242,8 +246,8 @@ export async function deleteMyAccount(): Promise<{deleted_records: number; accou
 export async function getMe(): Promise<MeResponse> {
   if (!isLive) return {user_id: 'demo', email: null, is_operator: true, profile_complete: true};
   try { return await (await call('/api/me', {}, HISTORY_TIMEOUT_MS)).json(); }
-  // 못 읽으면 일반 사용자로 보고, 회원 정보 입력 화면으로 막지도 않는다 (user-profile EC-06)
-  catch { return {user_id: null, email: null, is_operator: false, profile_complete: true}; }
+  // 정지면 안내 화면으로. 그 밖에 못 읽으면 일반 사용자로 보고 입력 화면으로 막지도 않는다 (user-profile EC-06)
+  catch (e) { return {user_id: null, email: null, is_operator: false, profile_complete: true, suspended: e instanceof Error && e.message === SUSPENDED_MESSAGE}; }
 }
 
 /** GET /api/admin/customers. 이메일·이름은 서버가 가려서 준다. */
@@ -281,6 +285,11 @@ export const updateCustomer = (id: string, p: ProfileData) =>
   customerCall<{ok: boolean}>(`/api/admin/customers/${encodeURIComponent(id)}/profile`, json('PUT', p));
 export const deleteCustomer = (id: string) =>
   customerCall<{deleted_records: number}>(`/api/admin/customers/${encodeURIComponent(id)}`, {method: 'DELETE'});
+/** 일시 정지(사유 필수)와 해제. 서버가 Supabase 차단과 정지 표를 같이 바꾼다 */
+export const suspendCustomer = (id: string, reason: string) =>
+  customerCall<{ok: boolean}>(`/api/admin/customers/${encodeURIComponent(id)}/suspend`, json('POST', {reason}));
+export const resumeCustomer = (id: string) =>
+  customerCall<{ok: boolean}>(`/api/admin/customers/${encodeURIComponent(id)}/resume`, {method: 'POST'});
 export async function getAdminActions(): Promise<ActionItem[]> {
   if (!isLive) return [];
   return (await call('/api/admin/actions', {}, HISTORY_TIMEOUT_MS)).json();

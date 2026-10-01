@@ -74,12 +74,14 @@ export interface DocumentResponse {
 }
 
 /** 운영자 관리 (backend/app/routers/admin.py, docs/specs/operator-admin.md, 10-01). */
-export interface MeResponse { user_id: string | null; email: string | null; is_operator: boolean; profile_complete: boolean }
+export interface MeResponse { user_id: string | null; email: string | null; is_operator: boolean; profile_complete: boolean;
+  /** 화면 전용. 서버가 403 account_suspended를 주면 true (operator-admin 일시 정지) */
+  suspended?: boolean }
 /** 본인 회원 정보 (GET·PUT /api/profile, docs/specs/user-profile.md). 본인에게만 원문 */
 export interface ProfileData { name: string; phone: string; address: string }
 export interface CustomerItem {
   user_id: string; email_masked: string | null; name_masked: string | null;
-  phone_masked: string | null; address_masked: string | null; profile_complete: boolean;
+  phone_masked: string | null; address_masked: string | null; profile_complete: boolean; is_suspended: boolean;
   created_at: string | null; last_sign_in_at: string | null; is_operator: boolean;
 }
 export interface CustomersResponse { items: CustomerItem[]; total: number }
@@ -89,6 +91,6 @@ export interface OperatorsResponse { operators: OperatorItem[]; audit: AuditItem
 /** 운영자의 고객 동작 (operator-admin 추가 절). 마스킹 해제는 사유를 남기고 한 명만 원문 */
 export interface UnmaskResponse { email: string | null; name: string | null; phone: string | null; address: string | null }
 export interface ActionItem {
-  action: 'customer_update' | 'customer_delete' | 'unmask'; target_user_id: string; target_email_masked: string | null;
+  action: 'customer_update' | 'customer_delete' | 'unmask' | 'customer_suspend' | 'customer_resume'; target_user_id: string; target_email_masked: string | null;
   actor_user_id: string; actor_email: string | null; reason: string | null; created_at: string;
 }
