@@ -1,4 +1,4 @@
-"""Supabase 계정 삭제 (삭제 3단계, 회원 탈퇴).
+"""Supabase 관리자 API: 계정 삭제(삭제 3단계, 회원 탈퇴)와 고객 목록(운영자 관리, docs/specs/operator-admin.md).
 
 구글 계정 연결 정보는 Supabase Auth가 갖고 있다. 사용자는 보안상 자기 계정을 스스로 못 지우므로
 서버가 관리자 키로 대신 지운다 (09-30 결정 (가): 사용자가 늘면 사람이 일일이 지울 수 없다).
@@ -48,3 +48,29 @@ def delete_account(user_id: str) -> None:
         raise AdminError("failed", e.response.status_code) from None
     except httpx.HTTPError:
         raise AdminError("failed") from None
+
+
+# 고객 목록 한 페이지 크기. Supabase 관리자 API 최대값(1000)보다 작게, 화면 한 번에 다 보일 만큼 (docs/specs/operator-admin.md)
+LIST_PER_PAGE = 200
+
+
+def list_users(page: int = 1, per_page: int = LIST_PER_PAGE) -> list[dict]:
+    """가입자 목록 한 페이지 (GET /auth/v1/admin/users). 원문 이메일이 들어 있으므로 부르는 쪽(services/operators.py)이
+    가린 뒤에만 밖으로 낸다. 못 받으면 AdminError. 읽기라 재시도해도 안전하다."""
+    base, key = supabase_url(), os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+    if not base or not key:
+        raise AdminError("not_configured")
+
+    def call() -> httpx.Response:
+        resp = httpx.get(f"{base}/auth/v1/admin/users", params={"page": page, "per_page": per_page},
+                         headers={"apikey": key}, timeout=TIMEOUT_SEC)
+        resp.raise_for_status()
+        return resp
+
+    try:
+        body = with_retry(call, name="supabase:list_users").json()
+    except httpx.HTTPStatusError as e:
+        raise AdminError("failed", e.response.status_code) from None
+    except (httpx.HTTPError, ValueError):
+        raise AdminError("failed") from None
+    return body.get("users", []) if isinstance(body, dict) else []

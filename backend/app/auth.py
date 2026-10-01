@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from functools import lru_cache
 
 import jwt
@@ -50,7 +51,13 @@ def _signing_key(token: str, base_url: str):
 
 def verify_token(token: str, base_url: str) -> str:
     """출입증을 확인하고 사용자 ID(sub)를 돌려준다. 통과 못 하면 jwt 예외가 난다."""
-    claims = jwt.decode(
+    return verify_claims(token, base_url)["sub"]
+
+
+def verify_claims(token: str, base_url: str) -> dict:
+    """출입증을 확인하고 클레임 전체를 돌려준다. 운영자 판단에 email이 필요해서 따로 뺐다 (docs/specs/operator-admin.md).
+    서명을 확인한 뒤의 값이라 화면이 보낸 값과 달리 믿을 수 있다."""
+    return jwt.decode(
         token,
         _signing_key(token, base_url),
         algorithms=ALGORITHMS,
@@ -58,11 +65,24 @@ def verify_token(token: str, base_url: str) -> str:
         issuer=f"{base_url}/auth/v1",  # 다른 Supabase 프로젝트에서 받은 출입증을 막는다
         options={"require": ["exp", "sub", "iss", "aud"]},
     )
-    return claims["sub"]
 
 
 def current_user_id(authorization: str | None = Header(default=None)) -> str | None:
     """라우터가 Depends로 쓰는 입구. 사용자 ID를 돌려준다. 로그인 기능이 꺼져 있을 때만 None."""
+    user = current_user(authorization)
+    return user.id if user else None
+
+
+@dataclass(frozen=True)
+class CurrentUser:
+    """로그인한 사람. email은 구글 로그인이면 항상 있지만, 출입증에 없으면 None이다."""
+
+    id: str
+    email: str | None
+
+
+def current_user(authorization: str | None = Header(default=None)) -> CurrentUser | None:
+    """사용자 ID와 이메일을 같이 돌려준다. 운영자 판단용 (routers/admin.py). 오류 처리는 current_user_id와 같다."""
     base_url = supabase_url()
     if not base_url:
         return None
@@ -76,7 +96,9 @@ def current_user_id(authorization: str | None = Header(default=None)) -> str | N
         log_failure("auth", "bad_scheme")
         raise _unauthorized()
     try:
-        return verify_token(token.strip(), base_url)
+        claims = verify_claims(token.strip(), base_url)
+        email = claims.get("email")
+        return CurrentUser(id=claims["sub"], email=email.strip().lower() if isinstance(email, str) and email.strip() else None)
     except jwt.PyJWKClientConnectionError:
         # 공개키를 못 받은 것은 사용자 잘못이 아니다. 401을 주면 다시 로그인해도 안 풀린다
         log_failure("auth", "jwks_unreachable")
