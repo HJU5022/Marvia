@@ -409,14 +409,19 @@ class LLMAnswer:
     prompt_version: str
 
 
-# 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 4개 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
+# 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 Skill 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
 # 각 호출이 받는 자료를 기준으로, 그 자료를 읽는 데 필요한 Skill만 넣는다. 넣는 Skill은 여전히 통째로다 (RAG 아님)
-AIS, CUSTOMS, PORT = "ais-reliability", "customs-stages", "port-busan"
-ALL_SKILLS = (AIS, CUSTOMS, PORT)
-JUDGE_SKILLS = (AIS, CUSTOMS)       # 신호 · 판정 표 · 통관 해설. 판정 입력에 부두 · 하역 장소가 없어 부두 Skill은 안 넣는다
-PICK_SKILLS = (AIS,)                # 동명 선박 · 후보 판단. 통관 · 부두는 쓰지 않는다
-FOLLOW_UP_SKILLS = ALL_SKILLS       # 이전 응답 전체(통관 · 하역 장소 포함)를 근거로 답하므로 전부
-GRADE_SKILLS = (CUSTOMS,)           # 통관 해설 채점은 통관 단계 표만 기준으로 한다 (평가 때만)
+# 폴더 안의 *.md를 모두 넣는다: SKILL.md(도메인 지식·설명법)와 rules.md(코드가 읽는 재료와 그 뜻) (10-01 Skill 구조)
+#   ais-reliability  AIS 값 읽는 법(오류 사례, 출처 우선순위), 신호 7종 기준
+#   customs-stages   통관 단계 목록(rules.md)과 해설법
+#   port-busan       부두 이름 뜻, 하역 장소 문장, 부산 기준값
+#   cargo-verdict    등급 판정 표(rules.md), 등급 뜻·결과 설명법·되묻기와 실패 결과 설명법 (10-01 신설)
+AIS, CUSTOMS, PORT, VERDICT = "ais-reliability", "customs-stages", "port-busan", "cargo-verdict"
+ALL_SKILLS = (AIS, CUSTOMS, PORT, VERDICT)
+JUDGE_SKILLS = (AIS, CUSTOMS, VERDICT)  # 신호 읽기 · 통관 해설 · 등급 설명. 판정 입력에 부두 · 하역 장소가 없어 부두 Skill은 안 넣는다
+PICK_SKILLS = (AIS,)                    # 동명 선박 · 후보 판단. 통관 · 부두 · 등급은 쓰지 않는다
+FOLLOW_UP_SKILLS = ALL_SKILLS           # 이전 응답 전체(등급 · 통관 · 하역 장소 · 되묻기 문구 포함)를 근거로 답하므로 전부
+GRADE_SKILLS = (CUSTOMS,)               # 통관 해설 채점은 통관 단계 목록(customs-stages/rules.md)만 기준으로 한다 (평가 때만)
 
 
 def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:

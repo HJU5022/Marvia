@@ -1,7 +1,7 @@
 """관세사 필요 여부(needs_broker)를 코드가 정한다 (10-01 강사 피드백: 결정마다 권한자 하나).
 
-- 정상 단계 목록은 customs-stages SKILL.md 표에서 읽는다 (코드에 따로 적지 않는다)
-- 검사·보류 같은 단계, 표에 없는 단계는 true. 표의 할 일 칸에 관세사가 나와도 정상 단계는 false
+- 정상 단계 목록은 customs-stages/rules.md customs_stages에서 읽는다 (코드에 따로 적지 않는다)
+- 검사·보류 같은 단계, 목록에 없는 단계는 true. 목록의 todo에 관세사가 나와도 정상 단계는 false
 - LLM 출력에는 needs_broker 칸이 없고, 입력으로 코드 값을 받는다
 """
 import json
@@ -14,9 +14,9 @@ from backend.app.services.rules import customs_stage_names, stage_key
 from backend.app.services.signals import needs_broker
 
 
-def test_stage_names_come_from_skill_table():
+def test_stage_names_come_from_rules_yaml():
     names = customs_stage_names()
-    # SKILL.md 표의 10개 단계. 머리줄("단계")과 구분줄은 들어가지 않는다
+    # customs-stages/rules.md customs_stages의 10개 단계 (10-01: SKILL.md 표에서 YAML 목록으로 옮김)
     assert len(names) == 10
     assert stage_key("입항적재화물목록 제출") in names
     assert stage_key("반출신고") in names
@@ -24,7 +24,7 @@ def test_stage_names_come_from_skill_table():
 
 
 def test_normal_stage_is_false_even_if_todo_mentions_broker():
-    # 표의 할 일 칸에 "관세사에게 ..."가 있는 정상 단계
+    # todo에 "관세사에게 ..."가 있는 정상 단계
     assert needs_broker("입항보고 수리") is False
     assert needs_broker("반입신고") is False
 

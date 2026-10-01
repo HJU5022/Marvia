@@ -1,7 +1,7 @@
 """판정 표 (09-30 결정 D7: 확실하면 표, 모르면 LLM이 올리기만).
 
 등급(fine/watch/act)의 1차 결정은 코드가 한다. 표의 재료(어떤 신호면 act인지, 회색 지대 신호, 세지 않는 신호)는
-skills/ais-reliability/rules.md "2층 등급 판정 표" 키에서 읽는다 (10-01: 재료는 rules.md, 계산 순서는 이 파일).
+skills/cargo-verdict/rules.md "2층 등급 판정 표" 키에서 읽는다 (10-01: 재료는 rules.md, 계산 순서는 이 파일).
 LLM이 판정 표를 약 14% 안 따랐기 때문이다 (09-29 실측: 규칙 1.0, 소형 LLM 0.86. B06·B08·B09).
 
 회색 지대만 LLM이 판단한다:
@@ -17,19 +17,19 @@ from backend.app.schemas.agent import Reason
 from backend.app.services.rules import rule
 from backend.app.services.signals import DEST_BROKEN, DEST_EMPTY
 
-# rules.md 판정 표 키 (10-01). 부를 때마다 rule()로 읽는다 (load_rules가 캐시해서 파일은 한 번만 읽는다)
+# cargo-verdict/rules.md 판정 표 키 (10-01). 부를 때마다 rule()로 읽는다 (load_rules가 캐시해서 파일은 한 번만 읽는다)
 #   act_signals: 하나라도 triggered면 act
 #   gray_signals: 회색 지대를 여는 신호. sales_date_exceeded는 넣지 않는다: unknown이면 판매일을 안 넣은 것(사용자 선택)이거나
 #                 도착일 근거가 없는 것인데, 뒤쪽은 라우터가 LLM 전에 보류한다 (_no_eta, D6)
 #   ignore_signals · ignore_dest_values: 켜져도 세지 않는 신호 (AIS 입력 오류일 수 있음)
 LEVEL = {"fine": 0, "watch": 1, "act": 2}  # 위험 순서. LLM은 표 등급 이상만 낼 수 있다
-# rules.md ignore_dest_values의 이름을 signals.py가 dest_changed 값에 쓰는 문장으로 바꾼다
+# cargo-verdict/rules.md ignore_dest_values의 이름을 signals.py가 dest_changed 값에 쓰는 문장으로 바꾼다
 DEST_VALUE = {"broken": DEST_BROKEN, "empty": DEST_EMPTY}
 
 
 def table_verdict(signal_set, margin: int | None) -> str:
-    """rules.md "2층 등급 판정 표".
-    act: act_signals 중 하나라도 켜짐, 또는 다른 신호가 켜졌는데 여유 일수가 margin_act_days(rules.md) 미만
+    """cargo-verdict/rules.md "2층 등급 판정 표".
+    act: act_signals 중 하나라도 켜짐, 또는 다른 신호가 켜졌는데 여유 일수가 margin_act_days(cargo-verdict/rules.md) 미만
     watch: act_signals는 꺼져 있고 다른 신호가 하나라도 켜짐
     fine: 켜진 신호 없음. unknown(판단 불가)은 켜진 것으로 세지 않는다 (그래서 회색 지대가 생긴다)
     예외: 입력 오류로 설명되는 신호(깨진·빈 목적지, 항해상태 불일치)는 켜져도 세지 않는다 (rules.md ignore_signals · ignore_dest_values, 09-29)
