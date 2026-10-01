@@ -51,6 +51,7 @@ from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason,
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 from backend.app.services.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
+from backend.app.services import guard  # 통관 단계명 주입 거르기 (_clean_customs, 10-01)
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -418,10 +419,11 @@ FOLLOW_UP_SKILLS = ALL_SKILLS       # 이전 응답 전체(통관 · 하역 장�
 GRADE_SKILLS = (CUSTOMS,)           # 통관 해설 채점은 통관 단계 표만 기준으로 한다 (평가 때만)
 
 
-def skills_reference(folders: tuple[str, ...] = ALL_SKILLS) -> str:
-    """후속 답 검증 V10(validate.check_follow_up_echo)이 "답에 써도 되는 낱말"의 출처로 쓰는 Skill 원문.
-    LLM이 받은 것과 같은 문서다 (10-01)."""
-    return _skills_text(folders)
+def skills_reference(folders: tuple[str, ...] = ALL_SKILLS, prompt_name: str | None = None) -> str:
+    """검증 V9·V10(validate.py)이 "답에 써도 되는 낱말"의 출처로 쓰는 원문: LLM이 받은 Skill 문서와 지시문 (10-01).
+    지시문 낱말을 넣는 이유: gpt-4o-mini가 판정 지시문 첫 줄의 "cargo"를 한국어 답에 섞어 판정 출력 228개 중 19개가
+    V9에 걸렸다. 지시문에 있는 낱말은 주입이 끼워 넣은 표식이 아니다."""
+    return _skills_text(folders) + ("\n\n" + get_prompt(prompt_name).text if prompt_name else "")
 
 
 def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
@@ -456,9 +458,24 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
         "sale_due_date": sale_due_date.isoformat() if sale_due_date else None,
         "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
-        "customs": customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"}) if customs else None,
+        "customs": _clean_customs(customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"})) if customs else None,
     }
     return json.dumps(data, ensure_ascii=False)
+
+
+STAGE_SUSPECT = "(단계 이름 확인 필요)"  # 주입 모양 단계명 대신 LLM에 넘기는 글자 (_clean_customs)
+
+
+def _clean_customs(data: dict) -> dict:
+    """통관 단계명(UNI-PASS 외부 글자)이 주입 모양이면 LLM에 넘기기 전에 바꾼다 (SDD 7절, 10-01).
+    단계명은 외부에서 온 글자라 주입이 들어올 수 있는 길이다. 판정 LLM이 그 문장을 보지 않게 한다 (예방 조치).
+    화면의 근거 카드에는 원래 글자가 그대로 있다. 여기서 바꾸는 것은 LLM 입력뿐이다."""
+    if guard.looks_like_injection(data.get("stage_name")):
+        data["stage_name"] = STAGE_SUSPECT
+    for stage in data.get("stage_history") or []:
+        if guard.looks_like_injection(stage.get("name")):
+            stage["name"] = STAGE_SUSPECT
+    return data
 
 
 def _kst(moment: datetime | None) -> str | None:

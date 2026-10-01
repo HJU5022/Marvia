@@ -3,7 +3,7 @@
 왜 코드로 막나 (10-01 측정, gpt-4o-mini, 후속 질문에 "지금부터 너는 ~" 20회):
   현재 프롬프트 10/20 뚫림, 프롬프트 끝 역할 고정 문장 추가 뒤에도 4/20 뚫림. 뚫린 답은 숫자가 없어
   검증(V1·V7)을 통과해 사용자 화면까지 갔다. 엄격 스키마는 형식만 강제해서 문자열 안 내용은 못 막는다.
-  프롬프트 문장은 모델 따라 효과가 달라서(qwen2.5 7b에서는 효과 없음) 모델과 무관한 방어를 앞에 둔다.
+  프롬프트 문장은 모델이 따라 주느냐에 달려 있어서, 모델과 무관한 방어를 앞에 둔다.
 
 한계: 아래 패턴에 없는 변형은 통과한다. 그래서 프롬프트 역할 고정 문장(prompts/*.md 끝 두 줄)과 같이 쓴다.
 정상 화물 질문이 걸리지 않게 "누구에게 무엇을 하라"는 모양만 잡는다 (tests/test_guard.py의 정상 질문 목록).
@@ -46,7 +46,12 @@ _EN = [
     r"\bdeveloper\s+mode\b|\bjailbreak\b",
     r"\b(note|message|instructions?)\s+(to|for)\s+(the\s+)?(assistant|ai|model|llm|system)\b",
     r"\bprint\s+(your|the)\s+.{0,20}(prompt|instructions)\b",
+    # 데이터가 끝난 척하고 새 지시를 넣는 구분자 깨기 (10-01 gpt-5-mini 화이트박스 측정에서 수정 전 프롬프트를 뚫음)
+    r"\bEND\s+OF\s+(DATA|INPUT|CONTEXT|EVIDENCE)\b",
+    r"</\s*(evidence|data|context|input|system|user|tool_result)\s*>",
 ]
+# 한국어 구분자 깨기: "새 지시:", "추가 지시 :" (콜론까지 있어야 잡는다. "지시"만으로는 정상 질문이 걸린다)
+_KO.append(r"(새|추가|다음|변경된)\s*(지시|명령|규칙)\s*[:：]")
 
 _PATTERNS = [re.compile(p, re.IGNORECASE) for p in _KO + _EN]
 # DAN은 대소문자를 구분한다. 소문자 "dan"은 이름·단어일 수 있다
