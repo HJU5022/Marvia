@@ -32,7 +32,7 @@ def test_each_rules_file_has_its_own_keys():
     expected = {
         "ais-reliability": {"position_stale_hours", "eta_conflict_hours", "anchor_speed_kn", "anchor_wait_hours",
                             "navstat_moored_max_kn", "navstat_underway_min_kn", "priority"},
-        "customs-stages": {"customs_hold_words", "customs_stages"},
+        "customs-stages": {"customs_hold_words", "customs_stages", "customs_subject_words", "customs_assessment_words"},
         "port-busan": {"busan_ref", "busan_radius_nm", "busan_port_code"},
         "cargo-verdict": {"margin_act_days", "act_signals", "gray_signals", "ignore_signals", "ignore_dest_values"},
     }

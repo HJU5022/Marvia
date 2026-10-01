@@ -92,9 +92,9 @@ JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 �
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
 FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
-# 후속 답에 거는 검증 규칙. 7규칙 중 answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기)과
-# V7(근거에 없는 숫자 금지)뿐이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
-FOLLOW_UP_RULES = {"V1", "V7"}
+# 후속 답에 거는 검증 규칙. answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기),
+# V7(근거에 없는 숫자 금지), V9(통관 진행 평가 금지)다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
+FOLLOW_UP_RULES = {"V1", "V7", "V9"}  # V9: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01)
 
 
 def _response(**over) -> AgentResponse:
@@ -396,7 +396,9 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
             log_failure("follow_up", _llm_error(e))
             return failed
         answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
-        violations = [v for v in validate.check(answered) if v.rule in FOLLOW_UP_RULES]
+        # V9는 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
+        checked = answered.model_copy(update={"actions": [], "customs": None})
+        violations = [v for v in validate.check(checked) if v.rule in FOLLOW_UP_RULES]
         if not violations:
             return answered
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")

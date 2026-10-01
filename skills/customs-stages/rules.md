@@ -6,9 +6,15 @@
 # 통관 보류 낱말. 단계 이름에 하나라도 들어가면 customs_hold 신호가 켜지고 needs_broker가 true (services/signals.py)
 customs_hold_words: [검사, 보류, 정지, 반송, 폐기]
 
+# 통관 진행 평가 문장 (검사 규칙 V9, services/validate.py, 10-01). 한 문장에 주어 낱말과 평가 낱말이 같이 있으면 위반이다.
+# 단계 이름만으로는 통관이 잘되는지 알 수 없어 이런 평가는 근거가 없다 (SKILL.md "통관 단계를 말할 때").
+# 주어 낱말이 없는 문장("입항이 지연되고 있습니다")은 걸리지 않는다
+customs_subject_words: [통관, 세관]
+customs_assessment_words: [순조, 원활, 양호, 문제없, 문제 없, 정상적으로 진행, 정상 진행, 잘 진행, 지연될, 늦어질, 곧 끝]
+
 # 정상 단계 목록 (해상 수입 일반화물). name은 UNI-PASS 이력의 처리구분 이름 그대로다.
 # 코드는 name만 읽어 "목록에 없는 단계"를 가린다 (띄어쓰기는 무시, rules.stage_key). meaning·next·todo는 LLM 설명용이다.
-# next가 null이면 다음 단계가 없다(통관 끝).
+# next가 null이면 다음 단계가 없다(통관 끝, 또는 앞 단계에 따라 다음이 달라짐. 이유는 meaning).
 customs_stages:
   - name: 입항적재화물목록 제출
     meaning: 배에 실린 화물 목록을 세관에 냈다
