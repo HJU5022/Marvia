@@ -760,7 +760,9 @@ GRADE_SCHEMA = {
     "additionalProperties": False,
     "required": ["score", "reason"],
     "properties": {
-        "score": {"type": "integer", "enum": [0, 1], "description": "지시문의 다섯 조건을 모두 지키면 1"},
+        # 정수 enum은 Gemini 구조화 출력이 지원하지 않아 빈 {}가 온다 (10-01, 채점 모델을 gemini-2.5-flash로 바꿀 때 확인).
+        # 0/1 범위는 GradeOutput(Literal[0, 1])이 검사한다
+        "score": {"type": "integer", "description": "지시문의 다섯 조건을 모두 지키면 1, 하나라도 어기면 0"},
         "reason": {"type": "string", "description": "어긴 조건 번호와 이유 한 줄. 다 지키면 pass"},
     },
 }
