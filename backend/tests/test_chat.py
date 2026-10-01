@@ -27,7 +27,7 @@ PLANS = [_Plan("SHIP A", "SHANGHAI", 3), _Plan("SHIP B", "KOBE", 2), _Plan("SHIP
 def _route(monkeypatch, **out):
     calls = []
     base = {"intent": "other", "bl_ref": None, "bl_type": None, "sale_due_date": None, "question": None,
-            "place": None, "days": None, "reply": ""}
+            "place": None, "place_label": None, "days": None, "reply": ""}
 
     def fake(masked, refs, has_cargo, today, **kw):
         calls.append({"masked": masked, "refs": refs, "has_cargo": has_cargo})
@@ -109,12 +109,12 @@ def test_vessel_search_keeps_only_listed_ports(monkeypatch):
 
 
 def test_vessel_search_no_match_explains_previous_port(monkeypatch):
-    _route(monkeypatch, intent="vessel_search", place="Netherlands")
+    _route(monkeypatch, intent="vessel_search", place="Netherlands", place_label="네덜란드")
     monkeypatch.setattr(svc, "_arrivals", lambda days: PLANS)
     monkeypatch.setattr(llm, "match_ports", lambda place, ports, **kw: llm.LLMAnswer(
         output=llm.PortMatchOutput(ports=[]), llm=None, prompt_version="test"))
     r = svc.handle("네덜란드에서 한국 오는 배 뭐야", "s1", None, lambda req: None)
-    assert r.vessels == [] and "직전 기항지" in r.reply  # EC-04
+    assert r.vessels == [] and "직전 기항지" in r.reply and "네덜란드" in r.reply and r.place == "네덜란드"  # EC-04
 
 
 def test_other_returns_reply(monkeypatch):

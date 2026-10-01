@@ -20,6 +20,7 @@ Fields (use null when not stated; never guess):
 - sale_due_date: YYYY-MM-DD if the user gives a sale or needed-by date. Resolve relative dates ("다음 주 금요일") from today. Else null.
 - question: for follow_up, the question rewritten as one short Korean sentence. Else null.
 - place: for vessel_search, the place the ships come from, in English (country or port name, e.g. "China", "Netherlands", "Shanghai"). null if no place is given.
+- place_label: the same place as the user wrote it (usually Korean, e.g. "중국", "네덜란드"). null if place is null.
 - days: for vessel_search, how many days ahead to look if the user says (e.g. "이번 주" = 7, "2주" = 14). Else null.
 - reply: for "other" only, one or two short Korean sentences saying what Marvia can do: check a cargo by B/L, answer questions about that cargo, list ships coming to Busan by where they come from. For other intents, an empty string.
 

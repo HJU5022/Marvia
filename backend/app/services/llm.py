@@ -767,7 +767,7 @@ CHAT_ROUTE_PROMPT = "marvia-chat-route"
 CHAT_ROUTE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["intent", "bl_ref", "bl_type", "sale_due_date", "question", "place", "days", "reply"],
+    "required": ["intent", "bl_ref", "bl_type", "sale_due_date", "question", "place", "place_label", "days", "reply"],
     "properties": {
         "intent": {"type": "string", "enum": ["cargo", "follow_up", "vessel_search", "other"]},
         "bl_ref": {"type": ["string", "null"]},
@@ -775,6 +775,7 @@ CHAT_ROUTE_SCHEMA = {
         "sale_due_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "question": {"type": ["string", "null"]},
         "place": {"type": ["string", "null"]},
+        "place_label": {"type": ["string", "null"]},
         "days": {"type": ["integer", "null"]},
         "reply": {"type": "string"},
     },
@@ -788,6 +789,7 @@ class ChatRouteOutput(BaseModel):
     sale_due_date: str | None  # 모양 검사는 services/chat.py가 한다
     question: str | None
     place: str | None
+    place_label: str | None = None  # 답에 쓸 이름. 사용자가 쓴 말 그대로 (예: 중국)
     days: int | None
     reply: str
 

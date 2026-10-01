@@ -7,6 +7,7 @@ Input is JSON:
 Return the ports from the list that are located in that place. If place is a country, include every listed port in that country. If place is a port or city, include only that port (and obvious spellings of it).
 
 Rules:
+- Decide by where each port actually is, not by words in its name. A port name that contains a country or nationality word may be in a different country.
 - Copy port names exactly from the list. Never add a port that is not in the list.
 - If none of the listed ports are in that place, return an empty list. This is common: ships from Europe usually call at ports in China or Singapore before Busan.
 - Korean domestic ports belong to Korea.

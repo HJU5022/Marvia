@@ -8,12 +8,16 @@ LLM이 낸 칸은 믿기 전에 다시 본다: bl_ref는 가린 목록 안의 �
 """
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
+import httpx
+
 from backend.app.clients.mof import MofClient, MofError, MAX_PAGES
+from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import llm
@@ -91,7 +95,10 @@ def _arrivals(days: int) -> list:
     hit = _plans_cache.get(key)
     if hit and time.monotonic() - hit[0] < CACHE_SEC:
         return hit[1]
-    client = MofClient()
+    # 입항 예정 목록은 공개 정보이고 데모 B/L 3건과 무관하다. 키가 있으면 REPLAY_MODE에서도 실제 해수부를 부른다.
+    # 키가 없으면(채점용) 녹화본을 읽는다 (docs/specs/chat-search.md How)
+    live = replay_enabled() and os.environ.get("DATA_GO_KR_KEY")
+    client = MofClient(transport=httpx.HTTPTransport()) if live else MofClient()
     try:
         plans = client.sailing_plans(today, today + timedelta(days=days), max_pages=MAX_PAGES)
     finally:
@@ -100,9 +107,10 @@ def _arrivals(days: int) -> list:
     return plans
 
 
-def search_vessels(place: str | None, days: int | None) -> ChatResult:
+def search_vessels(place: str | None, days: int | None, label: str | None = None) -> ChatResult:
     """직전 기항지로 거른 부산 입항 예정 선박. 항구는 LLM이 목록 안에서만 고른다 (EC-04)."""
     days = max(1, min(days or DAYS_DEFAULT, DAYS_MAX))
+    name = label or place  # 답에는 사용자가 쓴 말(중국)을, 항구 고르기에는 영어(China)를 쓴다
     try:
         plans = _arrivals(days)
     except MofError as e:
@@ -128,12 +136,12 @@ def search_vessels(place: str | None, days: int | None) -> ChatResult:
         "expected_arrival": p.expected_arrival.isoformat() if p.expected_arrival else None, "facility": p.facility,
     } for p in chosen]
     if place and not vessels:
-        reply = f"앞으로 {days}일 동안 {place} 항구를 직전에 들른 부산 입항 예정 선박은 없습니다. {PREV_PORT_NOTE}"
+        reply = f"앞으로 {days}일 동안 {name} 항구를 직전에 들른 부산 입항 예정 선박은 없습니다. {PREV_PORT_NOTE}"
     elif place:
-        reply = f"앞으로 {days}일 동안 {place}({', '.join(ports)})를 직전에 들른 부산 입항 예정 선박 {len(vessels)}척입니다. {PREV_PORT_NOTE}"
+        reply = f"앞으로 {days}일 동안 {name}({', '.join(ports)})를 직전에 들른 부산 입항 예정 선박 {len(vessels)}척입니다. {PREV_PORT_NOTE}"
     else:
         reply = f"앞으로 {days}일 동안 부산 입항 예정 선박 {len(vessels)}척입니다. {PREV_PORT_NOTE}"
-    return ChatResult(kind="vessels", reply=reply, vessels=vessels, place=place, ports=ports, days=days)
+    return ChatResult(kind="vessels", reply=reply, vessels=vessels, place=name, ports=ports, days=days)
 
 
 def handle(message: str, session_id: str, context: AgentRequest | None, run_agent) -> ChatResult:
@@ -172,7 +180,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
         return ChatResult(kind="cargo", reply=resp.answer, agent=resp, request=context)
 
     if route.intent == "vessel_search":
-        return search_vessels(route.place, route.days)
+        return search_vessels(route.place, route.days, route.place_label)
 
     return ChatResult(kind="message", reply=route.reply.strip() or NEED_BL)
 
