@@ -45,4 +45,16 @@ assert.deepEqual(await api.getHistory('different-session'),{items:[],available:t
 const candidates=JSON.parse(fs.readFileSync('lib/fixtures/insufficient.json','utf8')).vessel_candidates;
 assert.equal((await api.getAgentResponse({...req('insufficient'),resolved_mmsi:candidates[0].mmsi})).status,'ok');
 assert.equal((await api.getAgentResponse({...req('insufficient'),resolved_mmsi:candidates[1].mmsi,voyage_no:'EXAMPLE'})).status,'insufficient');
-console.log('PASS: 7 AgentResponse fixtures, history envelope, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution and session isolation.');
+// 처리 단계 소식 (docs/specs/chat-progress.md, 10-02). lib/progress.ts를 그대로 옮겨 실행한다
+const progressFile=path.join(root,'lib/progress.ts');
+const pm=new Module(progressFile);pm.filename=progressFile;pm._compile(ts.transpileModule(fs.readFileSync(progressFile,'utf8'),tsOptions).outputText,progressFile);
+const {createSseParser,isStage,stageLabels}=pm.exports;
+// 네트워크 조각은 이벤트 중간에서 잘려 온다. 끝난 이벤트만 꺼내고, 주석 줄(: ping)과 CRLF 줄바꿈도 견딘다
+const push=createSseParser();
+assert.deepEqual(push('event: progress\ndata: {"stage":"cus'),[]);
+assert.deepEqual(push('toms"}\n\n: ping\n\nevent: result\r\ndata: {"kind":"message"}\r\n\r\n'),[{event:'progress',data:'{"stage":"customs"}'},{event:'result',data:'{"kind":"message"}'}]);
+assert(isStage('judge')&&!isStage('made-up'));
+// 화면 라벨과 서버 단계 이름이 같아야 한다. 한쪽에만 있으면 화면이 단계를 버리거나 서버가 못 보낸다
+const backendStages=[...fs.readFileSync(path.join(root,'../backend/app/services/progress.py'),'utf8').match(/STAGES = \(([\s\S]*?)\n\)/)[1].matchAll(/"([a-z_]+)"/g)].map(m=>m[1]);
+assert.deepEqual(Object.keys(stageLabels).sort(),backendStages.slice().sort(),'progress stage names differ between web and backend');
+console.log('PASS: 7 AgentResponse fixtures, history envelope, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing and stage names.');
