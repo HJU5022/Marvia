@@ -25,6 +25,14 @@ def test_four_tools_registered(tools):
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTED_TOOLS))
+def test_marked_read_only(tools, name):
+    """4종 모두 조회·계산만 해서 읽기 전용 표시(readOnlyHint)가 붙어 있다 (D9 도구 권한 정책)."""
+    annotations = tools[name].annotations
+    assert annotations is not None, f"{name} 도구 표시(annotations) 없음"
+    assert annotations.readOnlyHint is True, f"{name} 읽기 전용 표시 없음"
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTED_TOOLS))
 def test_first_line_says_when_to_use(tools, name):
     """첫 줄은 한 문장이고 "~때 쓴다."로 끝난다. mcp_check·mcp_demo가 이 줄을 목록에 보여 준다."""
     first = tools[name].description.strip().splitlines()[0]
