@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from xml.etree import ElementTree
@@ -250,6 +251,34 @@ class MofClient:
                 break
         else:
             _log_page_cap("mof_sailing", max_pages)
+        return plans
+
+    def sailing_plans_all(self, start: date, end: date, prt_ag_cd: str = BUSAN_PRT_AG_CD,
+                          max_pages: int = MAX_PAGES, workers: int = 6) -> list[SailingPlan]:
+        """기간 전체 입출항 신고를 빨리 받는다 (자연어 선박 검색, docs/specs/chat-search.md).
+
+        sailing_plans는 쪽을 하나씩 차례로 받아 부산 7일치(약 6쪽)에 5초쯤 걸렸다(10-01 실측 4.8초).
+        첫 쪽의 totalCount로 쪽 수를 알고 나머지 쪽을 동시에 받는다. 결과 순서는 쪽 순서 그대로다.
+        쪽 수가 max_pages를 넘으면 앞쪽만 받고 로그를 남긴다 (sailing_plans와 같은 상한).
+        """
+        first = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, None, prt_ag_cd, MAX_ROWS, 1)
+        plans = [self._to_plan(item) for item in first.iter("item")]
+        total = _int(first.findtext(".//totalCount")) or len(plans)
+        pages = -(-total // MAX_ROWS)  # 올림
+        if pages > max_pages:
+            _log_page_cap("mof_sailing", max_pages)
+            pages = max_pages
+        if pages <= 1:
+            return plans
+
+        def page(n: int) -> list[SailingPlan]:
+            root = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, None, prt_ag_cd, MAX_ROWS, n)
+            return [self._to_plan(item) for item in root.iter("item")]
+
+        # httpx.Client는 여러 스레드에서 같이 써도 된다. 실패한 쪽이 있으면 MofError가 그대로 올라간다
+        with ThreadPoolExecutor(max_workers=min(workers, pages - 1)) as pool:
+            for rest in pool.map(page, range(2, pages + 1)):
+                plans.extend(rest)
         return plans
 
     def find_plan_by_mrn(self, mrn: str, start: date, end: date) -> SailingPlan | None:

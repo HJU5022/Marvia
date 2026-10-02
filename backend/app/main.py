@@ -22,8 +22,8 @@ from fastapi.responses import JSONResponse
 
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
-from backend.app.observability.logging import RequestLogMiddleware, log_failure, setup_logging
-from backend.app.routers import account, agent, document, history
+from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
+from backend.app.routers import account, admin, agent, chat, document, history, profile
 from mcp_server.server import MountedMCP
 
 setup_logging()
@@ -60,15 +60,19 @@ app.add_middleware(
     CORSMiddleware,
     # 기본값은 로컬 프론트만. 배포에서는 .env의 ALLOWED_ORIGINS에 Vercel 도메인을 넣는다
     allow_origins=[o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
-    allow_methods=["GET", "POST", "DELETE"],  # DELETE: 내 기록 삭제·회원 탈퇴 (09-30). 빠지면 브라우저가 막는다
+    # DELETE: 내 기록 삭제·회원 탈퇴 (09-30), PUT: 회원 정보 저장 (10-01, user-profile). 빠지면 브라우저가 사전 요청에서 막는다
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
 
 app.include_router(agent.router)
+app.include_router(chat.router)  # 자연어 입력 (docs/specs/chat-search.md)
 app.include_router(history.router)
 app.include_router(document.router)  # 서류 사진 (docs/specs/document-extract.md)
 app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
+app.include_router(admin.router)  # 운영자 관리 (docs/specs/operator-admin.md)
+app.include_router(profile.router)  # 회원 정보 (docs/specs/user-profile.md)
 
 
 # /mcp: MCP 클라이언트가 연결하는 프로토콜 창구. /api/agent(사용자 화면용)와 경로를 나눈다 (가이드 v4 배포 구조).

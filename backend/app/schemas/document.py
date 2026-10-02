@@ -43,3 +43,5 @@ class DocumentResponse(BaseModel):
     fields: DocumentFields
     ocr: OcrInfo
     trace_id: str
+    # 적하목록 관리번호. "MRN" 이름표 옆 값을 코드가 뽑는다(LLM 아님). 세관에 아직 없는 화물의 대체 조회용 (docs/specs/mrn-fallback.md, 10-01)
+    mrn: str | None = None

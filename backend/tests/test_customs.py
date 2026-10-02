@@ -80,7 +80,7 @@ def test_excluded_fields_are_not_carried():
 
 def test_bl_number_is_masked():
     record = _client("progress_ok.xml").fetch("TESTMBL0000001")
-    assert record.bl_masked == "TEST****0001"
+    assert record.bl_masked == mask_bl(record_bl := "TESTMBL0000001") and "*" * (len(record_bl) // 2) in record.bl_masked
     assert "TESTMBL0000001" not in record.model_dump_json()
 
 
@@ -106,10 +106,23 @@ def test_timeout_is_retryable():
 
 
 def test_mask_bl_hides_short_numbers_entirely():
-    assert mask_bl("SHORT123") == "********"
+    # 가운데 절반을 가린다 (10-01). 짧은 번호도 앞뒤로 알아볼 수 있고, 길이는 그대로
+    assert mask_bl("SHORT123") == "SH****23"
+    assert mask_bl("ABCD1234567890") == "ABC*******7890"
+    assert mask_bl("ABCDEFGHIJK") == "ABC*****IJK"
 
 
 def test_mrn_is_first_11_chars_of_cargo_number():
     """화물관리번호 19자리 중 앞 11자리가 MRN이다. 해수부 mrNum과 이어 배를 특정한다 (09-23 실측)."""
     record = _client("progress_ok.xml").fetch("TESTMBL0000001")
     assert record.mrn == "26TEST0099I"
+
+
+def test_reads_loading_and_discharge_ports():
+    """어디서 어디로 (10-01). 실제 응답 상단 칸 이름: ldprCd·ldprNm·lodCntyCd·dsprNm. 값은 가공 예시"""
+    xml = (FIXTURES / "progress_ok.xml").read_text(encoding="utf-8")
+    xml = xml.replace("<dsprCd>", "<ldprCd>CNTAO</ldprCd><ldprNm>Qingdao</ldprNm><lodCntyCd>CN</lodCntyCd><dsprCd>", 1)
+    client = UnipassClient(key="test-key", transport=httpx.MockTransport(lambda r: httpx.Response(200, text=xml)))
+    record = client.fetch("TESTMBL0000001")
+    assert (record.loading_port, record.loading_port_name, record.loading_country) == ("CNTAO", "Qingdao", "CN")
+    assert record.route_fields()["loading_port_name"] == "Qingdao" and record.discharge_port_name is not None

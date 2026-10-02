@@ -27,15 +27,28 @@ from backend.app.services import guard  # 지시문 줄 판별 (_only_in_instruc
 logger = logging.getLogger(__name__)
 
 # 확신도가 이 정도면 0° 한 번 읽고 멈춘다. 똑바른 가공 통지서의 줄 평균 확신도가 약 0.98이었고,
-# 옆으로 누운 사진을 0°로 읽으면 약 0.68이었다 (09-29 실험). 둘 사이를 가른다
-CONFIDENT_MEAN = 0.9
+# 옆으로 누운 사진을 0°로 읽으면 약 0.68이었다 (09-29 실험). 둘 사이를 가른다.
+# 0.9 → 0.85 (10-01): 팩스 받은 A4를 휴대폰으로 찍은 실제 도착 통지서가 똑바른데도 0.88이라 세 방향을 다 읽었고
+# (25초), 270°를 골라 줄 순서가 흔들렸다. 0.85도 누운 사진(0.68)과는 충분히 떨어져 있다
+CONFIDENT_MEAN = 0.85
 CONFIDENT_LINES = 5
 # 다른 방향이 이만큼 낫지 않으면 0°를 지킨다. 똑바른 사진을 270°로 돌려도 OCR이 스스로 읽어 점수가 같게 나오는데,
 # 그 경우 줄 순서가 거꾸로 나온다 (09-29 실험, 이름표와 값 순서가 뒤집혀 B/L 찾기가 흔들린다)
 ROTATION_MARGIN = 1.05
 
 # 이름표 변형: "B/L NO.", "B/L No", "B/L 번호", "Bill of Lading No" (09-29 문장형 서식에서 "B/L 번호"를 못 찾았다)
-BL_LABEL = re.compile(r"(B\s*/?\s*L|BILL\s+OF\s+LADING)\s*(NO|번호|#|NUMBER)", re.I)
+# OCR이 흔히 틀리는 글자도 받는다 (10-01 실제 팩스 사진: "H.B/L No."를 "H.B/1.N1."로 읽었다).
+# L은 1·I·l·|로, No의 o는 0·1·l·I로 읽힌다. 빗금(/)이 있을 때만 L 자리의 틀린 글자를 허용해 "B1" 같은 말과 섞이지 않게 한다
+BL_LABEL = re.compile(
+    r"(B\s*/?\s*L|B\s*/\s*[1Il|]|BILL\s+OF\s+LADING)\s*[.,]?\s*(NO|N[0o1lI|]|번호|#|NUMBER)", re.I)
+# 번호 안에 OCR이 끼워 넣는 점·쉼표·하이픈·쌍점·띄어쓰기. 값 비교 전에 뺀다 ("PCLU…"를 "PCI.U…"로 읽었다)
+# 빗금(/)은 지우지 않는다. "SEA STAR / 0925W"(선명/항차)가 붙어 번호처럼 보이게 된다
+_NOISE = re.compile(r"[\s.,:;\-_]")
+
+
+def _clean(text: str) -> str:
+    """번호 후보에서 끼어든 문장부호와 띄어쓰기를 빼고 대문자로."""
+    return _NOISE.sub("", text).upper()
 MONTHS = {m: i for i, m in enumerate(["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], start=1)}
 VOYAGE_PATTERN = re.compile(r"[A-Z0-9]{3,8}")  # 항차: 0925W, 2634E, 108A (09-29 가공·웹 서류에서 본 모양)
@@ -131,11 +144,16 @@ def take_bl(lines: list[str]) -> str | None:
         m = BL_LABEL.search(line)
         if not m:
             continue
-        for tok in re.findall(r"[A-Za-z0-9]+", line[m.end():]):
+        rest = line[m.end():]
+        for tok in re.findall(r"[A-Za-z0-9]+", rest):
             if _BL_PATTERN.fullmatch(tok.upper()):
                 return tok.upper()
+        # 값 안에 점이 끼면 토큰이 쪼개진다. 쌍점 뒤 한 덩어리를 문장부호 없이 다시 본다 (10-01)
+        head = re.match(r"\s*[:;.]?\s*([A-Za-z0-9.\-]+)", rest)
+        if head and _BL_PATTERN.fullmatch(_clean(head.group(1))):
+            return _clean(head.group(1))
         for cand in lines[i + 1:i + 3] + lines[max(0, i - 2):i][::-1]:
-            c = cand.replace(" ", "").upper()
+            c = _clean(cand)
             if _BL_PATTERN.fullmatch(c):
                 return c
     return None
@@ -149,9 +167,10 @@ def mask_bl(lines: list[str], bl: str | None) -> str:
     """
     if not bl:
         return "\n".join(lines)
-    masked = [("[BL]" if l.replace(" ", "").upper() == bl else l.replace(bl, "[BL]")) for l in lines]
+    # 줄을 문장부호 없이 봤을 때 B/L이 들어 있으면 그 줄을 가린다. 점이 낀 원문("PCI.U…")이 새지 않게 (10-01)
+    masked = [l.replace(bl, "[BL]") if bl in l else ("[BL]" if bl in _clean(l) else l) for l in lines]
     text = "\n".join(masked)
-    if bl in text.replace(" ", "").upper():
+    if bl in _clean(text):
         raise ValueError("B/L 번호가 가려지지 않았습니다")
     return text
 
@@ -253,3 +272,23 @@ def check_fields(fields: dict[str, str | None], lines: list[str]) -> dict[str, l
             fails.append("ambiguous")  # 지시문 줄에서만 나온 값 (10-01, INSTRUCTION_LINE)
         result[key] = fails
     return result
+
+
+
+# MRN: 연도 2자리 + 영숫자 8자 + I/E. OCR이 O를 0으로, I를 1로 읽는 경우가 있어 끝 글자는 1·l도 I로 본다 (10-01 실제 팩스 사진)
+_MRN_VALUE = re.compile(r"([0-9]{2}[A-Za-z0-9]{8}[IiEe1l|])(?![A-Za-z0-9])")
+
+
+def take_mrn(lines: list[str]) -> str | None:
+    """"MRN" 이름표가 있는 줄(또는 다음 줄)에서 MRN 값을 뽑는다 (docs/specs/mrn-fallback.md). 없으면 None.
+    B/L과 달리 개인을 가리키는 번호가 아니라 배·항차의 적하목록 번호라 가리지 않지만, LLM에는 보내지 않는다."""
+    for i, line in enumerate(lines):
+        m = re.search(r"MRN\s*[:：.]?\s*", line, re.I)
+        if not m:
+            continue
+        for cand in [line[m.end():]] + lines[i + 1:i + 2]:
+            v = _MRN_VALUE.search(cand.replace(" ", ""))
+            if v:
+                value = v.group(1).upper()
+                return value[:-1] + ("I" if value[-1] in "1L|" else value[-1])
+    return None

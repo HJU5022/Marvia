@@ -78,3 +78,28 @@ def estimate_distance(
         calc_hours_at_sog=round(distance_nm / sog, 1) if sog and sog > 0 else None,
         fetched_at=fetched_at,
     ).model_dump(mode="json")
+
+
+ROUTE_MAX_POINTS = 150  # 화면에 그릴 경로 점 상한. searoute 경로는 수백 점이라 균등하게 솎는다
+
+
+def route_points(lat: float, lng: float) -> list[list[float]]:
+    """배 위치에서 부산 기준점까지 남은 예상 바닷길을 [위도, 경도] 점 목록으로 돌려준다 (선박 자세히 보기 지도, 10-01).
+
+    estimate_distance와 같은 계산(searoute 항로망 + 마지막 노드에서 기준점까지 직선)이라 거리와 선이 맞는다.
+    MCP 도구가 아니다. 도구 응답 모양(DistanceResult)을 바꾸지 않으려고 따로 둔다. 실제 항적이 아니라 예상 경로다.
+    계산에 실패하면 빈 목록 (지도는 선 없이 그린다).
+    """
+    try:
+        ref = _busan_ref()
+        node = _busan_node()
+        if _great_circle_nm((lat, lng), ref) <= _great_circle_nm(node, ref):
+            return [[lat, lng], [ref[0], ref[1]]]
+        coords = searoute.searoute([lng, lat], [node[1], node[0]], units="naut", append_orig_dest=True)["geometry"]["coordinates"]
+    except Exception:
+        return []
+    points = [[c[1], c[0]] for c in coords] + [[ref[0], ref[1]]]
+    if len(points) > ROUTE_MAX_POINTS:
+        step = len(points) / ROUTE_MAX_POINTS
+        points = [points[int(i * step)] for i in range(ROUTE_MAX_POINTS - 1)] + [points[-1]]
+    return points

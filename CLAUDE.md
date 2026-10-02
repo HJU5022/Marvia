@@ -29,8 +29,8 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 - langgraph를 설치하거나 import하지 않는다. 문서를 청킹해 검색하고 프롬프트에 붙이는 RAG를 만들지 않는다. 지식은 호출마다 필요한 skills/ 문서를 시스템 프롬프트에 통째로 넣고(llm.py JUDGE_SKILLS 등, 09-30), 실시간 데이터는 MCP 도구로 가져온다
 - LLM SDK(openai 등)는 backend/app/services/llm.py에서만 import한다. 라우터, MCP 도구, 워커, 프론트는 LLM을 직접 부르지 않는다
 - 프롬프트를 코드에 문자열로 두지 않는다. Langfuse Prompt에서 이름으로 가져온다 (SDD 5.6)
-- 임계값(6시간, 12시간, 0.5노트, 24시간, 부산 반경, 여유 일수)과 부산 항구 코드를 코드에 적지 않는다. skills/*/rules.md 프론트매터를 코드가 읽는다
-- B/L 번호를 LLM에 넘기지 않는다. UNI-PASS는 코드가 직접 부른다. 트레이스와 로그에는 앞4자+****+뒤4자로 남긴다 (SDD 3.5)
+- 임계값(6시간, 12시간, 0.5노트, 24시간, 부산 반경, 여유 일수)을 코드에 숫자로 적지 않는다. rules.md 프론트매터를 코드가 읽는다
+- B/L 번호를 LLM에 넘기지 않는다. UNI-PASS는 코드가 직접 부른다. 트레이스와 로그에는 가운데 절반을 *로 가린 값만 남긴다 (SDD 3.5, 예: TE****01)
 - UNI-PASS 응답의 품명, 중량, 세관명, 화주 정보를 LLM에 넘기거나 DB에 저장하지 않는다
 - days_margin, freshness, 1층 신호 7종(sales_date_exceeded 포함), trusted_eta를 LLM이 정하게 두지 않는다. 코드가 계산하고 LLM이 낸 값은 덮어쓴다 (SDD 5.4, 5.8)
 - 계약 파일을 작업 범위 밖에서 바꾸지 않는다: backend/app/schemas/*, mcp_server/schemas.py, skills/*/rules.md 프론트매터, evals/schema.py, .env.example. 바꿔야 하면 먼저 알리고 PR 리뷰를 거친다. 바꾸면 평가셋, fixture, 프론트가 같이 깨진다

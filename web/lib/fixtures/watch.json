@@ -1,0 +1,146 @@
+{
+  "status": "ok",
+  "verdict": "watch",
+  "vessel_match": "confirmed",
+  "vessel_candidates": [],
+  "missing_inputs": [],
+  "reasons": [
+    {
+      "rule": "position_stale",
+      "value": "위치 수신 기록이 오래됨",
+      "triggered": true
+    }
+  ],
+  "conflicts": [
+    {
+      "signals": [
+        "ais_eta",
+        "mof_planned"
+      ],
+      "chosen": "mof",
+      "why": "AIS 위치 수신이 오래되어 해수부 입항 예정을 우선했습니다."
+    }
+  ],
+  "actions": [
+    "포워더에게 선박 운항 상황과 입항 예정일을 확인하세요."
+  ],
+  "days_margin": 4,
+  "decided_by": "llm",
+  "vessel": {
+    "mmsi": 990001101,
+    "imo": null,
+    "name": "MARVIA HORIZON",
+    "call_sign": null,
+    "flag": "KR",
+    "ship_type": 70,
+    "voyage_no": null
+  },
+  "position": {
+    "lat": 33.82,
+    "lng": 128.64,
+    "sog": 14.6,
+    "cog": 18.0,
+    "navistat": 0,
+    "last_time": "2026-10-19T22:32:00+09:00",
+    "freshness": "stale"
+  },
+  "eta": {
+    "ais_eta": "2026-10-21T06:00:00+09:00",
+    "mof_eta": "2026-10-21T08:00:00+09:00",
+    "calc_eta": null,
+    "trusted_eta": "2026-10-21T08:00:00+09:00",
+    "distance_nm": 81.6
+  },
+  "customs": {
+    "stage_code": "CAGE01",
+    "stage_name": "입항적재화물목록 심사완료",
+    "plain_explanation": "세관이 화물 목록을 확인했습니다. 입항과 하선 절차를 기다리는 단계입니다.",
+    "next_stage": "하선신고 수리",
+    "needs_broker": false,
+    "history": [
+      {
+        "code": "",
+        "name": "입항적재화물목록 제출",
+        "at": "2026-10-19T15:20:00+09:00"
+      },
+      {
+        "code": "",
+        "name": "입항적재화물목록 심사완료",
+        "at": "2026-10-20T08:50:00+09:00"
+      }
+    ],
+    "loading_port": "CNSHA",
+    "loading_port_name": "Shanghai",
+    "loading_country": "CN",
+    "discharge_port": "KRPUS",
+    "discharge_port_name": "부산항"
+  },
+  "berth": {
+    "facility": "부산 신항 · 가상 선석 A",
+    "shed": null
+  },
+  "evidence": [
+    {
+      "source": "shipfinder",
+      "field": "position",
+      "value": "33.82 N / 128.64 E",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "last_time",
+      "value": "2026-10-19T22:32:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "sog",
+      "value": "14.6 kn",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "cog",
+      "value": "18°",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "shipfinder",
+      "field": "ais_eta",
+      "value": "2026-10-21T06:00:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "mof",
+      "field": "planned_arrival",
+      "value": "2026-10-21T08:00:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "searoute",
+      "field": "distance_nm",
+      "value": "81.6",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "rule",
+      "field": "trusted_eta",
+      "value": "2026-10-21T08:00:00+09:00",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "rule",
+      "field": "days_margin",
+      "value": "4",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    },
+    {
+      "source": "mof",
+      "field": "facility",
+      "value": "부산 신항 · 가상 선석 A",
+      "fetched_at": "2026-10-20T09:40:00+09:00"
+    }
+  ],
+  "answer": "마지막 수신 위치가 오래되어 운항 상황을 다시 확인해야 합니다. 해수부 입항 예정 기준 여유는 4일입니다. 오래된 AIS 정보 대신 해수부 기록을 근거로 지켜볼 것을 권합니다.",
+  "trace_id": "fixture-watch-20261020"
+}
