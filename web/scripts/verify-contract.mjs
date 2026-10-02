@@ -57,4 +57,13 @@ assert(isStage('judge')&&!isStage('made-up'));
 // 화면 라벨과 서버 단계 이름이 같아야 한다. 한쪽에만 있으면 화면이 단계를 버리거나 서버가 못 보낸다
 const backendStages=[...fs.readFileSync(path.join(root,'../backend/app/services/progress.py'),'utf8').match(/STAGES = \(([\s\S]*?)\n\)/)[1].matchAll(/"([a-z_]+)"/g)].map(m=>m[1]);
 assert.deepEqual(Object.keys(stageLabels).sort(),backendStages.slice().sort(),'progress stage names differ between web and backend');
-console.log('PASS: 7 AgentResponse fixtures, history envelope, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing and stage names.');
+// 로그인 뒤 돌아올 주소에 #이 남으면 ##access_token이 되어 supabase-js가 출입증을 못 읽는다 (lib/auth.ts returnAddress, 10-02)
+const authFile=path.join(root,'lib/auth.ts');
+const am=new Module(authFile);am.filename=authFile;am.paths=Module._nodeModulePaths(path.dirname(authFile));am._compile(ts.transpileModule(fs.readFileSync(authFile,'utf8'),tsOptions).outputText,authFile);
+const {parseParametersFromURL}=Module.createRequire(authFile)('@supabase/auth-js/dist/main/lib/helpers.js');
+for(const href of ['http://localhost:3000/settings#','http://localhost:3000/?fixture=ok#evidence','http://localhost:3000/history']){
+ const u=new URL(href);const back=am.exports.returnAddress(u);
+ assert(!back.includes('#'),`return address keeps #: ${back}`);
+ assert.equal(parseParametersFromURL(`${back}#access_token=T&refresh_token=R`).access_token,'T','supabase-js must read the token');
+}
+console.log('PASS: 7 AgentResponse fixtures, history envelope, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names and login return address.');

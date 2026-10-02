@@ -55,11 +55,19 @@ export async function accessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
-/** 구글 로그인 창으로 보낸다. 끝나면 지금 보던 주소로 돌아온다. */
+/** 로그인 뒤 돌아올 주소. 지금 보던 페이지에서 # 뒷부분만 뗀다.
+ * Supabase는 돌아올 주소 끝에 #access_token=...을 덧붙인다. 주소에 이미 #이 있으면(/settings#) ##access_token이 되어
+ * supabase-js가 "#access_token"이라는 이름으로 읽고 출입증을 못 찾는다(로그인이 안 된 것처럼 보임). 그 상태에서 다시 로그인하면
+ * 토큰이 붙은 주소 전체가 돌아올 주소로 넘어가 Supabase 인증 로그에 토큰이 남는다 (10-02 로컬 테스트에서 확인). */
+export function returnAddress(loc: Pick<Location, 'origin' | 'pathname' | 'search'>): string {
+  return `${loc.origin}${loc.pathname}${loc.search}`;
+}
+
+/** 구글 로그인 창으로 보낸다. 끝나면 지금 보던 페이지로 돌아온다. */
 export async function signInWithGoogle(): Promise<void> {
   const sb = supabase();
   if (!sb) throw new Error('로그인 기능이 설정되지 않았습니다.');
-  const {error} = await sb.auth.signInWithOAuth({provider: 'google', options: {redirectTo: window.location.href}});
+  const {error} = await sb.auth.signInWithOAuth({provider: 'google', options: {redirectTo: returnAddress(window.location)}});
   if (error) throw new Error('구글 로그인을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
 }
 
