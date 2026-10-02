@@ -31,6 +31,13 @@ function itemText(item: MemoryItem): string {
   return String(f.text ?? '');
 }
 
+/** 시각을 한국 날짜 "10.01"로 (lib/format.ts와 같이 Asia/Seoul 기준). 읽을 수 없으면 빈 글자 */
+function kstMonthDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.valueOf())) return '';
+  return new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit'}).format(d).replace('-', '.');
+}
+
 /** 여유 일수를 사람 말로. 음수는 판매 예정일보다 늦게 도착한다는 뜻 (서버 cargo.margin_text와 같다) */
 function margin(value: number | null): string | null {
   if (value === null) return null;
@@ -51,7 +58,7 @@ function CargoRow({c}: {c: CargoSummary}) {
   const name = c.label ? `${c.label} (${c.bl_masked})` : c.bl_masked;
   if (c.status === 'done') return <li className="memory-cargo done"><strong>{c.summary ?? name}</strong><span className="subtle-badge">끝난 화물</span></li>;
   const last = c.last_checked_at && c.last_verdict
-    ? `지난 조회 ${day(c.last_checked_at).slice(5)}: ${[verdictLabels[c.last_verdict], margin(c.last_days_margin)].filter(Boolean).join(', ')}`
+    ? `지난 조회 ${kstMonthDay(c.last_checked_at)}: ${[verdictLabels[c.last_verdict], margin(c.last_days_margin)].filter(Boolean).join(', ')}`
     : '아직 판정 기록이 없습니다';
   return <li className="memory-cargo">
     <strong>{name}</strong>

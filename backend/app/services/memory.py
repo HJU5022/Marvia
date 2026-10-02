@@ -448,11 +448,9 @@ def _cargo_rows(conn, user_id: str) -> dict[str, dict]:
 
 @dataclass
 class MemoryContext:
-    """판정·후속 LLM에 넣을 블록과 이번 화물의 지난 줄. blocks가 None이면 기억이 없다(처음 사용자, EC-12)."""
+    """판정·후속 LLM에 넣을 블록. blocks가 None이면 기억이 없다(처음 사용자, EC-12)."""
 
     blocks: str | None
-    previous_row: dict | None = None
-    full: bool = False
 
 
 def _db_ready() -> bool:
@@ -469,20 +467,19 @@ def compose_blocks(rows: list[dict], items: list[dict], cargo_rows: dict[str, di
 
 def load_context(user_id: str | None, bl_no: str | None = None) -> MemoryContext | None:
     """로그인 사용자의 화물 표(진행 중 최대 cargo.MAX_ACTIVE건)와 메모장을 읽어 블록을 만든다.
-    사용자·DB·열쇠가 없거나 읽기가 실패하면 None (판정은 기억 없이 그대로 돈다, EC-08)."""
+    bl_no는 받기만 한다: 질문·화물로 기억을 고르지 않고 사용자 것 전체를 넣는다 (Spec "RAG 판정" 규칙 2).
+    사용자·DB가 없거나 읽기가 실패하면 None (판정은 기억 없이 그대로 돈다, EC-08)."""
     if not user_id or not _db_ready():
         return None
     try:
         with connect() as conn:
             rows = cargo.active_rows(conn, user_id)
             every = _cargo_rows(conn, user_id)
-            items, _, _, full = load(conn, user_id)
-            key = cargo.cargo_key(bl_no) if bl_no else None
-            previous = every.get(key) if key else None
+            items, _, _, _ = load(conn, user_id)
     except Exception as e:  # noqa: BLE001 - 기억은 부가 기능이다. 종류만 남긴다
         log_failure("memory_read", type(e).__name__)
         return None
-    return MemoryContext(blocks=compose_blocks(rows, items, every), previous_row=previous, full=full)
+    return MemoryContext(blocks=compose_blocks(rows, items, every))
 
 
 def lookup_notes(user_id: str | None, bl_no: str) -> list[str]:
