@@ -27,7 +27,7 @@ export function LoginScreen() {
       </button>
       {error && <p role="alert" className="request-error">{error}</p>}
       <ul className="login-points">
-        <li><LockKeyhole size={15}/>B/L 원본은 잠가서 저장하고, 화면과 기록에는 뒤 4자리만 보입니다.</li>
+        <li><LockKeyhole size={15}/>B/L 번호는 암호로 잠가 저장하고, 화면에는 일부를 * 로 가려 보여 줍니다.</li>
         <li><ShieldCheck size={15}/>조회 기록은 90일 뒤 자동으로 지워지고, 설정에서 언제든 지울 수 있습니다.</li>
       </ul>
       <a className="quiet-link" href="/about">Marvia가 무엇인지 먼저 보기 <ArrowUpRight size={14}/></a>

@@ -54,7 +54,8 @@ def extract_mrn(message: str) -> tuple[str | None, str]:
     value = m.group(1)
     return value.upper(), message.replace(value, "[MRN]")
 
-NEED_BL = "조회할 B/L 번호를 문장에 넣어 주세요. 예: TESTBL01 화물 괜찮아?"
+# 예시에 테스트 B/L을 쓰지 않는다. 실제 사용자에게 가짜 번호를 보여 주게 된다 (10-02 화면 용어 점검)
+NEED_BL = "조회할 B/L 번호를 문장에 넣어 주세요. 예: (내 B/L 번호) 화물 괜찮아?"
 NO_CARGO = "지금 보고 있는 화물이 없습니다. 먼저 B/L 번호로 화물을 조회해 주세요."
 LLM_DOWN = "지금은 문장 이해 기능을 쓸 수 없어 B/L 번호가 있는 조회만 됩니다. " + NEED_BL
 PREV_PORT_NOTE = ("해수부 입항 신고의 직전 기항지 기준입니다. 출발지 정보는 없어서, 유럽에서 출발한 배도 "
@@ -285,5 +286,6 @@ def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: 
     resp = run_agent(req)
     reply = resp.answer
     if not kind:
-        reply = f"{reply}\n(구분을 말하지 않아 House B/L로 조회했습니다. Master라면 \"마스터로 다시\"라고 말해 주세요.)"
+        reply = (f"{reply}\n(B/L 구분을 말하지 않아 하우스 B/L(포워더가 발행한 B/L)로 조회했습니다. "
+                 "선사가 발행한 마스터 B/L이면 \"마스터로 다시\"라고 말해 주세요.)")
     return ChatResult(kind="cargo", reply=reply, agent=resp, request=req)

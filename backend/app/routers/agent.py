@@ -55,8 +55,9 @@ router = APIRouter(prefix="/api", tags=["agent"])
 logger = logging.getLogger(__name__)
 
 NOT_JUDGED = "조회한 값을 정리했습니다. 판정은 아직 붙지 않았습니다."
-NO_CARGO = "조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요."
-ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다."
+# 화면에 그대로 나가는 문구라 약어(M/H, ETA)를 풀어 쓴다 (10-02 화면 용어 점검)
+NO_CARGO = "조회 결과가 없습니다. B/L 번호와 마스터·하우스 구분을 다시 확인해 주세요."
+ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더가 알려 준 입항 예정일을 알려주시면 어느 배인지 가릅니다."
 NO_VESSEL = "선박 위치 서비스에서 이 배를 찾지 못했습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
 NO_VESSEL_AFTER_ETA = "선박 위치 서비스에서 이 배를 찾지 못해 판정하지 못했습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
 VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하지 못했습니다. 잠시 뒤 다시 조회해 주세요."
@@ -456,7 +457,8 @@ def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentRe
         record = UnipassClient().fetch(request.bl_no, request.bl_type)
     except CustomsError as e:
         log_failure("customs", e.code)
-        return None, _response(status="failed", answer=f"통관 정보를 가져오지 못했습니다 ({e.code}).")
+        # 오류 코드(timeout, bad_key)는 로그에만 남기고 화면 문장에는 넣지 않는다 (10-02 화면 용어 점검)
+        return None, _response(status="failed", answer="통관 정보를 가져오지 못했습니다. 잠시 뒤 다시 조회해 주세요.")
     if record is None:
         return None, _response(status="insufficient", missing_inputs=["bl_type"], answer=NO_CARGO)
     return record, None
