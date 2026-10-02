@@ -209,7 +209,7 @@ def test_query_purge_calls_db_function_and_returns_count():
 
 
 def test_done_cargo_purge_calls_db_function_and_returns_count():
-    """끝난 화물 90일 정리도 규칙은 DB 함수에 있다 (migrations/015, docs/specs/memory.md). 파이썬은 부르기만 한다."""
+    """끝난 화물 3년 보관 정리도 규칙은 DB 함수에 있다 (migrations/015, docs/specs/memory.md). 파이썬은 부르기만 한다."""
     from backend.app.db import purge_done_cargo
 
     class Conn:
@@ -230,4 +230,7 @@ def test_migration_015_has_allowed_values_and_schedule():
     assert "CHECK (freight_term IN ('prepaid', 'collect'))" in sql
     assert "CHECK (incoterm IN ('CIF', 'FOB', 'CFR'))" in sql
     assert "to_order_bank BOOLEAN" in sql
-    assert "cron.schedule('marvia-purge-done-cargo'" in sql and "make_interval(days => keep_days)" in sql
+    assert "cron.schedule('marvia-purge-done-cargo'" in sql
+    # 10-02 결정 D3: 끝난 화물은 반출 후 3년 보관 뒤 줄째 지운다. 3년은 함수 기본값 한 곳에만 있다
+    assert sql.count("interval '3 years'") == 1 and "DELETE FROM user_cargo" in sql
+    assert "CREATE TABLE IF NOT EXISTS user_forget" in sql  # 삭제 표시 (뒤 작업이 삭제를 되살리지 않게)

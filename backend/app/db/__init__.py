@@ -31,6 +31,15 @@ def connect(url: str | None = None, timeout: int | None = None):
     return psycopg.connect(plain_url(url or os.environ["DATABASE_URL"]), autocommit=True, **extra)
 
 
+def atomic(conn):
+    """여러 표를 지우는 일을 한 트랜잭션으로 묶는다 (삭제 경로, docs/specs/memory.md 개인정보, 10-02 검증).
+    connect()는 autocommit이라 이 안에서만 BEGIN·COMMIT으로 묶인다(psycopg Connection.transaction).
+    트랜잭션 기능이 없는 연결(테스트의 가짜 연결)은 묶지 않고 그대로 실행한다."""
+    from contextlib import nullcontext
+
+    return conn.transaction() if hasattr(conn, "transaction") else nullcontext()
+
+
 def apply_migrations(conn) -> list[str]:
     """migrations/*.sql을 이름 순서대로 한 번씩만 적용하고, 새로 적용한 파일 이름을 돌려준다."""
     conn.execute(
@@ -138,10 +147,10 @@ def purge_old_queries(conn) -> int:
 
 
 def purge_done_cargo(conn) -> int:
-    """완료 90일 지난 화물의 잠긴 B/L·세부 값을 지우고 정리한 줄 수를 돌려준다 (docs/specs/memory.md "보관과 크기").
+    """반출 뒤 3년 지난 끝난 화물 줄과 그 화물의 메모장 항목을 지우고 지운 화물 수를 돌려준다
+    (docs/specs/memory.md "보관과 크기", 10-02 결정 D3). 하루 지난 삭제 표시(user_forget)도 같이 정리한다.
 
-    규칙(90일, 무엇을 지우나)은 DB 함수 purge_done_cargo()에만 있다 (migrations/015). 줄은 남는다: 한 줄 요약 재료
-    (가린 번호·이름표·마지막 판정·완료일)는 탈퇴할 때까지 둔다. purge_old_queries와 같이 pg_cron이 하루 한 번,
+    규칙(3년, 무엇을 지우나)은 DB 함수 purge_done_cargo()에만 있다 (migrations/015). purge_old_queries와 같이 pg_cron이 하루 한 번,
     pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
     """
     return conn.execute("SELECT purge_done_cargo()").fetchall()[0][0]

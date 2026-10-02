@@ -61,7 +61,7 @@ def run_once(shipfinder_calls: int) -> dict:
     summary["shipfinder_calls_used"] = shipfinder_calls - budget.remaining
     summary["positions_purged"] = purge_positions(conn)  # 입항 30일 지난 위치 기록 삭제 (migrations/002)
     summary["queries_purged"] = purge_old_queries(conn)  # 90일 지난 조회 기록 삭제 (migrations/008)
-    summary["done_cargo_purged"] = purge_done_cargo(conn)  # 완료 90일 지난 화물의 원본 B/L·세부 값 정리 (migrations/015)
+    summary["done_cargo_purged"] = purge_done_cargo(conn)  # 반출 3년 지난 끝난 화물과 그 메모 삭제 (migrations/015)
     conn.close()
     return summary
 
