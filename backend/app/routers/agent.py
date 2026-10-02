@@ -23,6 +23,7 @@
   - 위치가 캐시에서 왔으면(실시간 조회 실패) 판정은 하되 status=partial (09-29 결정, 평가셋 F02)
 근거 카드는 services/evidence.build()가 만든다 (C-8).
 """
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -37,7 +38,7 @@ from backend.app.db import connect, latest_response, log_query, recent_positions
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
-    AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, Reason, VesselCandidate,
+    AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Evidence, Position, Reason, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
 from backend.app.services import guard, identify, llm, validate
@@ -48,7 +49,7 @@ from backend.app.services.rules import is_listed_stage, rule
 from backend.app.services.customs import CustomsError, UnipassClient
 # MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py)
 from backend.app.services.mcp_client import (
-    estimate_distance, get_live_position, get_port_schedule, get_vessel_candidates,
+    call_tool, estimate_distance, get_live_position, get_port_schedule, get_vessel_candidates, read_only_tools,
 )
 
 router = APIRouter(prefix="/api", tags=["agent"])
@@ -98,6 +99,9 @@ FOLLOW_UP_BLOCKED = "이 화물의 조회 결과에 대한 질문에만 답할 �
 # V7(근거에 없는 숫자 금지), V11(통관 진행 평가 금지)이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
 # 여기에 후속 답 전용 V9(근거에 없는 영문 낱말 금지, validate.check_follow_up_words)와 V10(질문 낱말 옮기기 금지)을 더 건다 (10-01)
 FOLLOW_UP_RULES = {"V1", "V7", "V11"}  # V11: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01)
+# 후속 질문에서 LLM이 부른 도구 결과를 근거 카드로 붙일 때의 출처 (10-02). Evidence.source 값 중에서 고른다 (계약 C1, 바꾸지 않음)
+TOOL_SOURCE = {"get_vessel_candidates": "shipfinder", "get_live_position": "shipfinder",
+               "get_port_schedule": "mof", "estimate_distance": "searoute"}
 
 
 def _response(**over) -> AgentResponse:
@@ -409,24 +413,36 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
     # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거 카드에 없는 숫자("9월 23일", 사용자가 말한 판매일)가 그대로 갔다 (평가 F06).
     # 판정·근거는 지난 결과 그대로라 답 문장을 보는 규칙(FOLLOW_UP_RULES)만 건다. 재시도 방식은 판정과 같다 (SDD 5.7)
     feedback = None
+    tools = read_only_tools()  # LLM이 직접 고를 읽기 전용 MCP 도구 (10-02, D9 B안). 못 받으면 빈 목록 → 도구 없이 답한다
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
-            out = llm.answer_follow_up(request.follow_up_question, previous, feedback=feedback).output
+            answer = llm.answer_follow_up(request.follow_up_question, previous, feedback=feedback,
+                                          tools=tools, run_tool=_follow_up_tool)
+            out = answer.output
         except llm.LLMFormatError as e:
             log_failure("follow_up", f"{e.kind} attempt {attempt}")
             feedback = e.detail
             continue
         except llm.LLMError as e:
+            # 도구를 줬더니 모델·제공사가 요청을 거절하면(bad_request) 도구 없이 다시 묻는다 (10-02 실측: OpenRouter
+            # gpt-4o-mini는 도구를 붙이면 계정 데이터 정책에 맞는 제공사가 없다며 404, 도구 없이는 정상). 후속 답 자체는 막지 않는다
+            if tools and e.kind == "bad_request":
+                log_failure("follow_up", "tools rejected, retry without tools")
+                tools = []
+                continue
             log_failure("follow_up", _llm_error(e))
             return failed
-        answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
+        # LLM이 부른 도구 결과를 근거 카드로 붙인다. 답에 쓴 새 숫자·낱말이 근거에 있어야 검증(V7·V9·V10)을 통과하고,
+        # 화면에도 어디서 온 값인지 남는다 (가이드 Grounding: 도구가 준 근거·출처를 보존)
+        grounded = previous.model_copy(update={"evidence": previous.evidence + _tool_evidence(answer.tool_calls)})
+        answered = grounded.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
         # V11은 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
         checked = answered.model_copy(update={"actions": [], "customs": None})
         violations = [v for v in validate.check(checked) if v.rule in FOLLOW_UP_RULES]
         # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
-        violations += validate.check_follow_up_words(out.answer, previous, llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
+        violations += validate.check_follow_up_words(out.answer, grounded, llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
         # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
-        violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, previous,
+        violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, grounded,
                                                     llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT))
         if not violations:
             return answered
@@ -435,6 +451,54 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
     # 세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정·근거는 그대로 둔다
     log_failure("follow_up", f"gave up after {JUDGE_ATTEMPTS} attempts")
     return failed
+
+
+def _without_dest(value):
+    """도구 결과에서 AIS 목적지 원문(dest)을 뺀다. 아무 배나 쓸 수 있는 글자라 주입 문장이 들어올 수 있다.
+    판정·후속 질문 LLM 입력에서 빼는 것과 같은 기준이다 (SDD 7절, llm.answer_follow_up, 10-01)."""
+    if isinstance(value, dict):
+        return {k: _without_dest(v) for k, v in value.items() if k != "dest"}
+    if isinstance(value, list):
+        return [_without_dest(v) for v in value]
+    return value
+
+
+def _follow_up_tool(name: str, arguments: dict) -> dict:
+    """후속 질문에서 LLM이 고른 도구를 실제로 부른다 (10-02, D9 B안). 결과는 LLM에게 돌아간다.
+
+    - 읽기 전용 목록(read_only_tools)에 없는 이름은 부르지 않는다. 모델이 없는 도구를 지어내도 막힌다 (D9 도구 권한 정책)
+    - 부르는 길은 판정 흐름과 같다: /mcp를 거치고(mcp_client.call_tool) Langfuse에 mcp:<도구> 기록이 남는다
+    - 실패는 판정 흐름처럼 로그에 남기고, 결과도 {error}로 돌려줘 LLM이 "조회 실패"라고 답하게 한다
+    """
+    if name not in {t["function"]["name"] for t in read_only_tools()}:
+        log_failure("follow_up_tool", f"unknown_tool {name}")
+        return {"error": {"code": "unknown_tool", "message": f"no read-only tool named {name}", "retryable": False}}
+    result = _without_dest(call_tool(name, **arguments))
+    _log_tool_error(f"follow_up_tool:{name}", result)
+    return result
+
+
+def _tool_evidence(calls: list[dict]) -> list[Evidence]:
+    """LLM이 부른 도구의 성공 결과를 근거 카드로 바꾼다. 실패한 호출은 카드를 만들지 않는다.
+
+    칸 이름은 "<도구>.<키>", 값은 글자로 둔다. 목록·묶음 값(후보 목록 등)은 JSON 글자로 넣는다. 목적지 원문은 이미 빠져 있다.
+    조회 시각은 도구가 준 fetched_at (모든 도구 응답에 붙는다, CLAUDE.md "할 것").
+    """
+    cards = []
+    for call in calls:
+        result, name = call.get("result") or {}, call.get("name", "")
+        if "error" in result or name not in TOOL_SOURCE:
+            continue
+        try:
+            fetched_at = datetime.fromisoformat(str(result.get("fetched_at")).replace("Z", "+00:00"))
+        except ValueError:
+            fetched_at = datetime.now(timezone.utc)
+        for key, value in result.items():
+            if key in ("source", "fetched_at", "cached_at") or value in (None, "", [], {}):
+                continue
+            text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+            cards.append(Evidence(source=TOOL_SOURCE[name], field=f"{name}.{key}", value=text, fetched_at=fetched_at))
+    return cards
 
 
 def _previous_response(request: AgentRequest, user_id: str | None = None) -> AgentResponse | None:

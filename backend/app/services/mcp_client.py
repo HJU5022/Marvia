@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 
 import httpx
 from mcp import ClientSession
@@ -38,7 +39,9 @@ def _failed(message: str) -> dict:
     return {"error": {"code": "mcp_failed", "message": message, "retryable": True}}
 
 
-async def _call(name: str, arguments: dict) -> dict:
+@asynccontextmanager
+async def _session():
+    """MCP 세션 하나를 연다. 도구 호출(_call)과 도구 목록(_list_tools)이 같은 통로를 쓴다."""
     url = os.environ.get("MCP_URL", "")
     if url:
         token = os.environ.get("MCP_TOKEN", "")
@@ -50,14 +53,19 @@ async def _call(name: str, arguments: dict) -> dict:
             async with streamable_http_client(url, http_client=http) as (read, write, _):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    result = await session.call_tool(name, arguments)
+                    yield session
     else:
         global _memory_server
         if _memory_server is None:
             from mcp_server.server import create_mcp  # 메모리 통로를 쓸 때만 불러온다
             _memory_server = create_mcp(token="")
         async with create_connected_server_and_client_session(_memory_server) as session:
-            result = await session.call_tool(name, arguments)
+            yield session
+
+
+async def _call(name: str, arguments: dict) -> dict:
+    async with _session() as session:
+        result = await session.call_tool(name, arguments)
 
     text = result.content[0].text if result.content else ""
     if result.isError:  # 도구가 예외를 던졌을 때. 도구는 실패를 {error}로 돌려주게 돼 있어 보통은 없다
@@ -102,6 +110,38 @@ def call_tool(name: str, **arguments) -> dict:
     latency_ms = round((time.monotonic() - started) * 1000)
     end_tool(tool, output, {"transport": transport, "latency_ms": latency_ms}, error=error)
     return result
+
+
+_read_only_tools: list[dict] | None = None  # 한 번 받은 도구 목록. 도구는 서버가 뜰 때 정해지고 실행 중에 안 바뀐다
+
+
+async def _list_tools():
+    async with _session() as session:
+        return (await session.list_tools()).tools
+
+
+def read_only_tools() -> list[dict]:
+    """LLM에게 줄 도구 목록 (10-02, D9 B안: 후속 질문에서 LLM이 도구를 직접 고른다).
+
+    MCP tools/list로 받아 OpenAI tool 형식으로 바꾼다. 이름·설명·입력 스키마는 MCP 서버가 준 그대로다.
+    읽기 전용 표시(readOnlyHint=True)가 있는 도구만 넘긴다. 부작용 있는 도구는 LLM이 아예 볼 수 없다
+    (D9 도구 권한 정책, 가이드 v4 신뢰 경계 "부작용이 있는 도구는 명시적 요청과 권한 없이 호출되지 않게").
+    목록을 못 받으면 빈 목록. 그러면 후속 답은 도구 없이 지난 결과만으로 나간다.
+    """
+    global _read_only_tools
+    if _read_only_tools is not None:
+        return _read_only_tools
+    try:
+        tools = asyncio.run(_list_tools())
+    except Exception as e:  # 목록 실패는 후속 답을 막지 않는다. 다음 요청에서 다시 받는다
+        logger.warning("MCP 도구 목록 조회 실패 (%s)", type(e).__name__)
+        return []
+    _read_only_tools = [
+        {"type": "function",
+         "function": {"name": t.name, "description": t.description or "", "parameters": t.inputSchema}}
+        for t in tools if t.annotations and t.annotations.readOnlyHint
+    ]
+    return _read_only_tools
 
 
 def get_vessel_candidates(ship_name: str, nationality: str | None = None, eta_window_days: int | None = None,
