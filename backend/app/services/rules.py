@@ -53,6 +53,13 @@ def load_rules(skills_dir: Path = SKILLS_DIR) -> dict:
     return merged
 
 
+@cache
+def load_file(path: Path) -> dict:
+    """rules.md가 아닌 Skill 파일 하나의 프론트매터 (예: port-busan/cargo-vessels.md, 선박 검색 기준, 10-02).
+    load_rules의 합치기에는 들어가지 않는다. 판정에 쓰지 않는 값이라 rule()과 섞지 않는다."""
+    return _front_matter(path)
+
+
 def rule(key: str):
     """값 하나를 읽는다. 없으면 바로 실패시켜 오타를 조용히 넘기지 않는다."""
     rules = load_rules()
