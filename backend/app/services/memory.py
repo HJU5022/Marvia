@@ -409,6 +409,12 @@ def delete_all(conn, user_id: str) -> int:
     return conn.execute("DELETE FROM user_memory WHERE user_id = %s", [user_id]).rowcount
 
 
+def forget_user(conn, user_id: str) -> int:
+    """그 사용자의 화물 표와 메모장을 모두 지운다 (Spec "개인정보": 탈퇴·내 기록 삭제·전부 지우기, 10-02 결정 8).
+    지운 줄 수(화물 줄 + 메모장 줄). Langfuse 트레이스는 운영 기록으로 남는다 (결정 8)."""
+    return cargo.delete_all(conn, user_id) + delete_all(conn, user_id)
+
+
 def add_contact(conn, user_id: str, contact: dict, cargo_key: str | None, today: date) -> str:
     """서류 사진에서 사용자가 확인한 거래처를 메모장에 더한다 (10-02 결정 7). 출처는 B/L 또는 A/N.
 

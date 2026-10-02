@@ -352,3 +352,13 @@ def test_blocks_order_and_no_ids():
     assert blocks.index("<user_cargo>") < blocks.index("<user_memory>")
     assert "[c1]" not in blocks and "할 일: 은행 가기" in blocks
     assert memory.compose_blocks([], [], {}) is None
+
+
+def test_forget_user_deletes_cargo_and_memo():
+    """탈퇴·내 기록 삭제 때 화물 표와 메모장을 모두 지운다 (Spec "개인정보")."""
+    from backend.tests.test_cargo import FakeConn
+
+    conn = FakeConn(rowcount=1)
+    assert memory.forget_user(conn, "u1") == 2
+    assert [c[0] for c in conn.calls] == ["DELETE FROM user_cargo WHERE user_id = %s",
+                                          "DELETE FROM user_memory WHERE user_id = %s"]

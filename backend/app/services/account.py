@@ -10,6 +10,7 @@
   - 기록을 먼저 지우면, 계정 삭제가 실패해도 아직 로그인된 상태라 탈퇴를 다시 누를 수 있다
     (다시 누르면 기록 0건 + 계정 삭제로 끝난다)
 기록 삭제는 "내 기록 삭제"(routers/history.py)와 같은 db.delete_user_queries를 쓴다.
+화물 비서 기억(화물 표·메모장)도 같은 단계에서 지운다 (docs/specs/memory.md "개인정보", memory.forget_user).
 
 한계: 탈퇴 직후에도 이미 받은 출입증은 남은 기한(보통 1시간) 동안 우리 확인기(auth.py)를 통과한다.
 출입증에 기한이 적혀 있을 뿐 계정이 지워졌는지는 Supabase에 따로 묻지 않기 때문이다. 화면이 탈퇴 직후 로그아웃시킨다.
@@ -20,6 +21,7 @@ import os
 
 from backend.app.clients.supabase_admin import AdminError, delete_account
 from backend.app.db import connect, delete_user_queries
+from backend.app.services.memory import forget_user
 from backend.app.services.profile import delete as delete_profile
 
 
@@ -41,6 +43,8 @@ def withdraw(user_id: str) -> int:
             deleted = delete_user_queries(conn, user_id)
             # 회원 정보(이름·전화·주소, 잠긴 글자)도 계정보다 먼저 지운다 (docs/specs/user-profile.md EC-08)
             delete_profile(conn, user_id)
+            # 화물 표·메모장(잠긴 B/L 포함)도 계정보다 먼저 지운다 (docs/specs/memory.md "개인정보")
+            forget_user(conn, user_id)
     except Exception as e:  # 연결·SQL 실패 모두. 오류 종류만 남긴다
         raise WithdrawError("account_records", type(e).__name__) from None
 
