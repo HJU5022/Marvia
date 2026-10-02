@@ -32,7 +32,8 @@ const EDITABLE = new Set(['bl_no', 'voyage', 'eta']);
 
 export interface DocumentValues { bl_no: string; voyage_no: string | null; forwarder_eta: string | null; mrn: string | null }
 
-export function DocumentPanel({onApply, onClose, disabled}: {onApply: (v: DocumentValues) => void; onClose: () => void; disabled: boolean}) {
+/** heading=false: 드로어(Drawer)가 제목과 닫기 버튼을 그릴 때. 제목·닫기가 두 번 보이지 않게 한다 (ChatBar) */
+export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onApply: (v: DocumentValues) => void; onClose: () => void; disabled: boolean; heading?: boolean}) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -72,12 +73,12 @@ export function DocumentPanel({onApply, onClose, disabled}: {onApply: (v: Docume
     onApply({bl_no: bl, voyage_no: values.voyage?.trim() || null, forwarder_eta: eta || null, mrn: mrnValid ? mrn || null : null});
   }
 
-  return <section className="document-panel" aria-label="서류 사진으로 채우기">
-    <div className="document-head">
+  return <section className={`document-panel ${heading ? '' : 'in-drawer'}`} aria-label="서류 사진으로 채우기">
+    {heading && <div className="document-head">
       <div><span className="eyebrow">ARRIVAL NOTICE · B/L PHOTO</span><h2>서류 사진으로 채우기</h2>
         <p>도착 통지서나 B/L 사진에서 조회 값을 읽습니다. 읽은 값은 확인한 뒤에만 사용합니다.</p></div>
       <button type="button" className="icon-button" onClick={onClose} aria-label="서류 사진 닫기"><X size={18}/></button>
-    </div>
+    </div>}
 
     {!result && <label htmlFor={inputId} className={`dropzone ${dragging ? 'dragging' : ''} ${busy ? 'busy' : ''}`}
       onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>

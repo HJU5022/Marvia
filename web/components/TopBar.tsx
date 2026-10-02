@@ -11,7 +11,7 @@ import type {AgentRequest} from '@/lib/types';
 import {maskBl} from '@/lib/format';
 
 export function TopBar() {
-  const {request, lookup, loading, stage, data, error, docHints, setDocHints} = useApp();
+  const {request, lookup, loading, data, error, docHints, setDocHints} = useApp();
   const [bl, setBl] = useState(request.bl_no);
   const [type, setType] = useState(request.bl_type);
   const [date, setDate] = useState(request.sale_due_date ?? '');
@@ -91,7 +91,7 @@ export function TopBar() {
       <button type="button" onClick={() => setDocHints(null)} aria-label="서류 값 지우기"><X size={14}/></button></p>}
     {!isLive && process.env.NODE_ENV === 'development' && <div className="dev-switch"><span className="mono">DEV</span><label htmlFor="fixture">상태 미리보기</label><select id="fixture" value={choice} onChange={e => chooseDemo(e.target.value)} disabled={loading}><option value="">B/L에 따른 fixture</option>{data.demo.choices.map(c => <option key={c.id} value={c.id}>{c.id} · {c.label}</option>)}</select></div>}
     {/* 진행 단계는 화면 타이머다. 백엔드는 진행 이벤트를 보내지 않는다 (REST 응답 하나) */}
-    {loading && <ol className="progress-steps" aria-label="조회 진행" aria-live="polite">{['식별', '위치', '판정'].map((s, i) => <li key={s} className={i === stage ? 'current' : i < stage ? 'complete' : ''}>{i < stage ? <Check size={14}/> : <span>{i + 1}</span>}{s}{i === stage && <small>{isLive ? '확인 중' : '저장 데이터 확인 중'}</small>}</li>)}</ol>}
+    {/* 타이머 3단계 표시는 지웠다. 서버의 실제 단계 소식으로 바꿨다 (docs/specs/chat-progress.md). 이 폼은 지금 쓰이지 않는다 */}
     {error && <p role="alert" className="request-error">{error} <span>아래에 결과가 있다면 이전 조회의 결과입니다.</span></p>}
   </section>;
 }
