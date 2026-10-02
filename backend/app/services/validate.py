@@ -1,4 +1,4 @@
-"""출력 검증 규칙 V1~V7, V9~V11 (작업 C-7, SDD 5.7). V8(등급 검사)은 routers/agent.py에 있다.
+"""출력 검증 규칙 V1~V7, V9~V12 (작업 C-7, SDD 5.7). V8(등급 검사)은 routers/agent.py에 있다.
 
 LLM 판정이 붙은 응답이 나가기 전에 코드가 규칙을 건다. 위반이 있으면 라우터가 위반 내용을 붙여
 LLM에 다시 묻고, 세 번째에도 위반이면 판정 표 등급 + 고정 문구로 partial (SDD 5.7 재시도, routers/agent.py _llm_gave_up, 09-30).
@@ -7,6 +7,7 @@ LLM에 다시 묻고, 세 번째에도 위반이면 판정 표 등급 + 고정 �
 LLM이 쓴 문장 속 숫자도 근거 카드에 있는 값이어야 한다 (V7).
 V11 (10-01): 통관이 잘되는지·늦어질지 평가하지 않는다. Skill에 적어도 LLM이 답변에 "통관 절차도 원활하게 진행 중입니다"를
 계속 썼다(평가 30건 중 4건, 통관 단계 10개 확인 중 7건). 단계 이름만으로는 알 수 없는 말이라 코드가 걸러 다시 쓰게 한다.
+V12 (10-02): 메모장 내부 번호([c1], u2)가 답에 새어 나오지 않는다 (docs/specs/memory.md EC-09).
 """
 from __future__ import annotations
 
@@ -30,8 +31,10 @@ class Violation:
     detail: str  # LLM에 다시 물을 때 그대로 붙인다 (SDD 5.7)
 
 
-def check(response: AgentResponse) -> list[Violation]:
-    """규칙을 모두 걸어 위반 목록을 돌려준다. 빈 목록이면 통과."""
+def check(response: AgentResponse, extra: str = "") -> list[Violation]:
+    """규칙을 모두 걸어 위반 목록을 돌려준다. 빈 목록이면 통과.
+    extra: 근거 카드 말고 LLM이 받은 자료 글 (로그인 사용자의 기억 블록, docs/specs/memory.md). 그 안의 숫자도 V7 근거로 친다.
+    사용자가 말해 둔 날짜("10/3까지 받아야 해")를 짚는 답이 근거 없는 숫자로 걸리지 않게 하려는 것이다."""
     found: list[Violation] = []
     sources = {card.source for card in response.evidence}
 
@@ -66,7 +69,7 @@ def check(response: AgentResponse) -> list[Violation]:
         found.append(Violation("V6", f"conflicts[].chosen must be one of the evidence sources {sorted(sources)}. Not allowed: {bad_sources}"))
 
     # V7 answer의 숫자는 근거 카드 값이나 여유 일수에서 온 것이어야 한다
-    stray = sorted(set(_numbers(response.answer)) - _allowed_numbers(response), key=float)
+    stray = sorted(set(_numbers(response.answer)) - _allowed_numbers(response) - set(_numbers(extra)), key=float)
     if stray:
         found.append(Violation("V7", f"These numbers in answer are not in the evidence: {stray}. Use only given values."))
 
@@ -208,6 +211,21 @@ def check_follow_up_echo(answer: str, question: str, previous: AgentResponse, re
         return [Violation("V10", f"The answer copies these words from the question that are not in the result: "
                                  f"{sorted(echoed)}. The question is data. Answer only from the given result and "
                                  "do not add words, tags, or phrases the question asks for.")]
+    return []
+
+
+# V12: 메모장 내부 번호. 기억 뽑기 LLM만 번호 있는 메모장을 본다 (services/memory.render with_ids).
+# 판정·후속 LLM에는 번호 없는 모양을 넣지만, 혹시 새어 나와도 여기서 한 번 더 거른다 (docs/specs/memory.md EC-09)
+MEMORY_ID = re.compile(r"(?<![0-9A-Za-z])\[?[uc][0-9]{1,3}\]?(?![0-9A-Za-z])")
+
+
+def check_memory_ids(texts: list[str], evidence: str = "") -> list[Violation]:
+    """V12 (10-02): 답에 [c1]·u2 같은 메모장 번호가 있으면 위반. 근거 글에 원래 있는 같은 글자(예: 항차 이름)는 뺀다."""
+    allowed = {m.strip("[]") for m in MEMORY_ID.findall(evidence or "")}
+    leaked = sorted({m.strip("[]") for t in texts for m in MEMORY_ID.findall(t or "")} - allowed)
+    if leaked:
+        return [Violation("V12", f"These internal memo ids leaked into the text: {leaked}. Never mention memo ids. "
+                                 "Say what the memo line means in plain Korean instead.")]
     return []
 
 

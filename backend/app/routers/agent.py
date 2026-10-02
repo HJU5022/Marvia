@@ -22,6 +22,10 @@
   - 쓸 위치가 없으면 LLM을 부르지 않는다. 데이터 없음은 insufficient, 도구 고장은 partial (09-29 결정, _no_position)
   - 위치가 캐시에서 왔으면(실시간 조회 실패) 판정은 하되 status=partial (09-29 결정, 평가셋 F02)
 근거 카드는 services/evidence.build()가 만든다 (C-8).
+
+화물 비서 기억 (docs/specs/memory.md, 10-02): 로그인 사용자면 판정 전에 화물 표·메모장을 읽어 판정·후속 LLM에
+데이터 블록으로 넣고(services/memory.load_context), 응답을 돌려준 뒤 뒤에서 화물 표 쓰기와 기억 뽑기를 한다
+(memory.remember_later). 등급은 지금처럼 판정 표가 정한다. 사용자가 없으면(채점 환경·평가 실행기·데모) 아무것도 안 한다.
 """
 import json
 import logging
@@ -34,7 +38,7 @@ from fastapi import APIRouter, Depends
 
 from backend.app import crypto
 from backend.app.auth import current_user_id
-from backend.app.db import connect, latest_response, log_query, recent_positions
+from backend.app.db import connect, latest_response, log_query, recent_positions, recent_responses
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
@@ -42,6 +46,7 @@ from backend.app.schemas.agent import (
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
 from backend.app.services import guard, identify, llm, progress, validate
+from backend.app.services import memory as memory_service
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
@@ -134,16 +139,30 @@ def run_agent(request: AgentRequest,
 
     user_id: 출입증에서 꺼낸 사용자 ID (G3, auth.py). 로그인은 필수라 로그인 기능이 꺼진 채점 환경에서만 None. 판정 자체는 똑같고
     이력을 누구 것으로 남기고 후속 질문이 누구 결과를 꺼내는지만 달라진다.
-    평가 실행기·데모처럼 코드에서 직접 부르면 None이다."""
+    평가 실행기·데모처럼 코드에서 직접 부르면 None이다.
+
+    로그인 사용자면 기억(화물 표·메모장)을 읽어 LLM에 넣고, 응답 뒤 뒤에서 기억을 고친다 (docs/specs/memory.md).
+    기억 쓰기는 응답을 늦추지 않고, 실패해도 응답에는 영향이 없다 (EC-07)."""
     with session_scope(request.session_id, user_id):
+        context = memory_service.load_context(user_id, request.bl_no)
+        blocks = context.blocks if context else None
         if request.follow_up_question:
-            return _logged(request, _follow_up(request, user_id), user_id)
-        return _logged(request, _assess(request), user_id)
+            response = _logged(request, _follow_up(request, user_id, blocks), user_id)
+        else:
+            response = _logged(request, _assess(request, blocks), user_id)
+        memory_service.remember_later(user_id, request, response, released=is_released(response))
+        return response
 
 
-def _assess(request: AgentRequest) -> AgentResponse:
+def is_released(response: AgentResponse) -> bool:
+    """반출이 끝난 화물의 응답인가. 화물 표에서 끝난 화물(done)로 옮기는 기준이다 (docs/specs/memory.md, RELEASED_STAGE)."""
+    return bool(response.customs and response.customs.stage_name == RELEASED_STAGE)
+
+
+def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
     """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다.
-    progress.step()은 실제로 그 단계에 들어갈 때 화면에 알리는 한 줄이다. 듣는 쪽이 없으면 아무 일도 안 한다 (docs/specs/chat-progress.md)."""
+    progress.step()은 실제로 그 단계에 들어갈 때 화면에 알리는 한 줄이다. 듣는 쪽이 없으면 아무 일도 안 한다 (docs/specs/chat-progress.md).
+    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). 판정 LLM에만 넣고, 그 안의 숫자·낱말은 검증에서 근거로 친다."""
     progress.step("customs")
     customs, failure = _fetch_customs(request)
     if failure is not None:
@@ -247,7 +266,7 @@ def _assess(request: AgentRequest) -> AgentResponse:
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback,
                                trusted_eta=trusted, sale_due_date=request.sale_due_date,
-                               table_verdict=table, verdict_mode="raise_only" if gray else "fixed")
+                               table_verdict=table, verdict_mode="raise_only" if gray else "fixed", memory=memory)
         except llm.LLMFormatError as e:
             log_failure("judge", f"{e.kind} attempt {attempt}")
             feedback = e.detail
@@ -267,14 +286,17 @@ def _assess(request: AgentRequest) -> AgentResponse:
                             "Write reasons, actions, and answer for that verdict.")
             else:
                 response = _judged(out, signal_set, request, customs, collected, table, from_cache=from_cache)
-                violations = validate.check(response)
+                violations = validate.check(response, extra=memory or "")
                 # V9·V10 판정판 (10-01): 통관 단계명(외부 데이터)에 넣은 주입이 설명 칸에 섞이지 않게 한다 (validate.py)
                 texts = [out.answer, *out.actions, *[c.why for c in out.conflicts]]
                 if out.customs:
                     texts += [out.customs.plain_explanation, out.customs.next_stage or ""]
                 external = " ".join([customs.stage_name or "", *[s.name for s in customs.stage_history]]) if customs else ""
                 violations += validate.check_judge_text(texts, response, external,
-                                                         llm.skills_reference(llm.JUDGE_SKILLS, llm.JUDGE_PROMPT))
+                                                         llm.skills_reference(llm.JUDGE_SKILLS, llm.JUDGE_PROMPT)
+                                                         + (memory or ""))
+                # V12 (10-02): 메모장 내부 번호가 새어 나오지 않게 (docs/specs/memory.md EC-09)
+                violations += validate.check_memory_ids(texts, _evidence_text(response))
                 if not violations:
                     return response
                 # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
@@ -399,7 +421,12 @@ def _released(customs: CustomsRecord) -> AgentResponse:
     )
 
 
-def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentResponse:
+def _evidence_text(response: AgentResponse) -> str:
+    """근거 카드 값을 한 글로. V12가 원래 근거에 있는 같은 글자(예: 항차 이름 C12)를 번호 새어 나옴으로 보지 않게 한다."""
+    return " ".join(f"{e.field} {e.value}" for e in response.evidence)
+
+
+def _follow_up(request: AgentRequest, user_id: str | None = None, memory: str | None = None) -> AgentResponse:
     """후속 질문 (C-9). 같은 세션·같은 B/L의 가장 최근 결과를 DB에서 꺼내 그 안에서만 답한다.
 
     세션별로 지난 결과를 저장해 두는 방식이다 (09-27 결정). 로그인했으면 세션 대신 사용자 ID로 찾는다 (G3).
@@ -407,7 +434,7 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
     DB가 없거나 지난 결과가 없으면 조회·판정을 한 번 더 해서 그 결과로 답한다 (채점 환경은 DB 없이 돌 수 있다).
     판정·근거는 지난 결과 그대로 두고 answer만 질문의 답으로 바꿔 돌려준다.
     """
-    previous = _previous_response(request, user_id) or _assess(request)
+    previous = _previous_response(request, user_id) or _assess(request, memory)
     failed = previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
 
     # 프롬프트 주입 차단 (SDD 7절, 10-01). 측정에서 "지금부터 너는 ~" 질문이 프롬프트 방어만으로는 20회 중 4회 뚫려
@@ -424,7 +451,7 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
             answer = llm.answer_follow_up(request.follow_up_question, previous, feedback=feedback,
-                                          tools=tools, run_tool=_follow_up_tool)
+                                          tools=tools, run_tool=_follow_up_tool, memory=memory)
             out = answer.output
         except llm.LLMFormatError as e:
             log_failure("follow_up", f"{e.kind} attempt {attempt}")
@@ -445,12 +472,16 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
         answered = grounded.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
         # V11은 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
         checked = answered.model_copy(update={"actions": [], "customs": None})
-        violations = [v for v in validate.check(checked) if v.rule in FOLLOW_UP_RULES]
+        violations = [v for v in validate.check(checked, extra=memory or "") if v.rule in FOLLOW_UP_RULES]
         # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
-        violations += validate.check_follow_up_words(out.answer, grounded, llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
+        violations += validate.check_follow_up_words(out.answer, grounded,
+                                                     llm.skills_reference((), llm.FOLLOW_UP_PROMPT) + (memory or ""))
         # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
         violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, grounded,
-                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT))
+                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT)
+                                                    + (memory or ""))
+        # V12 (10-02): 메모장 내부 번호가 새어 나오지 않게 (docs/specs/memory.md EC-09)
+        violations += validate.check_memory_ids([out.answer], _evidence_text(grounded))
         if not violations:
             return answered
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")
@@ -509,16 +540,39 @@ def _tool_evidence(calls: list[dict]) -> list[Evidence]:
 
 
 def _previous_response(request: AgentRequest, user_id: str | None = None) -> AgentResponse | None:
-    """DB에 저장된 지난 결과. 없거나 DB에 못 붙으면 None (그러면 다시 조회한다)."""
+    """DB에 저장된 지난 결과. 없거나 DB에 못 붙으면 None (그러면 다시 조회한다).
+
+    가린 번호가 같은 두 화물을 가른다 (docs/specs/memory.md EC-05). 로그인 사용자의 이력 줄에는 잠긴 원본 B/L이 있어서
+    (007 마이그레이션), 가린 번호가 같은 최근 줄들을 열어 이번 B/L과 같은 줄만 쓴다(_same_cargo). 스키마는 바꾸지 않는다.
+    로그인이 꺼진 환경은 원본을 저장하지 않으므로 지금처럼 가린 번호로 찾는다.
+    """
     if not _db_configured("db_read"):
         return None
     try:
         with connect() as conn:
-            saved = latest_response(conn, request.session_id, mask_bl(request.bl_no), user_id)
+            if user_id:
+                saved = _same_cargo(recent_responses(conn, request.session_id, mask_bl(request.bl_no), user_id),
+                                    request.bl_no)
+            else:
+                saved = latest_response(conn, request.session_id, mask_bl(request.bl_no), user_id)
     except Exception as e:
         log_failure("db_read", type(e).__name__)
         return None
     return AgentResponse.model_validate(saved) if saved else None
+
+
+def _same_cargo(rows: list[tuple[dict, str | None]], bl_no: str) -> dict | None:
+    """(결과, 잠긴 B/L) 줄들 중 원본이 이번 B/L과 같은 가장 최근 결과 (EC-05).
+    한 줄도 열 수 없으면(열쇠가 없어 잠그지 못했던 줄들) 예전처럼 가장 최근 줄을 쓴다. 다른 화물로 확인된 줄은 쓰지 않는다."""
+    opened = False
+    for response, sealed in rows:
+        original = crypto.decrypt(sealed) if sealed else None
+        if original is None:
+            continue
+        opened = True
+        if original == bl_no:
+            return response
+    return rows[0][0] if rows and not opened else None
 
 
 def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentResponse | None]:

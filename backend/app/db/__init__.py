@@ -104,6 +104,22 @@ def latest_response(conn, session_id: str, bl_masked: str, user_id: str | None =
     return row[0] if row else None
 
 
+def recent_responses(conn, session_id: str, bl_masked: str, user_id: str | None = None,
+                     limit: int = 20) -> list[tuple[dict, str | None]]:
+    """같은 가린 번호의 최근 결과와 잠긴 B/L 원본을 최신순으로 (결과, bl_encrypted) 목록으로 읽는다.
+    가린 번호가 같은 두 화물을 가를 때 쓴다 (docs/specs/memory.md EC-05, routers/agent._previous_response)."""
+    where, owner = _owner(session_id, user_id)
+    rows = conn.execute(
+        f"""
+        SELECT response, bl_encrypted FROM query_log
+        WHERE {where} AND bl_masked = %s AND response IS NOT NULL
+        ORDER BY created_at DESC LIMIT %s
+        """,
+        [owner, bl_masked, limit],
+    ).fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+
 def delete_user_queries(conn, user_id: str) -> int:
     """로그인 사용자의 조회 기록을 전부 지우고 지운 줄 수를 돌려준다 (삭제 2단계, 개인정보보호법 제36조).
 

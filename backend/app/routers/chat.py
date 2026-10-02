@@ -3,6 +3,8 @@
 창구만 한다: 로그인 확인 → services.chat.handle → 응답. 화물 조회·후속 질문은 /api/agent와 같은 run_agent를 부르므로
 판정 규칙·조회 이력·트레이스가 그대로다. 기존 /api/agent는 평가셋·데모·정해진 칸 입력용으로 남긴다.
 POST /api/chat/stream은 같은 일을 하면서 실제 처리 단계를 SSE로 흘려 준다 (docs/specs/chat-progress.md).
+두 창구 모두 로그인 사용자를 services.chat.handle에 넘긴다. 화물 비서 기억(docs/specs/memory.md)의 지난 조회 한 줄과
+기억 쓰기가 두 창구에서 똑같이 돈다. 기억 쓰기는 run_agent가 뒤 작업으로 돌려 응답·스트림을 늦추지 않는다.
 """
 from __future__ import annotations
 
@@ -93,7 +95,7 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
     context = _context(body)
     with session_scope(body.session_id, user_id):
         try:
-            result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id))
+            result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id), user_id)
         except svc.ChatError as e:
             raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
     return ChatResponse(**result.__dict__)
@@ -122,7 +124,8 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
         try:
             with progress.listening(lambda stage: events.put(("progress", {"stage": stage}))):
                 with session_scope(body.session_id, user_id):
-                    result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id))
+                    result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id),
+                                        user_id)
             events.put(("result", ChatResponse(**result.__dict__).model_dump(mode="json")))
         except svc.ChatError:
             events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))

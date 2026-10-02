@@ -479,6 +479,27 @@ def load_context(user_id: str | None, bl_no: str | None = None) -> MemoryContext
     return MemoryContext(blocks=compose_blocks(rows, items, every), previous_row=previous, full=full)
 
 
+def lookup_notes(user_id: str | None, bl_no: str) -> list[str]:
+    """채팅 화물 조회 답에 붙일 코드 문장. LLM을 부르지 않는다.
+    - 지난 조회 한 줄 (10-02 결정 4). 조회 전에 읽어야 덮기 전 값이다. 부르는 쪽(services/chat._cargo)이 run_agent 앞에서 부른다
+    - 메모장 가득 참 알림 (Spec EC-06). 저장하지 못했을 때만 full_at이 있다
+    사용자·DB·열쇠가 없거나 읽기가 실패하면 빈 목록."""
+    if not user_id or not _db_ready():
+        return []
+    key = cargo.cargo_key(bl_no)
+    try:
+        with connect() as conn:
+            row = cargo.get_row(conn, user_id, key) if key else None
+            _, _, _, full = load(conn, user_id)
+    except Exception as e:  # noqa: BLE001
+        log_failure("memory_read", type(e).__name__)
+        return []
+    notes = [line for line in (cargo.previous_line(row),) if line]
+    if full:
+        notes.append(FULL_NOTICE)
+    return notes
+
+
 def view(conn, user_id: str) -> dict:
     """GET /api/memory 재료: 번호 없는 마크다운, 항목 목록(지우기용 번호 포함), 화물 요약(원본 B/L 없음)."""
     every = _cargo_rows(conn, user_id)
