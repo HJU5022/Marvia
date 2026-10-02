@@ -345,7 +345,8 @@ dd{font-size:12px}
 .about-link:hover,.about-link.active{color:var(--blue)}
 .sidebar-meta{border-top:1px solid var(--border);color:var(--muted);font-size:10px;padding:16px 6px 0}
 .online-dot{background:var(--blue)}
-.workspace-bar{height:65px;padding:0 38px;background:#ffffffa6;border-bottom:1px solid #e4edf7;font-size:12px;backdrop-filter:blur(8px)}
+/* backdrop-filter가 상단바를 독립된 층으로 만든다. 계정 메뉴(z-index 20)가 그 층 안에 갇혀 본문 버튼 아래로 깔리지 않게 층 자체를 본문 위에 둔다 (10-02 로컬 확인) */
+.workspace-bar{position:relative;z-index:40;height:65px;padding:0 38px;background:#ffffffa6;border-bottom:1px solid #e4edf7;font-size:12px;backdrop-filter:blur(8px)}
 .breadcrumb{color:#55718a}
 .replay-chip{border:0;border-radius:7px;background:var(--soft);color:#23598b;font-size:11px;font-weight:650;padding:4px 9px}
 .replay-chip span{background:var(--blue)}
