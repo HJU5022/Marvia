@@ -19,7 +19,7 @@ import {EvidenceCards} from '@/components/EvidenceCards';
 import {CandidatePicker} from '@/components/CandidatePicker';
 import {FailureBanner} from '@/components/FailureBanner';
 import {isLive,selectFixture} from '@/lib/api';
-import {dateTime,maskBl,statusLabels} from '@/lib/format';
+import {dateTime,maskBl,ruleLabels,statusLabels} from '@/lib/format';
 import type {AgentRequest} from '@/lib/types';
 
 export default function CargoPage(){
@@ -57,7 +57,7 @@ export default function CargoPage(){
     :<>{r.verdict&&<VerdictCard response={r} request={request}/>}
      <div className="result-grid"><MapPanel response={r}/><EtaCompare response={r}/></div>
      <div className="result-subgrid"><CustomsTimeline response={r}/><VesselCard response={r}/></div></>}
-   {r.reasons.length>0&&!failedLike&&<section className="signal-summary" aria-label="판정 신호"><span>확인한 신호</span>{r.reasons.map((s,i)=><details key={i} className={s.triggered?'triggered':''}><summary><Check size={13}/>{s.rule}</summary><p>{s.value} · {s.triggered?'감지됨':'감지되지 않음'}</p></details>)}</section>}
+   {r.reasons.length>0&&!failedLike&&<section className="signal-summary" aria-label="판정 신호"><span>확인한 신호</span>{r.reasons.map((s,i)=><details key={i} className={s.triggered?'triggered':''}><summary><Check size={13}/>{ruleLabels[s.rule]??'기타 신호'}</summary><p>{s.value} · {s.triggered?'감지됨':'감지되지 않음'}</p></details>)}</section>}
    {r.evidence.length>0&&<div>{mofOnly&&<div className="filter-notice">해수부 근거만 표시 중 · 새로운 판정이 아닙니다.<button onClick={()=>setMofOnly(false)}><FilterX size={14}/>전체 보기</button></div>}<EvidenceCards evidence={mofOnly?r.evidence.filter(e=>e.source==='mof'):r.evidence} traceId={r.trace_id}/></div>}
   </section>}
   <div className="page-end"><span>확실하지 않을 때는, 추측 대신 한 번 더 묻습니다.</span><a href="/about">Marvia의 판단 방식 <ArrowUpRight size={14}/></a></div>

@@ -14,8 +14,8 @@ import type {DocumentCheck, DocumentResponse} from '@/lib/types';
 
 const FIELD_LABELS: [keyof DocumentResponse['fields'], string, string][] = [
   ['bl_no', 'B/L 번호', '조회에 사용'],
-  ['voyage', '항차', '되묻기 때 사용'],
-  ['eta', '입항 예정일', '되묻기 때 사용'],
+  ['voyage', '항차', '배 확인이 필요할 때 사용'],
+  ['eta', '입항 예정일', '배 확인이 필요할 때 사용'],
   ['vessel', '선명', '확인용'],
   ['pol', '선적항', '확인용'],
   ['pod', '양하항', '확인용'],
@@ -24,9 +24,9 @@ const FIELD_LABELS: [keyof DocumentResponse['fields'], string, string][] = [
 /** 검사 이름은 services/doc_ocr.check_fields와 같다. */
 const CHECK_LABELS: Record<DocumentCheck, string> = {
   missing: '읽지 못함',
-  not_in_text: '서류 글자에 없는 값',
+  not_in_text: '서류에서 찾지 못한 값',
   format: '형식 확인',
-  ambiguous: '같은 칸이 두 번',
+  ambiguous: '두 군데서 다른 값이 읽힘',
 };
 const EDITABLE = new Set(['bl_no', 'voyage', 'eta']);
 
@@ -96,7 +96,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
         {result.needs_review ? <TriangleAlert size={18}/> : <Check size={18}/>}
         <div><strong>{result.needs_review ? '확인이 필요한 칸이 있어요.' : '모든 칸이 검사를 통과했어요.'}</strong>
           <span>{result.status === 'partial' ? 'B/L 번호만 읽었습니다. 나머지 칸은 직접 확인해 주세요. ' : ''}
-            <FileImage size={12}/> {fileName} · 글자 {result.ocr.lines}줄{result.ocr.rotation ? ` · ${result.ocr.rotation}° 돌려 읽음` : ''}</span></div>
+            <FileImage size={12}/> {fileName}</span></div>
         {!isLive && <span className="subtle-badge">가공 예시</span>}
       </div>
       <div className="document-fields">
@@ -115,7 +115,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
           </div>;
         })}
       </div>
-      <div className="document-field mrn-field"><label htmlFor={`${inputId}-mrn`}>MRN<small>세관 미등록 때 배 찾기</small></label>
+      <div className="document-field mrn-field"><label htmlFor={`${inputId}-mrn`}>화물관리번호(MRN)<small>세관 조회가 안 될 때 해수부 입항 신고로 배 찾기</small></label>
         <input id={`${inputId}-mrn`} value={values.mrn ?? ''} spellCheck={false} placeholder="예: 26ABCD1234I" aria-invalid={!mrnValid}
           onChange={e => setValues(v => ({...v, mrn: e.target.value}))}/>
         <span className="document-checks">{values.mrn ? (mrnValid ? <span className="check-ok"><Check size={12}/>형식 맞음</span> : <span className="check-chip">형식 확인</span>) : <span className="check-chip">읽지 못함</span>}</span></div>

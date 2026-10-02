@@ -738,7 +738,7 @@ def test_unknown_bl_is_insufficient_not_failed(fake):
         body = client.post("/api/agent", json=_request()).json()
 
     assert body["status"] == "insufficient" and body["missing_inputs"] == ["bl_type"]
-    assert "B/L 번호와 M/H 구분" in body["answer"]
+    assert "B/L 번호와 마스터·하우스 구분" in body["answer"]
 
 
 def test_resolved_mmsi_skips_candidate_search(fake):

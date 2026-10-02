@@ -7,10 +7,12 @@ import {useEffect, useState} from 'react';
 import {Anchor, LoaderCircle, Navigation, TriangleAlert} from 'lucide-react';
 import {VesselMap} from './VesselMap';
 import {getVesselDetail} from '@/lib/api';
-import {dateTime, shown} from '@/lib/format';
+import {countryLabel, dateTime, portLabel, shown} from '@/lib/format';
 import type {VesselDetailResponse, VesselItem} from '@/lib/types';
 
-const SOURCE_LABEL: Record<string, string> = {mof: '해양수산부', shipfinder: 'ShipFinder(AIS)', searoute: '해상 거리 계산'};
+const SOURCE_LABEL: Record<string, string> = {mof: '해수부 입항 일정', shipfinder: '선박 위치', searoute: '남은 거리 계산'};
+// 출처별 실패 안내. 서버 message에는 엔드포인트·키 이름·예외명이 섞여 있어 화면에 내지 않고 고정 문구만 쓴다 (10-02 화면 용어 점검)
+const SOURCE_FAIL: Record<string, string> = {mof: '지금 받지 못했어요', shipfinder: '지금 받지 못했어요', searoute: '계산하지 못했어요'};
 
 
 export function VesselDetail({vessel}: {vessel: VesselItem}) {
@@ -26,20 +28,20 @@ export function VesselDetail({vessel}: {vessel: VesselItem}) {
   }, [vessel.call_sign, vessel.ship_name]);
 
   if (error) return <div className="vessel-detail"><p role="alert" className="request-error">{error}</p></div>;
-  if (!data) return <div className="vessel-detail"><div className="empty-inline"><LoaderCircle size={16} className="spin"/>해수부 일정과 AIS 위치를 불러오는 중</div></div>;
+  if (!data) return <div className="vessel-detail"><div className="empty-inline"><LoaderCircle size={16} className="spin"/>해수부 일정과 선박 위치를 불러오는 중</div></div>;
 
   const p = data.position, s = data.schedule, d = data.distance, v = data.vessel;
   return <div className="vessel-detail">
     <div className="vessel-detail-grid">
-      <div className="vessel-detail-map">{p ? <VesselMap name={vessel.ship_name} lat={p.lat} lng={p.lng} sog={p.sog} cog={p.cog} freshness={p.freshness} lastTime={p.last_time} route={p.route ?? []} distanceNm={d?.distance_nm ?? null}/> : <div className="empty-state"><Navigation/><h2>AIS 위치를 받지 못했습니다.</h2></div>}</div>
+      <div className="vessel-detail-map">{p ? <VesselMap name={vessel.ship_name} lat={p.lat} lng={p.lng} sog={p.sog} cog={p.cog} freshness={p.freshness} lastTime={p.last_time} route={p.route ?? []} distanceNm={d?.distance_nm ?? null}/> : <div className="empty-state"><Navigation/><h2>선박 위치를 받지 못했습니다.</h2></div>}</div>
       <div className="vessel-detail-info">
-        <section><h4><Navigation size={14}/>실시간 AIS {p && <span className={`fresh-chip ${p.freshness}`}>{p.freshness === 'fresh' ? '수신 정상' : p.freshness === 'stale' ? '오래된 위치' : '신선도 미확인'}</span>}</h4>
+        <section><h4><Navigation size={14}/>선박 위치(실시간) {p && <span className={`fresh-chip ${p.freshness}`}>{p.freshness === 'fresh' ? '수신 정상' : p.freshness === 'stale' ? '오래된 위치' : '수신 시각 확인 안 됨'}</span>}</h4>
           <dl>{([
-            ['MMSI · 국적', v ? `${v.mmsi} · ${shown(v.flag)}` : null],
+            ['선박 식별 번호 · 국적', v ? `${v.mmsi} · ${countryLabel(v.flag)}` : null],
             ['좌표', p ? `${p.lat.toFixed(3)} N / ${p.lng.toFixed(3)} E` : null],
-            ['속력 · 침로', p ? `${shown(p.sog)} kn · ${shown(p.cog)}°` : null],
-            ['AIS 목적지', p?.dest ?? null],
-            ['AIS 도착 예정', p?.ais_eta ? dateTime(p.ais_eta) : null],
+            ['속력 · 진행 방향', p ? `${shown(p.sog)}노트 · ${shown(p.cog)}°` : null],
+            ['선박이 밝힌 목적지', p?.dest ? portLabel(p.dest) : null],
+            ['선박이 보낸 도착 예정', p?.ais_eta ? dateTime(p.ais_eta) : null],
             ['마지막 수신', p?.last_time ? dateTime(p.last_time) : null],
           ] as const).map(([k, x]) => <div key={k}><dt>{k}</dt><dd className="mono">{shown(x)}</dd></div>)}</dl>
         </section>
@@ -49,13 +51,13 @@ export function VesselDetail({vessel}: {vessel: VesselItem}) {
             ['입항 실적', s?.actual_arrival ? dateTime(s.actual_arrival) : null],
             ['접안 시설', s?.facility ?? vessel.facility],
             ['부산까지', d ? `${d.distance_nm} 해리${d.calc_hours_at_sog != null ? ` · 지금 속력이면 약 ${Math.round(d.calc_hours_at_sog)}시간` : ''}` : null],
-            ['계산 도착', d?.calc_eta ? dateTime(d.calc_eta) : null],
+            ['지금 속력 기준 예상 도착', d?.calc_eta ? dateTime(d.calc_eta) : null],
           ] as const).map(([k, x]) => <div key={k}><dt>{k}</dt><dd className="mono">{shown(x)}</dd></div>)}</dl>
           {s && s.control_events.length > 0 && <ol className="control-events">{s.control_events.map((e, i) =>
             <li key={i}><strong>{e.kind}</strong><span className="mono">{dateTime(e.at)}</span><small>{shown(e.facility)}</small></li>)}</ol>}
         </section>
-        {data.errors.length > 0 && <div className="info-note"><TriangleAlert size={15}/><span>{data.errors.map(e => `${SOURCE_LABEL[e.source] ?? e.source}: ${e.message ?? e.code}`).join(' · ')}</span></div>}
-        <p className="help-text">계산 도착은 지금 속력을 끝까지 유지한다는 가정입니다. 판정이 아니며, 내 화물은 B/L 번호로 물어보세요.</p>
+        {data.errors.length > 0 && <div className="info-note"><TriangleAlert size={15}/><span>{data.errors.map(e => `${SOURCE_LABEL[e.source] ?? '일부 정보'}: ${SOURCE_FAIL[e.source] ?? '지금 받지 못했어요'}`).join(' · ')}</span></div>}
+        <p className="help-text">지금 속력 기준 예상 도착은 지금 속력을 끝까지 유지한다는 가정입니다. 판정이 아니며, 내 화물은 B/L 번호로 물어보세요.</p>
       </div>
     </div>
   </div>;

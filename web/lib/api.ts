@@ -75,13 +75,18 @@ export function currentSessionId(): string {
 /* ---------- 실제 모드 ---------- */
 
 /** FastAPI 오류 본문({detail})을 사람이 읽을 문장으로 바꾼다. 상태 코드는 SDD 8절 표. */
+// 422 응답의 칸 이름(C2 요청 필드)을 화면 말로. 모르는 칸은 "입력한 값"으로 쓴다 (10-02 화면 용어 점검)
+const FIELD_NAMES: Record<string, string> = {
+  bl_no: 'B/L 번호', sale_due_date: '판매 예정일', bl_type: 'B/L 구분', voyage_no: '항차 번호',
+  forwarder_eta: '포워더 안내 입항 예정일', follow_up_question: '질문', message: '입력한 문장', resolved_mmsi: '선택한 선박',
+};
 async function errorMessage(res: Response): Promise<string> {
   let detail = '';
   try {
     const body = await res.json();
     if (typeof body?.detail === 'string') detail = body.detail;
     // 422는 detail이 [{loc, msg}] 목록이다. 첫 칸 이름만 보여 준다
-    else if (Array.isArray(body?.detail) && body.detail[0]) detail = `입력값을 확인해 주세요 (${String(body.detail[0].loc?.at(-1) ?? '')}).`;
+    else if (Array.isArray(body?.detail) && body.detail[0]) detail = `${FIELD_NAMES[String(body.detail[0].loc?.at(-1) ?? '')] ?? '입력한 값'}을(를) 확인해 주세요.`;
   } catch { /* 본문이 JSON이 아니면 상태 코드로만 안내한다 */ }
   if (res.status === 401) return '로그인이 필요합니다. 로그인한 뒤 다시 시도해 주세요.';
   if (res.status === 413 || detail === 'too_large') return '사진이 너무 큽니다. 10MB 이하로 올려 주세요.';
@@ -92,7 +97,7 @@ async function errorMessage(res: Response): Promise<string> {
   if (res.status === 409) return detail || '이미 처리된 요청입니다.';
   if (res.status === 429) return '요청이 많습니다. 잠시 뒤 다시 시도해 주세요.';
   if (res.status === 400 || res.status === 422) return detail || '입력값을 확인해 주세요.';
-  return detail || `서버가 요청을 처리하지 못했습니다 (HTTP ${res.status}). 잠시 뒤 다시 시도해 주세요.`;
+  return detail || '요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
 }
 
 /** 타임아웃을 건 fetch. 연결 자체가 안 되면 주소를 알려 줘서 백엔드가 떠 있는지 확인하게 한다. */
@@ -129,7 +134,7 @@ async function call(path: string, init: RequestInit, timeoutMs: number): Promise
     } catch (e) {
       if (!(e instanceof TypeError)) throw e;
       if (attempt >= RETRY_DELAYS_MS.length) {
-        throw new Error('서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요. 계속되면 백엔드가 켜져 있는지 확인해 주세요.');
+        throw new Error('서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 잠시 뒤 다시 시도해 주세요.');
       }
       await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
     }
