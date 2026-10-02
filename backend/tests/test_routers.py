@@ -367,27 +367,54 @@ def test_multiple_candidates_ask_back(fake):
 
 @pytest.mark.parametrize("confidence", ["medium", "low"])
 def test_multiple_candidates_not_sure_ask_back(fake, confidence):
-    """LLM이 골라도 high가 아니면 확정하지 않는다 (SDD 5.5)."""
+    """되묻기에 항차를 답해 LLM이 골라도 high가 아니면 확정하지 않는다 (SDD 5.5)."""
     fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
          pick={"choice": 440999002, "confidence": confidence, "reasons_per_candidate": []})
 
     with TestClient(app) as client:
-        body = client.post("/api/agent", json=_request()).json()
+        body = client.post("/api/agent", json=_request(voyage_no="0012W")).json()
 
     assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
 
 
 def test_multiple_candidates_llm_sure_is_confirmed(fake):
-    """LLM이 high로 고르면 그 배로 확정하고 판정까지 간다 (C-5)."""
+    """되묻기에 항차를 답했고 LLM이 high로 고르면 그 배로 확정하고 판정까지 간다 (C-5)."""
     fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
          pick={"choice": 440999002, "confidence": "high", "reasons_per_candidate": []},
          position={**POSITION, "mmsi": 440999002}, judge=JUDGED)
 
     with TestClient(app) as client:
-        body = client.post("/api/agent", json=_request()).json()
+        body = client.post("/api/agent", json=_request(voyage_no="0012W")).json()
 
     assert body["vessel_match"] == "confirmed" and body["verdict"] == "watch"
     assert len(body["vessel_candidates"]) == 2  # 무엇 중에서 골랐는지 화면에 남긴다
+
+
+def test_multiple_candidates_without_user_evidence_skip_llm(fake, monkeypatch):
+    """동명 선박인데 항차·포워더 입항 예정일이 없으면 LLM이 high로 고를 수 있어도 부르지 않고 되묻는다 (10-01, 평가 B01·B12)."""
+    fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
+         position={**POSITION, "mmsi": 440999002}, judge=JUDGED)
+    calls = []
+    monkeypatch.setattr(agent_router.llm, "pick_vessel", lambda *a, **k: calls.append(1))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request()).json()
+
+    assert calls == []
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain" and body["verdict"] is None
+    assert set(body["missing_inputs"]) == {"voyage_no", "forwarder_eta"}
+
+
+def test_multiple_candidates_forwarder_eta_lets_llm_pick(fake):
+    """포워더 입항 예정일만 답해도 근거가 생겨 LLM이 고른다."""
+    fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
+         pick={"choice": 440999002, "confidence": "high", "reasons_per_candidate": []},
+         position={**POSITION, "mmsi": 440999002}, judge=JUDGED)
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(forwarder_eta="2026-10-03")).json()
+
+    assert body["vessel_match"] == "confirmed"
 
 
 def test_no_candidate_stops_before_judging(fake):
@@ -683,7 +710,7 @@ def test_llm_pick_outside_candidates_is_not_confirmed(fake):
          pick={"choice": 123456789, "confidence": "high", "reasons_per_candidate": []})
 
     with TestClient(app) as client:
-        body = client.post("/api/agent", json=_request()).json()
+        body = client.post("/api/agent", json=_request(voyage_no="0012W")).json()
 
     assert body["vessel_match"] == "uncertain" and body["status"] == "insufficient"
 

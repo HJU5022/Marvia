@@ -48,6 +48,11 @@ FIELD_CANDIDATES = {
     "stage_code": ("prgsStCd",),  # 진행상태코드. 짝은 prgsStts(화물 진행상태)라 stage_name과 뜻이 다를 수 있다
     "shed_name": ("shedNm",),  # 상단엔 없다. .// 검색이 최신 이력 줄(맨 위)의 값을 찾는다
     "discharge_port": ("dsprCd",),  # 양륙항 코드. 연계가이드 v4.1, 09-28 실제 부산 화물 1건은 KRPUS
+    # 어디서 어디로 (10-01, 실제 응답 상단에서 확인). 화물 카드에 "Qingdao(CN) → 부산항"으로 보인다
+    "discharge_port_name": ("dsprNm",),
+    "loading_port": ("ldprCd",),
+    "loading_port_name": ("ldprNm",),
+    "loading_country": ("lodCntyCd",),
 }
 MRN_LENGTH = 11  # 화물관리번호 앞 MRN 길이 (실측 19자리 중 앞 11자리, 입항 MRN은 끝이 I)
 STAGE_ITEM_TAG = "cargCsclPrgsInfoDtlQryVo"  # 이력 1줄
@@ -174,8 +179,13 @@ class UnipassClient:
             stage_name=stages[-1].name if stages else _first(root, FIELD_CANDIDATES["stage_name"]),
             shed_name=_first(root, FIELD_CANDIDATES["shed_name"]),
             discharge_port=_first(root, FIELD_CANDIDATES["discharge_port"]),
+            discharge_port_name=_first(root, FIELD_CANDIDATES["discharge_port_name"]),
+            loading_port=_first(root, FIELD_CANDIDATES["loading_port"]),
+            loading_port_name=_first(root, FIELD_CANDIDATES["loading_port_name"]),
+            loading_country=_first(root, FIELD_CANDIDATES["loading_country"]),
             mrn=_mrn(_first(root, ("cargMtNo",))),
             stage_history=stages,
             bl_masked=mask_bl(bl_no),
             fetched_at=datetime.now(timezone.utc),
         )
+

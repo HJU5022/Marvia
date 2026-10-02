@@ -1,0 +1,40 @@
+# 원본과 계약 차이 / 구현 판단
+
+기준일: 2026-09-28. 원본 프로젝트와 위키는 읽기만 했습니다. 이 문서는 인계용이며 원본 문서를 변경하지 않습니다.
+
+## 백엔드 코드가 기준인 항목
+
+| 위치 | 목업·문서 | 실제 코드 / 구현 |
+| --- | --- | --- |
+| PRD 7절·SDD 5.13 화면 설명 | 일부 status만 설명 | `ok / partial / insufficient / failed / unsupported` 모두 분기. status와 verdict를 별개로 처리 |
+| 목업 README·선박 카드 | position.lon, navstat | `lng`, `navistat` 사용 |
+| 목업 README·ETA | sources[], adopted, priority_note | 실제 `ais_eta / mof_eta / calc_eta / trusted_eta / distance_nm`. 채택 사유는 `conflicts[].why`가 있을 때만 표시 |
+| 목업 통관 필드 | customs.stage | 실제 `stage_name`, `stage_code`, `plain_explanation`, `next_stage`, `needs_broker`, `history` |
+| 목업 판정 주체 | rule + llm | `decided_by`는 `rule / llm / null`. 합성 enum을 만들지 않음 |
+| 목업 실패 | partial이면 watch, 캐시·재시도·로그 | 라우터는 partial에 null verdict를 반환할 수 있음. 재시도 횟수·이벤트 로그 필드 없음. 임의로 만들지 않음 |
+| 실패 화면 버튼 | 해수부 기록만으로 판정 보기 | 요청에 이런 모드 필드가 없음. **해수부 근거만 보기**라는 로컬 필터로 구현. 재판정이라고 표시하지 않음 |
+| 목업 설정 | 저장 버튼, 모델 변경, 카카오 연결 | SDD 5.13은 읽기 전용. 설정 API도 없음. 확인된 규칙만 읽기 전용 표시, 알림은 미연결 |
+| 목업 조회 이력 | 배열, 선박·MMSI·여유일·재시도·링크·응답 재현 | 실제 `{items, available}`. HistoryItem에는 위 상세 필드가 없음. 실제 필드만 표에 표시 |
+| E11 | 행에서 과거 판정 열기 | GET /api/history는 전체 응답을 안 돌려줌. fixture trace/request ID에 대응하는 **별도 로컬 스냅샷**을 재생. 실제 백엔드로 교체할 때 상세 endpoint 필요. 새 POST를 과거 결과라고 위장하지 않음 |
+| README의 미구현 설명 | LLM 판정·REPLAY_MODE 미구현 | 읽은 라우터에는 판정·후속 질문·로그 코드가 존재함. 문서 현행화 안 함 |
+| E1 / E10 | Vercel 배포 URL | 이번 요청은 ZIP 인계 범위. 외부 배포 없음 |
+
+## 모르는 값과 빈 값
+
+- `AgentResponse.vessel`은 스키마에 있지만 읽은 `routers/agent.py`에서는 값 조립이 보이지 않습니다. schema-compatible 가공 fixture는 이 카드 시연을 위해 VesselInfo를 채운 경우도 포함합니다. 실제 연동 시 null을 정상 처리하며 확정된 단일 후보가 있으면 후보의 확인된 식별자만 표시합니다.
+- IMO·호출부호·항차·장치장을 추측하지 않아 해당 예시 필드는 null입니다. 후보에도 확인하지 못한 IMO는 null입니다. 통관 이력의 코드가 없으면 빈 문자열입니다.
+- `position`에는 AIS 목적지 필드가 없습니다. 목적지는 후보의 `dest`에 있을 때만 표시합니다. `freshness` unknown은 정상 수신으로 표현하지 않습니다.
+- 트레이스 ID는 제공하지만 실제 Langfuse 프로젝트·URL은 모릅니다. ID만 표시하고 동작하지 않는 링크를 만들지 않았습니다.
+- `evals/results/*.json`, 평가 실행기 출력·완료된 EVAL_REPORT 형식을 확인할 수 없었습니다. 따라서 평가지표 fixture는 **프론트 표시용 계약**이며 실제 백엔드 응답 계약이라고 주장하지 않습니다. 점수, 게이트 통과 여부, 평가셋 실측 개수, 갱신일은 null, 실험 이력은 빈 배열입니다. 테스트 조건은 PRD 8절에서 확인한 값만 표시합니다.
+- 모델명, judge 모델, 프롬프트 버전, 토큰 상한, 비용 상한, 외부 서비스 접속 상태는 이번 읽기 범위에서 확정하지 않았습니다. null 또는 미연결로 표시합니다. 서버 환경변수·API 키는 읽지 않았습니다.
+
+## fixture 데모의 경계
+
+- 모든 B/L·선박·좌표·시각은 가공값입니다. `990…` MMSI는 시연용이며 실제 선박과 매칭하지 않습니다. API·LLM 호출 및 서버 연결 코드는 없습니다.
+- 고정된 예시 B/L은 **그 예시에 저장된 판매 예정일과 M/H 구분**으로만 조회합니다. 날짜·구분을 바꿔도 가공 판정을 재계산하지 않습니다. 다른 조건을 넣으면 안내 오류가 나며, 화면에는 이전 결과임을 표시합니다.
+- 실제 백엔드를 붙일 때는 이 데모 조건 검사를 포함해 `getAgentResponse` 함수 본문을 교체합니다. B/L 형식 검증은 TopBar에 별도로 유지됩니다.
+- 되묻기는 첫 후보 선택, 또는 후보를 선택하지 않고 항차·ETA 입력 시 저장된 정상 결과로 이어지는 시뮬레이션입니다. 두 번째 후보는 확정되지 않습니다. 실제 식별 알고리즘이 아닙니다.
+- 후속 질문은 session/B/L과 질문을 함수에 전달하지만 답변 생성은 하지 않습니다. 저장된 답변을 재생한다는 문구와 반환 근거를 함께 표시합니다.
+- 진행 표시의 식별→위치→판정은 데모 타이머입니다. 실제 진행 이벤트는 현재 REST 응답 계약에 없습니다.
+- 지도는 Leaflet + 번들 Natural Earth 지형입니다. 부산항 좌표는 읽은 rules.md의 `busan_ref` 값을 demo fixture에 저장했습니다. 점선은 목적항 방향 안내이며 실측 항적·항로 예측이 아닙니다. 외부 타일 서버를 호출하지 않습니다.
+- 설정 규칙 수치는 `skills/ais-reliability/rules.md`의 읽기 전용 스냅샷입니다. 화면에서 수정하거나 저장하지 않습니다.

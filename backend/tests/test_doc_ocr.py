@@ -117,3 +117,15 @@ def test_label_word_inside_a_sentence_is_not_counted():
     """안내문 문장 속 "입항 예정일"은 이름표로 세지 않는다. 정상 서류가 매번 확인 필요가 되지 않게."""
     lines = ["입항 예정일 (ETA)", "2026-10-02", "※ 입항 예정일은 선사 사정에 따라 바뀔 수 있습니다.", *LINES]
     assert "ambiguous" not in doc_ocr.check_fields(_fields(), lines)["eta"]
+
+
+def test_take_bl_reads_ocr_confused_label_and_dotted_value():
+    """10-01 실제 팩스 사진: "H.B/L No."를 "H.B/1.N1."로, 번호의 L을 "I."로 읽었다. 가공 번호로 같은 모양을 재현"""
+    assert doc_ocr.take_bl(["Consignee", "H.B/1.N1.", ":MRVI.A2026090001", "TEL"]) == "MRVIA2026090001"
+    assert doc_ocr.take_bl(["B1 TOWER", "MRVA2026090001"]) is None  # 빗금 없는 B1은 이름표가 아니다
+
+
+def test_mask_bl_hides_dotted_ocr_form():
+    """점이 낀 원문 줄도 가린다. 안 그러면 B/L 원문이 LLM으로 샌다 (CLAUDE.md)."""
+    text = doc_ocr.mask_bl(["H.B/1.N1.", ":MRVI.A2026090001", "Vessel & Voy: SEA STAR / 0925W"], "MRVIA2026090001")
+    assert "MRVI" not in text and "SEA STAR" in text

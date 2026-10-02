@@ -68,5 +68,6 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
         fields=fields,
         ocr=OcrInfo(lines=len(ocr.lines), rotation=ocr.rotation, runs=ocr.runs, ocr_ms=ocr.ocr_ms),
         trace_id=current_request_id(),
+        mrn=doc_ocr.take_mrn(ocr.lines),  # 세관에 아직 없는 화물의 대체 조회용 (mrn-fallback)
     )
 

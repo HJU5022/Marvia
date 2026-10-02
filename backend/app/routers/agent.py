@@ -136,6 +136,13 @@ def _assess(request: AgentRequest) -> AgentResponse:
     """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다."""
     customs, failure = _fetch_customs(request)
     if failure is not None:
+        # 세관에 아직 없는 B/L이고 MRN이 있으면 해수부 입항 신고로 배 상태까지는 보여 준다 (docs/specs/mrn-fallback.md).
+        # 세관 장애(failed)는 대체하지 않는다 (EC-04)
+        if failure.status == "insufficient" and request.mrn:
+            from backend.app.services import mrn_fallback  # 이 경우에만 불러온다
+            alternative = mrn_fallback.assess(request)
+            if alternative is not None:
+                return alternative
         return failure
 
     # 지원 범위는 부산항이다 (PRD 4절). 양륙항이 부산이 아니면 배를 찾지 않고 끝낸다 (평가셋 F05).
@@ -370,6 +377,7 @@ def _released(customs: CustomsRecord) -> AgentResponse:
             next_stage=None,
             needs_broker=False,
             history=[s.model_dump(mode="json") for s in customs.stage_history],
+            **customs.route_fields(),
         ),
         berth=BerthInfo(facility=None, shed=customs.shed_name),
         evidence=build_evidence(customs, None, None, None, None, None),
@@ -500,7 +508,14 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
             return candidates, "uncertain", None, None
         return candidates, "confirmed", candidates[0].mmsi, only.get("call_sign")
 
-    # 여럿이면 LLM이 고른다. 사용자가 되묻기에 답한 항차·포워더 입항 예정일도 같이 넘긴다
+    # 여럿인데 사용자가 준 근거(항차·포워더 입항 예정일)가 없으면 LLM을 부르지 않고 바로 되묻는다 (10-01, 평가 B01·B12).
+    # 이름·목적지·위치는 어느 배가 내 화물을 실었는지의 근거가 아니다. 그런데 gpt-4o-mini는 근거 없이도 high로 골라
+    # 남의 배를 확정했다(B01 매번, B12 3번 중 2~3번, 데모 TESTBL04). 확정은 근거가 있을 때만 한다 (PRD 6.2 되묻기가 낫다).
+    # SDD 5.5("2척 이상이면 LLM")와 다르다. 문서는 팀이 나중에 몰아서 현행화한다
+    if not (request.voyage_no or request.forwarder_eta):
+        return candidates, "uncertain", None, None
+
+    # 되묻기에 답한 항차·포워더 입항 예정일이 있으면 LLM이 그 근거로 고른다
     try:
         picked = llm.pick_vessel(candidates, customs, request.voyage_no, request.forwarder_eta).output
     except llm.LLMError as e:
@@ -636,6 +651,7 @@ def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
         next_stage=explained.next_stage,
         needs_broker=explained.needs_broker,
         history=[s.model_dump(mode="json") for s in customs.stage_history],
+        **customs.route_fields(),  # 어디서 어디로 (10-01)
     )
 
 

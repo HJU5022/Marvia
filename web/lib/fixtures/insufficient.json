@@ -1,0 +1,48 @@
+{
+  "status": "insufficient",
+  "verdict": null,
+  "vessel_match": "uncertain",
+  "vessel_candidates": [
+    {
+      "mmsi": 990001101,
+      "imo": null,
+      "name": "MARVIA HORIZON",
+      "flag": "KR",
+      "dest": "KRPUS",
+      "last_time": "2026-10-20T09:32:00+09:00",
+      "ship_type": 70,
+      "match_reasons": [
+        "선박명·부산 목적지 일치. 항차 확인이 필요합니다."
+      ]
+    },
+    {
+      "mmsi": 990001102,
+      "imo": null,
+      "name": "MARVIA HORIZON II",
+      "flag": "PA",
+      "dest": "JPOSA",
+      "last_time": "2026-10-20T07:10:00+09:00",
+      "ship_type": 70,
+      "match_reasons": [
+        "유사한 선박명. 국적과 목적지가 다릅니다."
+      ]
+    }
+  ],
+  "missing_inputs": [
+    "voyage_no",
+    "forwarder_eta"
+  ],
+  "reasons": [],
+  "conflicts": [],
+  "actions": [],
+  "days_margin": null,
+  "decided_by": null,
+  "vessel": null,
+  "position": null,
+  "eta": null,
+  "customs": null,
+  "berth": null,
+  "evidence": [],
+  "answer": "같은 이름의 선박이 여러 척입니다. 내 화물의 배를 확정한 뒤 판정할 수 있습니다. 후보를 선택하거나 포워더의 항차 번호·입항 예정일을 알려주세요.",
+  "trace_id": "fixture-insufficient-20261020"
+}
