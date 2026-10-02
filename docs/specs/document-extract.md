@@ -66,6 +66,25 @@ POST /api/document   (multipart/form-data, file=이미지)
 }
 ```
 
+### 10-02 추가: B/L 조건과 화물 인도 연락처 (docs/specs/memory.md, 정운 승인 결정 6·7)
+
+화물 비서 기억이 짚을 거리로만 쓴다. 판정 등급에는 쓰지 않는다.
+
+| 칸 | 값 | 검사 |
+|---|---|---|
+| `original_bl` | `required`(원본 필요) / `surrendered`(서렌더) | 목록 밖이면 format. LLM이 근거로 옮긴 글(`original_bl_text`)이 서류에 없으면 not_in_text, 지시문 줄에서만 나오면 ambiguous |
+| `to_order_bank` | `"true"` / `"false"` (수하인이 TO ORDER OF ... BANK인가) | 위와 같음 (`to_order_bank_text`) |
+| `freight_term` | `prepaid` / `collect` | 위와 같음 (`freight_term_text`) |
+| `incoterm` | `CIF` / `FOB` / `CFR` | 서류에 낱말로 있어야 한다 (not_in_text) |
+| `contact_company` | 화물 인도 연락처 회사 (B/L "Party to contact for cargo release", A/N) | 서류에 있어야 한다. 40자 넘거나 이메일 모양이면 format |
+| `contact_role` | 포워더 / 관세사 / 수출자 / 판매처 | 목록 밖이면 format |
+| `contact_phone` | 회사·부서 전화, 숫자와 하이픈 | 모양이 아니거나 개인 휴대폰이면 **값을 비우고** format. 숫자가 서류에 없으면 not_in_text |
+
+- 이 칸들은 서류에 없는 경우가 흔해서 비어 있으면 검사하지 않는다(missing 없음). `needs_review`는 값이 있는데 검사에 걸릴 때만 올라간다.
+- 응답에 `doc_kind`(`B/L` / `A/N` / null)를 더했다. 메모장 거래처 출처로 쓴다. 모르면 거래처를 저장하지 않는다.
+- 개인 이름·휴대폰·이메일은 받지 않는다 (프롬프트 + 코드 검사).
+- 저장은 사용자가 확인 화면에서 "확인한 값으로 채우기"를 눌렀을 때만 `POST /api/memory/document-facts`로 한다. 검사에 걸린 칸은 확인 화면이 비운 채로 보여 주고, 사용자가 고른 값만 보낸다. 확인 안 한 OCR 값은 저장하지 않는다.
+
 - 파일: `services/doc_ocr.py`(1~3, 5단계), `services/llm.py` `extract_doc_fields()`(4단계), `routers/document.py`, `schemas/document.py`(계약, 새 파일)
 - 의존성: `rapidocr`(Apache-2.0), `onnxruntime`(MIT), `python-multipart`(업로드). 모델 파일은 Docker 빌드 때 받아 이미지에 넣는다
 

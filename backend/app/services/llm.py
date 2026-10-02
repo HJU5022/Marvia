@@ -769,6 +769,8 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
 
 # ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────
 # docs/specs/document-extract.md 4단계: OCR 글자에서 6칸을 옮겨 적는다. 판단은 하지 않는다.
+# 10-02 결정 6: B/L 조건 세 칸(원본 B/L·은행 지시식·운임 + 인코텀즈)과 화물 인도 연락처(회사·역할·회사 전화)도 읽는다.
+# 조건은 고르기라 근거 글(*_text)을 글자 그대로 같이 받고, 그 글이 서류에 있는지 코드가 본다 (doc_ocr.check_conditions).
 # B/L 번호는 코드(doc_ocr.take_bl)가 먼저 뽑아 [BL]로 가린 글자만 받는다 (CLAUDE.md).
 # 옮긴 값이 글자에 실제로 있는지는 doc_ocr.check_fields가 검사한다.
 
@@ -776,7 +778,10 @@ DOC_EXTRACT_PROMPT = "marvia-doc-extract"
 DOC_EXTRACT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["vessel", "voyage", "eta", "pol", "pod", "item"],  # strict 모드는 모든 칸이 required
+    # strict 모드는 모든 칸이 required
+    "required": ["vessel", "voyage", "eta", "pol", "pod", "item", "doc_kind",
+                 "original_bl", "original_bl_text", "to_order_bank", "to_order_bank_text",
+                 "freight_term", "freight_term_text", "incoterm", "contact_company", "contact_role", "contact_phone"],
     "properties": {
         "vessel": {"type": ["string", "null"]},
         "voyage": {"type": ["string", "null"]},
@@ -784,6 +789,17 @@ DOC_EXTRACT_SCHEMA = {
         "pol": {"type": ["string", "null"]},
         "pod": {"type": ["string", "null"]},
         "item": {"type": ["string", "null"]},
+        "doc_kind": {"type": ["string", "null"], "enum": ["bl", "arrival_notice", None]},
+        "original_bl": {"type": ["string", "null"], "enum": ["required", "surrendered", None]},
+        "original_bl_text": {"type": ["string", "null"]},
+        "to_order_bank": {"type": ["boolean", "null"]},
+        "to_order_bank_text": {"type": ["string", "null"]},
+        "freight_term": {"type": ["string", "null"], "enum": ["prepaid", "collect", None]},
+        "freight_term_text": {"type": ["string", "null"]},
+        "incoterm": {"type": ["string", "null"], "enum": ["CIF", "FOB", "CFR", None]},
+        "contact_company": {"type": ["string", "null"]},
+        "contact_role": {"type": ["string", "null"], "enum": ["포워더", "관세사", "수출자", "판매처", None]},
+        "contact_phone": {"type": ["string", "null"]},
     },
 }
 
@@ -795,10 +811,22 @@ class DocFieldsOutput(BaseModel):
     pol: str | None
     pod: str | None
     item: str | None
+    # 10-02 결정 6. 기본값 None: 이 칸이 생기기 전 모양의 답(테스트·녹화)도 읽힌다. 값 검사는 doc_ocr.check_conditions
+    doc_kind: str | None = None           # bl / arrival_notice. 거래처 출처(B/L·A/N)를 정하는 데만 쓴다
+    original_bl: str | None = None        # required / surrendered
+    original_bl_text: str | None = None   # 위 값의 근거로 서류에서 그대로 옮긴 글
+    to_order_bank: bool | None = None     # 수하인이 "TO ORDER OF ... BANK"인가
+    to_order_bank_text: str | None = None
+    freight_term: str | None = None       # prepaid / collect
+    freight_term_text: str | None = None
+    incoterm: str | None = None           # CIF / FOB / CFR
+    contact_company: str | None = None    # 화물 인도 연락처 회사 (개인 이름 아님)
+    contact_role: str | None = None       # 포워더 / 관세사 / 수출자 / 판매처
+    contact_phone: str | None = None      # 회사·부서 전화 (개인 휴대폰 아님)
 
 
 def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnswer:
-    """B/L을 가린 OCR 글자에서 선명·항차·ETA·선적항·양하항·품명을 옮겨 적는다. output은 DocFieldsOutput.
+    """B/L을 가린 OCR 글자에서 선명·항차·ETA·선적항·양하항·품명과 B/L 조건·연락처를 옮겨 적는다. output은 DocFieldsOutput.
 
     OCR 글자는 사용자 서류라 데이터로만 넘긴다 (SDD 7절 신뢰 경계, 프롬프트에도 명시).
     """
