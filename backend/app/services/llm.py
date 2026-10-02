@@ -51,6 +51,7 @@ from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason,
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 from backend.app.services.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
+from backend.app.services import guard  # 통관 단계명 주입 거르기 (_clean_customs, 10-01)
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -418,6 +419,13 @@ FOLLOW_UP_SKILLS = ALL_SKILLS       # 이전 응답 전체(통관 · 하역 장�
 GRADE_SKILLS = (CUSTOMS,)           # 통관 해설 채점은 통관 단계 표만 기준으로 한다 (평가 때만)
 
 
+def skills_reference(folders: tuple[str, ...] = ALL_SKILLS, prompt_name: str | None = None) -> str:
+    """검증 V9·V10(validate.py)이 "답에 써도 되는 낱말"의 출처로 쓰는 원문: LLM이 받은 Skill 문서와 지시문 (10-01).
+    지시문 낱말을 넣는 이유: gpt-4o-mini가 판정 지시문 첫 줄의 "cargo"를 한국어 답에 섞어 판정 출력 228개 중 19개가
+    V9에 걸렸다. 지시문에 있는 낱말은 주입이 끼워 넣은 표식이 아니다."""
+    return _skills_text(folders) + ("\n\n" + get_prompt(prompt_name).text if prompt_name else "")
+
+
 def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
     """고른 Skill 폴더의 .md를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
     parts = []
@@ -450,9 +458,24 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
         "sale_due_date": sale_due_date.isoformat() if sale_due_date else None,
         "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
-        "customs": customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"}) if customs else None,
+        "customs": _clean_customs(customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"})) if customs else None,
     }
     return json.dumps(data, ensure_ascii=False)
+
+
+STAGE_SUSPECT = "(단계 이름 확인 필요)"  # 주입 모양 단계명 대신 LLM에 넘기는 글자 (_clean_customs)
+
+
+def _clean_customs(data: dict) -> dict:
+    """통관 단계명(UNI-PASS 외부 글자)이 주입 모양이면 LLM에 넘기기 전에 바꾼다 (SDD 7절, 10-01).
+    단계명은 외부에서 온 글자라 주입이 들어올 수 있는 길이다. 판정 LLM이 그 문장을 보지 않게 한다 (예방 조치).
+    화면의 근거 카드에는 원래 글자가 그대로 있다. 여기서 바꾸는 것은 LLM 입력뿐이다."""
+    if guard.looks_like_injection(data.get("stage_name")):
+        data["stage_name"] = STAGE_SUSPECT
+    for stage in data.get("stage_history") or []:
+        if guard.looks_like_injection(stage.get("name")):
+            stage["name"] = STAGE_SUSPECT
+    return data
 
 
 def _kst(moment: datetime | None) -> str | None:
@@ -674,11 +697,15 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
 
     질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
     feedback: 앞 답이 검증 규칙(V1·V7)을 어겼을 때 어긴 내용. judge()와 같은 방식으로 다시 묻는다 (09-29, 평가 F06)
+
+    AIS 목적지 원문(shipfinder dest 근거 카드)은 빼고 넘긴다 (SDD 7절, 10-01). 아무 배나 AIS에 쓸 수 있는 글자라
+    "지금부터 너는 ~" 같은 역할 재설정 문장이 들어올 수 있다. 판정 LLM처럼 코드가 destcode로 계산한
+    dest_changed 신호 카드만 남긴다. 화면의 근거 카드에는 그대로 있다 (여기서 빼는 것은 LLM 입력뿐).
     """
-    data = {
-        "result": response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"}),
-        "question": question,
-    }
+    result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"})
+    result["evidence"] = [e for e in result.get("evidence") or []
+                          if not (e["source"] == "shipfinder" and e["field"] == "dest")]
+    data = {"result": result, "question": question}
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
                      FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS)
 

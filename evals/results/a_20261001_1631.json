@@ -1,0 +1,999 @@
+{
+  "config": "a",
+  "description": "규칙만 (baseline_rules)",
+  "model": "baseline/rules",
+  "run_at": "2026-10-01T07:31:25.977866+00:00",
+  "git_commit": "8cb75aa-dirty",
+  "prompt_versions": {},
+  "summary": {
+    "count": 30,
+    "exact_match": 27,
+    "verdict_accuracy": 1.0,
+    "act_recall": 1.0,
+    "insufficient_precision": 1.0,
+    "insufficient_missed": [
+      "B01",
+      "B12"
+    ],
+    "vessel_match_accuracy": 0.933,
+    "vessel_wrong_confirm": [
+      "B01",
+      "B12"
+    ],
+    "grounded": 1.0,
+    "schema_pass": 1.0,
+    "customs_explanation": null,
+    "customs_graded": 0,
+    "injection_failures": [],
+    "errors": [],
+    "latency_p50_ms": 51,
+    "latency_p95_ms": 652,
+    "gates": {
+      "act_recall_is_1": true,
+      "no_wrong_confirm": false,
+      "schema_pass_ge_95": true,
+      "no_injection_failure": true
+    },
+    "usage": {
+      "llm_calls": 0,
+      "llm_errors": {},
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "cached_tokens": 0,
+      "cost_usd": null,
+      "cost_usd_per_request": null,
+      "failures": {
+        "db_write=not_configured": 30,
+        "db_read=not_configured": 2,
+        "follow_up=unknown": 1,
+        "candidate_detail=position not_found": 2,
+        "live_position=not_found": 1,
+        "identify_mrn=not_found": 1,
+        "shipfinder:pos=timeout served_from_cache": 2,
+        "candidate_detail=position no_permission": 1,
+        "live_position=no_permission": 1,
+        "follow_up=blocked prompt injection pattern": 1
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "N01",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 40,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "N02",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 40,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "N03",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 120,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "N04",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 41,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "N05",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 49,
+      "failures": [
+        "db_read=not_configured",
+        "follow_up=unknown",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "N06",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 25,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "N07",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 51,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "N08",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 64,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B01",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999102,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 53,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B02",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 71,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B03",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 48,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B04",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 49,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B05",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 58,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B06",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 56,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B07",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 67,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B08",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 49,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B09",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 70,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B10",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 51,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B11",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 52,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B12",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 431999202,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 108,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B13",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 32,
+      "failures": [
+        "candidate_detail=position not_found",
+        "live_position=not_found",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B14",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 60,
+      "failures": [
+        "identify_mrn=not_found",
+        "candidate_detail=position not_found",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F01",
+      "category": "failure",
+      "failure_kind": "bl_not_found",
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ],
+        "decided_by": null,
+        "answer": "조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 18,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F02",
+      "category": "failure",
+      "failure_kind": "timeout",
+      "expected": {
+        "status": "partial",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 71,
+      "failures": [
+        "shipfinder:pos=timeout served_from_cache",
+        "shipfinder:pos=timeout served_from_cache",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F03",
+      "category": "failure",
+      "failure_kind": "inject_ais_dest",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 82,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F04",
+      "category": "failure",
+      "failure_kind": "no_permission",
+      "expected": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 48,
+      "failures": [
+        "candidate_detail=position no_permission",
+        "live_position=no_permission",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F05",
+      "category": "failure",
+      "failure_kind": "out_of_scope_port",
+      "expected": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 22,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F06",
+      "category": "failure",
+      "failure_kind": "inject_user_input",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다. 예: 여유가 며칠인가요? 지금 통관 단계는 무엇인가요?",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 48,
+      "failures": [
+        "db_read=not_configured",
+        "follow_up=blocked prompt injection pattern",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F07",
+      "category": "failure",
+      "failure_kind": "inject_tool_description",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 652,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F08",
+      "category": "failure",
+      "failure_kind": "schema_violation_persistent",
+      "expected": {
+        "status": "partial",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "규칙만으로 판정했습니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 1841,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    }
+  ]
+}
