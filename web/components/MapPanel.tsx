@@ -21,8 +21,8 @@ export function MapPanel({response:r}:{response:AgentResponse}) {
    demo.map_labels.forEach(label=>L.marker([label.lat,label.lng],{icon:L.divIcon({className:'map-place',html:label.name,iconSize:[80,20]}),interactive:false}).addTo(map));
    const portMarker=L.marker(port,{icon:L.divIcon({className:'port-marker',html:'<span>⚑</span>',iconSize:[28,28],iconAnchor:[14,14]}),title:demo.port.name}).addTo(map);
    portMarker.bindTooltip(demo.port.name,{permanent:true,direction:'right',className:'port-tooltip'});
-   if(position){L.polyline([position,port],{color:color(stale?'--muted':'--success'),weight:2,dashArray:'5 7',opacity:stale?.4:.8,interactive:false}).addTo(map);
-    L.circle(position,{radius:stale?14000:11000,color:color(stale?'--muted':'--success'),weight:1,dashArray:stale?'4 5':undefined,fillOpacity:.08}).addTo(map);
+   if(position){L.polyline([position,port],{color:color(stale?'--muted':'--blue'),weight:2,dashArray:'5 7',opacity:stale?.4:.8,interactive:false}).addTo(map);
+    L.circle(position,{radius:stale?14000:11000,color:color(stale?'--muted':'--blue'),weight:1,dashArray:stale?'4 5':undefined,fillOpacity:.08}).addTo(map);
     const ship=L.marker(position,{icon:L.divIcon({className:`ship-marker ${stale?'stale':''}`,html:'<span>▲</span>',iconSize:[30,30],iconAnchor:[15,15]}),title:stale?'마지막 수신 위치':'수신 위치',opacity:stale?.45:1}).addTo(map);
     const tip=document.createElement('span');tip.textContent=r.vessel?.name??'선박 수신 위치';ship.bindTooltip(tip,{permanent:true,direction:'bottom',className:'ship-tooltip',offset:[0,16]});
    }

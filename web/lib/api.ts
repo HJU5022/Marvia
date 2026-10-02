@@ -8,6 +8,7 @@
  */
 import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
 import {accessToken} from './auth';
+import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
 import partial from './fixtures/partial.json';
 import insufficient from './fixtures/insufficient.json';
@@ -260,10 +261,77 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
 /** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다) */
 export async function sendChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
-  const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
-    body: JSON.stringify({message, session_id: currentSessionId(), context: ctx})}, AGENT_TIMEOUT_MS);
+    body: chatBody(message, context)}, AGENT_TIMEOUT_MS);
   return res.json();
+}
+
+/** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다 */
+function chatBody(message: string, context: AgentRequest | null): string {
+  const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
+  return JSON.stringify({message, session_id: currentSessionId(), context: ctx});
+}
+
+/** 스트림 통로를 못 쓰는 경우의 표시. 서버가 요청을 받지 않은 것이 확실할 때만 쓴다 (chat-progress.md EC-05) */
+class StreamUnavailable extends Error {}
+
+/** POST /api/chat/stream. /api/chat과 같은 답을 주면서, 서버가 실제로 들어간 단계를 onStage로 알려 준다 (docs/specs/chat-progress.md).
+ * - 새 통로가 없는 서버(404·405)나 응답 전 연결 실패면 /api/chat으로 한 번 대신 보낸다 (EC-05). 이때 단계 소식은 없다
+ * - 응답을 받기 시작한 뒤 끊기면 다시 보내지 않는다. 서버는 이미 유료 호출을 하고 있을 수 있다 (EC-06)
+ * - 데모 모드는 서버가 없어 단계 소식도 없다. 단계를 지어내지 않는다 (EC-07) */
+export async function sendChatStream(message: string, context: AgentRequest | null,
+  onStage: (stage: ProgressStage) => void): Promise<ChatResponse> {
+  if (!isLive) return demoChat(message, context);
+  try {
+    return await liveChatStream(message, context, onStage);
+  } catch (e) {
+    if (e instanceof StreamUnavailable) return sendChat(message, context);
+    throw e;
+  }
+}
+
+async function liveChatStream(message: string, context: AgentRequest | null,
+  onStage: (stage: ProgressStage) => void): Promise<ChatResponse> {
+  const controller = new AbortController();
+  // 전체 시간 제한은 /api/chat과 같다. 판정 LLM 재시도까지 기다린다
+  const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
+  const timeout = '응답이 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.';
+  try {
+    let res: Response;
+    try {
+      const token = await accessToken();
+      const headers = new Headers({'content-type': 'application/json', accept: 'text/event-stream'});
+      if (token) headers.set('authorization', `Bearer ${token}`);
+      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context), signal: controller.signal});
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
+      if (e instanceof TypeError) throw new StreamUnavailable();  // 응답이 없었다. /api/chat이 재시도까지 맡는다
+      throw e;
+    }
+    if (res.status === 404 || res.status === 405) throw new StreamUnavailable();
+    if (!res.ok) throw new Error(await errorMessage(res));  // 로그인·권한·입력 오류는 스트림을 열기 전에 온다
+    if (!res.body) throw new Error('이 브라우저에서 답을 읽지 못했습니다. 다시 시도해 주세요.');
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    const parse = createSseParser();
+    for (;;) {
+      let chunk: ReadableStreamReadResult<string>;
+      try { chunk = await reader.read(); }
+      catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
+        throw new Error('답을 받는 중 연결이 끊겼습니다. 다시 물어봐 주세요.');
+      }
+      if (chunk.done) break;
+      for (const ev of parse(chunk.value)) {
+        const data = JSON.parse(ev.data);
+        if (ev.event === 'progress' && isStage(data?.stage)) onStage(data.stage);
+        else if (ev.event === 'result') { void reader.cancel(); return data as ChatResponse; }
+        else if (ev.event === 'error') throw new Error(typeof data?.detail === 'string' ? data.detail : '답하지 못했습니다. 다시 시도해 주세요.');
+      }
+    }
+    throw new Error('답을 받기 전에 연결이 끊겼습니다. 다시 물어봐 주세요.');
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** GET /api/vessels/detail. 선박 표에서 선명을 눌렀을 때. 데모 모드는 가공 예시 */

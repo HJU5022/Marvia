@@ -210,7 +210,7 @@
 
 ## How
 
-### 마이그레이션 009 (예정)
+### 마이그레이션 014 (10-02 표 생성, 009는 operators가 먼저 씀)
 
 ```sql
 CREATE TABLE user_cargo (
@@ -267,7 +267,7 @@ DELETE /api/memory/items/{id}   항목 하나 지우기
 
 | 파일 | 할 일 |
 |---|---|
-| `backend/app/db/migrations/009_user_cargo_memory.sql` | 표 두 개 (새 파일) |
+| `backend/app/db/migrations/014_memory_tables.sql` | 표 두 개 (10-02 생성, Supabase 적용) |
 | `backend/app/services/assess.py` (이름 미정) | `routers/agent.py`의 판정 흐름을 옮긴다. `/api/agent`와 `/api/chat`이 함께 쓴다 |
 | `backend/app/services/cargo.py` | 화물 표 쓰기·읽기, 지문, 끝난 화물 처리 (새 파일) |
 | `backend/app/services/memory.py` | 명령 검사·적용, 상한, 템플릿(번호 있음·없음) (새 파일) |
@@ -313,7 +313,7 @@ DELETE /api/memory/items/{id}   항목 하나 지우기
 
 ### 구현
 
-- [ ] 마이그레이션 009 `user_cargo`, `user_memory` + RLS + 보관 함수·pg_cron
+- [ ] 마이그레이션 014 `user_cargo`, `user_memory` + RLS (10-02 끝) + 보관 함수·pg_cron (남음)
 - [ ] `services/cargo.py`: 지문, 쓰기·읽기, 끝난 화물, 90일 정리
 - [ ] `services/memory.py`: 명령 검사, 버전 확인 적용, 상한 줄이기, 템플릿 두 모양
 - [ ] `services/llm.py` `write_memory()` + `.env.example` `MEMORY_MODEL`
