@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
-from backend.app.routers import account, admin, agent, chat, document, history, memory, profile
+from backend.app.routers import account, admin, agent, chat, document, history, kakao, memory, profile
 from backend.app.services import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
 from mcp_server.server import MountedMCP
 
@@ -77,6 +77,7 @@ app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
 app.include_router(admin.router)  # 운영자 관리 (docs/specs/operator-admin.md)
 app.include_router(profile.router)  # 회원 정보 (docs/specs/user-profile.md)
 app.include_router(memory.router)  # 화물 비서 기억 (docs/specs/memory.md)
+app.include_router(kakao.router)  # 카카오톡 "나에게 보내기" 알림 연결 (10-02)
 
 
 # /mcp: MCP 클라이언트가 연결하는 프로토콜 창구. /api/agent(사용자 화면용)와 경로를 나눈다 (가이드 v4 배포 구조).

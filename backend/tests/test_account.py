@@ -94,6 +94,8 @@ def _db(monkeypatch, steps: list, fail: bool = False):
     monkeypatch.setattr(account_service, "delete_profile", lambda conn, user_id: steps.append(("profile", user_id)) or 1)
     # 화물 비서 기억(화물 표·메모장)도 같은 단계에서 지운다 (docs/specs/memory.md "개인정보")
     monkeypatch.setattr(account_service, "forget_user", lambda conn, user_id: steps.append(("memory", user_id)) or 2)
+    # 카카오톡 알림 토큰도 같은 단계에서 지운다 (10-02)
+    monkeypatch.setattr(account_service, "delete_kakao_link", lambda conn, user_id: steps.append(("kakao", user_id)) or 1)
 
 
 def test_withdraw_deletes_records_then_account(monkeypatch):
@@ -106,7 +108,7 @@ def test_withdraw_deletes_records_then_account(monkeypatch):
 
     assert resp.status_code == 200 and resp.json() == {"deleted_records": 2, "account_deleted": True}
     assert steps == [("records", "user-123"), ("profile", "user-123"), ("memory", "user-123"),
-                     ("account", "user-123")]  # 기록·회원 정보·기억 먼저, 계정 나중
+                     ("kakao", "user-123"), ("account", "user-123")]  # 기록·회원 정보·기억·카카오 토큰 먼저, 계정 나중
 
 
 def test_records_failure_keeps_account(monkeypatch):
