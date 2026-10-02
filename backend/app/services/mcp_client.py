@@ -12,15 +12,20 @@
 아래 함수 4개는 도구와 이름·인자가 같다. 부르는 쪽은 import 경로만 바꾸면 되고, 테스트가 바꿔치기하던 이름도 그대로다.
 돌려주는 값도 도구가 돌려준 dict 그대로다. 도구는 결과를 JSON 모드로 만들어서(model_dump(mode="json"))
 MCP 텍스트를 json.loads로 되돌리면 직접 부른 값과 같다 (10-02 확인).
+
+호출마다 Langfuse에 tool 관측 하나를 남긴다 (SDD 5.11, call_tool). 키가 없으면 아무것도 안 한다.
 """
 import asyncio
 import json
 import logging
 import os
+import time
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.memory import create_connected_server_and_client_session
+
+from backend.app.observability.langfuse import end_tool, start_tool
 
 logger = logging.getLogger(__name__)
 
@@ -55,17 +60,43 @@ async def _call(name: str, arguments: dict) -> dict:
     return json.loads(text)
 
 
+def _summary(result: dict) -> tuple[dict, str | None]:
+    """트레이스 output에 넣을 결과 요약과 오류 코드. 응답 원본은 넣지 않는다 (ShipFinder 약관, CLAUDE.md "할 것").
+
+    성공이면 들어 있는 키 이름만, 실패면 오류 코드만 남긴다. 어느 도구가 무엇을 돌려줬는지 구분하는 데는 이걸로 충분하다.
+    """
+    error = result.get("error")
+    if isinstance(error, dict):
+        code = str(error.get("code", "unknown"))
+        return {"ok": False, "error": code}, code
+    return {"ok": True, "keys": sorted(result.keys())}, None
+
+
 def call_tool(name: str, **arguments) -> dict:
     """MCP 도구 하나를 부른다. None인 인자는 빼서 도구 기본값을 쓰게 한다.
 
     서비스 코드는 동기 함수이고 FastAPI 스레드풀에서 돈다. 그 스레드에는 이벤트 루프가 없어 asyncio.run으로 돌린다.
+
+    호출마다 Langfuse tool 관측 하나를 남긴다 (SDD 5.11 "MCP 도구 호출에 적용").
+      - 이름: mcp:<도구 이름>
+      - input: 인자 dict. 선박명·호출부호·MMSI·좌표뿐이고 B/L 번호는 도구 인자에 없다
+      - output: 결과 요약(_summary). 실패면 오류 코드가 level=ERROR로 남는다
+      - metadata: 통로(http·memory)와 지연(ms)
+    start_tool·end_tool은 키가 없거나 Langfuse가 실패하면 아무것도 안 한다. 트레이스 때문에 호출이 막히지 않는다.
     """
     arguments = {k: v for k, v in arguments.items() if v is not None}
+    transport = "http" if os.environ.get("MCP_URL", "") else "memory"  # _call()과 같은 기준
+    tool = start_tool(f"mcp:{name}", arguments)
+    started = time.monotonic()
     try:
-        return asyncio.run(_call(name, arguments))
+        result = asyncio.run(_call(name, arguments))
     except Exception as e:  # 연결 실패·인증 실패(401)·응답 깨짐. 서비스는 도구 실패와 같은 경로(partial 등)로 간다
         logger.warning("MCP 도구 호출 실패: %s (%s)", name, type(e).__name__)
-        return _failed(type(e).__name__)
+        result = _failed(type(e).__name__)
+    output, error = _summary(result)
+    latency_ms = round((time.monotonic() - started) * 1000)
+    end_tool(tool, output, {"transport": transport, "latency_ms": latency_ms}, error=error)
+    return result
 
 
 def get_vessel_candidates(ship_name: str, nationality: str | None = None, eta_window_days: int | None = None,
