@@ -21,8 +21,9 @@ import logging
 import os
 import time
 
+import httpx
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from backend.app.observability.langfuse import end_tool, start_tool
@@ -42,10 +43,14 @@ async def _call(name: str, arguments: dict) -> dict:
     if url:
         token = os.environ.get("MCP_TOKEN", "")
         headers = {"Authorization": f"Bearer {token}"} if token else None
-        async with streamablehttp_client(url, headers=headers) as (read, write, _):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(name, arguments)
+        # mcp 1.30부터 streamablehttp_client(headers=...)는 폐기 예정이다. 새 streamable_http_client는 헤더를 받지 않고
+        # httpx 클라이언트를 받는다. 옛 함수가 안에서 만들던 것과 같은 값(타임아웃 30초, 읽기 300초)으로 만들어 넘긴다
+        timeout = httpx.Timeout(30, read=300)
+        async with httpx.AsyncClient(headers=headers, timeout=timeout) as http:
+            async with streamable_http_client(url, http_client=http) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.call_tool(name, arguments)
     else:
         global _memory_server
         if _memory_server is None:
