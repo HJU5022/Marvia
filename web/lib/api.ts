@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentResponse, HistoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, MemoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -23,6 +23,7 @@ import settings from './fixtures/settings.json';
 import geography from './fixtures/geography.json';
 import documentFixture from './fixtures/document.json';
 import adminFixture from './fixtures/admin.json';
+import memoryFixture from './fixtures/memory.json';
 
 /** 끝 슬래시를 뗀 백엔드 주소. 비어 있으면 데모 모드다. */
 /** 정지된 계정에 서버가 403 account_suspended를 줄 때 보여 줄 문장. getMe가 이 문장으로 정지를 알아본다 */
@@ -374,6 +375,36 @@ export async function deleteMyHistory(): Promise<{deleted: number}> {
 export async function deleteMyAccount(): Promise<{deleted_records: number; account_deleted: boolean}> {
   if (!isLive) throw new Error('데모 모드에는 탈퇴할 계정이 없습니다.');
   return liveDelete('/api/account');
+}
+
+/* ---------- 화물 비서 기억 (docs/specs/memory.md, backend/app/routers/memory.py) ---------- */
+
+/** GET /api/memory. 로그인 사용자의 메모장(번호 없는 글 + 항목)과 기억한 화물 요약. 원본 B/L은 오지 않는다.
+ * 데모 모드는 가공 예시를 돌려준다(화면에 가공 예시라고 표시). 못 읽으면 오류를 올린다(화면이 안내). */
+export async function getMemory(): Promise<MemoryResponse> {
+  if (!isLive) { await new Promise<void>(resolve => setTimeout(resolve, 180)); return structuredClone(memoryFixture) as unknown as MemoryResponse; }
+  return (await call('/api/memory', {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** DELETE /api/memory. 메모장과 기억한 화물을 모두 지운다. 실패를 숨기지 않는다(503). 데모 모드에는 지울 실제 기억이 없다. */
+export async function deleteAllMemory(): Promise<{deleted: number}> {
+  if (!isLive) throw new Error('데모 모드에는 지울 실제 기억이 없습니다.');
+  return liveDelete('/api/memory');
+}
+
+/** DELETE /api/memory/items/{id}. 메모 한 줄을 지운다. */
+export async function deleteMemoryItem(id: string): Promise<{deleted: number}> {
+  if (!isLive) throw new Error('데모 모드에는 지울 실제 기억이 없습니다.');
+  return liveDelete(`/api/memory/items/${encodeURIComponent(id)}`);
+}
+
+/** POST /api/memory/document-facts. 서류 확인 화면에서 "확인한 값으로 채우기"를 눌렀을 때만 부른다 (10-02 결정 7).
+ * 실제 모드 + 로그인 사용자일 때만 보낸다. 아니면 아무것도 하지 않고 null. 부르는 쪽은 실패해도 입력 채우기를 막지 않는다. */
+export async function saveDocumentFacts(facts: DocumentFactsRequest): Promise<DocumentFactsResponse | null> {
+  if (!isLive || !(await accessToken())) return null;
+  const res = await call('/api/memory/document-facts', {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify(facts)}, HISTORY_TIMEOUT_MS);
+  return res.json();
 }
 
 /* ---------- 운영자 관리 (docs/specs/operator-admin.md) ---------- */

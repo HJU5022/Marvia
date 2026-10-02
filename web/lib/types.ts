@@ -70,14 +70,56 @@ export interface HistoryResponse { items: HistoryItem[]; available: boolean }
 /** POST /api/document 응답. backend/app/schemas/document.py 그대로 (C1~C8 밖의 새 계약, 09-29). */
 export type DocumentCheck = 'missing' | 'not_in_text' | 'format' | 'ambiguous';
 export interface DocumentField { value: string | null; checks: DocumentCheck[] }
+/** B/L 조건 세 칸·인코텀즈·화물 인도 연락처 (10-02 결정 6). 서류에 없으면 value null, checks 빈 목록 */
+export type DocumentConditionKey = 'original_bl' | 'to_order_bank' | 'freight_term' | 'incoterm'
+  | 'contact_company' | 'contact_role' | 'contact_phone';
+export type DocumentFieldKey = 'bl_no' | 'vessel' | 'voyage' | 'eta' | 'pol' | 'pod' | 'item' | DocumentConditionKey;
 export interface DocumentResponse {
   status: 'ok' | 'partial';
   needs_review: boolean;
-  fields: Record<'bl_no' | 'vessel' | 'voyage' | 'eta' | 'pol' | 'pod' | 'item', DocumentField>;
+  fields: Record<DocumentFieldKey, DocumentField>;
   ocr: { lines: number; rotation: 0 | 180 | 270; runs: number; ocr_ms: number };
   trace_id: string;
   /** 서류의 MRN (코드가 뽑음). 없으면 null */
   mrn?: string | null;
+  /** 서류 종류. 거래처를 기억할 때 출처로 쓴다. 모르면 null (10-02) */
+  doc_kind?: 'B/L' | 'A/N' | null;
+}
+
+/** 화물 비서 기억 (backend/app/schemas/memory.py, docs/specs/memory.md, 10-02). 원본 B/L은 오지 않는다 */
+export type ContactRole = '포워더' | '관세사' | '수출자' | '판매처';
+export type OriginalBl = 'required' | 'surrendered';
+export type FreightTerm = 'prepaid' | 'collect';
+export type Incoterm = 'CIF' | 'FOB' | 'CFR';
+export type MemoryKind = 'preference' | 'schedule' | 'contact' | 'worry' | 'todo';
+export interface MemoryItem {
+  id: string; section: 'about' | 'cargo'; kind: MemoryKind;
+  fields: Record<string, string | boolean | null>; noted_at: string | null;
+  /** 화물별 항목의 화물 이름(이름표 또는 가린 번호). 이 사람에 대해 항목은 null */
+  cargo_name: string | null;
+}
+export interface PendingChange { field: 'sale_due_date' | 'forwarder_eta' | 'label'; value: string; noted_at: string | null }
+export interface CargoSummary {
+  bl_masked: string; bl_type: 'MASTER' | 'HOUSE'; label: string | null; status: 'active' | 'done';
+  sale_due_date: string | null; forwarder_eta: string | null;
+  original_bl: OriginalBl | null; to_order_bank: boolean | null; freight_term: FreightTerm | null; incoterm: Incoterm | null;
+  last_verdict: Verdict | null; last_checked_at: string | null; last_days_margin: number | null;
+  last_eta: string | null; last_stage: string | null; pending: PendingChange[]; summary: string | null;
+}
+export interface MemoryResponse {
+  markdown: string; items: MemoryItem[]; cargo: CargoSummary[];
+  /** 상한을 넘어 새 기억을 저장하지 못했다 (EC-06) */
+  full: boolean; available: boolean;
+}
+/** POST /api/memory/document-facts. 서류 확인 화면에서 사용자가 확인한 값만 보낸다 (10-02 결정 7) */
+export interface DocumentFactsRequest {
+  bl_no: string; bl_type?: 'MASTER' | 'HOUSE' | null; source?: 'B/L' | 'A/N' | null;
+  original_bl?: OriginalBl | null; to_order_bank?: boolean | null; freight_term?: FreightTerm | null; incoterm?: Incoterm | null;
+  contact?: {company: string; role: ContactRole; phone: string | null} | null;
+}
+export interface DocumentFactsResponse {
+  conditions_saved: boolean;
+  contact: 'saved' | 'unchanged' | 'rejected' | 'skipped' | 'full' | 'conflict';
 }
 
 /** 운영자 관리 (backend/app/routers/admin.py, docs/specs/operator-admin.md, 10-01). */

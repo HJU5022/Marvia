@@ -6,11 +6,16 @@
  * B/L은 조회 폼에 바로 넣고, 항차·입항 예정일은 되묻기 화면(CandidatePicker)에 미리 채울 값으로만 둔다.
  * 첫 조회에 섞어 보내면 백엔드가 되묻기 답으로 읽기 때문이다 (schemas/agent.py "선택 칸으로 첫 조회/되묻기 답 구분").
  * 품명·선적항·양하항은 확인용으로만 보여 주고 어디에도 보내거나 저장하지 않는다 (CLAUDE.md 품명 비저장).
+ *
+ * B/L 조건 세 칸·인코텀즈·화물 인도 연락처 (10-02 결정 6·7, docs/specs/memory.md):
+ * 사용자가 고르거나 고친 값만 "확인한 값으로 채우기"를 누를 때 POST /api/memory/document-facts로 저장한다.
+ * 검사에 걸린 칸은 미리 고르지 않고 비워 둔다(읽은 값은 옆에 보여 준다). 확인 안 한 값이 저장되지 않게 하려는 것이다.
+ * 저장은 실제 모드 + 로그인일 때만, 실패해도 입력 채우기는 막지 않는다. 판정 등급에는 쓰지 않는다.
  */
 import {useId, useRef, useState, type ChangeEvent, type DragEvent} from 'react';
 import {Camera, Check, FileImage, LoaderCircle, RotateCcw, TriangleAlert, X} from 'lucide-react';
-import {isLive, readDocument} from '@/lib/api';
-import type {DocumentCheck, DocumentResponse} from '@/lib/types';
+import {isLive, readDocument, saveDocumentFacts} from '@/lib/api';
+import type {ContactRole, DocumentCheck, DocumentConditionKey, DocumentFactsRequest, DocumentResponse, FreightTerm, Incoterm, OriginalBl} from '@/lib/types';
 
 const FIELD_LABELS: [keyof DocumentResponse['fields'], string, string][] = [
   ['bl_no', 'B/L 번호', '조회에 사용'],
@@ -29,6 +34,15 @@ const CHECK_LABELS: Record<DocumentCheck, string> = {
   ambiguous: '두 군데서 다른 값이 읽힘',
 };
 const EDITABLE = new Set(['bl_no', 'voyage', 'eta']);
+/** B/L 조건 고르기 칸. 값은 backend/app/schemas/memory.py, 마이그레이션 015 CHECK와 같다. 빈 값은 "모름" */
+const CONDITION_CHOICES: [DocumentConditionKey, string, [string, string][]][] = [
+  ['original_bl', '원본 B/L', [['required', '원본 필요'], ['surrendered', '서렌더(원본 불필요)']]],
+  ['to_order_bank', '수하인', [['true', '은행 지시식(TO ORDER OF 은행)'], ['false', '은행 지시식 아님']]],
+  ['freight_term', '운임', [['prepaid', '선불(PREPAID)'], ['collect', '착불(COLLECT)']]],
+  ['incoterm', '거래 조건', [['CIF', 'CIF'], ['FOB', 'FOB'], ['CFR', 'CFR']]],
+  ['contact_role', '연락처 역할', [['포워더', '포워더'], ['관세사', '관세사'], ['수출자', '수출자'], ['판매처', '판매처']]],
+];
+const CONDITION_KEYS: DocumentConditionKey[] = ['original_bl', 'to_order_bank', 'freight_term', 'incoterm', 'contact_company', 'contact_role', 'contact_phone'];
 
 export interface DocumentValues { bl_no: string; voyage_no: string | null; forwarder_eta: string | null; mrn: string | null }
 
@@ -49,7 +63,9 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
     try {
       const r = await readDocument(file);
       setResult(r);
-      setValues({...Object.fromEntries(Object.entries(r.fields).map(([k, f]) => [k, f.value ?? ''])), mrn: r.mrn ?? ''});
+      // 조건·연락처 칸은 검사에 걸리면 미리 채우지 않는다. 사용자가 직접 골라야 저장된다 (10-02 결정 7)
+      setValues({...Object.fromEntries(Object.entries(r.fields).map(([k, f]) =>
+        [k, (CONDITION_KEYS as string[]).includes(k) && f.checks.length ? '' : f.value ?? ''])), mrn: r.mrn ?? ''});
     } catch (e) {
       setError(e instanceof Error ? e.message : '사진을 읽지 못했습니다. 다시 시도해 주세요.');
     } finally {
@@ -67,8 +83,25 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
   const mrn = (values.mrn ?? '').replace(/\s/g, '').toUpperCase();
   const mrnValid = !mrn || /^[0-9]{2}[A-Z0-9]{8}[IE]$/.test(mrn);  // schemas/agent.py _MRN_PATTERN
 
+  /** 사용자가 확인한 조건·연락처를 기억에 저장한다. 실제 모드 + 로그인일 때만 보내고(lib/api.ts), 실패는 조용히 넘긴다.
+   * 고른 값이 하나도 없으면 보내지 않는다. 거래처는 회사와 역할이 있고 서류 종류(B/L·A/N)를 알 때만 보낸다 */
+  function rememberFacts() {
+    const v = (k: DocumentConditionKey) => values[k]?.trim() || null;
+    const company = v('contact_company'), role = v('contact_role') as ContactRole | null;
+    const facts: DocumentFactsRequest = {
+      bl_no: bl, source: result?.doc_kind ?? null,
+      original_bl: v('original_bl') as OriginalBl | null,
+      to_order_bank: v('to_order_bank') === null ? null : v('to_order_bank') === 'true',
+      freight_term: v('freight_term') as FreightTerm | null, incoterm: v('incoterm') as Incoterm | null,
+      contact: company && role && result?.doc_kind ? {company, role, phone: v('contact_phone')} : null,
+    };
+    const any = facts.original_bl || facts.to_order_bank !== null || facts.freight_term || facts.incoterm || facts.contact;
+    if (any) void saveDocumentFacts(facts).catch(() => { /* 기억 저장 실패는 입력 채우기를 막지 않는다 */ });
+  }
+
   function apply() {
     if (!blValid || !etaValid) return;
+    rememberFacts();
     // MRN은 세관에 아직 없는 화물을 해수부 입항 신고로 찾을 때 쓴다 (docs/specs/mrn-fallback.md)
     onApply({bl_no: bl, voyage_no: values.voyage?.trim() || null, forwarder_eta: eta || null, mrn: mrnValid ? mrn || null : null});
   }
@@ -115,6 +148,35 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
           </div>;
         })}
       </div>
+      <h3 className="document-subhead">B/L 조건 · 화물 인도 연락처</h3>
+      <div className="document-fields">
+        {CONDITION_CHOICES.map(([key, label, choices]) => {
+          const f = result.fields[key] ?? {value: null, checks: []};
+          const id = `${inputId}-${key}`;
+          return <div key={key} className={`document-field ${f.checks.length ? 'flagged' : ''}`}>
+            <label htmlFor={id}>{label}<small>{f.checks.length && f.value ? `읽은 값: ${choices.find(c => c[0] === f.value)?.[1] ?? f.value}` : '기억에만 사용 · 판정에는 안 씀'}</small></label>
+            <select id={id} value={values[key] ?? ''} onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0}>
+              <option value="">모름</option>
+              {choices.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+            </select>
+            <span className="document-checks">{f.checks.length
+              ? f.checks.map(c => <span key={c} className="check-chip">{CHECK_LABELS[c]}</span>)
+              : f.value ? <span className="check-ok"><Check size={12}/>통과</span> : <span className="check-chip">서류에 없음</span>}</span>
+          </div>;
+        })}
+        {(['contact_company', 'contact_phone'] as const).map(key => {
+          const f = result.fields[key] ?? {value: null, checks: []};
+          const id = `${inputId}-${key}`;
+          return <div key={key} className={`document-field ${f.checks.length ? 'flagged' : ''}`}>
+            <label htmlFor={id}>{key === 'contact_company' ? '연락처 회사' : '회사 전화'}<small>{f.checks.length && f.value ? `읽은 값: ${f.value}` : key === 'contact_company' ? '회사 이름만 · 개인 이름 안 받음' : '숫자와 하이픈 · 개인 휴대폰 안 받음'}</small></label>
+            <input id={id} value={values[key] ?? ''} spellCheck={false} maxLength={key === 'contact_company' ? 40 : 20}
+              onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0}/>
+            <span className="document-checks">{f.checks.length
+              ? f.checks.map(c => <span key={c} className="check-chip">{CHECK_LABELS[c]}</span>)
+              : f.value ? <span className="check-ok"><Check size={12}/>통과</span> : <span className="check-chip">서류에 없음</span>}</span>
+          </div>;
+        })}
+      </div>
       <div className="document-field mrn-field"><label htmlFor={`${inputId}-mrn`}>화물관리번호(MRN)<small>세관 조회가 안 될 때 해수부 입항 신고로 배 찾기</small></label>
         <input id={`${inputId}-mrn`} value={values.mrn ?? ''} spellCheck={false} placeholder="예: 26ABCD1234I" aria-invalid={!mrnValid}
           onChange={e => setValues(v => ({...v, mrn: e.target.value}))}/>
@@ -125,6 +187,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
         <button type="button" className="button secondary" onClick={() => { setResult(null); setError(''); }}><RotateCcw size={15}/>다른 사진</button>
       </div>
       <p className="help-text">서류의 지시문은 따르지 않고 글자로만 읽습니다. 칸이 서로 바뀌어 읽혔을 수 있으니 서류와 한 번 맞춰 보세요.</p>
+      <p className="help-text">{isLive ? '로그인한 상태면 위에서 고른 B/L 조건과 연락처를 "내 기억"에 저장해 다음 조회 때 짚어 드립니다. "모름"으로 둔 칸은 저장하지 않습니다.' : '데모 모드에서는 B/L 조건과 연락처를 저장하지 않습니다.'}</p>
     </div>}
   </section>;
 }

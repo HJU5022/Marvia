@@ -27,6 +27,12 @@ for(const id of ['ok','partial','insufficient','failed','unsupported','watch','a
  if(r.days_margin!==null)assert(r.evidence.some(e=>e.field==='days_margin'&&Number(e.value)===r.days_margin));
 }
 validate(JSON.parse(fs.readFileSync('lib/fixtures/history.json','utf8')),definitions.HistoryResponse,'history');
+// 서류 사진 응답과 화물 비서 기억 (10-02, schemas/document.py · schemas/memory.py). 칸이 하나라도 다르면 실패한다
+const documentFixture=JSON.parse(fs.readFileSync('lib/fixtures/document.json','utf8'));validate(documentFixture,definitions.DocumentResponse,'document');
+const memoryFixture=JSON.parse(fs.readFileSync('lib/fixtures/memory.json','utf8'));validate(memoryFixture,definitions.MemoryResponse,'memory');
+// 화면에 가는 기억에는 가린 번호만 있다. 가리지 않은 예시 B/L(MRVDEMO + 숫자)이 섞이면 안 된다 (SDD 3.5)
+assert(!/MRVDEMO\d{4}/.test(JSON.stringify(memoryFixture)),'memory fixture must not contain an unmasked B/L');
+assert.equal(new Set(memoryFixture.items.map(i=>i.id)).size,memoryFixture.items.length,'memory item ids must be unique');
 // In-memory transpilation runs exactly lib/api.ts; it does not create duplicate test code.
 // api.ts가 다른 .ts(lib/auth.ts)를 불러도 같은 방식으로 옮겨 읽게 한다 (10-01, 로그인 추가)
 const tsOptions={compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2022}};
@@ -66,4 +72,4 @@ for(const href of ['http://localhost:3000/settings#','http://localhost:3000/?fix
  assert(!back.includes('#'),`return address keeps #: ${back}`);
  assert.equal(parseParametersFromURL(`${back}#access_token=T&refresh_token=R`).access_token,'T','supabase-js must read the token');
 }
-console.log('PASS: 7 AgentResponse fixtures, history envelope, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names and login return address.');
+console.log('PASS: 7 AgentResponse fixtures, history envelope, document and memory fixtures, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names and login return address.');

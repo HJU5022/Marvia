@@ -1,5 +1,5 @@
 {
-  "source": "Read-only AST snapshot of schemas/agent.py and routers/history.py, 2026-09-28. All serialized fields required for fixture verification.",
+  "source": "Read-only AST snapshot of schemas/agent.py and routers/history.py, 2026-09-28. All serialized fields required for fixture verification. 2026-10-02: DocumentResponse(schemas/document.py, B/L 조건·연락처 칸 포함)와 MemoryResponse(schemas/memory.py)를 Pydantic 스키마에서 같은 모양으로 옮겨 더함.",
   "definitions": {
     "Verdict": {
       "enum": [
@@ -834,6 +834,491 @@
       },
       "required": [
         "items",
+        "available"
+      ]
+    },
+    "DocumentFields": {
+      "type": "object",
+      "properties": {
+        "bl_no": {
+          "ref": "FieldResult"
+        },
+        "vessel": {
+          "ref": "FieldResult"
+        },
+        "voyage": {
+          "ref": "FieldResult"
+        },
+        "eta": {
+          "ref": "FieldResult"
+        },
+        "pol": {
+          "ref": "FieldResult"
+        },
+        "pod": {
+          "ref": "FieldResult"
+        },
+        "item": {
+          "ref": "FieldResult"
+        },
+        "original_bl": {
+          "ref": "FieldResult"
+        },
+        "to_order_bank": {
+          "ref": "FieldResult"
+        },
+        "freight_term": {
+          "ref": "FieldResult"
+        },
+        "incoterm": {
+          "ref": "FieldResult"
+        },
+        "contact_company": {
+          "ref": "FieldResult"
+        },
+        "contact_role": {
+          "ref": "FieldResult"
+        },
+        "contact_phone": {
+          "ref": "FieldResult"
+        }
+      },
+      "required": [
+        "bl_no",
+        "vessel",
+        "voyage",
+        "eta",
+        "pol",
+        "pod",
+        "item",
+        "original_bl",
+        "to_order_bank",
+        "freight_term",
+        "incoterm",
+        "contact_company",
+        "contact_role",
+        "contact_phone"
+      ]
+    },
+    "FieldResult": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "missing",
+              "not_in_text",
+              "format",
+              "ambiguous"
+            ]
+          }
+        }
+      },
+      "required": [
+        "value",
+        "checks"
+      ]
+    },
+    "OcrInfo": {
+      "type": "object",
+      "properties": {
+        "lines": {
+          "type": "integer"
+        },
+        "rotation": {
+          "enum": [
+            0,
+            180,
+            270
+          ]
+        },
+        "runs": {
+          "type": "integer"
+        },
+        "ocr_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lines",
+        "rotation",
+        "runs",
+        "ocr_ms"
+      ]
+    },
+    "DocumentResponse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "partial"
+          ]
+        },
+        "needs_review": {
+          "type": "boolean"
+        },
+        "fields": {
+          "ref": "DocumentFields"
+        },
+        "ocr": {
+          "ref": "OcrInfo"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "mrn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "doc_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "B/L",
+                "A/N"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "needs_review",
+        "fields",
+        "ocr",
+        "trace_id",
+        "mrn",
+        "doc_kind"
+      ]
+    },
+    "MemoryItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "about",
+            "cargo"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "preference",
+            "schedule",
+            "contact",
+            "worry",
+            "todo"
+          ]
+        },
+        "fields": {
+          "type": "object"
+        },
+        "noted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cargo_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "section",
+        "kind",
+        "fields",
+        "noted_at",
+        "cargo_name"
+      ]
+    },
+    "CargoSummary": {
+      "type": "object",
+      "properties": {
+        "bl_masked": {
+          "type": "string"
+        },
+        "bl_type": {
+          "enum": [
+            "MASTER",
+            "HOUSE"
+          ]
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "done"
+          ]
+        },
+        "sale_due_date": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forwarder_eta": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "original_bl": {
+          "anyOf": [
+            {
+              "enum": [
+                "required",
+                "surrendered"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "to_order_bank": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "freight_term": {
+          "anyOf": [
+            {
+              "enum": [
+                "prepaid",
+                "collect"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "incoterm": {
+          "anyOf": [
+            {
+              "enum": [
+                "CIF",
+                "FOB",
+                "CFR"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_verdict": {
+          "anyOf": [
+            {
+              "enum": [
+                "fine",
+                "watch",
+                "act"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_checked_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_days_margin": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_eta": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pending": {
+          "type": "array",
+          "items": {
+            "ref": "PendingChange"
+          }
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "bl_masked",
+        "bl_type",
+        "label",
+        "status",
+        "sale_due_date",
+        "forwarder_eta",
+        "original_bl",
+        "to_order_bank",
+        "freight_term",
+        "incoterm",
+        "last_verdict",
+        "last_checked_at",
+        "last_days_margin",
+        "last_eta",
+        "last_stage",
+        "pending",
+        "summary"
+      ]
+    },
+    "PendingChange": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "enum": [
+            "sale_due_date",
+            "forwarder_eta",
+            "label"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "noted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "field",
+        "value",
+        "noted_at"
+      ]
+    },
+    "MemoryResponse": {
+      "type": "object",
+      "properties": {
+        "markdown": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "ref": "MemoryItem"
+          }
+        },
+        "cargo": {
+          "type": "array",
+          "items": {
+            "ref": "CargoSummary"
+          }
+        },
+        "full": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "markdown",
+        "items",
+        "cargo",
+        "full",
         "available"
       ]
     }

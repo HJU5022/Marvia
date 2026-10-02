@@ -623,3 +623,23 @@ th{background:#f7faff;color:#506c85}
 .evidence-detail div{display:grid;grid-template-columns:64px 1fr;gap:8px}
 .evidence-detail dt{color:var(--muted)}
 .evidence-detail dd{margin:0;overflow-wrap:anywhere}
+
+/* 설정 화면 "내 기억" (components/MemoryPanel.tsx, docs/specs/memory.md 10-02). 계정 구역과 같은 틀을 쓰고 목록만 더한다 */
+.memory-panel>p.muted{font-size:12px;margin-top:6px}
+.memory-block{margin-top:18px}
+.memory-block h3{font-size:13px;margin-bottom:6px}
+.memory-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--border)}
+.memory-item,.memory-cargo{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:12px}
+.memory-item small{display:inline-block;min-width:64px;margin-right:8px;color:var(--muted);font-size:10px;font-weight:600}
+.memory-item em{font-style:normal;color:var(--quiet);font-size:10px}
+.memory-cargo{flex-direction:column;align-items:flex-start;gap:2px}
+.memory-cargo span{color:var(--body);font-size:11px}
+.memory-cargo.done{flex-direction:row;align-items:center}
+.memory-pending{padding:4px 8px;border-radius:5px;background:var(--warning-bg);color:var(--warning)!important}
+.memory-full{margin-top:12px;padding:12px;border-radius:5px;background:var(--warning-bg);color:var(--warning);font-size:12px}
+@media (max-width:720px){.memory-item{flex-direction:column;align-items:flex-start}}
+
+/* 서류 확인 화면의 B/L 조건·연락처 칸 (DocumentPanel, 10-02 결정 6). 고르기 칸도 입력 칸과 같은 모양 */
+.document-field select{min-width:0;font-size:12px;min-height:36px;padding:7px 10px;border-radius:var(--small-radius);border:1px solid var(--border);background:var(--surface)}
+.document-field.flagged select{border-color:var(--warning);background:var(--warning-bg)}
+.document-subhead{margin:16px 0 4px;font-size:12px}
