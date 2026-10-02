@@ -76,7 +76,7 @@ NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 �
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 # 판정 LLM이 끝내 실패했을 때 표 등급으로 확정하며 쓰는 문구 (09-30 결정, _llm_gave_up). 숫자를 넣지 않는다 (V7)
 TABLE_FALLBACK = "판정 표 기준으로 '{label}'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요."
-VERDICT_LABEL = {"fine": "괜찮음", "watch": "지켜볼 것", "act": "지금 조치"}
+VERDICT_LABEL = verdict_table.VERDICT_LABEL  # 원본은 services/verdict.py (화물 비서 "지난 조회" 줄과 같이 쓴다)
 
 # 반출된 화물 (09-28 결정). 반출신고는 통관의 마지막 단계다 (skills/customs-stages/rules.md customs_stages, next가 null)
 RELEASED_STAGE = "반출신고"

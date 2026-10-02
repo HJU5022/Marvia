@@ -1,0 +1,304 @@
+"""화물 표(user_cargo) 읽기·쓰기 (docs/specs/memory.md "화물 표 컬럼", 마이그레이션 014·015).
+
+책임: 로그인한 사용자의 화물 한 건 = 한 줄을 코드가 관리한다. LLM은 이 표를 직접 고치지 않는다.
+  cargo_key()          화물 지문. 원본 B/L에 BL_ENCRYPTION_KEY에서 파생한 열쇠를 섞은 HMAC (crypto.fingerprint 재사용)
+  upsert_assessment()  조회가 끝난 뒤 이번 입력·확정된 배·판정 요약을 적는다. 반출이면 done (Spec 쓰기 흐름 2)
+  active_rows()        진행 중 화물 최대 MAX_ACTIVE건. 판정·후속 LLM의 <user_cargo> 블록 재료 (Spec 읽기 흐름 1)
+  previous_line()      "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요." 코드가 쓰는 한 줄 (10-02 결정 4)
+  add_pending()        대화에서 나온 화물 값 변경(set_cargo)을 확인 대상으로만 둔다 (Spec 쓰기 흐름 4)
+  apply_document_facts() 서류 사진에서 사용자가 확인한 B/L 조건을 적는다 (10-02 결정 7)
+  delete_all()         탈퇴·내 기록 삭제·메모장 전부 지우기 (Spec "개인정보")
+
+저장 기준 (Spec "저장 기준"): 다시 조회하면 또 나오는 값(선명, 입항일 원본, 통관 이력)은 저장하지 않는다.
+B/L 원본은 잠근 값(bl_encrypted, crypto.encrypt)과 가린 값(bl_masked, schemas.customs.mask_bl)으로만 둔다 (SDD 3.5).
+UNI-PASS 품명·중량·화주는 받지도 넣지도 않는다 (CLAUDE.md). last_stage는 통관 단계 이름뿐이다.
+B/L 조건 세 칸(original_bl, to_order_bank, freight_term + incoterm)은 판정 등급에 쓰지 않는다 (10-02 결정 5).
+
+DB 연결은 부르는 쪽이 연다 (with connect() as conn). 여기 함수는 conn만 받아 SQL을 보낸다. 실패는 부르는 쪽이 로그만 남긴다.
+"""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime, timezone
+
+from backend.app import crypto
+from backend.app.schemas.agent import AgentRequest, AgentResponse
+from backend.app.schemas.customs import mask_bl
+from backend.app.services.evidence import KST
+from backend.app.services.verdict import VERDICT_LABEL
+
+# 판정에 넣는 진행 중 화물 상한 (Spec "보관과 크기" 상한 설정값 30건). 부르는 쪽이 limit으로 바꿀 수 있다
+MAX_ACTIVE = 30
+# 이름표 글자 수 상한. Spec에 숫자가 없어 화면 한 줄에 들어가는 길이로 정했다 (10-02, memory.md 결정 기록)
+LABEL_MAX = 20
+# 대화로 바꿀 수 있는 화물 칸 (Spec 쓰기 흐름 4 set_cargo). 판정은 이번 입력으로만 한다
+PENDING_FIELDS = ("sale_due_date", "forwarder_eta", "label")
+# B/L 조건 칸의 허용 값 (마이그레이션 015 CHECK와 같다, 10-02 결정 5)
+ORIGINAL_BL = ("required", "surrendered")
+FREIGHT_TERMS = ("prepaid", "collect")
+INCOTERMS = ("CIF", "FOB", "CFR")
+
+COLUMNS = (
+    "cargo_key", "bl_masked", "bl_type", "label", "status", "sale_due_date", "sale_due_asked",
+    "forwarder_eta", "forwarder_eta_noted_at", "vessel_mmsi", "voyage_no", "vessel_source",
+    "last_verdict", "last_checked_at", "last_days_margin", "last_eta", "last_stage", "done_at",
+    "original_bl", "to_order_bank", "freight_term", "incoterm", "pending",
+)
+
+
+def cargo_key(bl_no: str) -> str | None:
+    """화물 지문. 가린 번호가 겹치는 두 화물도 정확히 가른다 (Spec EC-05).
+
+    열쇠는 BL_ENCRYPTION_KEY에서 용도 이름을 붙여 파생한다 (crypto.fingerprint). 원본으로 되돌릴 수 없다.
+    열쇠가 없으면 None이고, 부르는 쪽은 화물 표를 만들지도 읽지도 않는다 (채점용 환경처럼).
+    """
+    return crypto.fingerprint(bl_no.strip().upper(), crypto.BL_KEY_ENV)
+
+
+def _row(values) -> dict:
+    """SELECT 결과 한 줄을 칸 이름 dict로."""
+    return dict(zip(COLUMNS, values))
+
+
+def get_row(conn, user_id: str, key: str) -> dict | None:
+    """화물 한 건. 끝난 화물도 돌려준다. 없으면 None."""
+    found = conn.execute(f"SELECT {', '.join(COLUMNS)} FROM user_cargo WHERE user_id = %s AND cargo_key = %s",
+                         [user_id, key]).fetchone()
+    return _row(found) if found else None
+
+
+def active_rows(conn, user_id: str, limit: int = MAX_ACTIVE) -> list[dict]:
+    """진행 중 화물을 최근 조회 순으로 최대 limit건. 판정·후속 LLM의 <user_cargo> 재료다 (Spec 읽기 흐름 1).
+    줄이는 기준은 상태와 날짜뿐이다. 질문 내용으로 고르지 않는다 (Spec "RAG 판정" 규칙 2)."""
+    rows = conn.execute(
+        f"""SELECT {', '.join(COLUMNS)} FROM user_cargo WHERE user_id = %s AND status = 'active'
+            ORDER BY last_checked_at DESC NULLS LAST, updated_at DESC LIMIT %s""",
+        [user_id, limit],
+    ).fetchall()
+    return [_row(r) for r in rows]
+
+
+def all_rows(conn, user_id: str, limit: int = 100) -> list[dict]:
+    """GET /api/memory 화면용. 진행 중 먼저, 그다음 끝난 화물."""
+    rows = conn.execute(
+        f"""SELECT {', '.join(COLUMNS)} FROM user_cargo WHERE user_id = %s
+            ORDER BY status = 'done', last_checked_at DESC NULLS LAST, updated_at DESC LIMIT %s""",
+        [user_id, limit],
+    ).fetchall()
+    return [_row(r) for r in rows]
+
+
+def found_cargo(response: AgentResponse) -> bool:
+    """화물 표에 줄을 만들 만한 조회인가. 세관에 없는 번호(오타일 수 있다), 통관 조회 실패, 부산 밖 화물은 만들지 않는다."""
+    if response.status in ("failed", "unsupported"):
+        return False
+    return not (response.status == "insufficient" and "bl_type" in response.missing_inputs)
+
+
+def _vessel(request: AgentRequest, response: AgentResponse) -> tuple[int | None, str | None]:
+    """확정된 배와 확정 방법 (Spec 화물 표 vessel_source: mrn / user).
+
+    - 사용자가 되묻기에서 고른 배, 또는 사용자가 준 항차·포워더 입항일로 고른 배: user
+    - MRN 입항 신고의 호출부호로 코드가 확정한 배: mrn (routers/agent._identify 후보 이유 문구)
+    이름만으로 1척 찾은 경우는 두 방법 어느 것도 아니라 적지 않는다. 덜 적는 쪽이 틀린 배를 기억하는 것보다 낫다.
+    """
+    if request.resolved_mmsi:
+        return request.resolved_mmsi, "user"
+    if response.vessel_match != "confirmed" or not response.vessel_candidates:
+        return None, None
+    first = response.vessel_candidates[0]
+    if any("MRN" in reason for reason in first.match_reasons):
+        return first.mmsi, "mrn"
+    if request.voyage_no or request.forwarder_eta:
+        return first.mmsi, "user"
+    return None, None
+
+
+def _kst_date(moment: datetime | None) -> date | None:
+    """시각을 한국 날짜로. 근거 카드와 같은 기준이다 (services/evidence.KST)."""
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(KST).date()
+
+
+def upsert_assessment(conn, user_id: str, request: AgentRequest, response: AgentResponse, *, released: bool,
+                      now: datetime | None = None) -> bool:
+    """조회 한 번이 끝난 뒤 화물 표 한 줄을 쓴다 (Spec 쓰기 흐름 2). 썼으면 True.
+
+    - 이번 입력이 저장 값보다 우선한다 (Spec EC-02). 판매일·포워더 입항일은 이번에 들어왔을 때만 덮고, 안 들어왔으면 둔다
+    - 이번 입력으로 받은 칸의 확인 대기(pending)는 지운다. 사용자가 직접 넣은 값이 확인이다
+    - 마지막 판정 요약(last_*)은 조회마다 덮어쓴다. "지난번엔 ○○" 줄은 덮기 전에 읽은 값으로 만든다 (previous_line)
+    - released(통관 단계가 반출신고, routers/agent.RELEASED_STAGE)면 done. 완료 시각은 처음 done이 된 때를 지킨다
+    """
+    key = cargo_key(request.bl_no)
+    if not key or not found_cargo(response):
+        return False
+    now = now or datetime.now(timezone.utc)
+    today = now.astimezone(KST).date()
+    mmsi, source = _vessel(request, response)
+    entered = [f for f in ("sale_due_date", "forwarder_eta") if getattr(request, f)]
+    values = {
+        "user_id": user_id, "cargo_key": key, "bl_masked": mask_bl(request.bl_no),
+        "bl_encrypted": crypto.encrypt(request.bl_no), "bl_type": request.bl_type,
+        "status": "done" if released else "active",
+        "sale_due_date": request.sale_due_date,
+        "forwarder_eta": request.forwarder_eta, "forwarder_eta_noted_at": today if request.forwarder_eta else None,
+        "vessel_mmsi": mmsi, "voyage_no": request.voyage_no, "vessel_source": source,
+        "last_verdict": response.verdict, "last_checked_at": now, "last_days_margin": response.days_margin,
+        "last_eta": _kst_date(response.eta.trusted_eta) if response.eta else None,
+        "last_stage": response.customs.stage_name if response.customs else None,
+        "done_at": now if released else None,
+    }
+    names = list(values)
+    conn.execute(
+        f"""INSERT INTO user_cargo ({', '.join(names)}) VALUES ({', '.join(['%s'] * len(names))})
+            ON CONFLICT (user_id, cargo_key) DO UPDATE SET
+              bl_masked = EXCLUDED.bl_masked,
+              bl_encrypted = COALESCE(EXCLUDED.bl_encrypted, user_cargo.bl_encrypted),
+              bl_type = EXCLUDED.bl_type,
+              status = EXCLUDED.status,
+              sale_due_date = COALESCE(EXCLUDED.sale_due_date, user_cargo.sale_due_date),
+              forwarder_eta = COALESCE(EXCLUDED.forwarder_eta, user_cargo.forwarder_eta),
+              forwarder_eta_noted_at = COALESCE(EXCLUDED.forwarder_eta_noted_at, user_cargo.forwarder_eta_noted_at),
+              vessel_mmsi = COALESCE(EXCLUDED.vessel_mmsi, user_cargo.vessel_mmsi),
+              voyage_no = COALESCE(EXCLUDED.voyage_no, user_cargo.voyage_no),
+              vessel_source = COALESCE(EXCLUDED.vessel_source, user_cargo.vessel_source),
+              last_verdict = EXCLUDED.last_verdict,
+              last_checked_at = EXCLUDED.last_checked_at,
+              last_days_margin = EXCLUDED.last_days_margin,
+              last_eta = EXCLUDED.last_eta,
+              last_stage = EXCLUDED.last_stage,
+              done_at = CASE WHEN EXCLUDED.status = 'done' THEN COALESCE(user_cargo.done_at, EXCLUDED.done_at) END,
+              pending = COALESCE((SELECT jsonb_agg(p) FROM jsonb_array_elements(user_cargo.pending) p
+                                  WHERE NOT (p->>'field' = ANY(%s::text[]))), '[]'::jsonb),
+              updated_at = now()""",
+        [*values.values(), entered],
+    )
+    return True
+
+
+def add_pending(conn, user_id: str, key: str, changes: list[dict]) -> int:
+    """확인 대기 값을 더한다 (Spec 쓰기 흐름 4: set_cargo는 바로 적용하지 않는다). 같은 칸은 새 값으로 바꾼다.
+    화물 줄이 없으면 아무것도 하지 않는다. 더한 개수를 돌려준다."""
+    row = get_row(conn, user_id, key)
+    if row is None or not changes:
+        return 0
+    kept = [p for p in (row["pending"] or []) if p.get("field") not in {c["field"] for c in changes}]
+    conn.execute("UPDATE user_cargo SET pending = %s::jsonb, updated_at = now() WHERE user_id = %s AND cargo_key = %s",
+                 [json.dumps(kept + changes, ensure_ascii=False), user_id, key])
+    return len(changes)
+
+
+def apply_document_facts(conn, user_id: str, bl_no: str, bl_type: str, facts: dict) -> str | None:
+    """서류 사진에서 사용자가 확인한 B/L 조건을 화물 줄에 적는다 (10-02 결정 7). 화물 지문을 돌려준다(열쇠 없으면 None).
+
+    facts: original_bl, to_order_bank, freight_term, incoterm. None인 칸은 "모름"이라 기존 값을 지우지 않는다.
+    줄이 없으면 만든다(아직 조회 전인 화물). 이때 마지막 판정 칸은 비어 있다.
+    허용 값 검사는 계약(schemas/memory.py)이 이미 했다. DB CHECK(마이그레이션 015)가 한 번 더 막는다.
+    """
+    key = cargo_key(bl_no)
+    if not key:
+        return None
+    cols = ("original_bl", "to_order_bank", "freight_term", "incoterm")
+    values = [facts.get(c) for c in cols]
+    conn.execute(
+        f"""INSERT INTO user_cargo (user_id, cargo_key, bl_masked, bl_encrypted, bl_type, {', '.join(cols)})
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, cargo_key) DO UPDATE SET
+              {', '.join(f'{c} = COALESCE(EXCLUDED.{c}, user_cargo.{c})' for c in cols)},
+              bl_encrypted = COALESCE(user_cargo.bl_encrypted, EXCLUDED.bl_encrypted),
+              updated_at = now()""",
+        [user_id, key, mask_bl(bl_no), crypto.encrypt(bl_no), bl_type, *values],
+    )
+    return key
+
+
+def delete_all(conn, user_id: str) -> int:
+    """그 사용자의 화물 표 줄을 전부 지운다 (탈퇴·내 기록 삭제, Spec "개인정보"). 지운 줄 수."""
+    return conn.execute("DELETE FROM user_cargo WHERE user_id = %s", [user_id]).rowcount
+
+
+# ── 글로 옮기기 (코드가 쓴다. LLM은 쓰지 않는다) ──
+
+def _md(value: date | datetime | None) -> str | None:
+    """날짜를 "10.01" 모양으로. 시각이면 한국 날짜로 바꾼다."""
+    if value is None:
+        return None
+    day = _kst_date(value) if isinstance(value, datetime) else value
+    return f"{day.month:02d}.{day.day:02d}"
+
+
+def margin_text(margin: int | None) -> str | None:
+    """여유 일수를 사람 말로. 음수는 판매 예정일보다 늦는다는 뜻이다 (marvia-judge 프롬프트 days_margin 설명과 같다)."""
+    if margin is None:
+        return None
+    return f"여유 {margin}일" if margin >= 0 else f"판매 예정일보다 {abs(margin)}일 늦음"
+
+
+def previous_line(row: dict | None) -> str | None:
+    """덮어쓰기 전 화물 줄로 "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요."를 만든다 (10-02 결정 4).
+    지난 판정이 없으면(처음 조회, 판정 보류) None. LLM을 부르지 않는다."""
+    if not row or not row.get("last_verdict") or not row.get("last_checked_at"):
+        return None
+    parts = [VERDICT_LABEL.get(row["last_verdict"], row["last_verdict"])]
+    if margin_text(row.get("last_days_margin")):
+        parts.append(margin_text(row["last_days_margin"]))
+    return f"지난 조회({_md(row['last_checked_at'])})에서는 {', '.join(parts)}이었어요."
+
+
+CONDITION_TEXT = {
+    "original_bl": {"required": "원본 B/L 필요", "surrendered": "서렌더(원본 B/L 불필요)"},
+    "freight_term": {"prepaid": "운임 선불", "collect": "운임 착불"},
+}
+
+
+def conditions_text(row: dict) -> list[str]:
+    """B/L 조건 세 칸을 사람 말로. 모르는 칸은 말하지 않는다 (Spec EC-12)."""
+    out = []
+    if row.get("original_bl"):
+        out.append(CONDITION_TEXT["original_bl"][row["original_bl"]])
+    if row.get("to_order_bank") is not None:
+        out.append("수하인 은행 지시식" if row["to_order_bank"] else "수하인 은행 지시식 아님")
+    if row.get("freight_term"):
+        term = CONDITION_TEXT["freight_term"][row["freight_term"]]
+        out.append(f"{term} ({row['incoterm']})" if row.get("incoterm") else term)
+    elif row.get("incoterm"):
+        out.append(row["incoterm"])
+    return out
+
+
+def cargo_line(row: dict) -> str:
+    """<user_cargo> 블록의 한 줄. 가린 번호만 쓴다. 내부 번호(id)는 넣지 않는다 (Spec "번호를 보여 주는 LLM은 기억 뽑기 하나뿐")."""
+    name = f"{row['label']} ({row['bl_masked']})" if row.get("label") else row["bl_masked"]
+    parts = [name, "하우스 B/L" if row.get("bl_type") == "HOUSE" else "마스터 B/L"]
+    if row.get("sale_due_date"):
+        parts.append(f"받아야 하는 날 {row['sale_due_date'].isoformat()}")
+    if row.get("forwarder_eta"):
+        heard = f", {_md(row['forwarder_eta_noted_at'])}에 들음" if row.get("forwarder_eta_noted_at") else ""
+        parts.append(f"포워더가 알려 준 입항일 {row['forwarder_eta'].isoformat()}{heard}")
+    parts += conditions_text(row)
+    if row.get("last_checked_at"):
+        last = [VERDICT_LABEL.get(row["last_verdict"], "판정 없음") if row.get("last_verdict") else "판정 없음"]
+        if margin_text(row.get("last_days_margin")):
+            last.append(margin_text(row["last_days_margin"]))
+        if row.get("last_eta"):
+            last.append(f"도착 예정 {row['last_eta'].isoformat()}")
+        if row.get("last_stage"):
+            last.append(f"통관 {row['last_stage']}")
+        parts.append(f"지난 조회 {_md(row['last_checked_at'])}: {', '.join(last)}")
+    return "- " + " · ".join(parts)
+
+
+def render_block(rows: list[dict]) -> str:
+    """판정·후속 LLM에 넣는 화물 표 블록 본문. 비었으면 빈 글자."""
+    return "\n".join(cargo_line(r) for r in rows)
+
+
+def done_summary(row: dict) -> str:
+    """끝난 화물 한 줄 요약 ("09.22 고추 반출 완료"). 코드가 판정 기록으로 만든다 (Spec "보관과 크기").
+    90일 정리 뒤에도 남는 칸(가린 번호·이름표·완료일)만 쓴다 (마이그레이션 015 purge_done_cargo)."""
+    name = row.get("label") or row["bl_masked"]
+    day = _md(row.get("done_at")) or _md(row.get("last_checked_at")) or ""
+    return f"{day} {name} 반출 완료".strip()
