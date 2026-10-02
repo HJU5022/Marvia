@@ -65,21 +65,26 @@ def _fake_chat(monkeypatch, content: str):
 
 
 def test_system_has_prompt_and_judge_skills(monkeypatch):
-    """판정에는 AIS 신뢰도(판정 표 · 기준 숫자)와 통관 단계 Skill만 넣는다. 판정 입력에 하역 장소가 없어 부두 Skill은 뺀다 (09-30)."""
+    """판정에는 AIS 신뢰도 · 통관 단계 · 등급 설명(cargo-verdict) Skill만 넣는다. 판정 입력에 하역 장소가 없어 부두 Skill은 뺀다 (09-30, 10-01)."""
     calls = _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
     llm.judge(_signals(), _customs(), days_margin=5)
 
     system = calls[0]["messages"][0]["content"]
-    assert "The verdict is one of three" in system  # 프롬프트 파일 앞부분
-    for skill in ("ais-reliability/SKILL.md", "ais-reliability/rules.md", "customs-stages/SKILL.md"):
+    assert "Do I need to worry about my cargo right now?" in system  # 프롬프트 파일 앞부분
+    for skill in ("ais-reliability/SKILL.md", "ais-reliability/rules.md", "customs-stages/SKILL.md",
+                  "customs-stages/rules.md", "cargo-verdict/SKILL.md", "cargo-verdict/rules.md"):
         assert f"skills/{skill}" in system
     assert "skills/port-busan/SKILL.md" not in system
 
 
 @pytest.mark.parametrize("folders, present, absent", [
-    (llm.PICK_SKILLS, ["ais-reliability/SKILL.md"], ["customs-stages/SKILL.md", "port-busan/SKILL.md"]),
-    (llm.GRADE_SKILLS, ["customs-stages/SKILL.md"], ["ais-reliability/SKILL.md", "port-busan/SKILL.md"]),
-    (llm.FOLLOW_UP_SKILLS, ["ais-reliability/SKILL.md", "customs-stages/SKILL.md", "port-busan/SKILL.md"], []),
+    (llm.PICK_SKILLS, ["ais-reliability/SKILL.md"],
+     ["customs-stages/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/"]),
+    # 채점 기준인 단계 목록은 customs-stages/rules.md에 있다 (10-01)
+    (llm.GRADE_SKILLS, ["customs-stages/SKILL.md", "customs-stages/rules.md"],
+     ["ais-reliability/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/"]),
+    (llm.FOLLOW_UP_SKILLS, ["ais-reliability/SKILL.md", "customs-stages/SKILL.md", "port-busan/SKILL.md",
+                            "cargo-verdict/SKILL.md"], []),
 ])
 def test_skills_per_call(folders, present, absent):
     """호출마다 필요한 Skill 폴더만 붙인다 (09-30). 붙이는 문서는 통째로다."""
@@ -132,7 +137,7 @@ def test_parses_answer_into_judge_output(monkeypatch):
 
 
 def test_null_verdict_and_customs_are_allowed(monkeypatch):
-    """판정 보류(null)와 통관 정보 없음(customs null)은 정상 답이다 (skills/ais-reliability 되묻기 조건)."""
+    """판정 보류(null)와 통관 정보 없음(customs null)은 정상 답이다 (skills/cargo-verdict 되묻기·보류 결과)."""
     _fake_chat(monkeypatch, json.dumps({**GOOD_ANSWER, "verdict": None, "reasons": [], "conflicts": [], "customs": None}))
     output = llm.judge(_signals(), None, days_margin=None).output
     assert output.verdict is None and output.customs is None

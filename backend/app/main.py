@@ -18,10 +18,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
-from backend.app.observability.logging import RequestLogMiddleware, setup_logging
+from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
 from backend.app.routers import account, admin, agent, chat, document, history, profile
 from mcp_server.server import MountedMCP
 
@@ -79,8 +80,28 @@ app.include_router(profile.router)  # 회원 정보 (docs/specs/user-profile.md)
 app.add_route("/mcp", mcp_app, include_in_schema=False)
 
 
+# /health의 DB 연결 대기 시간(초). compose healthcheck timeout(5초)보다 짧아야 compose가 끊기 전에 503을 받는다
+HEALTH_DB_TIMEOUT_SEC = 3
+
+
 @app.get("/health")
-def health() -> dict:
-    """채점자와 배포 환경이 서비스 상태를 확인하는 곳."""
-    return {"status": "ok"}
+def health():
+    """채점자와 배포 환경이 서비스 상태를 확인하는 곳. 서버가 떠 있는지와 DB에 붙는지를 본다 (10-01 결정).
+
+    - DB 연결 성공: 200 {"status": "ok", "db": "ok"}
+    - DATABASE_URL 없음: 200 {"status": "ok", "db": "not_configured"}. 평가 실행기처럼 DB를 일부러 끈 환경이라 고장이 아니다
+    - DB 연결 실패: 503 {"status": "error", "db": "down"}. compose·배포 환경이 비정상으로 알아채게 한다
+    외부 API(ShipFinder 등)는 부르지 않는다. 10초마다 부르면 ShipFinder 하루 50회 한도가 바닥나고,
+    남의 서버 장애가 우리 서버 고장으로 보이게 된다.
+    """
+    if not os.environ.get("DATABASE_URL"):
+        return {"status": "ok", "db": "not_configured"}
+    try:
+        with connect(timeout=HEALTH_DB_TIMEOUT_SEC) as conn:
+            conn.execute("SELECT 1")
+    except Exception as e:
+        # 예외 메시지에는 DB 주소가 섞일 수 있어 종류만 남긴다 (log_failure 규칙)
+        log_failure("health", type(e).__name__)
+        return JSONResponse(status_code=503, content={"status": "error", "db": "down"})
+    return {"status": "ok", "db": "ok"}
 

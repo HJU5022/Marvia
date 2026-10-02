@@ -44,12 +44,12 @@ from backend.app.services import guard, identify, llm, validate
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
-from backend.app.services.rules import rule
+from backend.app.services.rules import is_listed_stage, rule
 from backend.app.services.customs import CustomsError, UnipassClient
-from mcp_server.tools.distance import estimate_distance
-from mcp_server.tools.live_position import get_live_position
-from mcp_server.tools.port_schedule import get_port_schedule
-from mcp_server.tools.vessel_candidates import get_vessel_candidates
+# MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py)
+from backend.app.services.mcp_client import (
+    estimate_distance, get_live_position, get_port_schedule, get_vessel_candidates,
+)
 
 router = APIRouter(prefix="/api", tags=["agent"])
 logger = logging.getLogger(__name__)
@@ -76,12 +76,16 @@ LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 �
 TABLE_FALLBACK = "판정 표 기준으로 '{label}'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요."
 VERDICT_LABEL = {"fine": "괜찮음", "watch": "지켜볼 것", "act": "지금 조치"}
 
-# 반출된 화물 (09-28 결정). 반출신고는 통관의 마지막 단계다 (skills/customs-stages 표 "다음 단계 없음(끝)")
+# 반출된 화물 (09-28 결정). 반출신고는 통관의 마지막 단계다 (skills/customs-stages/rules.md customs_stages, next가 null)
 RELEASED_STAGE = "반출신고"
 RELEASED = "이 화물은 이미 보세창고에서 반출됐습니다. 통관이 끝나 배 위치는 확인하지 않았습니다. 배송 일정은 운송사에 확인해 주세요."
 RELEASED_EXPLANATION = "화물이 보세창고에서 나갔고 세관 절차가 모두 끝났습니다."
-# 할 일은 Skill 표의 반출신고 행("입고를 확인한다")을 따르고, 범위 밖인 배송 일정은 운송사로 넘긴다 (PRD 4절 창고 수령일 예측)
+# 할 일은 customs-stages/rules.md 반출신고 todo("입고를 확인한다")를 따르고, 범위 밖인 배송 일정은 운송사로 넘긴다 (PRD 4절 창고 수령일 예측)
 RELEASED_ACTIONS = ["배송 일정은 운송사에 확인하세요.", "물건이 도착하면 입고를 확인하세요."]
+
+# 목록에 없는 통관 단계의 설명 문장 (10-01). customs-stages/rules.md에 뜻이 없어 LLM이 설명할 근거가 없다.
+# LLM에 맡기면 이름만 보고 뜻을 지어내거나 "지연될 수 있다" 같은 평가를 덧붙였다 (평가 B10 "검사지정", 09-30·10-01 매번)
+UNLISTED_STAGE_EXPLANATION = "{stage} 단계입니다. 목록에 없는 단계라 뜻을 확인할 수 없어 관세사 확인이 필요합니다."
 
 JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 첨부 + 강화 (SDD 5.7)
 
@@ -90,10 +94,10 @@ TOOL_FAILED = "tool_failed"
 FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
 # 질문이 역할 재설정·지시 무시 모양이면 LLM을 부르지 않고 이 문구로 답한다 (services/guard.py, SDD 7절 10-01)
 FOLLOW_UP_BLOCKED = "이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다. 예: 여유가 며칠인가요? 지금 통관 단계는 무엇인가요?"
-# 후속 답에 거는 검증 규칙. 7규칙 중 answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기)과
-# V7(근거에 없는 숫자 금지)뿐이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
-# 여기에 후속 답 전용 V9(근거에 없는 영문 낱말 금지, validate.check_follow_up_words)를 더 건다 (10-01)
-FOLLOW_UP_RULES = {"V1", "V7"}
+# 후속 답에 거는 검증 규칙. answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기),
+# V7(근거에 없는 숫자 금지), V11(통관 진행 평가 금지)이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
+# 여기에 후속 답 전용 V9(근거에 없는 영문 낱말 금지, validate.check_follow_up_words)와 V10(질문 낱말 옮기기 금지)을 더 건다 (10-01)
+FOLLOW_UP_RULES = {"V1", "V7", "V11"}  # V11: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01)
 
 
 def _response(**over) -> AgentResponse:
@@ -147,7 +151,8 @@ def _assess(request: AgentRequest) -> AgentResponse:
 
     # 지원 범위는 부산항이다 (PRD 4절). 양륙항이 부산이 아니면 배를 찾지 않고 끝낸다 (평가셋 F05).
     # 양륙항 칸이 비어 있으면 범위 밖으로 단정하지 않고 진행한다. 모르는 것을 거절하는 쪽이 더 나쁘다
-    if customs.discharge_port and customs.discharge_port != signals_service.BUSAN_PORT_CODE:
+    # 부산 항구 코드는 skills/port-busan/rules.md busan_port_code (10-01)
+    if customs.discharge_port and customs.discharge_port != rule("busan_port_code"):
         return _response(status="unsupported", answer=NOT_BUSAN)
 
     # 이미 반출된 화물은 배를 찾지 않는다 (09-28 결정). 화물이 창고를 떠났는데 배를 찾으면 같은 배의
@@ -375,7 +380,7 @@ def _released(customs: CustomsRecord) -> AgentResponse:
             stage_name=customs.stage_name,
             plain_explanation=RELEASED_EXPLANATION,
             next_stage=None,
-            needs_broker=False,
+            needs_broker=signals_service.needs_broker(customs.stage_name),
             history=[s.model_dump(mode="json") for s in customs.stage_history],
             **customs.route_fields(),
         ),
@@ -415,7 +420,9 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
             log_failure("follow_up", _llm_error(e))
             return failed
         answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
-        violations = [v for v in validate.check(answered) if v.rule in FOLLOW_UP_RULES]
+        # V11은 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
+        checked = answered.model_copy(update={"actions": [], "customs": None})
+        violations = [v for v in validate.check(checked) if v.rule in FOLLOW_UP_RULES]
         # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
         violations += validate.check_follow_up_words(out.answer, previous, llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
         # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
@@ -639,17 +646,35 @@ def _eta(position: dict | None, schedule: dict | None, signal_set, trusted) -> E
     )
 
 
+def code_written_explanation(stage_name: str | None) -> bool:
+    """통관 설명 문장을 LLM이 아니라 코드가 쓰는 단계인가: 반출신고(_released)와 목록에 없는 단계.
+    평가 실행기(evals/judge.py)가 이 단계들은 LLM 해설 채점에서 뺀다. 코드가 쓴 고정 문장이라 LLM 품질이 아니다 (10-01)."""
+    if not stage_name:
+        return False
+    return stage_name == RELEASED_STAGE or not is_listed_stage(stage_name)
+
+
 def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
-    """단계 이름·코드·이력은 UNI-PASS 값(코드), 해설 셋은 LLM 값으로 C1 CustomsInfo를 만든다.
-    단계 이름이 없거나 LLM이 해설을 안 냈으면 None."""
-    if not customs.stage_name or explained is None:
+    """단계 이름·코드·이력은 UNI-PASS 값, 관세사 필요 여부는 코드 판단(10-01), 해설 둘은 LLM 값으로 C1 CustomsInfo를 만든다.
+
+    목록에 없는 단계는 해설 둘도 코드가 쓴다: 고정 문장 + 다음 단계 null (10-01, UNLISTED_STAGE_EXPLANATION).
+    뜻을 모르는 단계라 LLM 해설이 필요 없어서, LLM이 해설을 못 냈어도 이 경우는 채운다.
+    그 밖에 단계 이름이 없거나 LLM이 해설을 안 냈으면 None."""
+    if not customs.stage_name:
         return None
+    if not is_listed_stage(customs.stage_name):
+        plain_explanation = UNLISTED_STAGE_EXPLANATION.format(stage=customs.stage_name)
+        next_stage = None
+    elif explained is None:
+        return None
+    else:
+        plain_explanation, next_stage = explained.plain_explanation, explained.next_stage
     return CustomsInfo(
         stage_code=customs.stage_code or "",
         stage_name=customs.stage_name,
-        plain_explanation=explained.plain_explanation,
-        next_stage=explained.next_stage,
-        needs_broker=explained.needs_broker,
+        plain_explanation=plain_explanation,
+        next_stage=next_stage,
+        needs_broker=signals_service.needs_broker(customs.stage_name),
         history=[s.model_dump(mode="json") for s in customs.stage_history],
         **customs.route_fields(),  # 어디서 어디로 (10-01)
     )

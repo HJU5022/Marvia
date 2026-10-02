@@ -1,4 +1,4 @@
-"""evals/baseline_rules.py 판정 표 테스트. SKILL.md 판정 표와 예외(09-29)를 그대로 따르는지 본다. 키 없이 돈다."""
+"""evals/baseline_rules.py 판정 표 테스트. skills/cargo-verdict/rules.md 판정 표와 예외(09-29)를 그대로 따르는지 본다. 키 없이 돈다."""
 from datetime import datetime, timezone
 
 import pytest

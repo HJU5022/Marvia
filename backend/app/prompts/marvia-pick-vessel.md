@@ -6,6 +6,8 @@ Input:
 - hours_since_last on each candidate is how many hours ago its last signal arrived, computed by code. Use it to judge how recent a signal is. Do not work out recency from the timestamps yourself.
 - If the user answered a follow-up question, the voyage number or the forwarder's expected arrival date is included
 
+Use the ais-reliability Skill appended below for same-name vessels and for reading AIS values.
+
 Rules:
 - For each candidate, write in reasons_per_candidate what matches the customs data and what does not. Write each reason in Korean.
 - Set confidence to high only when you are sure. If two or more candidates match about equally, or the evidence is not enough, set choice to null and confidence to low.

@@ -173,10 +173,12 @@ cp .env.example .env     # 키를 채운다 (아래 표 참고)
 docker compose up        # api :8000 (/api/agent, /mcp), worker, postgres
 ```
 
+worker는 `WORKER_SCHEDULE=off`(기본)이면 안내 한 줄을 남기고 바로 끝난다(`Exited (0)`). 고장이 아니다. 주기 수집은 `on`으로 켠다.
+
 뜨면 이렇게 확인한다.
 
 ```bash
-curl http://localhost:8000/health        # {"status":"ok"}
+curl http://localhost:8000/health        # {"status":"ok","db":"ok"}. DB가 끊기면 503
 open http://localhost:8000/docs          # API 문서
 ```
 
@@ -211,7 +213,7 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 알아 둘 것
 
 - 판매 예정일은 선택이다. 비우면 정상 건은 여유 일수 없이 괜찮음과 "판매 예정일을 넣으면 여유까지 볼 수 있다"는 안내가 나온다
-- 녹화 답은 이 입력에만 맞다. 판매 예정일을 다른 날짜로 넣으면 녹화 답을 쓰지 않고 판정 없이 `partial`로 끝난다. 틀린 답을 그럴듯하게 보이지 않게 한 것이다
+- 녹화 답은 이 입력에만 맞다. 판매 예정일을 다른 날짜로 넣으면 녹화 답을 쓰지 않고 `partial`로 끝난다. 등급은 판정 표가 정해서 그대로 나오고, "설명 문장은 만들지 못했습니다" 안내가 붙는다. 틀린 설명을 그럴듯하게 보이지 않게 한 것이다
 - `.env`에 `LLM_MODEL`를 넣으면 같은 데모를 진짜 LLM이 판정한다 (녹화 답을 쓰지 않는다)
 - 위치 수신 시각이 "만든 시각 30분 전"이라 약 5시간 반 뒤에는 오래된 위치가 된다. 그때는 `make_demo`를 다시 돌린다
 - Docker 없이: `python -m scripts.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
@@ -224,8 +226,14 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 | `DATA_GO_KR_KEY` | 공공데이터포털. 해수부 관제정보·선박운항정보 활용신청 | 입항 예정·실적 조회 불가 |
 | `UNIPASS_KEY` | 관세청 UNI-PASS 오픈API | B/L 조회 불가 |
 | `OPENROUTER_API_KEY` | openrouter.ai | 판정 불가 |
+| `LLM_MODEL` | 서비스 모델 이름 (예: `openai/gpt-4o-mini`). 전 이름 `MODEL_A` | `partial`: 판정 표 등급만 나오고 설명 문장 없음 (데모는 녹화 답) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse 프로젝트 설정 | 트레이스 없음 |
 | `MCP_TOKEN` | 아무 랜덤 문자열 | /mcp가 인증 없이 열린다 |
+| `SUPABASE_URL` | Supabase 프로젝트 주소 (비밀값 아님) | 로그인이 꺼진다. 데모·채점은 비워 둔다 |
+| `SUPABASE_SECRET_KEY` | Supabase 대시보드 API Keys | 회원 탈퇴 불가 |
+| `BL_ENCRYPTION_KEY` | 아래 명령으로 한 번 만들고, 모든 환경에 같은 값 | B/L 원본을 저장하지 않는다 |
+
+**`SUPABASE_URL`을 채우면 로그인이 필수가 된다.** `/api/agent` 요청에 `Authorization: Bearer <Supabase 로그인 토큰>`이 없으면 401 `{"detail":"로그인이 필요합니다"}`이다. 키 없이 돌려 볼 때는 비워 둔다.
 
 `MCP_TOKEN`은 이렇게 만든다.
 
@@ -233,12 +241,20 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 python -c "import secrets; print(secrets.token_urlsafe(24))"
 ```
 
+`BL_ENCRYPTION_KEY`는 이렇게 만든다. 잃어버리면 저장된 B/L을 다시 열 수 없다.
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
 ### 로컬에서 직접 돌리기 (Docker 없이)
 
 ```bash
-python -m venv .venv && .venv/Scripts/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt
-.venv/Scripts/python -m uvicorn backend.app.main:app --port 8000     # API + MCP(/mcp)
+python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt
+.venv/bin/python -m uvicorn backend.app.main:app --port 8000     # API + MCP(/mcp)
 ```
+
+윈도우는 `.venv/bin/python` 대신 `.venv\Scripts\python`이다.
 
 ### MCP 서버 확인
 
@@ -256,7 +272,7 @@ python -m scripts.mcp_auth_check                        # 토큰 없으면 401
 ### 테스트
 
 ```bash
-pytest          # 402건 (09-29). 외부 API 키 없이 돈다 (가공 응답으로 대체)
+pytest          # 464건 (10-01). 외부 API 키 없이 돈다 (가공 응답으로 대체)
 ```
 
 ### 아직 안 되는 것

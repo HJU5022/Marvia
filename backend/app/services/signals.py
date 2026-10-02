@@ -3,11 +3,13 @@
 도구가 가져온 원본 값을 보고 신호 7종을 triggered·clear·unknown으로 가른다.
 외부 호출이 없는 순수 함수라 같은 입력이면 항상 같은 결과가 나온다 (SDD 5.4).
 
-여기서 판정하는 것은 "사실이 어떤가"까지다. "그래서 괜찮은가"는 2층 LLM이 정한다.
-임계값은 코드에 적지 않고 skills/ais-reliability/rules.md에서 읽는다 (C6).
+여기서 판정하는 것은 "사실이 어떤가"까지다. "그래서 괜찮은가"(등급)는 services/verdict.py가
+skills/cargo-verdict/rules.md 판정 표로 정한다 (09-30 D7, 10-01).
+임계값은 코드에 적지 않고 skills/*/rules.md 프론트매터에서 읽는다 (C6, services/rules.py가 합쳐 읽는다).
 
 unknown과 clear를 구분한다. clear는 확인했고 문제가 없다는 뜻이고,
-unknown은 확인할 값 자체가 없다는 뜻이다. 결정적 신호가 unknown이면 2층은 판정하지 않고 되묻는다.
+unknown은 확인할 값 자체가 없다는 뜻이다. act를 가르는 신호(cargo-verdict/rules.md gray_signals)가 unknown이면
+회색 지대라 LLM이 표 등급 이상에서 고른다 (services/verdict.py).
 """
 from __future__ import annotations
 
@@ -17,11 +19,11 @@ from datetime import datetime, timedelta, timezone
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import Freshness, Signal, SignalSet
 from backend.app.services.evidence import KST, days_margin
-from backend.app.services.rules import rule
+from backend.app.services.rules import is_listed_stage, rule
 
-BUSAN_PORT_CODE = "KRPUS"
+# 부산 항구 코드(UN/LOCODE)는 skills/port-busan/rules.md busan_port_code에서 읽는다 (10-01: 코드 상수였다)
 # dest_changed 값 가운데 "배의 실제 목적지가 아니라 입력 오류일 수 있다"는 뜻인 둘.
-# SKILL.md 판정 표 예외(watch 이유로 세지 않음)와 평가 베이스라인(evals/baseline_rules.py)이 같이 쓴다
+# 판정 표의 세지 않는 목적지(cargo-verdict/rules.md ignore_dest_values, services/verdict.py)와 평가 베이스라인이 같이 쓴다
 DEST_BROKEN = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
 DEST_EMPTY = "비어 있음"
 # 판매일을 안 넣었을 때 sales_date_exceeded 값. 라우터와 베이스라인이 이 값으로 "판매일 없음"을 알아본다
@@ -31,12 +33,8 @@ EARTH_RADIUS_NM = 3440.065
 # 항해상태(navistat) 코드. 1=정박, 5=계류, 0=항해 중(엔진 사용)
 NAVSTAT_MOORED = (1, 5)
 NAVSTAT_UNDERWAY = 0
-MOORED_SPEED_KN = 2.0  # 정박·계류라면서 이보다 빠르면 값이 안 맞는다
-UNDERWAY_SPEED_KN = 0.3  # 항해 중이라면서 이보다 느리면 값이 안 맞는다
-
-# 통관 단계가 검사·보류로 잡혔는지 본다. 단계 코드 목록은 C-2에서 확정되므로
-# 지금은 단계명에 이 낱말이 있는지로 가린다.
-CUSTOMS_HOLD_WORDS = ("검사", "보류", "정지", "반송", "폐기")
+# 항해상태 불일치 속도 기준(navstat_moored_max_kn, navstat_underway_min_kn)과
+# 통관 보류 낱말(customs_hold_words)은 rules.md에서 읽는다 (10-01: 판정 기준은 rules.md 한 곳)
 
 
 def _great_circle_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -129,7 +127,7 @@ def compute(
 
     # 4. dest_changed: 목적지가 부산이 아니거나 깨졌나
     if position is None:
-        signals.append(_signal("dest_changed", "unknown", "위치 없음", BUSAN_PORT_CODE, "shipfinder"))
+        signals.append(_signal("dest_changed", "unknown", "위치 없음", rule("busan_port_code"), "shipfinder"))
     else:
         signals.append(_dest_changed(position))
 
@@ -245,7 +243,7 @@ def _is_port_code(code: str) -> bool:
 def _other_port(position: dict | None) -> str | None:
     """AIS 목적지가 부산이 아닌 '진짜' 다른 항구 코드면 그 코드. 부산이거나 깨졌거나 없으면 None."""
     code = ((position or {}).get("destcode") or "").strip().upper()
-    return code if _is_port_code(code) and code != BUSAN_PORT_CODE else None
+    return code if _is_port_code(code) and code != rule("busan_port_code") else None
 
 
 def _dest_changed(position: dict) -> Signal:
@@ -257,40 +255,56 @@ def _dest_changed(position: dict) -> Signal:
     AIS 목적지 원문은 값에 넣지 않는다. 지시문이 섞일 수 있는 자유 입력이라서다 (SDD 7절, 평가셋 주입 문항).
     """
     code = (position.get("destcode") or "").strip().upper()
-    if code == BUSAN_PORT_CODE:
-        return _signal("dest_changed", "clear", code, BUSAN_PORT_CODE, "shipfinder")
+    busan = rule("busan_port_code")  # port-busan/rules.md
+    if code == busan:
+        return _signal("dest_changed", "clear", code, busan, "shipfinder")
     if _is_port_code(code):
         value = f"다른 항구 {code}"
     elif code or (position.get("dest") or "").strip():
         value = DEST_BROKEN
     else:
         value = DEST_EMPTY
-    return _signal("dest_changed", "triggered", value, BUSAN_PORT_CODE, "shipfinder")
+    return _signal("dest_changed", "triggered", value, busan, "shipfinder")
 
 
 def _navstat_mismatch(position: dict | None) -> Signal:
-    threshold = f"정박·계류면 {MOORED_SPEED_KN}노트 이하, 항해 중이면 {UNDERWAY_SPEED_KN}노트 이상"
+    moored_max, underway_min = rule("navstat_moored_max_kn"), rule("navstat_underway_min_kn")
+    threshold = f"정박·계류면 {moored_max}노트 이하, 항해 중이면 {underway_min}노트 이상"
     if position is None or position.get("navistat") is None or position.get("sog") is None:
         return _signal("navstat_mismatch", "unknown", "항해상태·속도 없음", threshold, "shipfinder")
 
     navistat, sog = position["navistat"], position["sog"]
     value = f"상태 {navistat}, {sog}노트"
-    if navistat in NAVSTAT_MOORED and sog > MOORED_SPEED_KN:
+    if navistat in NAVSTAT_MOORED and sog > moored_max:
         return _signal("navstat_mismatch", "triggered", f"{value} (정박인데 움직임)", threshold, "shipfinder")
-    if navistat == NAVSTAT_UNDERWAY and sog < UNDERWAY_SPEED_KN:
+    if navistat == NAVSTAT_UNDERWAY and sog < underway_min:
         return _signal("navstat_mismatch", "triggered", f"{value} (항해 중인데 멈춤)", threshold, "shipfinder")
     return _signal("navstat_mismatch", "clear", value, threshold, "shipfinder")
 
 
 def _customs_hold(customs: CustomsRecord | None) -> Signal:
-    threshold = "·".join(CUSTOMS_HOLD_WORDS)
+    hold_words = rule("customs_hold_words")
+    threshold = "·".join(hold_words)
     if customs is None or not customs.stage_name:
         return _signal("customs_hold", "unknown", "통관 정보 없음", threshold, "unipass")
 
     stage = customs.stage_name
-    if any(word in stage for word in CUSTOMS_HOLD_WORDS):
+    if any(word in stage for word in hold_words):
         return _signal("customs_hold", "triggered", stage, threshold, "unipass")
     return _signal("customs_hold", "clear", stage, threshold, "unipass")
+
+
+def needs_broker(stage_name: str) -> bool:
+    """관세사가 봐야 하는 단계인가. 전에는 LLM이 정했고 프롬프트와 Skill에 조건이 따로 적혀 어긋났다.
+    결정은 코드 한 곳이 한다 (10-01 강사 피드백). LLM은 이 값을 입력으로 받아 설명만 한다.
+
+    true: customs-stages/rules.md customs_hold_words(검사·보류 등) 낱말이 들어간 단계(customs_hold 신호와 같은 기준),
+          또는 같은 파일 customs_stages 목록에 없는 단계
+    false: 목록에 있는 정상 단계. 그 단계의 todo(사용자가 할 일)에 관세사가 나와도 정상 단계면 false다
+    """
+    if any(word in stage_name for word in rule("customs_hold_words")):
+        return True
+    return not is_listed_stage(stage_name)
 
 
 def _eta_gap(ais_eta: datetime, mof_eta: datetime) -> tuple[float, bool]:
