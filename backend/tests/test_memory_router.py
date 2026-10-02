@@ -36,7 +36,7 @@ def db(monkeypatch):
 def test_login_required_everywhere(monkeypatch, db, method, path, body):
     """로그인 꺼진 환경(EC-08)과 헤더 없는 요청은 401. 서비스까지 가지 않는다."""
     monkeypatch.setattr(memory_router.memory, "view", lambda *a: pytest.fail("로그인 없이 읽으면 안 된다"))
-    monkeypatch.setattr(memory_router.memory, "forget_user", lambda *a: pytest.fail("로그인 없이 지우면 안 된다"))
+    monkeypatch.setattr(memory_router.memory, "delete_all", lambda *a: pytest.fail("로그인 없이 지우면 안 된다"))
     monkeypatch.setattr(memory_router.cargo, "apply_document_facts", lambda *a: pytest.fail("로그인 없이 쓰면 안 된다"))
     kwargs = {"json": body} if body else {}
     with TestClient(app) as client:
@@ -79,12 +79,16 @@ def test_view_without_db_is_unavailable(monkeypatch):
 def test_delete_all_and_one(monkeypatch, db):
     headers = _login(monkeypatch)
     asked = []
-    monkeypatch.setattr(memory_router.memory, "forget_user", lambda conn, user_id: asked.append(user_id) or 3)
-    monkeypatch.setattr(memory_router.memory, "delete_item", lambda conn, user_id, item_id: item_id == "c1")
+    # 메모장 전부 지우기는 메모장만 지운다 (10-02 결정 D2). 화물 표를 지우는 forget_user는 부르지 않는다
+    monkeypatch.setattr(memory_router.memory, "forget_user", lambda *a: pytest.fail("화물 표는 지우지 않는다"))
+    monkeypatch.setattr(memory_router.memory, "delete_all", lambda conn, user_id: asked.append(user_id) or 3)
+    status = {"c1": "deleted", "c9": "missing", "c5": "conflict"}
+    monkeypatch.setattr(memory_router.memory, "delete_item", lambda conn, user_id, item_id: status[item_id])
     with TestClient(app) as client:
         assert client.delete("/api/memory", headers=headers).json() == {"deleted": 3}
         assert client.delete("/api/memory/items/c1", headers=headers).json() == {"deleted": 1}
         assert client.delete("/api/memory/items/c9", headers=headers).status_code == 404
+        assert client.delete("/api/memory/items/c5", headers=headers).status_code == 503  # 동시 수정 충돌은 404 아님
     assert asked == ["user-123"]
 
 

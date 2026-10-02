@@ -186,3 +186,18 @@ def test_personal_mobile_is_dropped():
     shown, checks = _conditions(contact_phone="010-1234-5678")
     assert shown["contact_phone"] is None and checks["contact_phone"] == ["format"]
     assert _conditions(contact_phone="051-999-9999")[1]["contact_phone"] == ["not_in_text"]
+
+
+def test_email_or_mobile_in_company_is_dropped():
+    """회사 칸에 이메일·휴대폰이 섞이면 값을 비운다 (휴대폰과 같은 처리, 10-02 검증 지적 6)."""
+    from backend.app.services import doc_ocr
+
+    lines = ["PARTY TO CONTACT kim@example.com", "GANADA 010-1234-5678"]
+    for value in ("kim@example.com", "GANADA 010-1234-5678"):
+        shown, checks = doc_ocr.check_conditions({"contact_company": value}, {}, lines)
+        assert shown["contact_company"] is None and checks["contact_company"] == ["format"]
+
+
+def test_mobile_with_country_code_without_plus_is_dropped():
+    shown, checks = _conditions(contact_phone="82-10-1234-5678")
+    assert shown["contact_phone"] is None and checks["contact_phone"] == ["format"]

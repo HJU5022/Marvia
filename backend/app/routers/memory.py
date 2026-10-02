@@ -2,7 +2,7 @@
 
 창구만 한다: 로그인 확인 → services(memory, cargo) 부르기 → HTTP 응답. 검사·저장 규칙은 services에 있다.
   GET    /api/memory                    내 메모장 보기 (번호 없는 마크다운 + 항목 + 화물 요약, 원본 B/L 없음)
-  DELETE /api/memory                    메모장과 화물 표 전부 지우기
+  DELETE /api/memory                    메모장 전부 지우기 (화물 표는 남는다, 10-02 결정 D2)
   DELETE /api/memory/items/{id}         메모장 항목 하나 지우기
   POST   /api/memory/document-facts     서류 확인 화면에서 확인한 B/L 조건·거래처 저장
 로그인 필수다. 로그인 기능이 꺼진 채점 환경은 사람이 없어 401 (EC-08). 삭제는 실패를 숨기지 않고 503 (routers/history.py와 같다).
@@ -39,6 +39,7 @@ def _login_required(user_id: str | None) -> str:
 
 
 def _db_required(stage: str) -> None:
+    """지우기·저장은 DB가 있어야 한다. 없으면 0건으로 숨기지 않고 503 (routers/history.py와 같은 원칙)."""
     if not os.environ.get("DATABASE_URL"):
         log_failure(stage, "not_configured")
         raise HTTPException(status_code=503, detail=DB_DOWN)
@@ -75,12 +76,13 @@ def get_memory(user_id: Annotated[str | None, Depends(current_user_id)] = None) 
 
 @router.delete("/memory", response_model=MemoryDeleteResponse)
 def delete_memory(user_id: Annotated[str | None, Depends(current_user_id)] = None) -> MemoryDeleteResponse:
-    """메모장과 화물 표를 전부 지운다 (Spec "사용자는 전부 지울 수 있다", 개인정보보호법 제36조). 조회 기록(이력)은 남는다."""
+    """메모장을 전부 지운다 (Spec "사용자는 전부 지울 수 있다", 개인정보보호법 제36조). deleted는 지운 메모 항목 수.
+    화물 표(기억한 화물)와 조회 기록은 남는다 (10-02 결정 D2). 화물 표는 "내 조회 기록 지우기"(DELETE /api/history)와 탈퇴가 지운다."""
     user_id = _login_required(user_id)
     _db_required("memory_delete")
     try:
         with connect() as conn:
-            deleted = memory.forget_user(conn, user_id)
+            deleted = memory.delete_all(conn, user_id)
     except Exception as e:  # noqa: BLE001
         log_failure("memory_delete", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN) from None
@@ -89,17 +91,20 @@ def delete_memory(user_id: Annotated[str | None, Depends(current_user_id)] = Non
 
 @router.delete("/memory/items/{item_id}", response_model=MemoryDeleteResponse)
 def delete_memory_item(item_id: str, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> MemoryDeleteResponse:
-    """메모장 항목 하나를 지운다. 없는 번호면 404."""
+    """메모장 항목 하나를 지운다. 없는 번호면 404, 동시 수정이 계속 겹쳐 못 지웠으면 503 (지운 척하지 않는다)."""
     user_id = _login_required(user_id)
     _db_required("memory_delete")
     try:
         with connect() as conn:
-            hit = memory.delete_item(conn, user_id, item_id)
+            status = memory.delete_item(conn, user_id, item_id)
     except Exception as e:  # noqa: BLE001
         log_failure("memory_delete", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN) from None
-    if not hit:
+    if status == "missing":
         raise HTTPException(status_code=404, detail="지울 항목이 없습니다")
+    if status != "deleted":
+        log_failure("memory_delete", status)
+        raise HTTPException(status_code=503, detail="다른 기기에서 기억을 고치는 중이라 지우지 못했습니다. 잠시 뒤 다시 시도하세요")
     return MemoryDeleteResponse(deleted=1)
 
 

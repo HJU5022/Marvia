@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.app.auth import current_user_id
-from backend.app.db import connect, delete_user_queries, recent_queries
+from backend.app.db import atomic, connect, delete_user_queries, recent_queries
 from backend.app.observability.logging import log_failure
 from backend.app.services.memory import forget_user
 
@@ -80,7 +80,7 @@ def delete_history(user_id: Annotated[str | None, Depends(current_user_id)] = No
         log_failure("history_delete", "not_configured")
         raise HTTPException(status_code=503, detail="기록 저장소에 연결하지 못해 삭제하지 못했습니다. 잠시 뒤 다시 시도하세요")
     try:
-        with connect() as conn:
+        with connect() as conn, atomic(conn):  # 조회 기록과 기억을 한 트랜잭션으로 지운다 (10-02)
             deleted = delete_user_queries(conn, user_id)
             # 화물 비서 기억(화물 표·메모장)도 내 기록이라 같이 지운다 (docs/specs/memory.md "개인정보").
             # 알리는 숫자는 지금처럼 조회 기록 줄 수다 (응답 모양을 바꾸지 않는다)

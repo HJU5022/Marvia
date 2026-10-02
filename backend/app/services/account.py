@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 
 from backend.app.clients.supabase_admin import AdminError, delete_account
-from backend.app.db import connect, delete_user_queries
+from backend.app.db import atomic, connect, delete_user_queries
 from backend.app.services.memory import forget_user
 from backend.app.services.profile import delete as delete_profile
 
@@ -39,7 +39,7 @@ def withdraw(user_id: str) -> int:
     if not os.environ.get("DATABASE_URL"):
         raise WithdrawError("account_records", "not_configured")
     try:
-        with connect() as conn:
+        with connect() as conn, atomic(conn):  # 여러 표를 한 트랜잭션으로. 중간에 실패하면 하나도 안 지워진다 (10-02)
             deleted = delete_user_queries(conn, user_id)
             # 회원 정보(이름·전화·주소, 잠긴 글자)도 계정보다 먼저 지운다 (docs/specs/user-profile.md EC-08)
             delete_profile(conn, user_id)

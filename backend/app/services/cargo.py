@@ -24,7 +24,9 @@ from datetime import date, datetime, timezone
 from backend.app import crypto
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.schemas.customs import mask_bl
+from backend.app.services import guard
 from backend.app.services.evidence import KST
+from backend.app.services.llm import STAGE_SUSPECT  # 주입 모양 단계명 대신 쓰는 글자 (llm._clean_customs와 같다)
 from backend.app.services.verdict import VERDICT_LABEL
 
 # 판정에 넣는 진행 중 화물 상한 (Spec "보관과 크기" 상한 설정값 30건). 부르는 쪽이 limit으로 바꿀 수 있다
@@ -33,10 +35,6 @@ MAX_ACTIVE = 30
 LABEL_MAX = 20
 # 대화로 바꿀 수 있는 화물 칸 (Spec 쓰기 흐름 4 set_cargo). 판정은 이번 입력으로만 한다
 PENDING_FIELDS = ("sale_due_date", "forwarder_eta", "label")
-# B/L 조건 칸의 허용 값 (마이그레이션 015 CHECK와 같다, 10-02 결정 5)
-ORIGINAL_BL = ("required", "surrendered")
-FREIGHT_TERMS = ("prepaid", "collect")
-INCOTERMS = ("CIF", "FOB", "CFR")
 
 COLUMNS = (
     "cargo_key", "bl_masked", "bl_type", "label", "status", "sale_due_date", "sale_due_asked",
@@ -95,6 +93,13 @@ def found_cargo(response: AgentResponse) -> bool:
     return not (response.status == "insufficient" and "bl_type" in response.missing_inputs)
 
 
+def clean_stage(name: str | None) -> str | None:
+    """통관 단계 이름(UNI-PASS 외부 글자)이 주입 모양이면 STAGE_SUSPECT로 바꾼다.
+    판정 LLM 입력에서 llm._clean_customs가 하는 것과 같은 기준이다. 화물 표에 저장할 때와 <user_cargo>에 넣을 때 둘 다 건다
+    (SDD 7절 신뢰 경계, 10-02 검증 지적: 저장한 단계명이 기억 블록으로 그 길을 다시 열면 안 된다)."""
+    return STAGE_SUSPECT if guard.looks_like_injection(name) else name
+
+
 def _vessel(request: AgentRequest, response: AgentResponse) -> tuple[int | None, str | None]:
     """확정된 배와 확정 방법 (Spec 화물 표 vessel_source: mrn / user).
 
@@ -148,7 +153,7 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
         "vessel_mmsi": mmsi, "voyage_no": request.voyage_no, "vessel_source": source,
         "last_verdict": response.verdict, "last_checked_at": now, "last_days_margin": response.days_margin,
         "last_eta": _kst_date(response.eta.trusted_eta) if response.eta else None,
-        "last_stage": response.customs.stage_name if response.customs else None,
+        "last_stage": clean_stage(response.customs.stage_name) if response.customs else None,
         "done_at": now if released else None,
     }
     names = list(values)
@@ -181,14 +186,19 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
 
 def add_pending(conn, user_id: str, key: str, changes: list[dict]) -> int:
     """확인 대기 값을 더한다 (Spec 쓰기 흐름 4: set_cargo는 바로 적용하지 않는다). 같은 칸은 새 값으로 바꾼다.
+    읽고 고쳐 쓰지 않고 UPDATE 한 문장으로 한다. 두 요청이 같이 고쳐도 한쪽 값이 사라지지 않는다 (10-02 검증, EC-04와 같은 이유).
     화물 줄이 없으면 아무것도 하지 않는다. 더한 개수를 돌려준다."""
-    row = get_row(conn, user_id, key)
-    if row is None or not changes:
+    if not changes:
         return 0
-    kept = [p for p in (row["pending"] or []) if p.get("field") not in {c["field"] for c in changes}]
-    conn.execute("UPDATE user_cargo SET pending = %s::jsonb, updated_at = now() WHERE user_id = %s AND cargo_key = %s",
-                 [json.dumps(kept + changes, ensure_ascii=False), user_id, key])
-    return len(changes)
+    fields = [c["field"] for c in changes]
+    cur = conn.execute(
+        """UPDATE user_cargo SET
+             pending = COALESCE((SELECT jsonb_agg(p) FROM jsonb_array_elements(user_cargo.pending) p
+                                 WHERE NOT (p->>'field' = ANY(%s::text[]))), '[]'::jsonb) || %s::jsonb,
+             updated_at = now()
+           WHERE user_id = %s AND cargo_key = %s""",
+        [fields, json.dumps(changes, ensure_ascii=False), user_id, key])
+    return len(changes) if cur.rowcount else 0
 
 
 def apply_document_facts(conn, user_id: str, bl_no: str, bl_type: str, facts: dict) -> str | None:
@@ -237,15 +247,26 @@ def margin_text(margin: int | None) -> str | None:
     return f"여유 {margin}일" if margin >= 0 else f"판매 예정일보다 {abs(margin)}일 늦음"
 
 
+# 등급 이름 뒤 "이었/였" (받침 있으면 이었, 없으면 였). 괜찮음·지켜볼 것은 받침, 지금 조치는 받침 없음 (10-02 검증: "지금 조치이었어요")
+_PAST = {"fine": "이었", "watch": "이었", "act": "였"}
+
+
 def previous_line(row: dict | None) -> str | None:
-    """덮어쓰기 전 화물 줄로 "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요."를 만든다 (10-02 결정 4).
-    지난 판정이 없으면(처음 조회, 판정 보류) None. LLM을 부르지 않는다."""
+    """덮어쓰기 전 화물 줄로 지난 조회 한 줄을 만든다 (10-02 결정 4). LLM을 부르지 않는다.
+    예: "지난 조회(10.01)에서는 '지켜볼 것'이었고, 판매 예정일까지 여유가 3일이었어요."
+        "지난 조회(10.01)에서는 '지금 조치'였고, 판매 예정일보다 2일 늦게 도착할 예정이었어요."
+        "지난 조회(10.01)에서는 '괜찮음'이었어요." (여유 일수 없음)
+    지난 판정이 없으면(처음 조회, 판정 보류) None."""
     if not row or not row.get("last_verdict") or not row.get("last_checked_at"):
         return None
-    parts = [VERDICT_LABEL.get(row["last_verdict"], row["last_verdict"])]
-    if margin_text(row.get("last_days_margin")):
-        parts.append(margin_text(row["last_days_margin"]))
-    return f"지난 조회({_md(row['last_checked_at'])})에서는 {', '.join(parts)}이었어요."
+    verdict = row["last_verdict"]
+    head = f"지난 조회({_md(row['last_checked_at'])})에서는 '{VERDICT_LABEL.get(verdict, verdict)}'{_PAST.get(verdict, '이었')}"
+    margin = row.get("last_days_margin")
+    if margin is None:
+        return f"{head}어요."
+    if margin >= 0:
+        return f"{head}고, 판매 예정일까지 여유가 {margin}일이었어요."
+    return f"{head}고, 판매 예정일보다 {abs(margin)}일 늦게 도착할 예정이었어요."
 
 
 CONDITION_TEXT = {
@@ -286,7 +307,7 @@ def cargo_line(row: dict) -> str:
         if row.get("last_eta"):
             last.append(f"도착 예정 {row['last_eta'].isoformat()}")
         if row.get("last_stage"):
-            last.append(f"통관 {row['last_stage']}")
+            last.append(f"통관 {clean_stage(row['last_stage'])}")  # 저장 전 값일 수도 있어 넣을 때 한 번 더 거른다
         parts.append(f"지난 조회 {_md(row['last_checked_at'])}: {', '.join(last)}")
     return "- " + " · ".join(parts)
 
@@ -298,7 +319,7 @@ def render_block(rows: list[dict]) -> str:
 
 def done_summary(row: dict) -> str:
     """끝난 화물 한 줄 요약 ("09.22 고추 반출 완료"). 코드가 판정 기록으로 만든다 (Spec "보관과 크기").
-    90일 정리 뒤에도 남는 칸(가린 번호·이름표·완료일)만 쓴다 (마이그레이션 015 purge_done_cargo)."""
+    끝난 화물 줄은 반출 후 3년 뒤 통째로 지워진다 (10-02 결정 D3, 마이그레이션 015 purge_done_cargo)."""
     name = row.get("label") or row["bl_masked"]
     day = _md(row.get("done_at")) or _md(row.get("last_checked_at")) or ""
     return f"{day} {name} 반출 완료".strip()

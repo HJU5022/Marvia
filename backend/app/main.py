@@ -24,6 +24,7 @@ from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
 from backend.app.routers import account, admin, agent, chat, document, history, memory, profile
+from backend.app.services import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
 from mcp_server.server import MountedMCP
 
 setup_logging()
@@ -50,6 +51,8 @@ async def lifespan(app: FastAPI):
     # /mcp의 세션 관리자를 서버 수명 동안 돌린다. 이게 없으면 /mcp 요청이 처리되지 않는다 (MountedMCP)
     async with mcp_app.running():
         yield
+    # 화물 비서 기억의 남은 뒤 작업을 먼저 끝낸다. 그 안의 LLM 호출 트레이스도 아래 flush에 실린다 (docs/specs/memory.md)
+    memory_service.shutdown()
     # 꺼질 때 남은 트레이스를 보낸다. 안 하면 마지막 요청들의 트레이스가 사라진다 (observability/langfuse.flush)
     langfuse_flush()
 

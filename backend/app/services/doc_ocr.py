@@ -24,7 +24,8 @@ from PIL import Image
 
 from backend.app.schemas.agent import _BL_PATTERN  # B/L 형식은 계약 C2 한 곳에만 둔다 (SDD 3.1)
 from backend.app.services import guard  # 지시문 줄 판별 (_only_in_instruction, 10-01)
-from backend.app.services.memory import MOBILE, PHONE, ROLES  # 전화 모양·역할 목록은 메모장 검사와 한 곳 (docs/specs/memory.md)
+# 전화·이메일 모양, 역할 목록, 회사 이름 상한은 메모장 검사와 한 곳 (docs/specs/memory.md). 메모장 모듈 전체는 불러오지 않는다
+from backend.app.services.pii_patterns import COMPANY_MAX, EMAIL, MOBILE, MOBILE_IN_TEXT, PHONE, ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +311,6 @@ CONDITION_VALUES = {
 }
 EVIDENCE_OF = {"original_bl": "original_bl_text", "to_order_bank": "to_order_bank_text",
                "freight_term": "freight_term_text"}
-COMPANY_MAX = 40  # 메모장 거래처 회사 칸 상한과 같다 (services/memory.py TEXT_LIMITS)
 
 
 def check_conditions(values: dict[str, str | None], evidence: dict[str, str | None],
@@ -320,7 +320,8 @@ def check_conditions(values: dict[str, str | None], evidence: dict[str, str | No
     format       목록 밖 값, 회사 이름이 너무 길거나 이메일 모양, 전화가 회사 번호 모양이 아님
     not_in_text  근거 글(조건)·회사 이름·인코텀즈·전화 숫자가 OCR 글자에 없다
     ambiguous    그 글이 지시문 줄에서만 나온다 (_only_in_instruction, 10-01과 같은 기준)
-    개인 휴대폰 번호는 돌려주지도 않는다: 값을 비우고 format으로 알린다 (결정 6 "개인 휴대폰 받지 않음").
+    개인 휴대폰 번호와 이메일은 돌려주지도 않는다: 값을 비우고 format으로 알린다 (결정 6 "개인 휴대폰·이메일 받지 않음").
+    개인 이름은 모양으로 가를 수 없어 프롬프트(marvia-doc-extract)만 막는다.
     """
     text = "\n".join(lines)
     out: dict[str, str | None] = {}
@@ -346,7 +347,10 @@ def check_conditions(values: dict[str, str | None], evidence: dict[str, str | No
             elif _only_in_instruction(key, value, lines):
                 fails.append("ambiguous")
         elif key == "contact_company":
-            if len(value) > COMPANY_MAX or "@" in value:
+            if EMAIL.search(value) or MOBILE_IN_TEXT.search(value):
+                out[key], checks[key] = None, ["format"]  # 이메일·휴대폰이 섞인 회사 칸은 값을 비운다
+                continue
+            if len(value) > COMPANY_MAX or re.search(r"[<>\r\n]", value):
                 fails.append("format")
             if norm(value) not in norm(text):
                 fails.append("not_in_text")
