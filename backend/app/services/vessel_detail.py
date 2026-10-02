@@ -14,10 +14,12 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from backend.app.services.rules import rule
-from mcp_server.tools.distance import estimate_distance, route_points
-from mcp_server.tools.live_position import get_live_position
-from mcp_server.tools.port_schedule import get_port_schedule
-from mcp_server.tools.vessel_candidates import get_vessel_candidates
+# MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py).
+# route_points는 지도에 그릴 항로 좌표를 만드는 도우미라 MCP 도구가 아니다. 그래서 직접 부른다
+from backend.app.services.mcp_client import (
+    estimate_distance, get_live_position, get_port_schedule, get_vessel_candidates,
+)
+from mcp_server.tools.distance import route_points
 
 CACHE_SEC = 600  # services/chat.py CACHE_SEC와 같다 (입항 예정 캐시와 같은 수명)
 _cache: dict[tuple[str, str], tuple[float, dict]] = {}

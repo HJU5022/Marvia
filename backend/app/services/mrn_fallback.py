@@ -16,9 +16,8 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, EtaInfo, Evidence, Position, VesselInfo,
 )
 from backend.app.services.vessel_detail import _freshness
-from mcp_server.tools.distance import estimate_distance
-from mcp_server.tools.live_position import get_live_position
-from mcp_server.tools.vessel_candidates import get_vessel_candidates
+# MCP 도구는 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py)
+from backend.app.services.mcp_client import estimate_distance, get_live_position, get_vessel_candidates
 
 LOOKBACK_DAYS, LOOKAHEAD_DAYS = 3, 14  # 입항 신고를 찾는 기간. 통지서는 보통 입항 며칠 전에 온다
 

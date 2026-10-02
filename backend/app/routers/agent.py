@@ -46,10 +46,10 @@ from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
 from backend.app.services.rules import is_listed_stage, rule
 from backend.app.services.customs import CustomsError, UnipassClient
-from mcp_server.tools.distance import estimate_distance
-from mcp_server.tools.live_position import get_live_position
-from mcp_server.tools.port_schedule import get_port_schedule
-from mcp_server.tools.vessel_candidates import get_vessel_candidates
+# MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py)
+from backend.app.services.mcp_client import (
+    estimate_distance, get_live_position, get_port_schedule, get_vessel_candidates,
+)
 
 router = APIRouter(prefix="/api", tags=["agent"])
 logger = logging.getLogger(__name__)
