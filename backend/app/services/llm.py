@@ -13,10 +13,12 @@
   judge()            2층 판정. 프롬프트(Langfuse) + skills/ 문서 + 코드가 모은 자료를 주고 판정 JSON을 받는다 (SDD 4.1 7단계, 5.6)
   pick_vessel()      이름 같은 후보가 여럿일 때 어느 배인지 고른다 (SDD 5.5, C-5)
   answer_follow_up() 판정 뒤 후속 질문에 근거 안에서만 답한다 (C-9)
-  extract_doc_fields() 서류 사진 OCR 글자에서 선명·항차·ETA 등 6칸을 옮겨 적는다 (docs/specs/document-extract.md)
+  extract_doc_fields() 서류 사진 OCR 글자에서 선명·항차·ETA 등 6칸과 B/L 조건·연락처를 옮겨 적는다 (docs/specs/document-extract.md)
+  write_memory()     조회·대화 뒤 메모장에 줄 단위 명령만 낸다. 적용은 services/memory.py가 한다 (docs/specs/memory.md)
 
 모델 자리 (.env, 계약 C8):
   LLM_MODEL           서비스가 쓰는 모델. 위 네 함수 전부 (09-30 이름 바꿈, 전 MODEL_A)
+  MEMORY_MODEL        기억 뽑기(write_memory)만. 비어 있으면 기억 뽑기를 건너뛴다 (10-02 결정 10, 계획 gpt-4o-mini)
   EVAL_COMPARE_MODEL  평가에서 비교할 두 번째 모델. run_eval --config c에서만 LLM_MODEL 자리에 들어간다 (전 MODEL_B)
   EVAL_GRADER_MODEL   평가 채점자. 통관 해설 채점(grade_customs)만. 채점받는 모델과 달라야 한다 (전 JUDGE_MODEL.
                       판정 함수 judge()와 헷갈려서 바꿈)
@@ -508,12 +510,15 @@ def _kst(moment: datetime | None) -> str | None:
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
               output_model: type[BaseModel], model: str | None, feedback: str | None = None,
               skills: tuple[str, ...] = ALL_SKILLS, tools: list[dict] | None = None,
-              run_tool: Callable[[str, dict], dict] | None = None) -> LLMAnswer:
+              run_tool: Callable[[str, dict], dict] | None = None, context: str | None = None) -> LLMAnswer:
     """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
     skills는 넣을 Skill 폴더다 (JUDGE_SKILLS 등). 빈 튜플이면 넣지 않는다: 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용.
     tools·run_tool: LLM이 직접 부를 도구 목록(OpenAI 형식)과, 부른 도구를 실제로 실행하는 함수 (10-02, 후속 질문만).
     run_tool(이름, 인자)는 도구 결과 dict를 돌려준다. 부른 기록은 LLMAnswer.tool_calls에 담는다.
+    context: 로그인 사용자의 기억 블록(<user_cargo>·<user_memory>, services/memory.compose_blocks). 판정·후속 질문만 쓴다.
+    순서는 지시문 + Skill(system, 고정) → 기억 블록 → 이번 자료 (docs/specs/memory.md 읽기 흐름 2). 고정된 앞부분이
+    제공사 캐시에 걸리게 하고, 이번 자료(user_content)는 녹화 답 재생의 대조 키라 섞지 않고 따로 보낸다.
 
     Raises:
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
@@ -523,15 +528,16 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         return _replay_answer(prompt_name, user_content, output_model)
     prompt = get_prompt(prompt_name)
     system = f"{prompt.text}\n\n{_skills_text(skills)}" if skills else prompt.text
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_content},
-    ]
+    messages = [{"role": "system", "content": system}]
+    if context:
+        messages.append({"role": "user", "content": context})
+    messages.append({"role": "user", "content": user_content})
     if feedback:
         # 검증 위반을 붙여 다시 묻는 경우 (C-7). 코드가 쓴 지시라 자료(user_content)와 섞지 않고 따로 보낸다
         messages.append({"role": "user", "content": f"Your previous answer broke these rules. Answer again in the same JSON format and fix them:\n{feedback}"})
     # 트레이스 입력은 코드가 모은 자료(user_content)만. 지시문·skills 전문은 길고 매번 같아서 빼고 prompt_version으로 가린다
-    generation = start_generation(prompt_name, user_content, prompt.source)
+    # 기억 블록은 가리지 않고 그대로 남긴다 (10-02 결정 8: 운영자가 보는 기록. DB 줄은 탈퇴·삭제 때 지운다)
+    generation = start_generation(prompt_name, f"{context}\n\n{user_content}" if context else user_content, prompt.source)
     response_format = {"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}}
     called: list[dict] = []
     try:
@@ -628,12 +634,14 @@ def judge(
     sale_due_date: date | None = None,
     table_verdict: str | None = None,
     verdict_mode: str | None = None,
+    memory: str | None = None,
 ) -> LLMAnswer:
     """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계, 09-29 D8).
-    feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도)."""
+    feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도).
+    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md). 데이터일 뿐이고 등급은 지금처럼 판정 표가 정한다."""
     return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date,
                                                 table_verdict, verdict_mode),
-                     "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback, skills=JUDGE_SKILLS)
+                     "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback, skills=JUDGE_SKILLS, context=memory)
 
 
 # ── 선박 선택 pick_vessel() ─────────────────────────────────────
@@ -735,7 +743,7 @@ class FollowUpOutput(BaseModel):
 
 def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None,
                      feedback: str | None = None, tools: list[dict] | None = None,
-                     run_tool: Callable[[str, dict], dict] | None = None) -> LLMAnswer:
+                     run_tool: Callable[[str, dict], dict] | None = None, memory: str | None = None) -> LLMAnswer:
     """이미 나온 판정(response)에 대한 후속 질문에 답한다. output은 FollowUpOutput.
 
     질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
@@ -748,6 +756,7 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     tools·run_tool (10-02, D9 B안): 지난 결과에 없는 지금 값(현재 위치·남은 거리·입항 기록)을 물으면 LLM이
     읽기 전용 MCP 도구를 직접 골라 부른다. 목록은 mcp_client.read_only_tools(), 실행은 routers/agent.py가 /mcp로 한다.
     판정 흐름(judge)은 지금처럼 코드가 도구를 부른다.
+    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). judge()와 같은 자리에 넣는다.
     """
     result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"})
     result["evidence"] = [e for e in result.get("evidence") or []
@@ -755,7 +764,7 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     data = {"result": result, "question": question}
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
                      FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS,
-                     tools=tools, run_tool=run_tool)
+                     tools=tools, run_tool=run_tool, context=memory)
 
 
 # ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────
@@ -795,6 +804,90 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
     """
     return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
                      skills=())
+
+
+# ── 기억 뽑기 write_memory() ─────────────────────────────────
+# docs/specs/memory.md 쓰기 흐름 4: 메모장을 다시 쓰지 않고 줄 단위 명령만 받는다. 검사·적용은 services/memory.py.
+# 입력은 가린 B/L, 이번 판정 한 줄, 사용자 문장(B/L은 [BL1]), 번호 있는 메모장. B/L 원본은 넘기지 않는다 (CLAUDE.md).
+
+MEMORY_PROMPT = "marvia-memory-write"
+_NULLABLE_TEXT = {"type": ["string", "null"]}
+MEMORY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["ops"],
+    "properties": {
+        "ops": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                # strict 모드는 모든 칸이 required. 명령마다 안 쓰는 칸은 null (프롬프트에 적는다)
+                "required": ["op", "id", "section", "kind", "fields", "field", "value"],
+                "properties": {
+                    "op": {"type": "string", "enum": ["add", "update", "delete", "set_cargo", "noop"]},
+                    "id": _NULLABLE_TEXT,
+                    "section": {"type": ["string", "null"], "enum": ["about", "cargo", None]},
+                    "kind": {"type": ["string", "null"],
+                             "enum": ["preference", "schedule", "contact", "worry", "todo", None]},
+                    "fields": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["text", "done", "cycle", "task", "company", "role", "duty", "phone", "source"],
+                        "properties": {
+                            "text": _NULLABLE_TEXT, "done": {"type": ["boolean", "null"]},
+                            "cycle": _NULLABLE_TEXT, "task": _NULLABLE_TEXT, "company": _NULLABLE_TEXT,
+                            "role": _NULLABLE_TEXT, "duty": _NULLABLE_TEXT, "phone": _NULLABLE_TEXT,
+                            "source": _NULLABLE_TEXT,
+                        },
+                    },
+                    "field": {"type": ["string", "null"], "enum": ["sale_due_date", "forwarder_eta", "label", None]},
+                    "value": _NULLABLE_TEXT,
+                },
+            },
+        },
+    },
+}
+
+
+class MemoryFields(BaseModel):
+    """명령의 칸 값. 종류마다 쓰는 칸이 다르고 나머지는 null. 어느 칸이 허용되는지는 services/memory.py가 본다."""
+
+    text: str | None = None
+    done: bool | None = None
+    cycle: str | None = None
+    task: str | None = None
+    company: str | None = None
+    role: str | None = None
+    duty: str | None = None
+    phone: str | None = None
+    source: str | None = None
+
+
+class MemoryOp(BaseModel):
+    op: Literal["add", "update", "delete", "set_cargo", "noop"]
+    id: str | None = None
+    section: str | None = None
+    kind: str | None = None
+    fields: MemoryFields | None = None
+    field: str | None = None
+    value: str | None = None
+
+
+class MemoryOpsOutput(BaseModel):
+    ops: list[MemoryOp]
+
+
+def write_memory(content: str, *, model: str | None = None) -> LLMAnswer:
+    """기억 뽑기. output은 MemoryOpsOutput. content는 services/memory.writer_input이 만든 JSON 글자.
+
+    모델은 MEMORY_MODEL(.env). 없으면 LLMError(not_configured)이고 부르는 쪽이 조용히 건너뛴다 (10-02 결정 10).
+    판단 기준 Skill은 넣지 않는다. 메모장 종류·칸 규칙은 프롬프트에 있고 코드가 다시 검사한다.
+    """
+    model = model or os.environ.get("MEMORY_MODEL")
+    if not model:
+        raise LLMError("MEMORY_MODEL이 없습니다", kind="not_configured")
+    return _ask_json(MEMORY_PROMPT, content, "memory_write", MEMORY_SCHEMA, MemoryOpsOutput, model, skills=())
 
 
 # ── 통관 해설 채점 grade_customs() ─────────────────────────────
