@@ -3,8 +3,9 @@
 LLM 대신 if문으로 판정한다. 평가 때 llm.judge·llm.pick_vessel 자리에 바꿔 끼운다. 서버 코드는 고치지 않는다.
 같은 30건을 (b) 규칙+LLM과 비교해 LLM이 보탠 몫을 잰다. 특히 신호 상충 5건은 규칙만으로는 틀리게 설계돼 있다 (PRD 8절).
 
-판정 규칙은 skills/ais-reliability/SKILL.md 판정 표를 그대로 옮겼다 (09-28 결정. SDD 5.12의 옛 매핑이 아니라
-09-27에 바뀐 Skill 표를 따른다. LLM도 같은 표를 보고 판정하므로 "같은 규칙, LLM 유무"의 비교가 된다).
+판정 규칙은 서비스와 같은 판정 표 코드(backend/app/services/verdict.py)를 쓴다. 표의 재료는 skills/cargo-verdict/rules.md다
+(09-28 결정으로 SDD 5.12의 옛 매핑 대신 Skill 표를 따랐고, 09-30 D7·10-01에 표가 코드와 rules.md로 옮겨졌다.
+LLM도 같은 표 등급을 받으므로 "같은 규칙, LLM 유무"의 비교가 된다).
 """
 from backend.app.services import llm
 from backend.app.services.verdict import table_reasons, table_verdict

@@ -52,6 +52,7 @@ from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 from backend.app.services.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
 from backend.app.services import guard  # 통관 단계명 주입 거르기 (_clean_customs, 10-01)
+from backend.app.services.signals import needs_broker  # 관세사 필요 여부는 코드가 정해 입력으로 준다 (10-01)
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -323,7 +324,7 @@ JUDGE_SCHEMA = {
     "additionalProperties": False,
     "required": ["verdict", "reasons", "conflicts", "actions", "answer", "customs", "table_disagree"],  # strict 모드는 모든 칸이 required
     "properties": {
-        # null = 판정 보류. 위치가 아예 없을 때 등 (skills/ais-reliability 되묻기 조건)
+        # null = 판정 보류. 위치가 아예 없을 때 등 (skills/cargo-verdict "코드가 낸 되묻기·보류·실패 결과")
         "verdict": {"type": ["string", "null"], "enum": ["fine", "watch", "act", None]},
         "reasons": {
             "type": "array",
@@ -363,11 +364,11 @@ JUDGE_SCHEMA = {
                 {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["plain_explanation", "next_stage", "needs_broker"],
+                    # needs_broker는 코드가 정해 입력으로 준다 (10-01, signals.needs_broker). LLM은 쓰지 않는다
+                    "required": ["plain_explanation", "next_stage"],
                     "properties": {
                         "plain_explanation": {"type": "string"},
                         "next_stage": {"type": ["string", "null"]},
-                        "needs_broker": {"type": "boolean"},
                     },
                 },
                 {"type": "null"},
@@ -380,11 +381,11 @@ JUDGE_SCHEMA = {
 
 
 class CustomsExplanation(BaseModel):
-    """LLM이 쓴 통관 해설. 단계 이름·코드·이력은 코드 값(CustomsRecord)을 쓰고, 여기서는 설명 셋만 받는다 (C1 CustomsInfo)."""
+    """LLM이 쓴 통관 해설. 단계 이름·코드·이력과 관세사 필요 여부는 코드 값을 쓰고, 여기서는 설명 둘만 받는다 (C1 CustomsInfo).
+    예전 녹화 답(evals/fixtures/replay)에 needs_broker 칸이 남아 있어도 무시된다 (pydantic 기본값: 모르는 칸 무시)."""
 
     plain_explanation: str
     next_stage: str | None
-    needs_broker: bool
 
 
 class JudgeOutput(BaseModel):
@@ -409,14 +410,19 @@ class LLMAnswer:
     prompt_version: str
 
 
-# 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 4개 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
+# 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 Skill 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
 # 각 호출이 받는 자료를 기준으로, 그 자료를 읽는 데 필요한 Skill만 넣는다. 넣는 Skill은 여전히 통째로다 (RAG 아님)
-AIS, CUSTOMS, PORT = "ais-reliability", "customs-stages", "port-busan"
-ALL_SKILLS = (AIS, CUSTOMS, PORT)
-JUDGE_SKILLS = (AIS, CUSTOMS)       # 신호 · 판정 표 · 통관 해설. 판정 입력에 부두 · 하역 장소가 없어 부두 Skill은 안 넣는다
-PICK_SKILLS = (AIS,)                # 동명 선박 · 후보 판단. 통관 · 부두는 쓰지 않는다
-FOLLOW_UP_SKILLS = ALL_SKILLS       # 이전 응답 전체(통관 · 하역 장소 포함)를 근거로 답하므로 전부
-GRADE_SKILLS = (CUSTOMS,)           # 통관 해설 채점은 통관 단계 표만 기준으로 한다 (평가 때만)
+# 폴더 안의 *.md를 모두 넣는다: SKILL.md(도메인 지식·설명법)와 rules.md(코드가 읽는 재료와 그 뜻) (10-01 Skill 구조)
+#   ais-reliability  AIS 값 읽는 법(오류 사례, 출처 우선순위), 신호 7종 기준
+#   customs-stages   통관 단계 목록(rules.md)과 해설법
+#   port-busan       부두 이름 뜻, 하역 장소 문장, 부산 기준값
+#   cargo-verdict    등급 판정 표(rules.md), 등급 뜻·결과 설명법·되묻기와 실패 결과 설명법 (10-01 신설)
+AIS, CUSTOMS, PORT, VERDICT = "ais-reliability", "customs-stages", "port-busan", "cargo-verdict"
+ALL_SKILLS = (AIS, CUSTOMS, PORT, VERDICT)
+JUDGE_SKILLS = (AIS, CUSTOMS, VERDICT)  # 신호 읽기 · 통관 해설 · 등급 설명. 판정 입력에 부두 · 하역 장소가 없어 부두 Skill은 안 넣는다
+PICK_SKILLS = (AIS,)                    # 동명 선박 · 후보 판단. 통관 · 부두 · 등급은 쓰지 않는다
+FOLLOW_UP_SKILLS = ALL_SKILLS           # 이전 응답 전체(등급 · 통관 · 하역 장소 · 되묻기 문구 포함)를 근거로 답하므로 전부
+GRADE_SKILLS = (CUSTOMS,)               # 통관 해설 채점은 통관 단계 목록(customs-stages/rules.md)만 기준으로 한다 (평가 때만)
 
 
 def skills_reference(folders: tuple[str, ...] = ALL_SKILLS, prompt_name: str | None = None) -> str:
@@ -447,6 +453,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
     calc_eta는 남은 거리 ÷ 현재 속도로 코드가 계산한 대략값이다. 참고용이라 판정 근거로 쓰지 않게 지시문에 적는다.
     table_verdict·verdict_mode (09-30 D7, services/verdict.py): 코드가 판정 표로 낸 등급과, LLM이 그 등급을
     그대로 써야 하는지(fixed) 표 이상에서 고를 수 있는지(raise_only, 회색 지대)를 알려 준다.
+    needs_broker (10-01): 관세사가 봐야 하는 단계인지 코드가 정한 값. LLM은 이 값에 맞춰 설명만 한다. 통관 정보가 없으면 null.
     """
     data = {
         "table_verdict": table_verdict,
@@ -459,6 +466,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
         "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
         "customs": _clean_customs(customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"})) if customs else None,
+        "needs_broker": needs_broker(customs.stage_name) if customs and customs.stage_name else None,
     }
     return json.dumps(data, ensure_ascii=False)
 
@@ -752,7 +760,7 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
 # ── 통관 해설 채점 grade_customs() ─────────────────────────────
 # 평가 전용 LLM-as-judge (SDD 5.12 customs_explanation, 가이드 평가 4축 ④ "생성 모델 ≠ 판정 모델").
 # 서비스 요청에서는 부르지 않는다. evals/judge.py가 평가 실행 때만 부른다.
-# 판정 LLM이 쓴 통관 해설(단계 뜻 · 다음 단계 · 관세사 필요 여부)을 customs-stages Skill 표 기준으로 0/1 채점한다.
+# 판정 LLM이 쓴 통관 해설(단계 뜻 · 다음 단계 · 관세사 필요 여부)을 customs-stages Skill(단계 목록은 rules.md customs_stages) 기준으로 0/1 채점한다.
 
 JUDGE_EVAL_PROMPT = "marvia-judge-eval"  # Langfuse 프롬프트 이름 (SDD 5.6 표)
 GRADE_SCHEMA = {

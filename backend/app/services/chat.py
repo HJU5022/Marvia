@@ -22,7 +22,7 @@ from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import guard, llm, validate
-from backend.app.services.rules import load_rules
+from backend.app.services.rules import load_file
 
 KST = timezone(timedelta(hours=9))
 # 수입 화물선 기준(선종·입항 목적) 원본. 코드에 목록을 적지 않는다 (skills/port-busan/cargo-vessels.md, 10-01)
@@ -31,7 +31,7 @@ CARGO_RULES_PATH = Path(__file__).resolve().parents[3] / "skills" / "port-busan"
 
 def is_cargo_ship(ship_kind: str | None, purpose: str | None) -> bool:
     """소량 수입 화물을 싣고 내리는 배인가. 선종과 입항 목적이 둘 다 목록에 있어야 한다."""
-    rules = load_rules(CARGO_RULES_PATH)
+    rules = load_file(CARGO_RULES_PATH)
     return ship_kind in rules["cargo_ship_kinds"] and purpose in rules["cargo_purposes"]
 MESSAGE_MAX = 500          # 입력 문장 상한 (EC-07)
 DAYS_DEFAULT, DAYS_MAX = 7, 14  # 입항 예정 검색 기간. 해수부 한 번 조회가 20쪽까지라 길게 잡지 않는다

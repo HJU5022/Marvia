@@ -13,16 +13,19 @@ MCP_TOKEN이 있으면 /mcp는 Authorization: Bearer <MCP_TOKEN> 없이 부를 �
 어디서 뜨나 (09-29 결정, SDD 5.9):
   기본은 API 서버(backend/app/main.py) 안의 /mcp 경로입니다. 서버·Cloud Run 서비스가 하나로 끝납니다.
   이 파일을 직접 실행하는 길(아래)은 로컬 확인용으로 남깁니다.
-  서비스(routers/agent.py)는 /mcp를 거치지 않고 같은 도구 함수를 직접 부릅니다. /mcp는 외부 MCP 클라이언트용입니다.
+  서비스(routers/agent.py 등)도 /mcp를 거쳐 도구를 부릅니다 (10-02, backend/app/services/mcp_client.py).
+  외부 MCP 클라이언트와 같은 창구입니다.
 
 실행:  python -m mcp_server.server --port 8001          (따로 띄울 때)
 확인:  python -m scripts.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   (API 서버 안)
 """
 import argparse
+import functools
 import logging
 import os
 from contextlib import asynccontextmanager
 
+import anyio
 import uvicorn
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -47,6 +50,20 @@ def _token(token: str | None) -> str:
     return token if token is not None else os.environ.get("MCP_TOKEN", "")
 
 
+def _in_thread(fn):
+    """동기 도구 함수를 스레드에서 돌리는 async 함수로 감싼다 (10-02).
+
+    FastMCP(mcp 1.30)는 동기 도구를 이벤트 루프 위에서 바로 부른다(func_metadata.call_fn_with_arg_validation).
+    도구가 외부 API를 기다리는 몇 초 동안 API 서버 전체(/health 포함)가 멈춘다. 서비스가 /mcp를 거쳐
+    도구를 부르게 되면서(services/mcp_client.py) 요청마다 이 일이 생겨 스레드로 뺐다.
+    functools.wraps가 이름·설명·인자 정보를 그대로 옮겨서 도구 목록과 입력 스키마는 바뀌지 않는다.
+    """
+    @functools.wraps(fn)
+    async def run(**kwargs):
+        return await anyio.to_thread.run_sync(functools.partial(fn, **kwargs))
+    return run
+
+
 def create_mcp(token: str | None = None) -> FastMCP:
     """도구 4종을 등록한 FastMCP를 새로 만든다.
 
@@ -59,7 +76,7 @@ def create_mcp(token: str | None = None) -> FastMCP:
     server = FastMCP("marvia-mcp", instructions=INSTRUCTIONS, streamable_http_path="/mcp",
                      transport_security=security)
     for tool in (estimate_distance, get_live_position, get_vessel_candidates, get_port_schedule):
-        server.tool()(tool)
+        server.tool()(_in_thread(tool))
     return server
 
 

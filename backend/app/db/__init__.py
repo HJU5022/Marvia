@@ -20,11 +20,15 @@ def plain_url(url: str) -> str:
     return f"{scheme.split('+', 1)[0]}{sep}{rest}" if sep else url
 
 
-def connect(url: str | None = None):
-    """DATABASE_URL로 연결한다. autocommit이라 넣는 즉시 저장된다 (워커는 한 줄씩 넣는다)."""
+def connect(url: str | None = None, timeout: int | None = None):
+    """DATABASE_URL로 연결한다. autocommit이라 넣는 즉시 저장된다 (워커는 한 줄씩 넣는다).
+
+    timeout(초)을 주면 그 안에 못 붙을 때 포기한다. /health처럼 빨리 답해야 하는 곳이 쓴다.
+    """
     import psycopg
 
-    return psycopg.connect(plain_url(url or os.environ["DATABASE_URL"]), autocommit=True)
+    extra = {"connect_timeout": timeout} if timeout else {}
+    return psycopg.connect(plain_url(url or os.environ["DATABASE_URL"]), autocommit=True, **extra)
 
 
 def apply_migrations(conn) -> list[str]:

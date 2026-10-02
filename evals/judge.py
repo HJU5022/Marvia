@@ -29,6 +29,11 @@ def grade(row: dict, generation_model: str | None) -> dict | None:
     customs = (row.get("got") or {}).get("customs")
     if not customs or not customs.get("plain_explanation"):
         return None
+    # 반출신고와 목록에 없는 단계는 코드가 고정 문장을 쓴다. LLM 해설 품질이 아니라 채점에서 뺀다 (10-01)
+    from backend.app.routers.agent import code_written_explanation
+
+    if code_written_explanation(customs.get("stage_name")):
+        return None
     judge_model = os.environ.get("EVAL_GRADER_MODEL")
     if not judge_model or same_model(judge_model, generation_model):
         return None
