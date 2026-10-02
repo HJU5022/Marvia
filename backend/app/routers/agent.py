@@ -41,7 +41,7 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Evidence, Position, Reason, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import guard, identify, llm, validate
+from backend.app.services import guard, identify, llm, progress, validate
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
@@ -141,7 +141,9 @@ def run_agent(request: AgentRequest,
 
 
 def _assess(request: AgentRequest) -> AgentResponse:
-    """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다."""
+    """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다.
+    progress.step()은 실제로 그 단계에 들어갈 때 화면에 알리는 한 줄이다. 듣는 쪽이 없으면 아무 일도 안 한다 (docs/specs/chat-progress.md)."""
+    progress.step("customs")
     customs, failure = _fetch_customs(request)
     if failure is not None:
         # 세관에 아직 없는 B/L이고 MRN이 있으면 해수부 입항 신고로 배 상태까지는 보여 준다 (docs/specs/mrn-fallback.md).
@@ -164,6 +166,7 @@ def _assess(request: AgentRequest) -> AgentResponse:
     if customs.stage_name == RELEASED_STAGE:
         return _released(customs)
 
+    progress.step("identify")
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
     # 배를 못 정하면 판정하지 않는다. 위치·입항 정보 없이 판정하면 근거 없이 "괜찮다"가 나온다 (09-28 실제 B/L)
     if vessel_match == TOOL_FAILED:
@@ -183,6 +186,7 @@ def _assess(request: AgentRequest) -> AgentResponse:
             answer=ASK_BACK,
         )
 
+    progress.step("position")
     position = get_live_position(mmsi) if mmsi else None
     schedule = get_port_schedule(call_sign=call_sign, ship_name=customs.ship_name)
     distance = _distance(position)
@@ -236,6 +240,7 @@ def _assess(request: AgentRequest) -> AgentResponse:
     # 등급은 판정 표가 먼저 정한다 (09-30 D7). 회색 지대면 LLM이 표 이상에서 고를 수 있다
     table = verdict_table.table_verdict(signal_set, margin)
     gray = verdict_table.is_gray(signal_set)
+    progress.step("judge")
     feedback = None
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
@@ -410,6 +415,7 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
         log_failure("follow_up", "blocked prompt injection pattern")
         return previous.model_copy(update={"answer": FOLLOW_UP_BLOCKED, "trace_id": current_request_id()})
 
+    progress.step("answer")
     # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거 카드에 없는 숫자("9월 23일", 사용자가 말한 판매일)가 그대로 갔다 (평가 F06).
     # 판정·근거는 지난 결과 그대로라 답 문장을 보는 규칙(FOLLOW_UP_RULES)만 건다. 재시도 방식은 판정과 같다 (SDD 5.7)
     feedback = None

@@ -3,7 +3,8 @@
  * 응답은 받은 그대로 둔다. 화면이 스키마 값을 고치지 않는다.
  */
 import {createContext, useContext, useEffect, useRef, useState, type ReactNode} from 'react';
-import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, isLive, sendChat} from '@/lib/api';
+import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, isLive, sendChatStream} from '@/lib/api';
+import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
 import type {AgentRequest, AgentResponse, ChatResponse} from '@/lib/types';
 
@@ -18,7 +19,12 @@ export interface DocHints { voyage_no: string | null; forwarder_eta: string | nu
 
 interface AppState {
   data: typeof presentation; request: AgentRequest; result: AgentResponse | null;
-  loading: boolean; stage: number; error: string; replaying: boolean;
+  loading: boolean; error: string; replaying: boolean;
+  /** 서버가 실제로 알린 처리 단계 (POST /api/chat/stream, docs/specs/chat-progress.md). 타이머로 만들지 않는다.
+   * 마지막 칸이 지금 단계다. 데모 모드·/api/agent 조회·옛 서버는 소식이 없어 빈 배열이다 */
+  stages: ProgressStage[];
+  /** 지금 요청을 보낸 시각(Date.now()). 화면이 실제 경과 시간을 센다. 기다리지 않으면 null */
+  pendingSince: number | null;
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
   /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다 */
   ask: (message: string) => Promise<boolean>;
@@ -42,7 +48,8 @@ const Context = createContext<AppState | null>(null);
 export function AppProvider({children}:{children:ReactNode}) {
   const [request,setRequest] = useState<AgentRequest>(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest);
   const [result,setResult] = useState<AgentResponse|null>(null);
-  const [loading,setLoading] = useState(false); const [stage,setStage] = useState(0);
+  const [loading,setLoading] = useState(false);
+  const [stages,setStages] = useState<ProgressStage[]>([]); const [pendingSince,setPendingSince] = useState<number|null>(null);
   const [error,setError] = useState(''); const [replaying,setReplaying] = useState(false);
   const [user,setUser] = useState<AuthUser|null>(null);
   const [authReady,setAuthReady] = useState(!authEnabled);
@@ -76,22 +83,22 @@ export function AppProvider({children}:{children:ReactNode}) {
 
   async function lookup(req: AgentRequest) {
     if (inflight.current) return false;
-    inflight.current = true; setLoading(true); setError(''); setStage(0); setReplaying(false);
-    // 화면 타이머다. 백엔드는 진행 이벤트를 보내지 않는다
-    const a = setTimeout(()=>setStage(1),350); const b = setTimeout(()=>setStage(2),700);
+    inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
+    // 정해진 칸 조회(POST /api/agent: 되묻기 답·다시 조회)는 단계 소식이 없다. 화면은 기다림과 경과 시간만 보인다
     try { const response = await getAgentResponse(req); setResult(response); setRequest(req); setView('cargo'); return true; }
     catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했습니다. 다시 시도해 주세요.'); return false; }
-    finally {clearTimeout(a);clearTimeout(b);setLoading(false);inflight.current=false;}
+    finally {setLoading(false);setPendingSince(null);inflight.current=false;}
   }
   async function ask(message: string) {
     if (inflight.current) return false;
-    inflight.current = true; setLoading(true); setError(''); setStage(0); setReplaying(false);
+    inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
     setThread(t => [...t.slice(-49), {role: 'user', text: message}]);
-    const a = setTimeout(()=>setStage(1),350); const b = setTimeout(()=>setStage(2),700);
     try {
       // 지금 보고 있는 화물이 있으면 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다
-      const res = await sendChat(message, result && request.bl_no ? request : null);
+      // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
+      const res = await sendChatStream(message, result && request.bl_no ? request : null,
+        s => setStages(list => list.includes(s) ? list : [...list, s]));
       setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind}]);
       if (res.kind === 'cargo' && res.agent && res.request) { setResult(res.agent); setRequest(res.request); setView('cargo'); }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
@@ -101,15 +108,16 @@ export function AppProvider({children}:{children:ReactNode}) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : '답하지 못했습니다. 다시 시도해 주세요.';
       setError(msg); setView('none'); setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
-    } finally { clearTimeout(a); clearTimeout(b); setLoading(false); inflight.current = false; }
+    } finally { setLoading(false); setPendingSince(null); inflight.current = false; }
   }
   function replay(id: string) {
     if (inflight.current) return false;
     const snapshot = getReplaySnapshot(id); if (!snapshot) return false;
-    setResult(snapshot.response);setRequest(snapshot.request);setReplaying(true);setError('');return true;
+    // 선박 표를 보던 중이어도 재생한 화물이 보이게 화물 보기로 바꾼다 (10-02 발견: 표가 남아 재생 결과가 가려졌다)
+    setResult(snapshot.response);setRequest(snapshot.request);setReplaying(true);setError('');setView('cargo');return true;
   }
   function reset() { setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stage,error,replaying,lookup,replay,ask,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset}}>{children}</Context.Provider>;
 }
 export function useApp() { const ctx=useContext(Context);if(!ctx)throw new Error('AppProvider is required');return ctx; }
