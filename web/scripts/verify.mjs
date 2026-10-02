@@ -150,7 +150,7 @@ try {
     // 부분 결과: 해수부 근거만 보기는 화면 필터이고 새 판정이 아니다. 원본 값 펼침
     await cargo(page, 'partial'); await page.getByRole('button', {name: '해수부 근거만 보기'}).click(); assert(await page.locator('.filter-notice').isVisible());
     assert.equal(await page.locator('.evidence-source').filter({hasNotText: '해양수산부'}).count(), 0);
-    await page.getByRole('button', {name: '전체 보기'}).click(); await page.locator('.evidence-item summary').first().click(); assert(await page.locator('.evidence-item pre').first().isVisible());
+    await page.getByRole('button', {name: '전체 보기'}).click(); await page.locator('.evidence-item summary').first().click(); assert(await page.locator('.evidence-item .evidence-detail').first().isVisible());
     check(`MOF filter + raw evidence ${width}`);
 
     // 지원 범위 밖: 질문 고치기는 입력창으로 보낸다 (예전 #bl 링크 대체)

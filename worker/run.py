@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
-from backend.app.db import apply_migrations, connect, purge_old_queries
+from backend.app.db import apply_migrations, connect, purge_done_cargo, purge_old_queries
 from worker.collector import Budget, collect_port, collect_positions, purge_positions, select_targets
 
 DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
@@ -61,6 +61,7 @@ def run_once(shipfinder_calls: int) -> dict:
     summary["shipfinder_calls_used"] = shipfinder_calls - budget.remaining
     summary["positions_purged"] = purge_positions(conn)  # 입항 30일 지난 위치 기록 삭제 (migrations/002)
     summary["queries_purged"] = purge_old_queries(conn)  # 90일 지난 조회 기록 삭제 (migrations/008)
+    summary["done_cargo_purged"] = purge_done_cargo(conn)  # 반출 3년 지난 끝난 화물과 그 메모 삭제 (migrations/015)
     conn.close()
     return summary
 

@@ -23,7 +23,8 @@ from fastapi.responses import JSONResponse
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
-from backend.app.routers import account, admin, agent, chat, document, history, profile
+from backend.app.routers import account, admin, agent, chat, document, history, memory, profile
+from backend.app.services import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
 from mcp_server.server import MountedMCP
 
 setup_logging()
@@ -50,6 +51,8 @@ async def lifespan(app: FastAPI):
     # /mcp의 세션 관리자를 서버 수명 동안 돌린다. 이게 없으면 /mcp 요청이 처리되지 않는다 (MountedMCP)
     async with mcp_app.running():
         yield
+    # 화물 비서 기억의 남은 뒤 작업을 먼저 끝낸다. 그 안의 LLM 호출 트레이스도 아래 flush에 실린다 (docs/specs/memory.md)
+    memory_service.shutdown()
     # 꺼질 때 남은 트레이스를 보낸다. 안 하면 마지막 요청들의 트레이스가 사라진다 (observability/langfuse.flush)
     langfuse_flush()
 
@@ -73,6 +76,7 @@ app.include_router(document.router)  # 서류 사진 (docs/specs/document-extrac
 app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
 app.include_router(admin.router)  # 운영자 관리 (docs/specs/operator-admin.md)
 app.include_router(profile.router)  # 회원 정보 (docs/specs/user-profile.md)
+app.include_router(memory.router)  # 화물 비서 기억 (docs/specs/memory.md)
 
 
 # /mcp: MCP 클라이언트가 연결하는 프로토콜 창구. /api/agent(사용자 화면용)와 경로를 나눈다 (가이드 v4 배포 구조).

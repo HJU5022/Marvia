@@ -23,6 +23,8 @@ from backend.app.services.signals import DEST_BROKEN, DEST_EMPTY
 #                 도착일 근거가 없는 것인데, 뒤쪽은 라우터가 LLM 전에 보류한다 (_no_eta, D6)
 #   ignore_signals · ignore_dest_values: 켜져도 세지 않는 신호 (AIS 입력 오류일 수 있음)
 LEVEL = {"fine": 0, "watch": 1, "act": 2}  # 위험 순서. LLM은 표 등급 이상만 낼 수 있다
+# 화면·코드 고정 문구에 쓰는 등급 이름 (CLAUDE.md 정의). 라우터 고정 문구와 화물 비서의 "지난 조회" 줄이 같이 쓴다 (10-02)
+VERDICT_LABEL = {"fine": "괜찮음", "watch": "지켜볼 것", "act": "지금 조치"}
 # cargo-verdict/rules.md ignore_dest_values의 이름을 signals.py가 dest_changed 값에 쓰는 문장으로 바꾼다
 DEST_VALUE = {"broken": DEST_BROKEN, "empty": DEST_EMPTY}
 

@@ -56,7 +56,8 @@ _EN = [
     r"\bprint\s+(your|the)\s+.{0,20}(prompt|instructions)\b",
     # 데이터가 끝난 척하고 새 지시를 넣는 구분자 깨기 (10-01 gpt-5-mini 화이트박스 측정에서 수정 전 프롬프트를 뚫음)
     r"\bEND\s+OF\s+(DATA|INPUT|CONTEXT|EVIDENCE)\b",
-    r"</\s*(evidence|data|context|input|system|user|tool_result)\s*>",
+    # user_cargo·user_memory: 화물 비서 기억 데이터 블록을 닫는 척하는 글 (docs/specs/memory.md, 10-02 검증)
+    r"</\s*(evidence|data|context|input|system|user|tool_result|user_cargo|user_memory)\s*>",
 ]
 # 한국어 구분자 깨기: "새 지시:", "추가 지시 :" (콜론까지 있어야 잡는다. "지시"만으로는 정상 질문이 걸린다)
 _KO.append(r"(새|추가|다음|변경된)\s*(지시|명령|규칙)\s*[:：]")

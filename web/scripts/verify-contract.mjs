@@ -27,6 +27,12 @@ for(const id of ['ok','partial','insufficient','failed','unsupported','watch','a
  if(r.days_margin!==null)assert(r.evidence.some(e=>e.field==='days_margin'&&Number(e.value)===r.days_margin));
 }
 validate(JSON.parse(fs.readFileSync('lib/fixtures/history.json','utf8')),definitions.HistoryResponse,'history');
+// 서류 사진 응답과 화물 비서 기억 (10-02, schemas/document.py · schemas/memory.py). 칸이 하나라도 다르면 실패한다
+const documentFixture=JSON.parse(fs.readFileSync('lib/fixtures/document.json','utf8'));validate(documentFixture,definitions.DocumentResponse,'document');
+const memoryFixture=JSON.parse(fs.readFileSync('lib/fixtures/memory.json','utf8'));validate(memoryFixture,definitions.MemoryResponse,'memory');
+// 화면에 가는 기억에는 가린 번호만 있다. 가리지 않은 예시 B/L(MRVDEMO + 숫자)이 섞이면 안 된다 (SDD 3.5)
+assert(!/MRVDEMO\d{4}/.test(JSON.stringify(memoryFixture)),'memory fixture must not contain an unmasked B/L');
+assert.equal(new Set(memoryFixture.items.map(i=>i.id)).size,memoryFixture.items.length,'memory item ids must be unique');
 // In-memory transpilation runs exactly lib/api.ts; it does not create duplicate test code.
 // api.ts가 다른 .ts(lib/auth.ts)를 불러도 같은 방식으로 옮겨 읽게 한다 (10-01, 로그인 추가)
 const tsOptions={compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2022}};
@@ -57,4 +63,13 @@ assert(isStage('judge')&&!isStage('made-up'));
 // 화면 라벨과 서버 단계 이름이 같아야 한다. 한쪽에만 있으면 화면이 단계를 버리거나 서버가 못 보낸다
 const backendStages=[...fs.readFileSync(path.join(root,'../backend/app/services/progress.py'),'utf8').match(/STAGES = \(([\s\S]*?)\n\)/)[1].matchAll(/"([a-z_]+)"/g)].map(m=>m[1]);
 assert.deepEqual(Object.keys(stageLabels).sort(),backendStages.slice().sort(),'progress stage names differ between web and backend');
-console.log('PASS: 7 AgentResponse fixtures, history envelope, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing and stage names.');
+// 로그인 뒤 돌아올 주소에 #이 남으면 ##access_token이 되어 supabase-js가 출입증을 못 읽는다 (lib/auth.ts returnAddress, 10-02)
+const authFile=path.join(root,'lib/auth.ts');
+const am=new Module(authFile);am.filename=authFile;am.paths=Module._nodeModulePaths(path.dirname(authFile));am._compile(ts.transpileModule(fs.readFileSync(authFile,'utf8'),tsOptions).outputText,authFile);
+const {parseParametersFromURL}=Module.createRequire(authFile)('@supabase/auth-js/dist/main/lib/helpers.js');
+for(const href of ['http://localhost:3000/settings#','http://localhost:3000/?fixture=ok#evidence','http://localhost:3000/history']){
+ const u=new URL(href);const back=am.exports.returnAddress(u);
+ assert(!back.includes('#'),`return address keeps #: ${back}`);
+ assert.equal(parseParametersFromURL(`${back}#access_token=T&refresh_token=R`).access_token,'T','supabase-js must read the token');
+}
+console.log('PASS: 7 AgentResponse fixtures, history envelope, document and memory fixtures, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names and login return address.');

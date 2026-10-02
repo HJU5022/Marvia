@@ -56,7 +56,7 @@ def test_broken_listener_does_not_stop_work():
 def test_stream_sends_progress_then_same_result_as_chat(monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
 
-    def fake_handle(message, session_id, context, run_agent):
+    def fake_handle(message, session_id, context, run_agent, user_id=None):  # user_id: 화물 비서 기억 (10-02)
         progress.step("understand")
         progress.step("customs")
         return svc.ChatResult(kind="message", reply="B/L 번호를 넣어 주세요")

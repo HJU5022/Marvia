@@ -31,6 +31,36 @@
       "checks": [
         "missing"
       ]
+    },
+    "original_bl": {
+      "value": "required",
+      "checks": []
+    },
+    "to_order_bank": {
+      "value": "true",
+      "checks": []
+    },
+    "freight_term": {
+      "value": "collect",
+      "checks": []
+    },
+    "incoterm": {
+      "value": null,
+      "checks": []
+    },
+    "contact_company": {
+      "value": "MARVIA DEMO LOGISTICS",
+      "checks": []
+    },
+    "contact_role": {
+      "value": "포워더",
+      "checks": []
+    },
+    "contact_phone": {
+      "value": "051-000-0000",
+      "checks": [
+        "not_in_text"
+      ]
     }
   },
   "ocr": {
@@ -40,5 +70,6 @@
     "ocr_ms": 1240
   },
   "trace_id": "demo-document-trace",
-  "mrn": "26MRVD0001I"
+  "mrn": "26MRVD0001I",
+  "doc_kind": "B/L"
 }

@@ -5,6 +5,8 @@
 - vessel_search는 해수부 입항 예정의 직전 기항지로 거른다. 항구 고르기만 LLM(match_ports)이 목록 안에서 한다
 - LLM이 안 되면 규칙으로 대신한다 (EC-01): B/L이 있으면 조회, 없으면 B/L을 물어본다
 LLM이 낸 칸은 믿기 전에 다시 본다: bl_ref는 가린 목록 안의 것만, ports는 주어진 목록 안의 것만, days는 1~14.
+화물 비서 기억 (docs/specs/memory.md, 10-02 결정 2·4): 의도 구조는 그대로다. 로그인 사용자의 화물 조회 답에는
+코드가 쓴 "지난 조회" 한 줄을 붙이고, 가린 사용자 문장을 기억 뽑기 재료로 판정 흐름에 넘긴다 (memory.user_text).
 """
 from __future__ import annotations
 
@@ -21,10 +23,12 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
-from backend.app.services import guard, llm, progress, validate
+from backend.app.services import guard, llm, memory, progress, validate
 from backend.app.services.rules import load_file
 
 KST = timezone(timedelta(hours=9))
+# cargo.previous_line이 만드는 줄의 머리 ("지난 조회(10.01)에서는 ..."). 채팅 답에 붙는 기억 줄은 이것 하나뿐이다 (10-02 결정 4, D1)
+PREVIOUS_LINE_PREFIX = "지난 조회("
 # 수입 화물선 기준(선종·입항 목적) 원본. 코드에 목록을 적지 않는다 (skills/port-busan/cargo-vessels.md, 10-01)
 CARGO_RULES_PATH = Path(__file__).resolve().parents[3] / "skills" / "port-busan" / "cargo-vessels.md"
 
@@ -197,8 +201,10 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
     return ChatResult(kind="vessels", reply=reply, vessels=vessels, place=name, ports=ports, days=days)
 
 
-def handle(message: str, session_id: str, context: AgentRequest | None, run_agent) -> ChatResult:
-    """문장 하나를 처리한다. run_agent는 routers/agent.run_agent(사용자 묶음 포함)를 부르는 함수다."""
+def handle(message: str, session_id: str, context: AgentRequest | None, run_agent,
+           user_id: str | None = None) -> ChatResult:
+    """문장 하나를 처리한다. run_agent는 routers/agent.run_agent(사용자 묶음 포함)를 부르는 함수다.
+    user_id: 로그인 사용자. 있으면 화물 조회 답에 지난 조회 한 줄을 붙인다 (docs/specs/memory.md). 없으면(EC-08) 그대로."""
     message = (message or "").strip()
     if not message:
         raise ChatError("empty")
@@ -206,6 +212,14 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
         raise ChatError("too_long")
     mrn, message = extract_mrn(message)  # B/L 가리기보다 먼저 (MRN도 B/L 모양이라 [BL]로 잘못 가려진다)
     masked, refs = mask_bls(message)
+    # 기억 뽑기 재료는 가린 문장이다. B/L·MRN 원본은 넘기지 않는다 (CLAUDE.md, docs/specs/memory.md 쓰기 흐름 3)
+    with memory.user_text(masked):
+        return _route(masked, refs, mrn, session_id, context, run_agent, user_id)
+
+
+def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
+           run_agent, user_id: str | None) -> ChatResult:
+    """가린 문장을 의도에 맞는 동작으로 보낸다 (handle의 뒷부분). 동작은 10-02 전과 같고 user_id만 화물 조회로 넘긴다."""
     today = datetime.now(KST).date().isoformat()
 
     # 주입 모양 문장은 LLM에 보내지 않는다 (services/guard.py, SDD 7절 10-01). 후속 질문 경로는 route_chat이 질문을
@@ -220,14 +234,14 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     except llm.LLMError as e:  # EC-01: 규칙으로 대신
         log_failure("chat_route", e.kind)
         if refs:
-            return _cargo(next(iter(refs.values())), None, None, session_id, context, run_agent, note=None, mrn=mrn)
+            return _cargo(next(iter(refs.values())), None, None, session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
         return ChatResult(kind="message", reply=LLM_DOWN)
 
     # 문장에 지금 화물과 다른 B/L이 있으면 의도와 상관없이 새 화물 조회다 (10-01 실측: 화면에 화물이 있으면
     # LLM이 "[BL1] 화물 조회해줘"를 follow_up으로 골라 이전 화물 답과 카드가 나왔다). LLM이 낸 의도를 코드가 덮어쓴다
     new_bls = [bl for bl in refs.values() if context is None or bl != context.bl_no]
     if new_bls and route.intent in ("follow_up", "other"):
-        return _cargo(new_bls[0], route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn)
+        return _cargo(new_bls[0], route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
 
     if route.intent == "cargo":
         bl = refs.get(route.bl_ref or "") or (next(iter(refs.values())) if refs else None)
@@ -235,7 +249,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
             if context is None:
                 return ChatResult(kind="message", reply=NEED_BL)  # EC-02
             bl = context.bl_no
-        return _cargo(bl, route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn)
+        return _cargo(bl, route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
 
     if route.intent == "follow_up":
         if context is None:
@@ -278,9 +292,14 @@ def _safe_reply(reply: str | None, message: str) -> str:
 
 
 def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: str, context: AgentRequest | None,
-           run_agent, note: str | None, mrn: str | None = None) -> ChatResult:
+           run_agent, note: str | None, mrn: str | None = None, user_id: str | None = None) -> ChatResult:
     """B/L 조회. 같은 화물을 다시 물으면 지금 화물의 구분·판매일·MRN을 이어 쓴다.
-    MRN이 있으면 세관에 아직 없는 화물도 배 상태까지 볼 수 있다 (docs/specs/mrn-fallback.md)."""
+    MRN이 있으면 세관에 아직 없는 화물도 배 상태까지 볼 수 있다 (docs/specs/mrn-fallback.md).
+    로그인 사용자가 이미 조회한 화물이면 답 끝에 "지난 조회(10.01)에서는 ○○였어요." 한 줄을 붙인다 (10-02 결정 4).
+    그 줄은 조회 전에 읽은 화물 표 값으로 코드가 쓴다. 응답 칸(C1)은 늘리지 않는다."""
+    # 답에 붙일 수 있는 것은 코드가 쓴 "지난 조회" 한 줄뿐이다 (10-02 결정 4, D1). lookup_notes가 다른 줄(메모장 가득 참 알림 등)을
+    # 돌려줘도 사용자에게 보이지 않게 여기서 한 번 더 거른다. 가득 참은 설정 "내 기억" 화면만 보여 준다
+    notes = [n for n in memory.lookup_notes(user_id, bl) if n.startswith(PREVIOUS_LINE_PREFIX)]
     same = context is not None and context.bl_no == bl
     kind = bl_type or (context.bl_type if same else None)
     req = AgentRequest(bl_no=bl, bl_type=kind or DEFAULT_BL_TYPE, session_id=session_id,
@@ -291,4 +310,6 @@ def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: 
     if not kind:
         reply = (f"{reply}\n(B/L 구분을 말하지 않아 하우스 B/L(포워더가 발행한 B/L)로 조회했습니다. "
                  "선사가 발행한 마스터 B/L이면 \"마스터로 다시\"라고 말해 주세요.)")
+    if notes:
+        reply = "\n".join([reply, *notes])
     return ChatResult(kind="cargo", reply=reply, agent=resp, request=req)

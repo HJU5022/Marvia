@@ -76,6 +76,8 @@ THIRD_PARTY.md         지도·폰트 출처와 라이선스
 
 `NEXT_PUBLIC_API_BASE`가 있으면 실제 모드, 없으면 위의 fixture 데모 모드입니다. 값은 빌드할 때 들어가므로 바꾸면 dev 서버를 다시 켭니다.
 
+값은 `web/.env`에 둡니다. `cp .env.example .env` 뒤 채우면 아래처럼 명령에 붙이지 않고 `npm run dev`만 해도 됩니다. `web/.env`는 커밋하지 않습니다.
+
 ```bash
 # 레포 루트: 키 없이 백엔드 데모 3건 (루트 README "키 없이 데모 3건")
 docker compose up -d --build

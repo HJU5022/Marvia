@@ -1139,11 +1139,13 @@ def test_logged_in_user_deletes_own_history(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
     monkeypatch.setattr(history_router, "connect", lambda *a, **k: FakeConn())
     monkeypatch.setattr(history_router, "delete_user_queries", lambda conn, user_id: asked.append(user_id) or 3)
+    # 화물 비서 기억도 같이 지운다 (docs/specs/memory.md "개인정보")
+    monkeypatch.setattr(history_router, "forget_user", lambda conn, user_id: asked.append(("memory", user_id)) or 2)
 
     with TestClient(app) as client:
         resp = client.delete("/api/history", headers=headers)
 
-    assert resp.status_code == 200 and resp.json() == {"deleted": 3} and asked == ["user-123"]
+    assert resp.status_code == 200 and resp.json() == {"deleted": 3} and asked == ["user-123", ("memory", "user-123")]
 
 
 def test_delete_needs_login(monkeypatch):

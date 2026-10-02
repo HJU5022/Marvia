@@ -86,3 +86,24 @@ def test_too_large_is_400(monkeypatch):
     monkeypatch.setattr(document_router, "MAX_BYTES", 1000)
     res = _post()
     assert res.status_code == 400 and res.json()["detail"] == "too_large"
+
+
+def test_conditions_and_contact_are_returned_and_checked(monkeypatch):
+    """10-02 결정 6: 조건·연락처 칸을 돌려준다. 서류에 없는 근거 글은 not_in_text, 서류 종류는 B/L·A/N 이름으로."""
+    _fake_extract(monkeypatch, {**ANSWER, "doc_kind": "arrival_notice", "freight_term": "collect",
+                                "freight_term_text": "FREIGHT COLLECT", "contact_phone": "010-1234-5678"})
+    body = _post().json()
+    assert body["doc_kind"] == "A/N"
+    assert body["fields"]["freight_term"] == {"value": "collect", "checks": ["not_in_text"]}  # 가공 통지서에 그 글이 없다
+    assert body["fields"]["contact_phone"] == {"value": None, "checks": ["format"]}            # 휴대폰은 돌려주지 않는다
+    assert body["fields"]["incoterm"] == {"value": None, "checks": []}                         # 없으면 검사 안 함
+    assert body["needs_review"] is True
+
+
+def test_old_shape_answer_keeps_needs_review_false(monkeypatch):
+    """조건 칸이 비면 확인 필요를 올리지 않는다. 6칸만 있던 답도 그대로 통과한다."""
+    _fake_extract(monkeypatch)
+    body = _post().json()
+    assert body["needs_review"] is False and body["doc_kind"] is None
+    assert set(body["fields"]) >= {"original_bl", "to_order_bank", "freight_term", "incoterm",
+                                   "contact_company", "contact_role", "contact_phone"}

@@ -206,3 +206,31 @@ def test_query_purge_calls_db_function_and_returns_count():
 
     conn = Conn()
     assert purge_old_queries(conn) == 5 and "purge_old_queries()" in conn.sql
+
+
+def test_done_cargo_purge_calls_db_function_and_returns_count():
+    """끝난 화물 3년 보관 정리도 규칙은 DB 함수에 있다 (migrations/015, docs/specs/memory.md). 파이썬은 부르기만 한다."""
+    from backend.app.db import purge_done_cargo
+
+    class Conn:
+        def execute(self, sql, params=()):
+            self.sql = sql
+            return type("Cur", (), {"fetchall": lambda self: [(2,)]})()
+
+    conn = Conn()
+    assert purge_done_cargo(conn) == 2 and "purge_done_cargo()" in conn.sql
+
+
+def test_migration_015_has_allowed_values_and_schedule():
+    """B/L 조건 세 칸은 정해진 값만 받고(CHECK), 정리 함수는 008과 같은 방식으로 pg_cron에 예약된다 (10-02 결정 5·9)."""
+    from backend.app.db import MIGRATIONS_DIR
+
+    sql = (MIGRATIONS_DIR / "015_memory_conditions_purge.sql").read_text(encoding="utf-8")
+    assert "CHECK (original_bl IN ('required', 'surrendered'))" in sql
+    assert "CHECK (freight_term IN ('prepaid', 'collect'))" in sql
+    assert "CHECK (incoterm IN ('CIF', 'FOB', 'CFR'))" in sql
+    assert "to_order_bank BOOLEAN" in sql
+    assert "cron.schedule('marvia-purge-done-cargo'" in sql
+    # 10-02 결정 D3: 끝난 화물은 반출 후 3년 보관 뒤 줄째 지운다. 3년은 함수 기본값 한 곳에만 있다
+    assert sql.count("interval '3 years'") == 1 and "DELETE FROM user_cargo" in sql
+    assert "CREATE TABLE IF NOT EXISTS user_forget" in sql  # 삭제 표시 (뒤 작업이 삭제를 되살리지 않게)

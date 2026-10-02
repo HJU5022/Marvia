@@ -206,3 +206,55 @@ def test_single_signal_conflict_is_valid():
               "conflicts": [{"signals": ["eta_conflict"], "chosen": "mof", "why": "해수부 입항 신고를 믿음"}]}
     out = llm.JudgeOutput.model_validate(answer)
     assert out.conflicts[0].signals == ["eta_conflict"]
+
+
+BLOCKS = "<user_cargo>\n- 고추 (TEST****0001) · 하우스 B/L\n</user_cargo>\n<user_memory>\n# 화물별\n</user_memory>"
+
+
+def test_memory_blocks_go_between_fixed_prompt_and_lookup_data(monkeypatch):
+    """기억 블록은 지시문+Skill(고정) 뒤, 이번 조회 자료 앞에 따로 들어간다 (docs/specs/memory.md 읽기 흐름 2).
+    이번 자료 메시지는 그대로라 녹화 답 재생 대조와 V7 근거가 바뀌지 않는다."""
+    calls = _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
+    llm.judge(_signals(), _customs(), days_margin=5, memory=BLOCKS)
+
+    roles = [m["role"] for m in calls[0]["messages"]]
+    assert roles == ["system", "user", "user"]
+    assert calls[0]["messages"][1]["content"] == BLOCKS
+    assert json.loads(calls[0]["messages"][2]["content"])["days_margin"] == 5
+
+
+def test_memory_blocks_are_kept_in_trace_input(monkeypatch):
+    """10-02 결정 8: 트레이스에는 기억 블록을 가리지 않고 남긴다 (운영 기록)."""
+    _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
+    seen = []
+    monkeypatch.setattr(llm, "start_generation", lambda name, input, prompt=None: seen.append(input))
+    llm.judge(_signals(), _customs(), days_margin=5, memory=BLOCKS)
+    assert seen[0].startswith(BLOCKS)
+
+
+def test_follow_up_gets_memory_in_same_place(monkeypatch):
+    from backend.app.routers.agent import _response
+
+    calls = _fake_chat(monkeypatch, json.dumps({"in_scope": True, "answer": "여유는 5일입니다."}))
+    llm.answer_follow_up("여유 며칠?", _response(status="ok"), memory=BLOCKS)
+    assert calls[0]["messages"][1]["content"] == BLOCKS and "question" in calls[0]["messages"][2]["content"]
+
+
+def test_write_memory_needs_memory_model(monkeypatch):
+    """MEMORY_MODEL이 없으면 부르지 않고 not_configured (10-02 결정 10). LLM_MODEL로 대신하지 않는다."""
+    monkeypatch.delenv("MEMORY_MODEL", raising=False)
+    monkeypatch.setenv("LLM_MODEL", "test/model")
+    monkeypatch.setattr(llm, "chat", lambda *a, **k: pytest.fail("부르면 안 된다"))
+    with pytest.raises(llm.LLMError) as e:
+        llm.write_memory("{}")
+    assert e.value.kind == "not_configured"
+
+
+def test_write_memory_uses_memory_prompt_and_model(monkeypatch):
+    monkeypatch.setenv("MEMORY_MODEL", "openai/gpt-4o-mini")
+    calls = _fake_chat(monkeypatch, json.dumps({"ops": [{"op": "noop", "id": None, "section": None, "kind": None,
+                                                          "fields": None, "field": None, "value": None}]}))
+    out = llm.write_memory('{"user_text": "[BL1] 고추"}').output
+    assert out.ops[0].op == "noop"
+    assert calls[0]["model"] == "openai/gpt-4o-mini" and calls[0]["response_format"]["json_schema"]["strict"] is True
+    assert "line commands" in calls[0]["messages"][0]["content"]  # 로컬 프롬프트 marvia-memory-write.md

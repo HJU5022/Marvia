@@ -5,6 +5,7 @@
   take_bl()      "B/L NO." 이름표 근처에서 B/L 번호를 찾는다. LLM에 넘기지 않기 위해 코드가 먼저 뽑는다
   mask_bl()      OCR 글자에서 B/L 번호를 [BL]로 가린다
   check_fields() 뽑은 칸이 비었는지, OCR 글자에 실제로 있는지, 형식이 맞는지
+  check_conditions() B/L 조건 세 칸·인코텀즈·화물 인도 연락처 검사 (10-02 결정 6). 비어도 missing을 걸지 않는다
 
 모든 규칙은 2026-09-29 실험(레포 밖 ocr_bench/, 팀 위키 근거 원장)에서 실패를 보고 넣은 것이다. 주석의 "(09-29 …)"가 그 사례다.
 """
@@ -23,6 +24,8 @@ from PIL import Image
 
 from backend.app.schemas.agent import _BL_PATTERN  # B/L 형식은 계약 C2 한 곳에만 둔다 (SDD 3.1)
 from backend.app.services import guard  # 지시문 줄 판별 (_only_in_instruction, 10-01)
+# 전화·이메일 모양, 역할 목록, 회사 이름 상한은 메모장 검사와 한 곳 (docs/specs/memory.md). 메모장 모듈 전체는 불러오지 않는다
+from backend.app.services.pii_patterns import COMPANY_MAX, EMAIL, MOBILE, MOBILE_IN_TEXT, PHONE, ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -292,3 +295,72 @@ def take_mrn(lines: list[str]) -> str | None:
                 value = v.group(1).upper()
                 return value[:-1] + ("I" if value[-1] in "1L|" else value[-1])
     return None
+
+
+# ── B/L 조건과 화물 인도 연락처 (10-02 결정 6) ──
+# 서류에 없는 경우가 흔한 칸이라 비어 있으면 검사하지 않는다(missing 없음). 값이 있으면 기존 칸과 같은 이름의 검사를 건다.
+# 조건 세 칸은 글자를 옮기는 게 아니라 고르는 값이라, LLM이 근거로 옮긴 글(*_text)이 서류에 있는지를 본다.
+CONDITION_FIELDS = ("original_bl", "to_order_bank", "freight_term", "incoterm",
+                    "contact_company", "contact_role", "contact_phone")
+CONDITION_VALUES = {
+    "original_bl": ("required", "surrendered"),      # 마이그레이션 015 CHECK와 같다
+    "to_order_bank": ("true", "false"),
+    "freight_term": ("prepaid", "collect"),
+    "incoterm": ("CIF", "FOB", "CFR"),
+    "contact_role": ROLES,
+}
+EVIDENCE_OF = {"original_bl": "original_bl_text", "to_order_bank": "to_order_bank_text",
+               "freight_term": "freight_term_text"}
+
+
+def check_conditions(values: dict[str, str | None], evidence: dict[str, str | None],
+                     lines: list[str]) -> tuple[dict[str, str | None], dict[str, list[str]]]:
+    """(돌려줄 값, 칸마다 걸린 검사). values의 to_order_bank는 "true"/"false" 글자로 받는다.
+
+    format       목록 밖 값, 회사 이름이 너무 길거나 이메일 모양, 전화가 회사 번호 모양이 아님
+    not_in_text  근거 글(조건)·회사 이름·인코텀즈·전화 숫자가 OCR 글자에 없다
+    ambiguous    그 글이 지시문 줄에서만 나온다 (_only_in_instruction, 10-01과 같은 기준)
+    개인 휴대폰 번호와 이메일은 돌려주지도 않는다: 값을 비우고 format으로 알린다 (결정 6 "개인 휴대폰·이메일 받지 않음").
+    개인 이름은 모양으로 가를 수 없어 프롬프트(marvia-doc-extract)만 막는다.
+    """
+    text = "\n".join(lines)
+    out: dict[str, str | None] = {}
+    checks: dict[str, list[str]] = {}
+    for key in CONDITION_FIELDS:
+        value = values.get(key)
+        fails: list[str] = []
+        if value is None or value == "":
+            out[key], checks[key] = None, []
+            continue
+        if key in CONDITION_VALUES and value not in CONDITION_VALUES[key]:
+            fails.append("format")
+        if key in EVIDENCE_OF:
+            quote = evidence.get(EVIDENCE_OF[key])
+            if not quote or not norm(quote) or norm(quote) not in norm(text):
+                fails.append("not_in_text")
+            elif _only_in_instruction(key, quote, lines):
+                fails.append("ambiguous")
+        elif key == "incoterm":
+            # 낱말 경계로 본다. "SPECIFIC" 안의 CIF를 인코텀즈로 치지 않는다
+            if not re.search(rf"(?<![A-Z]){re.escape(value)}(?![A-Z])", text.upper()):
+                fails.append("not_in_text")
+            elif _only_in_instruction(key, value, lines):
+                fails.append("ambiguous")
+        elif key == "contact_company":
+            if EMAIL.search(value) or MOBILE_IN_TEXT.search(value):
+                out[key], checks[key] = None, ["format"]  # 이메일·휴대폰이 섞인 회사 칸은 값을 비운다
+                continue
+            if len(value) > COMPANY_MAX or re.search(r"[<>\r\n]", value):
+                fails.append("format")
+            if norm(value) not in norm(text):
+                fails.append("not_in_text")
+            elif _only_in_instruction(key, value, lines):
+                fails.append("ambiguous")
+        elif key == "contact_phone":
+            if not PHONE.fullmatch(value) or MOBILE.match(value):
+                value = None
+                fails.append("format")
+            elif not any(re.sub(r"\D", "", value) in re.sub(r"\D", "", line) for line in lines):
+                fails.append("not_in_text")
+        out[key], checks[key] = value, fails
+    return out, checks
