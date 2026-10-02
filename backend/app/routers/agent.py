@@ -26,6 +26,8 @@
 화물 비서 기억 (docs/specs/memory.md, 10-02): 로그인 사용자면 판정 전에 화물 표·메모장을 읽어 판정·후속 LLM에
 데이터 블록으로 넣고(services/memory.load_context), 응답을 돌려준 뒤 뒤에서 화물 표 쓰기와 기억 뽑기를 한다
 (memory.remember_later). 등급은 지금처럼 판정 표가 정한다. 사용자가 없으면(채점 환경·평가 실행기·데모) 아무것도 안 한다.
+10-02 검증 반영: 회색 지대(raise_only) 판정에는 기억 블록을 주지 않고(F7), 출력 검사에서 기억은 사용자가 준 날짜·숫자만 V7 근거로 친다.
+지난 조회 값과 메모 낱말은 근거가 아니다(F8, validate.user_supplied_text). V12는 블록을 실제로 줬을 때만 건다.
 """
 import json
 import logging
@@ -162,7 +164,8 @@ def is_released(response: AgentResponse) -> bool:
 def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
     """조회와 판정 (SDD 4.1 1~7단계). 이력은 run_agent가 남긴다.
     progress.step()은 실제로 그 단계에 들어갈 때 화면에 알리는 한 줄이다. 듣는 쪽이 없으면 아무 일도 안 한다 (docs/specs/chat-progress.md).
-    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). 판정 LLM에만 넣고, 그 안의 숫자·낱말은 검증에서 근거로 친다."""
+    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). 판정 LLM에만 넣는다.
+    검증에서 근거로 치는 것은 사용자가 준 날짜·숫자뿐이다 (validate.user_supplied_text, 10-02 검증 F8, 결정 5)."""
     progress.step("customs")
     customs, failure = _fetch_customs(request)
     if failure is not None:
@@ -260,13 +263,18 @@ def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
     # 등급은 판정 표가 먼저 정한다 (09-30 D7). 회색 지대면 LLM이 표 이상에서 고를 수 있다
     table = verdict_table.table_verdict(signal_set, margin)
     gray = verdict_table.is_gray(signal_set)
+    # 회색 지대(raise_only)는 LLM이 등급을 올릴 수 있는 유일한 자리라 기억 블록을 주지 않는다 (10-02 검증 F7, 결정 5:
+    # B/L 조건·메모가 등급에 영향을 주면 안 된다). 고정 등급(fixed)은 LLM이 등급을 못 바꾸므로 기억을 넣어 설명에 쓴다
+    judge_memory = None if gray else memory
+    # V7 근거로 칠 글: 사용자가 준 값만. 지난 조회 값(last_eta 등)은 뺀다 (F8)
+    memory_numbers = validate.user_supplied_text(judge_memory)
     progress.step("judge")
     feedback = None
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback,
                                trusted_eta=trusted, sale_due_date=request.sale_due_date,
-                               table_verdict=table, verdict_mode="raise_only" if gray else "fixed", memory=memory)
+                               table_verdict=table, verdict_mode="raise_only" if gray else "fixed", memory=judge_memory)
         except llm.LLMFormatError as e:
             log_failure("judge", f"{e.kind} attempt {attempt}")
             feedback = e.detail
@@ -286,17 +294,19 @@ def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
                             "Write reasons, actions, and answer for that verdict.")
             else:
                 response = _judged(out, signal_set, request, customs, collected, table, from_cache=from_cache)
-                violations = validate.check(response, extra=memory or "")
+                violations = validate.check(response, extra=memory_numbers)
                 # V9·V10 판정판 (10-01): 통관 단계명(외부 데이터)에 넣은 주입이 설명 칸에 섞이지 않게 한다 (validate.py)
                 texts = [out.answer, *out.actions, *[c.why for c in out.conflicts]]
                 if out.customs:
                     texts += [out.customs.plain_explanation, out.customs.next_stage or ""]
                 external = " ".join([customs.stage_name or "", *[s.name for s in customs.stage_history]]) if customs else ""
+                # 기억 블록의 낱말은 V9·V10 근거가 아니다 (F8): 메모에 심은 낱말이 낱말 검사를 통과시키면 안 된다
                 violations += validate.check_judge_text(texts, response, external,
-                                                         llm.skills_reference(llm.JUDGE_SKILLS, llm.JUDGE_PROMPT)
-                                                         + (memory or ""))
-                # V12 (10-02): 메모장 내부 번호가 새어 나오지 않게 (docs/specs/memory.md EC-09)
-                violations += validate.check_memory_ids(texts, _evidence_text(response))
+                                                         llm.skills_reference(llm.JUDGE_SKILLS, llm.JUDGE_PROMPT))
+                # V12 (10-02): 메모장 내부 번호가 새어 나오지 않게 (docs/specs/memory.md EC-09).
+                # 기억 블록을 실제로 LLM에 줬을 때만 건다. 평가·데모·비로그인·회색 지대 경로에는 번호가 있을 수 없다
+                if judge_memory:
+                    violations += validate.check_memory_ids(texts, _evidence_text(response))
                 if not violations:
                     return response
                 # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
@@ -472,16 +482,17 @@ def _follow_up(request: AgentRequest, user_id: str | None = None, memory: str | 
         answered = grounded.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
         # V11은 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
         checked = answered.model_copy(update={"actions": [], "customs": None})
-        violations = [v for v in validate.check(checked, extra=memory or "") if v.rule in FOLLOW_UP_RULES]
+        violations = [v for v in validate.check(checked, extra=validate.user_supplied_text(memory)) if v.rule in FOLLOW_UP_RULES]
         # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
+        # 기억 블록의 낱말은 V9·V10 근거가 아니다 (10-02 검증 F8)
         violations += validate.check_follow_up_words(out.answer, grounded,
-                                                     llm.skills_reference((), llm.FOLLOW_UP_PROMPT) + (memory or ""))
+                                                     llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
         # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
         violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, grounded,
-                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT)
-                                                    + (memory or ""))
-        # V12 (10-02): 메모장 내부 번호가 새어 나오지 않게 (docs/specs/memory.md EC-09)
-        violations += validate.check_memory_ids([out.answer], _evidence_text(grounded))
+                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT))
+        # V12 (10-02): 메모장 내부 번호가 새어 나오지 않게 (docs/specs/memory.md EC-09). 기억 블록을 줬을 때만 건다
+        if memory:
+            violations += validate.check_memory_ids([out.answer], _evidence_text(grounded))
         if not violations:
             return answered
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")

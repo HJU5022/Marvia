@@ -27,6 +27,8 @@ from backend.app.services import guard, llm, memory, progress, validate
 from backend.app.services.rules import load_file
 
 KST = timezone(timedelta(hours=9))
+# cargo.previous_line이 만드는 줄의 머리 ("지난 조회(10.01)에서는 ..."). 채팅 답에 붙는 기억 줄은 이것 하나뿐이다 (10-02 결정 4, D1)
+PREVIOUS_LINE_PREFIX = "지난 조회("
 # 수입 화물선 기준(선종·입항 목적) 원본. 코드에 목록을 적지 않는다 (skills/port-busan/cargo-vessels.md, 10-01)
 CARGO_RULES_PATH = Path(__file__).resolve().parents[3] / "skills" / "port-busan" / "cargo-vessels.md"
 
@@ -295,7 +297,9 @@ def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: 
     MRN이 있으면 세관에 아직 없는 화물도 배 상태까지 볼 수 있다 (docs/specs/mrn-fallback.md).
     로그인 사용자가 이미 조회한 화물이면 답 끝에 "지난 조회(10.01)에서는 ○○였어요." 한 줄을 붙인다 (10-02 결정 4).
     그 줄은 조회 전에 읽은 화물 표 값으로 코드가 쓴다. 응답 칸(C1)은 늘리지 않는다."""
-    notes = memory.lookup_notes(user_id, bl)
+    # 답에 붙일 수 있는 것은 코드가 쓴 "지난 조회" 한 줄뿐이다 (10-02 결정 4, D1). lookup_notes가 다른 줄(메모장 가득 참 알림 등)을
+    # 돌려줘도 사용자에게 보이지 않게 여기서 한 번 더 거른다. 가득 참은 설정 "내 기억" 화면만 보여 준다
+    notes = [n for n in memory.lookup_notes(user_id, bl) if n.startswith(PREVIOUS_LINE_PREFIX)]
     same = context is not None and context.bl_no == bl
     kind = bl_type or (context.bl_type if same else None)
     req = AgentRequest(bl_no=bl, bl_type=kind or DEFAULT_BL_TYPE, session_id=session_id,
