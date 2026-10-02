@@ -40,7 +40,7 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Position, Reason, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import identify, llm, validate
+from backend.app.services import guard, identify, llm, validate
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
@@ -92,9 +92,12 @@ JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 �
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
 FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
+# 질문이 역할 재설정·지시 무시 모양이면 LLM을 부르지 않고 이 문구로 답한다 (services/guard.py, SDD 7절 10-01)
+FOLLOW_UP_BLOCKED = "이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다. 예: 여유가 며칠인가요? 지금 통관 단계는 무엇인가요?"
 # 후속 답에 거는 검증 규칙. answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기),
-# V7(근거에 없는 숫자 금지), V9(통관 진행 평가 금지)다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
-FOLLOW_UP_RULES = {"V1", "V7", "V9"}  # V9: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01)
+# V7(근거에 없는 숫자 금지), V11(통관 진행 평가 금지)이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
+# 여기에 후속 답 전용 V9(근거에 없는 영문 낱말 금지, validate.check_follow_up_words)와 V10(질문 낱말 옮기기 금지)을 더 건다 (10-01)
+FOLLOW_UP_RULES = {"V1", "V7", "V11"}  # V11: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01)
 
 
 def _response(**over) -> AgentResponse:
@@ -248,6 +251,13 @@ def _assess(request: AgentRequest) -> AgentResponse:
             else:
                 response = _judged(out, signal_set, request, customs, collected, table, from_cache=from_cache)
                 violations = validate.check(response)
+                # V9·V10 판정판 (10-01): 통관 단계명(외부 데이터)에 넣은 주입이 설명 칸에 섞이지 않게 한다 (validate.py)
+                texts = [out.answer, *out.actions, *[c.why for c in out.conflicts]]
+                if out.customs:
+                    texts += [out.customs.plain_explanation, out.customs.next_stage or ""]
+                external = " ".join([customs.stage_name or "", *[s.name for s in customs.stage_history]]) if customs else ""
+                violations += validate.check_judge_text(texts, response, external,
+                                                         llm.skills_reference(llm.JUDGE_SKILLS, llm.JUDGE_PROMPT))
                 if not violations:
                     return response
                 # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
@@ -382,6 +392,12 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
     previous = _previous_response(request, user_id) or _assess(request)
     failed = previous.model_copy(update={"answer": FOLLOW_UP_FAILED, "trace_id": current_request_id()})
 
+    # 프롬프트 주입 차단 (SDD 7절, 10-01). 측정에서 "지금부터 너는 ~" 질문이 프롬프트 방어만으로는 20회 중 4회 뚫려
+    # 검증을 통과한 채 사용자에게 갔다. 모양이 걸리면 LLM을 부르지 않는다. 질문 원문은 로그에 남기지 않는다
+    if guard.looks_like_injection(request.follow_up_question):
+        log_failure("follow_up", "blocked prompt injection pattern")
+        return previous.model_copy(update={"answer": FOLLOW_UP_BLOCKED, "trace_id": current_request_id()})
+
     # 후속 답도 검증한다 (09-29). 전에는 검증 없이 나가 근거 카드에 없는 숫자("9월 23일", 사용자가 말한 판매일)가 그대로 갔다 (평가 F06).
     # 판정·근거는 지난 결과 그대로라 답 문장을 보는 규칙(FOLLOW_UP_RULES)만 건다. 재시도 방식은 판정과 같다 (SDD 5.7)
     feedback = None
@@ -396,9 +412,14 @@ def _follow_up(request: AgentRequest, user_id: str | None = None) -> AgentRespon
             log_failure("follow_up", _llm_error(e))
             return failed
         answered = previous.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
-        # V9는 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
+        # V11은 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
         checked = answered.model_copy(update={"actions": [], "customs": None})
         violations = [v for v in validate.check(checked) if v.rule in FOLLOW_UP_RULES]
+        # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
+        violations += validate.check_follow_up_words(out.answer, previous, llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
+        # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
+        violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, previous,
+                                                    llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT))
         if not violations:
             return answered
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")

@@ -35,8 +35,8 @@ Thumbs.db
 # 실제 API 응답 로컬 저장본 (커밋 금지)
 .local/
 
-# 평가 실행 결과 (실행할 때마다 바뀐다. 리포트 숫자는 EVAL_REPORT.md에 적는다)
-evals/results/
+# 평가 실행 결과(evals/results/)는 커밋한다. 문서·EVAL_REPORT.md의 숫자를 저장소에서 확인할 수 있어야 한다 (10-01 재감사).
+# 실행할 때마다 새 파일이 생기니 보고에 쓴 실행만 골라 올린다
 
 # 작업 기록 (로컬 전용. 커밋하지 않는다)
 seunguk_commit_review/

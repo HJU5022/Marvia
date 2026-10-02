@@ -6,7 +6,7 @@
 # 통관 보류 낱말. 단계 이름에 하나라도 들어가면 customs_hold 신호가 켜지고 needs_broker가 true (services/signals.py)
 customs_hold_words: [검사, 보류, 정지, 반송, 폐기]
 
-# 통관 진행 평가 문장 (검사 규칙 V9, services/validate.py, 10-01). 한 문장에 주어 낱말과 평가 낱말이 같이 있으면 위반이다.
+# 통관 진행 평가 문장 (검사 규칙 V11, services/validate.py, 10-01). 한 문장에 주어 낱말과 평가 낱말이 같이 있으면 위반이다.
 # 단계 이름만으로는 통관이 잘되는지 알 수 없어 이런 평가는 근거가 없다 (SKILL.md "통관 단계를 말할 때").
 # 주어 낱말이 없는 문장("입항이 지연되고 있습니다")은 걸리지 않는다
 customs_subject_words: [통관, 세관]

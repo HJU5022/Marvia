@@ -1,0 +1,29 @@
+# 백엔드·MCP 단위·계약·통합 테스트 (pytest). 키 없이 가공 fixture로 돈다 (CLAUDE.md "테스트는 키 없이 돈다").
+# 10-01 재감사 "워크플로 1개는 있으나 pytest를 돌리는 것이 없다" 대응.
+#
+# PR 때만 돈다. secret-scan.yml과 같은 이유로 push 이벤트는 걸지 않는다(Actions 무료 한도, 2026-08-21).
+# 실제 API·LLM을 부르는 평가(run_eval --config b|c)와 레드팀은 돈이 들어 여기서 돌리지 않는다.
+# test_baseline.py는 main에서부터 import 오류(evals.baseline_rules.decide 없음)라 고쳐질 때까지 뺀다.
+name: Tests
+
+on:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"  # Dockerfile base와 같다
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-doc.txt
+      # rapidocr가 설치하는 opencv가 찾는 화면 라이브러리 (Dockerfile app 스테이지와 같다)
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+      - run: pip install -r backend/requirements.txt -r backend/requirements-doc.txt
+      - name: pytest
+        run: python -m pytest -q backend/tests mcp_server/tests --ignore=backend/tests/test_baseline.py -p no:warnings

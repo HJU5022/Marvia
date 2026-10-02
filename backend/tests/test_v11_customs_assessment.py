@@ -1,4 +1,4 @@
-"""V9: 통관이 잘되는지·늦어질지 평가하지 않는다 (10-01, services/validate.py).
+"""V11: 통관이 잘되는지·늦어질지 평가하지 않는다 (10-01, services/validate.py).
 
 Skill에 적어도 LLM이 "통관 절차도 원활하게 진행 중입니다"를 계속 써서 코드가 걸러 다시 쓰게 한다.
 낱말은 customs-stages/rules.md customs_subject_words · customs_assessment_words.
@@ -18,7 +18,7 @@ def _v9(**over) -> bool:
     base = dict(status="ok", verdict="fine", vessel_match="confirmed", days_margin=4, decided_by="rule",
                 vessel=None, position=None, eta=None, customs=None, berth=None, evidence=EVIDENCE,
                 answer="판매 예정일보다 4일 일찍 도착합니다.", trace_id="t")
-    return any(v.rule == "V9" for v in check(AgentResponse(**{**base, **over})))
+    return any(v.rule == "V11" for v in check(AgentResponse(**{**base, **over})))
 
 
 def test_customs_assessment_in_answer_is_violation():
