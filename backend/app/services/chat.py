@@ -21,7 +21,7 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
-from backend.app.services import guard, llm, validate
+from backend.app.services import guard, llm, progress, validate
 from backend.app.services.rules import load_file
 
 KST = timezone(timedelta(hours=9))
@@ -157,6 +157,7 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
     """직전 기항지로 거른 부산 입항 예정 선박. 항구는 LLM이 목록 안에서만 고른다 (EC-04)."""
     days = max(1, min(days or DAYS_DEFAULT, DAYS_MAX))
     name = label or place  # 답에는 사용자가 쓴 말(중국)을, 항구 고르기에는 영어(China)를 쓴다
+    progress.step("schedule")
     try:
         plans = _arrivals(days)
     except MofError as e:
@@ -165,6 +166,7 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
     available = sorted({p.previous_port for p in plans if p.previous_port})
     ports: list[str] = []
     if place:
+        progress.step("ports")
         try:
             picked = _match_ports_cached(place, available)
             ports = [p for p in picked if p in set(available)]  # 목록 밖 이름은 버린다
@@ -212,6 +214,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
         log_failure("chat", "blocked prompt injection pattern")
         return ChatResult(kind="message", reply=INJECTION_REPLY)
 
+    progress.step("understand")  # 화면에 실제 단계를 알린다 (docs/specs/chat-progress.md)
     try:
         route = llm.route_chat(masked, list(refs), context is not None, today).output
     except llm.LLMError as e:  # EC-01: 규칙으로 대신

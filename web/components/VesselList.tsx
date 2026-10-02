@@ -1,12 +1,14 @@
 'use client';
 /** 입항 예정 선박 검색 결과 (docs/specs/chat-search.md vessel_search). 해수부 입항 신고 기준이라 "직전 기항지"를 그대로 보여 준다.
+ * 선명을 누르면 오른쪽 드로어에서 자세히 본다(10-02, 구현작업서 6절). 드로어 안에서도 상세 정보는 하나도 빼지 않는다.
  * 출발지가 아니라는 점을 표 위에 밝힌다 (EC-04). 판정은 하지 않는다. 내 화물이면 B/L로 다시 물어보게 안내한다.
  * 수십 척이 나올 수 있어 화면에서 페이지로 나눈다. 한 페이지 10·30·50척 중 고른다(기본 10).
  */
-import {Fragment, useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {Anchor, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Ship} from 'lucide-react';
 import {SectionTitle} from './Shared';
 import {VesselDetail} from './VesselDetail';
+import {Drawer} from './Drawer';
 import {dateTime, shown} from '@/lib/format';
 import type {ChatResponse, VesselItem} from '@/lib/types';
 
@@ -23,8 +25,8 @@ const COLUMNS: {key: keyof VesselItem; label: string}[] = [
 export function VesselList({data}: {data: ChatResponse}) {
   const [size, setSize] = useState<number>(PAGE_SIZES[0]);
   const [page, setPage] = useState(1);
-  // 펼친 배 (호출부호·선명). 한 번에 하나만 연다
-  const [open, setOpen] = useState<string | null>(null);
+  // 자세히 보는 배. 한 번에 하나만 연다
+  const [open, setOpen] = useState<VesselItem | null>(null);
   // 기본은 수입 화물선만. 서버가 배마다 is_cargo를 붙여 보낸다(기준 목록은 skills/port-busan/cargo-vessels.md)
   const [allKinds, setAllKinds] = useState(false);
   // 기본은 서버가 준 순서(부산 입항 예정 빠른 순)
@@ -71,13 +73,13 @@ export function VesselList({data}: {data: ChatResponse}) {
           return <th key={c.key} aria-sort={on ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
             <button type="button" className={`sort-head ${on ? 'on' : ''}`} onClick={() => toggle(c.key)}>{c.label}<Icon size={12}/></button></th>;
         })}</tr></thead>
-        <tbody>{rows.map((v, i) => { const id = `${v.call_sign ?? ''}|${v.ship_name}`; return <Fragment key={`${id}-${start + i}`}><tr className={open === id ? 'row-open' : ''}>
-          <td><button type="button" className="ship-link" onClick={() => setOpen(o => o === id ? null : id)} aria-expanded={open === id}>{v.ship_name}</button></td><td className="mono">{shown(v.call_sign)}</td>
+        <tbody>{rows.map((v, i) => <tr key={`${v.call_sign ?? ''}|${v.ship_name}-${start + i}`} className={open === v ? 'row-open' : ''}>
+          <td><button type="button" className="ship-link" onClick={() => setOpen(v)} aria-haspopup="dialog">{v.ship_name}</button></td><td className="mono">{shown(v.call_sign)}</td>
           <td>{shown(v.nationality)}</td><td>{shown(v.ship_kind)}</td>
           <td className="mono">{shown(v.previous_port)}</td>
           <td className="mono">{dateTime(v.expected_arrival)}</td><td className="mono">{dateTime(v.planned_departure)}</td>
           <td className="mono">{shown(v.next_port)}</td><td>{shown(v.facility)}</td><td>{shown(v.purpose)}</td>
-        </tr>{open === id && <tr className="action-row"><td colSpan={COLUMNS.length}><VesselDetail vessel={v}/></td></tr>}</Fragment>; })}</tbody></table></div>
+        </tr>)}</tbody></table></div>
       <nav className="pager" aria-label="선박 표 페이지">
         <label className="pager-size">한 페이지
           <select value={size} onChange={e => { setSize(Number(e.target.value)); setPage(1); }} aria-label="한 페이지에 볼 선박 수">
@@ -94,6 +96,7 @@ export function VesselList({data}: {data: ChatResponse}) {
         </div>
       </nav>
     </> : <div className="empty-state"><Ship/><h2>{!allKinds && data.vessels.length ? '수입 화물선은 없습니다.' : '조건에 맞는 입항 예정 선박이 없습니다.'}</h2><p>{!allKinds && data.vessels.length ? `모든 선종 보기를 켜면 ${data.vessels.length}척이 보입니다.` : data.reply}</p></div>}
+    {open && <Drawer wide title={open.ship_name} description="해수부 일정 · AIS 위치 · 부산까지 거리. 선박 정보 조회는 화물 판정이 아닙니다." onClose={() => setOpen(null)}><VesselDetail vessel={open}/></Drawer>}
     <div className="table-bottom"><span>출처: 해양수산부 선박운항정보(입항 신고)</span><span>직전 기항지 기준이며 처음 출발한 항구·시각은 신고에 없습니다. 내 화물은 B/L 번호로 물어보세요.</span></div>
   </section>;
 }

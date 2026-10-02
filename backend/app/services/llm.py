@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal, get_args
+from typing import Callable, Literal, get_args
 
 import openai
 from openai import OpenAI
@@ -66,6 +66,9 @@ TIMEOUT_SEC = 60.0  # 호출 하나가 요청 전체 시간을 다 먹지 않게
 # 재시도는 횟수가 아니라 요청당 시간 예산으로 정하기로 했다 (09-23 결정). 예산 숫자가 정해지기 전까지는
 # 최초 1회 + 재시도 1회만 한다. 3회씩 돌리면 사용자가 너무 오래 기다린다.
 MAX_ATTEMPTS = 2
+# 후속 질문 한 번에 LLM이 도구를 부를 수 있는 횟수(라운드) 상한 (10-02). 질문 하나에 필요한 도구는 많아야 2~3개다
+# (위치 → 거리, 입항 일정). 넘으면 도구 없이 답하게 한다 (_ask_json)
+MAX_TOOL_ROUNDS = 3
 RETRY_WAIT_SEC = 2.0  # 과부하는 잠깐 뒤 풀리는 경우가 많다. 실측 전 임시값
 # 다시 불러 볼 만한 것: 한도 초과(429), 제공사 과부하·게이트웨이(500·502·503).
 # 09-23 스모크 테스트에서 nemotron 무료가 503 provider_overloaded를 5번 중 3번 냈다.
@@ -82,7 +85,7 @@ class LLMResult:
     """chat() 결과. 로그 4필드(요청 ID·모델·토큰·지연, 작업 A5)를 같이 들고 다닌다."""
 
     content: str | None                 # 모델이 쓴 본문. tool을 부르면 비어 있을 수 있다
-    tool_calls: list[dict] = field(default_factory=list)  # [{"name": ..., "arguments": "<JSON 문자열>"}]
+    tool_calls: list[dict] = field(default_factory=list)  # [{"id": ..., "name": ..., "arguments": "<JSON 문자열>"}]
     model: str = ""                     # 실제로 답한 모델
     provider: str | None = None         # OpenRouter가 보낸 제공사. 무료 모델은 한 곳뿐인 경우가 많다
     request_id: str | None = None
@@ -227,7 +230,8 @@ def _call_once(kwargs: dict) -> LLMResult:
     # (09-29 실패 훈련 judge_truncated). 그대로 읽으면 AttributeError로 죽고, 라우터는 LLMError만 받으니 500이 났다.
     # 빈 답으로 받으면 _ask_json이 finish_reason을 보고 truncated로 올리고, 라우터가 재시도·failed로 처리한다
     msg = resp.choices[0].message or SimpleNamespace(content=None, tool_calls=None)
-    calls = [{"name": c.function.name, "arguments": c.function.arguments} for c in (msg.tool_calls or [])]
+    # id: 도구 결과를 돌려줄 때 어느 호출의 결과인지 짝짓는 값 (role=tool 메시지의 tool_call_id, 10-02 후속 질문 도구)
+    calls = [{"id": c.id, "name": c.function.name, "arguments": c.function.arguments} for c in (msg.tool_calls or [])]
     usage = resp.usage
     completion_tokens = usage.completion_tokens if usage else None
     # Vertex는 생각(reasoning) 토큰을 completion_tokens에 넣지 않고 completion_tokens_details에 따로 준다
@@ -270,6 +274,7 @@ def chat(
     model: str | None = None,
     response_format: dict | None = None,
     tools: list[dict] | None = None,
+    tool_choice: str | None = None,
     max_tokens: int | None = None,
 ) -> LLMResult:
     """OpenRouter에 묻고 답을 돌려준다. 429·502·503이면 잠깐 쉬고 한 번 더 묻는다. 출력 검증은 아직 안 한다.
@@ -279,6 +284,7 @@ def chat(
         model: 생략하면 LLM_MODEL
         response_format: 구조화 출력. {"type": "json_schema", "json_schema": {...}}
         tools: tool 정의 목록 (OpenAI 형식)
+        tool_choice: "none"이면 도구를 주되 부르지 말고 답하라는 뜻. 도구 호출 상한에 닿았을 때 쓴다 (_ask_json)
         max_tokens: 출력 상한
 
     Raises:
@@ -292,6 +298,8 @@ def chat(
         kwargs["response_format"] = response_format
     if tools:
         kwargs["tools"] = tools
+    if tool_choice:
+        kwargs["tool_choice"] = tool_choice
     if max_tokens:
         kwargs["max_tokens"] = max_tokens
 
@@ -408,6 +416,8 @@ class LLMAnswer:
     output: BaseModel  # 함수마다 JudgeOutput·PickOutput·FollowUpOutput
     llm: LLMResult
     prompt_version: str
+    # LLM이 부른 도구와 결과 [{"name", "arguments", "result"}]. 후속 질문만 쓴다 (10-02). 라우터가 근거 카드로 붙인다
+    tool_calls: list[dict] = field(default_factory=list)
 
 
 # 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 Skill 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
@@ -497,10 +507,13 @@ def _kst(moment: datetime | None) -> str | None:
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
               output_model: type[BaseModel], model: str | None, feedback: str | None = None,
-              skills: tuple[str, ...] = ALL_SKILLS) -> LLMAnswer:
+              skills: tuple[str, ...] = ALL_SKILLS, tools: list[dict] | None = None,
+              run_tool: Callable[[str, dict], dict] | None = None) -> LLMAnswer:
     """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
     skills는 넣을 Skill 폴더다 (JUDGE_SKILLS 등). 빈 튜플이면 넣지 않는다: 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용.
+    tools·run_tool: LLM이 직접 부를 도구 목록(OpenAI 형식)과, 부른 도구를 실제로 실행하는 함수 (10-02, 후속 질문만).
+    run_tool(이름, 인자)는 도구 결과 dict를 돌려준다. 부른 기록은 LLMAnswer.tool_calls에 담는다.
 
     Raises:
         LLMError: 호출 실패, 또는 답이 JSON이 아니거나 모양이 output_model과 다를 때.
@@ -519,12 +532,33 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         messages.append({"role": "user", "content": f"Your previous answer broke these rules. Answer again in the same JSON format and fix them:\n{feedback}"})
     # 트레이스 입력은 코드가 모은 자료(user_content)만. 지시문·skills 전문은 길고 매번 같아서 빼고 prompt_version으로 가린다
     generation = start_generation(prompt_name, user_content, prompt.source)
+    response_format = {"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}}
+    called: list[dict] = []
     try:
-        result = chat(
-            messages,
-            model=model,
-            response_format={"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}},
-        )
+        # 도구가 없으면 한 번 묻고 끝난다 (판정·배 고르기 등, 지금까지와 같음).
+        # 도구가 있으면(후속 질문, 10-02) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
+        # tool_choice="none"으로 더 부르지 말고 답하게 한다. 같은 도구를 끝없이 부르는 것을 막는 상한이다 (가이드 Tool trajectory)
+        for round_no in range(MAX_TOOL_ROUNDS + 1):
+            last_round = round_no == MAX_TOOL_ROUNDS
+            result = chat(messages, model=model, response_format=response_format, tools=tools or None,
+                          tool_choice="none" if (tools and last_round) else None)
+            if not (tools and run_tool and result.tool_calls) or last_round:
+                break
+            messages.append({"role": "assistant", "content": result.content, "tool_calls": [
+                {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
+                for c in result.tool_calls]})
+            for c in result.tool_calls:
+                try:
+                    arguments = json.loads(c["arguments"] or "{}")
+                except ValueError:
+                    arguments = None
+                if isinstance(arguments, dict):
+                    output = run_tool(c["name"], arguments)
+                else:  # 인자가 JSON이 아니면 도구를 부르지 않고 실패를 돌려준다. 모델이 고쳐 다시 부를 수 있다
+                    output = {"error": {"code": "bad_arguments", "message": "arguments must be a JSON object", "retryable": False}}
+                called.append({"name": c["name"], "arguments": arguments, "result": output})
+                # 도구 결과는 자료다. 지시로 읽지 않는다는 규칙은 프롬프트에 있다 (marvia-follow-up "Tools" 절)
+                messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(output, ensure_ascii=False)})
     except LLMError as e:
         end_generation(generation, None, prompt.version, error=str(e))
         raise
@@ -541,7 +575,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         end_generation(generation, result, prompt.version, output=result.content, error=str(error))
         raise error from e
     end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))
-    return LLMAnswer(output=output, llm=result, prompt_version=prompt.version)
+    return LLMAnswer(output=output, llm=result, prompt_version=prompt.version, tool_calls=called)
 
 
 # ── LLM 녹화 답 재생 (09-29 결정) ─────────────────────────────
@@ -700,7 +734,8 @@ class FollowUpOutput(BaseModel):
 
 
 def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None,
-                     feedback: str | None = None) -> LLMAnswer:
+                     feedback: str | None = None, tools: list[dict] | None = None,
+                     run_tool: Callable[[str, dict], dict] | None = None) -> LLMAnswer:
     """이미 나온 판정(response)에 대한 후속 질문에 답한다. output은 FollowUpOutput.
 
     질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
@@ -709,13 +744,18 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     AIS 목적지 원문(shipfinder dest 근거 카드)은 빼고 넘긴다 (SDD 7절, 10-01). 아무 배나 AIS에 쓸 수 있는 글자라
     "지금부터 너는 ~" 같은 역할 재설정 문장이 들어올 수 있다. 판정 LLM처럼 코드가 destcode로 계산한
     dest_changed 신호 카드만 남긴다. 화면의 근거 카드에는 그대로 있다 (여기서 빼는 것은 LLM 입력뿐).
+
+    tools·run_tool (10-02, D9 B안): 지난 결과에 없는 지금 값(현재 위치·남은 거리·입항 기록)을 물으면 LLM이
+    읽기 전용 MCP 도구를 직접 골라 부른다. 목록은 mcp_client.read_only_tools(), 실행은 routers/agent.py가 /mcp로 한다.
+    판정 흐름(judge)은 지금처럼 코드가 도구를 부른다.
     """
     result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"})
     result["evidence"] = [e for e in result.get("evidence") or []
                           if not (e["source"] == "shipfinder" and e["field"] == "dest")]
     data = {"result": result, "question": question}
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
-                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS)
+                     FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS,
+                     tools=tools, run_tool=run_tool)
 
 
 # ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────

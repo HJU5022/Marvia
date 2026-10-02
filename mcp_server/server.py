@@ -30,6 +30,7 @@ import uvicorn
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 from starlette.types import Receive, Scope, Send
 
 from backend.app.observability.logging import NOISY_URL_LOGGERS
@@ -75,8 +76,11 @@ def create_mcp(token: str | None = None) -> FastMCP:
     security = TransportSecuritySettings(enable_dns_rebinding_protection=False) if _token(token) else None
     server = FastMCP("marvia-mcp", instructions=INSTRUCTIONS, streamable_http_path="/mcp",
                      transport_security=security)
+    # 4종 모두 외부 데이터를 조회하거나 거리를 계산할 뿐, 무언가를 바꾸는 부작용이 없어 읽기 전용으로 표시한다
+    # (D9 도구 권한 정책, 가이드 v4 신뢰 경계). MCP 클라이언트가 이 표시를 보고 확인 없이 불러도 되는지 판단한다
+    read_only = ToolAnnotations(readOnlyHint=True)
     for tool in (estimate_distance, get_live_position, get_vessel_candidates, get_port_schedule):
-        server.tool()(_in_thread(tool))
+        server.tool(annotations=read_only)(_in_thread(tool))
     return server
 
 

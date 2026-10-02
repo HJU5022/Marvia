@@ -13,7 +13,7 @@ version에 찍히는 숫자가 문서의 v0과 달라질 수 있다 (docs/prompt
 
 prompts/를 backend/app/ 안에 둔 이유: Dockerfile이 backend/를 통째로 복사하므로 이미지에도 들어간다.
 
-LLM 호출 트레이스도 여기서 남긴다 (SDD 5.11). 아래 "트레이스" 절.
+LLM 호출과 MCP 도구 호출 트레이스도 여기서 남긴다 (SDD 5.11). 아래 "트레이스" 절.
 """
 from __future__ import annotations
 
@@ -60,6 +60,7 @@ def get_prompt(name: str, label: str = "production") -> Prompt:
 
 # ── 트레이스 (SDD 5.11) ─────────────────────────────────────────
 # LLM을 한 번 부를 때마다 Langfuse에 generation 하나를 남긴다. services/llm.py의 _ask_json()이 부른다.
+# MCP 도구를 한 번 부를 때마다 tool 관측 하나도 남긴다. services/mcp_client.py의 call_tool()이 부른다 (10-02).
 # 키가 없거나 Langfuse 쪽이 실패해도 판정은 막지 않는다. 트레이스만 빠진다 (get_prompt와 같은 원칙).
 # SDD 5.11은 @traced 데코레이터로 적었지만, 결과(토큰·비용)와 실패를 둘 다 남기려고 시작·끝 함수 둘로 나눴다.
 
@@ -96,6 +97,15 @@ def start_generation(name: str, input: Any, prompt: Any = None) -> Any:
     prompt: get_prompt()가 Langfuse에서 받은 PromptClient. 주면 generation에 연결돼 Langfuse 프롬프트 화면에서
     어느 호출이 어느 버전을 썼는지 보인다 (가이드 9-2 "트레이스에 프롬프트 버전 연결"). 로컬 파일이면 None
     """
+    extra = {"prompt": prompt} if prompt is not None else {}
+    return _start_observation(name, "generation", input, **extra)
+
+
+def _start_observation(name: str, as_type: str, input: Any, **extra: Any) -> Any:
+    """generation·tool 기록을 여는 공통 부분. 요청 ID로 trace_id를 만들어 같은 요청의 기록을 한 트레이스로 묶는다.
+
+    start_generation()과 start_tool()이 같이 쓴다. 키가 없거나 실패하면 None (트레이스만 빠진다).
+    """
     if not _keys_set():
         return None
     try:
@@ -104,14 +114,41 @@ def start_generation(name: str, input: Any, prompt: Any = None) -> Any:
         client = get_client()
         request_id = current_request_id()
         trace_context = {"trace_id": client.create_trace_id(seed=request_id)} if request_id else None
-        extra = {"prompt": prompt} if prompt is not None else {}
         return client.start_observation(
-            name=name, as_type="generation", input=input,
+            name=name, as_type=as_type, input=input,
             trace_context=trace_context, metadata={"request_id": request_id or None}, **extra,
         )
     except Exception as e:  # 미설치·설정 오류 모두 같은 처리: 트레이스 없이 진행
         log_failure("langfuse_trace_start", f"{type(e).__name__} no_trace")
         return None
+
+
+def start_tool(name: str, input: Any) -> Any:
+    """MCP 도구 호출 기록(tool 관측)을 시작한다 (SDD 5.11 "MCP 도구 호출에 적용"). 못 남기면 None.
+
+    services/mcp_client.py의 call_tool()이 부른다. LLM generation과 같은 트레이스(요청 ID)에 묶인다.
+    끝낼 때 돌려받은 값을 end_tool()에 넘긴다.
+    """
+    return _start_observation(name, "tool", input)
+
+
+def end_tool(tool: Any, output: Any, metadata: dict[str, Any], error: str | None = None) -> None:
+    """start_tool()이 연 기록에 결과를 적고 닫는다. tool이 None이면 아무것도 안 한다.
+
+    output: 결과 요약만 넣는다. ShipFinder 약관상 응답 원본은 저장하지 않는다 (CLAUDE.md "할 것")
+    error:  오류 코드. 있으면 level=ERROR로 남아 Langfuse에서 걸러 볼 수 있다
+    """
+    if tool is None:
+        return
+    try:
+        fields: dict[str, Any] = {"output": output, "metadata": metadata}
+        if error:
+            fields["level"] = "ERROR"
+            fields["status_message"] = error
+        tool.update(**fields)
+        tool.end()
+    except Exception as e:
+        log_failure("langfuse_trace_end", type(e).__name__)
 
 
 def end_generation(generation: Any, result: LLMResult | None, prompt_version: str,
