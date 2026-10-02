@@ -60,6 +60,8 @@ components/            SDD 5.13 컴포넌트 13개 + 세션/공통 UI
 lib/types.ts           백엔드 Pydantic 직렬화 계약 그대로 옮긴 타입
 lib/api.ts             요청·이력 함수 + 명시적으로 분리한 로컬 데모 접근 함수
 lib/format.ts          KST 날짜, B/L 마스킹, 표시용 라벨
+lib/progress.ts        서버 처리 단계 이름·라벨과 SSE 해석 (docs/specs/chat-progress.md)
+lib/composer.ts        다른 카드에서 AI 입력창으로 돌아가는 통로
 lib/fixtures/          7개 응답, 이력, 데모 입력, 설정, 지표, 로컬 지형 JSON
 scripts/               계약 검사, Playwright 화면·접근성 검사
 screenshots/           1440/375px 전체 화면 캡처와 검증 결과
@@ -68,7 +70,7 @@ NOTES.md               스키마·문서 차이, 알려진 한계, 미확인 값
 THIRD_PARTY.md         지도·폰트 출처와 라이선스
 ```
 
-필수 컴포넌트: TopBar, VerdictCard, VesselCard, EtaCompare, MapPanel, CustomsTimeline, EvidenceCards, AskPanel, CandidatePicker, FailureBanner, HistoryTable, MetricsPage, SettingsPage.
+필수 컴포넌트: VerdictCard, VesselCard, EtaCompare, MapPanel, CustomsTimeline, EvidenceCards, CandidatePicker, FailureBanner, HistoryTable, MetricsPage, SettingsPage. 입력은 ChatBar(AI 입력창, POST /api/chat/stream)가 맡고, TopBar·AskPanel은 쓰이지 않는 옛 컴포넌트로 남아 있습니다. 서류 사진·선박 자세히 보기는 Drawer에서 엽니다.
 
 ## 백엔드 붙이기 (실제 모드)
 
@@ -139,11 +141,19 @@ npm run dev -- --hostname 127.0.0.1 --port 3100
 npm run test:e2e
 ```
 
-다른 포트를 사용하면 `MARVIA_TEST_URL=http://127.0.0.1:포트 npm run test:e2e`로 지정하세요. 브라우저 채널은 `PLAYWRIGHT_CHANNEL`로 변경할 수 있습니다. 이 변수들은 검사 스크립트용이며 `.env` 파일이 필요하지 않습니다.
+실제 모드(SSE 단계 표시, 일반 사용자 메뉴, 옛 서버 대체, 오류 이벤트)까지 보려면 가짜 API 주소로 빌드한 서버를 하나 더 띄웁니다. 가짜 API(:3199)는 검사 스크립트가 직접 띄웁니다.
+
+```bash
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:3199 npm run build && npm run start -- --port 3101
+# 다른 터미널:
+MARVIA_LIVE_TEST_URL=http://127.0.0.1:3101 npm run test:e2e
+```
+
+`MARVIA_LIVE_TEST_URL`이 없으면 실제 모드 검사는 SKIP으로 표시됩니다(통과로 세지 않음). 다른 포트를 사용하면 `MARVIA_TEST_URL=http://127.0.0.1:포트 npm run test:e2e`로 지정하세요. 브라우저 채널은 `PLAYWRIGHT_CHANNEL`로 변경할 수 있습니다. 이 변수들은 검사 스크립트용이며 `.env` 파일이 필요하지 않습니다.
 
 - 계약 검사는 원본 Python 스키마를 읽어 생성한 `scripts/backend-contract.json` 스냅샷으로 수행합니다. 원본 저장소에 접근하지 않아도 실행됩니다.
 - 브라우저 검사는 외부 HTTP를 차단하고 요청 발생 여부를 검사합니다.
-- 스크린샷은 5개 status + watch/act + 기타 4개 페이지를 각각 1440px, 375px로 촬영합니다.
+- 스크린샷은 5개 status + watch/act + 기타 5개 페이지를 각각 1440px, 375px로 촬영하고, 1024/768/390px는 가로 넘침을 검사합니다.
 - 접근성 자동 검사는 axe WCAG 2/2.1 A·AA 기준입니다. 자동 검사만으로 모든 접근성이 보장되는 것은 아닙니다.
 
 원본과의 차이 및 데모 범위는 **NOTES.md**를 먼저 확인해 주세요.
