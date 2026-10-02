@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 import httpx
@@ -85,10 +86,25 @@ def _summary(result: dict) -> tuple[dict, str | None]:
     return {"ok": True, "keys": sorted(result.keys())}, None
 
 
+def _run(coro):
+    """MCP 클라이언트 코루틴을 동기 코드에서 끝까지 돌리고 결과를 돌려준다.
+
+    서비스 코드는 동기 함수이고 FastAPI 스레드풀에서 돈다. 그 스레드에는 이벤트 루프가 없어 asyncio.run으로 돌린다.
+    이미 루프가 도는 곳에서는 asyncio.run이 RuntimeError를 낸다. 평가 실행기의 Langfuse run_experiment가 그렇게
+    문항을 돌려 도구가 전부 mcp_failed였다 (10-02). 그때는 새 스레드에서 따로 루프를 만들어 돌리고 끝날 때까지 기다린다.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:  # 루프 없음: 서비스(FastAPI 스레드풀)와 테스트의 보통 경로
+        return asyncio.run(coro)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 def call_tool(name: str, **arguments) -> dict:
     """MCP 도구 하나를 부른다. None인 인자는 빼서 도구 기본값을 쓰게 한다.
 
-    서비스 코드는 동기 함수이고 FastAPI 스레드풀에서 돈다. 그 스레드에는 이벤트 루프가 없어 asyncio.run으로 돌린다.
+    코루틴은 _run()이 돌린다 (루프가 없으면 asyncio.run, 이미 있으면 별도 스레드).
 
     호출마다 Langfuse tool 관측 하나를 남긴다 (SDD 5.11 "MCP 도구 호출에 적용").
       - 이름: mcp:<도구 이름>
@@ -102,7 +118,7 @@ def call_tool(name: str, **arguments) -> dict:
     tool = start_tool(f"mcp:{name}", arguments)
     started = time.monotonic()
     try:
-        result = asyncio.run(_call(name, arguments))
+        result = _run(_call(name, arguments))
     except Exception as e:  # 연결 실패·인증 실패(401)·응답 깨짐. 서비스는 도구 실패와 같은 경로(partial 등)로 간다
         logger.warning("MCP 도구 호출 실패: %s (%s)", name, type(e).__name__)
         result = _failed(type(e).__name__)
@@ -132,7 +148,7 @@ def read_only_tools() -> list[dict]:
     if _read_only_tools is not None:
         return _read_only_tools
     try:
-        tools = asyncio.run(_list_tools())
+        tools = _run(_list_tools())
     except Exception as e:  # 목록 실패는 후속 답을 막지 않는다. 다음 요청에서 다시 받는다
         logger.warning("MCP 도구 목록 조회 실패 (%s)", type(e).__name__)
         return []

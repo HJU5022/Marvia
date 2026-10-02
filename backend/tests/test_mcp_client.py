@@ -3,10 +3,13 @@
 - MCP_URL이 없으면 메모리 통로로 붙고, 결과가 도구를 직접 부른 값과 같다
 - None 인자는 빠지고, 도구가 돌려준 {error}는 그대로 온다
 - 통로 자체가 실패해도 예외가 나지 않고 mcp_failed 오류 dict가 온다
+- 이벤트 루프가 이미 도는 곳(평가 실행기의 Langfuse 실험)에서 불러도 도구가 돈다
 - 호출마다 Langfuse tool 관측에 이름·인자·결과 요약·통로·지연이 넘어가고, 키가 없으면 결과에 영향이 없다 (SDD 5.11)
 
 키도 서버도 없이 돈다. HTTP 통로 실패는 아무도 듣지 않는 포트(9)로 확인한다.
 """
+import asyncio
+
 from backend.app.services import mcp_client
 from mcp_server.tools.distance import estimate_distance as direct_estimate_distance
 
@@ -29,6 +32,20 @@ def test_none_args_dropped_and_tool_error_passed_through(monkeypatch):
     monkeypatch.delenv("MCP_URL", raising=False)
     result = mcp_client.get_port_schedule()
     assert result["error"]["code"] == "bad_input"
+
+
+# 이벤트 루프가 이미 도는 곳에서 불러도 도구가 돌아야 한다 (10-02).
+# 평가 실행기의 Langfuse run_experiment가 루프 안에서 문항을 돌려, asyncio.run이 RuntimeError를 내고 도구가 전부 mcp_failed였다
+def test_call_inside_running_event_loop(monkeypatch):
+    monkeypatch.delenv("MCP_URL", raising=False)
+    monkeypatch.setattr(mcp_client, "_read_only_tools", None)
+
+    async def inside_loop():
+        return mcp_client.estimate_distance(34.5, 128.8, 12), mcp_client.read_only_tools()
+
+    via_mcp, tools = asyncio.run(inside_loop())
+    assert _without_fetched_at(via_mcp) == _without_fetched_at(direct_estimate_distance(34.5, 128.8, 12))
+    assert len(tools) == 4
 
 
 # 서버가 없는 주소로 붙어도 예외 대신 mcp_failed가 와야 서비스가 도구 실패와 같은 경로로 간다
