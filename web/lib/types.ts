@@ -159,6 +159,9 @@ export interface ChatResponse {
   agent: AgentResponse | null; request: AgentRequest | null;
   vessels: VesselItem[]; place: string | null; ports: string[]; days: number | null;
 }
+/** POST /api/chat, /api/chat/stream 요청의 history 한 줄. 지금 질문보다 앞선 대화이고 오래된 것부터 둔다.
+ * 서버 에이전트가 "그 배", "아까 그거" 같은 말을 풀 때 쓴다. B/L 번호는 서버가 가리므로 화면 글자 그대로 보낸다 */
+export interface ChatHistoryTurn { role: 'user' | 'assistant'; text: string }
 
 /** GET /api/vessels/detail (services/vessel_detail.py). 도구가 실패한 칸은 null, 이유는 errors */
 export interface VesselDetailResponse {

@@ -92,13 +92,15 @@ export function AppProvider({children}:{children:ReactNode}) {
   async function ask(message: string) {
     if (inflight.current) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
+    // 서버에 보낼 앞선 대화. 지금 질문을 더하기 전의 thread(이번 렌더의 값)를 잡아 둔다. 자르기는 chatBody가 한다 (최근 6줄, 500자)
+    const history = thread;
     // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
     setThread(t => [...t.slice(-49), {role: 'user', text: message}]);
     try {
       // 지금 보고 있는 화물이 있으면 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
       const res = await sendChatStream(message, result && request.bl_no ? request : null,
-        s => setStages(list => list.includes(s) ? list : [...list, s]));
+        s => setStages(list => list.includes(s) ? list : [...list, s]), history);
       setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind}]);
       if (res.kind === 'cargo' && res.agent && res.request) { setResult(res.agent); setRequest(res.request); setView('cargo'); }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }

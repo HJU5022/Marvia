@@ -2,10 +2,11 @@
  * 단계 이름은 backend/app/services/progress.py STAGES와 같다. 여기 없는 이름은 화면에 보이지 않는다.
  * 화면은 서버가 보낸 단계만 그린다. 타이머로 단계를 넘기거나 퍼센트를 만들지 않는다 (가이드 8-3, 10-02 결정).
  */
-export type ProgressStage = 'understand' | 'customs' | 'identify' | 'position' | 'judge' | 'answer' | 'schedule' | 'ports';
+export type ProgressStage = 'understand' | 'customs' | 'identify' | 'position' | 'judge' | 'answer' | 'schedule' | 'ports'
+  | 'tool_candidates' | 'tool_position' | 'tool_schedule' | 'tool_distance';
 
 export const stageLabels: Record<ProgressStage, string> = {
-  understand: '질문 이해',
+  understand: '질문 이해와 도구 고르기',
   customs: '통관 정보 조회',
   identify: '선박 식별',
   position: '위치·입항 일정 확인',
@@ -13,6 +14,11 @@ export const stageLabels: Record<ProgressStage, string> = {
   answer: '답 작성과 검증',
   schedule: '부산 입항 예정 조회',
   ports: '지역 항구 고르기',
+  // 에이전트가 읽기 전용 조회 도구를 부를 때 서버가 보내는 단계 (도구 하나에 이름 하나)
+  tool_candidates: '선박 후보 검색',
+  tool_position: '선박 실시간 위치 조회',
+  tool_schedule: '부산 입항 기록 조회',
+  tool_distance: '남은 항로 거리 계산',
 };
 
 export function isStage(value: unknown): value is ProgressStage {

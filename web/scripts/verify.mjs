@@ -229,7 +229,7 @@ try {
       await input(page).fill('STREAM 테스트'); await input(page).press('Enter');
       await page.locator('.pending-steps li').nth(2).waitFor();
       const steps = await page.locator('.pending-steps li').evaluateAll(els => els.map(e => `${e.className}:${e.textContent.replace(/ (끝남|진행 중)$/, '')}`));
-      assert.deepEqual(steps, ['done:질문 이해', 'done:통관 정보 조회', 'current:선박 식별'], 'only server stages, last one in progress');
+      assert.deepEqual(steps, ['done:질문 이해와 도구 고르기', 'done:통관 정보 조회', 'current:선박 식별'], 'only server stages, last one in progress');
       if (width === 1440) await page.screenshot({path: 'screenshots/31-live-stages-1440.png'});
       await page.locator('.chat-turn.assistant', {hasText: '스트림 결과입니다.'}).waitFor();
       assert.equal(await page.locator('.pending-card').count(), 0);

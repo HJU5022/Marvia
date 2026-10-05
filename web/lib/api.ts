@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, VesselDetailResponse } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -264,18 +264,25 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
   return isLive ? liveAgentResponse(req) : demoAgentResponse(req);
 }
 
-/** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다) */
-export async function sendChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
+/** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다).
+ * history는 지금 질문보다 앞선 대화다. 데모 모드는 저장된 예시만 돌려주므로 쓰지 않는다 */
+export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
-    body: chatBody(message, context)}, AGENT_TIMEOUT_MS);
+    body: chatBody(message, context, history)}, AGENT_TIMEOUT_MS);
   return res.json();
 }
 
-/** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다 */
-function chatBody(message: string, context: AgentRequest | null): string {
+/** 서버에 보내는 앞선 대화의 상한. 최근 6줄, 한 줄 500자까지만 보낸다 (에이전트가 맥락을 잇는 데 필요한 만큼만, 요청 크기와 LLM 비용을 묶는다) */
+const HISTORY_MAX_TURNS = 6;
+const HISTORY_MAX_CHARS = 500;
+
+/** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다.
+ * history는 오래된 것부터 두고, role과 text만 남긴다(화면용 kind는 보내지 않는다). B/L 번호는 서버가 가린다 */
+function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = []): string {
   const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
-  return JSON.stringify({message, session_id: currentSessionId(), context: ctx});
+  const turns = history.slice(-HISTORY_MAX_TURNS).map(t => ({role: t.role, text: t.text.slice(0, HISTORY_MAX_CHARS)}));
+  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns});
 }
 
 /** 스트림 통로를 못 쓰는 경우의 표시. 서버가 요청을 받지 않은 것이 확실할 때만 쓴다 (chat-progress.md EC-05) */
@@ -286,18 +293,18 @@ class StreamUnavailable extends Error {}
  * - 응답을 받기 시작한 뒤 끊기면 다시 보내지 않는다. 서버는 이미 유료 호출을 하고 있을 수 있다 (EC-06)
  * - 데모 모드는 서버가 없어 단계 소식도 없다. 단계를 지어내지 않는다 (EC-07) */
 export async function sendChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   try {
-    return await liveChatStream(message, context, onStage);
+    return await liveChatStream(message, context, onStage, history);
   } catch (e) {
-    if (e instanceof StreamUnavailable) return sendChat(message, context);
+    if (e instanceof StreamUnavailable) return sendChat(message, context, history);
     throw e;
   }
 }
 
 async function liveChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
   const controller = new AbortController();
   // 전체 시간 제한은 /api/chat과 같다. 판정 LLM 재시도까지 기다린다
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
@@ -308,7 +315,7 @@ async function liveChatStream(message: string, context: AgentRequest | null,
       const token = await accessToken();
       const headers = new Headers({'content-type': 'application/json', accept: 'text/event-stream'});
       if (token) headers.set('authorization', `Bearer ${token}`);
-      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context), signal: controller.signal});
+      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history), signal: controller.signal});
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
       if (e instanceof TypeError) throw new StreamUnavailable();  // 응답이 없었다. /api/chat이 재시도까지 맡는다
