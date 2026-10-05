@@ -36,6 +36,8 @@ from backend.app.clients.replay import file_key, shipfinder_transport
 SUMMARY_MARK = "(평가용 요약)"
 # 이 내용의 재생 파일을 만나면 타임아웃을 낸다 (use_error_replay). 실제 API 응답에는 없는 모양이다
 TIMEOUT_MARKER = '{"_replay": "timeout"}'
+# 해수부 오류 응답 견본 (공식 오류 형식과 같은 모양의 가공값). sailing_plan_errors가 있을 때만 쓴다 (_write_mof)
+MOF_ERROR_SAMPLE = Path(__file__).resolve().parent / "fixtures" / "mof" / "invalid_parameter.xml"
 
 
 def use_error_replay() -> None:
@@ -86,6 +88,10 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
         "etprCstm": u.get("cstmNm"),
         "dsprCd": u.get("dsprCd"),  # 양륙항. 부산(KRPUS)이 아니면 서버가 unsupported로 끝낸다 (F05)
         "shedNm": u.get("shedNm"),
+        # 적재항 코드·이름 (10-05 추가, 서류 대조 데모 evals/fixtures/demo_papers.jsonl용).
+        # 평가셋 문항에는 이 칸이 없어 아래 빈 값 걸러내기로 빠진다. 그래서 평가셋 재생 파일은 전과 같다
+        "ldprCd": u.get("ldprCd"),
+        "ldprNm": u.get("ldprNm"),
     }
     body = "".join(f"<{tag}>{escape(str(value))}</{tag}>" for tag, value in fields.items() if value)
     xml = (
@@ -137,8 +143,12 @@ def _position_error(error) -> str:
 
 def _write_mof(m: dict, out_dir: Path) -> None:
     """평가셋은 신고·실적을 한 줄씩 평평하게 적었다. 실제 API는 배(item)마다 detail을 묶는다.
-    호출부호별로 묶어 두 API 모양으로 쓴다. 호출부호 없이 부르면 _ALL.xml(전체)을 읽는다 (replay.py)."""
-    plans = _group(m.get("arrival_reports") or [], ("vsslNm", "vsslNltyCd"),
+    호출부호별로 묶어 두 API 모양으로 쓴다. 호출부호 없이 부르면 _ALL.xml(전체)을 읽는다 (replay.py).
+
+    10-05 추가 (서류 대조 데모용, 평가셋 문항에는 없는 칸이라 평가셋 재생 파일은 전과 같다):
+      - prvsDpmprtPrtNm: 직전 기항지. 실제 API처럼 item 칸에 둔다 (clients/mof.py _to_plan)
+      - sailing_plan_errors: 호출부호 목록. 그 호출부호의 선박운항정보 조회를 해수부 오류 응답으로 만든다"""
+    plans = _group(m.get("arrival_reports") or [], ("vsslNm", "vsslNltyCd", "prvsDpmprtPrtNm"),
                    lambda r: {"reqstSeNm": r.get("reqstSeNm"), "etryndNm": "입항", "etryptDt": r.get("etryptDt"),
                               "laidupFcltyNm": r.get("laidupFcltyNm"), "mrNum": r.get("mrNum")})
     calls = _group(m.get("control_events") or [], (),
@@ -148,6 +158,10 @@ def _write_mof(m: dict, out_dir: Path) -> None:
         for call_sign, item in items.items():
             _write(out_dir / "mof" / api / f"{file_key(call_sign)}.xml", _mof_xml([item]))
         _write(out_dir / "mof" / api / "_ALL.xml", _mof_xml(list(items.values())))
+    # 해수부 오류 응답은 evals/fixtures/mof/invalid_parameter.xml 견본을 그대로 쓴다 (resultCode가 00이 아니면
+    # clients/mof.py가 MofError를 낸다). _ALL.xml에는 넣지 않는다: 그 호출부호로 부를 때만 실패한다
+    for call_sign in m.get("sailing_plan_errors") or []:
+        _write(out_dir / "mof" / "VsslEtrynd5" / f"{file_key(call_sign)}.xml", MOF_ERROR_SAMPLE.read_text(encoding="utf-8"))
 
 
 def _group(rows: list[dict], item_keys: tuple[str, ...], detail) -> dict[str, str]:
