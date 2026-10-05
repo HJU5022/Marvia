@@ -188,6 +188,45 @@ def quote_found(quote: str, source: str) -> bool:
     return bool(parts) and sum(len(p) for p in parts) >= QUOTE_MIN_CHARS and all(p in flat_source for p in parts)
 
 
+# V14 받침 검사 (10-05): 근거 조각이 원문에 있다는 것만으로는 그 조각이 답을 받친다는 증명이 안 된다. 답과 상관없는 문장을 베껴 와도 통과했다.
+# 그래서 답의 핵심 낱말(한글 2글자 이상, 질문에 나온 말과 흔한 말은 뺀다)이 근거 조각과 그 앞뒤 글에 얼마나 있는지를 센다.
+# 일부러 느슨하다: 답은 보통 여러 문장을 합쳐 쓰므로 조각 하나에 답 낱말이 다 있지 않다. 같은 실측에서 너무 엄격한 검사가 고정 안내로 빠지는
+# 일을 늘렸다. 그래서 "겹치는 낱말이 하나도 없는" 명백한 헛다리만 잡는다 (SUPPORT_MIN_SHARED).
+SUPPORT_MIN_SHARED = 1  # 답의 핵심 낱말 중 근거 조각(과 앞뒤 글)에 있는 것이 이만큼은 있어야 한다
+SUPPORT_MIN_KEYS = 3  # 질문 낱말을 뺀 핵심 낱말이 이보다 적은 짧은 답은 판단할 재료가 적어 보지 않는다
+SUPPORT_WINDOW = 150  # 근거 조각 앞뒤로 같이 보는 글자 수 (공백 뺀 글자 기준). 조각을 포함한 문장과 이웃 문장을 본다
+_SUPPORT_STOP = set("""경우 때문 통해 위해 대한 관련 필요 가능 수있 있습 합니다 됩니다 입니다 해야 하여 하고 하는 되는 이후 이전 다음 먼저 또한 그리고
+일반 설명 확인 문의 연락 요청 안내 정보 내용 방법 절차 사용 진행 처리 경우에 보통 대부분 직접 반드시 다만 예를 예로 같은 이런 그런""".split())
+_KOREAN_WORD = re.compile(r"[가-힣]{2,}")
+
+
+def _key_words(text: str) -> set[str]:
+    """답에서 핵심 낱말(한글 2글자 이상, 조사 뗌, 흔한 말 뺌)만 뽑는다."""
+    words = set()
+    for w in _KOREAN_WORD.findall(text or ""):
+        stem = _stem(w)
+        if len(stem) >= 2 and stem not in _SUPPORT_STOP:
+            words.add(stem)
+    return words
+
+
+def quote_supports(reply: str, quote: str, source: str, user_text: str = "") -> bool:
+    """V14 받침: 근거 조각(과 원문에서 그 앞뒤)이 답의 핵심 낱말을 하나라도 담고 있는가. 질문에 나온 낱말은 세지 않는다
+    (질문 말만 겹치는 조각은 답을 받친 것이 아니다). 판단할 낱말이 적으면(SUPPORT_MIN_KEYS) 통과시킨다."""
+    asked = _key_words(user_text)
+    keys = _key_words(reply) - asked
+    if len(keys) < SUPPORT_MIN_KEYS:
+        return True
+    flat_source = _flat(source)
+    context = ""
+    for part in re.split(r"\.\.\.|…", quote or ""):
+        part = _flat(part)
+        at = flat_source.find(part) if part else -1
+        if at >= 0:
+            context += flat_source[max(0, at - SUPPORT_WINDOW): at + len(part) + SUPPORT_WINDOW]
+    return sum(1 for k in keys if k in context) >= SUPPORT_MIN_SHARED
+
+
 def quote_sources(quote: str, sources: list[dict]) -> list[dict]:
     """웹 답의 "웹 참고" 줄에 올릴 출처를 고른다 (10-05 웹 검색 결정). 근거 조각이 통째로 든 결과만 남긴다.
     조각이 여러 결과에 걸쳐 있어 하나도 단독으로 안 맞으면 가져온 결과 전부를 돌려준다. 출처는 코드가 가져온 결과에서만 나온다
@@ -261,6 +300,9 @@ def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[st
                                       "Copy one sentence or table cell from the Skill documents that supports your reply, "
                                       "and say only what that text says. If the Skill documents do not cover the question, "
                                       "set answer_kind to not_in_skills."))
+    elif skills_text is not None and not quote_supports(reply, quote or "", skills_text, user_text):
+        found.append(Violation("V14", "skill_quote does not support the reply: none of the reply's key words appear in or next to "
+                                      "that text. Copy the sentence that your reply is based on, or answer only what it says."))
     return found
 
 
