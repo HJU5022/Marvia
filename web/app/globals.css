@@ -662,3 +662,11 @@ th{background:#f7faff;color:#506c85}
 .watch-changes ul{margin:0 0 14px;padding-left:18px;font-size:13px}
 .watch-changes .to-act{color:var(--danger)}.watch-changes .to-watch{color:var(--warning)}.watch-changes .to-fine{color:var(--success)}
 .watch-changes .request-error{margin:12px 0 0}
+/* 채팅 말풍선 아래 작은 지도 (ChatMiniMap, 10-05). 높이 180px, 말풍선 폭에 맞춘다 */
+.chat-body{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+.chat-mini-map{margin:0;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;max-width:420px}
+.chat-mini-map-host{height:180px;width:100%;position:relative;isolation:isolate;background:var(--sea);filter:saturate(.35);font-family:var(--font)}
+.chat-mini-map figcaption{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;font-size:11px;color:var(--body);line-height:1.5}
+.chat-mini-map figcaption button{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;padding:4px 9px;border-radius:999px;background:var(--soft);color:var(--accent-dark);font-size:11px;font-weight:600}
+.chat-mini-map figcaption button:hover{background:#e3effd}
+@media (max-width:700px){.chat-mini-map{max-width:100%}}

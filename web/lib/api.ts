@@ -243,7 +243,10 @@ async function demoChat(message: string, context: AgentRequest | null): Promise<
   if (choice) {
     const request = choice.request as AgentRequest;
     const agent = await demoAgentResponse(request);
-    return {...empty, kind: 'cargo', reply: agent.answer, agent, request};
+    // 데모에서도 작은 지도가 보이게, 위치가 있는 예시 화물은 그 위치를 map으로 함께 돌려준다 (실제 모드는 서버가 채운다)
+    const pos = agent.position;
+    const map = pos ? {lat: pos.lat, lng: pos.lng, ship_name: agent.vessel?.name ?? null, distance_nm: agent.eta?.distance_nm ?? null, received_at: pos.last_time, source: 'shipfinder'} : null;
+    return {...empty, kind: 'cargo', reply: agent.answer, agent, request, map};
   }
   if (/배|선박|입항/.test(message)) {
     await pause();

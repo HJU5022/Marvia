@@ -11,6 +11,7 @@ import {ArrowUp, Camera, Check, FileText, LoaderCircle, PackageSearch, Ship, Spa
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentValues} from './DocumentPanel';
 import {Drawer} from './Drawer';
+import {ChatMiniMap} from './ChatMiniMap';
 import {isLive} from '@/lib/api';
 import {onComposerRequest} from '@/lib/composer';
 import {stageLabels, type ProgressStage} from '@/lib/progress';
@@ -115,7 +116,7 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
 
     {thread.length > 0 && <ol className="chat-thread" ref={threadRef} onScroll={onScroll} aria-live="polite" aria-label="대화" tabIndex={0}>
       {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-        {t.role === 'assistant' && <span className="chat-avatar"><Sparkles size={12}/></span>}<p>{t.text}</p></li>)}
+        {t.role === 'assistant' && <span className="chat-avatar"><Sparkles size={12}/></span>}<div className="chat-body"><p>{t.text}</p>{t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}</div></li>)}
     </ol>}
 
     {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}

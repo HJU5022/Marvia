@@ -158,7 +158,12 @@ export interface ChatResponse {
   kind: 'cargo' | 'vessels' | 'message'; reply: string;
   agent: AgentResponse | null; request: AgentRequest | null;
   vessels: VesselItem[]; place: string | null; ports: string[]; days: number | null;
+  /** 이번 턴에 에이전트가 실제로 배의 실시간 위치를 조회했을 때만 값이 있다. 없거나 null이면 말풍선 아래 작은 지도를 그리지 않는다.
+   * 옛 응답과 데모 모드에는 이 칸이 없으므로 선택 칸이다 (ChatMiniMap) */
+  map?: ChatMap | null;
 }
+/** ChatResponse.map. 말풍선 아래 작은 지도 한 점 (백엔드 계약, 10-05) */
+export interface ChatMap { lat: number; lng: number; ship_name: string | null; distance_nm: number | null; received_at: string | null; source: string }
 /** POST /api/chat, /api/chat/stream 요청의 history 한 줄. 지금 질문보다 앞선 대화이고 오래된 것부터 둔다.
  * 서버 에이전트가 "그 배", "아까 그거" 같은 말을 풀 때 쓴다. B/L 번호는 서버가 가리므로 화면 글자 그대로 보낸다 */
 export interface ChatHistoryTurn { role: 'user' | 'assistant'; text: string }

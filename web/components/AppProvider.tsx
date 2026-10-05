@@ -6,10 +6,12 @@ import {createContext, useContext, useEffect, useRef, useState, type ReactNode} 
 import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, isLive, sendChatStream} from '@/lib/api';
 import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
-import type {AgentRequest, AgentResponse, ChatResponse} from '@/lib/types';
+import type {AgentRequest, AgentResponse, ChatMap, ChatResponse} from '@/lib/types';
 
 /** 입력창 대화 한 줄. 화면에만 두고 저장하지 않는다 (docs/specs/chat-search.md Out of Scope: 대화 기억) */
-export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: ChatResponse['kind'] }
+export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: ChatResponse['kind'];
+  /** 위치를 조회한 답이면 말풍선 아래 작은 지도에 쓴다. 서버로 되돌려 보내지 않는다(lib/api.ts chatBody는 role, text만) */
+  map?: ChatMap | null }
 const presentation = getPresentationData();
 // 실제 모드는 빈 폼으로 시작한다. 세션 ID는 lib/api.ts가 요청 때 브라우저 값으로 채운다
 const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: null, session_id: ''};
@@ -101,7 +103,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
       const res = await sendChatStream(message, result && request.bl_no ? request : null,
         s => setStages(list => list.includes(s) ? list : [...list, s]), history);
-      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind}]);
+      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null}]);
       if (res.kind === 'cargo' && res.agent && res.request) { setResult(res.agent); setRequest(res.request); setView('cargo'); }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
       // 안내 문장(B/L 없음 등)이면 아래의 지난 결과를 숨긴다. 새 답과 지난 카드가 섞여 보이지 않게

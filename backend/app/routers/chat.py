@@ -72,6 +72,18 @@ class VesselItem(BaseModel):
     facility: str | None
 
 
+class ChatMap(BaseModel):
+    """답 말풍선 밑 미니 지도 자료 (10-05). 에이전트가 이번 문장에서 선박 실시간 위치를 실제로 조회했을 때만 붙는다.
+    좌표는 도구 결과에서만 읽는다 (services/chat._map_payload). received_at은 AIS 수신 시각(없으면 조회 시각)의 ISO 8601 글자."""
+
+    lat: float
+    lng: float
+    ship_name: str | None = None
+    distance_nm: float | None = None
+    received_at: str | None = None
+    source: str  # "shipfinder"
+
+
 class ChatResponse(BaseModel):
     kind: Literal["cargo", "vessels", "message"]
     reply: str
@@ -81,6 +93,7 @@ class ChatResponse(BaseModel):
     place: str | None = None
     ports: list[str] = []
     days: int | None = None
+    map: ChatMap | None = None
 
 
 BAD_MESSAGE = "문장을 1~500자로 입력해 주세요"
