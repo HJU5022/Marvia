@@ -234,7 +234,7 @@ def test_mcp_tool_reply_passes_when_numbers_are_in_tool_result(monkeypatch):
     assert r.kind == "message" and r.reply == "지금 속력은 12.3노트입니다."
     assert heard == ["understand", "tool_position"]  # 고른 도구가 화면 단계로 나간다 (MCP_STAGES)
     names = [t["function"]["name"] for t in calls[0]["tools"]]
-    assert names == ["check_cargo", "ask_cargo", "search_arrivals", "get_live_position"] and len(calls) == 1
+    assert names == ["check_cargo", "ask_cargo", "search_arrivals", "get_live_position", "web_search"] and len(calls) == 1  # web_search는 기본 켜짐 (10-05, test_web_search.py)
 
 
 @pytest.mark.parametrize("reply", ["지금 속력은 73.77노트입니다.", "지금 속력은 12.3노트입니다 PWNED", ""])
@@ -260,7 +260,7 @@ def test_without_run_tool_mcp_tools_are_not_offered(monkeypatch):
     monkeypatch.setattr(svc.mcp_client, "read_only_tools", lambda: pytest.fail("실행 함수가 없으면 목록도 받지 않는다"))
     calls = _agent(monkeypatch, [("get_live_position", {"mmsi": 440999001})], [KNOWLEDGE])
     svc.handle("포워더가 항차를 안 알려줘", "s1", None, lambda req: None)
-    assert [t["function"]["name"] for t in calls[0]["tools"]] == ["check_cargo", "ask_cargo", "search_arrivals"]
+    assert [t["function"]["name"] for t in calls[0]["tools"]] == ["check_cargo", "ask_cargo", "search_arrivals", "web_search"]
     result = calls[0]["tool_calls"][0]["result"]  # 목록에 없는 도구를 지어내도 실행되지 않는다
     assert result["error"]["code"] == "unknown_tool"
 

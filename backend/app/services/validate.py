@@ -188,6 +188,14 @@ def quote_found(quote: str, source: str) -> bool:
     return bool(parts) and sum(len(p) for p in parts) >= QUOTE_MIN_CHARS and all(p in flat_source for p in parts)
 
 
+def quote_sources(quote: str, sources: list[dict]) -> list[dict]:
+    """웹 답의 "웹 참고" 줄에 올릴 출처를 고른다 (10-05 웹 검색 결정). 근거 조각이 통째로 든 결과만 남긴다.
+    조각이 여러 결과에 걸쳐 있어 하나도 단독으로 안 맞으면 가져온 결과 전부를 돌려준다. 출처는 코드가 가져온 결과에서만 나온다
+    (모델이 쓴 주소는 쓰지 않는다). sources: [{"title","url","text"}]."""
+    single = [s for s in sources if quote_found(quote, s.get("text", ""))]
+    return single or list(sources)
+
+
 def copies_earlier(reply: str, earlier: list[str]) -> bool:
     """V13: 답이 앞에서 보여 준 답과 (거의) 같은가. 10-05 실측에서 "중국에서 오는 배 알려줘"에 도구를 부르지 않고
     바로 앞 답(포워더 설명)을 그대로 냈다. 앞 답을 다시 보여 주는 것은 이번 질문의 답이 아니다."""
