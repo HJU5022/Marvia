@@ -54,3 +54,5 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 - pick-vessel: 조건이 다 맞는 후보가 있어도 고르지 않음(choice null). 너무 조심스러운지는 insufficient_precision으로 판단. 후보 목적지를 반대로 읽은 오답(KRPUS를 "아니다")이 반복되는지
 - judge: 통관 해설이 Skill 표의 뜻(예: 반입신고 = 터미널·보세창고 반입)과 다르게 나오는지
 - follow-up: 범위 밖 질문을 거절할 때 물어볼 수 있는 것을 구체적으로 안내하는지
+
+10-06: 지금 production인 9개 버전에 Langfuse 라벨 `v1`을 붙여 첫 정식 릴리스로 고정했다 (`docs/release_manifest.json`). 다음 프롬프트 변경은 바꾼 것에만 `v2`.

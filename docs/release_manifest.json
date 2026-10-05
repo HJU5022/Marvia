@@ -17,6 +17,7 @@
   },
   "prompts": {
     "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
+    "_release_label": "v1 — 아래 9개 버전에 Langfuse 라벨 v1을 붙여 이 묶음을 첫 정식 릴리스로 고정 (10-06). 다음 변경은 바꾼 프롬프트에만 v2",
     "marvia-chat-agent": 10,
     "marvia-chat-route": 1,
     "marvia-judge": 9,
