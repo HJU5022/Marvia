@@ -178,3 +178,8 @@ export interface VesselDetailResponse {
 export interface KakaoStatus { configured: boolean; linked: boolean }
 /** POST /api/kakao/callback 결과 이름. 주소 ?kakao= 로 설정 화면에 넘길 때도 같은 이름을 쓴다(동의 취소 denied는 화면이 만든다) */
 export type KakaoLinkResult = 'connected' | 'expired' | 'mismatch' | 'no_consent' | 'failed';
+
+/** POST /api/cargo/watch/state. saved: 이 화물의 기록이 서버에 저장됐나(조회 직후 비동기로 저장돼 잠깐 false일 수 있다), watch: 지켜보는 중인가 */
+export interface WatchState { saved: boolean; watch: boolean }
+/** GET /api/watch/changes의 한 줄. 지난 접속 뒤 판정이 바뀐 지켜보는 화물. B/L은 마스킹된 값만 온다 */
+export interface WatchChange { bl_masked: string; label: string | null; from_verdict: Verdict; to_verdict: Verdict; changed_at: string }

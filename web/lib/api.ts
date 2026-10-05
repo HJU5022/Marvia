@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -439,6 +439,38 @@ export async function sendKakaoTest(): Promise<{sent: boolean}> {
 export async function unlinkKakao(): Promise<{linked: boolean}> {
   if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
   return liveDelete('/api/kakao/link');
+}
+
+/* ---------- 화물 지켜보기 (G5 작업 리스트, 10-05 결정, 백엔드 routers의 watch) ---------- */
+
+/** B/L은 URL에 넣지 않는다(서버·프록시 로그에 남는다). 본문 JSON으로만 보낸다. 조회 때와 같게 공백 제거·대문자로 맞춘다 */
+const watchBody = (blNo: string) => ({bl_no: blNo.replace(/\s/g, '').toUpperCase()});
+
+/** POST /api/cargo/watch/state. 이 화물이 저장됐는지, 지켜보는 중인지. 데모 모드에는 계정이 없어 지켜볼 수 없다. */
+export async function getWatchState(blNo: string): Promise<WatchState> {
+  if (!isLive) throw new Error('데모 모드에서는 화물을 지켜볼 수 없습니다.');
+  const res = await call('/api/cargo/watch/state', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(watchBody(blNo))}, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
+
+/** PUT /api/cargo/watch. 지켜보기를 켜거나 끈다. 실패하면 서버 안내 문장이 그대로 올라온다(404 아직 저장 전, 409 끝난 화물·5건 한도, 503). */
+export async function setWatch(blNo: string, on: boolean): Promise<{watch: boolean}> {
+  if (!isLive) throw new Error('데모 모드에서는 화물을 지켜볼 수 없습니다.');
+  const res = await call('/api/cargo/watch', {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify({...watchBody(blNo), on})}, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
+
+/** GET /api/watch/changes. 지난 접속 뒤 판정이 바뀐 화물 목록. 데모 모드에는 지켜보는 화물이 없어 빈 목록이다. */
+export async function getWatchChanges(): Promise<WatchChange[]> {
+  if (!isLive) return [];
+  const res = await call('/api/watch/changes', {}, HISTORY_TIMEOUT_MS);
+  return (await res.json()).changes ?? [];
+}
+
+/** POST /api/watch/changes/seen. 보여 준 변경을 확인 처리한다. 다시 접속해도 같은 알림이 뜨지 않는다. */
+export async function markWatchChangesSeen(): Promise<{cleared: number}> {
+  if (!isLive) return {cleared: 0};
+  return (await call('/api/watch/changes/seen', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
 }
 
 /* ---------- 운영자 관리 (docs/specs/operator-admin.md) ---------- */

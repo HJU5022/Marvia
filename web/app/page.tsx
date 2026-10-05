@@ -11,6 +11,8 @@ import {ChatBar} from '@/components/ChatBar';
 import {VesselList} from '@/components/VesselList';
 import {useApp} from '@/components/AppProvider';
 import {VerdictCard} from '@/components/VerdictCard';
+import {WatchToggle} from '@/components/WatchToggle';
+import {WatchChanges} from '@/components/WatchChanges';
 import {VesselCard} from '@/components/VesselCard';
 import {EtaCompare} from '@/components/EtaCompare';
 import {MapPanel} from '@/components/MapPanel';
@@ -23,7 +25,7 @@ import {dateTime,maskBl,ruleLabels,statusLabels} from '@/lib/format';
 import type {AgentRequest} from '@/lib/types';
 
 export default function CargoPage(){
- const {data,lookup,request,result:r,loading,error,replaying,view,vessels,thread}=useApp();const started=useRef(false);const [mofOnly,setMofOnly]=useState(false);
+ const {data,lookup,request,result:r,loading,error,replaying,view,vessels,thread,authEnabled,user}=useApp();const started=useRef(false);const [mofOnly,setMofOnly]=useState(false);
  // 데모 모드만 첫 화면에 저장된 예시를 연다. ?fixture=는 개발 서버에서 상태별 화면을 확인하는 용도다 (scripts/verify.mjs)
  useEffect(()=>{if(started.current)return;started.current=true;if(r||isLive)return;const id=process.env.NODE_ENV==='development'?new URLSearchParams(window.location.search).get('fixture'):null;const choice=data.demo.choices.find(c=>c.id===id)??data.demo.choices[0];selectFixture(id);void lookup(choice.request as AgentRequest);},[data,lookup,r]);
  useEffect(()=>{setMofOnly(false);},[r]);
@@ -39,6 +41,8 @@ export default function CargoPage(){
    <p>B/L 조회부터 입항 선박 검색까지. 질문 하나로, 근거까지 명확하게.</p>
    <ChatBar idle={idle}/>
   </section>
+  {/* 지켜보는 화물의 판정이 지난 접속 뒤 바뀌었으면 알린다. 로그인한 실제 모드에서만 그리고, 없으면 아무것도 보이지 않는다 (G5, 10-05 결정) */}
+  <WatchChanges/>
   {/* 데모 첫 조회처럼 대화 없이 실패한 경우만 여기 알린다. 문장 질문의 실패는 대화 칸에 이미 있다 */}
   {error&&!thread.length&&!showing&&<p role="alert" className="request-error page-error">{error}</p>}
   {showing==='vessels'&&vessels&&<VesselList data={vessels}/>}
@@ -55,6 +59,7 @@ export default function CargoPage(){
    {r.status==='insufficient'?<CandidatePicker key={r.trace_id} response={r} request={request} onResolve={req=>void lookup(req)} busy={loading}/>
     :failedLike?<div className="unknown-note"><CircleHelp size={22}/><div><h2>확인하지 못한 값은 비워 둡니다.</h2><p>판정·현재 위치·도착 예정일을 추정해서 채우지 않습니다. 응답에 남은 근거만 아래에서 확인하세요.</p></div></div>
     :<>{r.verdict&&<VerdictCard response={r} request={request}/>}
+     {r.verdict&&isLive&&authEnabled&&!!user&&<WatchToggle blNo={request.bl_no}/>}
      <div className="result-grid"><MapPanel response={r}/><EtaCompare response={r}/></div>
      <div className="result-subgrid"><CustomsTimeline response={r}/><VesselCard response={r}/></div></>}
    {r.reasons.length>0&&!failedLike&&<section className="signal-summary" aria-label="판정 신호"><span>확인한 신호</span>{r.reasons.map((s,i)=><details key={i} className={s.triggered?'triggered':''}><summary><Check size={13}/>{ruleLabels[s.rule]??'기타 신호'}</summary><p>{s.value} · {s.triggered?'감지됨':'감지되지 않음'}</p></details>)}</section>}
