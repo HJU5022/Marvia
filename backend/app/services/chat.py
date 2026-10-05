@@ -17,6 +17,7 @@ import contextvars
 import json
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -30,7 +31,7 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
-from backend.app.services import bl_parse, guard, llm, mcp_client, memory, progress, validate
+from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, validate
 from backend.app.services.verdict import VERDICT_LABEL
 from backend.app.services.watch import MAX_WATCH
 from backend.app.services.rules import load_file
@@ -91,7 +92,7 @@ USAGE_GUIDE = (
     "3. 이어서 질문: 조회한 화물에 대해 바로 물어보세요. 예: 지금 배가 어디쯤이야? / 통관은 어디까지 됐어?\n"
     "4. 입항 선박 찾기: 어디에서 오는 배인지 물어보세요. 예: 중국에서 오는 배 보여줘\n"
     "5. 서류 사진: 입력창 옆 \"서류 사진에서 입력\"으로 사진을 올리면 읽은 값을 확인한 뒤 입력창에 넣어요.\n"
-    "6. 지켜보기: 로그인하면 조회 결과 아래 \"이 화물 지켜보기\"를 누르거나 \"이거 지켜봐 줘\"라고 말하면 판정이 바뀔 때 알려 드려요.\n"
+    "6. 지켜보기: 로그인하면 조회 결과 아래 \"이 화물 지켜보기\"를 누르거나 \"이거 지켜봐 줘\"라고 말하면 판정이 바뀔 때 알려 드려요. 지금 상태를 바로 받고 싶으면 \"카톡으로 보내 줘\"라고 하세요.\n"
     "7. 일반 질문: B/L 번호를 못 찾겠을 때처럼 수입 실무가 궁금하면 그냥 물어보세요."
 )
 INJECTION_REPLY = "문장 속 지시는 따르지 않습니다. " + OTHER_REPLY
@@ -363,12 +364,14 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
 
 def handle(message: str, session_id: str, context: AgentRequest | None, run_agent,
            user_id: str | None = None, history: list[dict] | None = None,
-           run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None) -> ChatResult:
+           run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None,
+           kakao: KakaoHooks | None = None) -> ChatResult:
     """문장 하나를 처리한다. run_agent는 routers/agent.run_agent(사용자 묶음 포함)를 부르는 함수다.
     user_id: 로그인 사용자. 있으면 화물 조회 답에 지난 조회 한 줄을 붙인다 (docs/specs/memory.md). 없으면(EC-08) 그대로.
     history: 화면이 보낸 최근 대화 [{"role", "text"}]. 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다 (10-05).
     run_tool: 읽기 전용 MCP 도구를 실제로 부르는 함수 (routers/agent._follow_up_tool). 없으면 에이전트는 MCP 도구 없이 돈다.
-    watch: 지켜보기를 읽고 쓰는 함수 묶음 (WatchHooks). 없으면 로그인하지 않았거나 DB가 없는 것과 같다: 아무것도 바꾸지 않고 안내만 한다."""
+    watch: 지켜보기를 읽고 쓰는 함수 묶음 (WatchHooks). 없으면 로그인하지 않았거나 DB가 없는 것과 같다: 아무것도 바꾸지 않고 안내만 한다.
+    kakao: 지금 상태를 카카오톡으로 보내는 함수 묶음 (KakaoHooks). 없으면 보내지 않고 안내만 한다."""
     message = (message or "").strip()
     if not message:
         raise ChatError("empty")
@@ -381,7 +384,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     masked, refs = mask_bls(message)
     # 기억 뽑기 재료는 가린 문장이다. B/L·MRN 원본은 넘기지 않는다 (CLAUDE.md, docs/specs/memory.md 쓰기 흐름 3)
     with memory.user_text(masked):
-        result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch)
+        result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao)
     if repair_notes:
         result = replace(result, reply="\n".join([result.reply, *repair_notes]))
     return result
@@ -389,7 +392,8 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
 
 def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict] | None = None,
-           run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None) -> ChatResult:
+           run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None,
+           kakao: KakaoHooks | None = None) -> ChatResult:
     """가린 문장을 처리한다 (handle의 뒷부분). 에이전트가 먼저 맡고, 안 되면 의도 분류 방식(_classic)으로 간다."""
     today = datetime.now(KST).date().isoformat()
 
@@ -402,7 +406,7 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     progress.step("understand")  # 화면에 실제 단계를 알린다 (docs/specs/chat-progress.md)
     if agent_enabled():
         try:
-            return _agent(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, today, watch)
+            return _agent(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, today, watch, kakao)
         except llm.LLMError as e:
             # 에이전트가 첫 도구를 쓰기도 전에 실패했다 (키 없음, 도구를 붙이면 거절하는 모델·제공사 등).
             # 전 방식은 도구 없이 한 번 묻는 호출이라 이런 경우에도 된다 (10-02 실측: 도구를 붙이면 404인 제공사가 있었다)
@@ -543,6 +547,10 @@ AGENT_TOOLS = [
         "parameters": {"type": "object", "properties": {
             "on": {"type": "boolean", "description": "true to start watching, false to stop."},
         }, "required": ["on"]}}},
+    {"type": "function", "function": {
+        "name": "send_kakao",
+        "description": "Send the CURRENT status of the cargo on screen (or the cargo whose B/L is in this message) to the user's own KakaoTalk right now. Only when the user clearly asks to send it to KakaoTalk now (\"카톡으로 보내 줘\", \"지금 알림 보내 줘\"). Not for \"tell me when it changes\" (that is set_watch). Code refuses it otherwise, writes the message and the reply itself.",
+        "parameters": {"type": "object", "properties": {}}}},
 ]
 
 
@@ -638,6 +646,13 @@ def _repeats_reply(text: str, replies: list[str]) -> bool:
 #  (a) 가린 문장에 지켜보기 낱말이 있다  (b) 바로 앞 답이 우리의 "지켜볼까요?" 제안이었고 이번 문장이 짧은 긍정이다
 # 둘 다 아니면 도구는 오류를 돌려줘서 LLM이 혼자 켜거나 끌 수 없다. 켜기·끄기 뒤 문장은 코드가 쓴다 (LLM 문장은 안 쓴다).
 WATCH_WORDS = re.compile(r"지켜|감시|알림|알려\s*줘|알려\s*주|그만\s*(?:봐|보|지켜)")
+# 지금 상태를 카카오톡으로 보내 달라는 말 (10-06 결정). 부작용(카카오톡 전송)이라 가린 문장에 이 말이 있을 때만 코드가 보낸다.
+# 지켜보기와 갈린다: "바뀌면/바뀔 때/앞으로" 같은 앞날 낱말이 있으면 지켜보기 요청이고, 없이 "보내/전송/쏴"가 카톡·지금과 함께 있으면 지금 보내기다
+# (10-06 실제 화면: "현재 기준으로 카카오톡 알림 보내줘"가 지켜보기로 처리됐다). 둘 다 말하면 보내기가 이긴다
+SEND_NOW = re.compile(r"(?:카톡|카카오톡?)\s*(?:으로|로)?.*(?:보내|전송|쏴)|(?:보내|전송|쏴).*(?:카톡|카카오)|"
+                      r"(?:지금|현재|바로).*알림\s*(?:좀\s*)?(?:보내|전송|쏴)")
+FUTURE_WORDS = re.compile(r"바뀌|바뀔|변하|변할|변경|되면|하면|때마다|생기면|있으면|앞으로|매번|계속")
+SEND_ONLY_MAX = 40  # 이 길이 이하의 보내기 요청은 다른 질문이 없는 것으로 보고 LLM 없이 코드가 처리한다
 # 짧은 긍정 답. 문장 전체가 이 모양일 때만 (긍정 낱말 뒤에 다른 질문이 붙으면 긍정이 아니다)
 AFFIRM = re.compile(r"(?:응|네|넵|예|그래|좋아|좋아요|좋습니다|부탁|ㅇㅇ|ㅇㅋ|오케이|ok)"
                     r"(?:[\s,.!~]*(?:응|네|요|그래|좋아요?|부탁(?:해|드려)?요?|해\s*줘|해줘|ㅇㅇ))*[\s.!~]*", re.IGNORECASE)
@@ -679,6 +694,90 @@ class WatchHooks:
     worry: Callable[[str], str | None]
 
 
+def wants_send_now(masked: str) -> bool:
+    """가린 문장이 "지금 카카오톡으로 보내 줘"인가. 앞날 낱말(바뀌면 등)이 있으면 지켜보기 요청이라 아니다."""
+    return bool(SEND_NOW.search(masked)) and not FUTURE_WORDS.search(masked)
+
+
+WATCH_ALREADY_ON = "이미 이 화물을 지켜보고 있어요. 판정이 바뀌면 알려 드려요."
+WATCH_ALREADY_OFF = "이 화물은 지금 지켜보고 있지 않아요."
+
+# ── 지금 상태를 카카오톡으로 보내기 (10-06 결정) ──
+# 문장은 코드가 쓴다. 재료는 그 사용자의 화물 줄에 저장된 마지막 판정(last_*)뿐이라 없는 값을 지어내지 않는다.
+# (화면의 답은 요청에 담겨 오지 않는다. 저장된 줄이 가장 믿을 수 있는 "지금 상태"다: 지켜보기 알림이 읽는 곳과 같다)
+KAKAO_COOLDOWN_SEC = 300  # 같은 사용자·같은 화물은 5분에 한 번 (10-06 결정). 카카오톡 메시지가 쏟아지지 않게
+KAKAO_SENT = "카카오톡으로 지금 상태를 보냈어요."
+KAKAO_COOLDOWN_REPLY = "방금 보내 드렸어요. 5분 뒤에 다시 보낼 수 있어요."
+KAKAO_NOT_LINKED = "설정에서 카카오톡을 연결하면 보내 드릴 수 있어요."
+KAKAO_NEED_LOGIN = "로그인하고 카카오톡을 연결하면 보내 드릴 수 있어요."
+KAKAO_NO_CARGO = "보낼 화물이 없어요. 먼저 B/L 번호로 화물을 조회해 주세요."
+KAKAO_ONE_AT_A_TIME = "한 번에 한 화물만 보낼 수 있어요. 하나씩 말씀해 주세요."
+KAKAO_NOT_READY = "이 화물의 상태를 아직 저장하는 중이에요. 잠시 뒤에 다시 말씀해 주세요."
+KAKAO_NO_VERDICT = "아직 판정된 상태가 없어서 보낼 수 없어요. 먼저 화물을 조회해 주세요."
+KAKAO_FAIL_REPLY = {
+    "relink": "카카오톡 연결이 끊어졌어요. 설정에서 다시 연결해 주세요.",
+    "no_consent": "카카오톡 메시지 보내기에 동의가 필요해요. 설정에서 다시 연결해 주세요.",
+}
+KAKAO_FAILED = "카카오톡으로 보내지 못했어요. 잠시 뒤 다시 말씀해 주세요."
+KAKAO_HOW = "지금 상태를 받으려면 \"카톡으로 보내 줘\"처럼 말씀해 주세요."
+
+# 쿨다운 기록 {(user_id, cargo_key): 보낸 시각(monotonic)}. 프로세스 메모리에만 있어서 서버가 다시 뜨면 비워진다.
+# Railway에서 한 개로 돌리므로 이대로 충분하다 (10-06 결정). 여러 개로 늘리면 DB로 옮겨야 한다
+_kakao_sent_at: dict[tuple[str, str], float] = {}
+_kakao_lock = threading.Lock()
+
+
+def _kakao_reserve(user_id: str, key: str) -> bool:
+    """5분 안에 보낸 적이 없으면 지금 보내는 것으로 적고 True. 보낸 적이 있으면 False.
+    보내기 전에 미리 적는다: 같은 요청이 겹쳐 와도 하나만 통과시키려는 것이다. 보내기가 실패하면 _kakao_release로 되돌린다."""
+    now = time.monotonic()
+    with _kakao_lock:
+        last = _kakao_sent_at.get((user_id, key))
+        if last is not None and now - last < KAKAO_COOLDOWN_SEC:
+            return False
+        _kakao_sent_at[(user_id, key)] = now
+        return True
+
+
+def _kakao_release(user_id: str, key: str) -> None:
+    with _kakao_lock:
+        _kakao_sent_at.pop((user_id, key), None)
+
+
+@dataclass
+class KakaoHooks:
+    """로그인한 사용자의 카카오톡으로 지금 상태를 보내는 함수 둘. 라우터가 DB 연결을 열어 만들어 넘긴다 (routers/chat._kakao_hooks).
+    row(bl_no): 그 화물의 저장된 줄(services/cargo.get_row 모양 dict), 없으면 None.
+    send(text): {"sent": True} 또는 {"error": KakaoLinkError.kind / KakaoError.kind / "db"}. 화면 주소는 라우터가 붙인다."""
+
+    row: Callable[[str], dict | None]
+    send: Callable[[str], dict]
+
+
+def kakao_now_text(row: dict, today: date) -> str | None:
+    """"지금 상태" 카카오톡 문장. 화물 줄의 마지막 판정으로만 쓴다. 판정이 없으면 None.
+    이름은 지켜보기 알림(services/watch._notify)과 같다: 이름표, 없으면 가린 번호. B/L 원문은 쓰지 않는다.
+    값이 없는 칸은 줄째 뺀다 (지어내지 않는다). 날짜는 한국 날짜 기준이다."""
+    verdict = row.get("last_verdict")
+    if verdict not in VERDICT_LABEL:
+        return None
+    lines = [f"[Marvia] {row.get('label') or row['bl_masked']} 화물 현재 상태", f"판정: {VERDICT_LABEL[verdict]}"]
+    if row.get("last_eta"):
+        lines.append(f"도착 예정: {row['last_eta'].isoformat()}")
+    sale = row.get("sale_due_date")
+    if sale:
+        left = (sale - today).days
+        lines.append(f"판매 예정일({sale.isoformat()})까지: " + (f"{left}일" if left >= 0 else f"{-left}일 지남"))
+    if cargo.margin_text(row.get("last_days_margin")):
+        lines.append(f"도착 기준: {cargo.margin_text(row['last_days_margin'])}")
+    if row.get("last_stage"):
+        lines.append(f"통관: {cargo.clean_stage(row['last_stage'])}")
+    if row.get("last_checked_at"):
+        lines.append(f"마지막 확인: {cargo._md(row['last_checked_at'])}")
+    lines.append("Marvia에서 이유와 할 일을 확인하세요.")
+    return "\n".join(lines)
+
+
 def _offered(text: str) -> bool:
     """대화 기록의 글에 우리의 지켜보기 제안이 들어 있나."""
     return WATCH_ASK in text
@@ -711,11 +810,16 @@ def watch_offer_text(response: AgentResponse, logged_in: bool, worry: str | None
 
 def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
-           today: str, watch: WatchHooks | None = None) -> ChatResult:
+           today: str, watch: WatchHooks | None = None, kakao: KakaoHooks | None = None) -> ChatResult:
     """에이전트 한 턴 + 지켜보기 마무리. 본 처리는 _agent_turn이 하고, 여기서 코드가 쓴 지켜보기 문장·제안을 붙인다 (10-06 결정).
     본 처리가 문장 끝 여러 곳에서 돌아 나가서, 한 곳에서 붙이려고 감쌌다."""
     signals: dict = {}
-    result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals)
+    result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals, kakao)
+    done_kakao = signals.get("kakao") or {}
+    if done_kakao.get("msg") and done_kakao["msg"] not in result.reply:
+        result = replace(result, reply=f"{result.reply}\n\n{done_kakao['msg']}")  # 화물 답과 같이 말한 경우: 답 뒤에 코드 문장
+    if done_kakao.get("msg"):  # 카카오톡 보내기를 한 문장이다. 지켜보기 제안은 붙이지 않는다
+        return result
     done_watch = signals.get("watch") or {}
     if done_watch.get("msg") and done_watch["msg"] not in result.reply:
         result = replace(result, reply=f"{result.reply}\n\n{done_watch['msg']}")  # 화물 답과 같이 말한 경우: 답 뒤에 코드 문장
@@ -766,7 +870,7 @@ def _with_offer(result: ChatResult, signals: dict, context: AgentRequest | None,
 
 def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
                 run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
-                today: str, watch: WatchHooks | None, signals: dict) -> ChatResult:
+                today: str, watch: WatchHooks | None, signals: dict, kakao: KakaoHooks | None = None) -> ChatResult:
     """에이전트 한 턴 (_agent가 감싼다). signals에 watch(지켜보기 도구 결과)와 watch_cue(LLM의 걱정 신호)를 적어 돌려준다.
 
     에이전트 한 턴. LLM이 고른 도구를 실행하고, 끝나면 화면에 보낼 결과 하나로 묶는다.
@@ -896,7 +1000,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         (b)는 "응"이 켜기라는 뜻이라 LLM이 on=false를 보내도 켠다. 문장은 코드가 쓰고(watch_out["msg"]) LLM 글은 안 쓴다.
         대상은 이번 문장의 B/L 하나, 없으면 화면의 화물이다."""
         on = args.get("on")
-        explicit = bool(WATCH_WORDS.search(masked))
+        explicit = bool(WATCH_WORDS.search(masked)) and not wants_send_now(masked)  # 지금 보내 달라는 말은 지켜보기를 바꾸지 않는다 (10-06 결정)
         yes = offered_prev and bool(AFFIRM.fullmatch(masked.strip()))
         if not isinstance(on, bool) or not (explicit or yes):
             watch_out["refused"] = True
@@ -919,6 +1023,12 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if watch is None:
             watch_out["msg"] = WATCH_FAIL_REPLY["db"]
             return _tool_error("unavailable", "The watch store is not available.")
+        try:  # 이미 원하는 상태면 다시 켜지 않고 그렇다고 말한다 (10-06 결정). 상태를 못 읽으면 그냥 바꿔 본다
+            if bool(watch.state(bl).get("watch")) == on:
+                watch_out["msg"] = WATCH_ALREADY_ON if on else WATCH_ALREADY_OFF
+                return {"ok": True, "watching": on, "unchanged": True}
+        except Exception as e:  # noqa: BLE001
+            log_failure("chat_watch", type(e).__name__)
         try:
             result = watch.tool(bl, on)
         except Exception as e:  # noqa: BLE001 - 저장소 문제가 요청 전체를 죽이지 않게
@@ -930,6 +1040,61 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         watch_out.update(msg=WATCH_ON_REPLY if result.get("on") else WATCH_OFF_REPLY,
                          set={"bl_no": bl, "on": bool(result.get("on"))})
         return {"ok": True, "watching": bool(result.get("on"))}
+
+    kakao_out: dict = signals.setdefault("kakao", {})  # {"msg": 코드가 쓴 문장, "done": 보냈다, "refused": 거절됨}
+
+    def run_kakao(args: dict) -> dict:
+        """지금 상태를 카카오톡으로 보내는 도구 (10-06 결정). 부작용이라 가린 문장에 "카톡으로 보내 줘"류가 있을 때만 한다.
+        대상은 이번 문장의 B/L 하나, 없으면 화면의 화물이다. 보낼 글은 코드가 저장된 화물 줄로 쓰고(kakao_now_text) LLM은 글에 관여하지 않는다.
+        같은 문장에서 두 번 불려도 한 번만 보낸다. 같은 사용자·화물은 5분에 한 번. 보내기는 재시도하지 않는다 (services/kakao 규칙)."""
+        if kakao_out.get("done"):
+            return {"ok": True, "sent": True}
+        if not wants_send_now(masked):
+            kakao_out["refused"] = True
+            return _tool_error("not_requested", "The user did not ask to send the status to KakaoTalk now. Do not call send_kakao on your own.")
+        distinct = list(dict.fromkeys(message_bls))
+        if len(distinct) >= 2:
+            kakao_out["msg"] = KAKAO_ONE_AT_A_TIME
+            return _tool_error("one_at_a_time", "Only one cargo can be sent per message.")
+        if distinct and not any(r["name"] == "check_cargo" for r in ran) and (context is None or distinct[0] != context.bl_no):
+            return _tool_error("lookup_first", "Call check_cargo for this B/L first, then call send_kakao.")
+        bl = distinct[0] if distinct else (context.bl_no if context else None)
+        if not bl:
+            kakao_out["msg"] = KAKAO_NO_CARGO
+            return _tool_error("no_cargo", KAKAO_NO_CARGO)
+        if user_id is None:
+            kakao_out["msg"] = KAKAO_NEED_LOGIN  # 아무것도 보내지 않는다
+            return _tool_error("login_required", "Not logged in. Nothing was sent.")
+        key = cargo.cargo_key(bl)
+        if kakao is None or key is None:
+            kakao_out["msg"] = KAKAO_FAILED
+            return _tool_error("unavailable", "KakaoTalk sending is not available.")
+        if not _kakao_reserve(user_id, key):
+            kakao_out["msg"] = KAKAO_COOLDOWN_REPLY
+            return _tool_error("cooldown", "Sent a moment ago.")
+        try:
+            row = kakao.row(bl)
+            text = kakao_now_text(row, datetime.now(KST).date()) if row else None
+            if text is None:  # 줄이 아직 없거나(조회 직후 저장 중) 판정이 없다. 보내지 않는다
+                _kakao_release(user_id, key)
+                kakao_out["msg"] = KAKAO_NOT_READY if row is None else KAKAO_NO_VERDICT
+                return _tool_error("no_status", "There is no stored status to send yet.")
+            result = kakao.send(text)
+        except Exception as e:  # noqa: BLE001 - 저장소·카카오 문제가 요청 전체를 죽이지 않게. 종류만 남긴다
+            log_failure("chat_kakao", type(e).__name__)
+            result = {"error": "db"}
+        if "error" in result:
+            _kakao_release(user_id, key)  # 못 보냈으면 곧 다시 시도할 수 있게
+            kind = str(result["error"])
+            kakao_out["msg"] = KAKAO_NOT_LINKED if kind == "not_linked" else KAKAO_FAIL_REPLY.get(kind, KAKAO_FAILED)
+            return _tool_error(kind, "Could not send to KakaoTalk.")
+        kakao_out.update(msg=KAKAO_SENT, done=True)
+        return {"ok": True, "sent": True}
+
+    # 지금 보내기만 바라는 짧은 말("지금 카톡으로 보내 줘")도 LLM 없이 코드가 처리한다. 새 B/L이 없으면 화면 화물(없으면 B/L을 묻는다)
+    if not message_bls and wants_send_now(masked) and len(masked.strip()) <= SEND_ONLY_MAX:
+        run_kakao({})
+        return ChatResult(kind="message", reply=kakao_out.get("msg") or KAKAO_FAILED)
 
     # 지켜보기만 바라는 짧은 말("응", "응 지켜봐 줘", "그만 지켜봐도 돼")은 LLM을 부르지 않고 코드가 바로 처리한다 (10-06 실측:
     # "응 지켜봐 줘"에 LLM이 화물 질문(ask_cargo)까지 불러 엉뚱한 화물 답이 지켜보기 문장 앞에 붙었다).
@@ -944,7 +1109,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         """LLM이 고른 도구 하나를 실행한다. 같은 호출은 한 번만, 화물 도구는 한 문장에 한 번만, 예외는 도구 실패로 돌려준다.
         MCP 도구가 예외를 던지지 않는 것과 같은 원칙이다 (SDD 3.4): 도구 하나가 죽어도 요청 전체가 500이 되면 안 된다."""
         key = f"{name}:{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
-        if key in seen and name != "set_watch":  # 지켜보기는 조회가 끝나기를 기다렸다 다시 부를 수 있어 앞 결과를 쓰지 않는다 (같은 일은 두 번 해도 같다)
+        if key in seen and name not in ("set_watch", "send_kakao"):  # 지켜보기는 조회가 끝나기를 기다렸다 다시 부를 수 있어 앞 결과를 쓰지 않는다 (같은 일은 두 번 해도 같다)
             return seen[key]
         if name in ("check_cargo", "ask_cargo") and sum(r["name"] in ("check_cargo", "ask_cargo") for r in ran) >= CARGO_CALLS_PER_TURN:
             # 조회한 화물에 바로 이어 묻는 경우도 여기서 막힌다: ask_cargo는 화면의 지난 화물을 보므로 방금 조회한 화물과 다를 수 있다
@@ -1023,6 +1188,8 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return {"reply": result.reply, "total": len(result.vessels), "vessels": shown}
         if name == "set_watch":
             return run_watch(args)
+        if name == "send_kakao":
+            return run_kakao(args)
         if name == "web_search" and web_search_enabled():
             return run_web(args)
         if name in mcp_names:
@@ -1196,7 +1363,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         fix_left -= 1
         log_failure("chat_agent_reply", ",".join(v.rule for v in violations))
         feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
-    calls = [c for c in ran if c["name"] != "set_watch"]  # 지켜보기 도구는 조회 도구가 아니다. 결과 문장은 watch_out에 있다
+    calls = [c for c in ran if c["name"] not in ("set_watch", "send_kakao")]  # 지켜보기·카카오 보내기 도구는 조회 도구가 아니다. 결과 문장은 watch_out에 있다
     signals["watch_cue"] = bool(out is not None and out.watch_cue)
 
     # 문장에 지금 화물과 다른 B/L이 있는데 에이전트가 조회하지 않았으면 코드가 조회한다 (전 방식의 10-01 규칙과 같다:
@@ -1218,6 +1385,9 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         # 식별자가 B/L인지 배 이름인지 모른다 (배 이름 조회도 후보가 없었거나 부르지 않았다). LLM 문장 대신 코드가 되묻는다
         return ChatResult(kind="message", reply=clarify_reply(masked))
 
+    if not done and not calls and (kakao_out.get("msg") or kakao_out.get("refused")) and not watch_out:
+        # 카카오톡 보내기만 한 문장이다. 결과나 못 보낸 이유를 코드 문장으로 낸다 (거절됐으면 안내)
+        return ChatResult(kind="message", reply=kakao_out.get("msg") or KAKAO_HOW)
     if not done and not calls and (watch_out.get("msg") or watch_out.get("refused")):
         # 지켜보기만 한 문장이다. 켠 결과, 못 켠 이유, 또는 낱말이 없어 거절한 안내를 코드 문장으로 낸다
         return ChatResult(kind="message", reply=watch_out.get("msg") or WATCH_HOW, watch_set=watch_out.get("set"))

@@ -6,6 +6,7 @@ POST /api/chat/stream은 같은 일을 하면서 실제 처리 단계를 SSE로 
 채팅 에이전트(10-05)가 읽기 전용 MCP 도구를 부를 때는 후속 질문과 같은 실행 함수(routers/agent._follow_up_tool)를 쓴다:
 읽기 전용 목록 확인, /mcp 경유, 실패 로그, AIS 목적지 원문 빼기가 그대로 걸린다.
 대화로 지켜보기(10-06): 로그인 사용자에게는 지켜보기를 읽고 쓰는 함수(_watch_hooks)를 만들어 넘긴다. 서비스는 DB를 모르고, 여기서 연결을 연다.
+지금 상태 카카오톡 보내기(10-06): 같은 방식으로 _kakao_hooks를 넘긴다. 보낼 글은 서비스가 쓰고, 여기서는 저장된 화물 줄을 읽고 services/kakao.send_to_user를 부른다.
 두 창구 모두 로그인 사용자를 services.chat.handle에 넘긴다. 화물 비서 기억(docs/specs/memory.md)의 지난 조회 한 줄과
 기억 쓰기가 두 창구에서 똑같이 돈다. 기억 쓰기는 run_agent가 뒤 작업으로 돌려 응답·스트림을 늦추지 않는다.
 """
@@ -27,11 +28,14 @@ from pydantic import BaseModel, Field
 
 from backend.app.auth import current_user_id
 from backend.app.observability.langfuse import session_scope
+from backend.app.clients.kakao import KakaoError
 from backend.app.observability.logging import log_failure
 from backend.app.routers.agent import _follow_up_tool, run_agent
+from backend.app.routers.kakao import _web
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import cargo as cargo_service
 from backend.app.services import chat as svc
+from backend.app.services import kakao as kakao_service
 from backend.app.services import memory as memory_service
 from backend.app.services import operators as ops
 from backend.app.services import progress
@@ -204,6 +208,32 @@ def _watch_hooks(user_id: str | None) -> svc.WatchHooks | None:
     return svc.WatchHooks(tool=tool, state=state, worry=worry)
 
 
+def _kakao_hooks(user_id: str | None) -> svc.KakaoHooks | None:
+    """로그인 사용자의 카카오톡으로 지금 상태를 보내는 함수 둘 (10-06 결정). 로그인하지 않았거나 DB가 없으면 None.
+    send는 재시도하지 않는다 (services/kakao.send_to_user의 규칙). 실패는 종류만 서비스에 돌려주고 토큰·본문은 로그에 남기지 않는다.
+    누르면 열리는 주소는 지켜보기 알림(services/watch._notify)과 같은 화면 첫 페이지다."""
+    if not user_id or not os.environ.get("DATABASE_URL"):
+        return None
+
+    def row(bl_no: str) -> dict | None:
+        key = cargo_service.cargo_key(bl_no)
+        if key is None:
+            return None
+        with ops.open_conn() as conn:
+            return cargo_service.get_row(conn, user_id, key)
+
+    def send(text: str) -> dict:
+        try:
+            with ops.open_conn() as conn:
+                kakao_service.send_to_user(conn, user_id, text, f"{_web()}/")
+        except (kakao_service.KakaoLinkError, KakaoError) as e:
+            log_failure("chat_kakao", e.kind)
+            return {"error": e.kind}
+        return {"sent": True}
+
+    return svc.KakaoHooks(row=row, send=send)
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> ChatResponse:
     """문장 하나를 받아 화물 조회·후속 질문·입항 선박 검색·안내 중 하나로 답한다."""
@@ -212,7 +242,7 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
         try:
             result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id), user_id,
                                 history=_history(body), run_tool=_follow_up_tool,
-                                watch=_watch_hooks(user_id))
+                                watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
         except svc.ChatError as e:
             raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
     return ChatResponse(**result.__dict__)
@@ -243,7 +273,7 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
                 with session_scope(body.session_id, user_id):
                     result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id),
                                         user_id, history=_history(body), run_tool=_follow_up_tool,
-                                        watch=_watch_hooks(user_id))
+                                        watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
             events.put(("result", ChatResponse(**result.__dict__).model_dump(mode="json")))
         except svc.ChatError:
             events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))
