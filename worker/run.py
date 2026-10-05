@@ -3,6 +3,7 @@
     python -m worker.run --once                      # 한 번만 돈다. 개발 중 확인용
     python -m worker.run --once --shipfinder-calls 0 # 해수부만 받고 ShipFinder는 안 부른다
     python -m worker.run                             # WORKER_SCHEDULE=on일 때만 주기 실행
+    WATCH_ENABLED=on python -m worker.run --once     # 수집 뒤에 지켜보는 화물도 다시 판정 (python -m worker.watch --once는 그것만)
 
 스케줄러는 기본 꺼져 있다 (09-23 결정). ShipFinder 스타터 키가 하루 50회라서 개발 중에 계속 돌면
 테스트할 몫이 남지 않는다. 켜면 WORKER_INTERVAL_HOURS마다 돈다.
@@ -21,6 +22,7 @@ from datetime import datetime, timezone
 from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 from backend.app.db import apply_migrations, connect, purge_done_cargo, purge_old_queries
+from backend.app.services.watch import run_watch
 from worker.collector import Budget, collect_port, collect_positions, purge_positions, select_targets
 
 DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
@@ -31,6 +33,12 @@ def _log(event: str, **fields) -> None:
     """한 줄 JSON 로그. docker compose logs worker로 본다."""
     print(json.dumps({"at": datetime.now(timezone.utc).isoformat(), "event": event, **fields},
                      ensure_ascii=False, default=str), flush=True)
+
+
+def watch_enabled() -> bool:
+    """WATCH_ENABLED가 켜졌나. 기본은 꺼짐이다 (G5, 10-05). 켜면 수집 뒤에 지켜보는 화물을 다시 판정한다.
+    다시 판정은 ShipFinder와 LLM을 쓰므로 개발 중에 저절로 돌지 않게 WORKER_SCHEDULE처럼 명시해야 켜진다."""
+    return os.environ.get("WATCH_ENABLED", "off").strip().lower() in ("on", "true", "1")
 
 
 def run_once(shipfinder_calls: int) -> dict:
@@ -62,6 +70,11 @@ def run_once(shipfinder_calls: int) -> dict:
     summary["positions_purged"] = purge_positions(conn)  # 입항 30일 지난 위치 기록 삭제 (migrations/002)
     summary["queries_purged"] = purge_old_queries(conn)  # 90일 지난 조회 기록 삭제 (migrations/008)
     summary["done_cargo_purged"] = purge_done_cargo(conn)  # 반출 3년 지난 끝난 화물과 그 메모 삭제 (migrations/015)
+    if watch_enabled():
+        try:
+            summary["watch"] = run_watch(conn)  # 지켜보는 화물 재판정 (services/watch.py)
+        except Exception as e:  # 재판정이 실패해도 위에서 끝낸 수집 결과는 그대로 남긴다
+            summary["watch"] = {"error": type(e).__name__}
     conn.close()
     return summary
 
