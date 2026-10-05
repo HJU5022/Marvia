@@ -31,6 +31,8 @@ from backend.app.clients.replay import replay_enabled
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import bl_parse, guard, llm, mcp_client, memory, progress, validate
+from backend.app.services.verdict import VERDICT_LABEL
+from backend.app.services.watch import MAX_WATCH
 from backend.app.services.rules import load_file
 
 KST = timezone(timedelta(hours=9))
@@ -89,7 +91,7 @@ USAGE_GUIDE = (
     "3. 이어서 질문: 조회한 화물에 대해 바로 물어보세요. 예: 지금 배가 어디쯤이야? / 통관은 어디까지 됐어?\n"
     "4. 입항 선박 찾기: 어디에서 오는 배인지 물어보세요. 예: 중국에서 오는 배 보여줘\n"
     "5. 서류 사진: 입력창 옆 \"서류 사진에서 입력\"으로 사진을 올리면 읽은 값을 확인한 뒤 입력창에 넣어요.\n"
-    "6. 지켜보기: 로그인하면 조회 결과 아래 \"이 화물 지켜보기\"로 판정이 바뀔 때 알려 드려요.\n"
+    "6. 지켜보기: 로그인하면 조회 결과 아래 \"이 화물 지켜보기\"를 누르거나 \"이거 지켜봐 줘\"라고 말하면 판정이 바뀔 때 알려 드려요.\n"
     "7. 일반 질문: B/L 번호를 못 찾겠을 때처럼 수입 실무가 궁금하면 그냥 물어보세요."
 )
 INJECTION_REPLY = "문장 속 지시는 따르지 않습니다. " + OTHER_REPLY
@@ -149,6 +151,10 @@ class ChatResult:
     # 한 문장에 B/L이 2~3개일 때 조회한 화물 한 줄씩 (말풍선 표용, 10-05 결정). 한 개짜리 답은 비어 있다.
     # agent·request는 첫 B/L의 것이고(오른쪽 칸과 다음 문장의 문맥), 줄마다 자기 agent·request를 들고 있어 표에서 고르면 화면이 바뀐다
     cargos: list[dict] = field(default_factory=list)
+    # 대화로 지켜보기 (10-06 결정). watch_offer: 코드가 쓴 "지켜볼까요?" 제안 {"bl_no","reason","logged_in"} (화면이 버튼으로 보여 준다).
+    # watch_set: 이번 문장으로 지켜보기를 켜거나 껐을 때 {"bl_no","on"} (화면이 토글을 새로 읽는다). 둘 다 없으면 None
+    watch_offer: dict | None = None
+    watch_set: dict | None = None
 
 
 # 후속 답 근거 카드의 조회 시각이 이번 문장 시작보다 이만큼 이전이면 지난 문장의 카드로 본다 (시계 차이 여유)
@@ -357,11 +363,12 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
 
 def handle(message: str, session_id: str, context: AgentRequest | None, run_agent,
            user_id: str | None = None, history: list[dict] | None = None,
-           run_tool: Callable[[str, dict], dict] | None = None) -> ChatResult:
+           run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None) -> ChatResult:
     """문장 하나를 처리한다. run_agent는 routers/agent.run_agent(사용자 묶음 포함)를 부르는 함수다.
     user_id: 로그인 사용자. 있으면 화물 조회 답에 지난 조회 한 줄을 붙인다 (docs/specs/memory.md). 없으면(EC-08) 그대로.
     history: 화면이 보낸 최근 대화 [{"role", "text"}]. 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다 (10-05).
-    run_tool: 읽기 전용 MCP 도구를 실제로 부르는 함수 (routers/agent._follow_up_tool). 없으면 에이전트는 MCP 도구 없이 돈다."""
+    run_tool: 읽기 전용 MCP 도구를 실제로 부르는 함수 (routers/agent._follow_up_tool). 없으면 에이전트는 MCP 도구 없이 돈다.
+    watch: 지켜보기를 읽고 쓰는 함수 묶음 (WatchHooks). 없으면 로그인하지 않았거나 DB가 없는 것과 같다: 아무것도 바꾸지 않고 안내만 한다."""
     message = (message or "").strip()
     if not message:
         raise ChatError("empty")
@@ -374,7 +381,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     masked, refs = mask_bls(message)
     # 기억 뽑기 재료는 가린 문장이다. B/L·MRN 원본은 넘기지 않는다 (CLAUDE.md, docs/specs/memory.md 쓰기 흐름 3)
     with memory.user_text(masked):
-        result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool)
+        result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch)
     if repair_notes:
         result = replace(result, reply="\n".join([result.reply, *repair_notes]))
     return result
@@ -382,7 +389,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
 
 def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict] | None = None,
-           run_tool: Callable[[str, dict], dict] | None = None) -> ChatResult:
+           run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None) -> ChatResult:
     """가린 문장을 처리한다 (handle의 뒷부분). 에이전트가 먼저 맡고, 안 되면 의도 분류 방식(_classic)으로 간다."""
     today = datetime.now(KST).date().isoformat()
 
@@ -395,7 +402,7 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     progress.step("understand")  # 화면에 실제 단계를 알린다 (docs/specs/chat-progress.md)
     if agent_enabled():
         try:
-            return _agent(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, today)
+            return _agent(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, today, watch)
         except llm.LLMError as e:
             # 에이전트가 첫 도구를 쓰기도 전에 실패했다 (키 없음, 도구를 붙이면 거절하는 모델·제공사 등).
             # 전 방식은 도구 없이 한 번 묻는 호출이라 이런 경우에도 된다 (10-02 실측: 도구를 붙이면 404인 제공사가 있었다)
@@ -530,6 +537,12 @@ AGENT_TOOLS = [
             "place_label": {"type": ["string", "null"], "description": "The same place as the user wrote it."},
             "days": {"type": ["integer", "null"], "description": "How many days ahead (1 to 14)."},
         }, "required": ["place"]}}},
+    {"type": "function", "function": {
+        "name": "set_watch",
+        "description": "Turn watching on or off for the cargo on screen (or the cargo whose B/L is in this message). Only when the user clearly asks to watch or stop watching, or says yes to a watch offer in the previous assistant turn. Code refuses it otherwise and writes the reply itself.",
+        "parameters": {"type": "object", "properties": {
+            "on": {"type": "boolean", "description": "true to start watching, false to stop."},
+        }, "required": ["on"]}}},
 ]
 
 
@@ -620,10 +633,143 @@ def _repeats_reply(text: str, replies: list[str]) -> bool:
     return any(len(n) >= 12 and n in flat for n in (" ".join(x.split()) for x in sentences))
 
 
+# ── 대화로 지켜보기 + 먼저 제안 (10-06 결정) ──
+# 지켜보기는 DB에 쓰는 동작이라 LLM 판단만으로 켜지 않는다. 코드가 두 조건 중 하나를 확인한다:
+#  (a) 가린 문장에 지켜보기 낱말이 있다  (b) 바로 앞 답이 우리의 "지켜볼까요?" 제안이었고 이번 문장이 짧은 긍정이다
+# 둘 다 아니면 도구는 오류를 돌려줘서 LLM이 혼자 켜거나 끌 수 없다. 켜기·끄기 뒤 문장은 코드가 쓴다 (LLM 문장은 안 쓴다).
+WATCH_WORDS = re.compile(r"지켜|감시|알림|알려\s*줘|알려\s*주|그만\s*(?:봐|보|지켜)")
+# 짧은 긍정 답. 문장 전체가 이 모양일 때만 (긍정 낱말 뒤에 다른 질문이 붙으면 긍정이 아니다)
+AFFIRM = re.compile(r"(?:응|네|넵|예|그래|좋아|좋아요|좋습니다|부탁|ㅇㅇ|ㅇㅋ|오케이|ok)"
+                    r"(?:[\s,.!~]*(?:응|네|요|그래|좋아요?|부탁(?:해|드려)?요?|해\s*줘|해줘|ㅇㅇ))*[\s.!~]*", re.IGNORECASE)
+# 제안 문장의 고정 끝말. 대화 기록에서 "앞서 제안했나"를 찾는 표식이기도 하다 (화면이 보낸 글이라 글자 그대로 찾는다)
+WATCH_ONLY_MAX = 20  # 이 길이 이하이고 지켜보기 낱말이 있으면 다른 질문이 없는 지켜보기 요청으로 본다 ("이거 지켜봐 줘", "그만 지켜봐도 돼")
+# 코드가 바로 처리하는 지켜보기 요청 모양. WATCH_WORDS보다 좁다: "알림 안 와", "언제 오는지 알려줘", "지켜봐야 해?"는 요청이 아니다
+WATCH_REQUEST = re.compile(r"지켜\s*(?:봐|보아)\s*(?:줘|주세요|줄래|주라|줘요)|감시\s*(?:해|좀)\s*(?:줘|주세요)|"
+                           r"알림\s*(?:걸어|켜|설정)|그만\s*(?:지켜|봐)|지켜보기\s*(?:꺼|끄|해제|취소|그만)")
+WATCH_STOP = re.compile(r"그만|끄|꺼|해제|취소")  # 지켜보기 끄기 낱말 (짧은 지켜보기 요청에서만 본다)
+WATCH_ASK = "이 화물을 지켜볼까요?"
+WATCH_LOGIN_TAIL = "로그인하면 지켜보다가 알려 드려요."
+# 켜기 성공 문장. 카카오톡은 연결해 둔 사람에게만 간다 (services/watch._notify: 연결 안 됨은 조용히 넘어간다). 화면 띠는 누구에게나 뜬다
+WATCH_ON_REPLY = ("이 화물을 지켜볼게요. 판정이 바뀌면 다음에 접속할 때 알려 드리고, "
+                  "카카오톡을 연결해 두셨다면 카카오톡으로도 보내 드려요.")
+WATCH_OFF_REPLY = "이 화물은 더 이상 지켜보지 않을게요."
+WATCH_NEED_LOGIN = "로그인하면 이 화물을 지켜보다가 판정이 바뀔 때 알려 드려요."
+WATCH_HOW = "지켜보기를 켜거나 끄려면 \"이 화물 지켜봐 줘\", \"그만 지켜봐도 돼\"처럼 말씀해 주세요."
+WATCH_NO_CARGO = "지켜볼 화물이 없어요. 먼저 B/L 번호로 화물을 조회해 주세요."
+WATCH_ONE_AT_A_TIME = "한 번에 한 화물만 지켜볼 수 있어요. 하나씩 말씀해 주세요."
+# WatchError.kind(services/watch.py) 와 저장소 실패(db)를 사용자 문장으로. 켜기가 안 된 이유를 지어내지 않고 종류별로 쓴다
+WATCH_FAIL_REPLY = {
+    "not_saved": "이 화물은 아직 저장되는 중이에요. 잠시 뒤에 다시 말씀해 주세요.",
+    "done": "반출이 끝난 화물은 지켜볼 수 없어요.",
+    "limit": f"지켜보기는 최대 {MAX_WATCH}건까지예요. 다른 화물을 먼저 꺼 주세요.",
+    "no_key": "화물 정보를 안전하게 열 수 없어 지금은 지켜볼 수 없어요.",
+    "db": "지켜보기 저장소에 연결하지 못했어요. 잠시 뒤 다시 말씀해 주세요.",
+}
+
+
+@dataclass
+class WatchHooks:
+    """로그인한 사용자의 지켜보기를 실제로 읽고 쓰는 함수 셋. 라우터가 DB 연결을 열어 만들어 넘긴다 (routers/chat._watch_hooks).
+    서비스가 DB를 몰라야 가짜 함수로 시험할 수 있다 (run_tool과 같은 방식).
+    tool(bl_no, on): {"on": 바뀐 뒤 상태} 또는 {"error": WatchError.kind 또는 "db"}. state(bl_no): {"saved", "watch"}.
+    worry(bl_no): 그 화물에 사용자가 적어 둔 걱정 메모 글 (없으면 None)."""
+
+    tool: Callable[[str, bool], dict]
+    state: Callable[[str], dict]
+    worry: Callable[[str], str | None]
+
+
+def _offered(text: str) -> bool:
+    """대화 기록의 글에 우리의 지켜보기 제안이 들어 있나."""
+    return WATCH_ASK in text
+
+
+def _josa_ira(text: str) -> str:
+    """"…걱정" + 이라고/라고. 마지막 글자가 받침 있는 한글이면 이라고."""
+    last = text[-1:]
+    return "이라고" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "라고"
+
+
+def watch_offer_text(response: AgentResponse, logged_in: bool, worry: str | None) -> str | None:
+    """"이 화물을 지켜볼까요?" 제안 문장. 이유는 코드가 가진 사실뿐이다: 판정 이름, 여유 일수, 사용자의 걱정 메모.
+    판정이 없으면(되묻기·실패) 말할 이유가 없어 None. 없는 이유를 지어내지 않는다 (10-06 결정)."""
+    if response.verdict not in VERDICT_LABEL:
+        return None
+    label = VERDICT_LABEL[response.verdict]
+    margin = response.days_margin
+    if margin is None:
+        reason = f"'{label}' 판정이에요."
+    elif margin >= 0:
+        reason = f"판매 예정일까지 여유가 {margin}일이고 '{label}' 판정이에요."
+    else:
+        reason = f"판매 예정일보다 {abs(margin)}일 늦게 도착할 예정이고 '{label}' 판정이에요."
+    if worry:
+        worry = " ".join(worry.replace("'", "").split())
+        reason += f" 지난번에 '{worry}'{_josa_ira(worry)} 하셨죠."
+    return f"{reason} {WATCH_ASK}" + ("" if logged_in else f" {WATCH_LOGIN_TAIL}")
+
+
 def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
-           today: str) -> ChatResult:
-    """에이전트 한 턴. LLM이 고른 도구를 실행하고, 끝나면 화면에 보낼 결과 하나로 묶는다.
+           today: str, watch: WatchHooks | None = None) -> ChatResult:
+    """에이전트 한 턴 + 지켜보기 마무리. 본 처리는 _agent_turn이 하고, 여기서 코드가 쓴 지켜보기 문장·제안을 붙인다 (10-06 결정).
+    본 처리가 문장 끝 여러 곳에서 돌아 나가서, 한 곳에서 붙이려고 감쌌다."""
+    signals: dict = {}
+    result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals)
+    done_watch = signals.get("watch") or {}
+    if done_watch.get("msg") and done_watch["msg"] not in result.reply:
+        result = replace(result, reply=f"{result.reply}\n\n{done_watch['msg']}")  # 화물 답과 같이 말한 경우: 답 뒤에 코드 문장
+    if done_watch.get("set"):
+        return replace(result, watch_set=done_watch["set"])
+    if done_watch.get("msg"):  # 못 켰다. 이번 문장에서는 제안하지 않는다
+        return result
+    return _with_offer(result, signals, context, user_id, history, watch)
+
+
+def _with_offer(result: ChatResult, signals: dict, context: AgentRequest | None, user_id: str | None,
+                history: list[dict], watch: WatchHooks | None) -> ChatResult:
+    """화물 답 뒤에 "지켜볼까요?" 제안을 붙인다. 조건 (10-06 결정):
+    - 화물 하나의 답이고 판정이 있다. 표 답(B/L 여러 개)·반출 끝난 화물·판정 없는 답은 말할 이유가 없다
+    - 이미 지켜보는 화물이 아니다 (로그인 사용자만 확인한다)
+    - 직전 답이 제안이었으면 또 하지 않는다. 같은 화물에 앞서 제안했으면 사용자가 걱정을 비친 문장(watch_cue)일 때만 다시 한다
+    제안 문장은 코드가 쓴다 (watch_offer_text). LLM은 걱정 신호(watch_cue)만 준다."""
+    if result.kind != "cargo" or result.cargos or result.agent is None or result.request is None:
+        return result
+    from backend.app.routers.agent import is_released  # noqa: PLC0415 - 맨 위에서 부르면 라우터와 서비스가 서로 불러오는 순환이 된다
+    if is_released(result.agent):
+        return result
+    bl = result.request.bl_no
+    recent = history[-HISTORY_TURNS:]
+    texts = [(t.get("text") or "") for t in recent if t.get("role") == "assistant"]
+    last_was_offer = bool(recent) and recent[-1].get("role") == "assistant" and _offered(recent[-1].get("text") or "")
+    same_cargo = context is not None and context.bl_no == bl
+    if last_was_offer or (same_cargo and any(_offered(t) for t in texts) and not signals.get("watch_cue")):
+        return result
+    logged_in = user_id is not None
+    worry = None
+    if logged_in:
+        if watch is None:  # 로그인했는데 저장소가 없다. 지금 상태를 몰라 제안하지 않는다
+            return result
+        try:
+            if watch.state(bl).get("watch"):
+                return result
+            worry = watch.worry(bl)
+        except Exception as e:  # noqa: BLE001 - 제안은 부가 기능이다. 실패해도 화물 답은 그대로 나간다
+            log_failure("watch_offer", type(e).__name__)
+            return result
+    offer = watch_offer_text(result.agent, logged_in, worry)
+    if offer is None:
+        return result
+    return replace(result, reply=f"{result.reply}\n\n{offer}",
+                   watch_offer={"bl_no": bl, "reason": offer, "logged_in": logged_in})
+
+
+def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
+                run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
+                today: str, watch: WatchHooks | None, signals: dict) -> ChatResult:
+    """에이전트 한 턴 (_agent가 감싼다). signals에 watch(지켜보기 도구 결과)와 watch_cue(LLM의 걱정 신호)를 적어 돌려준다.
+
+    에이전트 한 턴. LLM이 고른 도구를 실행하고, 끝나면 화면에 보낼 결과 하나로 묶는다.
 
     답 조립 (틀린 문장을 내보내지 않는 쪽으로):
     - 화물 조회·화물 질문·선박 검색이 돌았으면 그 답을 그대로 쓴다. 판정 흐름과 코드가 이미 검증한 문장이다.
@@ -643,6 +789,7 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     # 이번 문장의 B/L로 착각해 엉뚱한 화물을 조회한다 (10-05 검토)
     refs = dict(refs)
     turns = _masked_history(history, refs)
+    offered_prev = bool(turns) and turns[-1]["role"] == "assistant" and _offered(turns[-1]["text"])  # 바로 앞 답이 우리 제안이었나
     # 답 검사에서 "사용자가 쓴 글"로 칠 것: 이번 문장과 앞에서 사용자가 쓴 줄. 사용자가 앞 턴에 말한 날짜를 되짚는 답이
     # V7에 걸리지 않게 한다. assistant 줄은 넣지 않는다 (V10이 우리 답의 낱말을 사용자 글로 오해하지 않게)
     user_text = " ".join([masked, *(t["text"] for t in turns if t["role"] == "user")])
@@ -741,11 +888,63 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         web_state["reply"] = {"results": kept}
         return web_state["reply"]
 
+    watch_out: dict = signals.setdefault("watch", {})  # {"msg": 코드가 쓴 문장, "set": {"bl_no","on"}, "refused": 거절됨}
+
+    def run_watch(args: dict) -> dict:
+        """지켜보기 켜기·끄기 도구 (10-06 결정). DB에 쓰는 동작이라 LLM 판단만으로는 하지 않는다:
+        (a) 가린 문장에 지켜보기 낱말이 있거나 (b) 바로 앞 답이 우리 제안이고 이번 문장이 짧은 긍정일 때만 한다.
+        (b)는 "응"이 켜기라는 뜻이라 LLM이 on=false를 보내도 켠다. 문장은 코드가 쓰고(watch_out["msg"]) LLM 글은 안 쓴다.
+        대상은 이번 문장의 B/L 하나, 없으면 화면의 화물이다."""
+        on = args.get("on")
+        explicit = bool(WATCH_WORDS.search(masked))
+        yes = offered_prev and bool(AFFIRM.fullmatch(masked.strip()))
+        if not isinstance(on, bool) or not (explicit or yes):
+            watch_out["refused"] = True
+            return _tool_error("not_requested", "The user did not ask to watch or stop watching. Do not call set_watch on your own.")
+        on = on if explicit else True
+        distinct = list(dict.fromkeys(message_bls))
+        if len(distinct) >= 2:
+            watch_out["msg"] = WATCH_ONE_AT_A_TIME
+            return _tool_error("one_at_a_time", "Only one cargo can be watched per message.")
+        if distinct and not any(r["name"] == "check_cargo" for r in ran) and (context is None or distinct[0] != context.bl_no):
+            # 이번 문장에서 처음 말한 화물은 조회가 끝나야 저장된다 (services/watch.set_watch not_saved). 조회부터 하게 한다
+            return _tool_error("lookup_first", "Call check_cargo for this B/L first, then call set_watch.")
+        bl = distinct[0] if distinct else (context.bl_no if context else None)
+        if not bl:
+            watch_out["msg"] = WATCH_NO_CARGO
+            return _tool_error("no_cargo", WATCH_NO_CARGO)
+        if user_id is None:
+            watch_out["msg"] = WATCH_NEED_LOGIN  # 아무것도 바꾸지 않는다
+            return _tool_error("login_required", "Not logged in. Nothing was changed.")
+        if watch is None:
+            watch_out["msg"] = WATCH_FAIL_REPLY["db"]
+            return _tool_error("unavailable", "The watch store is not available.")
+        try:
+            result = watch.tool(bl, on)
+        except Exception as e:  # noqa: BLE001 - 저장소 문제가 요청 전체를 죽이지 않게
+            log_failure("chat_watch", type(e).__name__)
+            result = {"error": "db"}
+        if "error" in result:
+            watch_out["msg"] = WATCH_FAIL_REPLY.get(result["error"], WATCH_FAIL_REPLY["db"])
+            return _tool_error(str(result["error"]), "Could not change watching.")
+        watch_out.update(msg=WATCH_ON_REPLY if result.get("on") else WATCH_OFF_REPLY,
+                         set={"bl_no": bl, "on": bool(result.get("on"))})
+        return {"ok": True, "watching": bool(result.get("on"))}
+
+    # 지켜보기만 바라는 짧은 말("응", "응 지켜봐 줘", "그만 지켜봐도 돼")은 LLM을 부르지 않고 코드가 바로 처리한다 (10-06 실측:
+    # "응 지켜봐 줘"에 LLM이 화물 질문(ask_cargo)까지 불러 엉뚱한 화물 답이 지켜보기 문장 앞에 붙었다).
+    # 조건: 새 B/L이 없고 화면에 화물이 있고, (앞 답이 제안이고 짧은 긍정) 또는 (WATCH_REQUEST 모양의 WATCH_ONLY_MAX자 이하 문장)
+    short = masked.strip()
+    if not message_bls and context is not None and (
+            (offered_prev and AFFIRM.fullmatch(short)) or (WATCH_REQUEST.search(short) and len(short) <= WATCH_ONLY_MAX)):
+        run_watch({"on": not WATCH_STOP.search(short)})
+        return ChatResult(kind="message", reply=watch_out.get("msg") or WATCH_HOW, watch_set=watch_out.get("set"))
+
     def run(name: str, args: dict) -> dict:
         """LLM이 고른 도구 하나를 실행한다. 같은 호출은 한 번만, 화물 도구는 한 문장에 한 번만, 예외는 도구 실패로 돌려준다.
         MCP 도구가 예외를 던지지 않는 것과 같은 원칙이다 (SDD 3.4): 도구 하나가 죽어도 요청 전체가 500이 되면 안 된다."""
         key = f"{name}:{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
-        if key in seen:
+        if key in seen and name != "set_watch":  # 지켜보기는 조회가 끝나기를 기다렸다 다시 부를 수 있어 앞 결과를 쓰지 않는다 (같은 일은 두 번 해도 같다)
             return seen[key]
         if name in ("check_cargo", "ask_cargo") and sum(r["name"] in ("check_cargo", "ask_cargo") for r in ran) >= CARGO_CALLS_PER_TURN:
             # 조회한 화물에 바로 이어 묻는 경우도 여기서 막힌다: ask_cargo는 화면의 지난 화물을 보므로 방금 조회한 화물과 다를 수 있다
@@ -822,6 +1021,8 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
             shown = [{k: v[k] for k in ("ship_name", "call_sign", "nationality", "previous_port", "expected_arrival", "is_cargo")}
                      for v in result.vessels[:ARRIVALS_SHOWN]]
             return {"reply": result.reply, "total": len(result.vessels), "vessels": shown}
+        if name == "set_watch":
+            return run_watch(args)
         if name == "web_search" and web_search_enabled():
             return run_web(args)
         if name in mcp_names:
@@ -995,7 +1196,8 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         fix_left -= 1
         log_failure("chat_agent_reply", ",".join(v.rule for v in violations))
         feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
-    calls = ran
+    calls = [c for c in ran if c["name"] != "set_watch"]  # 지켜보기 도구는 조회 도구가 아니다. 결과 문장은 watch_out에 있다
+    signals["watch_cue"] = bool(out is not None and out.watch_cue)
 
     # 문장에 지금 화물과 다른 B/L이 있는데 에이전트가 조회하지 않았으면 코드가 조회한다 (전 방식의 10-01 규칙과 같다:
     # B/L을 넣었는데 다른 화물 답이 나오면 안 된다)
@@ -1015,6 +1217,10 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     if out is not None and out.answer_kind == "clarify" and not done:
         # 식별자가 B/L인지 배 이름인지 모른다 (배 이름 조회도 후보가 없었거나 부르지 않았다). LLM 문장 대신 코드가 되묻는다
         return ChatResult(kind="message", reply=clarify_reply(masked))
+
+    if not done and not calls and (watch_out.get("msg") or watch_out.get("refused")):
+        # 지켜보기만 한 문장이다. 켠 결과, 못 켠 이유, 또는 낱말이 없어 거절한 안내를 코드 문장으로 낸다
+        return ChatResult(kind="message", reply=watch_out.get("msg") or WATCH_HOW, watch_set=watch_out.get("set"))
 
     looked_up = [c for c in calls if c["name"] in mcp_names and "error" not in (c["result"] or {})]
     lookups = " ".join(str(c["result"]) for c in looked_up)

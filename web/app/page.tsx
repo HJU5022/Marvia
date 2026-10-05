@@ -12,7 +12,6 @@ import {VesselList} from '@/components/VesselList';
 import {useApp} from '@/components/AppProvider';
 import {VerdictCard} from '@/components/VerdictCard';
 import {WatchToggle} from '@/components/WatchToggle';
-import {WatchChanges} from '@/components/WatchChanges';
 import {VesselCard} from '@/components/VesselCard';
 import {EtaCompare} from '@/components/EtaCompare';
 import {MapPanel} from '@/components/MapPanel';
@@ -41,8 +40,7 @@ export default function CargoPage(){
    <p>B/L 조회부터 입항 선박 검색까지. 질문 하나로, 근거까지 명확하게.</p>
    <ChatBar idle={idle}/>
   </section>
-  {/* 지켜보는 화물의 판정이 지난 접속 뒤 바뀌었으면 알린다. 로그인한 실제 모드에서만 그리고, 없으면 아무것도 보이지 않는다 (G5, 10-05 결정) */}
-  <WatchChanges/>
+  {/* 지켜보던 화물의 판정이 바뀐 알림은 이제 대화의 첫 말풍선으로 온다 (AppProvider, 10-06 결정) */}
   {/* 데모 첫 조회처럼 대화 없이 실패한 경우만 여기 알린다. 문장 질문의 실패는 대화 칸에 이미 있다 */}
   {error&&!thread.length&&!showing&&<p role="alert" className="request-error page-error">{error}</p>}
   {showing==='vessels'&&vessels&&<VesselList data={vessels}/>}

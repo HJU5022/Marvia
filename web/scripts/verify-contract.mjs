@@ -69,6 +69,14 @@ const backendCargo=[...chatSrc.match(/class ChatCargo\(BaseModel\):[\s\S]*?\n\n\
 const webCargo=[...fs.readFileSync(path.join(root,'lib/types.ts'),'utf8').match(/export interface ChatCargo \{([\s\S]*?)\n\}/)[1].matchAll(/\b([a-z_]+)\??:/g)].map(m=>m[1]);
 assert.deepEqual([...new Set(webCargo)].sort(),backendCargo.slice().sort(),'ChatCargo fields differ between web and backend');
 assert(/cargos: list\[ChatCargo\] = \[\]/.test(chatSrc),'ChatResponse.cargos must default to an empty list');
+// 대화로 지켜보기 (10-06): 서버 ChatResponse의 watch_offer·watch_set 모양과 기본값(null)이 화면 타입과 같아야 한다
+assert(/watch_offer: [A-Za-z]+ \| None = None/.test(chatSrc),'ChatResponse.watch_offer must default to None');
+assert(/watch_set: [A-Za-z]+ \| None = None/.test(chatSrc),'ChatResponse.watch_set must default to None');
+const typesSrc=fs.readFileSync(path.join(root,'lib/types.ts'),'utf8');
+const backendFields=(cls)=>{const m=chatSrc.match(new RegExp(`class ${cls}\\(BaseModel\\):([\\s\\S]*?)(?:\\n\\n\\n|$)`));assert(m,`${cls} missing in backend chat.py`);return [...m[1].matchAll(/^    ([a-z_]+): /gm)].map(x=>x[1]).sort();};
+const webFields=(name)=>[...typesSrc.match(new RegExp(`export interface ${name} \\{([\\s\\S]*?)\\}`))[1].matchAll(/\b([a-z_]+)\??:/g)].map(x=>x[1]).sort();
+assert.deepEqual(webFields('WatchOffer'),backendFields('WatchOffer'),'WatchOffer fields differ between web and backend');
+assert.deepEqual(webFields('WatchSet'),backendFields('WatchSet'),'WatchSet fields differ between web and backend');
 const fmtFile=path.join(root,'lib/format.ts');
 const fm=new Module(fmtFile);fm.filename=fmtFile;fm.paths=Module._nodeModulePaths(path.dirname(fmtFile));fm._compile(ts.transpileModule(fs.readFileSync(fmtFile,'utf8'),tsOptions).outputText,fmtFile);
 const {marginText}=fm.exports;

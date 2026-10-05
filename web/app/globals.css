@@ -648,20 +648,17 @@ th{background:#f7faff;color:#506c85}
 .document-field.flagged select{border-color:var(--warning);background:var(--warning-bg)}
 .document-subhead{margin:16px 0 4px;font-size:12px}
 
-/* 화물 지켜보기 (WatchToggle, WatchChanges, G5 10-05 결정). 새 값 없이 기존 토큰과 .button/.subtle-badge를 쓴다 */
+/* 화물 지켜보기 (WatchToggle·WatchOfferAction, G5 10-05·10-06 결정). 새 값 없이 기존 토큰과 .button/.subtle-badge를 쓴다 */
 .watch-toggle{margin:-8px 0 24px;padding:16px 20px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
 .watch-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .watch-row .muted{margin:0;font-size:12px}
 .watch-note{margin:10px 0 0;font-size:12px}
 .watch-toggle .account-message{margin-top:10px}
 .watch-toggle .request-error{margin:10px 0 0}
-.watch-toggle .account-message:empty,.watch-toggle .request-error:empty,.watch-changes .request-error:empty{margin:0;padding:0;height:0;overflow:hidden}
+.watch-toggle .account-message:empty,.watch-toggle .request-error:empty,.watch-offer .request-error:empty{margin:0;padding:0;height:0;overflow:hidden}
+.watch-offer{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.watch-offer .request-error{margin:0;flex-basis:100%}
 .watch-toggle .account-message:focus-visible{outline-offset:2px}
-.watch-changes{margin-top:20px;padding:18px 22px;border:1px solid var(--border);border-radius:var(--radius);background:var(--warning-bg)}
-.watch-changes h2{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px;color:var(--warning)}
-.watch-changes ul{margin:0 0 14px;padding-left:18px;font-size:13px}
-.watch-changes .to-act{color:var(--danger)}.watch-changes .to-watch{color:var(--warning)}.watch-changes .to-fine{color:var(--success)}
-.watch-changes .request-error{margin:12px 0 0}
 /* 채팅 말풍선 아래 작은 지도 (ChatMiniMap, 10-05). 높이 180px, 말풍선 폭에 맞춘다 */
 .chat-body{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
 .chat-mini-map{margin:0;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;max-width:420px}

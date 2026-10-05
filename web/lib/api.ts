@@ -280,11 +280,23 @@ export async function sendChat(message: string, context: AgentRequest | null, hi
 const HISTORY_MAX_TURNS = 6;
 const HISTORY_MAX_CHARS = 500;
 
+/** 긴 줄은 앞과 끝을 함께 남긴다 (10-06). 지켜보기 제안("이 화물을 지켜볼까요?")은 답 끝에 붙는데 앞에서만 자르면 잘려 나가서,
+ * 다음 턴의 "응"을 서버가 제안에 대한 대답으로 알아보지 못한다. 띄어쓰기 자리에서만 잘라 B/L 번호가 반쯤 남지 않게 한다
+ * (반쪽 번호는 B/L 모양이 아니라 서버가 가리지 못한다) */
+function clip(text: string): string {
+  if (text.length <= HISTORY_MAX_CHARS) return text;
+  const half = Math.floor((HISTORY_MAX_CHARS - 3) / 2);
+  const head = text.slice(0, half), tail = text.slice(-half);
+  const cutHead = head.lastIndexOf(' ') > 0 ? head.slice(0, head.lastIndexOf(' ')) : '';
+  const cutTail = tail.indexOf(' ') >= 0 ? tail.slice(tail.indexOf(' ') + 1) : '';
+  return `${cutHead} … ${cutTail}`;
+}
+
 /** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다.
  * history는 오래된 것부터 두고, role과 text만 남긴다(화면용 kind는 보내지 않는다). B/L 번호는 서버가 가린다 */
 function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = []): string {
   const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
-  const turns = history.slice(-HISTORY_MAX_TURNS).map(t => ({role: t.role, text: t.text.slice(0, HISTORY_MAX_CHARS)}));
+  const turns = history.slice(-HISTORY_MAX_TURNS).map(t => ({role: t.role, text: clip(t.text)}));
   return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns});
 }
 
@@ -454,7 +466,8 @@ export async function unlinkKakao(): Promise<{linked: boolean}> {
 /* ---------- 화물 지켜보기 (G5 작업 리스트, 10-05 결정, 백엔드 routers의 watch) ---------- */
 
 /** B/L은 URL에 넣지 않는다(서버·프록시 로그에 남는다). 본문 JSON으로만 보낸다. 조회 때와 같게 공백 제거·대문자로 맞춘다 */
-const watchBody = (blNo: string) => ({bl_no: blNo.replace(/\s/g, '').toUpperCase()});
+export const watchKey = (blNo: string) => blNo.replace(/\s/g, '').toUpperCase();
+const watchBody = (blNo: string) => ({bl_no: watchKey(blNo)});
 
 /** POST /api/cargo/watch/state. 이 화물이 저장됐는지, 지켜보는 중인지. 데모 모드에는 계정이 없어 지켜볼 수 없다. */
 export async function getWatchState(blNo: string): Promise<WatchState> {

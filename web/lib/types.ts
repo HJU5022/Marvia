@@ -164,7 +164,15 @@ export interface ChatResponse {
   /** 한 문장에 B/L이 2~3개일 때만 값이 있다(조회한 화물 한 줄씩). 한 개짜리 답과 옛 응답·데모에는 없거나 빈 목록이다 (ChatCargoTable).
    * agent·request는 첫 줄의 것과 같은 모양이라 줄을 누르면 단일 화물 답처럼 오른쪽 칸을 바꾼다 */
   cargos?: ChatCargo[];
+  /** 에이전트가 이 화물을 지켜보자고 제안했을 때만 값이 있다. reason은 코드가 쓴 문장이고 reply 안에도 이미 들어 있다 (10-06 결정). 옛 응답·데모에는 없거나 null */
+  watch_offer?: WatchOffer | null;
+  /** 대화로 지켜보기를 방금 켰거나 껐을 때만 값이 있다 ("응", "그만 지켜봐"). 없거나 null이면 바뀐 게 없다 (10-06 결정) */
+  watch_set?: WatchSet | null;
 }
+/** ChatResponse.watch_offer. logged_in은 서버가 본 로그인 여부 */
+export interface WatchOffer { bl_no: string; reason: string; logged_in: boolean }
+/** ChatResponse.watch_set */
+export interface WatchSet { bl_no: string; on: boolean }
 /** ChatResponse.cargos의 한 줄 (백엔드 routers/chat.py ChatCargo, 10-05). bl_no는 사용자가 입력한 값 그대로 */
 export interface ChatCargo {
   bl_no: string; status: string; verdict: 'fine' | 'watch' | 'act' | null; ship_name: string | null;
@@ -199,4 +207,6 @@ export type KakaoLinkResult = 'connected' | 'expired' | 'mismatch' | 'no_consent
 /** POST /api/cargo/watch/state. saved: 이 화물의 기록이 서버에 저장됐나(조회 직후 비동기로 저장돼 잠깐 false일 수 있다), watch: 지켜보는 중인가 */
 export interface WatchState { saved: boolean; watch: boolean }
 /** GET /api/watch/changes의 한 줄. 지난 접속 뒤 판정이 바뀐 지켜보는 화물. B/L은 마스킹된 값만 온다 */
-export interface WatchChange { bl_masked: string; label: string | null; from_verdict: Verdict; to_verdict: Verdict; changed_at: string }
+export interface WatchChange { bl_masked: string; label: string | null; from_verdict: Verdict; to_verdict: Verdict; changed_at: string;
+  /** 서버가 판정이 바뀐 이유를 문장으로 보내 주면 붙인다(10-06). 없으면 쓰지 않는다 */
+  reason?: string | null }

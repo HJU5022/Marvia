@@ -141,7 +141,8 @@ def test_changes_then_seen(db, me):
     r = _call("get", "/api/watch/changes", None, me)
     assert r.status_code == 200
     assert r.json() == {"changes": [{"bl_masked": "MOC*******1005", "label": "고추", "from_verdict": "watch",
-                                     "to_verdict": "act", "changed_at": "2026-10-05T00:00:00+00:00"}]}
+                                     "to_verdict": "act", "changed_at": "2026-10-05T00:00:00+00:00",
+                                     "reason": None}]}
     assert BL not in r.text  # 가린 번호만 나간다
     assert _call("post", "/api/watch/changes/seen", None, me).json() == {"cleared": 1}
     assert _call("get", "/api/watch/changes", None, me).json() == {"changes": []}

@@ -1101,11 +1101,12 @@ CHAT_AGENT_KINDS = ("tool", "skill", "web", "general", "not_in_skills", "unrelat
 CHAT_AGENT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["reply", "answer_kind", "skill_quote"],
+    "required": ["reply", "answer_kind", "skill_quote", "watch_cue"],
     "properties": {
         "reply": {"type": "string"},
         "answer_kind": {"type": "string", "enum": list(CHAT_AGENT_KINDS)},
         "skill_quote": {"type": "string"},
+        "watch_cue": {"type": "boolean"},
     },
 }
 
@@ -1115,6 +1116,9 @@ class ChatAgentOutput(BaseModel):
     # 기본값은 도구를 쓴 답(두 칸을 보지 않음)과 예전 녹화 답이 그대로 읽히게 둔 것이다. 실제 호출은 strict 스키마라 늘 채워 온다
     answer_kind: Literal["tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting"] = "unrelated"
     skill_quote: str = ""  # answer_kind가 skill이면 Skill 문서, web이면 웹 검색 결과 원문 그대로의 한 조각
+    # 사용자 말에 걱정·기한 압박이 묻어 있나 (10-06 결정 "먼저 제안"). 신호일 뿐이다: 제안할지는 services/chat.py가 정한다.
+    # 기본값 False는 예전 녹화 답이 그대로 읽히게 둔 것이다 (실제 호출은 strict 스키마라 늘 채워 온다)
+    watch_cue: bool = False
 
 
 def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, history: list[dict],

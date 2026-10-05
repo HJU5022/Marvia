@@ -72,8 +72,8 @@ class FakeConn:
         if q.startswith("SELECT bl_masked, label, changed_from, last_verdict, changed_at"):
             found = [r for r in self.rows if r["user_id"] == params[0] and not r["change_seen"]]
             found.sort(key=lambda r: r["changed_at"], reverse=True)
-            return _Cur([(r["bl_masked"], r["label"], r["changed_from"], r["last_verdict"], r["changed_at"])
-                         for r in found])
+            return _Cur([(r["bl_masked"], r["label"], r["changed_from"], r["last_verdict"], r["changed_at"],
+                          r.get("last_days_margin"), r.get("last_stage")) for r in found])
         if q.startswith("UPDATE user_cargo SET change_seen = true"):
             found = [r for r in self.rows if r["user_id"] == params[0] and not r["change_seen"]]
             for r in found:
@@ -212,10 +212,19 @@ def test_pending_changes_and_mark_seen():
     changes = svc.pending_changes(conn, USER)
     assert [c["from_verdict"] for c in changes] == ["act", "watch"]  # 최근 것부터
     assert changes[1] == {"bl_masked": "MOC*******1005", "label": "고추", "from_verdict": "watch",
-                          "to_verdict": "act", "changed_at": "2026-10-04T00:00:00+00:00"}
+                          "to_verdict": "act", "changed_at": "2026-10-04T00:00:00+00:00", "reason": None}  # 저장된 값이 없으면 이유도 없다
     assert svc.mark_seen(conn, USER) == 2
     assert svc.pending_changes(conn, USER) == [] and svc.mark_seen(conn, USER) == 0
     assert conn.row("MOCKBL20261004", "other")["change_seen"] is False  # 남의 줄은 그대로
+
+
+def test_pending_changes_reason_from_stored_margin_and_stage():
+    """이유는 화물 표에 저장된 마지막 여유 일수·통관 단계만으로 코드가 쓴다. 한쪽만 있어도 있는 것만 쓴다 (10-06)."""
+    conn = FakeConn()
+    conn.add(bl="MOCKBL20261001", change_seen=False, changed_at=NOW, last_days_margin=-2, last_stage="수입신고")
+    conn.add(bl="MOCKBL20261002", change_seen=False, changed_at=datetime(2026, 10, 4, tzinfo=timezone.utc), last_days_margin=3)
+    reasons = [c["reason"] for c in svc.pending_changes(conn, USER)]
+    assert reasons == ["마지막 확인 기준 판매 예정일보다 2일 늦음, 통관 수입신고", "마지막 확인 기준 여유 3일"]
 
 
 # ── run_watch ──

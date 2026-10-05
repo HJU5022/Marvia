@@ -108,14 +108,22 @@ def watch_state(conn, user_id: str, bl_no: str) -> dict:
 
 def pending_changes(conn, user_id: str) -> list[dict]:
     """사용자가 아직 못 본 판정 변화. 최근 것부터. 가린 번호만 담는다.
-    to_verdict는 화물 표의 마지막 판정(last_verdict)이다."""
+    to_verdict는 화물 표의 마지막 판정(last_verdict)이다.
+    reason: 마지막 확인 때의 여유 일수·통관 단계를 코드가 한 줄로 쓴 것 (10-06, 접속하면 먼저 말 걸기용). 판정이 왜 바뀌었는지의 원인이
+    아니라 그 시점의 상태다: 화물 표에는 원인을 따로 저장하지 않는다. 둘 다 없으면 None."""
     rows = conn.execute(
-        """SELECT bl_masked, label, changed_from, last_verdict, changed_at FROM user_cargo
+        """SELECT bl_masked, label, changed_from, last_verdict, changed_at, last_days_margin, last_stage FROM user_cargo
            WHERE user_id = %s AND change_seen = false ORDER BY changed_at DESC NULLS LAST""",
         [user_id],
     ).fetchall()
     return [{"bl_masked": r[0], "label": r[1], "from_verdict": r[2], "to_verdict": r[3],
-             "changed_at": r[4].isoformat() if r[4] else None} for r in rows]
+             "changed_at": r[4].isoformat() if r[4] else None, "reason": _change_reason(r[5], r[6])} for r in rows]
+
+
+def _change_reason(margin: int | None, stage: str | None) -> str | None:
+    """마지막 확인 기준 여유 일수·통관 단계를 사람 말 한 줄로. 있는 것만 쓴다 (없는 이유를 지어내지 않는다)."""
+    parts = [p for p in (cargo.margin_text(margin), f"통관 {cargo.clean_stage(stage)}" if stage else None) if p]
+    return f"마지막 확인 기준 {', '.join(parts)}" if parts else None
 
 
 def mark_seen(conn, user_id: str) -> int:

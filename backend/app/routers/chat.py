@@ -5,6 +5,7 @@
 POST /api/chat/stream은 같은 일을 하면서 실제 처리 단계를 SSE로 흘려 준다 (docs/specs/chat-progress.md).
 채팅 에이전트(10-05)가 읽기 전용 MCP 도구를 부를 때는 후속 질문과 같은 실행 함수(routers/agent._follow_up_tool)를 쓴다:
 읽기 전용 목록 확인, /mcp 경유, 실패 로그, AIS 목적지 원문 빼기가 그대로 걸린다.
+대화로 지켜보기(10-06): 로그인 사용자에게는 지켜보기를 읽고 쓰는 함수(_watch_hooks)를 만들어 넘긴다. 서비스는 DB를 모르고, 여기서 연결을 연다.
 두 창구 모두 로그인 사용자를 services.chat.handle에 넘긴다. 화물 비서 기억(docs/specs/memory.md)의 지난 조회 한 줄과
 기억 쓰기가 두 창구에서 똑같이 돈다. 기억 쓰기는 run_agent가 뒤 작업으로 돌려 응답·스트림을 늦추지 않는다.
 """
@@ -12,8 +13,10 @@ from __future__ import annotations
 
 import contextvars
 import json
+import os
 import queue
 import threading
+import time
 from collections.abc import Iterator
 from datetime import date, datetime
 from typing import Annotated, Literal
@@ -27,9 +30,13 @@ from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import log_failure
 from backend.app.routers.agent import _follow_up_tool, run_agent
 from backend.app.schemas.agent import AgentRequest, AgentResponse
+from backend.app.services import cargo as cargo_service
 from backend.app.services import chat as svc
+from backend.app.services import memory as memory_service
+from backend.app.services import operators as ops
 from backend.app.services import progress
 from backend.app.services import vessel_detail
+from backend.app.services import watch as watch_service
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -101,6 +108,23 @@ class ChatCargo(BaseModel):
     request: AgentRequest
 
 
+class WatchOffer(BaseModel):
+    """"이 화물을 지켜볼까요?" 제안 (10-06). 화면이 답 말풍선 밑에 [지켜보기] 버튼으로 보여 준다.
+    bl_no는 화면이 PUT /api/cargo/watch에 쓰는 값(request.bl_no)과 같다. reason은 코드가 쓴 제안 문장이고 reply에도 들어 있다.
+    logged_in이 false면 버튼 대신 로그인 안내를 보여 준다."""
+
+    bl_no: str
+    reason: str
+    logged_in: bool
+
+
+class WatchSet(BaseModel):
+    """이번 문장으로 지켜보기를 켜거나 껐다 (10-06). 화면이 그 화물의 토글을 새로 읽는다."""
+
+    bl_no: str
+    on: bool
+
+
 class ChatResponse(BaseModel):
     kind: Literal["cargo", "vessels", "message"]
     reply: str
@@ -112,6 +136,8 @@ class ChatResponse(BaseModel):
     days: int | None = None
     map: ChatMap | None = None
     cargos: list[ChatCargo] = []  # B/L이 2~3개인 문장에서만 채워진다. 한 개짜리 답은 빈 목록이라 옛 화면도 그대로 쓴다
+    watch_offer: WatchOffer | None = None  # 지켜보기를 먼저 제안한 답에만 채워진다 (10-06)
+    watch_set: WatchSet | None = None  # 대화로 지켜보기를 켜거나 껐을 때만 채워진다 (10-06)
 
 
 BAD_MESSAGE = "문장을 1~500자로 입력해 주세요"
@@ -137,6 +163,47 @@ def _history(body: ChatRequest) -> list[dict]:
     return [turn.model_dump() for turn in body.history]
 
 
+# 켜기 직전에 화물 줄이 아직 없을 수 있다: 조회가 끝난 뒤 뒤 작업이 쓴다 (services/watch.set_watch not_saved). 같은 문장에서 조회하고
+# 바로 지켜보라고 한 경우를 위해 아주 잠깐만 기다린다. 길게 기다리지 않는다 (응답이 늦어진다)
+SAVE_WAIT_TRIES, SAVE_WAIT_SEC = 3, 1.0
+
+
+def _watch_hooks(user_id: str | None) -> svc.WatchHooks | None:
+    """로그인 사용자의 지켜보기를 읽고 쓰는 함수 셋. 로그인하지 않았거나 DB가 없으면 None (서비스는 "바꾸지 않고 안내만"으로 안다).
+    함수마다 연결을 따로 연다: 켜기·상태·걱정 읽기가 한 요청에서 각각 한두 번뿐이라 단순함이 낫다 (routers/watch.py와 같은 방식)."""
+    if not user_id or not os.environ.get("DATABASE_URL"):
+        return None
+
+    def tool(bl_no: str, on: bool) -> dict:
+        for attempt in range(SAVE_WAIT_TRIES):
+            try:
+                with ops.open_conn() as conn:
+                    return {"on": watch_service.set_watch(conn, user_id, bl_no, on)}
+            except watch_service.WatchError as e:
+                if e.kind == "not_saved" and attempt + 1 < SAVE_WAIT_TRIES:
+                    time.sleep(SAVE_WAIT_SEC)
+                    continue
+                log_failure("chat_watch", e.kind)
+                return {"error": e.kind}
+        return {"error": "not_saved"}
+
+    def state(bl_no: str) -> dict:
+        with ops.open_conn() as conn:
+            return watch_service.watch_state(conn, user_id, bl_no)
+
+    def worry(bl_no: str) -> str | None:
+        """그 화물에 적어 둔 걱정 메모 중 가장 나중 것의 글. 사용자가 쓴 말을 기억 뽑기가 정리해 둔 값이다 (services/memory.py worry)."""
+        key = cargo_service.cargo_key(bl_no)
+        if key is None:  # 열쇠가 없으면 화물을 가리킬 수 없다 (cargo_key가 없는 항목과 짝지어지지 않게)
+            return None
+        with ops.open_conn() as conn:
+            items = memory_service.load(conn, user_id)[0]
+        texts = [(i.get("fields") or {}).get("text") for i in items if i.get("kind") == "worry" and i.get("cargo_key") == key]
+        return next((t for t in reversed(texts) if t), None)
+
+    return svc.WatchHooks(tool=tool, state=state, worry=worry)
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> ChatResponse:
     """문장 하나를 받아 화물 조회·후속 질문·입항 선박 검색·안내 중 하나로 답한다."""
@@ -144,7 +211,8 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
     with session_scope(body.session_id, user_id):
         try:
             result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id), user_id,
-                                history=_history(body), run_tool=_follow_up_tool)
+                                history=_history(body), run_tool=_follow_up_tool,
+                                watch=_watch_hooks(user_id))
         except svc.ChatError as e:
             raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
     return ChatResponse(**result.__dict__)
@@ -174,7 +242,8 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
             with progress.listening(lambda stage: events.put(("progress", {"stage": stage}))):
                 with session_scope(body.session_id, user_id):
                     result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id),
-                                        user_id, history=_history(body), run_tool=_follow_up_tool)
+                                        user_id, history=_history(body), run_tool=_follow_up_tool,
+                                        watch=_watch_hooks(user_id))
             events.put(("result", ChatResponse(**result.__dict__).model_dump(mode="json")))
         except svc.ChatError:
             events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))
