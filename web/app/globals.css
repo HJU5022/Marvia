@@ -677,7 +677,7 @@ th{background:#f7faff;color:#506c85}
 .chat-cargo-table thead th{font-size:11px;font-weight:600;color:var(--muted);background:var(--soft)}
 .chat-cargo-table tbody th{font-weight:400}
 .chat-cargo-table tr.on{background:var(--soft)}
-.chat-cargo-table tbody th button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;color:inherit;position:relative;padding:0 16px 0 0}
+.chat-cargo-table tbody th button{appearance:none;-webkit-appearance:none;background:none;border:0;border-radius:0;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;color:inherit;position:relative;padding:0 16px 0 0}
 .chat-cargo-table tbody th button small{font-size:11px;color:var(--muted)}
 .chat-cargo-table tbody th button svg{position:absolute;right:0;top:2px;color:var(--success)}
 .chat-cargo-table .verdict-badge{min-width:0}

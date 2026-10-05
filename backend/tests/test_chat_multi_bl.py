@@ -65,6 +65,10 @@ def test_valid_llm_sentence_is_used_and_bad_one_falls_back_to_lead(monkeypatch):
     r = svc.handle("TESTBL01 TESTBL02 어느 게 더 빨리 와?", "s1", None, run)
     assert "99" not in r.reply and "2건" in r.reply and len(r.cargos) == 2  # 표만 답
 
+    _agent(monkeypatch, CHECK, ["[BL1] 화물이 [BL2] 화물보다 더 빨리 옵니다."])  # 화면 문장엔 번호표 대신 사용자가 쓴 B/L (10-06 정운 결정)
+    r = svc.handle("TESTBL01 TESTBL02 어느 게 더 빨리 와?", "s1", None, run)
+    assert r.reply.startswith("TESTBL01 화물이 TESTBL02 화물보다") and "[BL" not in r.reply
+
 
 def test_one_failed_lookup_keeps_the_others(monkeypatch):
     _agent(monkeypatch, CHECK)

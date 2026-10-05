@@ -1018,6 +1018,10 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
                 + " ".join(r.reply for r in found)
             said = text if (text and any(c["name"] == "check_cargo" for c in calls)
                             and not _reply_violations(text, grounded_multi, user_text, earlier)) else ""
+            # LLM에는 [BL1] 같은 번호표만 갔다. 화면에 나가는 문장에선 번호표를 사용자가 쓴 B/L로 되돌린다 (10-06 정운 결정).
+            # 그대로 두면 "[BL1] 화물은…"이 화면에 보이고, 표 순서("첫 번째")로 바꾸면 어느 화물인지 헷갈린다. 화면에만 가는 문장이라 LLM에는 새지 않는다
+            for token, bl in refs.items():
+                said = said.replace(token, bl)
             lines = [said or MULTI_TABLE_LEAD.format(n=len(found))]
             if multi_state.get("house"):
                 lines.append(HOUSE_NOTICE)

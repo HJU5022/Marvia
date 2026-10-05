@@ -5,6 +5,7 @@
 지키는 것: 3층은 근거 조각 없이 나가되 꼬리표가 붙고 숫자·세액·특정 화물이면 막힌다 · not_in_skills는 웹 검색을 한 번 시킨 뒤에야 확정
 (웹이 꺼졌거나 이미 검색했거나 세액 주제면 시키지 않음) · 잡담은 한 문장 직접 답 · 같은 고정 안내를 연달아 내지 않는다.
 """
+from datetime import datetime
 import pytest
 
 from backend.app.schemas.agent import AgentRequest
@@ -215,9 +216,11 @@ def test_skill_answer_is_still_tier_one(monkeypatch, web_off):
 # ── 잡담: 한 문장 직접 답 ──
 
 def test_chit_chat_gets_short_direct_answer(monkeypatch, web_off):
-    calls = _agent(monkeypatch, [], [("저는 시계를 볼 수 없어요. 오늘은 2026-10-05예요.", "unrelated", "")])
+    # 오늘 날짜는 실제 시계로 만든다. 날짜를 박아 두면 다음 날 깨진다 (10-06 자정 넘어 실패)
+    today = datetime.now(svc.KST).date().isoformat()
+    calls = _agent(monkeypatch, [], [(f"저는 시계를 볼 수 없어요. 오늘은 {today}예요.", "unrelated", "")])
     r = _ask("지금 몇시쯤이지?")
-    assert len(calls) == 1 and r.reply == "저는 시계를 볼 수 없어요. 오늘은 2026-10-05예요."  # 오늘 날짜는 근거로 허용
+    assert len(calls) == 1 and r.reply == f"저는 시계를 볼 수 없어요. 오늘은 {today}예요."  # 오늘 날짜는 근거로 허용
     _agent(monkeypatch, [], [("마르비아는 부산항 수입 화물 상태를 알려 주는 도우미예요.", "unrelated", "")])
     assert _ask("마르비아? 그게뭐야?").reply == "마르비아는 부산항 수입 화물 상태를 알려 주는 도우미예요."
 
