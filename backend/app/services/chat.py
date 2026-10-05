@@ -561,6 +561,17 @@ def _reply_violations(reply: str, grounded: str, message: str, earlier: list[str
     return validate.check_chat_reply(reply, grounded, message, earlier, quote, skills_text)
 
 
+MULTI_BL_NOTICE = "(한 번에 화물 하나만 조회해요. 다른 B/L은 따로 보내 주세요.)"
+
+
+def _repeats_reply(text: str, replies: list[str]) -> bool:
+    """LLM 문장이 화물 답에 이미 있는 문장을 되풀이하는가. 같은 되묻기가 두 번 나가던 것을 막는다.
+    공백을 정리한 뒤 문장 단위로 비교한다. 짧은 문장은 우연히 겹칠 수 있어 12자 이상만 본다 (10-05 버그 찾기)"""
+    flat = " ".join(" ".join(replies).split())
+    sentences = re.split(r"(?<=[.!?。])\s+|\n+", text)
+    return any(len(n) >= 12 and n in flat for n in (" ".join(x.split()) for x in sentences))
+
+
 def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
            today: str) -> ChatResult:
@@ -871,8 +882,13 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     lookups = " ".join(str(c["result"]) for c in looked_up)
     if done:
         replies = list(dict.fromkeys(r.reply for r in done))  # 같은 답이 두 번 붙지 않게
-        if looked_up and text and not _reply_violations(text, reference + lookups + " ".join(replies), user_text, earlier):
+        if looked_up and text and not _reply_violations(text, reference + lookups + " ".join(replies), user_text, earlier) \
+                and not _repeats_reply(text, replies):
             replies.append(text)
+        if len(set(message_bls)) >= 2:
+            # 한 문장에 B/L이 여러 개여도 화물 조회는 하나만 간다. 말없이 하나만 보면 나머지가 무시된 줄 모른다.
+            # 번호는 적지 않는다 (LLM·화면 어디에도 원문 B/L을 새로 내보내지 않으려고). 코드가 쓴 문장 (10-05 버그 찾기)
+            replies.append(MULTI_BL_NOTICE)
         return replace(done[-1], reply="\n\n".join(replies), map=_map_payload(calls, done, started))
     if looked_up and all(c["name"] == "get_vessel_candidates" and isinstance(c["result"], dict) and c["result"].get("candidates") == []
                          for c in looked_up):
