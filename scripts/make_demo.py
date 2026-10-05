@@ -171,6 +171,31 @@ def _write_three(now: datetime, out_dir: Path) -> list[dict]:
     return guide
 
 
+def refresh(out_dir: Path = REPLAY_DIR) -> datetime:
+    """서버가 도는 중에 데모 재생 파일을 새로 만든다 (10-05 결정: 재생 모드 배포는 4시간마다 자동으로, backend/app/main.py).
+
+    _clear로 지우고 다시 쓰면 그 사이(수 밀리초) 들어온 요청이 파일을 못 찾는다. 그래서 옆 임시 폴더에 다 만든 뒤
+    폴더 이름을 바꿔 끼운다. 녹화 LLM 답(llm/)처럼 이 스크립트가 만들지 않는 폴더는 건드리지 않는다.
+    돌려주는 값: 이번 파일이 오래된 위치가 되기 전까지의 시각 (로그용).
+    """
+    now = datetime.now(timezone.utc)
+    staging = out_dir.parent / f".{out_dir.name}_staging"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True)
+    build_all(now, staging)
+    for name in GENERATED:
+        new, old, trash = staging / name, out_dir / name, out_dir / f".{name}_old"
+        if not new.exists():
+            continue
+        shutil.rmtree(trash, ignore_errors=True)
+        if old.exists():
+            old.rename(trash)
+        new.rename(old)
+        shutil.rmtree(trash, ignore_errors=True)
+    shutil.rmtree(staging, ignore_errors=True)
+    return now + timedelta(hours=5, minutes=30)
+
+
 def main() -> None:
     now = datetime.now(timezone.utc)
     guide, papers = build_all(now)

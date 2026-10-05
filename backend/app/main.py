@@ -14,12 +14,14 @@ DB가 없거나 붙지 않으면 경고만 남기고 서버는 뜬다 (DB 없이
 """
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from backend.app.clients.replay import replay_enabled
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
@@ -45,12 +47,34 @@ def _migrate() -> None:
         logger.warning("DB 마이그레이션을 적용하지 못했습니다(%s). DB 없이 계속합니다", type(e).__name__)
 
 
+# 재생 모드 데모 파일을 몇 시간마다 새로 만들지 (10-05 결정). 위치를 "30분 전 수신"으로 만들어서 6시간
+# (skills/ais-reliability/rules.md position_stale_hours)이 지나면 오래된 위치가 되어 데모 결과가 바뀐다. 그보다 넉넉히 짧게 둔다
+DEMO_REFRESH_HOURS = 4
+
+
+def _refresh_demo_forever(stop: threading.Event) -> None:
+    """재생 모드일 때만 도는 일꾼. DEMO_REFRESH_HOURS마다 데모 재생 파일을 새로 만든다 (scripts/make_demo.refresh).
+    켜질 때 한 번 만드는 것은 Dockerfile.railway 시작 명령이 한다. 실패해도 서버는 계속 돈다 (다음 차례에 다시 해 본다)."""
+    from scripts import make_demo  # 재생 모드에서만 필요해서 여기서 불러온다
+
+    while not stop.wait(DEMO_REFRESH_HOURS * 3600):
+        try:
+            until = make_demo.refresh()
+            logger.info("demo replay refreshed, fresh until %s", until.isoformat())
+        except Exception as e:  # noqa: BLE001 - 데모 갱신 실패가 서버를 멈추면 안 된다
+            log_failure("demo_refresh", type(e).__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _migrate()
+    stop_demo = threading.Event()
+    if replay_enabled() and os.environ.get("DEMO_REFRESH", "on").strip().lower() not in ("0", "off", "false", "no"):
+        threading.Thread(target=_refresh_demo_forever, args=(stop_demo,), daemon=True, name="demo-refresh").start()
     # /mcp의 세션 관리자를 서버 수명 동안 돌린다. 이게 없으면 /mcp 요청이 처리되지 않는다 (MountedMCP)
     async with mcp_app.running():
         yield
+    stop_demo.set()
     # 화물 비서 기억의 남은 뒤 작업을 먼저 끝낸다. 그 안의 LLM 호출 트레이스도 아래 flush에 실린다 (docs/specs/memory.md)
     memory_service.shutdown()
     # 꺼질 때 남은 트레이스를 보낸다. 안 하면 마지막 요청들의 트레이스가 사라진다 (observability/langfuse.flush)
