@@ -161,6 +161,15 @@ export interface ChatResponse {
   /** 이번 턴에 에이전트가 실제로 배의 실시간 위치를 조회했을 때만 값이 있다. 없거나 null이면 말풍선 아래 작은 지도를 그리지 않는다.
    * 옛 응답과 데모 모드에는 이 칸이 없으므로 선택 칸이다 (ChatMiniMap) */
   map?: ChatMap | null;
+  /** 한 문장에 B/L이 2~3개일 때만 값이 있다(조회한 화물 한 줄씩). 한 개짜리 답과 옛 응답·데모에는 없거나 빈 목록이다 (ChatCargoTable).
+   * agent·request는 첫 줄의 것과 같은 모양이라 줄을 누르면 단일 화물 답처럼 오른쪽 칸을 바꾼다 */
+  cargos?: ChatCargo[];
+}
+/** ChatResponse.cargos의 한 줄 (백엔드 routers/chat.py ChatCargo, 10-05). bl_no는 사용자가 입력한 값 그대로 */
+export interface ChatCargo {
+  bl_no: string; status: string; verdict: 'fine' | 'watch' | 'act' | null; ship_name: string | null;
+  eta: string | null; days_margin: number | null; sale_due_date: string | null;
+  agent: AgentResponse; request: AgentRequest;
 }
 /** ChatResponse.map. 말풍선 아래 작은 지도 한 점 (백엔드 계약, 10-05) */
 export interface ChatMap { lat: number; lng: number; ship_name: string | null; distance_nm: number | null; received_at: string | null; source: string }

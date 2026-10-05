@@ -63,6 +63,20 @@ assert(isStage('judge')&&!isStage('made-up'));
 // 화면 라벨과 서버 단계 이름이 같아야 한다. 한쪽에만 있으면 화면이 단계를 버리거나 서버가 못 보낸다
 const backendStages=[...fs.readFileSync(path.join(root,'../backend/app/services/progress.py'),'utf8').match(/STAGES = \(([\s\S]*?)\n\)/)[1].matchAll(/"([a-z_]+)"/g)].map(m=>m[1]);
 assert.deepEqual(Object.keys(stageLabels).sort(),backendStages.slice().sort(),'progress stage names differ between web and backend');
+// B/L 2~3개 비교 표 (ChatCargoTable, 10-05). 줄의 칸 이름이 서버 ChatCargo와 같아야 하고, 여유 일수 문구는 VerdictCard와 같은 말이다
+const chatSrc=fs.readFileSync(path.join(root,'../backend/app/routers/chat.py'),'utf8');
+const backendCargo=[...chatSrc.match(/class ChatCargo\(BaseModel\):[\s\S]*?\n\n\nclass/)[0].matchAll(/^    ([a-z_]+): /gm)].map(m=>m[1]);
+const webCargo=[...fs.readFileSync(path.join(root,'lib/types.ts'),'utf8').match(/export interface ChatCargo \{([\s\S]*?)\n\}/)[1].matchAll(/\b([a-z_]+)\??:/g)].map(m=>m[1]);
+assert.deepEqual([...new Set(webCargo)].sort(),backendCargo.slice().sort(),'ChatCargo fields differ between web and backend');
+assert(/cargos: list\[ChatCargo\] = \[\]/.test(chatSrc),'ChatResponse.cargos must default to an empty list');
+const fmtFile=path.join(root,'lib/format.ts');
+const fm=new Module(fmtFile);fm.filename=fmtFile;fm.paths=Module._nodeModulePaths(path.dirname(fmtFile));fm._compile(ts.transpileModule(fs.readFileSync(fmtFile,'utf8'),tsOptions).outputText,fmtFile);
+const {marginText}=fm.exports;
+assert.equal(marginText({days_margin:3,sale_due_date:'2026-10-11'}),'3일 여유');
+assert.equal(marginText({days_margin:-2,sale_due_date:'2026-10-11'}),'2일 늦음');
+assert.equal(marginText({days_margin:0,sale_due_date:'2026-10-11'}),'0일 여유');
+assert.equal(marginText({days_margin:null,sale_due_date:'2026-10-11'}),'미확인');
+assert.equal(marginText({days_margin:null,sale_due_date:null}),'판매일 없음');
 // 로그인 뒤 돌아올 주소에 #이 남으면 ##access_token이 되어 supabase-js가 출입증을 못 읽는다 (lib/auth.ts returnAddress, 10-02)
 const authFile=path.join(root,'lib/auth.ts');
 const am=new Module(authFile);am.filename=authFile;am.paths=Module._nodeModulePaths(path.dirname(authFile));am._compile(ts.transpileModule(fs.readFileSync(authFile,'utf8'),tsOptions).outputText,authFile);
@@ -72,4 +86,4 @@ for(const href of ['http://localhost:3000/settings#','http://localhost:3000/?fix
  assert(!back.includes('#'),`return address keeps #: ${back}`);
  assert.equal(parseParametersFromURL(`${back}#access_token=T&refresh_token=R`).access_token,'T','supabase-js must read the token');
 }
-console.log('PASS: 7 AgentResponse fixtures, history envelope, document and memory fixtures, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names and login return address.');
+console.log('PASS: 7 AgentResponse fixtures, history envelope, document and memory fixtures, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names, chat cargo table fields and login return address.');

@@ -186,6 +186,38 @@ def end_generation(generation: Any, result: LLMResult | None, prompt_version: st
         log_failure("langfuse_trace_end", type(e).__name__)
 
 
+def end_web_search(generation: Any, found: list[dict] | None, usage: Any = None, model: str | None = None,
+                   error: str | None = None) -> None:
+    """llm.web_search()가 연 generation(start_generation)에 결과를 적고 닫는다. generation이 None이면 아무것도 안 한다 (10-05).
+
+    웹 검색도 OpenRouter 호출이라 돈이 든다(검색 한 번 약 $0.008). 요청 트레이스에 보이게 남긴다.
+    output: 결과 제목·URL 목록만. 본문(text)은 길고 외부 글이라 저장하지 않는다
+    usage:  OpenRouter 응답의 usage (토큰·cost). 없으면 비용·토큰은 비운다
+    error:  실패 이유. 있으면 level=ERROR. 검색어(input)는 호출하는 쪽이 이미 가린 것이다
+    """
+    if generation is None:
+        return
+    try:
+        fields: dict[str, Any] = {"metadata": {"result_count": len(found or [])}}
+        if found is not None:
+            fields["output"] = [{"title": r.get("title"), "url": r.get("url")} for r in found]
+        if model:
+            fields["model"] = model
+        if usage is not None:
+            fields["usage_details"] = {"input": getattr(usage, "prompt_tokens", None) or 0,
+                                       "output": getattr(usage, "completion_tokens", None) or 0}
+            cost = getattr(usage, "cost", None)
+            if isinstance(cost, (int, float)):
+                fields["cost_details"] = {"total": cost}  # OpenRouter가 준 실제 금액 (크레딧 = USD)
+        if error:
+            fields["level"] = "ERROR"
+            fields["status_message"] = error
+        generation.update(**fields)
+        generation.end()
+    except Exception as e:
+        log_failure("langfuse_trace_end", type(e).__name__)
+
+
 def flush() -> None:
     """모아 둔 트레이스를 지금 Langfuse로 보낸다. 서버가 꺼질 때 main.py lifespan이 부른다.
 

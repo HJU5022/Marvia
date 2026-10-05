@@ -6,12 +6,14 @@ import {createContext, useContext, useEffect, useRef, useState, type ReactNode} 
 import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, isLive, sendChatStream} from '@/lib/api';
 import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
-import type {AgentRequest, AgentResponse, ChatMap, ChatResponse} from '@/lib/types';
+import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatResponse} from '@/lib/types';
 
 /** 입력창 대화 한 줄. 화면에만 두고 저장하지 않는다 (docs/specs/chat-search.md Out of Scope: 대화 기억) */
 export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: ChatResponse['kind'];
   /** 위치를 조회한 답이면 말풍선 아래 작은 지도에 쓴다. 서버로 되돌려 보내지 않는다(lib/api.ts chatBody는 role, text만) */
-  map?: ChatMap | null }
+  map?: ChatMap | null;
+  /** B/L을 2~3개 물었을 때 조회한 화물 표 (ChatCargoTable). 서버로 되돌려 보내지 않는다 */
+  cargos?: ChatCargo[] }
 const presentation = getPresentationData();
 // 실제 모드는 빈 폼으로 시작한다. 세션 ID는 lib/api.ts가 요청 때 브라우저 값으로 채운다
 const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: null, session_id: ''};
@@ -30,6 +32,8 @@ interface AppState {
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
   /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다 */
   ask: (message: string) => Promise<boolean>;
+  /** 채팅 표에서 고른 화물로 아래 결과 칸을 바꾼다. 단일 화물 답을 받았을 때와 같은 상태 바꿈이다 (다음 질문의 문맥도 이 화물) */
+  showCargo: (agent: AgentResponse, request: AgentRequest) => void;
   thread: ChatTurn[]; vessels: ChatResponse | null;
   /** 아래 결과 칸에 무엇을 보여 줄지. none이면 안내·실패라 지난 결과를 숨긴다 (지난 화물은 후속 질문용으로 기억만) */
   view: 'cargo' | 'vessels' | 'none';
@@ -103,7 +107,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
       const res = await sendChatStream(message, result && request.bl_no ? request : null,
         s => setStages(list => list.includes(s) ? list : [...list, s]), history);
-      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null}]);
+      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? []}]);
       if (res.kind === 'cargo' && res.agent && res.request) { setResult(res.agent); setRequest(res.request); setView('cargo'); }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
       // 안내 문장(B/L 없음 등)이면 아래의 지난 결과를 숨긴다. 새 답과 지난 카드가 섞여 보이지 않게
@@ -114,6 +118,10 @@ export function AppProvider({children}:{children:ReactNode}) {
       setError(msg); setView('none'); setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
     } finally { setLoading(false); setPendingSince(null); inflight.current = false; }
   }
+  function showCargo(agent: AgentResponse, req: AgentRequest) {
+    if (inflight.current) return;  // 조회 중에 바꾸면 곧 도착할 새 결과와 섞인다
+    setResult(agent); setRequest(req); setReplaying(false); setError(''); setView('cargo');
+  }
   function replay(id: string) {
     if (inflight.current) return false;
     const snapshot = getReplaySnapshot(id); if (!snapshot) return false;
@@ -122,6 +130,6 @@ export function AppProvider({children}:{children:ReactNode}) {
   }
   function reset() { setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset}}>{children}</Context.Provider>;
 }
 export function useApp() { const ctx=useContext(Context);if(!ctx)throw new Error('AppProvider is required');return ctx; }

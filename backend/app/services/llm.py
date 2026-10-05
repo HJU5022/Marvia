@@ -49,7 +49,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
-from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
+from backend.app.observability.langfuse import end_generation, end_web_search, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
@@ -1096,7 +1096,8 @@ CHAT_AGENT_SKILLS = ALL_SKILLS  # 되묻기 설명법(cargo-verdict), 통관 단
 #   unrelated: 이제 한 문장짜리 직접 답을 낼 수 있다 (날짜·"마르비아가 뭐야?" 같은 잡담). 검사에 걸리면 고정 안내로 바뀐다
 #   clarify: 사용자가 쓴 식별자(예: TEST41)가 B/L 번호인지 배 이름인지 모르겠다 (10-05 실측). 코드가 고정 문장으로 되묻는다
 #     (chat.clarify_reply). reply는 비운다: LLM 글은 화면에 가지 않고 식별자도 코드가 문장에서 직접 뽑는다
-CHAT_AGENT_KINDS = ("tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify")
+# help·greeting: 사용법 질문과 인사. 문장은 services/chat.py가 고정 문구로 낸다 (10-05 결정)
+CHAT_AGENT_KINDS = ("tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting")
 CHAT_AGENT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -1112,7 +1113,7 @@ CHAT_AGENT_SCHEMA = {
 class ChatAgentOutput(BaseModel):
     reply: str  # 화면에 내보내기 전에 services/chat.py가 검사한다
     # 기본값은 도구를 쓴 답(두 칸을 보지 않음)과 예전 녹화 답이 그대로 읽히게 둔 것이다. 실제 호출은 strict 스키마라 늘 채워 온다
-    answer_kind: Literal["tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify"] = "unrelated"
+    answer_kind: Literal["tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting"] = "unrelated"
     skill_quote: str = ""  # answer_kind가 skill이면 Skill 문서, web이면 웹 검색 결과 원문 그대로의 한 조각
 
 
@@ -1160,18 +1161,29 @@ def web_search(query: str) -> list[dict]:
     if model.startswith(VERTEX_PREFIX):
         model = WEB_FALLBACK_MODEL
     start = time.monotonic()
+    # 검색도 요청 트레이스에 generation으로 남긴다 (10-05): 비용(약 $0.008)과 결과가 Langfuse에서 안 보였다.
+    # 검색어는 위에서 B/L·MRN 토큰을 막은 가린 문장이다. 트레이스 실패는 검색을 막지 않는다 (start/end가 삼킨다)
+    generation = start_generation("web_search", query)
+    resp = None
     try:
         resp = _create_with_deadline(
             _client(),
             {"model": model, "messages": [{"role": "user", "content": query}], "max_tokens": 16},
             {"plugins": [{"id": "web", "engine": "exa", "max_results": WEB_RESULTS}], "provider": {"require_parameters": True}})
+    except LLMError as e:  # 키 없음 등 _client()가 올린 것. 열어 둔 기록을 닫는다
+        end_web_search(generation, None, model=model, error=str(e))
+        raise
     except _DeadlineExceeded:
+        end_web_search(generation, None, model=model, error=f"timeout after {TIMEOUT_SEC:g}s")
         raise LLMError(f"web_search: {TIMEOUT_SEC:g}초 안에 답이 없음", kind="timeout") from None
     except openai.APIStatusError as e:  # ZDR 거부 등. 메시지는 키를 담지 않는다
+        end_web_search(generation, None, model=model, error=f"HTTP {e.status_code} {e.message}")
         raise LLMError(f"web_search: HTTP {e.status_code} {e.message}", code=e.status_code, kind=_status_kind(e.status_code)) from e
     except openai.APIConnectionError as e:
+        end_web_search(generation, None, model=model, error=f"connection {type(e).__name__}")
         raise LLMError(f"web_search: 연결 실패 {type(e).__name__}", kind="connection") from e
     if not resp.choices:
+        end_web_search(generation, None, resp.usage, model, error="no_choices")
         raise LLMError("web_search: 응답에 choices 없음", kind="no_choices")
     message = resp.choices[0].message
     notes = getattr(message, "annotations", None) or (getattr(message, "model_extra", None) or {}).get("annotations") or []
@@ -1186,7 +1198,9 @@ def web_search(query: str) -> list[dict]:
         found.append({"title": str(cite.get("title") or url)[:120], "url": url, "text": text[:WEB_TEXT_CHARS]})
     logger.info("web_search results=%d latency_ms=%d cost=%s", len(found), int((time.monotonic() - start) * 1000),
                 getattr(resp.usage, "cost", None) if resp.usage else None)
-    return found[:WEB_RESULTS]
+    found = found[:WEB_RESULTS]
+    end_web_search(generation, found, resp.usage, getattr(resp, "model", None) or model)
+    return found
 
 
 PORT_MATCH_PROMPT = "marvia-port-match"

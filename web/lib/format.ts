@@ -81,3 +81,8 @@ export function dateTime(value: string | null | undefined, short = false) {
 }
 export function day(value: string | null | undefined) { return value?.slice(0,10).replaceAll('-','.') ?? '확인되지 않음'; }
 export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '확인되지 않음' : String(value); }
+/** 판매 예정일까지 여유. days_margin = 판매 예정일 - 신뢰 입항 예정일 (VerdictCard와 같은 말: 음수는 "입항이 판매일보다 늦다") */
+export function marginText(c: {days_margin: number | null; sale_due_date: string | null}): string {
+  if (c.days_margin === null || c.days_margin === undefined) return c.sale_due_date ? '미확인' : '판매일 없음';
+  return c.days_margin < 0 ? `${Math.abs(c.days_margin)}일 늦음` : `${c.days_margin}일 여유`;
+}

@@ -15,6 +15,7 @@ import json
 import queue
 import threading
 from collections.abc import Iterator
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -84,6 +85,22 @@ class ChatMap(BaseModel):
     source: str  # "shipfinder"
 
 
+class ChatCargo(BaseModel):
+    """한 문장에 B/L이 2~3개일 때 표의 한 줄 (10-05 정운 결정). agent·request는 이 줄을 눌렀을 때 오른쪽 칸을 바꾸는 데 쓴다:
+    단일 화물 답의 agent·request와 같은 모양이다. bl_no는 사용자가 입력한 값 그대로다(요청에도 있는 값, LLM에는 가지 않는다).
+    ship_name·eta·days_margin은 판정 흐름 응답에서 옮긴 값이다. days_margin은 판매 예정일이 있을 때만 값이 있다."""
+
+    bl_no: str
+    status: str
+    verdict: str | None = None
+    ship_name: str | None = None
+    eta: datetime | None = None
+    days_margin: int | None = None
+    sale_due_date: date | None = None
+    agent: AgentResponse
+    request: AgentRequest
+
+
 class ChatResponse(BaseModel):
     kind: Literal["cargo", "vessels", "message"]
     reply: str
@@ -94,6 +111,7 @@ class ChatResponse(BaseModel):
     ports: list[str] = []
     days: int | None = None
     map: ChatMap | None = None
+    cargos: list[ChatCargo] = []  # B/L이 2~3개인 문장에서만 채워진다. 한 개짜리 답은 빈 목록이라 옛 화면도 그대로 쓴다
 
 
 BAD_MESSAGE = "문장을 1~500자로 입력해 주세요"
