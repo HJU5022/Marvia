@@ -56,6 +56,7 @@ def test_config_missing_key_or_secret(monkeypatch, name):
 def test_config_empty_redirect_uses_default(monkeypatch):
     monkeypatch.setenv("KAKAO_REDIRECT_URI", "")
     assert kakao.config()[2] == kakao.DEFAULT_REDIRECT_URI
+    assert kakao.DEFAULT_REDIRECT_URI == "http://localhost:3000/settings/kakao"  # 백엔드가 아니라 우리 화면
 
 
 # ── authorize_url ──

@@ -40,18 +40,17 @@ def me(monkeypatch):
     return _login(monkeypatch, "kim@example.com")  # 사용자 ID는 'user-123'
 
 
-def _callback(code=CODE, state=None, error=None):
-    params = {k: v for k, v in {"code": code, "state": state, "error": error}.items() if v is not None}
+def _callback(headers, code=CODE, state=None):
+    body = {"code": code, "state": state if state is not None else svc.make_state("user-123")}
     with TestClient(app) as c:
-        return c.get("/api/kakao/callback", params=params, follow_redirects=False)
+        return c.post("/api/kakao/callback", json=body, headers=headers)
 
 
-def _assert_redirect(resp, result):
-    assert resp.status_code == 302
-    loc = resp.headers["location"]
-    assert loc == f"{WEB}/settings?kakao={result}"
+def _assert_result(resp, result):
+    assert resp.status_code == 200
+    assert resp.json() == {"result": result}
     for secret in (CODE, ACCESS, REFRESH, "state", "token"):
-        assert secret not in loc  # 주소창에 남을 값에는 결과 이름만
+        assert secret not in resp.text  # 응답에는 결과 이름만
 
 
 # ── 로그인·DB 조건 ──
@@ -101,88 +100,111 @@ def test_connect_not_configured_is_503(db, me, monkeypatch):
     assert r.status_code == 503 and "관리자" in r.json()["detail"]
 
 
-# ── callback: 결과마다 이동 주소 ──
+# ── callback: 로그인한 화면이 부르는 POST, 결과마다 이름 하나 ──
 
-def test_callback_connected_saves_encrypted(db, monkeypatch):
-    monkeypatch.setattr(client, "exchange_code", lambda code, **k: tokens())
-    _assert_redirect(_callback(state=svc.make_state("user-123")), "connected")
-    assert ACCESS not in str(db.links) and svc.is_linked(db, "user-123")
+def test_callback_login_disabled_is_401(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.setattr(client, "exchange_code", lambda *a, **k: pytest.fail("로그인 없이는 토큰을 받으러 가지 않는다"))
+    with TestClient(app) as c:
+        r = c.post("/api/kakao/callback", json={"code": CODE, "state": svc.make_state("user-123")})
+    assert r.status_code == 401
 
 
-def test_callback_needs_no_bearer_header(db, monkeypatch):
+def test_callback_without_bearer_is_rejected_when_login_on(db, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://test-project.supabase.co")  # 로그인 켜짐, 헤더 없음
-    monkeypatch.setattr(client, "exchange_code", lambda code, **k: tokens())
-    _assert_redirect(_callback(state=svc.make_state("user-123")), "connected")
+    monkeypatch.setattr(client, "exchange_code", lambda *a, **k: pytest.fail("헤더가 없으면 토큰을 받으러 가지 않는다"))
+    with TestClient(app) as c:
+        r = c.post("/api/kakao/callback", json={"code": CODE, "state": svc.make_state("user-123")})
+    assert r.status_code == 401 and db.links == {}
 
 
-def test_callback_denied(db, monkeypatch):
-    monkeypatch.setattr(client, "exchange_code", lambda *a, **k: pytest.fail("취소했으면 토큰을 받으러 가지 않는다"))
-    _assert_redirect(_callback(code=None, state=svc.make_state("user-123"), error="access_denied"), "denied")
+def test_callback_no_database_is_503(me, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert _callback(me).status_code == 503
 
 
-@pytest.mark.parametrize("state", [None, "garbage", "a.b"])
-def test_callback_bad_state_is_expired(db, monkeypatch, state):
+def test_callback_get_is_gone(db, me):
+    with TestClient(app) as c:
+        assert c.get("/api/kakao/callback", params={"code": CODE, "state": "x"}, headers=me).status_code == 405
+
+
+def test_callback_connected_saves_encrypted_for_logged_in_user(db, me, monkeypatch):
+    seen = []
+    monkeypatch.setattr(client, "exchange_code", lambda code, **k: seen.append(code) or tokens())
+    _assert_result(_callback(me), "connected")
+    assert seen == [CODE]
+    assert ACCESS not in str(db.links) and list(db.links) == ["user-123"]
+
+
+def test_callback_mismatch_when_state_is_for_another_user(db, me, monkeypatch):
+    monkeypatch.setattr(client, "exchange_code", lambda *a, **k: pytest.fail("남의 state면 인가 코드를 쓰지 않는다"))
+    attacker_state = svc.make_state("attacker-1")  # 공격자가 만든 동의 링크의 state
+    _assert_result(_callback(me, state=attacker_state), "mismatch")  # 로그인한 사람은 user-123
+    assert db.links == {}  # 공격자 계정에도 피해자 계정에도 저장되지 않는다
+
+
+@pytest.mark.parametrize("state", ["garbage", "a.b", "x"])
+def test_callback_bad_state_is_expired(db, me, monkeypatch, state):
     monkeypatch.setattr(client, "exchange_code", lambda *a, **k: pytest.fail("state가 틀리면 토큰을 받으러 가지 않는다"))
-    _assert_redirect(_callback(state=state), "expired")
+    _assert_result(_callback(me, state=state), "expired")
     assert db.links == {}
 
 
-def test_callback_expired_state(db, monkeypatch):
+def test_callback_expired_state(db, me, monkeypatch):
     state = svc.make_state("user-123")
     real = svc.time.time
     monkeypatch.setattr(svc.time, "time", lambda: real() + svc.STATE_TTL_SEC + 1)
-    _assert_redirect(_callback(state=state), "expired")
+    monkeypatch.setattr(client, "exchange_code", lambda *a, **k: pytest.fail("만료된 state면 토큰을 받으러 가지 않는다"))
+    _assert_result(_callback(me, state=state), "expired")
 
 
-def test_callback_missing_talk_message_scope(db, monkeypatch):
+def test_callback_missing_talk_message_scope(db, me, monkeypatch):
     monkeypatch.setattr(client, "exchange_code", lambda code, **k: Tokens(ACCESS, 100, REFRESH, 200, "profile_nickname"))
-    _assert_redirect(_callback(state=svc.make_state("user-123")), "no_consent")
+    _assert_result(_callback(me), "no_consent")
     assert db.links == {}  # 보낼 수 없는 토큰은 저장하지 않는다
 
 
-def test_callback_scope_none_is_no_consent(db, monkeypatch):
+def test_callback_scope_none_is_no_consent(db, me, monkeypatch):
     monkeypatch.setattr(client, "exchange_code", lambda code, **k: Tokens(ACCESS, 100, REFRESH, 200, None))
-    _assert_redirect(_callback(state=svc.make_state("user-123")), "no_consent")
+    _assert_result(_callback(me), "no_consent")
+    assert db.links == {}
 
 
-def test_callback_failures(db, monkeypatch):
-    state = svc.make_state("user-123")
-
+def test_callback_failures(db, me, monkeypatch):
     def kakao_down(code, **k):
         raise KakaoError("failed", 500)
 
     monkeypatch.setattr(client, "exchange_code", kakao_down)
-    _assert_redirect(_callback(state=state), "failed")
+    _assert_result(_callback(me), "failed")
 
     monkeypatch.setattr(client, "exchange_code", lambda code, **k: tokens())
-    monkeypatch.delenv("PII_ENCRYPTION_KEY")  # 열쇠 없음
-    _assert_redirect(_callback(state=state), "failed")
+    monkeypatch.delenv("PII_ENCRYPTION_KEY")  # 열쇠 없음 (KakaoLinkError)
+    _assert_result(_callback(me), "failed")
     assert db.links == {}
 
     monkeypatch.setattr(client, "exchange_code", lambda code, **k: tokens(refresh=None))  # refresh 토큰 없음
     monkeypatch.setenv("PII_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    _assert_redirect(_callback(state=state), "failed")
-
-    _assert_redirect(_callback(code=None, state=state), "failed")  # code 없음
-
-    monkeypatch.delenv("DATABASE_URL")  # DB 없음
-    monkeypatch.setattr(client, "exchange_code", lambda code, **k: tokens())
-    _assert_redirect(_callback(state=state), "failed")
+    _assert_result(_callback(me), "failed")
+    assert db.links == {}
 
 
-def test_callback_db_error_is_failed(db, monkeypatch):
+def test_callback_empty_code_is_failed(db, me, monkeypatch):
+    monkeypatch.setattr(client, "exchange_code", lambda *a, **k: pytest.fail("코드가 비면 토큰을 받으러 가지 않는다"))
+    _assert_result(_callback(me, code=""), "failed")
+
+
+def test_callback_missing_fields_is_422(db, me):
+    with TestClient(app) as c:
+        assert c.post("/api/kakao/callback", json={"code": CODE}, headers=me).status_code == 422
+
+
+def test_callback_db_error_is_failed(db, me, monkeypatch):
     def broken():
         raise ConnectionError("테스트")
 
     monkeypatch.setattr(ops, "open_conn", broken)
     monkeypatch.setattr(client, "exchange_code", lambda code, **k: tokens())
-    _assert_redirect(_callback(state=svc.make_state("user-123")), "failed")
-
-
-def test_callback_redirect_default_origin(db, monkeypatch):
-    monkeypatch.delenv("ALLOWED_ORIGINS")
-    resp = _callback(state=None)
-    assert resp.headers["location"] == "http://localhost:3000/settings?kakao=expired"
+    _assert_result(_callback(me), "failed")
 
 
 # ── test / link ──

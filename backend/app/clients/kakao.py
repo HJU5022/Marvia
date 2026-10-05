@@ -2,6 +2,8 @@
 
 이 파일은 카카오 서버에 HTTP 요청을 보내고 결과를 Tokens나 KakaoError로 바꿔 주는 일만 한다.
 토큰을 DB에 저장하거나 언제 보낼지 정하는 일은 services/kakao.py, 주소 연결은 routers/kakao.py 몫이다.
+동의 화면이 끝나면 카카오는 브라우저를 우리 화면(/settings/kakao)으로 돌려보낸다. 그 화면이 로그인 출입증을 붙여
+routers/kakao.py의 POST /callback을 부른다 (10-05 결정). 백엔드 주소로 바로 돌려보내지 않는다.
 
 왜 이렇게 했나:
 - exchange_code와 send_memo는 재시도하지 않는다. 인가 코드는 한 번만 쓸 수 있어서 다시 보내면 어차피 실패하고,
@@ -30,7 +32,7 @@ from backend.app.clients.retry import with_retry
 
 KAUTH = "https://kauth.kakao.com"
 KAPI = "https://kapi.kakao.com"
-DEFAULT_REDIRECT_URI = "http://localhost:8000/api/kakao/callback"
+DEFAULT_REDIRECT_URI = "http://localhost:3000/settings/kakao"  # 우리 화면 주소. 백엔드가 아니라 화면이 카카오 결과를 받는다 (10-05 결정)
 SCOPE = "talk_message"
 
 TIMEOUT_SEC = 10  # supabase_admin.py와 같은 값 (SDD 8절)
@@ -65,10 +67,10 @@ class Tokens:
 
 
 def config() -> tuple[str, str, str]:
-    """(REST API 키, 클라이언트 시크릿, 콜백 주소). 키나 시크릿이 비면 KakaoError(not_configured)."""
+    """(REST API 키, 클라이언트 시크릿, 리다이렉트 주소(우리 화면 /settings/kakao)). 키나 시크릿이 비면 KakaoError(not_configured)."""
     key = os.environ.get("KAKAO_REST_API_KEY", "").strip()
     secret = os.environ.get("KAKAO_CLIENT_SECRET", "").strip()
-    redirect = os.environ.get("KAKAO_REDIRECT_URI", "").strip() or DEFAULT_REDIRECT_URI  # 비우면 로컬 주소
+    redirect = os.environ.get("KAKAO_REDIRECT_URI", "").strip() or DEFAULT_REDIRECT_URI  # 비우면 로컬 화면 주소
     if not key or not secret:
         raise KakaoError("not_configured")
     return key, secret, redirect
@@ -135,7 +137,8 @@ def _tokens(resp: httpx.Response) -> Tokens:
 
 
 def exchange_code(code: str, *, transport: httpx.BaseTransport | None = None) -> Tokens:
-    """인가 코드를 토큰으로 바꾼다. 코드는 한 번만 쓸 수 있어 재시도하지 않는다."""
+    """인가 코드를 토큰으로 바꾼다. 코드는 한 번만 쓸 수 있어 재시도하지 않는다.
+    redirect_uri는 authorize_url에 쓴 값과 같아야 카카오가 받아 준다. 둘 다 config()에서 가져온다."""
     key, secret, redirect = config()
     resp = _post(f"{KAUTH}/oauth/token", transport=transport, retry_name=None, headers=FORM_HEADERS,
                  data={"grant_type": "authorization_code", "client_id": key, "redirect_uri": redirect,

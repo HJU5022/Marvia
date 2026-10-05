@@ -5,9 +5,9 @@ HTTP 요청·응답은 라우터(routers/kakao.py)가, 카카오 서버 호출�
 나중에 만들 "판정이 바뀌면 알림" 작업도 HTTP 없이 send_to_user를 그대로 부른다.
 
 왜 이렇게 했나:
-- state를 서명하고 10분 뒤 만료시킨다: 카카오 동의 화면이 끝나면 브라우저가 우리 /callback으로 되돌아온다.
-  이 요청에는 로그인 출입증(Bearer 헤더)이 없다. 누가 연결하는지는 state에서 알아야 하는데,
-  서명이 없으면 남의 user_id를 넣어 내 카카오 토큰을 남의 계정에 붙일 수 있다. 서명 열쇠는 KAKAO_CLIENT_SECRET에서
+- state를 서명하고 10분 뒤 만료시킨다: 연결을 시작한 사람이 누구인지 동의 화면 왕복 동안 들고 다니는 글자다.
+  콜백은 로그인한 화면이 부르므로(routers/kakao.py), 라우터가 state 속 user_id와 지금 로그인한 사용자가 같은지 비교한다.
+  서명이 없으면 남의 user_id를 넣어 위조할 수 있다. 서명 열쇠는 KAKAO_CLIENT_SECRET에서
   용도 이름을 붙여 갈라 쓴다(crypto.fingerprint와 같은 방식). 따로 비밀값을 하나 더 두지 않는다
 - 토큰은 암호화해서 저장한다: 알림은 사용자가 화면을 안 볼 때 보내므로 서버가 토큰을 들고 있어야 한다.
   토큰이 새면 그 사람 카카오톡으로 메시지를 보낼 수 있어, 회원 정보와 같은 PII 열쇠(crypto.encrypt_pii)로 잠근다.
@@ -46,7 +46,7 @@ class KakaoLinkError(Exception):
         self.kind = kind
 
 
-# ── state: 누가 연결 중인지 callback에 전하는 서명 글자 ──
+# ── state: 누가 연결을 시작했는지 callback에 전하는 서명 글자 ──
 
 def _state_key() -> bytes | None:
     """KAKAO_CLIENT_SECRET에서 state 전용 열쇠를 갈라 만든다. 시크릿이 없으면 None."""
@@ -177,13 +177,18 @@ def send_to_user(conn, user_id: str, text: str, link_url: str) -> None:
 
 def unlink_user(conn, user_id: str) -> None:
     """카카오 쪽 연결을 끊고(실패해도 계속) 우리 줄을 지운다. 연결이 없어도 괜찮다.
-    카카오가 안 닿아도 사용자의 해제 요청은 우리 쪽에서 끝나야 해서, 카카오 실패는 종류만 남기고 넘어간다."""
-    row = conn.execute("SELECT access_token_enc FROM kakao_links WHERE user_id = %s", [user_id]).fetchone()
+    access 토큰은 12시간쯤이면 죽는다. 죽은 토큰으로 끊으면 카카오가 401을 주고 clients/kakao.unlink는 그것을
+    "이미 끊김"으로 보므로, 카카오 쪽 연결이 남은 채 우리 줄만 지워진다. 그래서 만료가 가까우면 먼저 갱신한다(send_to_user와 같은 규칙).
+    카카오가 안 닿아도 사용자의 해제 요청은 우리 쪽에서 끝나야 해서, 갱신·끊기 실패는 종류만 남기고 줄은 늘 지운다."""
+    row = conn.execute("SELECT access_token_enc, refresh_token_enc, access_expires_at FROM kakao_links "
+                       "WHERE user_id = %s", [user_id]).fetchone()
     if row is not None:
-        access = crypto.decrypt_pii(row[0])
-        if access is not None:
-            try:
+        access, refresh_token = crypto.decrypt_pii(row[0]), crypto.decrypt_pii(row[1])
+        try:
+            if access is not None and refresh_token is not None and row[2] - _now() <= REFRESH_BEFORE:
+                access = _refresh_access(conn, user_id, refresh_token)
+            if access is not None:
                 kakao.unlink(access)
-            except KakaoError as e:
-                log_failure("kakao_unlink", e.kind)
+        except (KakaoError, KakaoLinkError) as e:
+            log_failure("kakao_unlink", e.kind)
     delete(conn, user_id)

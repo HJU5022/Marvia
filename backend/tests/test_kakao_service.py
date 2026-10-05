@@ -260,6 +260,45 @@ def test_unlink_calls_kakao_then_deletes(linked, monkeypatch):
     assert calls["unlink"] == [ACCESS] and linked.links == {}
 
 
+def test_unlink_refreshes_first_when_access_expired(linked, monkeypatch):
+    linked.links["u1"]["access_at"] = datetime.now(timezone.utc) - timedelta(hours=1)  # 12시간이 지나 죽은 토큰
+    calls = _spy(monkeypatch, refresh_result=Tokens("fresh-access", 43199, None, None, None))
+    svc.unlink_user(linked, "u1")
+    assert calls["refresh"] == [REFRESH]
+    assert calls["unlink"] == ["fresh-access"]  # 새 토큰으로 끊는다. 죽은 토큰(401)으로 끊지 않는다
+    assert linked.links == {}
+
+
+def test_unlink_refreshes_when_expiring_within_margin(linked, monkeypatch):
+    linked.links["u1"]["access_at"] = datetime.now(timezone.utc) + timedelta(minutes=4)
+    calls = _spy(monkeypatch, refresh_result=Tokens("fresh-access", 43199, None, None, None))
+    svc.unlink_user(linked, "u1")
+    assert calls["refresh"] == [REFRESH] and calls["unlink"] == ["fresh-access"]
+
+
+def test_unlink_with_fresh_token_does_not_refresh(linked, monkeypatch):
+    calls = _spy(monkeypatch)
+    svc.unlink_user(linked, "u1")
+    assert calls["refresh"] == [] and calls["unlink"] == [ACCESS]
+
+
+def test_unlink_refresh_failure_still_deletes_row(linked, monkeypatch):
+    linked.links["u1"]["access_at"] = datetime.now(timezone.utc) - timedelta(hours=1)
+    calls = _spy(monkeypatch, refresh_error=KakaoError("unauthorized", 400))
+    svc.unlink_user(linked, "u1")
+    assert calls["refresh"] == [REFRESH] and calls["unlink"] == []  # 갱신이 안 되면 끊기는 부르지 않는다
+    assert linked.links == {}  # 사용자의 해제 요청은 우리 쪽에서 끝난다
+
+
+def test_unlink_refresh_link_error_still_deletes_row(linked, monkeypatch):
+    linked.links["u1"]["access_at"] = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr(crypto, "encrypt_pii", lambda text: None)  # 새 토큰을 잠글 수 없다 → KakaoLinkError(no_key)
+    monkeypatch.setattr(client, "refresh", lambda token, **k: Tokens("fresh-access", 43199, None, None, None))
+    monkeypatch.setattr(client, "unlink", lambda *a, **k: pytest.fail("갱신 저장이 실패하면 끊기는 부르지 않는다"))
+    svc.unlink_user(linked, "u1")
+    assert linked.links == {}
+
+
 def test_unlink_deletes_even_if_kakao_fails(linked, monkeypatch):
     def boom(access, **k):
         raise KakaoError("failed", 500)
