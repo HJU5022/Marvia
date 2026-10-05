@@ -32,6 +32,7 @@ def collect_stubs(monkeypatch):
     monkeypatch.setattr(run, "purge_positions", lambda c: 0)
     monkeypatch.setattr(run, "purge_old_queries", lambda c: 0)
     monkeypatch.setattr(run, "purge_done_cargo", lambda c: 0)
+    monkeypatch.setattr(run, "purge_old_conversations", lambda c: 0)
     return conn
 
 

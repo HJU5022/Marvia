@@ -265,6 +265,7 @@ def test_withdraw_deletes_kakao_row_without_calling_kakao(monkeypatch):
     monkeypatch.setattr(account_service, "delete_user_queries", lambda c, u: 0)
     monkeypatch.setattr(account_service, "delete_profile", lambda c, u: 0)
     monkeypatch.setattr(account_service, "forget_user", lambda c, u: 0)
+    monkeypatch.setattr(account_service, "delete_conversations", lambda c, u: 0)
     monkeypatch.setattr(account_service, "delete_account", lambda u: None)
     monkeypatch.setattr(client, "unlink", lambda *a, **k: pytest.fail("탈퇴는 카카오 서버를 부르지 않는다"))
     account_service.withdraw("user-123")

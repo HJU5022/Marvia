@@ -680,3 +680,33 @@ th{background:#f7faff;color:#506c85}
 .chat-cargo-table .verdict-badge{min-width:0}
 .chat-cargo-hint{margin:0;padding:6px 10px;font-size:11px;color:var(--muted)}
 @media (max-width:700px){.chat-cargo-table{max-width:100%}}
+/* 대화 목록 (10-06 결정). 넓은 화면은 사이드바 안, 900px 이하는 상단바 "대화" 버튼이 여는 왼쪽 패널. 색·여백은 위 토큰만 쓴다 */
+.conv-section{flex:1 1 auto;min-height:120px;overflow-y:auto;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.conv-list{display:flex;flex-direction:column;gap:6px}
+.conv-new{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);color:var(--blue-dark);font-size:13px;font-weight:700;cursor:pointer;transition:background .18s}
+.conv-new:hover:not(:disabled){background:#edf5ff}
+.conv-new:disabled,.conv-title:disabled,.conv-delete:disabled{opacity:.55;cursor:not-allowed}
+.conv-group h3{margin:12px 14px 4px;font-size:10px;letter-spacing:.08em;font-weight:700;color:var(--quiet)}
+.conv-group ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.conv-row{display:flex;align-items:center;border-radius:10px;min-width:0}
+.conv-row:hover{background:#f0f6fd}
+.conv-row.active{background:#eaf3ff}
+.conv-title{flex:1;min-width:0;min-height:40px;padding:0 6px 0 14px;border:0;background:transparent;text-align:left;font-size:13px;color:#577089;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-row.active .conv-title{color:#145ce1;font-weight:700}
+.conv-delete{flex:none;display:grid;place-items:center;width:36px;height:40px;border:0;background:transparent;color:var(--quiet);cursor:pointer;opacity:0;transition:opacity .15s}
+.conv-row:hover .conv-delete,.conv-row:focus-within .conv-delete,.conv-row.active .conv-delete{opacity:1}
+.conv-delete:hover:not(:disabled){color:var(--danger)}
+.conv-confirm{flex:1;display:flex;align-items:center;gap:6px;padding:6px 8px 6px 14px;font-size:12px;color:var(--ink);flex-wrap:wrap}
+.conv-confirm span{flex:1 1 100%}
+.conv-confirm button{min-height:32px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:12px;cursor:pointer}
+.conv-confirm .conv-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.conv-confirm button:disabled{opacity:.55;cursor:not-allowed}
+.conv-empty,.conv-error{margin:6px 14px;font-size:12px;line-height:1.6;color:var(--muted)}
+.conv-error{color:var(--danger)}
+.conv-toggle{display:none;align-items:center;gap:6px;min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);color:var(--blue-dark);font-size:12px;font-weight:700;cursor:pointer}
+.conv-overlay{position:fixed;inset:0;z-index:70}
+.conv-backdrop{position:absolute;inset:0;border:0;background:#102b4966;cursor:pointer}
+.conv-sheet{position:absolute;inset:0 auto 0 0;width:min(340px,calc(100vw - 32px));padding:16px;background:var(--surface);box-shadow:0 10px 30px #203b3330;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.conv-sheet-head{display:flex;align-items:center;justify-content:space-between;font-size:14px}
+.conv-sheet-head button{min-height:36px;padding:0 10px;border:0;background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
+@media(max-width:900px){.conv-section{display:none}.conv-toggle{display:inline-flex}.conv-delete{opacity:1}}

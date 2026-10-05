@@ -7,6 +7,7 @@ POST /api/chat/stream은 같은 일을 하면서 실제 처리 단계를 SSE로 
 읽기 전용 목록 확인, /mcp 경유, 실패 로그, AIS 목적지 원문 빼기가 그대로 걸린다.
 대화로 지켜보기(10-06): 로그인 사용자에게는 지켜보기를 읽고 쓰는 함수(_watch_hooks)를 만들어 넘긴다. 서비스는 DB를 모르고, 여기서 연결을 연다.
 지금 상태 카카오톡 보내기(10-06): 같은 방식으로 _kakao_hooks를 넘긴다. 보낼 글은 서비스가 쓰고, 여기서는 저장된 화물 줄을 읽고 services/kakao.send_to_user를 부른다.
+대화 목록(10-06): 두 창구 모두 답을 만든 뒤 _save_conversation으로 로그인 사용자의 대화를 뒤에서 저장한다. 실패는 로그만 남기고 답에는 영향이 없다.
 두 창구 모두 로그인 사용자를 services.chat.handle에 넘긴다. 화물 비서 기억(docs/specs/memory.md)의 지난 조회 한 줄과
 기억 쓰기가 두 창구에서 똑같이 돈다. 기억 쓰기는 run_agent가 뒤 작업으로 돌려 응답·스트림을 늦추지 않는다.
 """
@@ -34,6 +35,7 @@ from backend.app.routers.agent import _follow_up_tool, run_agent
 from backend.app.routers.kakao import _web
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import cargo as cargo_service
+from backend.app.services import conversations as conversations_service
 from backend.app.services import chat as svc
 from backend.app.services import kakao as kakao_service
 from backend.app.services import memory as memory_service
@@ -234,6 +236,15 @@ def _kakao_hooks(user_id: str | None) -> svc.KakaoHooks | None:
     return svc.KakaoHooks(row=row, send=send)
 
 
+def _save_conversation(body: ChatRequest, user_id: str | None, response: ChatResponse) -> None:
+    """답을 만든 뒤 대화 목록에 저장하도록 뒤 일꾼에 맡긴다 (10-06). 대화 번호는 session_id.
+    로그인하지 않았거나 DB·PII 열쇠가 없으면 서비스가 조용히 건너뛴다. 저장은 부가 기능이라 어떤 실패도 채팅 답을 막지 않는다."""
+    try:
+        conversations_service.save_later(user_id, body.session_id, body.message, response.model_dump(mode="json"))
+    except Exception as e:  # noqa: BLE001
+        log_failure("conversation_save", type(e).__name__)
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> ChatResponse:
     """문장 하나를 받아 화물 조회·후속 질문·입항 선박 검색·안내 중 하나로 답한다."""
@@ -245,7 +256,9 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
                                 watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
         except svc.ChatError as e:
             raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
-    return ChatResponse(**result.__dict__)
+    response = ChatResponse(**result.__dict__)
+    _save_conversation(body, user_id, response)
+    return response
 
 
 def _sse(event: str, data: dict) -> str:
@@ -274,7 +287,9 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
                     result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id),
                                         user_id, history=_history(body), run_tool=_follow_up_tool,
                                         watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
-            events.put(("result", ChatResponse(**result.__dict__).model_dump(mode="json")))
+            response = ChatResponse(**result.__dict__)
+            _save_conversation(body, user_id, response)  # 맡기기만 한다. 저장·제목은 뒤에서 돈다
+            events.put(("result", response.model_dump(mode="json")))
         except svc.ChatError:
             events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))
         except Exception as e:  # noqa: BLE001 - 응답이 이미 열려 있어 HTTP 500을 줄 수 없다. 오류 이벤트로 알린다

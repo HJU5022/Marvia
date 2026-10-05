@@ -25,7 +25,7 @@ from backend.app.clients.replay import replay_enabled
 from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
-from backend.app.routers import account, admin, agent, chat, document, history, kakao, memory, profile, watch
+from backend.app.routers import account, admin, agent, chat, conversations, document, history, kakao, memory, profile, watch
 from backend.app.services import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
 from mcp_server.server import MountedMCP
 
@@ -96,6 +96,7 @@ app.add_middleware(
 app.include_router(agent.router)
 app.include_router(chat.router)  # 자연어 입력 (docs/specs/chat-search.md)
 app.include_router(history.router)
+app.include_router(conversations.router)  # 대화 목록 (10-06)
 app.include_router(document.router)  # 서류 사진 (docs/specs/document-extract.md)
 app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
 app.include_router(admin.router)  # 운영자 관리 (docs/specs/operator-admin.md)

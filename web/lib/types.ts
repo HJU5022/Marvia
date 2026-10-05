@@ -185,6 +185,15 @@ export interface ChatMap { lat: number; lng: number; ship_name: string | null; d
  * 서버 에이전트가 "그 배", "아까 그거" 같은 말을 풀 때 쓴다. B/L 번호는 서버가 가리므로 화면 글자 그대로 보낸다 */
 export interface ChatHistoryTurn { role: 'user' | 'assistant'; text: string }
 
+/* ---------- 대화 목록 (GET/DELETE /api/conversations, 10-06 결정) ---------- */
+/** GET /api/conversations 한 줄. id는 그 대화의 chat session_id와 같다. 새 대화는 새 session_id다 */
+export interface ConversationSummary { id: string; title: string; updated_at: string }
+/** GET /api/conversations/{id}의 메시지 한 줄. extra는 서버가 저장해 둔 그 턴의 화면용 값(ChatResponse의 kind, vessels, map, cargos, watch_offer, watch_set)이라
+ * 말풍선을 처음 답이 왔을 때와 같게 다시 그린다. 사용자 턴과 옛 대화에는 null이다 */
+export interface ConversationMessage { role: 'user' | 'assistant'; text: string; created_at: string; extra: Partial<ChatResponse> | null }
+/** GET /api/conversations/{id}. context·result는 오른쪽 결과 칸에 되살릴 마지막 화물(단일 화물 답을 받았을 때와 같은 값). 없으면 null */
+export interface ConversationDetail { id: string; title: string; messages: ConversationMessage[]; context: AgentRequest | null; result: AgentResponse | null }
+
 /** GET /api/vessels/detail (services/vessel_detail.py). 도구가 실패한 칸은 null, 이유는 errors */
 export interface VesselDetailResponse {
   call_sign: string | null; ship_name: string | null;

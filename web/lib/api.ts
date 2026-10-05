@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, VesselDetailResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, VesselDetailResponse, ConversationSummary, ConversationDetail } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -53,6 +53,12 @@ export const liveExamples = [
 
 const SESSION_KEY = 'marvia-session-id';
 let memorySession = '';
+let activeSession = '';
+
+/** 지금 대화의 session_id를 정한다. 빈 값이면 브라우저 값(위 SESSION_KEY)으로 돌아간다 */
+export function setActiveSession(id: string): void { activeSession = id; }
+/** 새 대화용 session_id. 서버가 이 값으로 대화를 만들어 저장한다 */
+export function newSessionId(): string { return crypto.randomUUID(); }
 
 /** 실제 모드에서 이 브라우저를 구분하는 ID. 이력(GET /api/history)이 이 값으로 묶인다.
  * localStorage가 막힌 창(사생활 보호 모드 등)에서는 탭이 열려 있는 동안만 같은 값을 쓴다.
@@ -60,6 +66,9 @@ let memorySession = '';
  */
 export function currentSessionId(): string {
   if (!isLive) return demo.session_id;
+  // 대화 하나가 chat session_id 하나다 (10-06 결정). 대화를 열거나 새로 시작하면 AppProvider가 이 값을 정한다.
+  // 그래서 다음 /api/chat 요청과 Langfuse 세션이 그 대화로 이어진다. 정하지 않았으면 아래의 브라우저 값을 쓴다
+  if (activeSession) return activeSession;
   if (typeof window === 'undefined') return '';
   try {
     const saved = window.localStorage.getItem(SESSION_KEY);
@@ -115,7 +124,7 @@ async function callOnce(path: string, init: RequestInit, timeoutMs: number): Pro
     const headers = new Headers(init.headers);
     if (token) headers.set('authorization', `Bearer ${token}`);
     const res = await fetch(`${API_BASE}${path}`, {...init, headers, signal: controller.signal});
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw Object.assign(new Error(await errorMessage(res)), {status: res.status});  // 대화 목록이 401/503/404를 가르려고 상태 코드를 붙인다
     return res;
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw new Error('응답이 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.');
@@ -164,6 +173,33 @@ async function liveAgentResponse(req: AgentRequest): Promise<AgentResponse> {
     body: JSON.stringify(wireRequest(req)),
   }, AGENT_TIMEOUT_MS);
   return res.json();
+}
+
+/** call이 던진 오류의 HTTP 상태 코드. 연결 실패 같은 응답 없는 오류는 undefined */
+export function errorStatus(e: unknown): number | undefined {
+  const s = (e as {status?: unknown} | null)?.status;
+  return typeof s === 'number' ? s : undefined;
+}
+
+/* ---------- 대화 목록 (10-06 결정) ---------- */
+// 로그인해야 쓸 수 있다(401). DB가 없으면 503. 호출하는 쪽이 이 둘을 "목록 없음"으로 본다. 데모 모드에는 저장된 대화가 없다.
+
+/** GET /api/conversations. 최근 순, 서버가 최대 50개까지 준다 */
+export async function listConversations(): Promise<ConversationSummary[]> {
+  if (!isLive) return [];
+  return ((await (await call('/api/conversations', {}, HISTORY_TIMEOUT_MS)).json()).conversations ?? []) as ConversationSummary[];
+}
+
+/** GET /api/conversations/{id}. 없으면 404 */
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  if (!isLive) throw new Error('데모 모드에는 저장된 대화가 없습니다.');
+  return (await call(`/api/conversations/${encodeURIComponent(id)}`, {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** DELETE /api/conversations/{id} */
+export async function deleteConversation(id: string): Promise<{deleted: boolean}> {
+  if (!isLive) throw new Error('데모 모드에는 지울 대화가 없습니다.');
+  return liveDelete(`/api/conversations/${encodeURIComponent(id)}`);
 }
 
 /** 이력은 부가 기능이다. 못 읽으면 화면을 죽이지 않고 available:false로 돌려준다 (routers/history.py와 같은 원칙). */

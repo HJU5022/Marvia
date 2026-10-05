@@ -10,7 +10,7 @@
   - 기록을 먼저 지우면, 계정 삭제가 실패해도 아직 로그인된 상태라 탈퇴를 다시 누를 수 있다
     (다시 누르면 기록 0건 + 계정 삭제로 끝난다)
 기록 삭제는 "내 기록 삭제"(routers/history.py)와 같은 db.delete_user_queries를 쓴다.
-화물 비서 기억(화물 표·메모장)도 같은 단계에서 지운다 (docs/specs/memory.md "개인정보", memory.forget_user).
+화물 비서 기억(화물 표·메모장)과 대화 목록도 같은 단계에서 지운다 (docs/specs/memory.md "개인정보", memory.forget_user, conversations.delete_all).
 
 한계: 탈퇴 직후에도 이미 받은 출입증은 남은 기한(보통 1시간) 동안 우리 확인기(auth.py)를 통과한다.
 출입증에 기한이 적혀 있을 뿐 계정이 지워졌는지는 Supabase에 따로 묻지 않기 때문이다. 화면이 탈퇴 직후 로그아웃시킨다.
@@ -21,6 +21,7 @@ import os
 
 from backend.app.clients.supabase_admin import AdminError, delete_account
 from backend.app.db import atomic, connect, delete_user_queries
+from backend.app.services.conversations import delete_all as delete_conversations
 from backend.app.services.kakao import delete as delete_kakao_link
 from backend.app.services.memory import forget_user
 from backend.app.services.profile import delete as delete_profile
@@ -46,6 +47,8 @@ def withdraw(user_id: str) -> int:
             delete_profile(conn, user_id)
             # 화물 표·메모장(잠긴 B/L 포함)도 계정보다 먼저 지운다 (docs/specs/memory.md "개인정보")
             forget_user(conn, user_id)
+            # 대화 목록(잠긴 사용자 말·답)도 계정보다 먼저 지운다. 말풍선은 대화가 지워질 때 같이 지워진다 (10-06, migrations/018)
+            delete_conversations(conn, user_id)
             # 카카오톡 알림 토큰도 계정보다 먼저 지운다 (10-02). 줄만 지운다. 카카오 쪽 연결 해제는 부르지 않는다
             # (카카오 서버 실패가 탈퇴를 막으면 안 되고, 토큰이 사라지면 우리는 더 보낼 수 없다)
             delete_kakao_link(conn, user_id)

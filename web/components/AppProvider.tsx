@@ -3,11 +3,12 @@
  * 응답은 받은 그대로 둔다. 화면이 스키마 값을 고치지 않는다.
  */
 import {createContext, useContext, useEffect, useRef, useState, type ReactNode} from 'react';
-import {getAgentResponse, getMe, getPresentationData, getReplaySnapshot, getWatchChanges, isLive, markWatchChangesSeen, sendChatStream, watchKey} from '@/lib/api';
+import {usePathname, useRouter} from 'next/navigation';
+import {deleteConversation, errorStatus, getAgentResponse, getConversation, getMe, getPresentationData, getReplaySnapshot, getWatchChanges, isLive, listConversations, markWatchChangesSeen, newSessionId, sendChatStream, setActiveSession, currentSessionId, watchKey} from '@/lib/api';
 import {verdictLabels} from '@/lib/format';
 import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
-import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatResponse, WatchChange, WatchOffer} from '@/lib/types';
+import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatResponse, ConversationMessage, ConversationSummary, WatchChange, WatchOffer} from '@/lib/types';
 
 /** 입력창 대화 한 줄. 화면에만 두고 저장하지 않는다 (docs/specs/chat-search.md Out of Scope: 대화 기억) */
 export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: ChatResponse['kind'];
@@ -29,6 +30,17 @@ function changesText(changes: WatchChange[]): string {
 const presentation = getPresentationData();
 // 실제 모드는 빈 폼으로 시작한다. 세션 ID는 lib/api.ts가 요청 때 브라우저 값으로 채운다
 const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: null, session_id: ''};
+
+/** 서버에 저장된 대화 한 줄을 말풍선으로. extra에는 그 턴이 처음 왔을 때의 화면용 값이 있어 지도·표·지켜보기 버튼이 같게 다시 그려진다 (10-06 결정) */
+function toTurn(m: ConversationMessage): ChatTurn {
+  const x = m.extra;
+  return {role: m.role, text: m.text, kind: x?.kind, map: x?.map ?? null, cargos: x?.cargos ?? [], watchOffer: x?.watch_offer ?? null};
+}
+
+/** 로그인하지 않은(또는 대화 목록을 못 쓰는) 탭이 새로고침해도 대화를 이어 가려고 sessionStorage에 두는 값.
+ * 탭을 닫으면 사라지고, 주소(URL)에는 대화 글을 넣지 않는다. 저장이 막힌 브라우저에서는 조용히 건너뛴다 (10-06 결정) */
+const CHAT_STATE_KEY = 'marvia-chat-state';
+interface SavedChat { session: string; thread: ChatTurn[]; request: AgentRequest; result: AgentResponse | null; view: 'cargo' | 'vessels' | 'none'; vessels: ChatResponse | null }
 
 /** 서류 사진에서 사용자가 확인한 항차·입항 예정일. 되묻기 화면에 미리 채우는 데만 쓴다 (DocumentPanel). */
 export interface DocHints { voyage_no: string | null; forwarder_eta: string | null }
@@ -62,6 +74,15 @@ interface AppState {
   reset: () => void;
   /** 지켜보는 중인 화물(정규화한 B/L → 켜짐/꺼짐). WatchToggle과 말풍선 버튼이 같이 쓴다. 값이 없으면 아직 모른다 (10-06 결정) */
   watching: Record<string, boolean>; setWatching: (blNo: string, on: boolean) => void;
+  /** 대화 목록 (10-06 결정). conversationsOn이 false(로그아웃·로그인 기능 꺼짐·서버가 401/503)면 목록을 그리지 않고 탭 sessionStorage로 대화를 이어 간다 */
+  conversationsOn: boolean; conversations: ConversationSummary[];
+  /** 지금 대화의 chat session_id. 열린 대화는 이 값이 목록의 id와 같다 */
+  activeId: string;
+  /** 서버에 저장된 것을 확인한(첫 답을 받았거나 열어 본) 대화 id. 이 값이 있을 때만 주소에 ?c=가 붙는다. 없으면 null */
+  savedId: string | null;
+  /** 대화를 불러오는 중 (메시지 보내기·다른 대화 열기를 잠시 막는다) */
+  opening: boolean;
+  newConversation: () => void; openConversation: (id: string) => Promise<boolean>; removeConversation: (id: string) => Promise<void>;
 }
 const Context = createContext<AppState | null>(null);
 
@@ -83,6 +104,19 @@ export function AppProvider({children}:{children:ReactNode}) {
   const [meReady,setMeReady] = useState(!authEnabled);
   const [watching,setWatchingMap] = useState<Record<string,boolean>>({});
   const inflight = useRef(false);
+  const router = useRouter(); const pathname = usePathname();
+  const [conversations,setConversations] = useState<ConversationSummary[]>([]);
+  // null = 목록을 아직 불러 보지 않았다. false = 서버가 401/503이라 쓸 수 없다 (그때는 sessionStorage로 이어 간다)
+  const [convAvail,setConvAvail] = useState<boolean|null>(null);
+  const [activeId,setActiveId] = useState('');
+  const [savedId,setSavedId] = useState<string|null>(null);
+  const [opening,setOpening] = useState(false);
+  // 대화를 열거나 새로 시작할 때마다 올린다. 느리게 도착한 옛 응답(대화 내용, 먼저 말 걸기)이 새 화면을 덮지 않게 비교한다
+  const epoch = useRef(0);
+  const restored = useRef(false);
+  const conversationsOn = isLive && authEnabled && !!user && convAvail !== false;
+  // 목록을 못 쓰는 실제 모드 탭은 sessionStorage에 대화를 둔다
+  const persistLocal = isLive && authReady && !conversationsOn;
   function setWatching(blNo: string, on: boolean) { setWatchingMap(m => m[watchKey(blNo)] === on ? m : {...m, [watchKey(blNo)]: on}); }
 
   // 로그인 상태는 브라우저에서만 안다. 첫 확인이 끝나기 전에는 로그인 화면을 깜빡 보여 주지 않도록 authReady로 막는다
@@ -107,14 +141,107 @@ export function AppProvider({children}:{children:ReactNode}) {
   // 말풍선을 thread에 넣은 뒤에 확인 처리한다(안 보여 준 알림을 지우지 않으려고). 알림은 덤이라 실패하면 조용히 넘어간다 (예전 배너와 같다)
   useEffect(() => {
     if (!isLive || !authEnabled || !authReady || !user) return;
-    let alive = true;
+    // 저장된 대화를 다시 연 주소(?c=)에는 말 걸지 않는다. 새 대화로 들어왔을 때만 보여 주고, 확인 처리도 그때 한다 (10-06 결정)
+    if (new URLSearchParams(window.location.search).get('c')) return;
+    let alive = true; const mine = epoch.current;
     void getWatchChanges().then(changes => {
-      if (!alive || changes.length === 0) return;
+      if (!alive || mine !== epoch.current || changes.length === 0) return;
       setThread(t => [{role: 'assistant', text: changesText(changes), kind: 'message'}, ...t]);
       void markWatchChangesSeen().catch(() => { /* 실패하면 다음 접속에 한 번 더 보인다 */ });
     }).catch(() => { /* 조용히 실패 */ });
     return () => { alive = false; };
   }, [authReady, user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 로그인하면 주소를 본다. ?c=<id>가 있으면 그 대화를 열고(새로고침·다른 기기·링크), 없으면 새 대화다 (새 session_id).
+  // 새 대화의 주소는 첫 답을 받은 뒤에 붙인다. 서버가 그때 대화를 저장하므로, 그 전에 붙이면 새로고침이 404를 만난다
+  useEffect(() => {
+    if (!isLive || !authEnabled || !authReady || !user) { setConversations([]); setConvAvail(null); return; }
+    try { window.sessionStorage.removeItem(CHAT_STATE_KEY); } catch { /* 저장소가 막혀 있어도 괜찮다 */ }
+    const id = new URLSearchParams(window.location.search).get('c');
+    if (id) void openConversation(id); else startSession(newSessionId());
+    void refreshConversations();
+  }, [authReady, user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 목록을 못 쓰는 탭: 첫 화면에서 지난 대화를 되살린다 (이미 입력한 게 있으면 덮지 않는다)
+  useEffect(() => {
+    if (!persistLocal || restored.current) return;
+    restored.current = true;
+    if (thread.length > 0 || result) return;
+    try {
+      const raw = window.sessionStorage.getItem(CHAT_STATE_KEY); if (!raw) return;
+      const saved = JSON.parse(raw) as SavedChat;
+      if (!Array.isArray(saved.thread) || !saved.session) return;
+      setActiveSession(saved.session); setActiveId(saved.session);
+      setThread(saved.thread); setRequest(saved.request ?? emptyRequest); setResult(saved.result ?? null); setVessels(saved.vessels ?? null); setView(saved.view ?? 'cargo');
+    } catch { /* 깨진 값은 무시하고 빈 대화로 시작한다 */ }
+  }, [persistLocal]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 목록을 못 쓰는 탭: 대화가 바뀔 때마다 저장한다. 비어 있으면 저장하지 않는다(되살리기 전의 빈 값이 지난 대화를 지우지 않게)
+  useEffect(() => {
+    if (!persistLocal || (!thread.length && !result)) return;
+    try {
+      const saved: SavedChat = {session: currentSessionId(), thread, request, result, view, vessels};
+      window.sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify(saved));
+    } catch { /* 용량 초과·저장 금지는 건너뛴다. 새로고침하면 빈 대화로 시작할 뿐이다 */ }
+  }, [persistLocal, thread, request, result, view, vessels]);
+
+  /** 지금 대화의 session_id를 바꾼다. api.ts의 값이 다음 요청의 session_id가 되고, 화면의 activeId가 같이 바뀐다 */
+  function startSession(id: string) { setActiveSession(id); setActiveId(id); }
+  /** 주소만 바꾼다. 대화 글은 주소에 넣지 않고 id만 넣는다. 다른 화면(이력 등)에 있으면 내 화물로 옮겨 간다 */
+  function syncUrl(id: string | null) {
+    setSavedId(id);
+    const url = id ? `/?c=${encodeURIComponent(id)}` : '/';
+    if (pathname === '/') window.history.replaceState(null, '', url); else router.push(url);
+  }
+  async function refreshConversations() {
+    try { setConversations(await listConversations()); setConvAvail(true); }
+    catch (e) {
+      // 로그인이 풀렸거나(401) DB가 없으면(503) 목록을 접고 탭 저장으로 간다. 그 밖의 일시 오류는 있던 목록을 그대로 둔다
+      const status = errorStatus(e); if (status === 401 || status === 503) setConvAvail(false);
+    }
+  }
+  /** 빈 새 대화. 지금 화면과 결과 칸을 비우고 새 session_id를 쓴다 (Langfuse 세션도 새로) */
+  function newConversation() {
+    if (inflight.current) return;  // 답을 기다리는 중에 바꾸면 곧 올 답이 새 화면에 섞인다
+    epoch.current++; startSession(newSessionId()); clearScreen(); syncUrl(null);
+  }
+  function clearScreen() { setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); setWatchingMap({}); setReplaying(false); }
+  /** 저장된 대화를 열어 화면을 되살린다. 말풍선은 messages(+extra)로, 오른쪽 결과 칸은 context·result로 (단일 화물 답을 받았을 때와 같은 상태) */
+  async function openConversation(id: string) {
+    if (inflight.current) return false;
+    const mine = ++epoch.current;
+    setOpening(true); setError('');
+    try {
+      const c = await getConversation(id);
+      if (mine !== epoch.current) return false;
+      startSession(id);
+      clearScreen();
+      setThread(c.messages.slice(-50).map(toTurn));  // 화면에는 최근 50줄만 (ask와 같다)
+      if (c.context && c.result) { setRequest({...c.context, session_id: id}); setResult(c.result); }
+      // 마지막 답의 종류가 결과 칸을 정한다. ask()가 답마다 하는 것과 같다
+      const last = [...c.messages].reverse().find(m => m.role === 'assistant');
+      const kind = last?.extra?.kind;
+      if (kind === 'vessels' && last?.extra) {
+        setVessels({kind: 'vessels', reply: last.text, agent: null, request: null, vessels: [], place: null, ports: [], days: null, ...last.extra} as ChatResponse); setView('vessels');
+      } else setView(kind === 'message' || !(c.context && c.result) ? 'none' : 'cargo');
+      syncUrl(id);
+      return true;
+    } catch (e) {
+      if (mine !== epoch.current) return false;
+      const status = errorStatus(e);
+      if (status === 401 || status === 503) setConvAvail(false);
+      // 못 찾거나 못 읽으면 빈 새 대화로 시작하고 이유를 알린다. 주소의 ?c=도 지운다
+      startSession(newSessionId()); clearScreen(); syncUrl(null);
+      setError(status === 404 ? '찾는 대화가 없어요. 새 대화로 시작합니다.' : e instanceof Error ? e.message : '대화를 불러오지 못했어요.');
+      return false;
+    } finally { if (mine === epoch.current) setOpening(false); }
+  }
+  /** 대화 하나 삭제(DELETE /api/conversations/{id}). 지금 보던 대화면 새 대화로 간다. 실패하면 호출한 쪽(목록)이 이유를 보인다 */
+  async function removeConversation(id: string) {
+    await deleteConversation(id);
+    if (id === activeId) { epoch.current++; startSession(newSessionId()); clearScreen(); syncUrl(null); }
+    await refreshConversations();
+  }
 
   async function lookup(req: AgentRequest) {
     if (inflight.current) return false;
@@ -125,7 +252,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     finally {setLoading(false);setPendingSince(null);inflight.current=false;}
   }
   async function ask(message: string) {
-    if (inflight.current) return false;
+    if (inflight.current || opening) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 서버에 보낼 앞선 대화. 지금 질문을 더하기 전의 thread(이번 렌더의 값)를 잡아 둔다. 자르기는 chatBody가 한다 (최근 6줄, 500자)
     const history = thread;
@@ -143,6 +270,8 @@ export function AppProvider({children}:{children:ReactNode}) {
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
       // 안내 문장(B/L 없음 등)이면 아래의 지난 결과를 숨긴다. 새 답과 지난 카드가 섞여 보이지 않게
       if (res.kind === 'message') setView('none');
+      // 서버가 이 턴을 저장했다. 주소에 대화 id를 붙이고 목록을 새로 읽는다. 제목은 조금 늦게 생길 수 있어 한 번 더 읽는다 (10-06 결정)
+      if (conversationsOn) { syncUrl(currentSessionId()); void refreshConversations(); setTimeout(() => void refreshConversations(), 3000); }
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : '답하지 못했습니다. 다시 시도해 주세요.';
@@ -159,8 +288,12 @@ export function AppProvider({children}:{children:ReactNode}) {
     // 선박 표를 보던 중이어도 재생한 화물이 보이게 화물 보기로 바꾼다 (10-02 발견: 표가 남아 재생 결과가 가려졌다)
     setResult(snapshot.response);setRequest(snapshot.request);setReplaying(true);setError('');setView('cargo');return true;
   }
-  function reset() { setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); setWatchingMap({}); }
+  // 탈퇴·로그아웃·기록 삭제 뒤: 화면을 비우고 탭에 저장해 둔 대화도 지운다. 주소의 ?c=도 지워 다음 사용자가 이전 대화를 열려 하지 않게 한다
+  function reset() {
+    epoch.current++; clearScreen(); startSession(isLive ? newSessionId() : ''); if (isLive) syncUrl(null);
+    try { window.sessionStorage.removeItem(CHAT_STATE_KEY); } catch { /* 괜찮다 */ }
+  }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,watching,setWatching}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,watching,setWatching,conversationsOn,conversations,activeId,savedId,opening,newConversation,openConversation,removeConversation}}>{children}</Context.Provider>;
 }
 export function useApp() { const ctx=useContext(Context);if(!ctx)throw new Error('AppProvider is required');return ctx; }

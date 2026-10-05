@@ -987,6 +987,35 @@ def write_memory(content: str, *, model: str | None = None) -> LLMAnswer:
     return _ask_json(MEMORY_PROMPT, content, "memory_write", MEMORY_SCHEMA, MemoryOpsOutput, model, skills=())
 
 
+# ── 대화 제목 make_chat_title() ─────────────────────────────
+# 대화 목록(10-06 결정)의 제목. 첫 사용자 말을 코드가 B/L을 [BL1]로 가린 글만 받는다 (CLAUDE.md, B/L 원본은 LLM에 안 간다).
+# 결과 검사(한 줄·길이·주입 모양)와 실패 시 대신 쓸 제목은 services/conversations.py가 맡는다.
+
+TITLE_PROMPT = "marvia-chat-title"
+TITLE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title"],
+    "properties": {"title": {"type": "string"}},
+}
+
+
+class TitleOutput(BaseModel):
+    title: str
+
+
+def make_chat_title(masked_text: str, *, model: str | None = None) -> LLMAnswer:
+    """대화 제목 짓기. output은 TitleOutput. masked_text는 mask_bls를 거친 첫 사용자 말이다.
+
+    값싼 모델을 쓰려고 기억 뽑기와 같은 MEMORY_MODEL(.env)을 쓴다. 없으면 LLMError(not_configured)이고
+    부르는 쪽이 첫 말 앞 글자로 대신한다. 판단 기준 Skill은 넣지 않는다.
+    """
+    model = model or os.environ.get("MEMORY_MODEL")
+    if not model:
+        raise LLMError("MEMORY_MODEL이 없습니다", kind="not_configured")
+    return _ask_json(TITLE_PROMPT, masked_text, "chat_title", TITLE_SCHEMA, TitleOutput, model, skills=())
+
+
 # ── 통관 해설 채점 grade_customs() ─────────────────────────────
 # 평가 전용 LLM-as-judge (SDD 5.12 customs_explanation, 가이드 평가 4축 ④ "생성 모델 ≠ 판정 모델").
 # 서비스 요청에서는 부르지 않는다. evals/judge.py가 평가 실행 때만 부른다.
