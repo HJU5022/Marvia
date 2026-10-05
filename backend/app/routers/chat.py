@@ -99,9 +99,10 @@ class ChatMap(BaseModel):
 
 
 class ChatCargo(BaseModel):
-    """한 문장에 B/L이 2~3개일 때 표의 한 줄 (10-05 정운 결정). agent·request는 이 줄을 눌렀을 때 오른쪽 칸을 바꾸는 데 쓴다:
+    """한 문장에 B/L이 2~3개일 때 표의 한 줄 (10-05 정운 결정). agent·request는 이 줄을 눌렀을 때 아래 결과 칸을 바꾸는 데 쓴다:
     단일 화물 답의 agent·request와 같은 모양이다. bl_no는 사용자가 입력한 값 그대로다(요청에도 있는 값, LLM에는 가지 않는다).
-    ship_name·eta·days_margin은 판정 흐름 응답에서 옮긴 값이다. days_margin은 판매 예정일이 있을 때만 값이 있다."""
+    ship_name·eta·days_margin은 판정 흐름 응답에서 옮긴 값이다. days_margin은 판매 예정일이 있을 때만 값이 있다.
+    note 칸은 판정을 못 낸 줄(insufficient)이 필요로 하는 것의 짧은 이유 ("같은 이름 배 2척", "조회 결과 없음"). 판정이 났으면 None (10-06 정운 화면)."""
 
     bl_no: str
     status: str
@@ -110,6 +111,7 @@ class ChatCargo(BaseModel):
     eta: datetime | None = None
     days_margin: int | None = None
     sale_due_date: date | None = None
+    note: str | None = None
     agent: AgentResponse
     request: AgentRequest
 
@@ -233,7 +235,11 @@ def _kakao_hooks(user_id: str | None) -> svc.KakaoHooks | None:
             return {"error": e.kind}
         return {"sent": True}
 
-    return svc.KakaoHooks(row=row, send=send)
+    def linked() -> bool:
+        with ops.open_conn() as conn:
+            return kakao_service.is_linked(conn, user_id)
+
+    return svc.KakaoHooks(row=row, send=send, linked=linked)
 
 
 def _save_conversation(body: ChatRequest, user_id: str | None, response: ChatResponse) -> None:

@@ -162,7 +162,7 @@ export interface ChatResponse {
    * 옛 응답과 데모 모드에는 이 칸이 없으므로 선택 칸이다 (ChatMiniMap) */
   map?: ChatMap | null;
   /** 한 문장에 B/L이 2~3개일 때만 값이 있다(조회한 화물 한 줄씩). 한 개짜리 답과 옛 응답·데모에는 없거나 빈 목록이다 (ChatCargoTable).
-   * agent·request는 첫 줄의 것과 같은 모양이라 줄을 누르면 단일 화물 답처럼 오른쪽 칸을 바꾼다 */
+   * agent·request는 첫 줄의 것과 같은 모양이라 줄을 누르면 단일 화물 답처럼 아래 결과 칸을 바꾼다 */
   cargos?: ChatCargo[];
   /** 에이전트가 이 화물을 지켜보자고 제안했을 때만 값이 있다. reason은 코드가 쓴 문장이고 reply 안에도 이미 들어 있다 (10-06 결정). 옛 응답·데모에는 없거나 null */
   watch_offer?: WatchOffer | null;
@@ -177,6 +177,8 @@ export interface WatchSet { bl_no: string; on: boolean }
 export interface ChatCargo {
   bl_no: string; status: string; verdict: 'fine' | 'watch' | 'act' | null; ship_name: string | null;
   eta: string | null; days_margin: number | null; sale_due_date: string | null;
+  /** 판정을 못 낸 줄이 필요로 하는 것의 짧은 이유 ("같은 이름 배 2척"). 판정이 났으면 null (10-06) */
+  note: string | null;
   agent: AgentResponse; request: AgentRequest;
 }
 /** ChatResponse.map. 말풍선 아래 작은 지도 한 점 (백엔드 계약, 10-05) */
@@ -191,7 +193,7 @@ export interface ConversationSummary { id: string; title: string; updated_at: st
 /** GET /api/conversations/{id}의 메시지 한 줄. extra는 서버가 저장해 둔 그 턴의 화면용 값(ChatResponse의 kind, vessels, map, cargos, watch_offer, watch_set)이라
  * 말풍선을 처음 답이 왔을 때와 같게 다시 그린다. 사용자 턴과 옛 대화에는 null이다 */
 export interface ConversationMessage { role: 'user' | 'assistant'; text: string; created_at: string; extra: Partial<ChatResponse> | null }
-/** GET /api/conversations/{id}. context·result는 오른쪽 결과 칸에 되살릴 마지막 화물(단일 화물 답을 받았을 때와 같은 값). 없으면 null */
+/** GET /api/conversations/{id}. context·result는 아래 결과 칸에 되살릴 마지막 화물(단일 화물 답을 받았을 때와 같은 값). 없으면 null */
 export interface ConversationDetail { id: string; title: string; messages: ConversationMessage[]; context: AgentRequest | null; result: AgentResponse | null }
 
 /** GET /api/vessels/detail (services/vessel_detail.py). 도구가 실패한 칸은 null, 이유는 errors */

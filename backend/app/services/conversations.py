@@ -62,6 +62,17 @@ def valid_title(raw: str | None) -> str | None:
 
 # 제목으로 삼기엔 내용이 없는 첫 말 (10-06 정운 화면: "안녕"으로 시작한 대화 둘이 모두 "인사"로 고정됐다)
 SMALL_TALK = re.compile(r"^\s*(?:안녕|안뇽|하이|헬로|hi|hello|hey|반가|ㅎㅇ|ㅎㅇㅎㅇ|좋은\s*(?:아침|하루|저녁))\S*[\s!?.~]*$", re.IGNORECASE)
+# 인사 때문에 이미 붙은 제목 (10-06 정운 화면: 고치기 전에 만든 대화가 LLM이 지은 "인사"로 남았다). 이런 제목은 자리표시자로 보고 진짜 질문에서 다시 짓는다
+PLACEHOLDER_TITLES = {"인사", "인사말", "안부 인사", "안부", "감사 인사", NO_TITLE}
+
+
+def is_placeholder_title(title: str | None) -> bool:
+    """저장된 제목이 아직 임시인가: 비었거나, 새 대화이거나, 인사말 같은 제목. 진짜 제목이 정해지면 False라 다시 바꾸지 않는다.
+    제목을 못 읽은 경우(None, 열쇠가 바뀜)는 임시로 보지 않는다: 읽지 못한 진짜 제목을 덮어쓰지 않으려고."""
+    if title is None:
+        return False
+    t = title.strip()
+    return not t or t in PLACEHOLDER_TITLES or bool(SMALL_TALK.match(t))
 
 
 def is_small_talk(user_text: str, reply: dict) -> bool:
@@ -150,8 +161,8 @@ def _save_job(user_id: str, conv_id: str, user_text: str, reply: dict) -> None:
         is_new = save_turn(conn, user_id, conv_id, user_text, reply)
         if is_small_talk(user_text, reply):
             return  # 인사·사용법 턴으로는 제목을 짓지 않는다
-        if is_new or current_title(conn, user_id, conv_id) == NO_TITLE:
-            # 새 대화이거나, 인사로 시작해 아직 "새 대화"인 대화의 첫 진짜 질문 (10-06)
+        if is_new or is_placeholder_title(current_title(conn, user_id, conv_id)):
+            # 새 대화이거나, 인사로 시작해 아직 임시 제목("새 대화"·"인사" 등)인 대화의 첫 진짜 질문 (10-06)
             set_title(conn, user_id, conv_id, make_title(user_text))
 
 

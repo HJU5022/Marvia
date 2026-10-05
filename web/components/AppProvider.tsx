@@ -206,7 +206,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     epoch.current++; startSession(newSessionId()); clearScreen(); syncUrl(null);
   }
   function clearScreen() { setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); setWatchingMap({}); setReplaying(false); }
-  /** 저장된 대화를 열어 화면을 되살린다. 말풍선은 messages(+extra)로, 오른쪽 결과 칸은 context·result로 (단일 화물 답을 받았을 때와 같은 상태) */
+  /** 저장된 대화를 열어 화면을 되살린다. 말풍선은 messages(+extra)로, 아래 결과 칸은 context·result로 (단일 화물 답을 받았을 때와 같은 상태) */
   async function openConversation(id: string) {
     if (inflight.current) return false;
     const mine = ++epoch.current;

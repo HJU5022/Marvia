@@ -627,8 +627,44 @@ def _reply_violations(reply: str, grounded: str, message: str, earlier: list[str
 
 # 한 문장에 B/L이 여러 개일 때의 고정 문장 (10-05 결정). 번호는 적지 않는다: 코드가 쓴 문장에도 원문 B/L을 새로 내보내지 않으려고
 MULTI_BL_NOTICE = "(한 번에 최대 세 개까지 조회해요. 나머지는 따로 보내 주세요.)"
-MULTI_TABLE_LEAD = "화물 {n}건을 조회했어요. 표에서 하나를 누르면 오른쪽에 자세히 보여 줘요."  # LLM 비교 문장이 없거나 검사에 걸렸을 때. 표가 답이다
+MULTI_TABLE_LEAD = "화물 {n}건을 조회했어요. 표에서 하나를 누르면 아래에 자세히 보여 줘요."  # LLM 비교 문장이 없거나 검사에 걸렸을 때. 표가 답이다 (10-06 정운 화면: 결과 칸은 대화창 아래다)
 MULTI_FAILED_NOTICE = "(일부 B/L은 조회하지 못했어요. 잠시 뒤 따로 다시 물어봐 주세요.)"
+# 여러 B/L 중 판정을 못 낸 줄 (10-06 정운 화면: 표에 "판정 없음 / 선박 확인되지 않음"만 떠서 무엇이 필요한지 몰랐다).
+# 이유는 표 칸(note)에, 해야 할 일은 답 문장에 코드가 쓴다. 판정 흐름의 되묻기·결과 없음 문구(routers/agent)와 같은 뜻이다
+ROW_NEED_NOTE = "확인 필요"
+ROW_NOTE_SAME_NAME = "같은 이름 배 {n}척"
+ROW_NOTE_NOT_FOUND = "조회 결과 없음"
+ROW_NOTE_MORE_INFO = "정보 더 필요"
+ROW_SAY_SAME_NAME = "{bl}는 같은 이름의 배가 여러 척이라 항차 번호나 포워더 입항 예정일이 필요해요."
+ROW_SAY_STILL_SAME = "{bl}는 알려 주신 항차나 입항 예정일로도 어느 배인지 가르지 못했어요."
+ROW_SAY_NOT_FOUND = "{bl}는 조회 결과가 없어요. B/L 번호와 마스터·하우스 구분을 확인해 주세요."
+ROW_SAY_MORE_INFO = "{bl}는 판정에 필요한 정보가 더 필요해요."
+# B/L로 읽지 못한 식별자 모양 글자 안내 (10-06 정운 화면: "tesbl41"이 말없이 빠졌다)
+UNREAD_NOTICE = "(B/L 번호로 읽지 못한 글자가 있어요: {names}. 번호를 확인해 주세요.)"
+UNREAD_MAX = 3
+
+
+def row_need(agent: AgentResponse) -> tuple[str, str] | None:
+    """판정을 못 낸 줄(insufficient)이 무엇을 필요로 하는가: (표에 적을 짧은 이유, 답에 넣을 문장 틀). 판정이 났으면 None.
+    판정 흐름이 정한 answer 문구로 갈래를 정한다 (같은 이름 되묻기·되묻기 뒤에도 못 가름·결과 없음). 그 밖은 일반 안내."""
+    if agent.status != "insufficient":
+        return None
+    from backend.app.routers import agent as agent_router  # noqa: PLC0415 - 서로 불러오는 순환을 피하려고 쓰는 자리에서 가져온다
+    if agent.answer == agent_router.NO_CARGO:
+        return ROW_NOTE_NOT_FOUND, ROW_SAY_NOT_FOUND
+    if agent.answer == agent_router.ASK_BACK:
+        return ROW_NOTE_SAME_NAME.format(n=len(agent.vessel_candidates)), ROW_SAY_SAME_NAME
+    if agent.answer == agent_router.ASK_BACK_AFTER_EVIDENCE:
+        return ROW_NOTE_SAME_NAME.format(n=len(agent.vessel_candidates)), ROW_SAY_STILL_SAME
+    return ROW_NOTE_MORE_INFO, ROW_SAY_MORE_INFO
+
+
+def unread_ids(masked: str, bls: list[str]) -> list[str]:
+    """가린 문장에서 B/L로 읽히지 않은 식별자 모양 글자(영문+숫자 섞임)를 사용자가 쓴 그대로 뽑는다. 조회한 B/L과 같은 글자는 뺀다.
+    날짜(숫자·한글뿐)와 일반 낱말은 _ID_LIKE가 영문+숫자를 모두 요구해 걸리지 않는다."""
+    known = {b.upper() for b in bls}
+    found = [m.group(0) for m in _ID_LIKE.finditer(masked) if m.group(0).upper() not in known]
+    return list(dict.fromkeys(found))[:UNREAD_MAX]
 HOUSE_NOTICE = ("(B/L 구분을 말하지 않아 하우스 B/L(포워더가 발행한 B/L)로 조회했습니다. "
                 "선사가 발행한 마스터 B/L이면 \"마스터로 다시\"라고 말해 주세요.)")
 
@@ -667,6 +703,12 @@ WATCH_LOGIN_TAIL = "로그인하면 지켜보다가 알려 드려요."
 # 켜기 성공 문장. 카카오톡은 연결해 둔 사람에게만 간다 (services/watch._notify: 연결 안 됨은 조용히 넘어간다). 화면 띠는 누구에게나 뜬다
 WATCH_ON_REPLY = ("이 화물을 지켜볼게요. 판정이 바뀌면 다음에 접속할 때 알려 드리고, "
                   "카카오톡을 연결해 두셨다면 카카오톡으로도 보내 드려요.")
+# 카카오톡을 말하며 지켜보기를 부탁했을 때 (10-06 정운 화면: "카톡으로 알림 설정"에 카톡 얘기 없이 "이미 지켜보고 있어요"만 나왔다).
+# 연결 상태는 코드가 DB에서 읽어 사실대로 말한다. 못 읽으면 위의 기본 문장을 그대로 쓴다
+KAKAO_WORD = re.compile(r"카톡|카카오")
+WATCH_ON_PLAIN = "이 화물을 지켜볼게요. 판정이 바뀌면 다음에 접속할 때 알려 드려요."
+KAKAO_LINKED_TAIL = "판정이 바뀌면 카카오톡으로도 보내 드려요."
+KAKAO_UNLINKED_TAIL = "카카오톡은 아직 연결되지 않았어요. 설정에서 연결하면 판정이 바뀔 때 카톡으로도 받을 수 있어요."
 WATCH_OFF_REPLY = "이 화물은 더 이상 지켜보지 않을게요."
 WATCH_NEED_LOGIN = "로그인하면 이 화물을 지켜보다가 판정이 바뀔 때 알려 드려요."
 WATCH_HOW = "지켜보기를 켜거나 끄려면 \"이 화물 지켜봐 줘\", \"그만 지켜봐도 돼\"처럼 말씀해 주세요."
@@ -699,7 +741,8 @@ def wants_send_now(masked: str) -> bool:
     return bool(SEND_NOW.search(masked)) and not FUTURE_WORDS.search(masked)
 
 
-WATCH_ALREADY_ON = "이미 이 화물을 지켜보고 있어요. 판정이 바뀌면 알려 드려요."
+WATCH_ALREADY_HEAD = "이미 이 화물을 지켜보고 있어요."
+WATCH_ALREADY_ON = WATCH_ALREADY_HEAD + " 판정이 바뀌면 알려 드려요."
 WATCH_ALREADY_OFF = "이 화물은 지금 지켜보고 있지 않아요."
 
 # ── 지금 상태를 카카오톡으로 보내기 (10-06 결정) ──
@@ -748,10 +791,12 @@ def _kakao_release(user_id: str, key: str) -> None:
 class KakaoHooks:
     """로그인한 사용자의 카카오톡으로 지금 상태를 보내는 함수 둘. 라우터가 DB 연결을 열어 만들어 넘긴다 (routers/chat._kakao_hooks).
     row(bl_no): 그 화물의 저장된 줄(services/cargo.get_row 모양 dict), 없으면 None.
-    send(text): {"sent": True} 또는 {"error": KakaoLinkError.kind / KakaoError.kind / "db"}. 화면 주소는 라우터가 붙인다."""
+    send(text): {"sent": True} 또는 {"error": KakaoLinkError.kind / KakaoError.kind / "db"}. 화면 주소는 라우터가 붙인다.
+    linked(): 이 사용자가 카카오톡을 연결해 두었나 (지켜보기 답에서 카톡 얘기가 나왔을 때 사실대로 말하려고)."""
 
     row: Callable[[str], dict | None]
     send: Callable[[str], dict]
+    linked: Callable[[], bool] | None = None  # 카카오톡을 연결했나 (services/kakao.is_linked). 없으면 모른다
 
 
 def kakao_now_text(row: dict, today: date) -> str | None:
@@ -994,6 +1039,16 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
 
     watch_out: dict = signals.setdefault("watch", {})  # {"msg": 코드가 쓴 문장, "set": {"bl_no","on"}, "refused": 거절됨}
 
+    def kakao_tail() -> str | None:
+        """문장에 카톡·카카오 말이 있을 때만: 카카오톡 연결 상태를 사실대로 말하는 꼬리 문장. 말이 없거나 상태를 못 읽으면 None (10-06 정운 화면)"""
+        if not KAKAO_WORD.search(masked) or kakao is None or kakao.linked is None:
+            return None
+        try:
+            return KAKAO_LINKED_TAIL if kakao.linked() else KAKAO_UNLINKED_TAIL
+        except Exception as e:  # noqa: BLE001 - 부가 안내다. 못 읽으면 기본 문장으로 간다
+            log_failure("chat_kakao", type(e).__name__)
+            return None
+
     def run_watch(args: dict) -> dict:
         """지켜보기 켜기·끄기 도구 (10-06 결정). DB에 쓰는 동작이라 LLM 판단만으로는 하지 않는다:
         (a) 가린 문장에 지켜보기 낱말이 있거나 (b) 바로 앞 답이 우리 제안이고 이번 문장이 짧은 긍정일 때만 한다.
@@ -1025,7 +1080,8 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return _tool_error("unavailable", "The watch store is not available.")
         try:  # 이미 원하는 상태면 다시 켜지 않고 그렇다고 말한다 (10-06 결정). 상태를 못 읽으면 그냥 바꿔 본다
             if bool(watch.state(bl).get("watch")) == on:
-                watch_out["msg"] = WATCH_ALREADY_ON if on else WATCH_ALREADY_OFF
+                tail = kakao_tail() if on else None
+                watch_out["msg"] = (f"{WATCH_ALREADY_HEAD} {tail}" if tail else WATCH_ALREADY_ON) if on else WATCH_ALREADY_OFF
                 return {"ok": True, "watching": on, "unchanged": True}
         except Exception as e:  # noqa: BLE001
             log_failure("chat_watch", type(e).__name__)
@@ -1037,7 +1093,8 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if "error" in result:
             watch_out["msg"] = WATCH_FAIL_REPLY.get(result["error"], WATCH_FAIL_REPLY["db"])
             return _tool_error(str(result["error"]), "Could not change watching.")
-        watch_out.update(msg=WATCH_ON_REPLY if result.get("on") else WATCH_OFF_REPLY,
+        tail = kakao_tail() if result.get("on") else None
+        watch_out.update(msg=(f"{WATCH_ON_PLAIN} {tail}" if tail else WATCH_ON_REPLY) if result.get("on") else WATCH_OFF_REPLY,
                          set={"bl_no": bl, "on": bool(result.get("on"))})
         return {"ok": True, "watching": bool(result.get("on"))}
 
@@ -1411,15 +1468,24 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             for token, bl in refs.items():
                 said = said.replace(token, bl)
             lines = [said or MULTI_TABLE_LEAD.format(n=len(found))]
+            # 판정을 못 낸 줄마다 무엇이 필요한지 코드가 한 문장씩 쓴다 (10-06 정운 화면)
+            needs = [(r, row_need(r.agent)) for r in found]
+            lines.extend(say.format(bl=r.request.bl_no) for r, need in needs if need for say in [need[1]])
             if multi_state.get("house"):
                 lines.append(HOUSE_NOTICE)
             lines.extend(notices)
+            unread = unread_ids(masked, message_bls)
+            if unread:
+                lines.append(UNREAD_NOTICE.format(names=", ".join(f"'{u}'" for u in unread)))
             rows = [{"bl_no": r.request.bl_no, "status": r.agent.status, "verdict": r.agent.verdict,
                      "ship_name": r.agent.vessel.name if r.agent.vessel else None,
                      "eta": r.agent.eta.trusted_eta if r.agent.eta else None, "days_margin": r.agent.days_margin,
-                     "sale_due_date": r.request.sale_due_date, "agent": r.agent, "request": r.request} for r in found]
-            # 문맥(다음 문장의 "이 화물")과 오른쪽 칸은 첫 B/L. 말풍선 미니 지도는 만들지 않는다: 오른쪽 칸 지도가 대신 보여 준다
-            return replace(found[0], reply="\n".join(lines), map=None, cargos=rows)
+                     "sale_due_date": r.request.sale_due_date, "note": need[0] if need else None,
+                     "agent": r.agent, "request": r.request} for r, need in needs]
+            # 문맥(다음 문장의 "이 화물")과 아래 결과 칸은 같은 이름 되묻기가 필요한 줄이 먼저고, 없으면 첫 B/L (10-06 정운 화면:
+            # 되묻기 줄이 문맥이 아니면 사용자가 "항차 V123"이라고 답해도 엉뚱한 화물에 붙는다). 말풍선 미니 지도는 만들지 않는다: 결과 칸 지도가 대신 보여 준다
+            chosen = next((r for r, need in needs if need and r.agent.vessel_candidates), found[0])
+            return replace(chosen, reply="\n".join(lines), map=None, cargos=rows)
         replies = list(dict.fromkeys(r.reply for r in done))  # 같은 답이 두 번 붙지 않게
         if looked_up and text and not _reply_violations(text, reference + lookups + " ".join(replies), user_text, earlier) \
                 and not _repeats_reply(text, replies):
