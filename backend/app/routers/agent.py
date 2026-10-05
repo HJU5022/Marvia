@@ -13,6 +13,7 @@
   5. 1층 신호 판정 (코드)
   6. 2층 판정 (LLM, services/llm.judge)
   7. 출력 검증 V1~V8 (services/validate.py, V8은 여기). 위반이면 최대 3번까지 다시 묻고, 그래도 위반이면 판정 표 등급 + 고정 문구로 partial
+     다시 물으면 시간 예산(JUDGE_BUDGET_SEC)을 넘길 것 같을 때도 거기서 멈추고 같은 partial을 낸다 (10-05)
 
 6단계는 services/llm.judge()가 한다 (C-6, 09-27 연결). 결과를 어떻게 응답에 담나:
   - LLM이 끝내 실패하면(호출 실패, 세 번 모두 위반) status=partial. 등급은 판정 표 것을 내고 문장은 고정 문구. 회색 지대면 등급 없이 (09-30 결정, _llm_gave_up)
@@ -32,6 +33,7 @@
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -45,6 +47,7 @@ from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Evidence, Position, Reason, VesselCandidate,
+    VesselInfo,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
 from backend.app.services import guard, identify, llm, progress, validate
@@ -97,6 +100,13 @@ RELEASED_ACTIONS = ["배송 일정은 운송사에 확인하세요.", "물건이
 UNLISTED_STAGE_EXPLANATION = "{stage} 단계입니다. 목록에 없는 단계라 뜻을 확인할 수 없어 관세사 확인이 필요합니다."
 
 JUDGE_ATTEMPTS = 3  # 판정 LLM 호출 최대 횟수: 처음 + 위반 내용 첨부 + 강화 (SDD 5.7)
+# 판정 재시도의 시간 예산(초). 판정 표 같은 도메인 임계값이 아니라 응답 대기 상한이라 코드에 둔다 (10-05).
+# 다음 시도는 "지금까지 쓴 시간 + 방금 호출에 걸린 시간"이 이 값 안에 들어올 때만 시작한다. 안 들어오면 더 묻지 않고
+# 판정 표 등급 + 고정 문구로 partial을 낸다(_llm_gave_up, 등급은 원래 코드가 정한다).
+# 근거: 화면은 90초에 요청을 포기한다(web/lib/api.ts AGENT_TIMEOUT_MS). 10-05 실측에서 판정 호출 한 번이 7~40초였고,
+# 세 번 다 돌면 121초·170초가 나와 화면이 먼저 끊겼다. 판정 앞 단계(채팅 이해, 통관·식별·위치 조회)에 쓸 몫을 남긴다.
+# 한계: 호출 하나의 상한은 llm.TIMEOUT_SEC(60초)이라, 예상보다 느린 마지막 호출은 이 예산을 넘을 수 있다
+JUDGE_BUDGET_SEC = 60.0
 
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
@@ -231,6 +241,7 @@ def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
     collected = dict(
         vessel_match=vessel_match,
         vessel_candidates=candidates,
+        vessel=_vessel_info(candidates, mmsi, call_sign, customs, request),
         position=_position(position, signal_set.freshness),
         days_margin=margin,
         eta=_eta(position, schedule, signal_set, trusted),
@@ -270,7 +281,14 @@ def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
     memory_numbers = validate.user_supplied_text(judge_memory)
     progress.step("judge")
     feedback = None
+    started = call_started = time.monotonic()
     for attempt in range(1, JUDGE_ATTEMPTS + 1):
+        # 시간 예산 (JUDGE_BUDGET_SEC). 방금 호출만큼 한 번 더 걸린다고 보고, 예산을 넘길 것 같으면 다시 묻지 않는다
+        now = time.monotonic()
+        if attempt > 1 and (now - started) + (now - call_started) > JUDGE_BUDGET_SEC:
+            log_failure("judge", f"time budget exceeded after {attempt - 1} attempts")
+            return _llm_gave_up(signal_set, margin, table, gray, customs, collected)
+        call_started = now
         try:
             judged = llm.judge(signal_set, customs, margin, feedback=feedback,
                                trusted_eta=trusted, sale_due_date=request.sale_due_date,
@@ -657,6 +675,19 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     # 남의 배를 확정했다(B01 매번, B12 3번 중 2~3번, 데모 TESTBL04). 확정은 근거가 있을 때만 한다 (PRD 6.2 되묻기가 낫다).
     # SDD 5.5("2척 이상이면 LLM")와 다르다. 문서는 팀이 나중에 몰아서 현행화한다
     if not (request.voyage_no or request.forwarder_eta):
+        # 사용자에게 묻기 전에 서류끼리 먼저 맞춰 본다 (10-05 결정, services/identify.match_by_papers).
+        # 세관 입항일·적재항과 후보별 해수부 입항 신고가 둘 다 맞는 배가 1척이면 확정한다. 이름·위치는 쓰지 않는다
+        # 후보 목록(candidates)에 든 배만 맞춰 본다. 목록에서 빠진 줄을 확정하면 화면에 그 배가 없다
+        listed = {c.mmsi for c in candidates}
+        papers = identify.match_by_papers(customs, [r for r in rows if r.get("mmsi") in listed], mrn_call_sign=mrn_call_sign,
+                                          same_call_sign=_same_call_sign,
+                                          same_nationality=lambda a, b: not _clearly_other_nationality(a, b))
+        if papers:
+            mmsi, matched_call_sign, reason = papers
+            # 확정한 배 1척만 돌려준다 (MRN 단계와 같다). 화면 VesselCard가 그 배와 근거를 보여 줘야 틀렸을 때 사용자가 안다
+            chosen = [c for c in candidates if c.mmsi == mmsi]
+            chosen[0].match_reasons = [*chosen[0].match_reasons, reason]
+            return chosen, "confirmed", mmsi, matched_call_sign
         return candidates, "uncertain", None, None
 
     # 되묻기에 답한 항차·포워더 입항 예정일이 있으면 LLM이 그 근거로 고른다
@@ -730,6 +761,24 @@ def _same_nationality(customs_nat: str, flag: str) -> bool:
     return b.lower() in {n.lower() for n in names if n}
 
 
+def _clearly_other_nationality(customs_nat: str, flag: str) -> bool:
+    """세관 국적과 후보 국적이 확실히 다른 나라인가. 둘 다 나라를 알아볼 수 있을 때만 True (10-05 검토).
+
+    _same_nationality는 모르면 "다르다"로 답한다. 단일 후보에서는 그게 되묻기로 이어져 안전하지만, 여러 후보 중
+    배를 빼는 데 쓰면 같은 실수가 진짜 배를 지운다. 그래서 빼는 쪽에는 이 함수를 쓴다: 모르면 빼지 않는다.
+    """
+    def country(value: str):
+        v = value.strip()
+        if len(v) == 2:
+            return pycountry.countries.get(alpha_2=v.upper())
+        for c in pycountry.countries:
+            if v.lower() in {n.lower() for n in (c.name, getattr(c, "official_name", None), getattr(c, "common_name", None)) if n}:
+                return c
+        return None
+    a, b = country(customs_nat), country(flag)
+    return bool(a and b) and a.alpha_2 != b.alpha_2
+
+
 def _candidates(rows: list[dict], reason: str | None = None) -> list[VesselCandidate]:
     """도구 출력 후보를 C1 VesselCandidate로 옮긴다. 마지막 신호 시각이 없는 후보는 뺀다.
     reason이 없으면 선명 유사도를 근거로 적는다."""
@@ -747,6 +796,31 @@ def _candidates(rows: list[dict], reason: str | None = None) -> list[VesselCandi
         for row in rows
         if row.get("last_time")
     ]
+
+
+def _vessel_info(candidates: list[VesselCandidate], mmsi: int | None, call_sign: str | None,
+                 customs: CustomsRecord, request: AgentRequest) -> VesselInfo | None:
+    """확정한 배를 C1 VesselInfo로 만든다 (SDD 3.2, schemas/agent.py VesselInfo). 확정 못 했으면 None.
+
+    10-05 전에는 확정 경로에서 이 칸을 한 번도 채우지 않아 늘 null이었다(mrn_fallback만 채웠다).
+    값은 후보 목록에서 그 MMSI 줄을 쓰고, 사용자가 직접 고른 배(resolved_mmsi)라 후보 줄이 없으면 세관 선명만 쓴다.
+    국적은 스키마 설명대로 UNI-PASS shipNat 우선, 없으면 ShipFinder. 항차는 UNI-PASS vydf, 없으면 사용자 입력.
+    """
+    if not mmsi:
+        return None
+    row = next((c for c in candidates if c.mmsi == mmsi), None)
+    name = (row.name if row else None) or customs.ship_name
+    if not name:
+        return None
+    return VesselInfo(
+        mmsi=mmsi,
+        imo=row.imo if row else None,
+        name=name,
+        call_sign=call_sign,
+        flag=customs.ship_nat or (row.flag if row else None),
+        ship_type=row.ship_type if row else None,
+        voyage_no=customs.voyage or request.voyage_no,
+    )
 
 
 def _distance(position: dict | None) -> dict | None:
