@@ -19,7 +19,7 @@ from contextvars import ContextVar
 
 # 단계 이름. 화면(web/lib/progress.ts)이 이 이름을 한국어 라벨로 바꾼다. 여기 없는 이름은 보내지 않는다
 STAGES = (
-    "understand",  # 질문 이해 (services/chat.py, route_chat LLM)
+    "understand",  # 질문 이해와 도구 고르기 (services/chat.py, 에이전트 LLM. 대비 경로는 route_chat)
     "customs",     # 통관 정보 조회 (UNI-PASS, routers/agent._fetch_customs)
     "identify",    # 선박 식별 (routers/agent._identify)
     "position",    # 위치·입항 일정 조회 (ShipFinder·해수부·searoute)
@@ -27,6 +27,11 @@ STAGES = (
     "answer",      # 후속 질문 답 작성 (routers/agent._follow_up)
     "schedule",    # 부산 입항 예정 조회 (해수부, services/chat.search_vessels)
     "ports",       # 질문한 지역의 항구 고르기 (LLM match_ports)
+    # 채팅 에이전트가 고른 읽기 전용 MCP 도구 (services/chat.py MCP_STAGES, 10-05). 고른 순서대로 화면에 보인다
+    "tool_candidates",  # 선박 후보 검색 (get_vessel_candidates)
+    "tool_position",    # 선박 실시간 위치 (get_live_position)
+    "tool_schedule",    # 부산 입항 기록 (get_port_schedule)
+    "tool_distance",    # 남은 항로 거리 (estimate_distance)
 )
 
 _listener: ContextVar[Callable[[str], None] | None] = ContextVar("progress_listener", default=None)

@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -109,7 +110,8 @@ class LLMError(Exception):
     (09-29 평가 c에서 qwen 무료가 21건 실패했는데 429 말고는 왜 실패했는지 알 수 없었다).
       rate_limited  429 요청이 너무 잦음        overloaded  5xx 제공사 과부하
       auth          401·403·Vertex 로그인 문제   bad_request 그 밖의 4xx (요청 모양·지원 안 하는 옵션)
-      connection    연결 실패·시간 초과          no_choices  200인데 답 없이 error만 옴
+      connection    연결 실패                   no_choices  200인데 답 없이 error만 옴
+      timeout       TIMEOUT_SEC 안에 답이 없음 (전체 시간 상한, _create_with_deadline)
       not_configured 모델 이름이 설정에 없음
       truncated·bad_format은 LLMFormatError 쪽 (답은 왔는데 쓸 수 없음)
     """
@@ -195,6 +197,37 @@ def _vertex_thinking() -> dict | None:
     return {"extra_body": {"google": {"thinking_config": {"thinking_budget": int(budget)}}}}
 
 
+class _DeadlineExceeded(Exception):
+    """_create_with_deadline이 TIMEOUT_SEC 안에 답을 못 받았을 때. _call_once가 LLMError(kind=timeout)로 바꾼다."""
+
+
+def _create_with_deadline(client: OpenAI, kwargs: dict, extra_body: dict | None):
+    """요청 하나를 별도 스레드에서 보내고, 최대 TIMEOUT_SEC초만 기다린다 (10-05).
+
+    왜 SDK timeout만으로 안 되나: httpx timeout은 연결·읽기 구간별 상한이라 "한 번에 이만큼 조용하면" 끊는다.
+    OpenRouter는 비스트리밍 요청에서 모델이 생각하는 동안 연결을 살려 두는 신호를 계속 보내서 읽기 상한이 안 걸린다
+    (실측: 60초 설정인데 78초, 한 대화 턴 152초). 그래서 전체 시간(wall-clock)을 우리가 직접 잰다.
+    스레드는 죽일 수 없어서 시간이 지나면 버려 두고(daemon) 기다리기만 멈춘다. 버린 요청은 SDK timeout이나
+    제공사 쪽에서 끝나는 대로 사라진다. 예외는 그대로 다시 올려 _call_once의 기존 처리를 탄다.
+    """
+    box: dict = {}
+
+    def run():
+        try:
+            box["resp"] = client.chat.completions.create(**kwargs, extra_body=extra_body)
+        except BaseException as e:  # 스레드 밖에서 다시 올린다
+            box["error"] = e
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(TIMEOUT_SEC)
+    if worker.is_alive():
+        raise _DeadlineExceeded()
+    if "error" in box:
+        raise box["error"]
+    return box["resp"]
+
+
 def _call_once(kwargs: dict) -> LLMResult:
     """OpenRouter 또는 Vertex AI를 딱 한 번 부른다. 실패는 전부 LLMError로 바꿔서 올린다."""
     model = kwargs["model"]
@@ -212,7 +245,11 @@ def _call_once(kwargs: dict) -> LLMResult:
 
     start = time.monotonic()
     try:
-        resp = client.chat.completions.create(**kwargs, extra_body=extra_body)
+        resp = _create_with_deadline(client, kwargs, extra_body)
+    except _DeadlineExceeded:
+        # 시간 상한에 닿았다. 다시 부르지 않는다 (RETRYABLE_CODES 주석). code가 없어 retryable도 False다
+        raise LLMError(f"{model}: {TIMEOUT_SEC:g}초 안에 답이 없음",
+                       latency_ms=int((time.monotonic() - start) * 1000), kind="timeout") from None
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
                        latency_ms=int((time.monotonic() - start) * 1000), kind=_status_kind(e.status_code)) from e
@@ -507,6 +544,23 @@ def _kst(moment: datetime | None) -> str | None:
     return moment.astimezone(KST).strftime("%Y-%m-%d %H:%M")
 
 
+def _loose_json(content: str | None, output_model: type[BaseModel]) -> str | None:
+    """도구 라운드에서 모델이 response_format 없이 낸 본문을 output_model JSON으로 읽는다. 읽히면 깨끗한 JSON 문자열, 아니면 None.
+
+    ```json 코드 울타리와 앞뒤 공백만 벗긴다. 그 이상은 하지 않는다: 여기서 못 읽으면 _ask_json이
+    response_format을 붙여 한 번 더 묻는 쪽이 더 믿을 만하다 (10-05).
+    """
+    text = (content or "").strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0].strip()
+    try:
+        output_model.model_validate_json(text)
+    except ValidationError:
+        return None
+    return text
+
+
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
               output_model: type[BaseModel], model: str | None, feedback: str | None = None,
               skills: tuple[str, ...] = ALL_SKILLS, tools: list[dict] | None = None,
@@ -541,13 +595,28 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     response_format = {"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}}
     called: list[dict] = []
     try:
-        # 도구가 없으면 한 번 묻고 끝난다 (판정·배 고르기 등, 지금까지와 같음).
-        # 도구가 있으면(후속 질문, 10-02) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
+        # 도구가 없으면 한 번 묻고 끝난다 (판정·배 고르기 등, 지금까지와 같음: response_format을 붙인 한 번의 호출).
+        # 도구가 있으면(후속 질문·채팅 에이전트, 10-02) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
         # tool_choice="none"으로 더 부르지 말고 답하게 한다. 같은 도구를 끝없이 부르는 것을 막는 상한이다 (가이드 Tool trajectory)
+        # 도구를 고를 기회가 있는 라운드에는 response_format을 붙이지 않는다 (10-05 실측): deepseek-v4-flash(OpenRouter)는
+        # strict json_schema가 같이 오면 도구를 한 번도 안 부르고 JSON만 낸다. 빼면 바로 맞는 도구를 부른다.
+        # 대신 도구를 안 부르고 낸 본문을 JSON으로 읽어 보고, 안 읽히면 같은 대화에 response_format + tool_choice="none"으로 한 번 더 묻는다
         for round_no in range(MAX_TOOL_ROUNDS + 1):
             last_round = round_no == MAX_TOOL_ROUNDS
-            result = chat(messages, model=model, response_format=response_format, tools=tools or None,
-                          tool_choice="none" if (tools and last_round) else None)
+            if tools and not last_round:
+                result = chat(messages, model=model, tools=tools, tool_choice=None)
+                if not (run_tool and result.tool_calls):
+                    parsed = _loose_json(result.content, output_model)
+                    if parsed is not None:
+                        result.content = parsed  # 코드 울타리·공백을 벗긴 JSON 본문. 아래 검사가 그대로 읽는다
+                    else:
+                        # 도구 목록은 그대로 둔다: 기록에 role=tool 메시지가 있으면 제공사가 tools 없는 요청을 거부할 수 있다
+                        result = chat(messages, model=model, response_format=response_format, tools=tools,
+                                      tool_choice="none")
+                    break
+            else:
+                result = chat(messages, model=model, response_format=response_format, tools=tools or None,
+                              tool_choice="none" if (tools and last_round) else None)
             if not (tools and run_tool and result.tool_calls) or last_round:
                 break
             messages.append({"role": "assistant", "content": result.content, "tool_calls": [
@@ -998,6 +1067,61 @@ def route_chat(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
     data = {"message": masked_message, "bl_refs": bl_refs, "has_current_cargo": has_current_cargo, "today": today}
     return _ask_json(CHAT_ROUTE_PROMPT, json.dumps(data, ensure_ascii=False), "chat_route", CHAT_ROUTE_SCHEMA,
                      ChatRouteOutput, model, skills=())
+
+
+# ── 채팅 에이전트 chat_agent() (10-05 결정) ──────────────────────────
+# route_chat은 문장을 의도 하나로 나누고 끝났다. 그래서 네 의도에 안 맞는 실무 질문("포워더가 항차 번호를 안 줘")은
+# 전부 고정 안내로 갔고, 한 문장에 조회 둘이 필요한 일("상하이에서 오는 배 중 제일 먼저 오는 배 지금 어디야")도 못 했다 (10-05 실측 대화).
+# chat_agent는 LLM이 도구를 골라 부르고, 결과를 보고 다음 도구를 또 고른다 (_ask_json의 도구 루프, 상한 MAX_TOOL_ROUNDS).
+# 도구 목록과 실행은 services/chat.py가 준다: 화물 조회·화물 질문·입항 선박 검색 + 읽기 전용 MCP 도구.
+# 등급·여유 일수는 지금처럼 코드가 정한다. B/L은 가린 토큰만 온다 (CLAUDE.md).
+# Skill 문서를 통째로 넣는다: 도구가 필요 없는 실무 질문은 이 문서 안에서만 답하게 한다 (RAG 아님).
+
+CHAT_AGENT_PROMPT = "marvia-chat-agent"
+CHAT_AGENT_SKILLS = ALL_SKILLS  # 되묻기 설명법(cargo-verdict), 통관 단계, AIS, 부두를 모두 물을 수 있다
+# 도구 없이 답할 때의 근거 칸 (10-05 실측): 실무 질문 답에 Skill 문서에 없는 조언("판매처에 문의", "A/N에 B/L 번호가 보통 적혀 있다")이
+# 섞여 나왔는데, 숫자·영문·옮긴 낱말만 보는 V7·V9·V10으로는 못 잡았다. 그래서 답의 종류(answer_kind)와 근거 문장(skill_quote)을 받는다.
+#   skill: Skill 문서로 답했다. skill_quote는 그 답을 받치는 Skill 문서 원문 한 조각이고, 코드가 원문에 그대로 있는지 본다 (validate V14)
+#   not_in_skills: 수입 화물 질문이지만 Skill 문서에 없다. 코드가 고정 문구를 쓴다 (chat.NOT_IN_SKILLS)
+#   unrelated: 수입 화물과 상관없는 말. 코드가 고정 안내를 쓴다 (chat.OTHER_REPLY)
+#   tool: 도구를 불렀고 그 결과를 받은 뒤의 답. 도구 없이 tool을 내면 코드가 도구를 부르라고 다시 묻는다 (chat._agent).
+#     따로 둔 이유 (10-05 실측): 도구를 쓴 답을 unrelated + 빈 reply로 내게 했을 때 도구를 안 부른 답과 코드가 구별하지 못했다.
+#     같은 날 진단에서 deepseek-v4-flash(OpenRouter)는 strict response_format을 붙이면 도구를 전혀 부르지 않고 이 모양만 냈다
+#     (붙이지 않으면 search_arrivals·ask_cargo를 바로 불렀다). 그 문제는 _ask_json 쪽이고, 여기서는 tool을 낸 답을 코드가 알아보게만 한다
+# 도구를 쓴 답이면 근거 칸은 보지 않는다. 종류를 잘못 골라도 결과는 고정 문구 중 하나라 지어낸 조언이 화면에 가지 않는다
+CHAT_AGENT_KINDS = ("tool", "skill", "not_in_skills", "unrelated")
+CHAT_AGENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["reply", "answer_kind", "skill_quote"],
+    "properties": {
+        "reply": {"type": "string"},
+        "answer_kind": {"type": "string", "enum": list(CHAT_AGENT_KINDS)},
+        "skill_quote": {"type": "string"},
+    },
+}
+
+
+class ChatAgentOutput(BaseModel):
+    reply: str  # 화면에 내보내기 전에 services/chat.py가 검사한다
+    # 기본값은 도구를 쓴 답(두 칸을 보지 않음)과 예전 녹화 답이 그대로 읽히게 둔 것이다. 실제 호출은 strict 스키마라 늘 채워 온다
+    answer_kind: Literal["tool", "skill", "not_in_skills", "unrelated"] = "unrelated"
+    skill_quote: str = ""  # answer_kind가 skill일 때 Skill 문서 원문 그대로의 한 조각
+
+
+def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, history: list[dict],
+               tools: list[dict], run_tool: Callable[[str, dict], dict], *, model: str | None = None,
+               feedback: str | None = None) -> LLMAnswer:
+    """가린 문장과 최근 대화를 받아 도구를 골라 쓰고 답 한 칸을 낸다. output은 ChatAgentOutput.
+
+    history: [{"role": "user"|"assistant", "text": 가린 글}]. 자료일 뿐이다 (프롬프트 Trust boundary).
+    부른 도구와 결과는 LLMAnswer.tool_calls에 담긴다. 답 문장 검사는 services/chat.py가 한다.
+    feedback: 앞 답이 검사에 걸렸을 때 걸린 내용. 이때는 tools를 비워 부른다 (같은 도구를 두 번 실행하지 않게).
+    """
+    data = {"message": masked_message, "bl_refs": bl_refs, "history": history,
+            "has_current_cargo": has_current_cargo, "today": today}
+    return _ask_json(CHAT_AGENT_PROMPT, json.dumps(data, ensure_ascii=False), "chat_agent", CHAT_AGENT_SCHEMA,
+                     ChatAgentOutput, model, feedback=feedback, skills=CHAT_AGENT_SKILLS, tools=tools, run_tool=run_tool)
 
 
 PORT_MATCH_PROMPT = "marvia-port-match"

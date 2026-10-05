@@ -25,6 +25,12 @@ class _Plan:
 PLANS = [_Plan("SHIP A", "SHANGHAI", 3), _Plan("SHIP B", "KOBE", 2), _Plan("SHIP C", "NINGBO PT", 4)]
 
 
+@pytest.fixture(autouse=True)
+def classic_path(monkeypatch):
+    # 이 파일은 의도 분류 방식(route_chat)을 본다. 에이전트 방식은 test_chat_agent.py가 본다
+    monkeypatch.setenv("CHAT_AGENT", "off")
+
+
 def _route(monkeypatch, **out):
     calls = []
     base = {"intent": "other", "bl_ref": None, "bl_type": None, "sale_due_date": None, "question": None,

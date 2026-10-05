@@ -3,6 +3,8 @@
 창구만 한다: 로그인 확인 → services.chat.handle → 응답. 화물 조회·후속 질문은 /api/agent와 같은 run_agent를 부르므로
 판정 규칙·조회 이력·트레이스가 그대로다. 기존 /api/agent는 평가셋·데모·정해진 칸 입력용으로 남긴다.
 POST /api/chat/stream은 같은 일을 하면서 실제 처리 단계를 SSE로 흘려 준다 (docs/specs/chat-progress.md).
+채팅 에이전트(10-05)가 읽기 전용 MCP 도구를 부를 때는 후속 질문과 같은 실행 함수(routers/agent._follow_up_tool)를 쓴다:
+읽기 전용 목록 확인, /mcp 경유, 실패 로그, AIS 목적지 원문 빼기가 그대로 걸린다.
 두 창구 모두 로그인 사용자를 services.chat.handle에 넘긴다. 화물 비서 기억(docs/specs/memory.md)의 지난 조회 한 줄과
 기억 쓰기가 두 창구에서 똑같이 돈다. 기억 쓰기는 run_agent가 뒤 작업으로 돌려 응답·스트림을 늦추지 않는다.
 """
@@ -22,7 +24,7 @@ from pydantic import BaseModel, Field
 from backend.app.auth import current_user_id
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import log_failure
-from backend.app.routers.agent import run_agent
+from backend.app.routers.agent import _follow_up_tool, run_agent
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import chat as svc
 from backend.app.services import progress
@@ -40,10 +42,20 @@ class ChatContext(BaseModel):
     mrn: str | None = None  # 세관에 아직 없는 화물의 대체 조회용 (docs/specs/mrn-fallback.md)
 
 
+class ChatTurn(BaseModel):
+    """화면에 보이는 대화 한 줄. 채팅 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다 (10-05).
+    화면이 보낸 값이라 믿지 않는다: 서버가 B/L을 가리고 주입 모양 줄을 뺀 뒤 자료로만 LLM에 넘긴다 (services/chat._masked_history)."""
+
+    role: Literal["user", "assistant"]
+    text: str = Field(max_length=2000)  # 화면은 500자로 잘라 보낸다. 서버도 가린 뒤 다시 자른다
+
+
 class ChatRequest(BaseModel):
     message: str = Field(max_length=svc.MESSAGE_MAX)
     session_id: str
     context: ChatContext | None = None
+    # 최근 대화. 서버는 마지막 몇 줄만 쓴다 (services/chat.HISTORY_TURNS). 보내지 않아도 된다 (전 화면·평가 스크립트)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=50)
 
 
 class VesselItem(BaseModel):
@@ -89,13 +101,19 @@ def _context(body: ChatRequest) -> AgentRequest | None:
         return None
 
 
+def _history(body: ChatRequest) -> list[dict]:
+    """화면이 보낸 최근 대화를 서비스가 받는 모양으로. /api/chat과 스트림이 같이 쓴다."""
+    return [turn.model_dump() for turn in body.history]
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> ChatResponse:
     """문장 하나를 받아 화물 조회·후속 질문·입항 선박 검색·안내 중 하나로 답한다."""
     context = _context(body)
     with session_scope(body.session_id, user_id):
         try:
-            result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id), user_id)
+            result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id), user_id,
+                                history=_history(body), run_tool=_follow_up_tool)
         except svc.ChatError as e:
             raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
     return ChatResponse(**result.__dict__)
@@ -125,7 +143,7 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
             with progress.listening(lambda stage: events.put(("progress", {"stage": stage}))):
                 with session_scope(body.session_id, user_id):
                     result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id),
-                                        user_id)
+                                        user_id, history=_history(body), run_tool=_follow_up_tool)
             events.put(("result", ChatResponse(**result.__dict__).model_dump(mode="json")))
         except svc.ChatError:
             events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))
