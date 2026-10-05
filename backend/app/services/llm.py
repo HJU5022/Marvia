@@ -1091,7 +1091,10 @@ CHAT_AGENT_SKILLS = ALL_SKILLS  # 되묻기 설명법(cargo-verdict), 통관 단
 # 도구를 쓴 답이면 근거 칸은 보지 않는다. 종류를 잘못 골라도 결과는 고정 문구 중 하나라 지어낸 조언이 화면에 가지 않는다
 #   web: 웹 검색 도구(chat.WEB_TOOL)로 받은 결과로 답했다 (10-05 결정). skill_quote는 웹 검색 결과 원문 한 조각이고,
 #     코드가 가져온 웹 글에 그대로 있는지 본다 (V14와 같은 방식, chat._web_violations)
-CHAT_AGENT_KINDS = ("tool", "skill", "web", "not_in_skills", "unrelated")
+#   general: 3층 (10-05 결정). 교과서 수준의 일반 해운 설명(용어 뜻, 일반 절차)을 모델 지식으로 답했다. 근거 조각 없이 내보내되
+#     숫자·세액·특정 화물·배 이야기는 안 되고 코드가 짧은 고정 꼬리표를 붙인다 (chat.GENERAL_TAG, chat._agent). 검사는 V7·V9(허용 용어 확장)·V10·V13
+#   unrelated: 이제 한 문장짜리 직접 답을 낼 수 있다 (날짜·"마르비아가 뭐야?" 같은 잡담). 검사에 걸리면 고정 안내로 바뀐다
+CHAT_AGENT_KINDS = ("tool", "skill", "web", "general", "not_in_skills", "unrelated")
 CHAT_AGENT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -1107,7 +1110,7 @@ CHAT_AGENT_SCHEMA = {
 class ChatAgentOutput(BaseModel):
     reply: str  # 화면에 내보내기 전에 services/chat.py가 검사한다
     # 기본값은 도구를 쓴 답(두 칸을 보지 않음)과 예전 녹화 답이 그대로 읽히게 둔 것이다. 실제 호출은 strict 스키마라 늘 채워 온다
-    answer_kind: Literal["tool", "skill", "web", "not_in_skills", "unrelated"] = "unrelated"
+    answer_kind: Literal["tool", "skill", "web", "general", "not_in_skills", "unrelated"] = "unrelated"
     skill_quote: str = ""  # answer_kind가 skill이면 Skill 문서, web이면 웹 검색 결과 원문 그대로의 한 조각
 
 

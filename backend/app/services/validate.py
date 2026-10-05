@@ -211,8 +211,19 @@ def copies_earlier(reply: str, earlier: list[str]) -> bool:
     return False
 
 
+# V9·V10의 3층(모델 일반 지식, 10-05 결정) 전용 허용 목록. 3층 답은 근거 글이 없어서(grounded가 고정 문구뿐) 해운 약어와 낱말 뜻 설명에
+# 꼭 나오는 말이 V9·V10에 걸린다. 그래서 일반 해운 용어만 따로 허용한다. 주입이 끼워 넣는 표식(예: PWNED, 한국어 암호 낱말)은 여기 없어 계속 걸린다.
+# 영문(V9, 3글자 이상만 본다. B/L, A/N, D/O는 원래 안 본다): 마스터·하우스 B/L, 부두 작업장(CFS, CY), 컨테이너 단위, 무역 조건
+GENERAL_WORDS = {"master", "house", "cfs", "cy", "fcl", "lcl", "teu", "feu", "incoterms", "fob", "cif", "cfr", "exw", "dap", "ddp",
+                 "mbl", "hbl", "awb", "waybill", "sea", "ata", "atd"}
+# 한글(V10): 질문에서 되짚는 것이 자연스러운 일반 해운 용어. 사용자가 "마스터 B/L이 뭐야"라고 물으면 답에 "마스터"가 나와야 한다
+GENERAL_TERMS = ("마스터 하우스 포워더 선사 화주 수하인 선하증권 도착통지서 인도지시서 운송장 컨테이너 터미널 보세창고 "
+                 "입항 출항 하선 반출 반입 선적 통관 관세사 수입신고 운임 적하목록 항차 선박 화물 서류")
+
+
 def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[str] | None = None,
-                     quote: str | None = None, skills_text: str | None = None) -> list[Violation]:
+                     quote: str | None = None, skills_text: str | None = None,
+                     extra_words: set[str] | None = None, copy_allowed: str = "") -> list[Violation]:
     """채팅 에이전트가 직접 쓴 답 문장 검사 (10-05, services/chat.py). 후속 답의 V7·V9·V10과 같은 기준이다.
 
     이 문장은 판정 흐름을 거치지 않고 화면에 간다 (실무 질문 답, 읽기 전용 도구 결과 요약). 그래서 근거 글(grounded)에
@@ -221,6 +232,8 @@ def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[st
     - V9: 답의 영문 낱말(3글자 이상)은 근거 글이나 일반 약어에 있어야 한다. 주입이 끼워 넣는 표식을 잡는다
     - V10: 사용자 글에만 있는 낱말을 답이 그대로 옮기면 위반 (한국어 표식 주입)
     - V13: earlier(이 대화에서 앞서 보여 준 답들)를 거의 그대로 되풀이하면 위반 (10-05 실측, copies_earlier)
+    - extra_words·copy_allowed: 3층(일반 설명)만 준다. V9에 더 허용할 영문 낱말(GENERAL_WORDS), V10에 더 허용할 글(Skill 문서와 GENERAL_TERMS).
+      숫자 검사(V7)는 그대로 엄격하다: grounded에 고정 문구뿐이면 사용자가 쓰지 않은 숫자는 모두 걸린다
     - V14: skills_text를 주면(도구 없이 Skill 문서로 답한 경우) quote가 그 원문에 그대로 있어야 한다 (10-05 실측, quote_found).
       Skill 문서에 없는 조언을 LLM이 지어내는 것을 막는 장치다. 지시문은 근거로 치지 않는다: 지시문은 도메인 지식의 출처가 아니다
     """
@@ -230,12 +243,12 @@ def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[st
     if stray_numbers:
         found.append(Violation("V7", f"These numbers in reply are not in the tool results or documents: {stray_numbers}. "
                                      "Use only numbers you were given."))
-    allowed_words = {w.lower() for w in WORD.findall(grounded)} | COMMON_WORDS
+    allowed_words = {w.lower() for w in WORD.findall(grounded)} | COMMON_WORDS | (extra_words or set())
     stray_words = sorted({w for w in WORD.findall(reply or "") if w.lower() not in allowed_words})
     if stray_words:
         found.append(Violation("V9", f"These words in reply are not in the tool results or documents: {stray_words}. "
                                      "Answer in Korean using only what you were given."))
-    echoed = sorted(copied_words(reply, user_text, grounded + SERVICE_WORDS))
+    echoed = sorted(copied_words(reply, user_text, grounded + SERVICE_WORDS + " " + copy_allowed))
     if echoed:
         found.append(Violation("V10", f"These words were copied from the user's text and are not in the documents: {echoed}. "
                                       "Do not repeat words the user asks you to add."))

@@ -150,14 +150,15 @@ def test_duty_and_clearance_questions_are_never_searched_or_answered_from_web(mo
     assert web == [] and r.reply == svc.BROKER_ONLY and "관세사" in r.reply
 
 
-def test_web_answer_that_states_duty_is_replaced_by_broker_notice(monkeypatch):
-    # 질문과 검색어는 평범한데 웹 글과 답이 세율을 말하면 내보내지 않는다
+def test_web_answer_that_states_duty_is_not_shown(monkeypatch):
+    # 질문과 검색어는 평범한데 웹 글과 답이 세율을 말하면 그 답은 내보내지 않는다.
+    # 질문이 세액 주제가 아니므로 관세사 안내가 아니라 다른 대비 문구로 끝난다 (10-05 재현: 엉뚱한 관세사 안내)
     text = "수입 서류 안내에서 이 품목의 세율은 8%라고 적혀 있습니다."
     monkeypatch.setattr(llm, "web_search", lambda q: [{"title": "서류", "url": URL_A, "text": text}])
     monkeypatch.delenv("WEB_SEARCH", raising=False)
     _agent(monkeypatch, [("web_search", WEB_ARGS)], [_web("세율은 8%입니다.", "이 품목의 세율은 8%라고 적혀 있습니다")])
     r = _ask("수입 서류는 어디서 받아?")
-    assert r.reply == svc.BROKER_ONLY
+    assert r.reply != svc.BROKER_ONLY and "8%" not in r.reply and "세율" not in r.reply
 
 
 def test_customs_broker_word_alone_is_not_a_duty_topic():
@@ -302,3 +303,13 @@ def test_duty_question_without_any_tool_gets_broker_notice_not_the_generic_one(m
     _agent(monkeypatch, [], [("모릅니다.", "not_in_skills", "")])
     assert _ask("포워더가 누구야?").reply == svc.NOT_IN_SKILLS  # 세액 주제가 아니면 지금처럼
     assert web == []
+
+
+
+def test_duty_question_with_duty_web_answer_still_gets_broker_notice(monkeypatch):
+    """질문 자체가 세액 주제면 지금처럼 관세사 안내."""
+    text = "이 품목의 세율은 8%라고 적혀 있습니다."
+    monkeypatch.setattr(llm, "web_search", lambda q: [{"title": "서류", "url": URL_A, "text": text}])
+    monkeypatch.delenv("WEB_SEARCH", raising=False)
+    _agent(monkeypatch, [("web_search", WEB_ARGS)], [_web("세율은 8%입니다.", "이 품목의 세율은 8%라고 적혀 있습니다")])
+    assert _ask("이 품목 세율 알려줘").reply == svc.BROKER_ONLY
