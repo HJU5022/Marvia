@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, MemoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -405,6 +405,40 @@ export async function saveDocumentFacts(facts: DocumentFactsRequest): Promise<Do
   const res = await call('/api/memory/document-facts', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify(facts)}, HISTORY_TIMEOUT_MS);
   return res.json();
+}
+
+/* ---------- 카카오톡 "나에게 보내기" 알림 (10-02/10-05 결정, backend/app/routers/kakao.py) ---------- */
+
+/** GET /api/kakao/status. 연결 버튼을 보여 줄지 정한다. 데모 모드에는 연결할 실제 카카오톡이 없다. */
+export async function getKakaoStatus(): Promise<KakaoStatus> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return (await call('/api/kakao/status', {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** POST /api/kakao/connect. 카카오 동의 화면 주소를 받는다. 부르는 쪽이 그 주소로 브라우저를 보낸다. */
+export async function connectKakao(): Promise<{url: string}> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return (await call('/api/kakao/connect', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** POST /api/kakao/callback. 카카오가 돌려 보낸 code·state를 서버에 넘겨 연결을 마무리한다 (/settings/kakao 화면만 부른다).
+ * 로그인 출입증이 붙어서, 서버가 "연결을 시작한 사람 = 지금 로그인한 사람"인지 확인한다. code는 한 번만 쓸 수 있어 다시 보내지 않는다. */
+export async function finishKakaoLink(code: string, state: string): Promise<KakaoLinkResult> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  const res = await call('/api/kakao/callback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({code, state})}, HISTORY_TIMEOUT_MS);
+  return (await res.json()).result;
+}
+
+/** POST /api/kakao/test. 시험 메시지를 한 통 보낸다. 실패하면 서버 안내 문장이 그대로 올라온다. 자동으로 다시 보내지 않는다. */
+export async function sendKakaoTest(): Promise<{sent: boolean}> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return (await call('/api/kakao/test', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** DELETE /api/kakao/link. 연결을 끊고 서버에 둔 토큰을 지운다. */
+export async function unlinkKakao(): Promise<{linked: boolean}> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return liveDelete('/api/kakao/link');
 }
 
 /* ---------- 운영자 관리 (docs/specs/operator-admin.md) ---------- */

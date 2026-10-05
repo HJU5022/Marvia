@@ -637,8 +637,9 @@ th{background:#f7faff;color:#506c85}
 .memory-cargo.done{flex-direction:row;align-items:center}
 .memory-pending{padding:4px 8px;border-radius:5px;background:var(--warning-bg);color:var(--warning)!important}
 /* 늘 있는 결과·오류 칸은 비어 있을 때 상자가 보이지 않게 한다 (display:none은 쓰지 않는다. 낭독기가 나중 변화를 놓친다) */
-.memory-panel .account-message:empty,.memory-panel .request-error:empty{margin:0;padding:0;height:0;overflow:hidden}
-.memory-panel .account-message:focus-visible{outline-offset:2px}
+.memory-panel .account-message:empty,.memory-panel .request-error:empty,.kakao-panel .account-message:empty,.kakao-panel .request-error:empty{margin:0;padding:0;height:0;overflow:hidden}
+.memory-panel .account-message:focus-visible,.kakao-panel .account-message:focus-visible{outline-offset:2px}
+.kakao-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
 .memory-full{margin-top:12px;padding:12px;border-radius:5px;background:var(--warning-bg);color:var(--warning);font-size:12px}
 @media (max-width:720px){.memory-item{flex-direction:column;align-items:flex-start}}
 

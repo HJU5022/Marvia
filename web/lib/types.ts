@@ -173,3 +173,8 @@ export interface VesselDetailResponse {
     control_events: {kind: string; at: string | null; facility: string | null}[]} | null;
   errors: {source: string; code: string | null; message: string | null}[];
 }
+
+/** GET /api/kakao/status. configured: 서버에 카카오 설정이 있나, linked: 이 사용자가 연결했나 (backend/app/routers/kakao.py) */
+export interface KakaoStatus { configured: boolean; linked: boolean }
+/** POST /api/kakao/callback 결과 이름. 주소 ?kakao= 로 설정 화면에 넘길 때도 같은 이름을 쓴다(동의 취소 denied는 화면이 만든다) */
+export type KakaoLinkResult = 'connected' | 'expired' | 'mismatch' | 'no_consent' | 'failed';
