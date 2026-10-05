@@ -17,7 +17,7 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | marvia-doc-extract | 서류 사진 OCR 글자에서 6칸 옮겨 적기 (docs/specs/document-extract.md) | v0 (Langfuse 4) |
 | marvia-chat-route | 자연어 입력 한 문장의 의도(화물 조회·후속 질문·입항 선박 검색·그 밖)와 칸 고르기. B/L은 가린 토큰만 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
 | marvia-port-match | 지역 이름에 해당하는 항구를 해수부 직전 기항지 목록 안에서만 고르기 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
-| marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (Langfuse 1·2, 10-05. 1은 검증 전 초안, 2는 Skill 근거 조각·앞 답 베끼기 금지 반영본). 10-05 웹 검색 도구(web_search)·answer_kind web 추가는 레포 파일에만 있고 Langfuse에는 아직 안 올렸다 |
+| marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (Langfuse 1·2·3, 10-05. 3이 웹 검색 규칙 반영본) |
 | marvia-memory-write | 조회·대화 뒤 사용자 말에서 메모장 줄 단위 명령(add·update·delete·set_cargo·noop)만 내기. 적용은 코드 (docs/specs/memory.md) | v0 (**Langfuse 등록 전**, 로컬 파일만) |
 
 ## v0 개발 중 수정
