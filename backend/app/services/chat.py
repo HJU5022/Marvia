@@ -76,6 +76,35 @@ INJECTION_REPLY = "문장 속 지시는 따르지 않습니다. " + OTHER_REPLY
 _PLACE = re.compile(r"^[A-Za-z][A-Za-z .'\-]{0,39}$")  # match_ports에 넘기는 place: 영문 지명 모양만 (40자까지)
 _REPLY_WORDS = {"marvia"}  # other 안내에 쓸 수 있는 영문 낱말. 그 밖의 3글자 이상 영문은 주입 표식으로 본다
 
+# ── 목적지 장소 거절과 식별자 되묻기 (10-05 실측: "TEST41 선박 위치"에 search_arrivals place=Busan을 불러 빈 표가 나왔다) ──
+# search_arrivals의 place는 "어디에서 오는 배인가"(직전 기항지)다. 목적지(부산·한국) 자체는 뜻이 맞지 않는다.
+_DEST_WORDS = {"busan", "pusan", "korea", "krpus", "kr", "부산", "부산항", "한국", "대한민국", "남한"}
+_DEST_FILLER = {"port", "harbor", "harbour", "south", "republic", "of", "the", "항", "항구"}
+
+
+def _is_destination(text: object) -> bool:
+    """place·label이 도착지 자체(Busan, 부산, Korea, 한국, KRPUS 등)인가. 낱말을 모두 목적지 낱말(+port 같은 군더더기)로만 이루면 참."""
+    if not isinstance(text, str):
+        return False
+    words = [w for w in re.split(r"[^A-Za-z0-9가-힣]+", text.lower()) if w]
+    core = [w for w in words if w not in _DEST_FILLER]
+    return bool(core) and all(w in _DEST_WORDS for w in core)
+
+
+# 문장에 있는 B/L 모양이 아닌 식별자 후보 (영문+숫자 섞인 3~20자). B/L 토큰 "[BL1]" 안쪽 글자는 뺀다. 되묻는 문장에 코드가 옮겨 쓴다
+_ID_LIKE = re.compile(r"(?<![A-Za-z0-9\[])(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{3,20}(?![A-Za-z0-9\]])")
+CLARIFY_TAIL = "B/L 번호는 보통 영문과 숫자 8~20자입니다."
+CLARIFY_NO_ID = "B/L 번호인지 배 이름인지 알려 주세요. " + CLARIFY_TAIL
+
+
+def clarify_reply(masked: str) -> str:
+    """B/L도 배 이름도 확정 못 했을 때 되묻는 고정 문장. 식별자는 가린 문장에서 코드가 뽑는다 (LLM 글은 쓰지 않는다).
+    가려진 B/L·MRN 토큰은 뽑히지 않으므로 번호가 되돌아가지 않는다."""
+    m = _ID_LIKE.search(masked)
+    if not m:
+        return CLARIFY_NO_ID
+    return f"'{m.group(0)}'가 B/L 번호인지 배 이름인지 알려 주세요. {CLARIFY_TAIL}"
+
 
 class ChatError(Exception):
     """kind: too_long / empty."""
@@ -654,6 +683,11 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         if name == "search_arrivals":
             # place·place_label은 LLM 출력인데 답 문장에 그대로 들어간다. 전 방식과 같은 검사를 한다 (10-01 주입 방어)
             place = str(args.get("place") or "").strip() or None
+            # place는 "어디에서 오는 배"다. 부산·한국 같은 도착지면 빈 표만 나오므로 LLM에 돌려보내 다른 길을 고르게 한다 (10-05 실측)
+            if _is_destination(place) or _is_destination(args.get("place_label")):
+                return _tool_error("place_is_destination", "place means where the ships come from (previous port), not Busan or "
+                                   "Korea. Use null for all arrivals, or a foreign country or port. If the message is not asking "
+                                   "which ships come from somewhere, do not call search_arrivals.")
             if place and (not _PLACE.match(place) or len(place.split()) > 4 or guard.looks_like_injection(place)):
                 place = None
             label = args.get("place_label")
@@ -735,6 +769,8 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         if out.answer_kind == "general" and text:
             # 세액 주제는 다시 묻지 않는다 (마지막에 BROKER_ONLY). 그 밖의 위반은 한 번 고쳐 쓰게 한다
             return [] if BROKER_TOPIC.search(masked) else general_violations(text)
+        if out.answer_kind == "clarify":  # 되묻기 문장은 코드가 쓴다. LLM 문장은 보지 않으므로 검사할 것이 없다
+            return []
         if out.answer_kind == "tool" and first:  # 도구 없이 "도구를 썼다"고 냈다 (10-05 실측). 도구를 부르라고 한 번 다시 묻는다
             return [validate.Violation("TOOL", "You set answer_kind to tool but called no tool. Call the tool this message "
                                                "needs now, then answer. If no tool fits, use another answer_kind.")]
@@ -827,6 +863,10 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     if new_bls and not checked.intersection(new_bls):
         done.append(_cargo(new_bls[0], None, None, session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id))
 
+    if out is not None and out.answer_kind == "clarify" and not done:
+        # 식별자가 B/L인지 배 이름인지 모른다 (배 이름 조회도 후보가 없었거나 부르지 않았다). LLM 문장 대신 코드가 되묻는다
+        return ChatResult(kind="message", reply=clarify_reply(masked))
+
     looked_up = [c for c in calls if c["name"] in mcp_names and "error" not in (c["result"] or {})]
     lookups = " ".join(str(c["result"]) for c in looked_up)
     if done:
@@ -834,6 +874,10 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         if looked_up and text and not _reply_violations(text, reference + lookups + " ".join(replies), user_text, earlier):
             replies.append(text)
         return replace(done[-1], reply="\n\n".join(replies), map=_map_payload(calls, done, started))
+    if looked_up and all(c["name"] == "get_vessel_candidates" and isinstance(c["result"], dict) and c["result"].get("candidates") == []
+                         for c in looked_up):
+        # 사용자가 쓴 이름으로 후보를 찾았지만 한 척도 없다. "찾지 못했다"만 말하지 않고 B/L 번호인지 배 이름인지 되묻는다 (10-05 실측)
+        return ChatResult(kind="message", reply=clarify_reply(masked))
     if looked_up:
         ok = bool(text) and not _reply_violations(text, reference + lookups, user_text, earlier)
         return ChatResult(kind="message", reply=text if ok else LOOKUP_NOT_SUMMARIZED, map=_map_payload(calls, done, started))
@@ -864,6 +908,9 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
             general = general_reply(out, text)
             if general:
                 return ChatResult(kind="message", reply=general)
+        if "need_bl" in codes and _ID_LIKE.search(masked):
+            # B/L 모양은 아닌데 식별자 같은 글자가 있다(TESTBL4 같은 오타). 조회할 번호를 달라고만 하지 않고 그 글자를 되묻는다 (10-05 실측)
+            return ChatResult(kind="message", reply=clarify_reply(masked))
         fixed_msgs = {"need_bl": NEED_BL, "no_cargo": NO_CARGO, "broker_topic": BROKER_ONLY}
         return ChatResult(kind="message", reply=fixed(next((fixed_msgs[c] for c in codes if c in fixed_msgs), FAILED_LOOKUP)))
 
