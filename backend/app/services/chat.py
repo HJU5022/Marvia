@@ -878,6 +878,18 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         tag = CLEARANCE_TAG if CLEARANCE_TIMING.search(masked) else GENERAL_TAG  # 통관 시기 질문은 관세사도 적는다 (본문과 꼬리표가 어긋나지 않게)
         return f"{text.replace(GENERAL_TAG, '').replace(CLEARANCE_TAG, '').strip()}\n\n{tag}"
 
+    def skill_or_general(text: str) -> str | None:
+        """Skill 근거라고 낸 답을 내보내기 직전 한 번 더 본다 (10-06 결정). 근거 조각은 맞았는데 답의 핵심 낱말이
+        Skill 문서에 2개 이상 없으면(validate.skill_unsupported) 모델 지식이 섞인 것이다. 버리지 않고 3층(일반 설명)으로 낮춰
+        꼬리표를 붙인다. 10-06 재현: "B/L도 없고 포워더 연락 안 돼"에 Skill에 없는 "화물 인도증"이 꼬리표 없이 나갔다.
+        3층 검사(general_violations, 세액 주제)에 걸리면 None (고정 안내로 간다)"""
+        if not validate.skill_unsupported(text, skills_only, user_text):
+            return text
+        if BROKER_TOPIC.search(text) or general_violations(text):
+            return None
+        tag = CLEARANCE_TAG if CLEARANCE_TIMING.search(masked) else GENERAL_TAG
+        return f"{text.replace(GENERAL_TAG, '').replace(CLEARANCE_TAG, '').strip()}\n\n{tag}"
+
     def unrelated_violations(text: str) -> list[validate.Violation]:
         """잡담 한 문장 답(answer_kind=unrelated)을 내보내도 되는지. 빈 목록이면 통과. 한 문장(UNRELATED_MAX_CHARS 이하, 한 줄)이고,
         주입 모양이 아니고, 숫자는 사용자가 쓴 것과 오늘 날짜뿐(V7)이고, 영문(V9)·옮긴 낱말(V10)·앞 답 베끼기(V13)에 안 걸려야 한다."""
@@ -1048,14 +1060,17 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     if web_only():
         # 웹 검색만 돌았다. 웹 글로 낸 답은 근거 조각 검사를 통과했을 때만 내보내고, 출처는 가져온 결과에서만 붙인다 (모델이 쓴 주소는 안 쓴다)
         if out is not None and text and out.answer_kind in ("web", "skill"):
-            drifted = out.answer_kind == "web" and BROKER_TOPIC.search(f"{text} {out.skill_quote}")
+            # 답 문장만 본다. 근거 조각(웹 글 그대로)에 "관세청 유니패스" 같은 기관 이름이 있다고 답을 버리면 B/L 번호 위치 같은
+            # 평범한 질문이 고정 안내로 끝난다 (10-06 실측: 같은 질문 3번 중 1번이 NOT_IN_SKILLS). 기관 이름 "관세청"도 세액 주제가 아니다
+            drifted = out.answer_kind == "web" and BROKER_TOPIC.search(text.replace("관세청", ""))
             if drifted and BROKER_TOPIC.search(masked):
                 return ChatResult(kind="message", reply=fixed(BROKER_ONLY))  # 웹에 있어도 세액·통관 가능 여부는 관세사에게
             # 질문은 세액 주제가 아닌데 웹 글을 옮긴 답에 세액·통관 가능 낱말이 섞였다: 관세사 안내로 바꾸지 않고 이 답만 버린다.
             # 10-05 재현에서 "해결책이 없어? 선사에 꼭 물어봐야 해?"가 관세사 안내로 끝났다 (질문과 안 맞는 고정 안내)
             if not drifted and not web_violations(out, text):
                 if out.answer_kind == "skill":
-                    return ChatResult(kind="message", reply=text)
+                    checked = skill_or_general(text)
+                    return ChatResult(kind="message", reply=checked or fixed(NOT_IN_SKILLS))
                 sources = validate.quote_sources(out.skill_quote, web_state["results"])[:WEB_SOURCES_SHOWN]
                 lines = [f"{WEB_NOTE}{r['title']} ({r['url']})" for r in sources]
                 return ChatResult(kind="message", reply="\n".join([text, "", *lines]))
@@ -1095,7 +1110,8 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     if out.answer_kind == "skill":
         if violations:  # 근거 조각이 끝내 안 맞았다. 세액 주제였다면 "자료에 없다"보다 관세사 안내가 맞다 (10-05 재생 시험에서 발견)
             return ChatResult(kind="message", reply=fixed(BROKER_ONLY if BROKER_TOPIC.search(masked) else NOT_IN_SKILLS))
-        return ChatResult(kind="message", reply=text)
+        checked = skill_or_general(text)
+        return ChatResult(kind="message", reply=checked or fixed(NOT_IN_SKILLS))
     if BROKER_TOPIC.search(masked):  # 세액·관세율·통관 가능 여부: 마르비아는 답하지 않고 관세사에게 묻게 한다 (PRD 4절, 10-05)
         return ChatResult(kind="message", reply=fixed(BROKER_ONLY))
     general = general_reply(out, text)
