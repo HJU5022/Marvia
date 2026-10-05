@@ -141,6 +141,32 @@ def test_job_sets_title_only_for_new_conversation(keys, monkeypatch):
     assert titles == ["첫 질문"]  # 새 대화가 아니면 다시 짓지 않는다
 
 
+
+def test_greeting_start_waits_for_first_real_question(keys, monkeypatch):
+    """"안녕"으로 시작한 대화는 제목을 "새 대화"로 두고, 첫 진짜 질문으로 짓는다 (10-06 정운 화면: 대화 둘이 모두 "인사")."""
+    conn = FakeConn()
+    monkeypatch.setattr(conv, "connect", lambda: conn)
+    titles = []
+    monkeypatch.setattr(conv, "make_title", lambda text: titles.append(text) or "화물 도착 확인")
+    monkeypatch.setattr(conv, "save_turn", lambda *a: True)
+    conv._save_job("u1", "s1", "안녕!", {"reply": conv.GREETING_REPLY, "kind": "message"})
+    assert titles == []  # 인사로는 짓지 않는다
+    monkeypatch.setattr(conv, "save_turn", lambda *a: False)
+    monkeypatch.setattr(conv, "current_title", lambda *a: conv.NO_TITLE)
+    conv._save_job("u1", "s1", "어떻게 써?", {"reply": conv.USAGE_GUIDE, "kind": "message"})
+    assert titles == []  # 사용법 질문도 제목감이 아니다
+    conv._save_job("u1", "s1", "TESTBL01 언제 와?", REPLY)
+    assert titles == ["TESTBL01 언제 와?"]  # 아직 "새 대화"라 첫 진짜 질문으로 짓는다
+    monkeypatch.setattr(conv, "current_title", lambda *a: "화물 도착 확인")
+    conv._save_job("u1", "s1", "통관은?", REPLY)
+    assert titles == ["TESTBL01 언제 와?"]  # 한 번 지은 제목은 그대로
+
+
+def test_small_talk_detection():
+    assert conv.is_small_talk("안녕!", {"reply": "아무 답"}) and conv.is_small_talk("반가워요", {})
+    assert not conv.is_small_talk("안녕하세요 TESTBL01 괜찮아?", {}) and not conv.is_small_talk("화물 언제 와?", {})
+
+
 # ── 제목 ──
 
 def test_title_llm_gets_masked_text_only(monkeypatch):

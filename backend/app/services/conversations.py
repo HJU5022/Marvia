@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 
 from backend.app import crypto
 from backend.app.db import atomic, connect
 from backend.app.observability.logging import log_failure
 from backend.app.services import guard, llm, memory
-from backend.app.services.chat import mask_bls
+from backend.app.services.chat import GREETING_REPLY, USAGE_GUIDE, mask_bls
 
 # ── 숫자 (10-06 결정). 바꿀 곳은 여기 한 곳이다 ──
 KEEP_MESSAGES = 200      # 대화당 말풍선 상한. 넘으면 오래된 줄부터 지운다
@@ -57,6 +58,16 @@ def valid_title(raw: str | None) -> str | None:
     if "[BL" in title.upper() or guard.looks_like_injection(title):
         return None
     return title
+
+
+# 제목으로 삼기엔 내용이 없는 첫 말 (10-06 정운 화면: "안녕"으로 시작한 대화 둘이 모두 "인사"로 고정됐다)
+SMALL_TALK = re.compile(r"^\s*(?:안녕|안뇽|하이|헬로|hi|hello|hey|반가|ㅎㅇ|ㅎㅇㅎㅇ|좋은\s*(?:아침|하루|저녁))\S*[\s!?.~]*$", re.IGNORECASE)
+
+
+def is_small_talk(user_text: str, reply: dict) -> bool:
+    """제목감이 없는 한 턴인가: 인사·사용법 답(코드가 쓴 고정 문장)이거나 짧은 인사말.
+    이런 턴으로 대화가 시작되면 제목을 "새 대화"로 두고, 다음에 오는 진짜 질문으로 짓는다."""
+    return reply.get("reply") in (GREETING_REPLY, USAGE_GUIDE) or bool(SMALL_TALK.match(user_text or ""))
 
 
 def make_title(first_user_text: str) -> str:
@@ -96,7 +107,8 @@ def save_turn(conn, user_id: str, conv_id: str, user_text: str, reply: dict) -> 
     extra_enc = _lock(extra) if extra else None
     context_enc = _lock(reply["request"]) if reply.get("request") else None
     result_enc = _lock(reply["agent"]) if reply.get("agent") else None
-    title_enc = _lock(fallback_title(user_text))
+    # 첫 턴이 인사면 제목은 일단 "새 대화". 진짜 질문이 오면 _save_job이 다시 짓는다 (10-06)
+    title_enc = _lock(NO_TITLE if is_small_talk(user_text, reply) else fallback_title(user_text))
     if None in (user_enc, reply_enc, title_enc) or (extra and extra_enc is None) \
             or (reply.get("request") and context_enc is None) or (reply.get("agent") and result_enc is None):
         log_failure("conversation_save", "encrypt_failed")
@@ -136,8 +148,17 @@ def _save_job(user_id: str, conv_id: str, user_text: str, reply: dict) -> None:
     제목 LLM이 느려도 저장은 이미 끝났고, 채팅 답은 벌써 나갔다."""
     with connect() as conn:
         is_new = save_turn(conn, user_id, conv_id, user_text, reply)
-        if is_new:
+        if is_small_talk(user_text, reply):
+            return  # 인사·사용법 턴으로는 제목을 짓지 않는다
+        if is_new or current_title(conn, user_id, conv_id) == NO_TITLE:
+            # 새 대화이거나, 인사로 시작해 아직 "새 대화"인 대화의 첫 진짜 질문 (10-06)
             set_title(conn, user_id, conv_id, make_title(user_text))
+
+
+def current_title(conn, user_id: str, conv_id: str) -> str | None:
+    """지금 저장된 제목(잠금을 푼 글). 없으면 None."""
+    row = conn.execute("SELECT title_enc FROM conversations WHERE user_id = %s AND id = %s", [user_id, conv_id]).fetchone()
+    return _open(row[0]) if row else None
 
 
 def save_later(user_id: str | None, conv_id: str | None, user_text: str, reply: dict) -> None:
