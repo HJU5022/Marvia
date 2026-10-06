@@ -1,4 +1,4 @@
-# Spec: 서류 사진에서 조회 값 뽑기 (F9 서류 등록, 1차)
+# Spec: 서류 사진에서 조회 값 뽑기 (F9 서류 등록, 1차, 10-06 코드와 대조)
 
 PRD 5절 P1 "서류 사진·PDF에서 B/L·선명·ETA 추출(멀티모달)"을 P0로 당긴다는 09-23 결정에 따라, SDD에 없는 이 기능의 범위와 동작을 여기 먼저 적는다 (CLAUDE.md "SDD 5절과 작업 리스트에 없는 기능은 docs/specs/에 Spec을 먼저 쓴다").
 SDD 1절은 F9를 "인터페이스만 남기고 구현하지 않는다"고 적고 있다. 이 Spec이 그 줄을 대신하고, 코드 동결 전 SDD를 갈아엎을 때 SDD로 옮긴다.
@@ -13,7 +13,7 @@ SDD 1절은 F9를 "인터페이스만 남기고 구현하지 않는다"고 적�
 
 - 사진 한 장을 올리면 7칸(B/L 번호, 선명, 항차, 입항 예정일, 선적항, 양하항, 품명)을 채워 **사용자 확인 화면**에 돌려준다. 판정으로 바로 넘기지 않는다 (SDD 비전 울타리: 추출값은 코드 형식 검증 → 사용자 확인 → 판정).
 - 코드 검사를 통과하지 못한 칸은 "확인 필요"로 표시한다. 틀린 값을 조용히 채우지 않는다.
-- **Out of Scope (1차)**: 대형 비전 모델로 넘기기(2차), 프론트 화면, 손글씨, 중국어 칸 읽기, DB 저장.
+- **Out of Scope (1차)**: 대형 비전 모델로 넘기기(2차), 손글씨, 중국어 칸 읽기, 서류 원본·OCR 글자의 DB 저장. (프론트 화면은 1차에서 빼려 했으나 지금은 만들어져 있다: `DocumentPanel.tsx`. 사용자가 확인한 값만 `POST /api/memory/document-facts`로 저장한다)
 
 ## What
 
@@ -34,6 +34,14 @@ SDD 1절은 F9를 "인터페이스만 남기고 구현하지 않는다"고 적�
 - **스캔 PDF**: 쪽마다 배율 2(144dpi)로 그려(그림 한 장 1200만 화소 이하로 배율을 낮춘다) 사진과 같은 OCR을 돌리고, 줄을 쪽 순서로 잇는다.
 - 이후 B/L 추출·가리기·LLM·검사는 사진과 같다. 라이브러리는 pypdfium2(Apache-2.0/BSD-3, `requirements-doc.txt`). PyMuPDF는 AGPL이라 뺐다.
 - **오류**: 열 수 없거나 암호가 걸렸거나 0쪽이면 400 `invalid_pdf`.
+
+### 10-06 코드와 맞춘 것 (확인)
+
+- 입력은 사진 또는 PDF 한 파일이고 상한은 10MB(`routers/document.py MAX_BYTES`, 넘으면 400 `too_large`)다. 폼에 `session_id`를 같이 보낼 수 있다. 로그인이 필수이고 하루 토큰 한도(docs/specs/token-quota.md)를 확인한다
+- 7칸 말고 **출항일 `etd`**(도착 통지서의 E.T.D. 또는 B/L의 Shipped/Laden on board 날짜, 서류에서 옮긴 값, 없으면 null)가 10-06에 더해졌다. 화물 시트의 `departed_source = 'document'`가 이 값에서 온다 (docs/ERD.md)
+- 응답에 `mrn`(코드가 "MRN" 이름표 옆에서 뽑음, docs/specs/mrn-fallback.md)과 `llm_error`(LLM 단계가 실패한 종류, 성공이면 null, 10-06)가 있다. LLM이 실패하면 `status=partial`이고 화면은 AI가 못 읽었다고 안내한다
+- PDF 동작은 `services/doc_ocr.py`의 상수(`PDF_MAX_PAGES` 2, `PDF_MIN_TEXT_CHARS` 40, `PDF_RENDER_SCALE` 2, `PDF_MAX_PIXELS` 12,000,000)와 위 서술이 일치한다
+- 화면은 `web/components/DocumentPanel.tsx`가 확인 화면을 그린다
 
 ### 규칙과의 관계
 
@@ -105,4 +113,4 @@ POST /api/document   (multipart/form-data, file=이미지)
 - OCR 후보, 이미지 12장 90칸: PaddleOCR 기본 72 · PaddleOCR 한국어 89 · EasyOCR 74. 한국어 모델을 ONNX Runtime으로 돌리면 90/90, B/L 한 장 약 2초(Paddle 그대로 약 20초)
 - 지저분한 사진 10종 + 웹 실제 영어 도착 통지서 4장 + 1853 손글씨 B/L, 120칸: 전처리 후 113/120. 못 읽은 것은 중국어 2칸, 손글씨 3칸, `I225`→`1225`, `가나다무역`→`기나다무역`
 - 2단계(가공 통지서 9장, 서식 4종, 63칸): 63/63, 검사 9/9 통과. LLM Gemini 2.5 Flash(Vertex, 생각 0) 1~4초
-- 한계: 2단계는 가공 서류로만 쟀다(실제 서류는 외부 전송하지 않기로 함). Cloud Run 속도는 미측정
+- 한계: 2단계는 가공 서류로만 쟀다(실제 서류는 외부 전송하지 않기로 함). 배포 서버(Railway) 속도는 미측정
