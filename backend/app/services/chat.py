@@ -68,6 +68,8 @@ PREV_PORT_NOTE = ("해수부 입항 신고의 직전 기항지 기준입니다. 
 OTHER_REPLY = ("마르비아는 B/L 번호로 화물 상태를 확인하고, 지금 보고 있는 화물에 대한 질문에 답하고, "
                "어디에서 오는 배가 부산에 들어오는지 찾아 드립니다. " + NEED_BL)
 INJECTION_REPLY = "문장 속 지시는 따르지 않습니다. " + OTHER_REPLY
+# 후속 답이 원문 속 표식을 옮겨 썼을 때 대신 쓰는 고정 문구 (10-02). routers/agent.FOLLOW_UP_BLOCKED와 같은 뜻으로 맞췄다
+FOLLOW_UP_REFUSED = "문장 속 지시는 따르지 않습니다. 이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다."
 _PLACE = re.compile(r"^[A-Za-z][A-Za-z .'\-]{0,39}$")  # match_ports에 넘기는 place: 영문 지명 모양만 (40자까지)
 _REPLY_WORDS = {"marvia"}  # other 안내에 쓸 수 있는 영문 낱말. 그 밖의 3글자 이상 영문은 주입 표식으로 본다
 
@@ -258,6 +260,11 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         req = context.model_copy(update={"session_id": session_id, "follow_up_question": question,
                                          "resolved_mmsi": None, "voyage_no": None, "forwarder_eta": None})
         resp = run_agent(req)
+        # 원문 기준 V10 한 번 더 (10-02). 판정 흐름의 V10은 route_chat이 다시 쓴 질문만 본다. 다시 쓰면서 공격 조각이
+        # 빠지거나 바뀌면, 원문에 있던 표식을 답이 옮겨도 못 잡는다. 사용자가 실제로 쓴 문장과 한 번 더 대조한다
+        if _copies_user_marker(resp, masked):
+            log_failure("chat", "follow-up answer copied words from original message")
+            resp = resp.model_copy(update={"answer": FOLLOW_UP_REFUSED})
         return ChatResult(kind="cargo", reply=resp.answer, agent=resp, request=context)
 
     if route.intent == "vessel_search":
@@ -272,6 +279,25 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         return search_vessels(place, route.days, label)
 
     return ChatResult(kind="message", reply=_safe_reply(route.reply, masked))
+
+
+def _copies_user_marker(resp: AgentResponse, message: str) -> bool:
+    """후속 답(resp.answer)이 사용자 원문의 낱말을 근거 없이 옮기거나 원문 조각을 이어 붙였는가 (V10과 같은 기준, validate.copied_words).
+    허용 낱말은 답을 뺀 결과와 후속 답 LLM이 받은 Skill·지시문이다 (routers/agent._follow_up의 V10과 같은 출처)."""
+    # 판정 흐름이 이미 고정 문구(주입 차단·답 실패)로 답했으면 볼 것이 없다. 고정 문구 낱말이 원문과 겹쳐 잘못 걸리지 않게 뺀다.
+    # 함수 안에서 가져온다: routers/agent가 이 모듈을 쓰는 라우터와 같은 앱에 묶여 있어 모듈 머리에서 가져오면 순환이 생길 수 있다
+    from backend.app.routers.agent import FOLLOW_UP_BLOCKED, FOLLOW_UP_FAILED
+
+    answer = resp.answer or ""
+    if not answer or answer in (FOLLOW_UP_BLOCKED, FOLLOW_UP_FAILED):
+        return False
+    try:
+        reference = llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT)
+    except Exception as e:  # 지시문·Skill 파일을 못 읽어도 답은 막지 않는다. 판정 흐름의 V10은 이미 걸렸다
+        log_failure("chat", f"reference unavailable {type(e).__name__}")
+        return False
+    base = resp.model_copy(update={"answer": ""})
+    return bool(validate.check_follow_up_echo(answer, message, base, reference))
 
 
 def _safe_reply(reply: str | None, message: str) -> str:
