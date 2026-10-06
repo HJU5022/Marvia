@@ -110,7 +110,7 @@ def check_follow_up_words(answer: str, previous: AgentResponse, reference: str =
     AIS 목적지 원문 카드는 LLM에 넘기지 않으므로(llm.answer_follow_up) 허용 낱말에서도 뺀다.
     한계: 한국어로만 쓴 표식은 못 잡는다.
     """
-    seen = previous.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "evidence"})
+    seen = previous.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "evidence", "customs_detail"})
     cards = [e for e in previous.evidence if not (e.source == "shipfinder" and e.field == "dest")]
     # reference: LLM이 받은 지시문 원문. 지시문에 있는 낱말(예: "cargo")은 주입 표식이 아니다 (10-01 오탐 확인)
     text = str(seen) + " ".join(f"{e.source} {e.field} {e.value}" for e in cards) + reference
@@ -175,7 +175,7 @@ def check_judge_text(texts: list[str], response: AgentResponse, external: str, r
       V10 외부 글자의 조각 두 개를 이어 붙인 한글 낱말이 결과·Skill 문서에 없으면 위반
           (그대로 옮기기 검사는 하지 않는다. 처음 보는 단계명을 해설에 옮겨 쓰는 것은 정상이다)
     """
-    dump = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "evidence", "customs"})
+    dump = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "evidence", "customs", "customs_detail"})
     cards = [f"{e.source} {e.field} {e.value}" for e in response.evidence
              if not (e.source == "unipass" and (e.field == "stage_name" or e.field.startswith("stage:")))
              and not (e.source == "shipfinder" and e.field == "dest")]
@@ -206,7 +206,8 @@ def check_follow_up_echo(answer: str, question: str, previous: AgentResponse, re
     낱말은 이전 결과나 해운·통관 Skill 문서에 있다. 그래서 "질문에만 있는 낱말을 답이 그대로 옮겼다"를 잡는다.
     한글이 든 3글자 이상 낱말만 본다(조사를 뗀 뒤). 영문은 V9가, 숫자는 V7이 본다. 띄어쓰기 차이는 무시한다.
     """
-    allowed = str(previous.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"})) + reference + SERVICE_WORDS
+    # customs_detail은 LLM이 보지 못한 화면 전용 원문이라 허용 낱말에 넣지 않는다 (docs/specs/customs-detail.md)
+    allowed = str(previous.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "customs_detail"})) + reference + SERVICE_WORDS
     echoed = copied_words(answer, question, allowed)
     if echoed:
         return [Violation("V10", f"The answer copies these words from the question that are not in the result: "

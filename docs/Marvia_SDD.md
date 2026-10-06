@@ -303,7 +303,7 @@ class SignalSet(BaseModel):
 
 ### 3.5 CustomsInfo 원본 정제 (C5)
 
-UNI-PASS 응답에서 LLM에 넘기는 필드: `shipNm, shipNat, vydf, etprDt, csclPrgsStts, prgsStCd, shedNm, 단계 이력(code, name, prcsDttm)`. 넘기지 않는 필드: `prnm(품명), wght(중량), 세관명, 화주 정보`. 트레이스·로그·조회 이력에는 bl_no의 가운데 절반(길이 ÷ 2, 내림)을 `*`로 가려 남긴다. 예: `TESTBL01` → `TE****01` (10-01 변경. 전에는 앞4자+****+뒤4자라 8자 이하 번호가 전부 가려졌다).
+UNI-PASS 응답에서 LLM에 넘기는 필드: `shipNm, shipNat, vydf, etprDt, csclPrgsStts, prgsStCd, shedNm, 단계 이력(code, name, prcsDttm)`. 넘기지 않는 필드: `prnm(품명), wght(중량), 세관명, 화주 정보`. 예외로 처리 이력 원문 13칸(중량·반출입 근거 포함)은 화면에만 보여 주고 LLM 입력과 DB 저장에서는 뺀다 (`AgentResponse.customs_detail`, docs/specs/customs-detail.md, 10-02). 트레이스·로그·조회 이력에는 bl_no의 가운데 절반(길이 ÷ 2, 내림)을 `*`로 가려 남긴다. 예: `TESTBL01` → `TE****01` (10-01 변경. 전에는 앞4자+****+뒤4자라 8자 이하 번호가 전부 가려졌다).
 
 ### 3.6 rules.md 프론트매터 (C6)
 

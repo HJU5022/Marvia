@@ -13,6 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from .customs import CustomsDetailRow
+
 # ---- 공용 열거값 (SDD 3.2) ----
 Verdict = Literal["fine", "watch", "act"]
 # unsupported: 지원 범위 밖 요청(부산 외 항만 등). 외부 조회 없이 끝낸다. failed(처리 실패)와 구분한다 (09-23 결정).
@@ -184,3 +186,6 @@ class AgentResponse(BaseModel):
     evidence: list[Evidence]
     answer: str
     trace_id: str
+    # UNI-PASS 처리 이력 원문, 화면 전용 (docs/specs/customs-detail.md, 10-02). 라우터가 판정 뒤에 붙이고,
+    # 이력 저장(routers/agent.py _logged)과 후속 질문 LLM 입력(llm.answer_follow_up)에서는 뺀다
+    customs_detail: list[CustomsDetailRow] = Field(default_factory=list)

@@ -178,6 +178,14 @@ def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
                 return alternative
         return failure
 
+    response = _after_customs(request, customs, memory)
+    # UNI-PASS 처리 이력 원문은 화면 전용이다 (docs/specs/customs-detail.md, 10-02). 판정이 끝난 뒤에 붙여서
+    # 판정·검증 단계에는 아예 없다. 이력 저장(_logged)과 후속 질문 LLM 입력에서는 다시 뺀다
+    return response.model_copy(update={"customs_detail": customs.display_rows})
+
+
+def _after_customs(request: AgentRequest, customs: CustomsRecord, memory: str | None = None) -> AgentResponse:
+    """통관 정보를 받은 뒤의 판정 흐름 (SDD 4.1 2~7단계). _assess가 화면 전용 이력을 붙이려고 나눴다."""
     # 지원 범위는 부산항이다 (PRD 4절). 양륙항이 부산이 아니면 배를 찾지 않고 끝낸다 (평가셋 F05).
     # 양륙항 칸이 비어 있으면 범위 밖으로 단정하지 않고 진행한다. 모르는 것을 거절하는 쪽이 더 나쁘다
     # 부산 항구 코드는 skills/port-busan/rules.md busan_port_code (10-01)
@@ -848,8 +856,9 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 vessel_match=response.vessel_match,
                 decided_by=response.decided_by,
                 trace_id=response.trace_id,
-                # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다
-                response=_as_jsonb(response.model_dump(mode="json")),
+                # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다.
+                # UNI-PASS 처리 이력 원문(customs_detail)은 화면 전용이라 저장하지 않는다 (docs/specs/customs-detail.md)
+                response=_as_jsonb(response.model_dump(mode="json", exclude={"customs_detail"})),
             )
     except Exception as e:
         log_failure("db_write", type(e).__name__)
