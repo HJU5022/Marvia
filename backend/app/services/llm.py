@@ -848,7 +848,7 @@ DOC_EXTRACT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     # strict 모드는 모든 칸이 required
-    "required": ["vessel", "voyage", "eta", "pol", "pod", "item", "doc_kind",
+    "required": ["vessel", "voyage", "eta", "pol", "pod", "item", "etd", "doc_kind",
                  "original_bl", "original_bl_text", "to_order_bank", "to_order_bank_text",
                  "freight_term", "freight_term_text", "incoterm", "contact_company", "contact_role", "contact_phone"],
     "properties": {
@@ -864,6 +864,7 @@ DOC_EXTRACT_SCHEMA = {
         "to_order_bank": {"type": ["boolean", "null"]},
         "to_order_bank_text": {"type": ["string", "null"]},
         "freight_term": {"type": ["string", "null"], "enum": ["prepaid", "collect", None]},
+        "etd": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "freight_term_text": {"type": ["string", "null"]},
         "incoterm": {"type": ["string", "null"], "enum": ["CIF", "FOB", "CFR", None]},
         "contact_company": {"type": ["string", "null"]},
@@ -898,6 +899,9 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
     """B/L을 가린 OCR 글자에서 선명·항차·ETA·선적항·양하항·품명과 B/L 조건·연락처를 옮겨 적는다. output은 DocFieldsOutput.
 
     OCR 글자는 사용자 서류라 데이터로만 넘긴다 (SDD 7절 신뢰 경계, 프롬프트에도 명시).
+    # 10-06 출항일 YYYY-MM-DD (A/N의 ETD, B/L의 Shipped on board). 기본값 None: 프롬프트가 Langfuse에 등록되기 전이라
+    # LLM이 이 칸을 모르거나 null로 두어도 읽힌다. 모양·서류 속 존재·eta와의 순서 검사는 doc_ocr.check_fields
+    etd: str | None = None
     """
     return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
                      skills=())

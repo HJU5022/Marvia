@@ -55,7 +55,11 @@ def _clean(text: str) -> str:
 MONTHS = {m: i for i, m in enumerate(["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], start=1)}
 VOYAGE_PATTERN = re.compile(r"[A-Z0-9]{3,8}")  # 항차: 0925W, 2634E, 108A (09-29 가공·웹 서류에서 본 모양)
-FIELDS = ("bl_no", "vessel", "voyage", "eta", "pol", "pod", "item")
+FIELDS = ("bl_no", "vessel", "voyage", "eta", "pol", "pod", "item", "etd")
+# 서류에 없는 경우가 흔한 칸: 비어 있어도 missing을 걸지 않는다 (10-06). 도착 통지서엔 출항일이 없기도 하고,
+# 프롬프트에 etd가 아직 없는 동안(Langfuse 미등록) LLM이 항상 null을 내므로 missing을 걸면 모든 서류가 확인 필요가 된다.
+# 값이 있을 때만 날짜 검사(format, not_in_text, ambiguous)를 건다
+OPTIONAL_FIELDS = ("etd",)
 # 칸 이름표. 이름표처럼 짧은 줄에 같은 칸 이름이 두 번 이상 나오면(예: "선명 / 항차"와 "선명 / 항차 (정정)")
 # 어느 값이 맞는지 서류만으로 알 수 없다. 09-30 주입 확인 D8: LLM이 3번 모두 "(정정)" 쪽 위조 값을 골랐고,
 # 그 값도 서류 글자라 not_in_text로 못 잡았다. 이럴 때는 사용자 확인으로 넘긴다 (ambiguous)
@@ -63,6 +67,9 @@ FIELD_LABELS = {
     "vessel": re.compile(r"선명|\bVESSEL\b", re.I),
     "voyage": re.compile(r"항차|\bVOY(AGE)?\b", re.I),
     "eta": re.compile(r"입항\s*예정일|도착\s*예정일|\bETA\b", re.I),
+    # 출항일 이름표 (10-06): 도착 통지서의 "E.T.D."·"ETD"·"출항일"과 B/L의 "Shipped/Laden on board".
+    # 같은 이름표가 두 번 이상이면 어느 날짜가 맞는지 서류만으로 알 수 없어 ambiguous (eta와 같은 기준)
+    "etd": re.compile(r"출항\s*예정일|출항\s*일|\bE\.?T\.?D\.?(?![A-Za-z])|\b(SHIPPED|LADEN)\s+ON\s+BOARD\b", re.I),
 }
 # 이름표 줄로 보는 최대 길이(공백 · 문장부호 뺀 글자 수). 긴 문장 속 단어("입항 예정일은 바뀔 수 있습니다")는 세지 않는다.
 # 안내문에 흔한 문장까지 세면 정상 서류도 매번 확인 필요가 된다. 가공 서식의 이름표는 6~14자다 (09-30)
@@ -188,9 +195,12 @@ INSTRUCTION_LINE = re.compile(
     re.I)
 
 
+DATE_FIELDS = ("eta", "etd")  # YYYY-MM-DD로 받고 서류의 날짜 표기와 날짜끼리 비교하는 칸
+
+
 def _only_in_instruction(key: str, value: str, lines: list[str]) -> bool:
     """값이 서류에 나오는 줄이 전부 지시문 줄이면 True. 값이 정상 줄에 한 번이라도 있으면 False."""
-    if key == "eta":
+    if key in DATE_FIELDS:
         try:
             target = datetime.date.fromisoformat(value)
         except ValueError:
@@ -257,8 +267,9 @@ def check_fields(fields: dict[str, str | None], lines: list[str]) -> dict[str, l
         value = fields.get(key)
         fails: list[str] = []
         if value is None or value == "":
-            fails.append("missing")
-        elif key == "eta":
+            if key not in OPTIONAL_FIELDS:
+                fails.append("missing")
+        elif key in DATE_FIELDS:
             try:
                 if datetime.date.fromisoformat(value) not in ocr_dates:
                     fails.append("not_in_text")
@@ -274,6 +285,18 @@ def check_fields(fields: dict[str, str | None], lines: list[str]) -> dict[str, l
         elif value and "not_in_text" not in fails and _only_in_instruction(key, value, lines):
             fails.append("ambiguous")  # 지시문 줄에서만 나온 값 (10-01, INSTRUCTION_LINE)
         result[key] = fails
+    # 출항일은 입항일보다 늦을 수 없다 (10-06). 둘 다 서류에서 옮긴 계획일이라 코드가 계산해 고치지 않고,
+    # 어긋나면 사용자 확인으로 넘긴다. 어느 쪽이 틀렸는지는 서류만으로 모르므로 새로 들어온 etd 쪽에만 건다.
+    # 검사 이름은 새로 만들지 않고 날짜 모양 검사(format)를 재사용한다: Check 값이 늘면 프론트 타입이 같이 깨진다
+    # (schemas/document.py Check). 값이 같은 날(출항 당일 도착, 근거리 항로)은 허용한다
+    try:
+        etd = datetime.date.fromisoformat(fields.get("etd") or "")
+        eta = datetime.date.fromisoformat(fields.get("eta") or "")
+    except ValueError:
+        pass  # 둘 중 하나가 없거나 모양이 틀리면 순서를 비교할 수 없다 (모양은 위에서 이미 걸렸다)
+    else:
+        if etd > eta and "format" not in result["etd"]:
+            result["etd"].append("format")
     return result
 
 

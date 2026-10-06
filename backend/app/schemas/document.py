@@ -30,6 +30,11 @@ class DocumentFields(BaseModel):
     pol: FieldResult      # 선적항
     pod: FieldResult      # 양하항
     item: FieldResult     # 품명. 사용자 서류에서 읽은 값이며 저장하지 않는다 (Spec "규칙과의 관계")
+    # 10-06: 출항일 YYYY-MM-DD. 도착 통지서의 E.T.D. 또는 B/L의 Shipped/Laden on board 날짜를 서류에서 옮긴 값이다
+    # (계산하지 않는다). 화물 시트 출항 칸에 채운다. 서류에 없는 경우가 흔해서 비어도 missing을 걸지 않고, 값이 있을 때만
+    # 날짜 검사를 건다. 입항일(eta)보다 늦으면 format (services/doc_ocr.check_fields). 기본값을 둬서 etd 이전 모양의 응답도 읽힌다
+    etd: FieldResult = Field(default_factory=lambda: FieldResult(value=None, checks=[]),
+                             description="출항일 YYYY-MM-DD. 서류에 적힌 날짜만, 없으면 null")
     # 10-02 결정 6. 판정 등급에는 쓰지 않는다. 비서가 짚을 거리(원본 B/L·은행 L/G, 착불 운임)로만 쓴다
     original_bl: FieldResult = Field(default_factory=lambda: FieldResult(value=None, checks=[]),
                                      description="required(원본 필요) / surrendered(서렌더, 원본 불필요)")

@@ -107,3 +107,23 @@ def test_old_shape_answer_keeps_needs_review_false(monkeypatch):
     assert body["needs_review"] is False and body["doc_kind"] is None
     assert set(body["fields"]) >= {"original_bl", "to_order_bank", "freight_term", "incoterm",
                                    "contact_company", "contact_role", "contact_phone"}
+
+
+def test_etd_same_day_is_returned_and_missing_etd_is_not_flagged(monkeypatch):
+    """etd(10-06): 서류에 있는 날짜면 그대로 돌려주고, null이어도(Langfuse 프롬프트에 아직 없을 때) 확인 필요를 올리지 않는다."""
+    _fake_extract(monkeypatch, {**ANSWER, "etd": "2026-10-02"})  # 가공 통지서에 있는 날짜(입항일과 같은 날)
+    body = _post().json()
+    assert body["fields"]["etd"] == {"value": "2026-10-02", "checks": []}
+    assert body["needs_review"] is False
+    _fake_extract(monkeypatch, {**ANSWER, "etd": None})
+    body = _post().json()
+    assert body["fields"]["etd"] == {"value": None, "checks": []}
+    assert body["needs_review"] is False
+
+
+def test_invented_etd_needs_review(monkeypatch):
+    """프롬프트에 etd가 없는 모델이 날짜를 지어내도(strict 스키마가 칸을 요구한다) 서류에 없으면 걸린다."""
+    _fake_extract(monkeypatch, {**ANSWER, "etd": "2026-09-20"})
+    body = _post().json()
+    assert body["fields"]["etd"]["checks"] == ["not_in_text"]
+    assert body["needs_review"] is True
