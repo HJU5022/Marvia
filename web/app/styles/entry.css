@@ -61,7 +61,7 @@
 .intro-table th,.intro-table td{background:none;padding:18px 16px 18px 0;vertical-align:top;border-top:1px solid var(--hairline,#E5E8EB);line-height:1.7}
 .intro-table thead th{padding-top:0;border-top:0;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.08em;color:var(--muted,#5f6b7a)}
 .intro-table tbody th{white-space:nowrap;font-size:var(--fs-md,15px);font-weight:var(--fw-medium,500);color:var(--text,#191f28)}
-.intro-table td{color:var(--text-2,#4e5968)}
+.intro-table td{color:var(--text-2,#4e5968);white-space:normal;overflow-wrap:anywhere}  /* 전역 table nowrap을 풀어 375px에서 넘치지 않게 (10-07 e2e) */
 .intro-dot{display:inline-block;width:8px;height:8px;margin-right:10px;border-radius:50%;vertical-align:middle;position:relative;top:-1px}
 .intro-dot.fine{background:var(--grade-fine-solid,#34b27b)}.intro-dot.watch{background:var(--grade-watch-solid,#f2b01e)}.intro-dot.act{background:var(--grade-act-solid,#e5484d)}
 .intro-note{margin:20px 0 0;font-size:var(--fs-sm,13px);color:var(--muted,#5f6b7a)}
