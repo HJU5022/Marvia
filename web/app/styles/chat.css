@@ -32,9 +32,9 @@ body[data-split] .conv-toggle{display:inline-flex}
 .sheet-handle{display:none}
 
 .pane-head{flex:none;display:flex;align-items:center;gap:10px;padding:20px 28px 4px}
-.pane-head h1{font-size:var(--text-xl);font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.pane-head h1{font-size:var(--fs-lg,18px);font-weight:var(--fw-medium,500);letter-spacing:-.02em;color:var(--text)}
 .chat-app.split .pane-head{padding:14px 20px;border-bottom:1px solid var(--border)}
-.chat-app.split .pane-head h1{font-size:var(--text-lg);font-weight:700}
+.chat-app.split .pane-head h1{font-size:var(--fs-md,15px);font-weight:var(--fw-medium,500)}
 .pane-icon{display:none;place-items:center;width:36px;height:36px;border-radius:var(--small-radius);background:transparent;color:var(--text-2)}
 .pane-icon{cursor:pointer;transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
 .pane-icon:hover{background:var(--hover);color:var(--brand)}
@@ -57,29 +57,28 @@ body[data-split] .conv-toggle{display:inline-flex}
 /* ---- 대화 칸: 위는 스크롤, 아래는 입력창 ---- */
 .ask{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:860px;margin:0 auto;padding:0 28px}
 .chat-app.split .ask{max-width:none;margin:0;padding:0}
-.chat-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;padding:12px 2px 16px;scroll-behavior:smooth}
-.chat-app.split .chat-scroll{padding:16px 20px}
+.chat-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;padding:12px 2px 32px;scroll-behavior:smooth}  /* 아래 32px: 마지막 말이 입력창에 붙어 보이지 않게 (10-07 정운 실사용 10번) */
+.chat-scroll>*{flex:none}  /* 칸이 줄어들며 말들이 겹치지 않게 */
+.chat-app.split .chat-scroll{padding:16px 20px 32px}
 .chat-scroll:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:var(--small-radius)}
-.chat-dock{flex:none;padding:8px 0 20px}
+.chat-dock{flex:none;padding:16px 0 20px}
 .chat-app.split .chat-dock{padding:12px 20px 18px;border-top:1px solid var(--border);background:var(--surface)}
 
-/* 처음 화면: 가운데 안내 + 할 일 세 가지 (안A 화면1). 대화가 생기면 사라진다 */
-.chat-empty{margin:auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:24px 0}
-.chat-empty-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:var(--surface);color:var(--text-2)}
-.chat-empty h2{margin-top:10px;font-size:var(--text-xl);font-weight:800;letter-spacing:-.02em;color:var(--text)}
-.chat-empty p{max-width:420px;font-size:var(--text-base);color:var(--muted);word-break:keep-all}
-.feature-tiles{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:14px}
-.feature-tiles button{flex-direction:row;align-items:center;gap:8px;padding:12px 18px;border:0;border-radius:12px;background:var(--surface);color:var(--text);font-size:var(--text-base);font-weight:600;box-shadow:none;transform:none!important}
-.feature-tiles button{transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
-.feature-tiles button:hover:not(:disabled){background:var(--brand-soft);color:var(--brand);box-shadow:none}
-.feature-tiles button:active:not(:disabled){transform:scale(.98)!important}
-.feature-tiles svg{margin:0;color:var(--brand)}
+/* 처음 화면: 작은 영문 라벨 + 가벼운 제목 + 조용한 번호 목록 (10-07 정운 실사용 24번, 아이콘 상자·큰 칩 없앰) */
+.chat-empty{margin:auto;display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:8px;padding:24px 0;width:100%;max-width:420px}
+.chat-eyebrow{font-size:var(--fs-xs,12px);font-weight:var(--fw-medium,500);letter-spacing:.14em;text-transform:uppercase;color:var(--brand)}
+.chat-empty h2{margin:0;font-size:var(--fs-xl,22px);font-weight:var(--fw-regular,400);letter-spacing:-.01em;line-height:1.35;color:var(--text)}
+.feature-tiles{display:flex;flex-direction:column;align-items:stretch;gap:0;width:100%;margin-top:20px;border-top:1px solid var(--hairline,#E5E8EB)}
+.feature-tiles button{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:14px;width:100%;min-height:48px;padding:12px 0;border:0;border-bottom:1px solid var(--hairline,#E5E8EB);border-radius:0;background:none;color:var(--text-2);font-size:var(--fs-base,14px);font-weight:var(--fw-regular,400);text-align:left;box-shadow:none;transform:none!important}
+.feature-tiles button{transition:color var(--t-fast) var(--ease)}
+.feature-tiles button:hover:not(:disabled){background:none;color:var(--text);box-shadow:none}
+.tile-no{font-size:var(--fs-xs,12px);letter-spacing:.08em;color:var(--muted);font-variant-numeric:tabular-nums}
 
 /* ---- 입력창: 아래에 고정, 크고 둥글게 ---- */
 .composer-wrap{padding:0;border-radius:16px;background:var(--surface);box-shadow:none;border:1px solid var(--border-strong);transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
 .composer-wrap:focus-within{transform:none;box-shadow:0 0 0 3px var(--brand-soft);border-color:var(--brand)}
 .composer{background:transparent;padding:14px 18px 10px;border-radius:16px}
-.composer textarea{field-sizing:content;min-height:32px;max-height:160px;padding:2px 0 8px;font-size:var(--text-base);line-height:1.6;color:var(--text);resize:none}
+.composer textarea{field-sizing:content;min-height:32px;max-height:160px;padding:2px 0 8px;font-size:var(--fs-md,15px);line-height:1.6;color:var(--text);resize:none}
 .composer-foot{padding-top:4px;border-top:0}
 .composer .doc-trigger{color:var(--text-2);font-size:var(--text-sm);font-weight:600}
 .composer .doc-trigger:hover:not(:disabled){color:var(--brand)}
@@ -96,7 +95,7 @@ body[data-split] .conv-toggle{display:inline-flex}
 
 /* 시작 문장: 눌러 보라는 옅은 칩 */
 .chat-examples{justify-content:flex-start;gap:8px;margin-top:12px}
-.chat-examples button{min-height:40px;padding:8px 14px;border:0;border-radius:20px;background:var(--surface);color:var(--text-2);font-size:var(--text-sm);transform:none!important}
+.chat-examples button{min-height:40px;padding:8px 14px;border:0;border-radius:20px;background:var(--surface);color:var(--text-2);font-size:var(--fs-sm,13px);transform:none!important}
 .chat-app.split .chat-examples button{background:var(--neutral-bg)}
 .chat-app.split .chat-examples{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .chat-app.split .chat-examples button{flex:none;white-space:nowrap}
@@ -104,13 +103,16 @@ body[data-split] .conv-toggle{display:inline-flex}
 .chat-examples button:hover:not(:disabled){background:var(--brand-soft);color:var(--brand)}
 
 /* ---- 대화 말풍선: 내 말은 회색 말풍선, Marvia의 답은 상자 없이 글로 (Claude·ChatGPT처럼). 새 말은 아래에서 살짝 떠오른다 ---- */
-.chat-thread{list-style:none;margin:0;padding:0;gap:20px;max-height:none;overflow:visible}
+/* 원인(10-07 정운 실사용 1·7번): globals.css의 `.ask .chat-thread{max-height:340px}`가 이 규칙보다 구체적이라 남았다. overflow가 visible이라 340px을 넘는 말이
+ * 상자 밖으로 흘러 아래에 그린 진행 단계와 겹쳤다(긴 대화일수록 진행 단계가 말들에 가려졌다). 같은 구체도로 덮어 흐름대로 쌓는다 */
+.ask .chat-thread{list-style:none;margin:0;padding:0;gap:20px;max-height:none;overflow:visible;flex:none}
 .chat-turn,.chat-seed{animation:m-rise var(--t-enter) var(--ease) backwards}
 .chat-thread>:nth-child(2){animation-delay:40ms}.chat-thread>:nth-child(3){animation-delay:80ms}.chat-thread>:nth-child(4){animation-delay:120ms}.chat-thread>:nth-child(5){animation-delay:160ms}.chat-thread>:nth-child(n+6){animation-delay:200ms}
 .chat-turn{max-width:92%;gap:0}
+.chat-thread+.pending-card{margin-top:24px}
 .chat-turn.user{max-width:82%}
 .chat-bubble{border-radius:16px;padding:12px 16px}
-.chat-bubble p{margin:0;font-size:var(--text-base);line-height:1.7;white-space:pre-line}
+.chat-bubble p{margin:0;font-size:var(--fs-base,14px);line-height:1.7;white-space:pre-line}
 .chat-turn.user .chat-bubble{background:var(--surface);border-bottom-right-radius:4px}
 .chat-app.split .chat-turn.user .chat-bubble{background:var(--bg)}
 .chat-turn.assistant .chat-bubble,.chat-seed .chat-bubble{padding:0;background:none;border:0;border-radius:0}
@@ -118,26 +120,31 @@ body[data-split] .conv-toggle{display:inline-flex}
 /* 예전 전역 규칙이 p에 입힌 말풍선 모양을 걷어낸다 */
 .chat-turn.assistant .chat-bubble p,.chat-seed .chat-bubble p,.chat-turn.user .chat-bubble p{background:none;border:0;padding:0;border-radius:0;color:var(--text)}
 .chat-body{gap:12px}
-.chat-link{color:var(--brand);text-decoration:underline;text-underline-offset:3px}
-.chat-link:hover{color:var(--brand-hover)}
+.chat-link{color:var(--muted);font-size:var(--fs-sm,13px);text-decoration:underline;text-decoration-color:var(--hairline,#E5E8EB);text-underline-offset:3px;word-break:normal;overflow-wrap:anywhere}  /* 제목만 보이는 출처 링크. 긴 맨 주소만 anywhere로 접는다 (10-07 실사용 4번) */
+.chat-link:hover{color:var(--brand);text-decoration-color:currentColor}
 
-/* 판정 답: 등급 배지(크게) + 할 일 한 줄. 구분선 없이 여백으로만 나눈다 */
-.chat-verdict{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-top:20px;padding:0;border:0}
-.chat-bubble .chat-todo{display:flex;flex-direction:column;gap:2px;font-size:var(--text-lg);font-weight:700;line-height:1.45;color:var(--text)}
-.chat-todo span{font-size:var(--text-sm);font-weight:500;color:var(--muted)}
-.chat-show-detail{display:none;padding:4px 0;background:none;color:var(--brand);font-size:var(--text-sm);font-weight:700}
+/* 판정 답: 작은 점 + 글자, "지금 할 일"은 작은 회색 라벨, 할 일은 보통 굵기 (10-07 정운 실사용 9번). 칠한 배지 상자 없음 */
+.chat-verdict{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:16px;padding:0;border:0}
+.chat-bubble .chat-grade{display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);color:var(--text-2)}
+.chat-grade i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.chat-grade.fine i{background:var(--grade-fine-solid,#34b27b)}.chat-grade.fine{color:var(--grade-fine,#187a4e)}
+.chat-grade.watch i{background:var(--grade-watch-solid,#f2b01e)}.chat-grade.watch{color:var(--grade-watch,#8f5a00)}
+.chat-grade.act i{background:var(--grade-act-solid,#e5484d)}.chat-grade.act{color:var(--grade-act,#c12f2f)}
+.chat-bubble .chat-todo{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-base,14px);font-weight:var(--fw-regular,400);line-height:1.6;color:var(--text)}
+.chat-todo span{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.04em;color:var(--muted)}
+.chat-show-detail{display:none;padding:4px 0;background:none;color:var(--brand);font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500)}
 
 /* ---- 진행 단계: 상자 없이 글과 점. 서버가 알린 단계만, 상태를 글자로 (시안 2-1). 답이 올 자리는 흐릿한 줄로 먼저 잡는다 ---- */
-.pending-card{margin-top:20px;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;animation:m-rise var(--t-enter) var(--ease) backwards}
-.pending-head{justify-content:flex-start;gap:10px;font-size:var(--text-base);font-weight:700}
+.pending-card{margin:20px 0 8px;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;animation:m-rise var(--t-enter) var(--ease) backwards}
+.pending-head{justify-content:flex-start;gap:10px;font-size:var(--fs-base,14px);font-weight:var(--fw-medium,500)}
 .pending-time{margin-left:auto;font-size:var(--text-sm);font-weight:500;color:var(--muted)}
 .pending-steps{flex-direction:column;flex-wrap:nowrap;gap:0;margin:12px 0 0}
-.pending-steps li{display:flex;align-items:center;gap:12px;padding:8px 0;border-radius:0;background:none;font-size:var(--text-base);color:var(--text);animation:m-rise var(--t-enter) var(--ease) backwards}
+.pending-steps li{display:flex;align-items:center;gap:12px;padding:8px 0;border-radius:0;background:none;font-size:var(--fs-base,14px);color:var(--text);animation:m-rise var(--t-enter) var(--ease) backwards}
 .pending-steps li.done,.pending-steps li.current{background:none}
 .step-icon{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%}
 .pending-steps li.done .step-icon{background:var(--neutral-bg);color:var(--text-2)}
 .pending-steps li.current .step-icon{background:var(--brand-soft);color:var(--brand)}
-.pending-steps li.current .step-name{font-weight:700}
+.pending-steps li.current .step-name{font-weight:var(--fw-medium,500)}
 .step-name{flex:1;min-width:0}
 .step-state{font-size:var(--text-sm);color:var(--muted)}
 .pending-steps li.current .step-state{color:var(--brand);font-weight:600}
@@ -200,6 +207,5 @@ body[data-split] .conv-toggle{display:inline-flex}
   .chat-turn,.chat-turn.user,.chat-seed{max-width:100%}
   .chat-turn.user{max-width:88%}
   .chat-bubble{padding:12px 16px}
-  .feature-tiles button{flex:1 1 100%;justify-content:center}
   .detail-pane{left:0}
 }

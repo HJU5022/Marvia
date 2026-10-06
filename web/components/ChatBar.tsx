@@ -7,8 +7,8 @@
  */
 import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {ArrowUp, Camera, Check, FileText, LoaderCircle, MessageCircle, PackageSearch, Ship, Sparkles} from 'lucide-react';
-import {VerdictBadge} from './Shared';
+import {ArrowUp, Camera, Check, LoaderCircle, Sparkles} from 'lucide-react';
+import {verdictLabels} from '@/lib/format';
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentValues} from './DocumentPanel';
 import {Drawer} from './Drawer';
@@ -39,10 +39,25 @@ function scrollBehavior(): ScrollBehavior {
  * 그 밖의 줄의 주소는 글자 그대로 둔다. 링크도 http·https만 만들고 새 탭으로 연다(noopener: 열린 쪽이 이 창을 못 건드리게).
  * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
 const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
+// [제목](주소) 마크다운 링크: 제목만 보이고 주소는 숨긴다 (10-07 정운 실사용 4번). 제목 속 대괄호·주소 속 공백·괄호는 받지 않는다
+const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
 const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: '];
 function linkifyLine(line: string, key: number) {
   if (!LINK_LINE_PREFIXES.some(prefix => line.trimStart().startsWith(prefix))) return line;
-  return line.split(URL_PATTERN).map((part, i) =>
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of line.matchAll(MD_LINK_PATTERN)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(...bareUrls(line.slice(last, at), `${key}-${at}`));
+    out.push(<a key={`${key}-md-${at}`} href={m[2]} target="_blank" rel="noopener noreferrer" className="chat-link">{m[1]}</a>);
+    last = at + m[0].length;
+  }
+  if (last < line.length) out.push(...bareUrls(line.slice(last), `${key}-end`));
+  return out;
+}
+/** 마크다운이 아닌 맨 주소는 예전처럼 주소 글자 그대로 링크로 만든다 (대체 경로) */
+function bareUrls(text: string, key: string): ReactNode[] {
+  return text.split(URL_PATTERN).map((part, i) =>
     i % 2 === 1 ? <a key={`${key}-${i}`} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a> : part);
 }
 function linkify(text: string): ReactNode[] {
@@ -148,7 +163,10 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   }
 
   // 판정 답 말풍선 안의 배지·할 일 한 줄. 대화가 비어 있는데 결과만 있는 경우(데모 첫 화면, 저장된 판정 열기)도 같은 모양으로 그린다 (시안 2-2)
-  const verdictBlock = result?.verdict ? <div className="chat-verdict"><VerdictBadge verdict={result.verdict} size="lg"/>{result.actions[0] && <p className="chat-todo"><span>지금 할 일</span>{result.actions[0]}</p>}<button type="button" className="chat-show-detail" onClick={onShowDetail}>결과 보기</button></div> : null;
+  const verdictBlock = result?.verdict ? <div className="chat-verdict">
+    <p className={`chat-grade ${result.verdict}`}><i aria-hidden="true"/>{verdictLabels[result.verdict]}</p>
+    {result.actions[0] && <p className="chat-todo"><span>지금 할 일</span>{result.actions[0]}</p>}
+    <button type="button" className="chat-show-detail" onClick={onShowDetail}>결과 보기</button></div> : null;
   // 대화가 없고 답할 글만 있는 첫 화면(.chat-seed는 .chat-turn이 아니다: 실제 주고받은 말만 .chat-turn으로 센다): 결과 칸의 answer를 그대로 답 말풍선으로 보인다 (지어내지 않는다, 서버 값)
   const seedAnswer = thread.length === 0 && view === 'cargo' && result && result.status !== 'insufficient' && result.answer ? result : null;
   const empty = idle && !loading && thread.length === 0;
@@ -157,13 +175,12 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
     {/* 대화는 이 칸 안에서만 스크롤하고, 입력창은 아래에 고정한다 (시안 2-1·2-2). 페이지 전체는 움직이지 않는다 */}
     <div className="chat-scroll" ref={threadRef} onScroll={onScroll} role="log" aria-label="대화" tabIndex={0}>
       {empty ? <div className="chat-empty">
-        <span className="chat-empty-icon" aria-hidden="true"><MessageCircle size={22}/></span>
+        <span className="chat-eyebrow">Marvia</span>
         <h2>어떤 화물을 확인할까요?</h2>
-        <p>B/L 번호를 조회하면 배 위치와 통관 단계를 함께 보여드려요.</p>
         <div className="feature-tiles">
-          <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><PackageSearch size={20}/>B/L 번호로 조회하기</button>
-          <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><Ship size={20}/>입항 예정 선박 찾기</button>
-          <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><FileText size={20}/>서류 사진 올리기</button>
+          <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><span className="tile-no">01</span>B/L 번호로 조회하기</button>
+          <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><span className="tile-no">02</span>입항 예정 선박 찾기</button>
+          <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><span className="tile-no">03</span>서류 사진 올리기</button>
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>

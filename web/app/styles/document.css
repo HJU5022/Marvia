@@ -15,7 +15,7 @@
 .document-panel.in-drawer{padding:0;margin:0;border:0;background:none}
 .document-panel .doc-close{position:absolute;top:16px;right:16px}
 .doc-title{display:flex;flex-direction:column;gap:6px;margin:0 0 24px;padding-right:48px}
-.doc-title h2{font-size:var(--text-xl);font-weight:800;color:var(--text);line-height:1.35}
+.doc-title h2{font-size:var(--fs-xl,22px);font-weight:var(--fw-medium,500);color:var(--text);line-height:1.35}
 .doc-title p{font-size:var(--text-base);color:var(--muted)}
 .document-result{display:flex;flex-direction:column;gap:24px}
 .document-result>*{animation:doc-up 220ms var(--ease) both}
@@ -33,13 +33,13 @@
 .document-status.review>svg{color:var(--grade-watch)}
 .document-status.clear>svg{color:var(--grade-fine)}
 .document-status>div{display:flex;flex-direction:column;gap:2px;min-width:0}
-.document-status strong{font-size:var(--text-base);font-weight:800;color:var(--text);line-height:1.5}
+.document-status strong{font-size:var(--text-base);font-weight:var(--fw-semibold,600);color:var(--text);line-height:1.5}
 .document-status span{font-size:var(--text-sm);color:var(--muted)}
 .document-status .doc-flagged-names{font-weight:600;color:var(--text-2)}
 
 /* 읽은 값: 흰 판 하나, 안은 3칸 격자(간격으로만 나눔) */
 .doc-group{background:var(--surface);border-radius:var(--radius);padding:24px}
-.doc-section-title{font-size:var(--text-base);font-weight:800;color:var(--text);margin:0 0 20px}
+.doc-section-title{font-size:var(--text-base);font-weight:var(--fw-semibold,600);color:var(--text);margin:0 0 20px}
 .doc-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 32px;margin-bottom:-24px}
 .document-panel.in-drawer .doc-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
 .doc-field{display:grid;grid-row:span 2;grid-template-rows:subgrid;row-gap:6px;margin-bottom:24px;padding:0;background:none;border:0;border-radius:0;min-width:0}
@@ -54,7 +54,7 @@
 .doc-value input:focus{outline:2px solid var(--brand);outline-offset:0;background:var(--surface)}
 .doc-value input[type=text]{font-family:var(--font)}
 .doc-value input[type=date]{padding-right:12px}
-.doc-field.strong .doc-value,.doc-field.strong .doc-value input{font-weight:800}
+.doc-field.strong .doc-value,.doc-field.strong .doc-value input{font-weight:var(--fw-semibold,600)}
 output.doc-value{color:var(--text)}
 /* 걸린 칸: 상자 대신 입력칸에 노란 테두리, 이름 줄에 주의 글씨 */
 .doc-field.flagged .doc-value input{background:var(--grade-watch-bg);border-color:var(--grade-watch-solid)}
@@ -67,7 +67,7 @@ output.doc-value{color:var(--text)}
 
 /* B/L 조건 · 화물 인도 연락처: 흰 판 하나, 안은 간격으로만 */
 .doc-conditions{background:var(--surface);border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;gap:4px}
-.doc-conditions h3{font-size:var(--text-base);font-weight:800;color:var(--text)}
+.doc-conditions h3{font-size:var(--text-base);font-weight:var(--fw-semibold,600);color:var(--text)}
 .doc-hint-line{font-size:var(--text-sm);color:var(--muted);margin-bottom:16px}
 .doc-cond-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:24px 16px}
 .doc-contact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 32px;margin-top:24px}
@@ -112,3 +112,7 @@ output.doc-value{color:var(--text)}
   .doc-actions{flex-direction:column-reverse}
   .doc-actions .button{width:100%}
 }
+
+/* 읽는 중: 경과 초와 예상 시간 (10-07 정운 실사용 11번) */
+.document-panel .dropzone .doc-wait{font-size:var(--fs-sm,13px);color:var(--text-2)}
+.document-panel .dropzone .doc-wait .mono{font-size:var(--fs-sm,13px)}

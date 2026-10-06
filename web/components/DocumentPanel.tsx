@@ -14,7 +14,7 @@
  * 검사에 걸린 칸은 미리 고르지 않고 비워 둔다(읽은 값은 옆에 보여 준다). 확인 안 한 값이 저장되지 않게 하려는 것이다.
  * 저장은 실제 모드 + 로그인일 때만, 실패해도 입력 채우기는 막지 않는다. 판정 등급에는 쓰지 않는다.
  */
-import {useId, useRef, useState, type ChangeEvent, type DragEvent} from 'react';
+import {useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent} from 'react';
 import {Camera, Check, ChevronDown, LoaderCircle, Pencil, RotateCcw, TriangleAlert, X} from 'lucide-react';
 import {isLive, readDocument, saveDocumentFacts} from '@/lib/api';
 import type {ContactRole, DocumentCheck, DocumentConditionKey, DocumentFactsRequest, DocumentResponse, FreightTerm, Incoterm, OriginalBl} from '@/lib/types';
@@ -70,6 +70,14 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
   const [result, setResult] = useState<DocumentResponse | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [dragging, setDragging] = useState(false);
+  // 읽는 데 20~28초쯤 걸려 스피너만으로는 멈춘 것처럼 보인다. 브라우저가 실제로 잰 경과 초만 보인다 (10-07 정운 실사용 11번)
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!busy) { setSeconds(0); return; }
+    const start = Date.now();
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [busy]);
 
   async function upload(file: File | undefined) {
     if (!file || busy) return;
@@ -144,6 +152,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
       {busy ? <LoaderCircle size={32} className="spin"/> : <Camera size={32} strokeWidth={1.5}/>}
       <strong>{busy ? '서류에서 글자를 읽는 중' : '사진이나 PDF를 끌어 놓거나 눌러서 골라 주세요'}</strong>
       <span>{busy ? fileName : 'JPG·PNG·PDF, 10MB 이하예요. 파일은 저장하지 않아요'}</span>
+      {busy && <span className="doc-wait" role="status"><span className="mono">{seconds}초</span> · 보통 20초쯤 걸려요</span>}
       <input ref={inputRef} id={inputId} type="file" accept="image/*,application/pdf" className="sr-only" disabled={busy || disabled}
         onChange={(e: ChangeEvent<HTMLInputElement>) => void upload(e.target.files?.[0])}/>
     </label>}
