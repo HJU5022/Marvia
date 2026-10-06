@@ -271,3 +271,59 @@
   .mx-runs li{grid-template-columns:auto 1fr}
   .mx-runs li .mx-gate{grid-column:2;justify-self:start}
 }
+
+/* ---- 엘레강스 정리 (10-07 정운 엘레강스: 아임웹 63번 목록 행 기준) ----
+   위 규칙을 덮는다. 굵은 글씨·채운 칩·상자를 걷고 가는 선 + 얇은 글자만 남긴다. 평가 지표(mx-*)는 건드리지 않는다 */
+.adm-heading h1{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.adm-heading .eyebrow{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.1em;text-transform:uppercase}
+.adm-tabs{gap:28px}
+.adm-tabs button{font-size:var(--fs-base,14px);font-weight:var(--fw-regular,400);letter-spacing:.08em}
+.adm-tabs button.active{font-weight:var(--fw-regular,400)}
+.adm-tabs button::after{height:1px}
+.adm-section-head h2,.adm-box-head h2,.adm-dcard h3{font-size:var(--fs-md,15px);font-weight:var(--fw-regular,400);letter-spacing:.06em}
+
+/* 표: 옅은 머리글, 행 사이 가는 선 */
+.adm-table th{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.08em;border-bottom-color:var(--hairline,#e8e8e8)}
+.adm-table td{border-bottom-color:var(--hairline,#e8e8e8);font-size:var(--fs-base,14px)}
+.adm-table tbody tr:hover{background:var(--soft,#f7f7f7)}
+.adm-table tr.row-open td{background:transparent}
+.adm-table tr.row-open{box-shadow:inset 1px 0 0 var(--text,#1f1f1f)}
+.adm-name{font-weight:var(--fw-medium,500)}
+
+/* 칩: 채움 없이 글자 + 가는 테두리 */
+.adm-chip,.adm-chip.strong{background:transparent;border:1px solid var(--border-strong,#cfcfcf);padding:2px 10px;font-weight:var(--fw-regular,400);letter-spacing:.04em;color:var(--text-2,#4a4a4a)}
+.adm-chip.suspended{box-shadow:none;border-color:var(--text,#1f1f1f);font-weight:var(--fw-regular,400)}
+.adm-stat>strong{font-weight:300}
+.adm-timer{font-weight:var(--fw-medium,500)}
+
+/* 검색 줄 + 입력칸 */
+.adm-search{border:1px solid var(--border-strong,#cfcfcf);background:transparent}
+.adm-search:focus-within{border-color:var(--text,#1f1f1f);box-shadow:none}
+.adm-form textarea{border-color:var(--border-strong,#cfcfcf)}
+.adm-form textarea:focus{border-color:var(--text,#1f1f1f);box-shadow:none}
+
+/* 아이콘 단추: 얇은 선, hover에 바탕 없이 글자색만 */
+.adm-icon svg{stroke-width:1.5}
+.adm-icon:hover:not(:disabled){background:transparent;color:var(--text,#1f1f1f)}
+.adm-icon[aria-expanded="true"]{background:transparent;color:var(--text,#1f1f1f);box-shadow:inset 0 -1px 0 var(--text,#1f1f1f)}
+.adm-icon.adm-icon-danger:hover:not(:disabled),.adm-icon.adm-icon-danger[aria-expanded="true"]{background:transparent;color:var(--danger,#c12f2f)}
+.button.secondary.danger-outline{background:transparent;border-color:var(--danger,#c12f2f)}
+.button.secondary.danger-outline:hover:not(:disabled){background:var(--danger,#c12f2f);color:#fff}
+
+/* 고객 작업 / 마스킹 해제: 둥근 붉은 상자 없이 가는 선 + 작은 붉은 라벨 */
+.adm-dcard{background:transparent;border:0;border-top:1px solid var(--hairline,#e8e8e8);padding:24px 0}
+.adm-unmask{border-top-color:var(--danger-border,#f1c9c5)}
+.adm-unmask dt{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.06em}
+.adm-unmask dd{font-weight:var(--fw-medium,500)}
+.adm-detail .form-field label,.adm-box .form-field label{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.06em}
+.adm-box-form{padding:24px 0}
+.adm-op-list li{border-top-color:var(--hairline,#e8e8e8)}
+.adm-op-who strong{font-weight:var(--fw-medium,500)}
+.adm-confirm{background:transparent;border:1px solid var(--hairline,#e8e8e8)}
+.adm-box .account-message{background:transparent;border:1px solid var(--hairline,#e8e8e8)}
+@media(max-width:700px){
+  .adm-table tr{border-bottom-color:var(--hairline,#e8e8e8)}
+  .adm-table tr.row-open{background:transparent}
+  .adm-box-form,.adm-dcard{padding:16px 0}
+}
+.adm-unmask h3{font-size:var(--fs-xs,12px);letter-spacing:.08em;color:var(--danger,#c12f2f)}

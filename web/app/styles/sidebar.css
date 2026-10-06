@@ -150,3 +150,68 @@
 @media(prefers-reduced-motion:reduce){
   .app-shell .workspace,.app-shell .sidebar.sb{transition:none}
 }
+
+/* ---- 엘레강스 정리 (10-07 정운 엘레강스: 56번 검은 채움 단추 싫음, 59·60번 아임웹 얇은 글자 메뉴가 기준) ----
+   위 규칙을 덮는다. 채움·그림자·회색 바탕을 걷고, 글자 간격 + 얇은 선만 남긴다 */
+.app-shell .sidebar.sb{padding:16px 14px 12px;font-weight:var(--fw-regular,400);letter-spacing:.03em}
+.sb-brand strong{font-size:var(--fs-base,14px);font-weight:var(--fw-regular,400);letter-spacing:.08em}
+.sb-brand img{width:22px;height:22px}
+.sb-collapse,.sb-close,.sb-burger{color:var(--muted,#6b6b6b)}
+.sb-collapse:hover,.sb-close:hover,.sb-burger:hover{background:transparent;color:var(--text,#1f1f1f)}
+.sb-collapse svg,.sb-close svg,.sb-burger svg,.sb-item svg,.sb-group-head svg,.sb-pop svg,.sb-new svg{stroke-width:1.5}
+
+/* 새 대화: 채운 블록 대신 얇은 네모 테두리 단추 (hover 때만 반전) */
+.sb-new{height:38px;margin:16px 0 12px;border:1px solid var(--text,#1f1f1f);background:transparent;color:var(--text,#1f1f1f);font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400);letter-spacing:.08em;transition:background-color .15s,color .15s}
+.sb-new:hover:not(:disabled){background:var(--text,#1f1f1f);color:#fff}
+.sb-new svg{stroke-width:1.5}
+
+.sb-caption{padding:6px 8px;font-size:11px;font-weight:var(--fw-regular,400);letter-spacing:.1em;text-transform:uppercase;color:var(--muted,#6b6b6b)}
+.sb-cl-group h3{margin:16px 0 4px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted,#6b6b6b)}
+
+/* 메뉴: 회색 바탕 없이 글자 색 + 왼쪽 가는 선 */
+.sb-item,.sb-group-head{position:relative;height:34px;font-weight:var(--fw-regular,400);letter-spacing:.04em;color:var(--text-2,#4a4a4a)}
+.sb-item:hover,.sb-group-head:hover{background:transparent;color:var(--text,#1f1f1f)}
+.sb-item.active{background:transparent;font-weight:var(--fw-regular,400);color:var(--text,#1f1f1f)}
+.sb-item.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:1px;background:var(--text,#1f1f1f)}
+.sb-item svg,.sb-group-head svg{color:var(--muted,#6b6b6b)}
+
+/* 대화 목록 줄: 글자만, hover 땐 아주 옅은 바탕 */
+.sb-cl-new{border-color:var(--border-strong,#cfcfcf);font-weight:var(--fw-regular,400);letter-spacing:.06em}
+.sb-cl-new:hover:not(:disabled){background:transparent;border-color:var(--text,#1f1f1f)}
+.sb-cl-row:hover{background:var(--soft,#f7f7f7)}
+.sb-cl-row.active{background:transparent;box-shadow:inset 1px 0 0 var(--text,#1f1f1f)}
+.sb-cl-title{letter-spacing:.03em}
+.sb-cl-row.active .sb-cl-title{font-weight:var(--fw-regular,400)}
+.sb-cl-confirm button{border-color:var(--border-strong,#cfcfcf);letter-spacing:.04em}
+
+/* 계정 줄 + 팝오버: 네모, 가는 선, 그림자 없음 */
+.sb-account:not(.static):hover{background:transparent}
+.sb-account:not(.static):hover .sb-account-name{color:var(--text,#1f1f1f)}
+.sb-avatar{background:transparent;border-color:var(--border-strong,#cfcfcf);font-weight:var(--fw-regular,400);color:var(--text-2,#4a4a4a)}
+.sb-account-name{letter-spacing:.04em;color:var(--text-2,#4a4a4a)}
+.sb-pop{padding:4px 0;border-color:var(--border-strong,#cfcfcf);box-shadow:none}
+.sb-pop a,.sb-pop button{padding:0 14px;letter-spacing:.04em}
+.sb-pop a:hover,.sb-pop button:hover{background:var(--soft,#f7f7f7)}
+.sb-pop hr{margin:4px 0}
+
+/* 접은 줄 이름표도 네모 + 가는 글자 */
+.rail-collapsed .sb-new{width:38px}
+.rail-collapsed [data-sbtip]:hover::after,.rail-collapsed [data-sbtip]:focus-visible::after{background:#fff;color:var(--text,#1f1f1f);border:1px solid var(--border-strong,#cfcfcf);letter-spacing:.04em}
+.rail-collapsed .sb-item.active::before{left:2px}
+
+/* 상단 줄: 얇고 조용하게. 상태 칩은 알약 없이 점 + 글자 */
+.app-shell .workspace-bar{height:44px;padding:0 32px}
+.app-shell .workspace-bar>span.sb-crumb{font-size:var(--fs-xs,12px);letter-spacing:.08em;color:var(--muted,#6b6b6b)}
+.app-shell .workspace-bar .port-label,.app-shell .workspace-bar .replay-chip{letter-spacing:.06em;border:0;background:transparent;padding:0;border-radius:0}
+.app-shell .workspace-bar .conv-toggle{border-color:var(--border-strong,#cfcfcf);background:transparent;letter-spacing:.06em;font-weight:var(--fw-regular,400)}
+
+/* 하단 링크 */
+.app-shell .app-footer{font-size:11px;letter-spacing:.1em}
+.app-shell .app-footer a{color:var(--muted,#6b6b6b)}
+
+/* 모바일 서랍: 흰색, 네모, 가는 선 (그림자 없음) */
+@media(max-width:900px){
+  .app-shell.sb-open .sidebar.sb{box-shadow:none;border-right:1px solid var(--border-strong,#cfcfcf)}
+  .sb-backdrop{background:#1f1f1f40}
+  .app-shell .workspace-bar{padding:0 12px}
+}

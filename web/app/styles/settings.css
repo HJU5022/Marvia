@@ -221,3 +221,58 @@
 .consent-modal p{margin:12px 0 0;font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
 .consent-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 @media(max-width:700px){.consent-modal{padding:24px 20px 16px}.consent-actions .button{flex:1}}
+
+/* ---- 엘레강스 정리 (10-07 정운 엘레강스: 아임웹 61번 약관 창·글자 탭 기준) ----
+   위 규칙을 덮는다. 상자·채움·굵은 글씨를 걷고 얇은 글자 + 가는 선 + 네모 단추만 남긴다 */
+.st-head{margin:0 0 24px}
+.st-head h1{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.st-tabs{gap:28px;margin:0 0 32px}
+.st-tab{min-height:44px;padding:0 2px;font-weight:var(--fw-regular,400);letter-spacing:.08em}
+.st-tab:hover{background:transparent;color:var(--text)}
+.st-tab.on{font-weight:var(--fw-regular,400)}
+.st-tab-bar{height:1px;background:var(--text,#1f1f1f)}
+.st-card h2{font-size:var(--fs-md,15px);font-weight:var(--fw-regular,400);letter-spacing:.06em}
+.st-plain h2{font-weight:var(--fw-regular,400);letter-spacing:.06em}
+.st-row dd,.mc-rows dd,.memory-text,.mc-head strong{font-weight:var(--fw-medium,500)}
+.st-priority span{color:var(--text-2,#4a4a4a);font-weight:var(--fw-regular,400)}
+
+/* 폼: 네모 입력칸, 작은 흐린 라벨 */
+.profile-form .form-field label,.st-withdraw .confirm-field label{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.06em;color:var(--muted)}
+.profile-form input:not([type=checkbox]),.st-withdraw .confirm-field input,.hist-tools select,.hist-search{border-color:var(--border-strong,#cfcfcf);border-radius:0}
+.profile-form input:not([type=checkbox]):focus{outline:0;border-color:var(--text,#1f1f1f)}
+.profile-form .req{font-weight:var(--fw-regular,400);font-size:var(--fs-xs,12px)}
+
+/* 카카오 */
+.kakao-state{font-size:var(--fs-lg,18px);font-weight:300;letter-spacing:.04em}
+.kakao-state.on{color:var(--text,#1f1f1f)}
+
+/* 위험 영역: 채움 없이 빨간 가는 테두리 */
+.st-confirm{background:transparent;border:1px solid var(--hairline,#e8e8e8)}
+.st-card .button.danger,.st-page .button.danger,.st-page .button.danger-outline{background:transparent;color:var(--danger,#c12f2f);border:1px solid var(--danger,#c12f2f)}
+.st-page .button.danger:hover:not(:disabled),.st-page .button.danger-outline:hover:not(:disabled){background:var(--danger,#c12f2f);color:#fff}
+.icon-btn:hover:not(:disabled){background:transparent;color:var(--text)}
+.icon-btn.danger:hover:not(:disabled){background:transparent}
+.account-message{background:transparent;border:1px solid var(--hairline,#e8e8e8);font-weight:var(--fw-regular,400)}
+.memory-full{background:transparent;border:1px solid var(--hairline,#e8e8e8)}
+
+/* 기억한 화물 / 조회 이력: 가는 줄 목록 */
+.memory-block h3{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.08em;text-transform:uppercase}
+.memory-item{padding:12px 0;border-bottom:1px solid var(--hairline,#e8e8e8)}
+.memory-item:last-child{border-bottom:0}
+.memory-body small{font-weight:var(--fw-regular,400)}
+.memory-slack{font-size:var(--fs-lg,18px);font-weight:300}
+.hist-dist{height:2px}
+.hist-stat:hover,.hist-stat.selected{background:transparent}
+.hist-stat.selected{box-shadow:inset 0 -1px 0 var(--text,#1f1f1f)}
+.hist-bl{font-weight:var(--fw-medium,500)}
+.hist-item .open-record:hover:not(:disabled){background:transparent;color:var(--text)}
+
+/* 개인정보 동의 창: 61번처럼 네모, 가는 선, 가운데 얇은 제목, 네모 단추 둘 */
+.consent-backdrop{background:#1f1f1f66}
+.consent-modal{width:min(440px,100%);padding:32px 32px 28px;border:0;box-shadow:none}
+.consent-modal h2{margin:0 0 24px;text-align:center;font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.08em}
+.consent-modal li{padding:14px 0;letter-spacing:.02em}
+.consent-modal li span{font-size:var(--fs-xs,12px);letter-spacing:.06em}
+.consent-actions{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:24px}
+.consent-actions .button{min-height:48px;width:100%;justify-content:center}
+.consent-actions .button.secondary{border-right-width:0}
