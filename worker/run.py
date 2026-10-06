@@ -23,7 +23,7 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 from backend.app.db import apply_migrations, connect, purge_done_cargo, purge_old_conversations, purge_old_queries
 from backend.app.services.watch import run_watch
-from worker.collector import Budget, collect_port, collect_positions, purge_positions, select_targets
+from worker.collector import Budget, collect_port, collect_positions, collect_watch_positions, purge_positions, select_targets
 
 DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
 DEFAULT_SHIPFINDER_CALLS = 12  # 위 설명 참고. 하루 한도 50회
@@ -61,6 +61,9 @@ def run_once(shipfinder_calls: int) -> dict:
     if shipfinder_calls > 0:
         try:
             sf = ShipFinderClient()
+            # 사용자 화물 배(감시·지도)를 먼저 받는다. 사용자가 보는 화면이라 연구용 대상보다 앞선다 (docs/specs/cargo-watch.md)
+            # 결과 키는 watch_positions: 아래 run_watch(재판정)가 "watch" 키를 쓰므로 겹치면 한쪽 결과가 사라진다
+            summary["watch_positions"] = collect_watch_positions(conn, sf, budget)
             # 위치를 먼저 받고, 남은 예산으로 대상을 늘린다. 이미 고른 배의 기록이 끊기지 않게 하려는 순서다
             summary["positions"] = collect_positions(conn, sf, budget)
             summary["targets"] = select_targets(conn, reports, sf, budget)

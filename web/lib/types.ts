@@ -61,6 +61,8 @@ export interface AgentResponse {
   decided_by: 'rule' | 'llm' | null; vessel: VesselInfo | null;
   position: Position | null; eta: EtaInfo | null; customs: CustomsInfo | null;
   berth: BerthInfo | null; evidence: Evidence[]; answer: string; trace_id: string;
+  /** UNI-PASS 처리 이력 원문. 화면 전용이라 이력 재생·후속 질문 응답에는 없을 수 있다 (docs/specs/customs-detail.md) */
+  customs_detail?: CustomsDetailRow[];
 }
 export interface HistoryItem {
   request_id: string | null; bl_masked: string | null; status: string | null;
@@ -237,3 +239,10 @@ export interface CargoSheetRow {
 /** lc가 null인 묶음은 아직 신용장에 안 묶인 B/L이다 (맨 끝) */
 export interface CargoSheetGroup { lc: CargoLc | null; rows: CargoSheetRow[] }
 export interface CargoSheet { groups: CargoSheetGroup[] }
+
+/** UNI-PASS 처리 이력 1줄 원문 (backend schemas/customs.py CustomsDetailRow). 값은 UNI-PASS 글자 그대로, 빈 칸은 null */
+export interface CustomsDetailRow {
+  kind: string | null; processed_at: string | null; declaration_no: string | null; moved_at: string | null;
+  basis: string | null; content: string | null; notice: string | null; shed_name: string | null; shed_code: string | null;
+  package_count: string | null; package_unit: string | null; weight: string | null; weight_unit: string | null;
+}

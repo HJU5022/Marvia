@@ -6,6 +6,8 @@
   컨테이너 번호(container_no)는 B/L처럼 화물을 특정하는 번호라 LLM에 넘기지 않고 화면·엑셀에만 쓴다 (10-06 결정).
 - 넘기지 않는 것: 품명(prnm), 중량(wght), 세관명, 화주 정보. 이 모델에 아예 필드가 없다.
 - B/L 번호는 LLM에 안 넘기고, 트레이스·로그에는 mask_bl()로 남긴다 (SDD 3.5, 7절).
+- 예외: display_rows(UNI-PASS 처리 이력 원문)는 화면에만 보여 준다. model_dump에서 빠져(exclude) LLM 입력에
+  들어가지 않고, 응답(C1 customs_detail)으로 옮긴 뒤에도 DB 저장·후속 질문 LLM 입력에서 뺀다 (docs/specs/customs-detail.md, 10-02).
 """
 from __future__ import annotations
 
@@ -20,6 +22,28 @@ class CustomsStage(BaseModel):
     code: str
     name: str
     at: datetime | None
+
+
+class CustomsDetailRow(BaseModel):
+    """UNI-PASS 처리 이력 1줄(cargCsclPrgsInfoDtlQryVo) 원문. 화면 전용 (docs/specs/customs-detail.md, 10-02).
+
+    값은 UNI-PASS가 준 글자 그대로 둔다(빈 칸은 None). 뜻이 단계마다 달라(dclrNo는 반출입 신고번호·수입신고번호·MRN 등)
+    코드가 해석하지 않는다. 중량·관세법인명이 들어 있어 LLM과 DB에는 넣지 않는다 (SDD 3.5).
+    """
+
+    kind: str | None = Field(default=None, description="cargTrcnRelaBsopTpcd, 처리 구분 (예: 반입신고)")
+    processed_at: str | None = Field(default=None, description="prcsDttm, 처리 일시 YYYYMMDDhhmmss (한국 시각)")
+    declaration_no: str | None = Field(default=None, description="dclrNo, 신고번호")
+    moved_at: str | None = Field(default=None, description="rlbrDttm, 반출입 일시")
+    basis: str | None = Field(default=None, description="rlbrBssNo, 반출입 근거번호 (관세법인명·하선반입기한 글이 들어오기도 한다)")
+    content: str | None = Field(default=None, description="rlbrCn, 반출입 내용")
+    notice: str | None = Field(default=None, description="bfhnGdncCn, 사전 안내 내용")
+    shed_name: str | None = Field(default=None, description="shedNm, 장치장 이름")
+    shed_code: str | None = Field(default=None, description="shedSgn, 장치장 부호")
+    package_count: str | None = Field(default=None, description="pckGcnt, 포장 개수")
+    package_unit: str | None = Field(default=None, description="pckUt, 포장 단위")
+    weight: str | None = Field(default=None, description="wght, 중량")
+    weight_unit: str | None = Field(default=None, description="wghtUt, 중량 단위")
 
 
 class CustomsRecord(BaseModel):
@@ -51,6 +75,8 @@ class CustomsRecord(BaseModel):
                     "컨테이너 여러 개면 서로 다른 번호를 ', '로 이어 한 문자열로 둔다. 화물을 특정하는 번호라 LLM에 넘기지 않는다",
     )
     stage_history: list[CustomsStage] = Field(default_factory=list)
+    # 화면 전용 처리 이력 원문. exclude=True라 model_dump에 안 나와 판정 LLM 입력(llm.judge)에 섞이지 않는다
+    display_rows: list[CustomsDetailRow] = Field(default_factory=list, exclude=True)
     bl_masked: str = Field(description="앞4자+****+뒤4자. 로그·트레이스용")
 
     def route_fields(self) -> dict:

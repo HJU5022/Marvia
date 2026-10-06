@@ -1,6 +1,7 @@
 'use client';
 /** 입항 예정 선박 자세히 보기 (docs/specs/chat-search.md "선박 자세히 보기"). 선박 표에서 선명을 누르면 행 아래에 펼친다.
  * GET /api/vessels/detail 한 번으로 해수부 일정, AIS 위치, 부산까지 거리를 받는다. 판정은 하지 않는다.
+ * 값 칸은 보통 글꼴이다. 한국어(확인되지 않음, 노트, 해리)가 고정폭 글꼴로 보이지 않게 한다 (10-02 UI 점검 V4).
  * 지도는 자세히 보기 전용 VesselMap(배 중심 확대, 진행 방향, 남은 예상 바닷길). 위치 신선도는 서버가 rules.md로 정한 값이다.
  */
 import {useEffect, useState} from 'react';
@@ -43,7 +44,7 @@ export function VesselDetail({vessel}: {vessel: VesselItem}) {
             ['선박이 밝힌 목적지', p?.dest ? portLabel(p.dest) : null],
             ['선박이 보낸 도착 예정', p?.ais_eta ? dateTime(p.ais_eta) : null],
             ['마지막 수신', p?.last_time ? dateTime(p.last_time) : null],
-          ] as const).map(([k, x]) => <div key={k}><dt>{k}</dt><dd className="mono">{shown(x)}</dd></div>)}</dl>
+          ] as const).map(([k, x]) => <div key={k}><dt>{k}</dt><dd className={x == null ? 'unknown' : undefined}>{shown(x)}</dd></div>)}</dl>
         </section>
         <section><h4><Anchor size={14}/>부산항 일정 (해수부)</h4>
           <dl>{([
@@ -52,7 +53,7 @@ export function VesselDetail({vessel}: {vessel: VesselItem}) {
             ['접안 시설', s?.facility ?? vessel.facility],
             ['부산까지', d ? `${d.distance_nm} 해리${d.calc_hours_at_sog != null ? ` · 지금 속력이면 약 ${Math.round(d.calc_hours_at_sog)}시간` : ''}` : null],
             ['지금 속력 기준 예상 도착', d?.calc_eta ? dateTime(d.calc_eta) : null],
-          ] as const).map(([k, x]) => <div key={k}><dt>{k}</dt><dd className="mono">{shown(x)}</dd></div>)}</dl>
+          ] as const).map(([k, x]) => <div key={k}><dt>{k}</dt><dd className={x == null ? 'unknown' : undefined}>{shown(x)}</dd></div>)}</dl>
           {s && s.control_events.length > 0 && <ol className="control-events">{s.control_events.map((e, i) =>
             <li key={i}><strong>{e.kind}</strong><span className="mono">{dateTime(e.at)}</span><small>{shown(e.facility)}</small></li>)}</ol>}
         </section>

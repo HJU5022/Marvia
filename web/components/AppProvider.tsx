@@ -4,7 +4,7 @@
  */
 import {createContext, useContext, useEffect, useRef, useState, type ReactNode} from 'react';
 import {usePathname, useRouter} from 'next/navigation';
-import {deleteConversation, errorStatus, getAgentResponse, getConversation, getMe, getPresentationData, getReplaySnapshot, getWatchChanges, isLive, listConversations, markWatchChangesSeen, newSessionId, sendChatStream, setActiveSession, currentSessionId, watchKey} from '@/lib/api';
+import {deleteConversation, errorStatus, getAgentResponse, getConversation, getMe, getPresentationData, getReplaySnapshot, getUsage, getWatchChanges, isLive, listConversations, markWatchChangesSeen, newSessionId, sendChatStream, setActiveSession, currentSessionId, watchKey, type UsageInfo} from '@/lib/api';
 import {verdictLabels} from '@/lib/format';
 import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
@@ -59,8 +59,12 @@ interface AppState {
   /** 채팅 표에서 고른 화물로 아래 결과 칸을 바꾼다. 단일 화물 답을 받았을 때와 같은 상태 바꿈이다 (다음 질문의 문맥도 이 화물) */
   showCargo: (agent: AgentResponse, request: AgentRequest) => void;
   thread: ChatTurn[]; vessels: ChatResponse | null;
-  /** 아래 결과 칸에 무엇을 보여 줄지. none이면 안내·실패라 지난 결과를 숨긴다 (지난 화물은 후속 질문용으로 기억만) */
+  /** 아래 결과 칸에 무엇을 보여 줄지. none이면 안내 문장이라 지난 결과를 숨긴다 (지난 화물은 기억만, 다시 보기 버튼으로 돌아온다) */
   view: 'cargo' | 'vessels' | 'none';
+  /** 숨겨 둔 화물 결과를 다시 보인다 (선박 검색 뒤 "내 화물 결과로 돌아가기", 10-02 UI 점검 F4) */
+  backToCargo: () => void;
+  /** 결과 칸의 React key. 새 화물 조회일 때만 바뀌고 후속 질문에는 그대로라 지도·펼친 근거가 다시 그려지지 않는다 (F10) */
+  cargoKey: string;
   /** 로그인 기능이 켜졌는지, 세션 확인이 끝났는지, 누가 로그인했는지 */
   authEnabled: boolean; authReady: boolean; user: AuthUser | null;
   /** 운영자면 관리 탭을 보여 준다. 서버(GET /api/me)가 정한 값이고, 관리 API는 서버가 다시 확인한다 */
@@ -83,6 +87,8 @@ interface AppState {
   /** 대화를 불러오는 중 (메시지 보내기·다른 대화 열기를 잠시 막는다) */
   opening: boolean;
   newConversation: () => void; openConversation: (id: string) => Promise<boolean>; removeConversation: (id: string) => Promise<void>;
+  /** 오늘 LLM 토큰 사용량 (GET /api/usage). exhausted면 입력을 막는다 (docs/specs/token-quota.md) */
+  usage: UsageInfo | null; refreshUsage: () => void;
 }
 const Context = createContext<AppState | null>(null);
 
@@ -103,6 +109,10 @@ export function AppProvider({children}:{children:ReactNode}) {
   const [suspended,setSuspended] = useState(false);
   const [meReady,setMeReady] = useState(!authEnabled);
   const [watching,setWatchingMap] = useState<Record<string,boolean>>({});
+  const [usage,setUsage] = useState<UsageInfo|null>(null);
+  const [cargoKey,setCargoKey] = useState('');
+  // 요청을 마칠 때마다 다시 읽는다. 한도를 넘긴 요청은 끝까지 답하고, 그 뒤에 안내와 입력 막기가 걸린다
+  function refreshUsage() { void getUsage().then(setUsage); }
   const inflight = useRef(false);
   const router = useRouter(); const pathname = usePathname();
   const [conversations,setConversations] = useState<ConversationSummary[]>([]);
@@ -134,6 +144,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     let alive = true;
     setMeReady(false);
     void getMe().then(me => { if (alive) { setIsOperator(me.is_operator); setProfileComplete(me.profile_complete); setSuspended(!!me.suspended); setMeReady(true); } });
+    refreshUsage();
     return () => { alive = false; };
   }, [authReady, user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -172,7 +183,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       const saved = JSON.parse(raw) as SavedChat;
       if (!Array.isArray(saved.thread) || !saved.session) return;
       setActiveSession(saved.session); setActiveId(saved.session);
-      setThread(saved.thread); setRequest(saved.request ?? emptyRequest); setResult(saved.result ?? null); setVessels(saved.vessels ?? null); setView(saved.view ?? 'cargo');
+      setThread(saved.thread); setRequest(saved.request ?? emptyRequest); setResult(saved.result ?? null); setCargoKey(saved.result?.trace_id ?? ''); setVessels(saved.vessels ?? null); setView(saved.view ?? 'cargo');
     } catch { /* 깨진 값은 무시하고 빈 대화로 시작한다 */ }
   }, [persistLocal]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -205,7 +216,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     if (inflight.current) return;  // 답을 기다리는 중에 바꾸면 곧 올 답이 새 화면에 섞인다
     epoch.current++; startSession(newSessionId()); clearScreen(); syncUrl(null);
   }
-  function clearScreen() { setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); setWatchingMap({}); setReplaying(false); }
+  function clearScreen() { setCargoKey(''); setThread([]); setVessels(null); setView('cargo'); setResult(null); setRequest(isLive ? emptyRequest : presentation.demo.choices[0].request as AgentRequest); setDocHints(null); setError(''); setWatchingMap({}); setReplaying(false); }
   /** 저장된 대화를 열어 화면을 되살린다. 말풍선은 messages(+extra)로, 아래 결과 칸은 context·result로 (단일 화물 답을 받았을 때와 같은 상태) */
   async function openConversation(id: string) {
     if (inflight.current) return false;
@@ -217,7 +228,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       startSession(id);
       clearScreen();
       setThread(c.messages.slice(-50).map(toTurn));  // 화면에는 최근 50줄만 (ask와 같다)
-      if (c.context && c.result) { setRequest({...c.context, session_id: id}); setResult(c.result); }
+      if (c.context && c.result) { setRequest({...c.context, session_id: id}); setResult(c.result); setCargoKey(c.result.trace_id); }
       // 마지막 답의 종류가 결과 칸을 정한다. ask()가 답마다 하는 것과 같다
       const last = [...c.messages].reverse().find(m => m.role === 'assistant');
       const kind = last?.extra?.kind;
@@ -243,13 +254,23 @@ export function AppProvider({children}:{children:ReactNode}) {
     await refreshConversations();
   }
 
+  // 한도는 한국 시간 자정에 풀린다(docs/specs/token-quota.md). 탭을 켜 둔 채 자정을 넘기면 입력이 계속 막혀 있으므로
+  // 창으로 돌아올 때와 10분마다 다시 읽는다 (10-02 UI 점검 F7). 데모 모드는 getUsage가 서버를 부르지 않는다
+  useEffect(() => {
+    if (!isLive) return;
+    const onFocus = () => refreshUsage();
+    window.addEventListener('focus', onFocus);
+    const id = window.setInterval(refreshUsage, 10 * 60 * 1000);
+    return () => { window.removeEventListener('focus', onFocus); window.clearInterval(id); };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
   async function lookup(req: AgentRequest) {
     if (inflight.current) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 정해진 칸 조회(POST /api/agent: 되묻기 답·다시 조회)는 단계 소식이 없다. 화면은 기다림과 경과 시간만 보인다
-    try { const response = await getAgentResponse(req); setResult(response); setRequest(req); setView('cargo'); return true; }
+    try { const response = await getAgentResponse(req); setResult(response); setRequest(req); setView('cargo'); setCargoKey(response.trace_id); return true; }
     catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했습니다. 다시 시도해 주세요.'); return false; }
-    finally {setLoading(false);setPendingSince(null);inflight.current=false;}
+    finally {setLoading(false);setPendingSince(null);inflight.current=false;refreshUsage();}
   }
   async function ask(message: string) {
     if (inflight.current || opening) return false;
@@ -259,14 +280,26 @@ export function AppProvider({children}:{children:ReactNode}) {
     // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
     setThread(t => [...t.slice(-49), {role: 'user', text: message}]);
     try {
-      // 지금 보고 있는 화물이 있으면 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다
+      // 화면에 화물 카드가 실제로 보일 때만 그 화물을 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다.
+      // 카드를 숨긴 상태(선박 표·안내 문장)에서 보낸 문장이 보이지 않는 화물의 후속 질문이 되지 않게 한다 (10-02 UI 점검 F5)
+      const context = view === 'cargo' && result && request.bl_no ? request : null;
+      const seen: ProgressStage[] = [];
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
-      const res = await sendChatStream(message, result && request.bl_no ? request : null,
-        s => setStages(list => list.includes(s) ? list : [...list, s]), history);
+      const res = await sendChatStream(message, context,
+        s => { seen.push(s); setStages(list => list.includes(s) ? list : [...list, s]); }, history);
       setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null}]);
       // 대화로 지켜보기를 켜고 껐으면 결과 칸의 버튼·말풍선 버튼이 같은 상태를 보게 한다
       if (res.watch_set) setWatching(res.watch_set.bl_no, res.watch_set.on);
-      if (res.kind === 'cargo' && res.agent && res.request) { setResult(res.agent); setRequest(res.request); setView('cargo'); }
+      if (res.kind === 'cargo' && res.agent && res.request) {
+        if (context && result && isFollowUp(res.agent, res.request, context, result, seen)) {
+          // 후속 질문의 답은 대화 칸에만 둔다. 서버는 지난 결과의 answer만 바꿔 돌려주므로(routers/agent.py _follow_up)
+          // 판정 카드에는 원래 판정 설명을 남긴다 (F1). 관세청 처리 내역은 DB에 저장하지 않아 후속 응답에 빠져 오므로
+          // 지난 값을 이어 쓴다 (F2, docs/specs/customs-detail.md). 판정·근거는 서버 응답 그대로다
+          setResult({...res.agent, answer: result.answer,
+            customs_detail: res.agent.customs_detail?.length ? res.agent.customs_detail : result.customs_detail});
+        } else { setResult(res.agent); setRequest(res.request); setCargoKey(res.agent.trace_id); }
+        setView('cargo');
+      }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
       // 안내 문장(B/L 없음 등)이면 아래의 지난 결과를 숨긴다. 새 답과 지난 카드가 섞여 보이지 않게
       if (res.kind === 'message') setView('none');
@@ -274,26 +307,42 @@ export function AppProvider({children}:{children:ReactNode}) {
       if (conversationsOn) { syncUrl(currentSessionId()); void refreshConversations(); setTimeout(() => void refreshConversations(), 3000); }
       return true;
     } catch (e) {
+      // 실패는 대화 칸에만 알린다. 보고 있던 화물 결과는 그대로 둔다 (F3, 다시 조회 실패와 같은 방식)
       const msg = e instanceof Error ? e.message : '답하지 못했습니다. 다시 시도해 주세요.';
-      setError(msg); setView('none'); setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
-    } finally { setLoading(false); setPendingSince(null); inflight.current = false; }
+      setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
+    } finally { setLoading(false); setPendingSince(null); inflight.current = false; refreshUsage(); }
   }
   function showCargo(agent: AgentResponse, req: AgentRequest) {
     if (inflight.current) return;  // 조회 중에 바꾸면 곧 도착할 새 결과와 섞인다
-    setResult(agent); setRequest(req); setReplaying(false); setError(''); setView('cargo');
+    setResult(agent); setRequest(req); setCargoKey(agent.trace_id); setReplaying(false); setError(''); setView('cargo');
   }
   function replay(id: string) {
     if (inflight.current) return false;
     const snapshot = getReplaySnapshot(id); if (!snapshot) return false;
     // 선박 표를 보던 중이어도 재생한 화물이 보이게 화물 보기로 바꾼다 (10-02 발견: 표가 남아 재생 결과가 가려졌다)
-    setResult(snapshot.response);setRequest(snapshot.request);setReplaying(true);setError('');setView('cargo');return true;
+    setResult(snapshot.response);setRequest(snapshot.request);setReplaying(true);setError('');setView('cargo');setCargoKey(snapshot.response.trace_id);return true;
   }
+  /** 숨겨 둔 화물 결과를 다시 보인다 (선박 검색 뒤 "내 화물 결과로 돌아가기"). 채팅 표 행을 여는 showCargo(agent, request)와 이름이 겹쳐 따로 부른다 */
+  function backToCargo() { if (result) setView('cargo'); }
   // 탈퇴·로그아웃·기록 삭제 뒤: 화면을 비우고 탭에 저장해 둔 대화도 지운다. 주소의 ?c=도 지워 다음 사용자가 이전 대화를 열려 하지 않게 한다
   function reset() {
     epoch.current++; clearScreen(); startSession(isLive ? newSessionId() : ''); if (isLive) syncUrl(null);
     try { window.sessionStorage.removeItem(CHAT_STATE_KEY); } catch { /* 괜찮다 */ }
   }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,watching,setWatching,conversationsOn,conversations,activeId,savedId,opening,newConversation,openConversation,removeConversation}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,backToCargo,cargoKey,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,usage,refreshUsage,watching,setWatching,conversationsOn,conversations,activeId,savedId,opening,newConversation,openConversation,removeConversation}}>{children}</Context.Provider>;
+}
+/** 화물 답이 후속 질문의 답인지 고른다. 응답 계약(C1, ChatResponse)에 표시 칸이 없어 화면이 확인할 수 있는 사실로만 본다.
+ * - 같은 B/L이 아니면 새 조회다
+ * - 서버가 "답 작성(answer)" 단계를 알렸으면 후속 질문이다. 이 단계는 후속 질문만 보낸다 (routers/agent.py _follow_up)
+ * - "통관 정보 조회(customs)"를 알렸고 answer가 없으면 새 판정이다
+ * - 단계 소식이 없으면(데모, /api/chat 대신 보내기) 지난 근거가 같은 조회 시각 그대로 앞에 남아 있는지 본다.
+ *   후속 답은 지난 결과에 도구 근거만 덧붙인다. 새 조회는 근거를 새로 받아 조회 시각이 바뀐다 */
+function isFollowUp(next: AgentResponse, nextReq: AgentRequest, context: AgentRequest, prev: AgentResponse, stages: ProgressStage[]) {
+  if (nextReq.bl_no !== context.bl_no) return false;
+  if (stages.includes('answer')) return true;
+  if (stages.includes('customs')) return false;
+  if (next.status !== prev.status || next.verdict !== prev.verdict || next.evidence.length < prev.evidence.length) return false;
+  return prev.evidence.every((e, i) => next.evidence[i].source === e.source && next.evidence[i].field === e.field && next.evidence[i].fetched_at === e.fetched_at);
 }
 export function useApp() { const ctx=useContext(Context);if(!ctx)throw new Error('AppProvider is required');return ctx; }

@@ -17,6 +17,7 @@ from PIL import UnidentifiedImageError
 from backend.app.auth import current_user_id
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
+from backend.app.routers.agent import quota_guard
 from backend.app.schemas.document import DocumentFields, DocumentResponse, FieldResult, OcrInfo
 from backend.app.services import doc_ocr, llm
 
@@ -34,6 +35,8 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
                   user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DocumentResponse:
     """사진을 받아 7칸을 채운다. def(동기)로 둔 이유: OCR이 CPU를 1~2초 쓰므로 FastAPI가 스레드풀에서 돌리게 한다.
     로그인 필수다 (09-30 결정, auth.py). 로그인 기능이 꺼진 채점 환경에서만 user_id 없이 돈다."""
+    # 서류 판독도 LLM을 부르므로 하루 토큰 한도를 확인한다 (docs/specs/token-quota.md)
+    quota_guard(session_id, user_id)
     data = file.file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=400, detail="too_large")

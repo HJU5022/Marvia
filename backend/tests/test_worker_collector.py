@@ -234,3 +234,47 @@ def test_migration_015_has_allowed_values_and_schedule():
     # 10-02 결정 D3: 끝난 화물은 반출 후 3년 보관 뒤 줄째 지운다. 3년은 함수 기본값 한 곳에만 있다
     assert sql.count("interval '3 years'") == 1 and "DELETE FROM user_cargo" in sql
     assert "CREATE TABLE IF NOT EXISTS user_forget" in sql  # 삭제 표시 (뒤 작업이 삭제를 되살리지 않게)
+
+# ── 감시·지도 위치 수집 (docs/specs/cargo-watch.md, 017) ──
+
+class _WatchConn:
+    """SELECT_WATCHED에는 감시 배 목록을, INSERT에는 새 줄 수를 돌려주는 가짜 연결."""
+
+    def __init__(self, mmsis):
+        self.mmsis, self.inserted = mmsis, []
+
+    def execute(self, sql, params=()):
+        if "FROM user_cargo" in sql:
+            return type("Cur", (), {"fetchall": lambda _self: [(m,) for m in self.mmsis]})()
+        self.inserted.append(params)
+        return type("Cur", (), {"rowcount": 1})()
+
+
+class _FakeSF:
+    """position(mmsi)만 흉내 낸다. 999는 위치가 없는 배."""
+
+    def position(self, mmsi):
+        from datetime import datetime, timezone
+        from backend.app.clients.shipfinder import ShipFinderError
+        if mmsi == 999:
+            raise ShipFinderError("not_found", "없음", status=3)
+        now = datetime(2026, 10, 2, tzinfo=timezone.utc)
+        return type("P", (), {"mmsi": mmsi, "last_time": now, "fetched_at": now, "lat": 34.6, "lng": 128.9,
+                              "sog": 12.0, "cog": 60.0, "navistat": 0})()
+
+
+def test_watch_positions_saved_for_active_cargo_vessels():
+    from worker.collector import Budget, collect_watch_positions
+    conn = _WatchConn([440000001, 999])
+    result = collect_watch_positions(conn, _FakeSF(), Budget(5))
+    assert result["watched"] == 2 and result["watch_positions_new"] == 1
+    assert result["watch_positions_failed"] == [{"mmsi": 999, "code": "not_found"}]
+    assert conn.inserted[0][0] == 440000001 and conn.inserted[0][3:5] == (34.6, 128.9)  # 원본·목적지 글은 넣지 않는다
+    assert len(conn.inserted[0]) == 8
+
+
+def test_watch_positions_stop_when_budget_runs_out():
+    from worker.collector import Budget, collect_watch_positions
+    conn = _WatchConn([1, 2, 3])
+    result = collect_watch_positions(conn, _FakeSF(), Budget(1))
+    assert result["watch_positions_new"] == 1 and len(conn.inserted) == 1

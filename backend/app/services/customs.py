@@ -33,7 +33,7 @@ import httpx
 
 from backend.app.clients.replay import replay_enabled, unipass_transport
 from backend.app.clients.retry import with_retry
-from backend.app.schemas.customs import CustomsRecord, CustomsStage, mask_bl
+from backend.app.schemas.customs import CustomsDetailRow, CustomsRecord, CustomsStage, mask_bl
 
 BASE_URL = "https://unipass.customs.go.kr:38010/ext/rest/cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo"
 TIMEOUT_SEC = 15.0
@@ -64,6 +64,12 @@ STAGE_ITEM_TAG = "cargCsclPrgsInfoDtlQryVo"  # 이력 1줄
 STAGE_FIELDS = {
     "name": ("cargTrcnRelaBsopTpcd",),  # 처리구분. 코드가 아니라 한글 이름이 들어 있다
     "at": ("prcsDttm",),  # 처리일시
+}
+# 화면 전용 처리 이력 원문의 칸 (schemas/customs.py CustomsDetailRow 필드 → UNI-PASS 태그). 10-02 실제 응답에서 확인한 13칸
+DETAIL_FIELDS = {
+    "kind": "cargTrcnRelaBsopTpcd", "processed_at": "prcsDttm", "declaration_no": "dclrNo", "moved_at": "rlbrDttm",
+    "basis": "rlbrBssNo", "content": "rlbrCn", "notice": "bfhnGdncCn", "shed_name": "shedNm", "shed_code": "shedSgn",
+    "package_count": "pckGcnt", "package_unit": "pckUt", "weight": "wght", "weight_unit": "wghtUt",
 }
 
 
@@ -175,8 +181,15 @@ class UnipassClient:
 
     @staticmethod
     def _refine(root, bl_no: str) -> CustomsRecord:
-        """계약 C5에 있는 필드만 남긴다. 품명·중량·화주는 애초에 옮기지 않는다."""
+        """계약 C5에 있는 필드만 남긴다. 품명·중량·화주는 애초에 옮기지 않는다.
+
+        예외로 처리 이력 원문(display_rows)은 화면에 보여 주려고 13칸을 그대로 옮긴다. 이 칸은 model_dump에서 빠져
+        LLM 입력에 들어가지 않는다 (schemas/customs.py, docs/specs/customs-detail.md).
+        """
         stages = []
+        # 원문은 응답 순서(최신이 위) 그대로 둔다. UNI-PASS 화면과 같은 순서라 사용자가 대조하기 쉽다
+        rows = [CustomsDetailRow(**{key: (item.findtext(tag) or "").strip() or None for key, tag in DETAIL_FIELDS.items()})
+                for item in root.iter(STAGE_ITEM_TAG)]
         for item in root.iter(STAGE_ITEM_TAG):
             name = _first(item, STAGE_FIELDS["name"])
             if not name:
@@ -205,6 +218,7 @@ class UnipassClient:
             carrier_name=_first(root, FIELD_CANDIDATES["carrier_name"]),
             container_no=_join_all(root, CONTAINER_TAG),
             stage_history=stages,
+            display_rows=rows,
             bl_masked=mask_bl(bl_no),
             fetched_at=datetime.now(timezone.utc),
         )

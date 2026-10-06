@@ -74,7 +74,8 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
     }
   }
 
-  function onDrop(e: DragEvent) { e.preventDefault(); setDragging(false); void upload(e.dataTransfer.files[0]); }
+  // 막힌 상태(보내는 중, 하루 AI 사용량 소진)에는 끌어 놓은 사진도 받지 않는다. 고르기 칸만 막으면 끌어 놓기로 새어 나간다 (F7)
+  function onDrop(e: DragEvent) { e.preventDefault(); setDragging(false); if (disabled || busy) return; void upload(e.dataTransfer.files[0]); }
 
   const bl = (values.bl_no ?? '').replace(/\s/g, '').toUpperCase();
   const blValid = /^[A-Z0-9]{8,20}$/.test(bl);  // schemas/agent.py _BL_PATTERN
@@ -113,7 +114,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
       <button type="button" className="icon-button" onClick={onClose} aria-label="서류 사진 닫기"><X size={18}/></button>
     </div>}
 
-    {!result && <label htmlFor={inputId} className={`dropzone ${dragging ? 'dragging' : ''} ${busy ? 'busy' : ''}`}
+    {!result && <label htmlFor={inputId} className={`dropzone ${dragging ? 'dragging' : ''} ${busy ? 'busy' : ''} ${disabled ? 'disabled' : ''}`} aria-disabled={disabled || undefined}
       onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       {busy ? <LoaderCircle size={30} className="spin"/> : <Camera size={30} strokeWidth={1.3}/>}
       <strong>{busy ? '사진에서 글자를 읽는 중' : '사진을 끌어 놓거나 눌러서 고르세요'}</strong>

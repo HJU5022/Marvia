@@ -2,7 +2,7 @@
   "items": [
     {
       "request_id": "fixture-ok-20261020",
-      "bl_masked": "*******1101",
+      "bl_masked": "MRV*****101",
       "status": "ok",
       "verdict": "fine",
       "vessel_match": "confirmed",
@@ -13,7 +13,7 @@
     },
     {
       "request_id": "fixture-insufficient-20261020",
-      "bl_masked": "*******1102",
+      "bl_masked": "MRV*****102",
       "status": "insufficient",
       "verdict": null,
       "vessel_match": "uncertain",
@@ -24,7 +24,7 @@
     },
     {
       "request_id": "fixture-partial-20261020",
-      "bl_masked": "*******1103",
+      "bl_masked": "MRV*****103",
       "status": "partial",
       "verdict": null,
       "vessel_match": "confirmed",
@@ -35,7 +35,7 @@
     },
     {
       "request_id": "fixture-failed-20261020",
-      "bl_masked": "*******1104",
+      "bl_masked": "MRV*****104",
       "status": "failed",
       "verdict": null,
       "vessel_match": "none",
@@ -46,7 +46,7 @@
     },
     {
       "request_id": "fixture-unsupported-20261020",
-      "bl_masked": "*******1105",
+      "bl_masked": "MRV*****105",
       "status": "unsupported",
       "verdict": null,
       "vessel_match": "none",
@@ -57,7 +57,7 @@
     },
     {
       "request_id": "fixture-watch-20261020",
-      "bl_masked": "*******1106",
+      "bl_masked": "MRV*****106",
       "status": "ok",
       "verdict": "watch",
       "vessel_match": "confirmed",
@@ -68,7 +68,7 @@
     },
     {
       "request_id": "fixture-act-20261020",
-      "bl_masked": "*******1107",
+      "bl_masked": "MRV*****107",
       "status": "ok",
       "verdict": "act",
       "vessel_match": "confirmed",

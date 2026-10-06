@@ -9,7 +9,7 @@ import {Anchor, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Ship
 import {SectionTitle} from './Shared';
 import {VesselDetail} from './VesselDetail';
 import {Drawer} from './Drawer';
-import {dateTime, shown} from '@/lib/format';
+import {dateTime, placeLabel, shown} from '@/lib/format';
 import type {ChatResponse, VesselItem} from '@/lib/types';
 
 const PAGE_SIZES = [10, 30, 50] as const;
@@ -61,7 +61,7 @@ export function VesselList({data}: {data: ChatResponse}) {
 
   return <section className="history-panel vessel-results" aria-label="입항 예정 선박">
     <div className="table-toolbar">
-      <SectionTitle label={data.place ? `${data.place}에서 들른 배` : '부산 입항 예정 배'} kicker="ARRIVALS TO BUSAN" side={<span className="subtle-badge">{total}척 · {data.days ?? 7}일</span>}/>
+      <SectionTitle label={data.place ? `${placeLabel(data.place)}에서 들른 배` : '부산 입항 예정 배'} kicker="ARRIVALS TO BUSAN" side={<span className="subtle-badge">{total}척 · {data.days ?? 7}일</span>}/>
       <label className="kind-toggle"><input type="checkbox" checked={allKinds} onChange={e => { setAllKinds(e.target.checked); setPage(1); setOpen(null); }}/>모든 선종 보기 <span className="muted">(수입 화물선 {cargoCount}척 · 전체 {data.vessels.length}척)</span></label>
       {data.ports.length > 0 && <div className="port-chips">{data.ports.map(p => <span key={p} className="role-chip"><Anchor size={11}/>{p}</span>)}</div>}
     </div>

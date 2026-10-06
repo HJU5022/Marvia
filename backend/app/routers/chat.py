@@ -31,7 +31,7 @@ from backend.app.auth import current_user_id
 from backend.app.observability.langfuse import session_scope
 from backend.app.clients.kakao import KakaoError
 from backend.app.observability.logging import log_failure
-from backend.app.routers.agent import _follow_up_tool, run_agent
+from backend.app.routers.agent import _follow_up_tool, quota_guard, run_agent
 from backend.app.routers.kakao import _web
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import cargo as cargo_service
@@ -246,7 +246,12 @@ def _save_conversation(body: ChatRequest, user_id: str | None, response: ChatRes
     """답을 만든 뒤 대화 목록에 저장하도록 뒤 일꾼에 맡긴다 (10-06). 대화 번호는 session_id.
     로그인하지 않았거나 DB·PII 열쇠가 없으면 서비스가 조용히 건너뛴다. 저장은 부가 기능이라 어떤 실패도 채팅 답을 막지 않는다."""
     try:
-        conversations_service.save_later(user_id, body.session_id, body.message, response.model_dump(mode="json"))
+        # customs_detail(UNI-PASS 처리 이력 원문, 중량·관세법인명 포함)은 화면 전용이라 DB에 저장하지 않는다 (SDD 3.5, docs/specs/customs-detail.md).
+        # 대화에 든 판정 덩어리는 두 곳이다: 단일 화물 답의 agent와 여러 B/L 표 줄(cargos)마다의 agent. 둘 다 뺀다.
+        # 다시 연 대화에서는 이 표가 비고, 화물을 다시 조회하면 채워진다
+        saved = response.model_dump(mode="json", exclude={"agent": {"customs_detail"},
+                                                          "cargos": {"__all__": {"agent": {"customs_detail"}}}})
+        conversations_service.save_later(user_id, body.session_id, body.message, saved)
     except Exception as e:  # noqa: BLE001
         log_failure("conversation_save", type(e).__name__)
 
@@ -254,6 +259,7 @@ def _save_conversation(body: ChatRequest, user_id: str | None, response: ChatRes
 @router.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> ChatResponse:
     """문장 하나를 받아 화물 조회·후속 질문·입항 선박 검색·안내 중 하나로 답한다."""
+    quota_guard(body.session_id, user_id)  # 하루 토큰 한도 (docs/specs/token-quota.md)
     context = _context(body)
     with session_scope(body.session_id, user_id):
         try:
@@ -283,6 +289,7 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
     스레드에 지금 요청의 문맥(요청 ID, LLM 사용량 기록)을 복사해 넘겨야 로그와 트레이스가 이 요청에 묶인다.
     로그인 확인은 응답을 열기 전에 끝난다(Depends). 그래서 401·403은 스트림이 아니라 보통 오류 응답으로 간다.
     """
+    quota_guard(body.session_id, user_id)  # 스트림을 열기 전에 확인한다. 열린 뒤에는 429를 보낼 수 없다
     context = _context(body)
     events: queue.Queue[tuple[str, dict] | None] = queue.Queue()
 

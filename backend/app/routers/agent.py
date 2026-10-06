@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import pycountry
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app import crypto
 from backend.app.auth import current_user_id
@@ -50,7 +50,7 @@ from backend.app.schemas.agent import (
     VesselInfo,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import guard, identify, llm, progress, validate
+from backend.app.services import guard, identify, llm, progress, quota, validate
 from backend.app.services import memory as memory_service
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
@@ -146,6 +146,23 @@ def _response(**over) -> AgentResponse:
     return AgentResponse(**{**base, **over})
 
 
+# 하루 토큰 한도를 다 쓴 사람에게 주는 오류 (services/quota.py). 화면(web/lib/api.ts)이 이 값을 보고 입력을 막는다
+QUOTA_DETAIL = "daily_token_limit"
+
+
+def quota_guard(session_id: str | None, user_id: str | None) -> None:
+    """요청 시작 때 오늘 토큰 한도를 확인한다. 다 썼으면 429 (docs/specs/token-quota.md, 10-02).
+
+    처리 도중에 한도를 넘은 요청은 끝까지 답한다. 확인은 요청이 들어올 때 한 번뿐이다(quota.checked_var).
+    /api/agent, /api/chat, /api/chat/stream, /api/document가 부른다.
+    """
+    try:
+        quota.ensure_allowed(session_id, user_id)
+    except quota.QuotaExceeded:
+        log_failure("quota", "daily_token_limit")
+        raise HTTPException(status_code=429, detail=QUOTA_DETAIL) from None
+
+
 @router.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest,
               user_id: Annotated[str | None, Depends(current_user_id)] = None) -> AgentResponse:
@@ -159,6 +176,7 @@ def run_agent(request: AgentRequest,
 
     로그인 사용자면 기억(화물 표·메모장)을 읽어 LLM에 넣고, 응답 뒤 뒤에서 기억을 고친다 (docs/specs/memory.md).
     기억 쓰기는 응답을 늦추지 않고, 실패해도 응답에는 영향이 없다 (EC-07)."""
+    quota_guard(request.session_id, user_id)
     with session_scope(request.session_id, user_id):
         context = memory_service.load_context(user_id, request.bl_no)
         blocks = context.blocks if context else None
@@ -192,6 +210,14 @@ def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
                 return alternative
         return failure
 
+    response = _after_customs(request, customs, memory)
+    # UNI-PASS 처리 이력 원문은 화면 전용이다 (docs/specs/customs-detail.md, 10-02). 판정이 끝난 뒤에 붙여서
+    # 판정·검증 단계에는 아예 없다. 이력 저장(_logged)과 후속 질문 LLM 입력에서는 다시 뺀다
+    return response.model_copy(update={"customs_detail": customs.display_rows})
+
+
+def _after_customs(request: AgentRequest, customs: CustomsRecord, memory: str | None = None) -> AgentResponse:
+    """통관 정보를 받은 뒤의 판정 흐름 (SDD 4.1 2~7단계). _assess가 화면 전용 이력을 붙이려고 나눴다."""
     # 지원 범위는 부산항이다 (PRD 4절). 양륙항이 부산이 아니면 배를 찾지 않고 끝낸다 (평가셋 F05).
     # 양륙항 칸이 비어 있으면 범위 밖으로 단정하지 않고 진행한다. 모르는 것을 거절하는 쪽이 더 나쁘다
     # 부산 항구 코드는 skills/port-busan/rules.md busan_port_code (10-01)
@@ -928,8 +954,9 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 vessel_match=response.vessel_match,
                 decided_by=response.decided_by,
                 trace_id=response.trace_id,
-                # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다
-                response=_as_jsonb(response.model_dump(mode="json")),
+                # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다.
+                # UNI-PASS 처리 이력 원문(customs_detail)은 화면 전용이라 저장하지 않는다 (docs/specs/customs-detail.md)
+                response=_as_jsonb(response.model_dump(mode="json", exclude={"customs_detail"})),
             )
     except Exception as e:
         log_failure("db_write", type(e).__name__)

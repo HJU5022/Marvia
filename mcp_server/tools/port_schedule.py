@@ -12,6 +12,8 @@ UNI-PASS에는 MMSI가 없고 ShipFinder에는 접안 시설이 없어서, 둘�
 "이미 들어왔는가"와 "언제 들어오는가" 둘 다이기 때문이다.
 
 출력 계약은 mcp_server/schemas.py의 PortScheduleResult다 (C4, SDD 3.4).
+
+MCP 등록: 이 함수는 mcp_server/server.py create_mcp()가 도구로 등록한다 (데코레이터 없음).
 """
 import re
 from datetime import date, datetime, timedelta, timezone

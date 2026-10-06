@@ -18,7 +18,7 @@ LLM 호출과 MCP 도구 호출 트레이스도 여기서 남긴다 (SDD 5.11). 
 from __future__ import annotations
 
 import os
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -75,15 +75,30 @@ def session_scope(session_id: str, user_id: str | None = None) -> AbstractContex
     같은 세션의 조회·후속 질문을 Langfuse Sessions 화면에서 한 줄로 볼 수 있다.
     로그인했으면 user_id도 붙인다 (G3). Supabase 사용자 ID(무작위 UUID)라 이메일·이름은 Langfuse에 가지 않는다.
     잘못된 값(ASCII가 아니거나 200자 초과)은 langfuse가 경고만 남기고 버린다. 요청은 막히지 않는다.
+    같은 범위에서 LLM 토큰 사용량을 누구 몫으로 쌓을지도 정한다 (services/quota.py, 10-02). 트레이스 키가 없어도 정한다.
     """
-    if not _keys_set():
-        return nullcontext()
-    try:
-        from langfuse import propagate_attributes
+    return _scoped(session_id, user_id)
 
-        return propagate_attributes(session_id=session_id, user_id=user_id)
-    except ImportError:  # 키 없는 테스트 환경처럼 langfuse가 설치돼 있지 않을 때
-        return nullcontext()
+
+@contextmanager
+def _scoped(session_id: str, user_id: str | None):
+    """session_scope 본체. 사용량 주인을 정하고, 키가 있으면 Langfuse 속성도 붙인다."""
+    from backend.app.services import quota  # 순환 import를 피하려고 여기서 부른다
+
+    token = quota.owner_var.set(quota.owner_key(session_id, user_id))
+    try:
+        trace = nullcontext()
+        if _keys_set():
+            try:
+                from langfuse import propagate_attributes
+
+                trace = propagate_attributes(session_id=session_id, user_id=user_id)
+            except ImportError:  # 키 없는 테스트 환경처럼 langfuse가 설치돼 있지 않을 때
+                pass
+        with trace:
+            yield
+    finally:
+        quota.owner_var.reset(token)
 
 
 def start_generation(name: str, input: Any, prompt: Any = None) -> Any:
