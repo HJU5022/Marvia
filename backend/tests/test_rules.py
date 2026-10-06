@@ -31,10 +31,15 @@ def test_each_rules_file_has_its_own_keys():
     """키가 옮겨진 자리를 고정한다. 다른 파일로 옮기면 이 테스트를 같이 고친다."""
     expected = {
         "ais-reliability": {"position_stale_hours", "eta_conflict_hours", "anchor_speed_kn", "anchor_wait_hours",
-                            "navstat_moored_max_kn", "navstat_underway_min_kn", "priority"},
-        "customs-stages": {"customs_hold_words", "customs_stages", "customs_subject_words", "customs_assessment_words"},
-        "port-busan": {"busan_ref", "busan_radius_nm", "busan_port_code"},
-        "cargo-verdict": {"margin_act_days", "act_signals", "gray_signals", "ignore_signals", "ignore_dest_values"},
+                            "navstat_moored_max_kn", "navstat_underway_min_kn", "priority", "api_cache_ttl_hours"},
+        "customs-stages": {"customs_hold_words", "customs_stages", "customs_subject_words", "customs_assessment_words",
+                           "customs_done_words", "customs_done_stages", "customs_done_except_words"},
+        "port-busan": {"busan_ref", "busan_radius_nm", "busan_port_code", "port_schedule_lookback_days",
+                       "port_schedule_lookahead_days", "port_schedule_name_match_ratio"},
+        "cargo-verdict": {"margin_act_days", "act_signals", "gray_signals", "ignore_signals", "ignore_dest_values",
+                          "sale_date_words", "sale_passed_words", "plan_compare_words", "sale_compare_words"},
+        "referrals": {"signal_referrals", "referral_order", "referral_max", "referral_prefix", "signal_referral_links",
+                      "broker_referral", "out_of_scope"},
     }
     for folder, keys in expected.items():
         assert set(rules._front_matter(rules.SKILLS_DIR / folder / "rules.md")) == keys, folder
@@ -83,7 +88,7 @@ def test_busan_port_code_change_is_followed(monkeypatch):
 
 def test_every_skill_folder_has_skill_and_rules_with_spec_front_matter():
     folders = sorted(p for p in rules.SKILLS_DIR.iterdir() if p.is_dir())
-    assert {f.name for f in folders} == {"ais-reliability", "customs-stages", "port-busan", "cargo-verdict"}
+    assert {f.name for f in folders} == {"ais-reliability", "customs-stages", "port-busan", "cargo-verdict", "referrals"}
     for folder in folders:
         assert (folder / "rules.md").is_file(), folder.name
         front = rules._front_matter(folder / "SKILL.md")

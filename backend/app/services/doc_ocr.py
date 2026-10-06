@@ -3,7 +3,7 @@
 책임: LLM 앞뒤의 코드 몫을 맡는다. LLM 호출은 여기서 하지 않는다 (CLAUDE.md, llm.extract_doc_fields가 4단계).
   read_lines()   전처리(빨간 도장 지우기 + 방향 맞추기) 후 OCR
   take_bl()      "B/L NO." 이름표 근처에서 B/L 번호를 찾는다. LLM에 넘기지 않기 위해 코드가 먼저 뽑는다
-  mask_bl()      OCR 글자에서 B/L 번호를 [BL]로 가린다
+  mask_bl()      OCR 글자에서 B/L 번호를 [BL]로, 다른 B/L 모양 번호를 [ID]로, 휴대폰·이메일을 [PHONE]·[EMAIL]로 가린다
   check_fields() 뽑은 칸이 비었는지, OCR 글자에 실제로 있는지, 형식이 맞는지
   check_conditions() B/L 조건 세 칸·인코텀즈·화물 인도 연락처 검사 (10-02 결정 6). 비어도 missing을 걸지 않는다
 
@@ -169,16 +169,46 @@ def take_bl(lines: list[str]) -> str | None:
     return None
 
 
+# 서류 속 B/L 모양 번호: 영문·숫자 8~20자, 숫자를 하나 이상 포함 (schemas/agent.py _BL_PATTERN + 일반 영어 낱말 제외,
+# services/chat.py _BL과 같은 모양). 마스터·하우스 B/L이 같이 적힌 서류에서 이름표 옆 하나만 가리면 다른 번호가 LLM으로 갔다 (10-06 점검)
+_BL_IN_TEXT = re.compile(r"(?<![A-Za-z0-9])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{8,20}(?![A-Za-z0-9])")
+OTHER_ID = "[ID]"  # 이름표 옆 B/L이 아닌 B/L 모양 번호 (다른 B/L, 컨테이너 번호 등). LLM이 뽑는 칸에는 쓰이지 않는다
+PHONE_TOKEN, EMAIL_TOKEN = "[PHONE]", "[EMAIL]"
+
+
+def _is_date_digits(value: str) -> bool:
+    """20YYMMDD 모양의 실제 날짜인가. 숫자만 8자라 B/L 모양에 걸리지만 eta·etd 칸의 재료라 가리지 않는다 (chat._is_date_digits와 같은 기준)."""
+    if not re.fullmatch(r"20\d{6}", value):
+        return False
+    try:
+        datetime.date(int(value[:4]), int(value[4:6]), int(value[6:]))
+        return True
+    except ValueError:
+        return False
+
+
+def _mask_personal(line: str) -> str:
+    """개인 휴대폰과 이메일을 가린다 (10-06 점검: OCR 글자째 LLM에 갔다). 회사 유선 전화(051-000-0000)는 남긴다:
+    "화물 인도 연락처"의 회사 전화 칸을 LLM이 뽑아야 한다 (docs/specs/memory.md 결정 6, 개인 휴대폰·이메일은 받지 않는다).
+    모양은 pii_patterns(메모장·서류 칸 검사와 같은 원본)를 쓴다."""
+    return EMAIL.sub(EMAIL_TOKEN, MOBILE_IN_TEXT.sub(PHONE_TOKEN, line))
+
+
 def mask_bl(lines: list[str], bl: str | None) -> str:
     """LLM에 넘길 글자. B/L 번호를 [BL]로 가린다 (CLAUDE.md "B/L 번호를 LLM에 넘기지 않는다").
+    10-06 점검 보강: 이름표 옆 B/L 말고도 B/L 모양 번호(두 번째 B/L 등)는 [ID]로, 휴대폰·이메일은 [PHONE]·[EMAIL]로 가린다.
+    B/L을 못 찾았으면(bl 없음) 전처럼 B/L 모양은 그대로 두고 휴대폰·이메일만 가린다.
+    날짜 숫자(20261002)는 eta·etd 재료라 남긴다. 8자 이상 항차가 [ID]로 가려질 수 있다 (항차는 보통 3~8자, VOYAGE_PATTERN).
 
     Raises:
         ValueError: 가린 뒤에도 B/L이 남아 있을 때. 이 경우 LLM을 부르지 않는다
     """
+    personal = [_mask_personal(l) for l in lines]
     if not bl:
-        return "\n".join(lines)
+        return "\n".join(personal)
     # 줄을 문장부호 없이 봤을 때 B/L이 들어 있으면 그 줄을 가린다. 점이 낀 원문("PCI.U…")이 새지 않게 (10-01)
-    masked = [l.replace(bl, "[BL]") if bl in l else ("[BL]" if bl in _clean(l) else l) for l in lines]
+    masked = [l.replace(bl, "[BL]") if bl in l else ("[BL]" if bl in _clean(l) else l) for l in personal]
+    masked = [_BL_IN_TEXT.sub(lambda m: m.group(0) if _is_date_digits(m.group(0)) else OTHER_ID, l) for l in masked]
     text = "\n".join(masked)
     if bl in _clean(text):
         raise ValueError("B/L 번호가 가려지지 않았습니다")

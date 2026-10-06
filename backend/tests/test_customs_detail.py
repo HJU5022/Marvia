@@ -177,7 +177,7 @@ def test_history_seals_container_and_previous_response_opens_it(monkeypatch, bl_
 
     stored = saved["response"]
     assert "TCNU0000001" not in json.dumps(stored, ensure_ascii=False) and stored[agent_router.SEALED_CONTAINER_KEY]
-    monkeypatch.setattr(agent_router, "latest_response", lambda *a, **k: stored)
+    monkeypatch.setattr(agent_router, "recent_responses", lambda *a, **k: [(stored, None)])
     previous = agent_router._previous_response(request)
     assert previous.customs.container_no == "TCNU0000001"
 

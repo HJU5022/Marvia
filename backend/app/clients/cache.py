@@ -5,7 +5,8 @@ ShipFinder 스타터 키는 호출 빈도 제한이 있다(status 23, 29). 제�
 값이 오래됐다는 사실은 응답에 담긴 fetched_at으로 드러난다.
 
 지금은 프로세스 메모리에 둔다. SDD 3.9의 api_cache 테이블(Postgres)은 DB 계층이
-생긴 뒤 이 클래스의 get·set만 바꿔 끼우면 된다. TTL 기본값은 SDD 5.2의 6시간이다.
+생긴 뒤 이 클래스의 get·set만 바꿔 끼우면 된다. TTL 기본값은 skills/ais-reliability/rules.md api_cache_ttl_hours다
+(SDD 5.2의 6시간, 10-06 점검: 코드 숫자를 rules.md로 옮김).
 """
 from __future__ import annotations
 
@@ -13,7 +14,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-DEFAULT_TTL = timedelta(hours=6)
+from backend.app.services.rules import rule
+
+
+def default_ttl() -> timedelta:
+    """캐시 TTL 기본값. rules.md api_cache_ttl_hours를 읽는다 (C6). 만들 때마다 읽어서 테스트가 값을 바꿔 끼울 수 있다."""
+    return timedelta(hours=rule("api_cache_ttl_hours"))
 
 
 @dataclass(frozen=True)
@@ -28,8 +34,8 @@ class CacheEntry:
 class ResponseCache:
     """키 하나에 마지막 성공 응답 하나. 예: shipfinder:pos:440999001"""
 
-    def __init__(self, ttl: timedelta = DEFAULT_TTL):
-        self._ttl = ttl
+    def __init__(self, ttl: timedelta | None = None):
+        self._ttl = ttl if ttl is not None else default_ttl()
         self._store: dict[str, CacheEntry] = {}
 
     def set(self, key: str, value: Any, cached_at: datetime | None = None) -> None:

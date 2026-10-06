@@ -5,7 +5,7 @@
  * 서류 사진은 입력을 돕는 보조 동작이라 드로어에서 확인한 뒤 문장에 넣는다. 읽은 값으로 바로 조회하지 않는다.
  * 화면을 내려 입력창이 안 보이면 "AI에게 이어서 물어보기" 버튼이 나타나 입력창으로 돌려보낸다.
  */
-import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent} from 'react';
+import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {ArrowUp, Camera, Check, FileText, LoaderCircle, MessageCircle, PackageSearch, Ship, Sparkles} from 'lucide-react';
 import {VerdictBadge} from './Shared';
@@ -32,13 +32,25 @@ function scrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
 
-/** 답 글 속 http(s) 주소만 누를 수 있는 링크로 바꾼다. 서버는 "웹 참고: 제목 (주소)"를 평문으로 붙인다(services/chat.py WEB_NOTE).
- * 주소는 서버가 가져온 검색 결과에서만 오지만, 그래도 http·https만 링크로 만들고 새 탭으로 연다(noopener: 열린 쪽이 이 창을 못 건드리게).
+/** 답 글 속 http(s) 주소를 누를 수 있는 링크로 바꾼다. 단 코드가 붙인 줄만이다 (10-06 점검: LLM 문장 속 주소까지 링크가 되어,
+ * 도구 결과·서류 글에 심은 주소가 답에 옮겨지면 누를 수 있는 링크로 보였다). 링크로 만드는 줄은 머리가 아래 셋인 줄뿐이다:
+ *   "웹 참고: 제목 (주소)"            services/chat.py WEB_NOTE. 주소는 서버가 가져온 검색 결과에서만 온다
+ *   "확인처: ...", "진행 상황 직접 보기: ..."  services/referrals.py, 문구 원본은 skills/referrals/rules.md
+ * 그 밖의 줄의 주소는 글자 그대로 둔다. 링크도 http·https만 만들고 새 탭으로 연다(noopener: 열린 쪽이 이 창을 못 건드리게).
  * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
 const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
-function linkify(text: string) {
-  return text.split(URL_PATTERN).map((part, i) =>
-    i % 2 === 1 ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a> : part);
+const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: '];
+function linkifyLine(line: string, key: number) {
+  if (!LINK_LINE_PREFIXES.some(prefix => line.trimStart().startsWith(prefix))) return line;
+  return line.split(URL_PATTERN).map((part, i) =>
+    i % 2 === 1 ? <a key={`${key}-${i}`} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a> : part);
+}
+function linkify(text: string): ReactNode[] {
+  // 줄마다 따로 본다. 줄바꿈 글자는 그대로 둔다(말풍선은 white-space로 줄을 보인다)
+  return text.split('\n').flatMap((line, i) => {
+    const parts = linkifyLine(line, i);
+    return [...(i === 0 ? [] : ['\n']), ...(Array.isArray(parts) ? parts : [parts])];
+  });
 }
 
 export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDetail?: () => void}) {

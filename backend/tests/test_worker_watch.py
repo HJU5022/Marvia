@@ -33,6 +33,9 @@ def collect_stubs(monkeypatch):
     monkeypatch.setattr(run, "purge_old_queries", lambda c: 0)
     monkeypatch.setattr(run, "purge_done_cargo", lambda c: 0)
     monkeypatch.setattr(run, "purge_old_conversations", lambda c: 0)
+    monkeypatch.setattr(run, "purge_watch_positions", lambda c: 0)
+    # 배를 아는 지켜보는 화물 수. 기본은 RUN_LIMIT보다 많다고 둔다 (재판정 몫 예산이 상한까지 잡히게)
+    monkeypatch.setattr(run, "known_vessel_due_count", lambda c: 99)
     return conn
 
 
@@ -72,14 +75,17 @@ def _sf_stubs(monkeypatch, seen: dict):
 
 
 def test_watch_budget_is_reserved_before_collection(collect_stubs, monkeypatch):
-    """재판정은 Budget 밖에서 ShipFinder를 부르므로 화물 수만큼 먼저 떼어 둔다 (10-06 점검). 합이 실행 예산을 넘지 않는다."""
+    """재판정은 Budget 밖에서(api의 MCP로) ShipFinder를 부르므로 화물 수 x 화물당 호출 수만큼 먼저 떼어 둔다 (10-06 점검).
+    합이 실행 예산을 넘지 않는다. 워커 재판정은 배를 아는 화물만 고른다."""
     monkeypatch.setenv("WATCH_ENABLED", "on")
     seen: dict = {}
     _sf_stubs(monkeypatch, seen)
-    monkeypatch.setattr(run, "run_watch", lambda conn, limit: seen.setdefault("watch_limit", limit) and {"checked": limit})
+    monkeypatch.setattr(run, "run_watch", lambda conn, limit, known_vessel_only: seen.update(
+        watch_limit=limit, known=known_vessel_only) or {"checked": limit})
     summary = run.run_once(12)
-    assert seen["watch_limit"] == run.RUN_LIMIT
-    assert seen["collect_watch_positions"] == 12 - run.RUN_LIMIT  # 수집은 남은 예산으로
+    cost = run.SHIPFINDER_CALLS_PER_KNOWN_VESSEL
+    assert seen["watch_limit"] == run.RUN_LIMIT and seen["known"] is True
+    assert seen["collect_watch_positions"] == 12 - run.RUN_LIMIT * cost  # 수집은 남은 예산으로
     assert summary["shipfinder_calls_used"] == 12
 
 
@@ -88,11 +94,32 @@ def test_watch_budget_smaller_than_run_limit(collect_stubs, monkeypatch):
     monkeypatch.setenv("WATCH_ENABLED", "on")
     seen: dict = {}
     _sf_stubs(monkeypatch, seen)
-    monkeypatch.setattr(run, "run_watch", lambda conn, limit: seen.update(watch_limit=limit) or {"checked": limit})
+    monkeypatch.setattr(run, "run_watch", lambda conn, limit, **k: seen.update(watch_limit=limit) or {"checked": limit})
     run.run_once(2)
     assert seen["watch_limit"] == 2 and seen["collect_watch_positions"] == 0
     run.run_once(0)
     assert seen["watch_limit"] == 0
+
+
+def test_watch_budget_only_for_cargo_with_known_vessel(collect_stubs, monkeypatch):
+    """배를 아는 지켜보는 화물이 2건이면 2건 몫만 떼고 나머지는 수집에 쓴다. 0건이면 하나도 떼지 않는다."""
+    monkeypatch.setenv("WATCH_ENABLED", "on")
+    seen: dict = {}
+    _sf_stubs(monkeypatch, seen)
+    monkeypatch.setattr(run, "run_watch", lambda conn, limit, **k: seen.update(watch_limit=limit) or {"checked": limit})
+    monkeypatch.setattr(run, "known_vessel_due_count", lambda c: 2)
+    run.run_once(12)
+    assert seen["watch_limit"] == 2 and seen["collect_watch_positions"] == 12 - 2 * run.SHIPFINDER_CALLS_PER_KNOWN_VESSEL
+    monkeypatch.setattr(run, "known_vessel_due_count", lambda c: 0)
+    run.run_once(12)
+    assert seen["watch_limit"] == 0 and seen["collect_watch_positions"] == 12
+
+
+def test_purges_watch_positions(collect_stubs, monkeypatch):
+    """감시 위치(watch_positions)도 실행마다 정리한다 (migrations/021, 10-06 점검)."""
+    monkeypatch.delenv("WATCH_ENABLED", raising=False)
+    monkeypatch.setattr(run, "purge_watch_positions", lambda c: 3)
+    assert run.run_once(0)["watch_positions_purged"] == 3
 
 
 def test_watch_off_keeps_whole_budget_for_collection(collect_stubs, monkeypatch):

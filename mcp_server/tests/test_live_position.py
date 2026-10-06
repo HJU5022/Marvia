@@ -54,3 +54,35 @@ def test_failure_returns_tool_error_not_exception(fixture, code, retryable, use_
     r = get_live_position(440999001)
     assert r["error"]["code"] == code and r["error"]["retryable"] is retryable
     assert r["error"]["message"]
+
+
+# ── 도구는 예외를 던지지 않는다 (C4, 10-06 점검) ──
+
+def test_missing_key_returns_bad_key_error(monkeypatch):
+    """클라이언트 만들기에서 난 실패(키 없음)도 {error}로, 코드는 bad_key 그대로."""
+    monkeypatch.delenv("SHIPFINDER_KEY", raising=False)
+    monkeypatch.delenv("REPLAY_MODE", raising=False)
+    monkeypatch.setattr(live_position, "make_client", ShipFinderClient)
+    assert get_live_position(440999001) == {
+        "error": {"code": "bad_key", "message": "SHIPFINDER_KEY가 비어 있습니다", "retryable": False}}
+
+
+def test_missing_lat_returns_error(monkeypatch):
+    body = {"status": 0, "data": {"mmsi": 440999001, "lng": 129.0}}
+    client = ShipFinderClient(key="test-key", transport=httpx.MockTransport(lambda r: httpx.Response(200, json=body)))
+    monkeypatch.setattr(live_position, "make_client", lambda: client)
+    assert get_live_position(440999001)["error"]["code"] == "error"
+
+
+def test_contract_violation_returns_bad_response(monkeypatch):
+    """응답 값이 계약(LivePositionResult)에 안 맞으면 ValidationError 대신 bad_response."""
+    body = {"status": 0, "data": {"mmsi": 440999001, "lat": "not-a-number", "lng": 129.0}}
+    client = ShipFinderClient(key="test-key", transport=httpx.MockTransport(lambda r: httpx.Response(200, json=body)))
+    monkeypatch.setattr(live_position, "make_client", lambda: client)
+    error = get_live_position(440999001)["error"]
+    assert (error["code"], error["retryable"]) == ("bad_response", False)
+
+
+def test_quota_exhausted_returns_error(use_fixture):
+    use_fixture("quota_exhausted.json")
+    assert get_live_position(440999001)["error"]["code"] == "quota_exhausted"

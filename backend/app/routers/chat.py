@@ -34,7 +34,7 @@ from backend.app.clients.kakao import KakaoError
 from backend.app.observability.logging import log_failure
 from backend.app.routers.agent import _follow_up_tool, quota_guard, run_agent
 from backend.app.routers.kakao import _web
-from backend.app.schemas.agent import AgentRequest, AgentResponse
+from backend.app.schemas.agent import SESSION_ID_MAX, AgentRequest, AgentResponse
 from backend.app.services import cargo as cargo_service
 from backend.app.services import conversations as conversations_service
 from backend.app.services import chat as svc
@@ -75,7 +75,7 @@ class ChatTurn(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(max_length=svc.MESSAGE_MAX)
-    session_id: str
+    session_id: str = Field(max_length=SESSION_ID_MAX)  # /api/agent와 같은 상한 (schemas/agent.py, 10-06 점검)
     context: ChatContext | None = None
     # 서류 사진에서 확인한 출항일 (10-06). 없어도 된다(전 화면·평가 스크립트)
     document: ChatDocument | None = None

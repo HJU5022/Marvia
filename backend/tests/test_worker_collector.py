@@ -221,6 +221,24 @@ def test_done_cargo_purge_calls_db_function_and_returns_count():
     assert purge_done_cargo(conn) == 2 and "purge_done_cargo()" in conn.sql
 
 
+def test_watch_positions_purge_calls_db_function_and_returns_count():
+    """감시 위치 정리도 규칙은 DB 함수에 있다 (migrations/021, 10-06 점검). 파이썬은 부르기만 한다."""
+    from backend.app.db import MIGRATIONS_DIR, purge_watch_positions
+
+    class Conn:
+        def execute(self, sql, params=()):
+            self.sql = sql
+            return type("Cur", (), {"fetchall": lambda self: [(4,)]})()
+
+    conn = Conn()
+    assert purge_watch_positions(conn) == 4 and "purge_old_watch_positions()" in conn.sql
+    sql = (MIGRATIONS_DIR / "021_watch_positions_purge.sql").read_text(encoding="utf-8")
+    # 30일은 함수 기본값 한 곳에만 있고(002와 같은 기한), 지금 지켜보는 배는 남긴다
+    assert "keep_days integer DEFAULT 30" in sql and "DELETE FROM watch_positions" in sql
+    assert "c.watch AND c.status = 'active'" in sql
+    assert "cron.schedule('marvia-purge-watch-positions'" in sql
+
+
 def test_migration_015_has_allowed_values_and_schedule():
     """B/L 조건 세 칸은 정해진 값만 받고(CHECK), 정리 함수는 008과 같은 방식으로 pg_cron에 예약된다 (10-02 결정 5·9)."""
     from backend.app.db import MIGRATIONS_DIR

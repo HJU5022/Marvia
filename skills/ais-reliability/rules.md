@@ -9,6 +9,8 @@ priority: [mof_actual, mof_planned, ais_eta, ais_dest]
 # 항해상태 불일치 속도 기준 (services/signals.py가 읽는다)
 navstat_moored_max_kn: 2.0
 navstat_underway_min_kn: 0.3
+# ShipFinder 응답 캐시 TTL(시간). 빈도 초과(23·29)일 때 이 시간 안의 마지막 성공 값을 쓴다 (SDD 5.2, clients/cache.py가 읽는다)
+api_cache_ttl_hours: 6
 ---
 
 # 1층 신호 7종
@@ -26,6 +28,12 @@ navstat_underway_min_kn: 0.3
 | sales_date_exceeded | days_margin < 0. 배가 정상이어도 판매 예정일을 넘김 | 없음 (0이 기준) |
 
 등급(fine·watch·act)은 이 신호들을 재료로 cargo-verdict/rules.md 키를 읽어 코드가 정한다.
+
+# 캐시 TTL (api_cache_ttl_hours)
+
+ShipFinder가 빈도 초과(status 23·29)로 답하지 않으면 이 시간 안에 받아 둔 마지막 성공 값을 대신 쓴다 (SDD 5.2, clients/cache.py).
+시간 초과와 하루 한도 소진(status 38)은 TTL이 지난 값도 쓴다. 오래된 위치는 position_stale이 드러낸다 (clients/shipfinder.py).
+판정 신호가 아니라 원천 값을 언제까지 믿고 다시 쓸지의 기준이라 position_stale_hours와 같은 6시간이지만 키를 따로 둔다.
 
 # 상충 시 우선순위 (priority)
 

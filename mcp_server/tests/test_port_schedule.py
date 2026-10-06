@@ -141,3 +141,34 @@ def test_final_revision_is_not_planned_arrival(fake):
     fake(sailing="arrival_report_busan.xml")
     assert get_port_schedule(call_sign="TEST11", ship_name="테스트컨테이너11")["planned_arrival"].startswith("2026-09-24T12:00")
     assert get_port_schedule(call_sign="TEST12", ship_name="테스트벌크12")["planned_arrival"] is None
+
+
+# ── 도구는 예외를 던지지 않는다 (C4, 10-06 점검) ──
+
+def test_missing_key_returns_bad_key_error(monkeypatch):
+    """클라이언트 만들기에서 난 실패(키 없음)도 {error}로, 코드는 bad_key 그대로."""
+    monkeypatch.delenv("DATA_GO_KR_KEY", raising=False)
+    monkeypatch.delenv("REPLAY_MODE", raising=False)
+    monkeypatch.setattr(port_schedule, "make_client", MofClient)
+    r = get_port_schedule(call_sign="TEST01")
+    assert (r["error"]["code"], r["error"]["retryable"]) == ("bad_key", False)
+
+
+def test_unexpected_exception_returns_bad_response(monkeypatch):
+    """응답 조립 중 예상 밖 예외(계약 검사 실패 등)도 도구 밖으로 새지 않는다."""
+    class Broken:
+        def control_records(self, *args, **kwargs):
+            raise ValueError("깨진 응답")
+
+    monkeypatch.setattr(port_schedule, "make_client", Broken)
+    r = get_port_schedule(call_sign="TEST01")
+    assert (r["error"]["code"], r["error"]["retryable"]) == ("bad_response", False)
+
+
+def test_defaults_come_from_rules():
+    """조회 기간·선명 비교 기준은 port-busan/rules.md 프론트매터 값이다 (C6, 10-06)."""
+    from backend.app.services.rules import rule
+
+    assert port_schedule.LOOKBACK_DAYS == rule("port_schedule_lookback_days")
+    assert port_schedule.LOOKAHEAD_DAYS == rule("port_schedule_lookahead_days")
+    assert port_schedule.NAME_MATCH_RATIO == rule("port_schedule_name_match_ratio")

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import logging
 import os
 import re
 import threading
@@ -34,8 +35,8 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
 from backend.app.db import connect
 from backend.app.observability.logging import log_failure
-from backend.app.schemas.agent import AgentRequest, AgentResponse
-from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, validate
+from backend.app.schemas.agent import VOYAGE_PATTERN, AgentRequest, AgentResponse
+from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, referrals, validate
 from backend.app.services.verdict import VERDICT_LABEL
 from backend.app.services.watch import MAX_WATCH
 from backend.app.services.rules import load_file
@@ -108,7 +109,8 @@ _REPLY_WORDS = {"marvia"}  # other 안내에 쓸 수 있는 영문 낱말. 그 �
 # ── 목적지 장소 거절과 식별자 되묻기 (10-05 실측: "TEST41 선박 위치"에 search_arrivals place=Busan을 불러 빈 표가 나왔다) ──
 # search_arrivals의 place는 "어디에서 오는 배인가"(직전 기항지)다. 목적지(부산·한국) 자체는 뜻이 맞지 않는다.
 _DEST_WORDS = {"busan", "pusan", "korea", "krpus", "kr", "부산", "부산항", "한국", "대한민국", "남한"}
-_DEST_FILLER = {"port", "harbor", "harbour", "south", "republic", "of", "the", "항", "항구"}
+_DEST_FILLER = {"port", "harbor", "harbour", "south", "republic", "of", "the", "항", "항구",
+                "new", "north", "신항", "북항"}  # 10-06 점검: "Busan New Port"·"부산 신항"도 도착지다
 
 
 def _is_destination(text: object) -> bool:
@@ -397,6 +399,10 @@ def _valid_date(value: str | None) -> str | None:
         return None
 
 
+# 항차 모양 (schemas/agent.py와 같은 규칙, 길이 20자). 사용자가 문장으로 준 항차를 요청에 넣기 전에 본다
+_VOYAGE_OK = re.compile(VOYAGE_PATTERN)
+
+
 # ── 해수부 입항 예정 캐시 ──
 _plans_cache: dict[tuple[str, int], tuple[float, list]] = {}
 
@@ -437,7 +443,12 @@ def _match_ports_cached(place: str, available: list[str]) -> list[str]:
 
 
 def search_vessels(place: str | None, days: int | None, label: str | None = None) -> ChatResult:
-    """직전 기항지로 거른 부산 입항 예정 선박. 항구는 LLM이 목록 안에서만 고른다 (EC-04)."""
+    """직전 기항지로 거른 부산 입항 예정 선박. 항구는 LLM이 목록 안에서만 고른다 (EC-04).
+    place가 도착지 자체(부산·한국, _is_destination)면 거르지 않고 전체를 보인다 (10-06 점검: "이번 주 부산 들어오는 배"가
+    "부산(고현, 광양, ...)를 직전에 들른 배 86척"이 됐다. 항구 고르기 LLM이 부산과 비슷한 국내 항구를 골랐다).
+    부산 입항 목록에서 "부산에서 오는 배"는 뜻이 없으므로 사용자의 뜻은 "부산에 오는 배 전부"다. 전 방식과 에이전트가 같이 탄다"""
+    if _is_destination(place) or _is_destination(label):
+        place, label = None, None
     days = max(1, min(days or DAYS_DEFAULT, DAYS_MAX))
     name = label or place  # 답에는 사용자가 쓴 말(중국)을, 항구 고르기에는 영어(China)를 쓴다
     progress.step("schedule")
@@ -535,6 +546,13 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         log_failure("chat", "blocked prompt injection pattern")
         return ChatResult(kind="message", reply=INJECTION_REPLY)
 
+    # 범위 밖 주제(항공·육상, 창고 수령일, 일정 변경, 날씨, 품목 요건)는 LLM 없이 고정 문장으로 답한다 (docs/specs/referral-guide.md, 10-06).
+    # B/L이 있는 문장은 그 화물 조회가 먼저라 보지 않는다. 문장과 주제 낱말은 skills/referrals/rules.md out_of_scope
+    hit = None if refs else referrals.out_of_scope_topic(masked)
+    if hit:
+        logging.getLogger(__name__).info("out_of_scope topic=%s", hit[0])  # 실패가 아니라 INFO. 주제만 남기고 문장은 남기지 않는다
+        return ChatResult(kind="message", reply=hit[1])
+
     progress.step("understand")  # 화면에 실제 단계를 알린다 (docs/specs/chat-progress.md)
     if agent_enabled():
         try:
@@ -543,6 +561,10 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
             # 에이전트가 첫 도구를 쓰기도 전에 실패했다 (키 없음, 도구를 붙이면 거절하는 모델·제공사 등).
             # 전 방식은 도구 없이 한 번 묻는 호출이라 이런 경우에도 된다 (10-02 실측: 도구를 붙이면 404인 제공사가 있었다)
             log_failure("chat_agent", e.kind)
+    if not refs and context is None and BROKER_TOPIC.search(masked):
+        # 세액·관세율·통관 가부는 화물이 없어도 관세사 고정 안내다. 에이전트 경로는 이 문구로 끝나지만(반복이면 짧게),
+        # 에이전트를 못 쓸 때의 전 방식(_classic)은 사용 안내로 빠졌다 (10-06 재생 서버 실측 "관세 얼마 나와?")
+        return ChatResult(kind="message", reply=BROKER_ONLY)
     return _classic(masked, refs, mrn, session_id, context, run_agent, user_id, today)
 
 
@@ -555,16 +577,20 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
     except llm.LLMError as e:  # EC-01: 규칙으로 대신
         log_failure("chat_route", e.kind)
         if refs:
-            return _cargo(next(iter(refs.values())), None, None, session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
+            return _classic_cargo(list(refs.values()), None, None, session_id, context, run_agent, mrn, user_id)
         return ChatResult(kind="message", reply=LLM_DOWN)
 
     # 문장에 지금 화물과 다른 B/L이 있으면 의도와 상관없이 새 화물 조회다 (10-01 실측: 화면에 화물이 있으면
     # LLM이 "[BL1] 화물 조회해줘"를 follow_up으로 골라 이전 화물 답과 카드가 나왔다). LLM이 낸 의도를 코드가 덮어쓴다
     new_bls = [bl for bl in refs.values() if context is None or bl != context.bl_no]
     if new_bls and route.intent in ("follow_up", "other"):
-        return _cargo(new_bls[0], route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
+        return _classic_cargo(new_bls, route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, mrn, user_id)
 
     if route.intent == "cargo":
+        if len(set(refs.values())) > 1:
+            # B/L이 여럿이면 LLM이 고른 하나가 아니라 문장에 나온 순서대로 모두 본다 (에이전트와 같은 기준, 10-06 점검)
+            return _classic_cargo(list(refs.values()), route.bl_type, _valid_date(route.sale_due_date), session_id, context,
+                                  run_agent, mrn, user_id)
         bl = refs.get(route.bl_ref or "") or (next(iter(refs.values())) if refs else None)
         if not bl:
             if context is None:
@@ -598,6 +624,43 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
         return search_vessels(place, route.days, label)
 
     return ChatResult(kind="message", reply=_safe_reply(route.reply, masked))
+
+
+def _classic_cargo(bls: list[str], bl_type: str | None, sale_due_date: str | None, session_id: str,
+                   context: AgentRequest | None, run_agent, mrn: str | None, user_id: str | None) -> ChatResult:
+    """전 방식의 화물 조회. B/L이 하나면 _cargo 그대로, 2개 이상이면 에이전트와 같은 기준으로 최대 MAX_BLS_PER_TURN개를
+    조회해 표(cargos)로 낸다 (10-06 점검: 전 방식은 첫 B/L만 조회하고 나머지는 말없이 버렸다).
+    넘친 B/L은 MULTI_BL_NOTICE로 알린다. MRN은 B/L 하나에 속하는 값이라 여럿일 때는 쓰지 않는다 (look_up_many와 같다).
+    전 방식은 에이전트를 못 쓸 때의 대비 경로라 LLM 비교 문장 없이 코드 문장(MULTI_TABLE_LEAD)만 쓴다."""
+    bls = list(dict.fromkeys(bls))  # 같은 B/L을 두 번 적었으면 한 번만
+    if len(bls) == 1:
+        return _cargo(bls[0], bl_type, sale_due_date, session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
+    picked = bls[:MAX_BLS_PER_TURN]
+
+    def one(bl: str) -> ChatResult | None:
+        try:
+            return _cargo(bl, bl_type, sale_due_date, session_id, context, run_agent, note=None, mrn=None, user_id=user_id)
+        except Exception as e:  # noqa: BLE001 - 하나가 죽어도 나머지는 보인다 (SDD 3.4, look_up_many와 같다)
+            log_failure("chat_cargo", f"classic multi {type(e).__name__}")
+            return None
+
+    # 스레드마다 contextvars 복사본으로 돌려 단계 소식·요청 ID·LLM 사용량 기록이 이 요청에 묶이게 한다 (look_up_many와 같다)
+    with ThreadPoolExecutor(max_workers=len(picked)) as pool:
+        futures = [pool.submit(contextvars.copy_context().run, one, bl) for bl in picked]
+        outcomes = [f.result() for f in futures]
+    found = [o for o in outcomes if o is not None]
+    notices = ([MULTI_BL_NOTICE] if len(bls) > MAX_BLS_PER_TURN else []) \
+        + ([MULTI_FAILED_NOTICE] if len(found) < len(picked) else [])
+    if not found:
+        return ChatResult(kind="message", reply=FAILED_LOOKUP)
+    if len(found) == 1:
+        return replace(found[0], reply="\n".join([found[0].reply, *notices]))
+    need_lines, rows, chosen = _multi_table(found)
+    lines = [MULTI_TABLE_LEAD.format(n=len(found)), *need_lines]
+    if bl_type is None and any(not _stored_type(bl) for bl in picked):
+        lines.append(HOUSE_NOTICE)
+    lines.extend(notices)
+    return replace(chosen, reply="\n".join(lines), map=None, cargos=rows)
 
 
 # ── 채팅 에이전트 (10-05 결정) ─────────────────────────────────────
@@ -709,7 +772,8 @@ WEB_SOURCES_SHOWN = 3  # "웹 참고" 줄에 올리는 출처 수 상한 (검색
 # 관세사는 제외한다 ("관세사가 누군지"는 실무 질문이다). 웹에 답이 있어도 이 주제는 관세사에게 묻게 한다 (PRD 4절, 10-05 결정)
 BROKER_TOPIC = re.compile(r"관세(?!사)|세율|세금|세액|부가세|부가가치세|과세|면세|환급|HS\s*코드|품목\s*분류|FTA|원산지|"
                           r"통관\s*(?:이|은|도)?\s*(?:될|되|가능|불가|안\s*되|문제|막|걸리|거부)", re.IGNORECASE)
-BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않습니다. 관세사에게 문의해 주세요."
+# 뒤에 공식 창구 줄을 붙인다. 주소·전화는 skills/referrals/rules.md broker_referral에만 있다 (docs/specs/referral-guide.md, 10-06)
+BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않습니다. 관세사에게 문의해 주세요.\n" + referrals.broker_tail()
 WEB_NOTE = "웹 참고: "  # 웹 근거 답 뒤에 코드가 붙이는 줄의 머리. 출처 제목과 주소는 가져온 결과에서만 온다
 
 
@@ -804,6 +868,23 @@ def row_need(agent: AgentResponse) -> tuple[str, str] | None:
     if agent.answer == agent_router.ASK_BACK_AFTER_EVIDENCE:
         return ROW_NOTE_SAME_NAME.format(n=len(agent.vessel_candidates)), ROW_SAY_STILL_SAME
     return ROW_NOTE_MORE_INFO, ROW_SAY_MORE_INFO
+
+
+def _multi_table(found: list[ChatResult]) -> tuple[list[str], list[dict], ChatResult]:
+    """B/L 2~3개 조회 결과로 (판정 못 낸 줄마다의 안내 문장, 말풍선 표 줄, 문맥이 될 결과)를 만든다.
+    에이전트(_agent_turn)와 전 방식(_classic_cargo)이 같이 쓴다 (10-06 점검: 전 방식은 첫 B/L만 보고 나머지를 말없이 버렸다)."""
+    # 판정을 못 낸 줄마다 무엇이 필요한지 코드가 한 문장씩 쓴다 (10-06 정운 화면)
+    needs = [(r, row_need(r.agent)) for r in found]
+    lines = [need[1].format(bl=r.request.bl_no) for r, need in needs if need]
+    rows = [{"bl_no": r.request.bl_no, "status": r.agent.status, "verdict": r.agent.verdict,
+             "ship_name": r.agent.vessel.name if r.agent.vessel else None,
+             "eta": r.agent.eta.trusted_eta if r.agent.eta else None, "days_margin": r.agent.days_margin,
+             "sale_due_date": r.request.sale_due_date, "note": need[0] if need else None,
+             "agent": r.agent, "request": r.request} for r, need in needs]
+    # 문맥(다음 문장의 "이 화물")과 아래 결과 칸은 같은 이름 되묻기가 필요한 줄이 먼저고, 없으면 첫 B/L (10-06 정운 화면:
+    # 되묻기 줄이 문맥이 아니면 사용자가 "항차 V123"이라고 답해도 엉뚱한 화물에 붙는다). 말풍선 미니 지도는 만들지 않는다: 결과 칸 지도가 대신 보여 준다
+    chosen = next((r for r, need in needs if need and r.agent.vessel_candidates), found[0])
+    return lines, rows, chosen
 
 
 def unread_ids(masked: str, bls: list[str]) -> list[str]:
@@ -1349,6 +1430,10 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             bl_type = args.get("bl_type") if args.get("bl_type") in ("MASTER", "HOUSE") else None
             # 항차 번호는 사용자가 실제로 쓴 글자일 때만 쓴다. LLM이 만든 값으로 배를 가르면 안 된다
             voyage = str(args.get("voyage_no") or "").strip() or None
+            if voyage and not _VOYAGE_OK.fullmatch(voyage):
+                # 요청 계약(schemas/agent.py voyage_no)에 안 맞는 항차(한글이 섞임·20자 초과)는 넘기지 않는다.
+                # 넘기면 AgentRequest가 ValidationError로 터진다. 항차 없이 조회하면 되묻기가 다시 묻는다 (10-06 점검)
+                voyage = None
             if voyage and re.sub(r"\s+", "", voyage) not in re.sub(r"\s+", "", masked):
                 voyage = None
             eta = _valid_date(args.get("forwarder_eta")) if user_gave_date else None
@@ -1379,8 +1464,10 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if name == "search_arrivals":
             # place·place_label은 LLM 출력인데 답 문장에 그대로 들어간다. 전 방식과 같은 검사를 한다 (10-01 주입 방어)
             place = str(args.get("place") or "").strip() or None
-            # place는 "어디에서 오는 배"다. 부산·한국 같은 도착지면 빈 표만 나오므로 LLM에 돌려보내 다른 길을 고르게 한다 (10-05 실측)
-            if _is_destination(place) or _is_destination(args.get("place_label")):
+            # place는 "어디에서 오는 배"다. 부산·한국 같은 도착지면 빈 표만 나오므로 LLM에 돌려보내 다른 길을 고르게 한다 (10-05 실측).
+            # 단 문장에 식별자 모양 글자(TEST41 등)가 있을 때만이다: 그때는 배·화물 위치 질문을 잘못 고른 것이다 (10-05 "TEST41 선박 위치").
+            # 식별자가 없으면 "이번 주 부산 들어오는 배"처럼 입항 목록 질문이라 search_vessels가 거르지 않고 전체를 보인다 (10-06 점검)
+            if (_is_destination(place) or _is_destination(args.get("place_label"))) and _ID_LIKE.search(masked):
                 return _tool_error("place_is_destination", "place means where the ships come from (previous port), not Busan or "
                                    "Korea. Use null for all arrivals, or a foreign country or port. If the message is not asking "
                                    "which ships come from somewhere, do not call search_arrivals.")
@@ -1621,23 +1708,14 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             for token, bl in refs.items():
                 said = said.replace(token, bl)
             lines = [said or MULTI_TABLE_LEAD.format(n=len(found))]
-            # 판정을 못 낸 줄마다 무엇이 필요한지 코드가 한 문장씩 쓴다 (10-06 정운 화면)
-            needs = [(r, row_need(r.agent)) for r in found]
-            lines.extend(say.format(bl=r.request.bl_no) for r, need in needs if need for say in [need[1]])
+            need_lines, rows, chosen = _multi_table(found)  # 표 줄과 판정 못 낸 줄 안내 (전 방식과 같이 쓴다, 10-06 점검)
+            lines.extend(need_lines)
             if multi_state.get("house"):
                 lines.append(HOUSE_NOTICE)
             lines.extend(notices)
             unread = unread_ids(masked, message_bls)
             if unread:
                 lines.append(UNREAD_NOTICE.format(names=", ".join(f"'{u}'" for u in unread)))
-            rows = [{"bl_no": r.request.bl_no, "status": r.agent.status, "verdict": r.agent.verdict,
-                     "ship_name": r.agent.vessel.name if r.agent.vessel else None,
-                     "eta": r.agent.eta.trusted_eta if r.agent.eta else None, "days_margin": r.agent.days_margin,
-                     "sale_due_date": r.request.sale_due_date, "note": need[0] if need else None,
-                     "agent": r.agent, "request": r.request} for r, need in needs]
-            # 문맥(다음 문장의 "이 화물")과 아래 결과 칸은 같은 이름 되묻기가 필요한 줄이 먼저고, 없으면 첫 B/L (10-06 정운 화면:
-            # 되묻기 줄이 문맥이 아니면 사용자가 "항차 V123"이라고 답해도 엉뚱한 화물에 붙는다). 말풍선 미니 지도는 만들지 않는다: 결과 칸 지도가 대신 보여 준다
-            chosen = next((r for r, need in needs if need and r.agent.vessel_candidates), found[0])
             return replace(chosen, reply="\n".join(lines), map=None, cargos=rows)
         replies = list(dict.fromkeys(r.reply for r in done))  # 같은 답이 두 번 붙지 않게
         if looked_up and text and not _reply_violations(text, reference + lookups + " ".join(replies), user_text, earlier) \

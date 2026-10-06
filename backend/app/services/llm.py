@@ -39,7 +39,7 @@ import os
 import re
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -609,6 +609,9 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     generation = start_generation(prompt_name, f"{context}\n\n{user_content}" if context else user_content, prompt.source)
     response_format = {"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}}
     called: list[dict] = []
+    # 이번 생성에서 부른 chat() 결과 전부. 도구 고리는 chat()을 여러 번 부르는데 기록에 마지막 한 번만 남아
+    # Langfuse 토큰·비용이 실제보다 적게 보였다 (10-06 점검). 끝낼 때 _summed로 합쳐 남긴다
+    rounds: list[LLMResult] = []
     try:
         # 도구가 없으면 한 번 묻고 끝난다 (판정·배 고르기 등, 지금까지와 같음: response_format을 붙인 한 번의 호출).
         # 도구가 있으면(후속 질문·채팅 에이전트, 10-02) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
@@ -620,6 +623,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
             last_round = round_no == MAX_TOOL_ROUNDS
             if tools and not last_round:
                 result = chat(messages, model=model, tools=tools, tool_choice=None)
+                rounds.append(result)
                 if not (run_tool and result.tool_calls):
                     parsed = _loose_json(result.content, output_model)
                     if parsed is not None:
@@ -628,10 +632,12 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
                         # 도구 목록은 그대로 둔다: 기록에 role=tool 메시지가 있으면 제공사가 tools 없는 요청을 거부할 수 있다
                         result = chat(messages, model=model, response_format=response_format, tools=tools,
                                       tool_choice="none")
+                        rounds.append(result)
                     break
             else:
                 result = chat(messages, model=model, response_format=response_format, tools=tools or None,
                               tool_choice="none" if (tools and last_round) else None)
+                rounds.append(result)
             if not (tools and run_tool and result.tool_calls) or last_round:
                 break
             messages.append({"role": "assistant", "content": result.content, "tool_calls": [
@@ -650,8 +656,10 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
                 # 도구 결과는 자료다. 지시로 읽지 않는다는 규칙은 프롬프트에 있다 (marvia-follow-up "Tools" 절)
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(output, ensure_ascii=False)})
     except LLMError as e:
-        end_generation(generation, None, prompt.version, error=str(e))
+        # 앞 라운드에서 이미 쓴 토큰·비용은 남긴다. 한 번도 답을 못 받았으면 None (전과 같음)
+        end_generation(generation, _summed(rounds) if rounds else None, prompt.version, error=str(e))
         raise
+    result = _summed(rounds)  # 도구 라운드 합산 (main 10-06 점검)
     cut_retried = False  # 끊긴 답을 다시 받은 적이 있나. 한 번만 다시 받는다 (10-06)
     while True:
         try:
@@ -671,12 +679,16 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
                 time.sleep(RETRY_WAIT_SEC)  # 같은 대기 시간을 쓴다
                 previous = result
                 try:
-                    result = chat(messages, model=model, response_format=response_format, tools=tools or None,
-                                  tool_choice="none" if tools else None)
+                    again = chat(messages, model=model, response_format=response_format, tools=tools or None,
+                                 tool_choice="none" if tools else None)
                 except LLMError as call_error:
                     end_generation(generation, previous, prompt.version, output=previous.content, error=str(call_error))
                     raise
-                result.attempts += previous.attempts  # Langfuse retry_count에 이 재시도도 센다 (end_generation: attempts - 1)
+                # 다시 물은 답도 한 라운드로 더한다. 토큰·비용은 _summed가 모든 라운드를 합친다 (main과 합칠 때 10-06)
+                rounds.append(again)
+                summed = _summed(rounds)
+                # 끊겨서 다시 물은 것은 Langfuse retry_count에도 센다 (end_generation: attempts - 1). _summed는 라운드 수를 재시도로 세지 않는다
+                result = replace(summed, attempts=summed.attempts + 1)
                 continue
             # 어느 칸이 왜 틀렸는지만 적는다. LLM이 쓴 본문은 다시 붙이지 않는다 (트레이스 output에는 남는다)
             detail = "; ".join(f"{'.'.join(str(p) for p in err['loc']) or 'root'}: {err['msg']}" for err in e.errors()[:5])
@@ -689,6 +701,23 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
             raise error from e
     end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))
     return LLMAnswer(output=output, llm=result, prompt_version=prompt.version, tool_calls=called)
+
+
+def _summed(rounds: list[LLMResult]) -> LLMResult:
+    """도구 고리 여러 라운드의 chat() 결과를 하나로 합친다 (10-06 점검: Langfuse에 마지막 라운드 토큰만 남았다).
+    본문·도구 호출·모델·finish_reason·request_id는 마지막 라운드 것이고, 토큰·캐시 토큰·비용은 모든 라운드의 합이다.
+    값을 하나도 안 준 칸(None)은 합도 None으로 둔다(Vertex는 cost를 안 준다). 재시도 수는 라운드마다의 재시도(attempts-1)를 더한다.
+    지연은 마지막 시도의 것을 그대로 둔다 (LLMResult.latency_ms 정의). 한 라운드면 그 결과를 그대로 돌려준다."""
+    if len(rounds) == 1:
+        return rounds[0]
+
+    def total(name: str):
+        values = [getattr(r, name) for r in rounds if getattr(r, name) is not None]
+        return sum(values) if values else None
+
+    return replace(rounds[-1], prompt_tokens=total("prompt_tokens"), completion_tokens=total("completion_tokens"),
+                   cached_tokens=total("cached_tokens"), cost=total("cost"),
+                   attempts=1 + sum(r.attempts - 1 for r in rounds))
 
 
 # ── LLM 녹화 답 재생 (09-29 결정) ─────────────────────────────

@@ -51,7 +51,12 @@ def owner_key(session_id: str | None, user_id: str | None) -> str | None:
 
 
 def limit() -> int:
-    """오늘 한도(토큰). 0이면 막지 않는다."""
+    """오늘 한도(토큰). 0이면 막지 않는다. 재생 모드도 0이다 (10-06 점검: 채점자가 키 없이 데모를 여러 번 돌리는데
+    /api/agent 한 번이 약 1만 토큰이라 기본 한도 10만이면 열 번 남짓에 429가 난다)."""
+    from backend.app.clients.replay import replay_enabled  # 재생 모드 판단은 한 곳에만 둔다
+
+    if replay_enabled():
+        return 0
     try:
         return max(0, int(os.environ.get(LIMIT_ENV, "0") or 0))
     except ValueError:

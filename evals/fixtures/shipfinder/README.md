@@ -11,5 +11,6 @@ MMSI·IMO·선명·호출부호·좌표·시각 모두 실재하지 않는 값�
 | search_same_name.json | 같은 선명 여럿, 같은 IMO에 MMSI 2개, 7자리가 아닌 IMO(300000001), imo 0 |
 | search_same_imo.json | 같은 IMO에 MMSI 3개 (공식 문서 예시 형식, 값은 가공) |
 | not_found.json, no_permission.json, rate_limited.json | status 3, 21, 29 |
+| quota_exhausted.json | status 38 하루 호출 한도 소진 (10-06 점검, msg 문구는 가공) |
 
 실제 응답이 필요하면 `scripts/fetch_shipfinder.py`로 받아 로컬(.local/, gitignore)에만 둔다.

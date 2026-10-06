@@ -119,3 +119,32 @@ def test_call_once_still_reraises_sdk_errors(monkeypatch):
     monkeypatch.setattr(llm, "_client", lambda: fake)
     with pytest.raises(ValueError):
         llm._call_once({"model": "openai/gpt-4o-mini", "messages": []})
+
+
+def test_generation_records_usage_summed_over_tool_rounds(monkeypatch):
+    """10-06 점검: 도구 고리는 chat()을 여러 번 부르는데 Langfuse에는 마지막 라운드 토큰만 남았다. 모든 라운드의 합을 남긴다."""
+    call = {"id": "c1", "name": "get_live_position", "arguments": "{}"}
+    _script(monkeypatch, [
+        llm.LLMResult(content=None, tool_calls=[call], model="m", prompt_tokens=100, completion_tokens=10, cost=0.001,
+                      cached_tokens=40, attempts=2),
+        llm.LLMResult(content=json.dumps(ANSWER, ensure_ascii=False), model="m", prompt_tokens=150, completion_tokens=20,
+                      cost=0.002, cached_tokens=None),
+    ])
+    recorded = []
+    monkeypatch.setattr(llm, "start_generation", lambda *a, **k: object())
+    monkeypatch.setattr(llm, "end_generation", lambda gen, result, version, **kw: recorded.append(result))
+    answer = _ask()
+    [result] = recorded
+    assert (result.prompt_tokens, result.completion_tokens, result.cached_tokens) == (250, 30, 40)
+    assert result.cost == pytest.approx(0.003) and result.attempts == 2  # 재시도는 첫 라운드의 1번뿐
+    assert answer.llm.prompt_tokens == 250 and answer.output.answer == ANSWER["answer"]
+
+
+def test_single_round_usage_is_unchanged(monkeypatch):
+    _script(monkeypatch, [llm.LLMResult(content=json.dumps(ANSWER, ensure_ascii=False), model="m", prompt_tokens=7,
+                                        completion_tokens=3, cost=None)])
+    recorded = []
+    monkeypatch.setattr(llm, "start_generation", lambda *a, **k: object())
+    monkeypatch.setattr(llm, "end_generation", lambda gen, result, version, **kw: recorded.append(result))
+    _ask()
+    assert recorded[0].prompt_tokens == 7 and recorded[0].cost is None

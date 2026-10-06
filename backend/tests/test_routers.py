@@ -143,7 +143,9 @@ def test_table_verdict_with_llm_text(fake, monkeypatch):
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("ok", "watch", "rule")
     assert (seen["table_verdict"], seen["verdict_mode"]) == ("watch", "fixed")
-    assert body["actions"] == ["포워더에 확인"] and body["answer"] == JUDGED["answer"]
+    # LLM이 쓴 할 일 뒤에 켜진 신호의 확인처 줄을 코드가 붙인다 (services/referrals.py, 10-06)
+    assert body["actions"][0] == "포워더에 확인" and body["answer"] == JUDGED["answer"]
+    assert all(a.startswith("확인처: ") or a.startswith("진행 상황") for a in body["actions"][1:])
     assert body["customs"]["stage_name"] == "반입신고" and body["customs"]["next_stage"] == "수입신고"
     assert body["position"]["freshness"] in ("fresh", "stale")  # unknown이 아니라 signals가 계산한 값
 
@@ -601,7 +603,8 @@ def test_nationality_code_matches_english_flag_name(fake):
 
 def test_resolved_mmsi_uses_mrn_call_sign_for_schedule(fake, monkeypatch):
     """되묻기 답으로 배를 받았어도 MRN 호출부호가 있으면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)."""
-    fake(position=POSITION)
+    # 고른 배는 이 화물의 후보여야 확정한다 (10-06 점검). 후보 검색에 그 배가 나오게 둔다
+    fake(position=POSITION, candidates=[_candidate(440999009, call_sign="TST09")])
     schedule_calls = []
     monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
     monkeypatch.setattr(agent_router, "get_port_schedule",
@@ -741,14 +744,73 @@ def test_unknown_bl_is_insufficient_not_failed(fake):
     assert "B/L 번호와 마스터·하우스 구분" in body["answer"]
 
 
-def test_resolved_mmsi_skips_candidate_search(fake):
-    """되묻기 답을 받으면 후보를 다시 찾지 않는다."""
-    fake(candidates=[_candidate(1), _candidate(2)])
+def test_resolved_mmsi_among_candidates_is_confirmed(fake):
+    """되묻기 답으로 고른 배가 이 화물의 후보면 확정한다. 확정한 배 1척만 후보로 돌려준다 (10-06 점검 전에는 후보 확인 없이 확정했다)."""
+    fake(candidates=[_candidate(440999009), _candidate(440999010, call_sign="TST10")])
 
     with TestClient(app) as client:
         body = client.post("/api/agent", json=_request(resolved_mmsi=440999009)).json()
 
-    assert body["vessel_match"] == "confirmed" and body["vessel_candidates"] == []
+    assert body["vessel_match"] == "confirmed"
+    assert [c["mmsi"] for c in body["vessel_candidates"]] == [440999009]
+
+
+def test_resolved_mmsi_outside_candidates_is_not_confirmed(fake):
+    """후보에 없는 MMSI를 보내면 확정하지 않고 되묻는다. 전에는 아무 번호나 확정해 "배는 확인했지만"이 나왔다 (10-06 점검)."""
+    fake(candidates=[_candidate(1), _candidate(2, call_sign="TST02")])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(resolved_mmsi=440999009)).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
+    assert body["answer"] == agent_router.RESOLVED_NOT_CANDIDATE
+    assert {c["mmsi"] for c in body["vessel_candidates"]} == {1, 2}
+    assert "배는 확인했지만" not in body["answer"]
+
+
+def test_resolved_mmsi_outside_single_candidate_does_not_swap(fake):
+    """후보가 1척이어도 사용자가 고른 번호와 다르면 그 배로 바꿔 끼우지 않고 되묻는다 (10-06 점검)."""
+    fake(candidates=[_candidate(1)])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(resolved_mmsi=440999009)).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "uncertain"
+    assert body["answer"] == agent_router.RESOLVED_NOT_CANDIDATE
+
+
+def test_resolved_mmsi_with_no_candidates_asks_forwarder_eta(fake):
+    """후보가 하나도 없으면 고른 배를 확인하지 못했다고 알리고 포워더 입항 예정일을 묻는다. vessel_match는 none (10-06 점검)."""
+    fake(candidates=[])
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(resolved_mmsi=440999009)).json()
+
+    assert body["status"] == "insufficient" and body["vessel_match"] == "none"
+    assert body["answer"].startswith(agent_router.RESOLVED_NO_CANDIDATES)
+
+
+def test_resolved_mmsi_from_previous_clarify_needs_no_search(fake, monkeypatch):
+    """지난 되묻기 응답(조회 이력)의 후보에 있으면 ShipFinder를 다시 부르지 않고 확정한다 (10-06 점검)."""
+    fake()
+    asked = _response_dict_with_candidates([440999009, 440999010])
+    monkeypatch.setattr(agent_router, "_saved_cargo_responses", lambda request: [asked])
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", lambda **k: pytest.fail("이력에 후보가 있으면 다시 찾지 않는다"))
+
+    with TestClient(app) as client:
+        body = client.post("/api/agent", json=_request(resolved_mmsi=440999010)).json()
+
+    assert body["vessel_match"] == "confirmed" and body["vessel_candidates"][0]["mmsi"] == 440999010
+
+
+def _response_dict_with_candidates(mmsis: list[int]) -> dict:
+    """지난 되묻기 응답을 이력 JSON 모양으로."""
+    from backend.app.schemas.agent import VesselCandidate
+
+    cands = [VesselCandidate(mmsi=m, imo=None, name="TEST STAR", flag="Panama", dest=None, last_time=NOW, ship_type=70,
+                             match_reasons=["선명 유사도 1.0"]) for m in mmsis]
+    return agent_router._response(status="insufficient", vessel_match="uncertain", vessel_candidates=cands,
+                                  missing_inputs=["voyage_no"], answer=agent_router.ASK_BACK).model_dump(mode="json")
 
 
 def test_invalid_bl_is_rejected():
@@ -1275,3 +1337,37 @@ def test_party_fields_default_to_null():
     record = CustomsRecord(ship_name="TEST STAR", stage_name="반출신고", bl_masked="TEST****0001", fetched_at=NOW)
     info = agent_router._released(record).customs
     assert (info.forwarder_name, info.carrier_name, info.container_no, info.goods_name) == (None, None, None, None)
+
+
+def test_trusted_vessel_from_watch_needs_no_search(fake, monkeypatch):
+    """지켜보기 재판정은 저장해 둔 확정 배를 후보 검색 없이 쓴다. 워커가 화물당 ShipFinder 1회만 떼어 두기 때문이다 (10-06 점검)."""
+    fake()
+    monkeypatch.setattr(agent_router, "_saved_cargo_responses", lambda request: [])
+    monkeypatch.setattr(agent_router, "get_vessel_candidates", lambda **k: pytest.fail("저장된 확정 배는 다시 찾지 않는다"))
+    token = agent_router.trusted_vessel.set(440999009)
+    try:
+        with TestClient(app) as client:
+            body = client.post("/api/agent", json=_request(resolved_mmsi=440999009)).json()
+    finally:
+        agent_router.trusted_vessel.reset(token)
+    assert body["vessel_match"] == "confirmed"
+
+
+def test_trusted_vessel_is_not_set_for_user_requests():
+    """화면 요청 경로에서는 늘 비어 있다. 화면이 보낸 resolved_mmsi는 후보와 대조한다."""
+    assert agent_router.trusted_vessel.get() is None
+
+
+def test_tool_failed_text_says_tomorrow_when_quota_exhausted(monkeypatch):
+    """ShipFinder 하루 한도를 다 쓴 날은 "잠시 뒤"가 아니라 "내일 다시"라고 알린다 (status 38, 10-06 점검)."""
+    monkeypatch.setattr(agent_router.shipfinder_client, "quota_blocked", lambda: False)
+    assert agent_router._tool_failed_text(agent_router.POSITION_TOOL_FAILED) == agent_router.POSITION_TOOL_FAILED
+    text = agent_router._tool_failed_text(agent_router.POSITION_TOOL_FAILED, "quota_exhausted")
+    assert "잠시 뒤" not in text and text.endswith(agent_router.QUOTA_EXHAUSTED_TAIL)
+    monkeypatch.setattr(agent_router.shipfinder_client, "quota_blocked", lambda: True)
+    assert agent_router._tool_failed_text(agent_router.VESSEL_TOOL_FAILED).endswith(agent_router.QUOTA_EXHAUSTED_TAIL)
+
+
+def test_follow_up_rules_include_sale_date_check():
+    """후속 답에도 "판매 예정일이 지났다"를 막는다 (V15, 10-06 점검)."""
+    assert "V15" in agent_router.FOLLOW_UP_RULES

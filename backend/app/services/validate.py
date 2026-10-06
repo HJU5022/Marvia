@@ -1,4 +1,4 @@
-"""출력 검증 규칙 V1~V7, V9~V14 (작업 C-7, SDD 5.7). V8(등급 검사)은 routers/agent.py에 있다.
+"""출력 검증 규칙 V1~V7, V9~V15 (작업 C-7, SDD 5.7). V8(등급 검사)은 routers/agent.py에 있다.
 
 LLM 판정이 붙은 응답이 나가기 전에 코드가 규칙을 건다. 위반이 있으면 라우터가 위반 내용을 붙여
 LLM에 다시 묻고, 세 번째에도 위반이면 판정 표 등급 + 고정 문구로 partial (SDD 5.7 재시도, routers/agent.py _llm_gave_up, 09-30).
@@ -9,6 +9,9 @@ V11 (10-01): 통관이 잘되는지·늦어질지 평가하지 않는다. Skill�
 계속 썼다(평가 30건 중 4건, 통관 단계 10개 확인 중 7건). 단계 이름만으로는 알 수 없는 말이라 코드가 걸러 다시 쓰게 한다.
 V12 (10-02): 메모장 내부 번호([c1], u2)가 답에 새어 나오지 않는다 (docs/specs/memory.md EC-09).
 V13·V14 (10-05): 채팅 에이전트 답이 앞 답을 베끼지 않고, 도구 없는 실무 답은 Skill 원문 조각을 근거로 단다 (check_chat_reply).
+V11 보강 (10-06 점검): 수입신고수리 전인데 "통관이 완료된 상태이며", "세관 ... 문제가 없습니다"가 통과했다. 통관 끝 문장도 건다.
+V15 (10-06 점검): days_margin이 음수일 때 "판매 예정일이 지난 상태입니다"(늦게 도착한다는 뜻을 잘못 옮김),
+판매 예정일을 받지 않았는데 "예정보다 빠른 도착"처럼 판매 예정일과 비교하는 문장을 막는다.
 """
 from __future__ import annotations
 
@@ -20,7 +23,7 @@ from typing import get_args
 
 from backend.app.schemas.agent import AgentResponse
 from backend.app.schemas.signals import SignalId
-from backend.app.services.rules import rule
+from backend.app.services.rules import rule, stage_key
 
 KNOWN_RULES = set(get_args(SignalId))  # V2: reasons[].rule은 rules.md의 신호 id (SDD 3.3)
 NUMBER = re.compile(r"\d+(?:\.\d+)?")  # V7: answer 안의 숫자. 날짜도 숫자 조각으로 나눠 대조한다
@@ -30,7 +33,7 @@ SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n")  # V11: 문장 단위로 나눠 �
 
 @dataclass(frozen=True)
 class Violation:
-    rule: str  # V1~V7, V9~V14
+    rule: str  # V1~V7, V9~V15
     detail: str  # LLM에 다시 물을 때 그대로 붙인다 (SDD 5.7)
 
 
@@ -85,6 +88,28 @@ def check(response: AgentResponse, extra: str = "") -> list[Violation]:
     if judged:
         found.append(Violation("V11", "Do not judge how customs clearance is going (smooth, fine, delayed, almost done). "
                                      f"The stage name alone does not tell that. Rewrite without these sentences: {judged}"))
+    # V11 보강 (10-06 점검): 수입신고수리 전 단계에서 "통관이 완료"라고 말하지 않는다. 단계 이름 속 "완료"는 빼고 본다
+    stage = response.customs.stage_name if response.customs else ""
+    done = _customs_done_claims(texts, stage)
+    if done:
+        found.append(Violation("V11", f"Customs clearance is NOT finished: the current stage is {stage or 'unknown'}, "
+                                     "and only 수입신고수리 means clearance is done. Do not say customs is complete, finished, "
+                                     "or has no problem. State the stage name with its meaning instead. "
+                                     f"Rewrite without these sentences: {done}"))
+
+    # V15 (10-06 점검): 판매 예정일 문장. 지났다고 말하지 않고, 받지 않은 판매 예정일과 비교하지 않는다. 낱말은 cargo-verdict/rules.md
+    # 판매 예정일을 받았는가: 근거 카드의 판매 예정일, 또는 코드가 계산한 여유 일수. 후속 질문은 지난 결과를 다시 쓰는데
+    # 그 결과에 근거 카드가 없을 수 있어(이력 저장본) 여유 일수도 같이 본다 (10-06 점검)
+    has_sale_date = response.days_margin is not None or any(card.field == "sale_due_date" for card in response.evidence)
+    passed, compared = _sale_date_claims(texts, has_sale_date)
+    if passed:
+        found.append(Violation("V15", "Never say the sale due date has passed. You are not given today's date. A negative days_margin "
+                                     "only means the cargo arrives that many days after the sale due date, for example "
+                                     f"\"판매 예정일보다 2일 늦게 도착합니다\". Rewrite these sentences: {passed}"))
+    if compared:
+        found.append(Violation("V15", "The user gave no sale due date, so days_margin is null. Do not compare the arrival with a sale "
+                                     "date or a plan (earlier or later than planned). Describe only the ETA and vessel state. "
+                                     f"Rewrite without these sentences: {compared}"))
     return found
 
 
@@ -97,6 +122,56 @@ def _customs_assessments(texts: list[str]) -> list[str]:
             if any(s in sentence for s in subjects) and any(w in sentence for w in words):
                 found.append(sentence.strip())
     return found
+
+
+def _without_stage_names(sentence: str, stage: str = "") -> str:
+    """V11 보강: 문장에서 통관 단계 이름을 지운다. "입항적재화물목록 심사완료"·"수입신고수리"처럼 이름 자체에 완료·수리가 있어
+    단계를 그대로 옮긴 바른 문장이 통관 끝 낱말에 걸리지 않게 한다. 이름 사이 띄어쓰기는 달라도 지운다 (rules.stage_key와 같은 기준)."""
+    names = [s["name"] for s in rule("customs_stages") or []] + ([stage] if stage else [])
+    for name in sorted(set(names), key=len, reverse=True):  # 긴 이름부터. "수입신고"가 "수입신고수리"를 반만 지우지 않게
+        chars = [re.escape(c) for c in "".join(name.split())]
+        if chars:
+            sentence = re.sub(r"\s*".join(chars), " ", sentence)
+    return sentence
+
+
+def _customs_done_claims(texts: list[str], stage: str) -> list[str]:
+    """V11 보강 (10-06 점검): 현재 단계가 통관 끝 단계(customs_done_stages)가 아닌데 통관 주어와 끝 낱말이 한 문장에 있는 문장들.
+    끝 단계(수입신고수리 이후)에서는 "통관이 끝났습니다"가 사실이라 걸지 않는다 (customs-stages/rules.md meaning).
+    단계를 모르면(customs가 없으면) 끝났는지 가를 근거가 없어 걸지 않는다. 판정 경로에서는 통관 조회 실패라 status failed다.
+    "완료되면"처럼 앞으로의 일을 말하는 조건 문장은 끝났다는 주장이 아니라 뺀다 (customs_done_except_words)."""
+    done_stages = {stage_key(s) for s in rule("customs_done_stages")}
+    if not stage or stage_key(stage) in done_stages:
+        return []
+    subjects, words = rule("customs_subject_words"), rule("customs_done_words")
+    excepts = rule("customs_done_except_words")
+    found = []
+    for text in texts:
+        for sentence in SENTENCE_END.split(text or ""):
+            bare = _without_stage_names(sentence, stage)
+            if any(e in bare for e in excepts):
+                continue
+            if any(s in bare for s in subjects) and any(w in bare for w in words):
+                found.append(sentence.strip())
+    return found
+
+
+def _sale_date_claims(texts: list[str], has_sale_date: bool) -> tuple[list[str], list[str]]:
+    """V15 (10-06 점검): (판매 예정일이 지났다는 문장들, 판매 예정일이 없는데 비교한 문장들).
+    음수 days_margin은 늦게 도착한다는 뜻일 뿐 오늘이 판매 예정일 뒤라는 뜻이 아니다 (marvia-judge 프롬프트 days_margin 설명).
+    낱말은 cargo-verdict/rules.md sale_date_words·sale_passed_words·plan_compare_words·sale_compare_words."""
+    dates, passed_words = rule("sale_date_words"), rule("sale_passed_words")
+    plans, compares = rule("plan_compare_words"), rule("sale_compare_words")
+    passed, compared = [], []
+    for text in texts:
+        for sentence in SENTENCE_END.split(text or ""):
+            mentions_date = any(d in sentence for d in dates)
+            if mentions_date and any(w in sentence for w in passed_words):
+                passed.append(sentence.strip())
+            elif not has_sale_date and (any(p in sentence for p in plans)
+                                        or (mentions_date and any(c in sentence for c in compares))):
+                compared.append(sentence.strip())
+    return passed, compared
 
 
 WORD = re.compile(r"[A-Za-z]{3,}")  # V9: 후속 답 안의 영문 낱말 (3글자 이상. B/L·km 같은 짧은 표기는 보지 않는다)

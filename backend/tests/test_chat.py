@@ -172,3 +172,41 @@ def test_cargo_ship_flag_follows_skill_list():
     assert svc.is_cargo_ship("풀컨테이너선", "양적하") and svc.is_cargo_ship("냉동.냉장선", "양하")
     assert not svc.is_cargo_ship("원양 어선", "양하") and not svc.is_cargo_ship("풀컨테이너선", "급유")
     assert not svc.is_cargo_ship(None, None)
+
+
+# ── 전 방식의 B/L 여러 개 (10-06 점검: 첫 B/L만 조회하고 나머지는 말없이 버렸다) ──
+def test_classic_looks_up_every_bl_up_to_three_with_table(monkeypatch):
+    _route(monkeypatch, intent="cargo", bl_ref="[BL1]")
+    agent, run = _agent_calls()
+    r = svc.handle("TESTBL01 TESTBL02 TESTBL03 괜찮아?", "s1", None, run)
+    assert sorted(a.bl_no for a in agent) == ["TESTBL01", "TESTBL02", "TESTBL03"]
+    assert [row["bl_no"] for row in r.cargos] == ["TESTBL01", "TESTBL02", "TESTBL03"]  # 문장에 나온 순서
+    assert r.reply.startswith(svc.MULTI_TABLE_LEAD.format(n=3)) and svc.MULTI_BL_NOTICE not in r.reply
+
+
+def test_classic_tells_user_when_more_than_three_bls(monkeypatch):
+    _route(monkeypatch, intent="other")
+    agent, run = _agent_calls()
+    r = svc.handle("TESTBL01 TESTBL02 TESTBL03 TESTBL04", "s1", None, run)
+    assert len(agent) == 3 and "TESTBL04" not in {a.bl_no for a in agent}
+    assert svc.MULTI_BL_NOTICE in r.reply and len(r.cargos) == 3
+
+
+def test_classic_llm_down_still_looks_up_every_bl(monkeypatch):
+    def down(*a, **k):
+        raise llm.LLMError("timeout", "x")
+    monkeypatch.setattr(llm, "route_chat", down)
+    agent, run = _agent_calls()
+    r = svc.handle("TESTBL01, TESTBL02", "s1", None, run)
+    assert {a.bl_no for a in agent} == {"TESTBL01", "TESTBL02"} and len(r.cargos) == 2
+
+
+def test_voyage_pattern_guard_matches_schema():
+    """채팅이 사용자 문장의 항차를 요청에 넣기 전에 계약(schemas/agent.py)과 같은 규칙으로 본다 (10-06 점검).
+    안 맞는 항차를 넣으면 AgentRequest가 ValidationError로 터진다."""
+    from backend.app.schemas.agent import AgentRequest
+    for good in ("V12", "0123E", "2609W/1"):
+        assert svc._VOYAGE_OK.fullmatch(good)
+        AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s", voyage_no=good)
+    for bad in ("12항차", "x" * 21, "-V1"):
+        assert not svc._VOYAGE_OK.fullmatch(bad)
