@@ -17,7 +17,7 @@
   },
   "prompts": {
     "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
-    "_release_label": "v1 — 아래 9개 버전에 Langfuse 라벨 v1을 붙여 이 묶음을 첫 정식 릴리스로 고정 (10-06). 다음 변경은 바꾼 프롬프트에만 v2",
+    "_release_label": "v1 — 아래 9개 버전에 Langfuse 라벨 v1을 붙여 이 묶음을 첫 정식 릴리스로 고정 (10-06). 다음 변경은 바꾼 프롬프트에만 v2. 단 marvia-doc-extract는 10-06에 버전 6(10-02 칸 + etd)으로 production을 옮겼고, 라벨 v1은 이전 production인 버전 5에 그대로 남아 있다",
     "marvia-chat-agent": 10,
     "marvia-chat-route": 1,
     "marvia-judge": 9,
@@ -25,7 +25,7 @@
     "marvia-follow-up": 5,
     "marvia-pick-vessel": 3,
     "marvia-port-match": 1,
-    "marvia-doc-extract": 5,
+    "marvia-doc-extract": 6,
     "marvia-chat-title": 1,
     "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
   },
@@ -38,7 +38,7 @@
   "change_reason": "판정 프롬프트 V11 재시도 줄이기(judge 9), 채팅 에이전트 도구·지켜보기·카톡 보내기·대화 목록(chat-agent 10)",
   "rollback": {
     "prompt": "Langfuse에서 해당 프롬프트의 이전 version에 production label을 붙인다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
-    "prompt_previous": {"marvia-judge": 8, "marvia-chat-agent": 9},
+    "prompt_previous": {"marvia-judge": 8, "marvia-chat-agent": 9, "marvia-doc-extract": 5},
     "code": "Railway에서 이전 deployment를 Redeploy 하거나, git revert 뒤 railway up"
   }
 }
