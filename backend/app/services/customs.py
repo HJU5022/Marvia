@@ -53,7 +53,12 @@ FIELD_CANDIDATES = {
     "loading_port": ("ldprCd",),
     "loading_port_name": ("ldprNm",),
     "loading_country": ("lodCntyCd",),
+    # 10-06 추가 (연계가이드 v4.1 API001 응답 항목). 포워더명은 비어 오는 화물이 많아 None이 흔하다
+    "forwarder_name": ("frwrEntsConm",),
+    "carrier_name": ("shcoFlco",),
 }
+CONTAINER_TAG = "cntrNo"  # 컨테이너 번호. 가이드상 API001은 1건(size 11)이라 보통 하나, 여럿이면 _join_all이 이어 붙인다
+CONTAINER_JOIN = ", "
 MRN_LENGTH = 11  # 화물관리번호 앞 MRN 길이 (실측 19자리 중 앞 11자리, 입항 MRN은 끝이 I)
 STAGE_ITEM_TAG = "cargCsclPrgsInfoDtlQryVo"  # 이력 1줄
 STAGE_FIELDS = {
@@ -79,6 +84,18 @@ def _first(node, names: tuple[str, ...]) -> str | None:
         if found and found.strip():
             return found.strip()
     return None
+
+
+def _join_all(node, name: str) -> str | None:
+    """같은 이름 태그를 전부 찾아 값이 있는 것만 중복 없이 순서대로 ', '로 이어 한 문자열로 돌려준다 (10-06).
+    컨테이너 번호용이다. 가이드(v4.1)는 API001의 cntrNo를 1건(11자)으로 적었고, 같은 번호가 나오는 컨테이너 내역 조회(API 별도)는
+    0..n건이라 여러 개일 가능성을 열어 둔다. 한 칸에 여러 건이 와도 한 문자열로 두면 스키마를 안 바꾸고 화면·엑셀에 그대로 보인다."""
+    values = []
+    for found in node.findall(f".//{name}"):
+        text = (found.text or "").strip()
+        if text and text not in values:
+            values.append(text)
+    return CONTAINER_JOIN.join(values) if values else None
 
 
 def _mrn(cargo_no: str | None) -> str | None:
@@ -184,6 +201,9 @@ class UnipassClient:
             loading_port_name=_first(root, FIELD_CANDIDATES["loading_port_name"]),
             loading_country=_first(root, FIELD_CANDIDATES["loading_country"]),
             mrn=_mrn(_first(root, ("cargMtNo",))),
+            forwarder_name=_first(root, FIELD_CANDIDATES["forwarder_name"]),
+            carrier_name=_first(root, FIELD_CANDIDATES["carrier_name"]),
+            container_no=_join_all(root, CONTAINER_TAG),
             stage_history=stages,
             bl_masked=mask_bl(bl_no),
             fetched_at=datetime.now(timezone.utc),

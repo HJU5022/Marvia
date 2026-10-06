@@ -152,6 +152,10 @@ class CustomsInfo(BaseModel):
     loading_country: str | None = Field(default=None, description="적출국 코드 lodCntyCd (예: CN)")
     discharge_port: str | None = Field(default=None, description="양륙항 코드 dsprCd (예: KRPUS)")
     discharge_port_name: str | None = Field(default=None, description="양륙항 이름 dsprNm (예: 부산항)")
+    # 10-06 추가. UNI-PASS 값 그대로 (코드가 채움), 없으면 null. container_no는 LLM에 넘기지 않고 화면·엑셀에만 쓴다
+    forwarder_name: str | None = Field(default=None, description="포워더명 frwrEntsConm")
+    carrier_name: str | None = Field(default=None, description="선사·항공사 shcoFlco")
+    container_no: str | None = Field(default=None, description="컨테이너 번호 cntrNo. 여러 개면 ', '로 이은 한 문자열")
 
 
 class BerthInfo(BaseModel):

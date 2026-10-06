@@ -605,9 +605,16 @@ def _masked_history(history: list[dict], refs: dict[str, str]) -> list[dict]:
 
 
 def _cargo_summary(resp: AgentResponse) -> dict:
-    """화물 조회 결과 중 LLM에 돌려줄 부분. 다음 도구를 고르는 데 필요한 것만 준다 (배 이름·MMSI·호출부호, 도착 예정).
-    근거 카드와 통관 정보는 뺀다: 자세한 질문은 ask_cargo가 지난 결과 전체로 답한다. B/L은 응답에 없다."""
-    return resp.model_dump(mode="json", include={"status", "verdict", "days_margin", "missing_inputs", "vessel", "eta", "answer"})
+    """화물 조회 결과 중 LLM에 돌려줄 부분. 다음 도구를 고르는 데 필요한 것만 준다 (배 이름·MMSI·호출부호, 도착 예정, 포워더·선사 이름).
+    근거 카드와 통관 정보는 뺀다: 자세한 질문은 ask_cargo가 지난 결과 전체로 답한다. B/L은 응답에 없다.
+    포워더·선사 이름만 통관 정보에서 꺼내 준다 (10-06 결정). "포워더가 어디예요" 같은 물음에 도구를 또 부르지 않고 답하게 하려는 것이다.
+    컨테이너 번호(container_no)는 B/L처럼 화물을 특정하는 번호라 LLM에 주지 않는다: include에 없고 아래 customs도 두 칸만 만든다.
+    두 이름은 UNI-PASS 외부 글자라 주입 모양이면 뺀다 (SDD 7절, llm._clean_customs와 같은 예방 조치)."""
+    summary = resp.model_dump(mode="json", include={"status", "verdict", "days_margin", "missing_inputs", "vessel", "eta", "answer"})
+    if resp.customs is not None:
+        names = {"forwarder_name": resp.customs.forwarder_name, "carrier_name": resp.customs.carrier_name}
+        summary["customs"] = {key: (None if guard.looks_like_injection(value) else value) for key, value in names.items()}
+    return summary
 
 
 def _tool_error(code: str, message: str) -> dict:

@@ -492,6 +492,12 @@ def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
     return "\n\n".join(parts)
 
 
+# 판정 LLM 입력에서 뺄 통관 칸. B/L(bl_masked)·MRN·조회 시각 외에, 10-06에 붙은 포워더·선사·컨테이너 번호도 뺀다:
+# 판정에 쓰이지 않고(프롬프트·평가 결과를 그대로 두려고), 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 LLM에 줄 수 없다.
+# 포워더·선사 이름은 채팅 에이전트가 받는다 (services/chat.py _cargo_summary)
+JUDGE_CUSTOMS_EXCLUDE = {"bl_masked", "mrn", "fetched_at", "forwarder_name", "carrier_name", "container_no"}
+
+
 def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None,
                  trusted_eta: datetime | None = None, sale_due_date: date | None = None,
                  table_verdict: str | None = None, verdict_mode: str | None = None) -> str:
@@ -514,7 +520,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
         "sale_due_date": sale_due_date.isoformat() if sale_due_date else None,
         "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
-        "customs": _clean_customs(customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"})) if customs else None,
+        "customs": _clean_customs(customs.model_dump(mode="json", exclude=JUDGE_CUSTOMS_EXCLUDE)) if customs else None,
         "needs_broker": needs_broker(customs.stage_name) if customs and customs.stage_name else None,
     }
     return json.dumps(data, ensure_ascii=False)
@@ -858,13 +864,13 @@ DOC_EXTRACT_SCHEMA = {
         "pol": {"type": ["string", "null"]},
         "pod": {"type": ["string", "null"]},
         "item": {"type": ["string", "null"]},
+        "etd": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "doc_kind": {"type": ["string", "null"], "enum": ["bl", "arrival_notice", None]},
         "original_bl": {"type": ["string", "null"], "enum": ["required", "surrendered", None]},
         "original_bl_text": {"type": ["string", "null"]},
         "to_order_bank": {"type": ["boolean", "null"]},
         "to_order_bank_text": {"type": ["string", "null"]},
         "freight_term": {"type": ["string", "null"], "enum": ["prepaid", "collect", None]},
-        "etd": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "freight_term_text": {"type": ["string", "null"]},
         "incoterm": {"type": ["string", "null"], "enum": ["CIF", "FOB", "CFR", None]},
         "contact_company": {"type": ["string", "null"]},
@@ -893,15 +899,15 @@ class DocFieldsOutput(BaseModel):
     contact_company: str | None = None    # 화물 인도 연락처 회사 (개인 이름 아님)
     contact_role: str | None = None       # 포워더 / 관세사 / 수출자 / 판매처
     contact_phone: str | None = None      # 회사·부서 전화 (개인 휴대폰 아님)
+    # 10-06 출항일 YYYY-MM-DD (A/N의 ETD, B/L의 Shipped on board). 기본값 None: 프롬프트가 Langfuse에 등록되기 전이라
+    # LLM이 이 칸을 모르거나 null로 두어도 읽힌다. 모양·서류 속 존재·eta와의 순서 검사는 doc_ocr.check_fields
+    etd: str | None = None
 
 
 def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnswer:
     """B/L을 가린 OCR 글자에서 선명·항차·ETA·선적항·양하항·품명과 B/L 조건·연락처를 옮겨 적는다. output은 DocFieldsOutput.
 
     OCR 글자는 사용자 서류라 데이터로만 넘긴다 (SDD 7절 신뢰 경계, 프롬프트에도 명시).
-    # 10-06 출항일 YYYY-MM-DD (A/N의 ETD, B/L의 Shipped on board). 기본값 None: 프롬프트가 Langfuse에 등록되기 전이라
-    # LLM이 이 칸을 모르거나 null로 두어도 읽힌다. 모양·서류 속 존재·eta와의 순서 검사는 doc_ocr.check_fields
-    etd: str | None = None
     """
     return _ask_json(DOC_EXTRACT_PROMPT, masked_text, "doc_extract", DOC_EXTRACT_SCHEMA, DocFieldsOutput, model,
                      skills=())

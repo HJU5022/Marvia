@@ -1185,3 +1185,29 @@ def test_delete_failure_is_reported_not_hidden(monkeypatch):
     monkeypatch.setattr(history_router, "connect", broken)
     with TestClient(app) as client:
         assert client.delete("/api/history", headers=headers).status_code == 503
+
+
+def test_party_fields_reach_response_released_path():
+    """포워더·선사·컨테이너 번호가 C1 응답 customs에 그대로 실린다 (10-06). 반출 규칙 경로(_released).
+    HTTP를 거치지 않고 응답 만드는 함수를 직접 부른다: 라우터 테스트는 인증 설정에 기대지 않는 쪽이 환경에 덜 흔들린다"""
+    record = CustomsRecord(ship_name="TEST STAR", discharge_port="KRPUS", stage_name="반출신고",
+                           forwarder_name="테스트포워딩(주)", carrier_name="테스트선사(주)", container_no="TSTU1234560",
+                           bl_masked="TEST****0001", fetched_at=NOW)
+    info = agent_router._released(record).customs
+    assert (info.forwarder_name, info.carrier_name, info.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560")
+
+
+def test_party_fields_reach_response_judged_path():
+    """같은 값이 LLM 판정 경로(_customs_info)에서도 실린다. 컨테이너가 여러 개면 이어 붙인 문자열 그대로"""
+    record = CustomsRecord(ship_name="TEST STAR", stage_name="반입신고", forwarder_name="테스트포워딩(주)",
+                           carrier_name="테스트선사(주)", container_no="TSTU1234560, TSTU7654321",
+                           bl_masked="TEST****0001", fetched_at=NOW)
+    info = agent_router._customs_info(record, llm.CustomsExplanation(plain_explanation="터미널에 들어갔습니다.", next_stage="수입신고"))
+    assert (info.forwarder_name, info.carrier_name, info.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560, TSTU7654321")
+
+
+def test_party_fields_default_to_null():
+    """값이 없으면 세 칸 모두 null. 기존 응답 모양에 칸만 더해진다"""
+    record = CustomsRecord(ship_name="TEST STAR", stage_name="반출신고", bl_masked="TEST****0001", fetched_at=NOW)
+    info = agent_router._released(record).customs
+    assert (info.forwarder_name, info.carrier_name, info.container_no) == (None, None, None)

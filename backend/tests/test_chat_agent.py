@@ -645,3 +645,31 @@ def test_date_digits_are_not_masked_as_bl():
 
 def test_bad_date_type_is_ignored():
     assert svc._valid_date(20261010) is None and svc._valid_date(["2026-10-10"]) is None
+
+
+# ── 포워더·선사 이름은 LLM에 가고 컨테이너 번호는 안 간다 (10-06) ──
+
+def test_check_cargo_gives_llm_forwarder_and_carrier_but_not_container(monkeypatch):
+    from backend.app.routers.agent import _response
+    from backend.app.schemas.agent import CustomsInfo
+
+    calls = _agent(monkeypatch, [("check_cargo", {"bl_ref": "[BL1]"})], [""])
+    info = CustomsInfo(stage_code="", stage_name="반입신고", plain_explanation="x", next_stage=None, needs_broker=False,
+                       forwarder_name="테스트포워딩(주)", carrier_name="테스트선사(주)", container_no="TSTU1234560")
+    run = lambda req: _response(status="ok", answer="괜찮습니다", customs=info)  # noqa: E731 - 한 줄 가짜 판정 흐름
+    svc.handle("TESTBL01 괜찮아?", "s1", None, run)
+
+    result = calls[0]["tool_calls"][0]["result"]  # LLM이 받은 도구 결과
+    assert result["customs"] == {"forwarder_name": "테스트포워딩(주)", "carrier_name": "테스트선사(주)"}
+    assert "TSTU1234560" not in str(calls) and "container_no" not in str(calls)  # 문장·도구 결과 어디에도 컨테이너 번호가 없다
+
+
+def test_cargo_summary_drops_injection_like_names():
+    from backend.app.routers.agent import _response
+    from backend.app.schemas.agent import CustomsInfo
+
+    info = CustomsInfo(stage_code="", stage_name="반입신고", plain_explanation="x", next_stage=None, needs_broker=False,
+                       forwarder_name=INJECTION, carrier_name="테스트선사(주)")
+    assert svc._cargo_summary(_response(status="ok", answer="a", customs=info))["customs"] == \
+        {"forwarder_name": None, "carrier_name": "테스트선사(주)"}
+    assert "customs" not in svc._cargo_summary(_response(status="ok", answer="a"))  # 통관 정보가 없으면 칸도 없다

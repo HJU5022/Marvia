@@ -447,6 +447,7 @@ def _released(customs: CustomsRecord) -> AgentResponse:
             needs_broker=signals_service.needs_broker(customs.stage_name),
             history=[s.model_dump(mode="json") for s in customs.stage_history],
             **customs.route_fields(),
+            **customs.party_fields(),  # 포워더·선사·컨테이너 (10-06)
         ),
         berth=BerthInfo(facility=None, shed=customs.shed_name),
         evidence=build_evidence(customs, None, None, None, None, None),
@@ -892,6 +893,7 @@ def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
         needs_broker=signals_service.needs_broker(customs.stage_name),
         history=[s.model_dump(mode="json") for s in customs.stage_history],
         **customs.route_fields(),  # 어디서 어디로 (10-01)
+        **customs.party_fields(),  # 포워더·선사·컨테이너 (10-06)
     )
 
 
