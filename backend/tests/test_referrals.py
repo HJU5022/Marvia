@@ -140,3 +140,20 @@ def test_chat_with_bl_goes_to_lookup_not_out_of_scope(monkeypatch):
 def test_broker_only_has_official_tail():
     from backend.app.services import chat as svc
     assert svc.BROKER_ONLY.endswith(rule("broker_referral")) and "관세사" in svc.BROKER_ONLY
+
+
+def test_chat_broker_topic_without_cargo_is_fixed_even_without_agent(monkeypatch):
+    """에이전트를 못 쓰는 전 방식에서도 세액 질문은 관세사 고정 안내다 (10-06 재생 서버 실측)."""
+    from backend.app.services import chat as svc
+    monkeypatch.setattr(svc, "agent_enabled", lambda: False)
+    monkeypatch.setattr(svc, "_classic", lambda *a, **k: pytest.fail("세액 질문은 전 방식으로 가지 않는다"))
+    r = svc.handle("관세 얼마 나와?", "s-ref", None, lambda req: None)
+    assert r.reply == svc.BROKER_ONLY
+
+
+def test_chat_broker_word_in_broker_name_is_not_tax(monkeypatch):
+    """'관세사'는 세액 주제가 아니다 (BROKER_TOPIC 관세(?!사))."""
+    from backend.app.services import chat as svc
+    monkeypatch.setattr(svc, "agent_enabled", lambda: False)
+    monkeypatch.setattr(svc, "_classic", lambda *a, **k: svc.ChatResult(kind="message", reply="전 방식"))
+    assert svc.handle("관세사는 어떻게 찾아?", "s-ref", None, lambda req: None).reply == "전 방식"

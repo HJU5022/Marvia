@@ -546,6 +546,10 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
             # 에이전트가 첫 도구를 쓰기도 전에 실패했다 (키 없음, 도구를 붙이면 거절하는 모델·제공사 등).
             # 전 방식은 도구 없이 한 번 묻는 호출이라 이런 경우에도 된다 (10-02 실측: 도구를 붙이면 404인 제공사가 있었다)
             log_failure("chat_agent", e.kind)
+    if not refs and context is None and BROKER_TOPIC.search(masked):
+        # 세액·관세율·통관 가부는 화물이 없어도 관세사 고정 안내다. 에이전트 경로는 이 문구로 끝나지만(반복이면 짧게),
+        # 에이전트를 못 쓸 때의 전 방식(_classic)은 사용 안내로 빠졌다 (10-06 재생 서버 실측 "관세 얼마 나와?")
+        return ChatResult(kind="message", reply=BROKER_ONLY)
     return _classic(masked, refs, mrn, session_id, context, run_agent, user_id, today)
 
 
