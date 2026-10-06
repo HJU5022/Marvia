@@ -624,7 +624,39 @@ def _previous_response(request: AgentRequest, user_id: str | None = None) -> Age
     except Exception as e:
         log_failure("db_read", type(e).__name__)
         return None
-    return AgentResponse.model_validate(saved) if saved else None
+    return AgentResponse.model_validate(_open_containers(saved)) if saved else None
+
+
+# 이력(query_log.response)에 컨테이너 번호를 잠가 두는 칸 이름. AgentResponse에는 없는 칸이라 읽을 때 꺼내고 지운다
+SEALED_CONTAINER_KEY = "container_no_sealed"
+
+
+def _seal_containers(response: AgentResponse) -> dict:
+    """이력에 저장할 결과. 컨테이너 번호를 평문으로 남기지 않는다 (10-06 점검, #69).
+
+    - customs.container_no 칸은 빼고, 같은 번호를 B/L과 같은 열쇠로 잠가 SEALED_CONTAINER_KEY에 둔다 (crypto.encrypt, BL_ENCRYPTION_KEY).
+      빼기만 하면 후속 질문이 이력을 읽을 때 번호를 몰라 "컨테이너 번호 뭐야?"에 답하지 못한다 (10-06 정운 결정: 알아야 한다)
+    - 다른 글자(후속 답 등)에 남은 번호는 [CNTR1] 번호표로 바꾼다. 풀린 번호로 같은 번호표가 다시 만들어진다 (llm.container_tokens)
+    - 열쇠가 없으면(encrypt가 None) 잠근 칸 없이 저장한다. 그때는 번호를 잃는 쪽이 원문을 남기는 쪽보다 낫다
+    """
+    number = response.customs.container_no if response.customs else None
+    data = llm.hide_containers(
+        response.model_dump(mode="json", exclude={"customs_detail": True, "customs": {"container_no"}}),
+        llm.container_tokens(number))
+    sealed = crypto.encrypt(number) if number else None
+    if sealed:
+        data[SEALED_CONTAINER_KEY] = sealed
+    return data
+
+
+def _open_containers(saved: dict) -> dict:
+    """이력에서 꺼낸 결과에 잠가 둔 컨테이너 번호를 풀어 customs.container_no로 되돌린다. 못 풀면 칸 없이 둔다."""
+    saved = dict(saved)
+    sealed = saved.pop(SEALED_CONTAINER_KEY, None)
+    number = crypto.decrypt(sealed) if sealed else None
+    if number and isinstance(saved.get("customs"), dict):
+        saved["customs"] = {**saved["customs"], "container_no": number}
+    return saved
 
 
 def _same_cargo(rows: list[tuple[dict, str | None]], bl_no: str) -> dict | None:
@@ -965,10 +997,9 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 # 컨테이너 번호도 평문 이력에 남기지 않는다. B/L처럼 화물을 특정하는 번호다 (schemas/customs.py, 10-06 점검).
                 # 내 화물 현황 표에 필요한 값은 user_cargo가 따로 가진다 (services/cargo.py)
                 # 칸을 빼는 것만으로는 부족하다: 후속 답(answer)은 화면용으로 실제 번호를 되돌린 문장이라(_follow_up) 그대로 두면
-                # 다음 후속 질문 때 이력에서 원문이 LLM에 간다. 그래서 저장 전에 남은 글자 속 번호도 [CNTR1] 번호표로 바꾼다 (10-06 병합)
-                response=_as_jsonb(llm.hide_containers(
-                    response.model_dump(mode="json", exclude={"customs_detail": True, "customs": {"container_no"}}),
-                    llm.container_tokens(response.customs.container_no if response.customs else None))),
+                # 다음 후속 질문 때 이력에서 원문이 LLM에 간다. 그래서 저장 전에 남은 글자 속 번호도 [CNTR1] 번호표로 바꾼다 (10-06 병합).
+                # 번호 자체는 잠가서 따로 둔다(_seal_containers). 후속 질문이 이력을 읽을 때 풀어야 LLM이 번호표로 알고 답할 수 있다 (10-06 정운 결정)
+                response=_as_jsonb(_seal_containers(response)),
             )
     except Exception as e:
         log_failure("db_write", type(e).__name__)
