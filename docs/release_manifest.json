@@ -1,12 +1,24 @@
 {
   "_about": "Marvia 배포 단위 고정 (D10, 3주차 10강 PromptReleaseManifest). 프롬프트 버전만이 아니라 모델·평가셋·채점기·코드·배포를 한 묶음으로 적는다. 프롬프트를 바꾸면 이 파일도 같이 바꾼다. 되돌리기 절차는 rollback 항목.",
-  "release": "2026-10-06-r1",
-  "fixed_at": "2026-10-06T03:20+09:00",
-  "code": {"branch": "jeongun", "commit": "b986ada"},
+  "release": "2026-10-07-r2",
+  "fixed_at": "2026-10-07T00:40+09:00",
+  "code": {
+    "branch": "jeongun1 (PR #73 jeongun 뒤 작업, 아직 main 머지 전)",
+    "commit_prompts": "6ce682f",
+    "note": "배포 서버는 아직 r1 코드. deploy 칸은 PR #73·jeongun1 배포 뒤 갱신"
+  },
   "deploy": {
     "platform": "Railway",
-    "api": {"service": "marvia-api", "url": "https://marvia-api-production.up.railway.app", "deployment": "36e64fe6-032d-4976-9eb5-bda5b18c400f"},
-    "web": {"service": "marvia-web", "url": "https://marvia.up.railway.app", "deployment": "5ec00d64-8fc2-40e9-8a7f-4f83b96a64fb"},
+    "api": {
+      "service": "marvia-api",
+      "url": "https://marvia-api-production.up.railway.app",
+      "deployment": "36e64fe6-032d-4976-9eb5-bda5b18c400f"
+    },
+    "web": {
+      "service": "marvia-web",
+      "url": "https://marvia.up.railway.app",
+      "deployment": "5ec00d64-8fc2-40e9-8a7f-4f83b96a64fb"
+    },
     "replay_mode": true
   },
   "models": {
@@ -17,28 +29,69 @@
   },
   "prompts": {
     "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
-    "_release_label": "v1 — 아래 9개 버전에 Langfuse 라벨 v1을 붙여 이 묶음을 첫 정식 릴리스로 고정 (10-06). 다음 변경은 바꾼 프롬프트에만 v2",
-    "marvia-chat-agent": 10,
+    "_release_label": "v2 (10-07): v1 이후 바뀐 4개에만 Langfuse 라벨 v2. 안 바뀐 5개는 v1 그대로라 r2 묶음 = 아래 버전 전부. 다음 변경은 바꾼 것에만 v3",
+    "marvia-chat-agent": 11,
     "marvia-chat-route": 1,
-    "marvia-judge": 9,
+    "marvia-judge": 10,
     "marvia-judge-eval": 3,
-    "marvia-follow-up": 5,
+    "marvia-follow-up": 7,
     "marvia-pick-vessel": 3,
     "marvia-port-match": 1,
-    "marvia-doc-extract": 5,
+    "marvia-doc-extract": 6,
     "marvia-chat-title": 1,
     "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
   },
-  "knowledge": {"skills": "skills/*/*.md", "sha256_12": "dd37753b906c"},
-  "evaluation": {
-    "dataset": {"file": "evals/dataset.jsonl", "rows": 30, "sha256_12": "1d551b2c1d16", "last_changed": "2026-09-30"},
-    "runner": "python -m evals.run_eval --config b",
-    "last_result": {"file": "LLM_wiki 프로젝트/Marvia-근거/b_20261006_0045.json", "exact_match": "30/30", "gates": "4개 모두 통과", "p95_ms": 4507, "cost_per_request_usd": 0.0023}
+  "knowledge": {
+    "skills": "skills/*/*.md",
+    "sha256_12": "dd37753b906c"
   },
-  "change_reason": "판정 프롬프트 V11 재시도 줄이기(judge 9), 채팅 에이전트 도구·지켜보기·카톡 보내기·대화 목록(chat-agent 10)",
+  "evaluation": {
+    "dataset": {
+      "file": "evals/dataset.jsonl",
+      "rows": 30,
+      "sha256_12": "1d551b2c1d16",
+      "last_changed": "2026-09-30"
+    },
+    "runner": "python -m evals.run_eval --config b",
+    "last_result": {
+      "file": "evals/results/b_20261006_2306.json",
+      "model": "google/gemini-3.5-flash-lite",
+      "prompt_versions": "judge 10, judge-eval 3, follow-up 5 (r2 묶음 그대로 다시 돈 평가는 아직 없음)",
+      "git_commit": "18d6097-dirty",
+      "exact_match": "30/30",
+      "gates": "4개 모두 통과",
+      "p95_ms": 7446
+    }
+  },
+  "change_reason": "judge 10(통관 해설 예시를 이름+뜻으로), doc-extract 6(10-02 칸 + 출항일 etd), follow-up 6(D11 통관 진행 평가 금지)·7, chat-agent 11(화면 화물과 이어지지 않는 사람·이름은 되묻기, 트레이스 bc9c239a, A/B 124회)",
   "rollback": {
     "prompt": "Langfuse에서 해당 프롬프트의 이전 version에 production label을 붙인다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
-    "prompt_previous": {"marvia-judge": 8, "marvia-chat-agent": 9},
+    "prompt_previous": {
+      "marvia-chat-agent": 10,
+      "marvia-follow-up": 6,
+      "marvia-judge": 9,
+      "marvia-doc-extract": 5
+    },
     "code": "Railway에서 이전 deployment를 Redeploy 하거나, git revert 뒤 railway up"
+  },
+  "previous_release": {
+    "release": "2026-10-06-r1",
+    "fixed_at": "2026-10-06T03:20+09:00",
+    "code": {
+      "branch": "jeongun",
+      "commit": "b986ada"
+    },
+    "prompts": {
+      "marvia-chat-agent": 10,
+      "marvia-chat-route": 1,
+      "marvia-judge": 9,
+      "marvia-judge-eval": 3,
+      "marvia-follow-up": 5,
+      "marvia-pick-vessel": 3,
+      "marvia-port-match": 1,
+      "marvia-doc-extract": 5,
+      "marvia-chat-title": 1,
+      "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
+    }
   }
 }
