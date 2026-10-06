@@ -304,22 +304,29 @@ def test_xlsx_company_and_container_columns():
     assert [ws.cell(3, c).value for c in (7, 8, 9)] == [None, None, None]
 
 
-def test_xlsx_default_bl_is_masked():
+def test_xlsx_default_bl_is_original():
+    """기본값은 원본이다 (10-06 결정, SDD 3.5 예외). 수입자가 그 번호로 다른 곳에서 화물을 조회한다."""
     db = FakeConn()
     db.add("MOCKBL20261001")
-    assert cargo_sheet.XLSX_BL_SOURCE == "masked"
-    assert _sheet(db)["C2"].value == "MOC*******1001"
-    assert "MOCKBL20261001" not in {c.value for row in _sheet(db).iter_rows() for c in row}
-
-
-def test_xlsx_original_bl_switch(monkeypatch):
-    """XLSX_BL_SOURCE를 "original"로 바꾸면 잠근 원본을 열어 적는다. 못 열면 가린 값으로 대신한다."""
-    monkeypatch.setattr(cargo_sheet, "XLSX_BL_SOURCE", "original")
-    db = FakeConn()
-    db.add("MOCKBL20261001")
-    broken = db.add("MOCKBL20261002", bl_encrypted="not-a-token")
+    assert cargo_sheet.XLSX_BL_SOURCE == "original"
     assert _sheet(db)["C2"].value == "MOCKBL20261001"
-    assert _sheet(db)["C3"].value == broken["bl_masked"]
+
+
+def test_xlsx_original_falls_back_to_masked_when_decrypt_fails():
+    """원본을 열지 못하면(열쇠 없음·잘못된 토큰) 빈 칸이 아니라 가린 값으로 대신한다."""
+    db = FakeConn()
+    broken = db.add("MOCKBL20261002", bl_encrypted="not-a-token")
+    assert _sheet(db)["C2"].value == broken["bl_masked"]
+
+
+def test_xlsx_masked_switch(monkeypatch):
+    """XLSX_BL_SOURCE를 "masked"로 돌리면 가린 값만 적히고 원본은 파일 어디에도 없다."""
+    monkeypatch.setattr(cargo_sheet, "XLSX_BL_SOURCE", "masked")
+    db = FakeConn()
+    db.add("MOCKBL20261001")
+    ws = _sheet(db)
+    assert ws["C2"].value == "MOC*******1001"
+    assert "MOCKBL20261001" not in {c.value for row in ws.iter_rows() for c in row}
 
 
 def test_xlsx_text_cells_never_become_formulas():
