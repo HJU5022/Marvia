@@ -180,9 +180,6 @@ export function MemoryPanel() {
   const empty = memory && memory.available && memory.items.length === 0 && memory.cargo.length === 0;
   return <section ref={sectionRef} className="memory-panel" aria-labelledby="memory-title">
     <span id="memory-title" className="sr-only">기억한 화물</span>
-    <p className="st-intro">조회하고 대화한 내용 중 다시 쓸 만한 것만 기억해요. 받아야 하는 날, 할 일, 거래처 같은 것들이에요.
-      배 이름·입항일·통관 단계는 조회할 때마다 새로 확인하므로 기억하지 않아요.
-      끝난 화물은 반출 후 3년 보관 뒤 그 메모와 함께 지워져요.</p>
     {!viewable ? <p className="st-note account-off">{!authEnabled
       ? '지금은 로그인 기능이 꺼져 있어 기억을 만들지 않아요.'
       : '로그인하면 Marvia가 기억한 내용을 보고 지울 수 있어요.'}</p>

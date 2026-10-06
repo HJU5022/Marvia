@@ -114,7 +114,6 @@ export function KakaoPanel() {
       {status && !status.configured && <p className="kakao-state off">사용할 수 없음<small>카카오 연결이 아직 준비되지 않아 쓸 수 없어요.</small></p>}
       {status && status.configured && !status.linked && <>
         <p className="kakao-state off">연결되지 않음</p>
-        <p className="st-sub">카카오톡 "나와의 채팅"으로 알림을 받을 수 있어요. 연결은 언제든 끊을 수 있어요.</p>
         <div className="kakao-actions">
           <button type="button" className="button primary" data-focus="connect" onClick={() => void connect()} disabled={busy !== ''}>
             {busy === 'connect' ? <LoaderCircle size={16} className="spin"/> : <MessageCircle size={16}/>}카카오톡 연결</button>
@@ -122,7 +121,6 @@ export function KakaoPanel() {
       </>}
       {status && status.configured && status.linked && <>
         <p className="kakao-state on">연결됨</p>
-        <p className="st-sub">판정이 바뀌면 카카오톡 "나와의 채팅"으로도 알려 드려요.</p>
         {/* 서버가 값을 보낸 것만 보여 준다. 아직 보낸 적이 없으면 마지막 발송 줄은 없다 (M7) */}
         {(status.linked_at || status.last_sent_at) && <p className="st-sub kakao-times">
           {status.linked_at && <>{dateTime(status.linked_at, true)}에 연결</>}

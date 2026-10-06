@@ -1,1 +1,152 @@
-/* 사이드바·계정 메뉴·하단 정보 (10-07 정운 실사용 16·18·29·30·31번) */
+/* 사이드바·계정 창·상단 줄·하단 링크 (10-07 정운 실사용 16·18·29·30·31번 개편).
+   새 클래스(sb-*)로 짜고, 옛 규칙이 남은 틀 클래스(.sidebar .workspace .workspace-bar .app-footer .app-shell)만 이 파일에서 덮는다.
+   globals.css는 건드리지 않는다. 글자 크기·굵기·선 색은 공용 토큰(--fs-*, --fw-*, --hairline)을 쓰고 값은 폴백이다 (10-07 정운 8번). */
+
+/* ---- 틀: 폭은 --rail-width 하나가 정한다. 본문(.workspace)이 이 값만큼 밀리므로 펼쳐도 덮지 않는다 ---- */
+.app-shell{--sb-w:248px;--rail-width:var(--sb-w)}
+.app-shell.rail-collapsed{--sb-w:60px}
+.app-shell .workspace{transition:margin-left .22s var(--ease,ease),width .22s var(--ease,ease)}
+
+.app-shell .sidebar.sb{
+  position:fixed;inset:0 auto 0 0;width:var(--sb-w);height:100dvh;z-index:60;
+  display:flex;flex-direction:column;align-items:stretch;
+  padding:12px 10px 10px;overflow:visible;
+  background:var(--surface,#fff);border-right:1px solid var(--hairline,#E5E8EB);
+  font-size:var(--fs-sm,13px);color:var(--text,#191f28);
+  transition:width .22s var(--ease,ease),transform .22s var(--ease,ease);
+}
+.sb button{font:inherit;cursor:pointer}
+.sb hr{margin:6px 0;border:0;border-top:1px solid var(--hairline,#E5E8EB)}
+
+/* 맨 위: 로고 + 접기 */
+.sb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;height:40px;padding:0 4px 0 6px}
+.sb-brand{display:flex;align-items:center;gap:8px;min-width:0}
+.sb-brand img{display:block;width:26px;height:26px;border-radius:7px}
+.sb-brand strong{font-size:var(--fs-md,15px);font-weight:var(--fw-semibold,600);letter-spacing:-.01em}
+.sb-collapse,.sb-close,.sb-burger{display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted,#5f6b7a);cursor:pointer}
+.sb-collapse:hover,.sb-close:hover,.sb-burger:hover{background:var(--hover,#f2f4f6);color:var(--text,#191f28)}
+.sb-close,.sb-burger{display:none}
+
+/* "새 대화": 이 사이드바의 유일한 채운 단추 */
+.sb-new{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin:12px 0 10px;padding:0 12px;border:0;border-radius:8px;background:var(--text,#191f28);color:#fff;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);cursor:pointer}
+.sb-new:hover:not(:disabled){background:#2b323d}
+.sb-new:disabled{opacity:.5;cursor:not-allowed}
+
+/* 가운데: 대화 목록이 가장 넓고 스스로 스크롤한다. 메뉴는 그 아래 고정 */
+.sb-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin}
+.sb .conv-section.sb-conv{flex:1 1 0;min-height:120px;margin:0;padding:0 0 8px;border:0;overflow-y:auto;scrollbar-width:thin}
+.sb-caption{padding:4px 8px;font-size:var(--fs-xs,12px);font-weight:var(--fw-medium,500);color:var(--muted,#5f6b7a);letter-spacing:.02em}
+.sb-nav{flex:none;display:flex;flex-direction:column;gap:1px;padding-top:6px}
+.sb-conv + .sb-nav{border-top:1px solid var(--hairline,#E5E8EB)}
+/* 옛 규칙(.sidebar nav: 700px 이하 가로 한 줄, 900px 이하 위 여백)을 덮는다 */
+.app-shell .sb nav.sb-nav{flex-direction:column;justify-content:flex-start;margin:0;gap:1px}
+.app-shell .sb .sb-conv + nav.sb-nav{margin-top:2px}
+
+/* 메뉴 한 줄 */
+.sb-item,.sb-group-head{display:flex;align-items:center;gap:10px;width:100%;height:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--text-2,#4e5968);font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400)}
+.sb-item:hover,.sb-group-head:hover{background:var(--hover,#f2f4f6);color:var(--text,#191f28)}
+.sb-item.active{background:var(--hover,#f2f4f6);color:var(--text,#191f28);font-weight:var(--fw-medium,500)}
+.sb-item svg,.sb-group-head svg{flex:none;color:var(--muted,#5f6b7a)}
+.sb-item.active svg{color:var(--text,#191f28)}
+.sb-group-head .chev{margin-left:auto;transition:transform .18s var(--ease,ease)}
+.sb-group.open .sb-group-head .chev{transform:rotate(180deg)}
+.sb-group-head.has-active{color:var(--text,#191f28)}
+.sb-group-items{display:flex;flex-direction:column;gap:1px;margin:2px 0 2px 15px;padding-left:6px;border-left:1px solid var(--hairline,#E5E8EB)}
+.sb-item.sub svg{width:14px;height:14px}
+.sb-item:focus-visible,.sb-group-head:focus-visible,.sb-new:focus-visible,.sb-account:focus-visible,.sb-collapse:focus-visible,.sb-pop a:focus-visible,.sb-pop button:focus-visible{outline:2px solid var(--brand,#2962f5);outline-offset:-2px}
+
+/* 맨 아래: 계정 줄과 그 위로 뜨는 창 */
+.sb-foot{position:relative;flex:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline,#E5E8EB)}
+.sb-account{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 8px;border:0;border-radius:8px;background:transparent;text-align:left;color:var(--text,#191f28)}
+.sb-account:not(.static):hover{background:var(--hover,#f2f4f6)}
+.sb-account.static{color:var(--muted,#5f6b7a);cursor:default}
+.sb-avatar{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--hover,#f2f4f6);border:1px solid var(--hairline,#E5E8EB);font-size:var(--fs-xs,12px);font-weight:var(--fw-medium,500);color:var(--text,#191f28)}
+.sb-account-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm,13px)}
+.sb-account .chev{flex:none;color:var(--muted,#5f6b7a)}
+.sb-pop{position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:5;display:flex;flex-direction:column;padding:4px;background:var(--surface,#fff);border:1px solid var(--hairline,#E5E8EB);border-radius:10px;box-shadow:0 8px 24px #191f281a;animation:m-pop .15s var(--ease,ease) both}
+.sb-pop a,.sb-pop button{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--text,#191f28);font-size:var(--fs-sm,13px);cursor:pointer}
+.sb-pop a:hover,.sb-pop button:hover{background:var(--hover,#f2f4f6)}
+.sb-pop svg{color:var(--muted,#5f6b7a)}
+.sb-pop hr{margin:4px 2px}
+.sb-pop-user{display:none;padding:6px 10px 4px;font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a);overflow-wrap:anywhere}
+
+/* 대화 목록 (ConversationList). 사이드바와 좁은 화면 패널이 같이 쓴다 */
+.sb-cl{display:flex;flex-direction:column}
+.sb-cl-new{display:flex;align-items:center;gap:8px;height:36px;margin-bottom:8px;padding:0 10px;border:1px solid var(--hairline,#E5E8EB);border-radius:8px;background:var(--surface,#fff);color:var(--text,#191f28);font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);cursor:pointer}
+.sb-cl-new:hover:not(:disabled){background:var(--hover,#f2f4f6)}
+.sb-cl-new:disabled,.sb-cl-title:disabled,.sb-cl-del:disabled{opacity:.5;cursor:not-allowed}
+.sb-cl-group h3{margin:12px 0 2px;padding:0 8px;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:0;color:#8b95a1}
+.sb-cl-group:first-of-type h3{margin-top:2px}
+.sb-cl-group ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.sb-cl-row{display:flex;align-items:center;min-width:0;border-radius:6px}
+.sb-cl-row:hover,.sb-cl-row.active{background:var(--hover,#f2f4f6)}
+.sb-cl-title{flex:1;min-width:0;height:32px;padding:0 8px;border:0;background:transparent;text-align:left;color:var(--text-2,#4e5968);font:inherit;font-size:var(--fs-sm,13px);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-cl-row.active .sb-cl-title{color:var(--text,#191f28);font-weight:var(--fw-medium,500)}
+.sb-cl-del{flex:none;display:grid;place-items:center;width:28px;height:32px;border:0;background:transparent;color:var(--muted,#5f6b7a);opacity:0;cursor:pointer;transition:opacity .15s}
+.sb-cl-row:hover .sb-cl-del,.sb-cl-row:focus-within .sb-cl-del{opacity:1}
+.sb-cl-del:hover:not(:disabled){color:var(--danger,#c12f2f)}
+.sb-cl-confirm{flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px 8px;font-size:var(--fs-xs,12px);color:var(--text,#191f28)}
+.sb-cl-confirm span{flex:1 1 100%}
+.sb-cl-confirm button{height:28px;padding:0 10px;border:1px solid var(--hairline,#E5E8EB);border-radius:6px;background:var(--surface,#fff);font:inherit;font-size:var(--fs-xs,12px);cursor:pointer}
+.sb-cl-confirm .danger{border-color:var(--danger-border,#f1c9c5);color:var(--danger,#c12f2f)}
+.sb-cl-confirm button:disabled{opacity:.5;cursor:not-allowed}
+.sb-cl-empty,.sb-cl-error{margin:0;padding:4px 8px;font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
+.sb-cl-error{color:var(--danger,#c12f2f)}
+
+/* ---- 접은 사이드바: 아이콘 줄 (넓은 화면만. 클래스는 Shell이 넓은 화면에서만 단다) ---- */
+.rail-collapsed .sb{align-items:center;padding:12px 0 10px}
+.rail-collapsed .sb-head{flex-direction:column;justify-content:flex-start;height:auto;gap:6px;padding:0}
+.rail-collapsed .sb-brand strong,.rail-collapsed .sb-new span,.rail-collapsed .sb-item span,.rail-collapsed .sb-account-name,.rail-collapsed .sb-account .chev{display:none}
+.rail-collapsed .sb-new{width:36px;padding:0;margin:12px 0 10px}
+.rail-collapsed .sb-body{overflow:visible;align-items:center}
+.rail-collapsed .sb-nav,.rail-collapsed .sb-foot{width:100%;align-items:center;padding-left:10px;padding-right:10px}
+.rail-collapsed .sb-item{justify-content:center;width:40px;padding:0;margin:0 auto}
+.rail-collapsed .sb-account{justify-content:center;width:40px;padding:0;margin:0 auto}
+.rail-collapsed .sb-pop{left:calc(100% + 8px);right:auto;bottom:0;width:220px}
+.rail-collapsed .sb-pop-user{display:block}
+.rail-collapsed .sb-account[aria-expanded=true]::after{display:none!important}
+/* 접은 줄의 말풍선 이름표 (자체 속성 data-sbtip) */
+.rail-collapsed [data-sbtip]{position:relative}
+.rail-collapsed [data-sbtip]:hover::after,.rail-collapsed [data-sbtip]:focus-visible::after{content:attr(data-sbtip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);z-index:90;padding:4px 8px;border-radius:6px;background:var(--text,#191f28);color:#fff;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);white-space:nowrap;pointer-events:none}
+.rail-collapsed .conv-toggle{display:inline-flex}
+
+/* ---- 상단 줄 ---- */
+.app-shell .workspace-bar{height:48px;padding:0 24px;gap:12px;justify-content:flex-start;background:var(--surface,#fff);border-bottom:1px solid var(--hairline,#E5E8EB);font-size:var(--fs-sm,13px)}
+.app-shell .workspace-bar>span.sb-crumb{flex:1;min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2,#4e5968);font-weight:var(--fw-regular,400)}
+.app-shell .workspace-meta{flex:none;gap:12px;margin-left:auto}
+.app-shell .workspace-bar .port-label,.app-shell .workspace-bar .replay-chip{font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
+.app-shell .workspace-bar .conv-toggle{min-height:28px;padding:0 10px;font-size:var(--fs-xs,12px);font-weight:var(--fw-medium,500)}
+
+/* ---- 하단: 개인정보처리방침 · 이용약관 (LegalLinks). 접속 시각 안내 문구는 뺐다 (10-07 정운 23번) ---- */
+.app-shell .app-footer{justify-content:center;padding:20px 24px 24px;border-top:0;font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
+
+/* ---- 로그인 전·회원 정보 입력·정지 안내: 사이드바 없는 전체 화면 (10-07 정운 25번) ---- */
+.entry-shell{min-height:100dvh;background:var(--surface,#fff)}
+.entry-shell main{padding:0;min-height:100dvh}
+.entry-shell .login-page{min-height:100dvh}
+
+/* ---- 좁은 화면(900px 이하): 사이드바는 왼쪽에서 나오는 서랍 ---- */
+.sb-backdrop{display:none}
+@media(max-width:900px){
+  .app-shell{--rail-width:0px}
+  .app-shell .workspace{margin-left:0;width:100%}
+  .app-shell .sidebar.sb{width:min(300px,86vw);padding:12px 10px 10px;transform:translateX(-100%);z-index:80}
+  .app-shell.sb-open .sidebar.sb{transform:none;box-shadow:0 0 40px #191f282e}
+  .sb-collapse{display:none}
+  .sb-close,.sb-burger{display:grid}
+  .sb-backdrop{display:block;position:fixed;inset:0;z-index:70;border:0;background:#191f2859;cursor:pointer}
+  /* 서랍 안에는 대화 목록이 들어간다. 옛 규칙(900px 이하 숨김)을 덮는다. 40:60 화면에서는 chat.css가 계속 숨긴다 */
+  body:not([data-split]) .app-shell .sb .conv-section.sb-conv{display:block}
+  .app-shell .workspace-bar .conv-toggle{display:none}
+  body[data-split] .app-shell .workspace-bar .conv-toggle{display:inline-flex}
+  .sb-cl-del{opacity:.7}
+  .app-shell .workspace-bar{padding:0 12px}
+  .app-shell .workspace-bar .port-label{display:none}
+}
+@media(max-width:700px){
+  .app-shell .app-footer{flex-direction:row;padding:16px 16px 20px}
+  .app-shell .workspace-bar .replay-chip{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .app-shell .workspace,.app-shell .sidebar.sb{transition:none}
+}

@@ -1,5 +1,6 @@
 'use client';
-/** 사이드바의 "대화" 목록 (10-06 결정). ChatGPT·Claude처럼 위에 "새 대화", 아래에 날짜별 묶음, 지금 보는 대화는 강조한다.
+/** 사이드바의 "대화" 목록 (10-06 결정). ChatGPT·Claude처럼 날짜별 묶음, 지금 보는 대화는 강조한다.
+ * "새 대화" 버튼은 사이드바 맨 위로 옮겼다(10-07 정운 29번). 이 목록은 withNew일 때만(좁은 화면 패널) 맨 위에 그린다.
  * 목록·열기·삭제 상태는 모두 AppProvider에 있고 여기서는 그리기와 "정말 지울까요?" 확인 한 단계만 가진다.
  * 로그인했을 때만 Shell이 그린다. 넓은 화면은 사이드바 안에, 좁은 화면(900px 이하)은 상단바의 "대화" 버튼이 여는 패널 안에 같은 컴포넌트를 쓴다.
  */
@@ -18,7 +19,7 @@ function groupOf(iso: string, now: Date): typeof GROUPS[number] {
   return days <= 0 ? '오늘' : days === 1 ? '어제' : days <= 7 ? '지난 7일' : days <= 30 ? '지난 30일' : '그 이전';
 }
 
-export function ConversationList({onPick}: {onPick?: () => void}) {
+export function ConversationList({onPick, withNew = false}: {onPick?: () => void; withNew?: boolean}) {
   const {conversations, activeId, loading, opening, newConversation, openConversation, removeConversation} = useApp();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -42,24 +43,25 @@ export function ConversationList({onPick}: {onPick?: () => void}) {
     finally { setBusyId(null); }
   }
 
-  return <div className="conv-list">
-    <button type="button" className="conv-new" onClick={start} disabled={locked}><span>새 대화</span><Plus size={16} aria-hidden="true"/></button>
-    {error && <p role="alert" className="conv-error">{error}</p>}
-    {grouped.length === 0 ? <p className="conv-empty">아직 저장된 대화가 없어요.</p>
-      : grouped.map(({g, items}) => <section key={g} className="conv-group" aria-label={g}>
+  // 클래스는 sb-cl-* (styles/sidebar.css). 사이드바와 좁은 화면 패널이 같은 모양을 쓴다
+  return <div className="sb-cl">
+    {withNew && <button type="button" className="sb-cl-new" onClick={start} disabled={locked}><Plus size={15} aria-hidden="true"/><span>새 대화</span></button>}
+    {error && <p role="alert" className="sb-cl-error">{error}</p>}
+    {grouped.length === 0 ? <p className="sb-cl-empty">저장된 대화가 없어요</p>
+      : grouped.map(({g, items}) => <section key={g} className="sb-cl-group" aria-label={g}>
         <h3>{g}</h3>
         <ul>{items.map(c => {
           const active = c.id === activeId;
-          return <li key={c.id} className={`conv-row${active ? ' active' : ''}`}>
+          return <li key={c.id} className={`sb-cl-row${active ? ' active' : ''}`}>
             {confirmId === c.id
-              ? <div className="conv-confirm" role="group" aria-label="대화 지우기 확인">
+              ? <div className="sb-cl-confirm" role="group" aria-label="대화 지우기 확인">
                   <span>이 대화를 지울까요?</span>
                   <button type="button" onClick={() => setConfirmId(null)} disabled={busyId === c.id}>취소</button>
-                  <button type="button" className="conv-danger" onClick={() => void remove(c.id)} disabled={busyId === c.id}>{busyId === c.id ? '지우는 중' : '지우기'}</button>
+                  <button type="button" className="danger" onClick={() => void remove(c.id)} disabled={busyId === c.id}>{busyId === c.id ? '지우는 중' : '지우기'}</button>
                 </div>
               : <>
-                  <button type="button" className="conv-title" onClick={() => void open(c)} disabled={locked && !active} aria-current={active ? 'true' : undefined} title={c.title}>{c.title || '제목 없는 대화'}</button>
-                  <button type="button" className="conv-delete" onClick={() => { setError(''); setConfirmId(c.id); }} disabled={locked} aria-label={`${c.title || '제목 없는 대화'} 지우기`}><Trash2 size={14}/></button>
+                  <button type="button" className="sb-cl-title" onClick={() => void open(c)} disabled={locked && !active} aria-current={active ? 'true' : undefined} title={c.title}>{c.title || '제목 없는 대화'}</button>
+                  <button type="button" className="sb-cl-del" onClick={() => { setError(''); setConfirmId(c.id); }} disabled={locked} aria-label={`${c.title || '제목 없는 대화'} 지우기`}><Trash2 size={14}/></button>
                 </>}
           </li>;
         })}</ul>
