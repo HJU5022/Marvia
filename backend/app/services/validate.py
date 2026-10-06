@@ -15,6 +15,7 @@ from __future__ import annotations
 import difflib
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import get_args
 
 from backend.app.schemas.agent import AgentResponse
@@ -230,55 +231,57 @@ def quote_supports(reply: str, quote: str, source: str, user_text: str = "") -> 
 # V14 근거 없는 낱말 검사 (10-06 실측): 근거 조각이 Skill에 있고 답과 낱말 하나가 겹쳐도, 답의 나머지는 모델 지식일 수 있다.
 # 실제 사례: "포워더 연락이 안 될 때" 답에 "화물 인도증"·"양륙 터미널"이 나왔는데 Skill 어디에도 없다. 그런데 꼬리표 없이 Skill 답으로 나갔다.
 # 그래서 답의 핵심 명사 중 Skill 원문 어디에도 없는 것을 센다. UNSUPPORTED_MIN개 이상이면 Skill 답이 아니다.
+# 명사만 보는 이유 (10-06 실측): 정규식과 어미 떼기로 낱말을 뽑았더니 Skill 문장을 풀어 쓴 진짜 Skill 답이 계속 낮춰졌다. 걸린 것은 남아·있거·올지·아실·
+# 넘길·살펴보고·고치지·입력하처럼 동사·형용사의 활용형이었다. 지어낸 내용(화물 인도증, 양륙 터미널)은 전부 명사라서, 형태소 분석기(Kiwi)로
+# 명사(NNG 일반명사, NNP 고유명사)만 뽑으면 활용형은 애초에 세지 않는다. 연속한 명사를 합쳐 복합어로 보면 오탐이 늘어서(시험 중 확인) 명사 하나씩 본다.
+# 근거: 위키 프로젝트/Marvia-근거/kiwi_trial_20261006/ (15건 중 13건이 기대대로, 나머지 하나는 자동식별장치처럼 Skill에 없는 진짜 용어).
+# 라이선스: kiwipiepy 0.24 이상은 Apache-2.0 (0.23.2 이하는 LGPL이라 requirements.txt에서 0.24대로 묶었다).
 # 버리지 않는다: 호출하는 쪽(chat.py)이 3층(일반 설명)으로 내려 꼬리표를 붙인다 (정운 결정). 느슨한 quote_supports와 달리 낱말마다 본다.
 UNSUPPORTED_MIN = 2  # Skill에 없는 핵심 낱말이 이만큼 이상이면 Skill 근거 답이 아니다 (한 개는 말투·조사 변형일 수 있어 봐 준다)
 _UNSUPPORTED_STOP = set("""여러 모든 어떤 아래 직접 바로 먼저 우선 함께 다시 아직 이미 매우 조금 정말 가장 자주 보통 대략 참고 상황 상태 결과 여부
 도움 문제 질문 답변 말씀 사용자 서비스 마르비아 화면 조회 확인 안내 문의 연락 요청 정보 내용 사항 방법 절차 진행 처리 필요 가능 이용 경우 이후 이전 다음 때문 통해 위해
 대한 관련 아니라 아니면 그리고 하지만 그래서 따라서 그러면 그러나 또는 혹은 오늘 지금 안에 때가 많기 나간 그건 정확한 미리 대해 대해서 이름인지 번호인지 점이
 시각 날짜 시간 이번 없지 어디 넣어 질문하신 이때 이것 그것 그때 하나 처음 마지막 거나 대로 만큼 정도 이상 이하 부분 쪽에 사이 가운데 중에""".split())
-# 활용형 어미로 끝나는 낱말(동사·형용사)은 명사가 아니라 세지 않는다. 한 글자 어미 중 명사 끝 글자와 겹치는 것(서·고·지·다)은 넣지 않는다.
-_VERBISH_END = re.compile(r"(니다|세요|해요|어요|아요|하는|하고|하여|하면|하지|하며|하게|한다|된다|되는|되면|되어|있는|없는|않는|않을|않은|"
-                          r"지만|으면|으며|이며|해야|할때|할수|수있|수없|시면|시기|드릴|드리고|하세|주세|해서|세|해|릴|할|한|는|며|면|은|인|운|온|난|린)$")
-_EXTRA_PARTICLES = ("이나", "나", "이라도", "보다", "처럼", "에는", "에도", "으로는", "이라고", "라고", "이고")  # PARTICLES에 없는 것 (사본이나, 센터나, 상태이고)
-# 3글자 낱말의 끝 글자가 활용 어미·조사 한 글자면(입력하·고치지·다르게·안내된·서쪽의·등급일) 그 글자를 뗀 뿌리로 다시 본다 (10-06 오전 배포 실측,
-# Skill 문장을 풀어 쓴 답 3건이 이 꼴 때문에 일반 설명으로 낮춰졌다). 명사 끝 글자(료·증 등)는 넣지 않는다: "야적료"는 "야적"이 있어도 센다
-_ROOT_END = set("하지게된의일")
+
+
+@lru_cache(maxsize=1)
+def _kiwi():
+    """Kiwi 형태소 분석기를 처음 쓸 때 한 번만 만든다. 만드는 데 1.4초쯤, 메모리 수백 MB가 들어서 import 때나 호출마다 만들지 않는다."""
+    from kiwipiepy import Kiwi  # 이 검사를 쓰는 곳에서만 불러오도록 늦게 import한다 (다른 테스트·워커는 로드하지 않는다)
+
+    return Kiwi()
+
+
+def _nouns(text: str) -> list[str]:
+    """글에서 명사(일반명사 NNG, 고유명사 NNP) 중 2글자 이상만 나온 차례대로 뽑는다. 활용형(동사·형용사)·조사·어미는 품사가 달라 빠진다."""
+    return [t.form for t in _kiwi().tokenize(text or "") if t.tag in ("NNG", "NNP") and len(t.form) >= 2]
+
+
+@lru_cache(maxsize=1)
+def _general_nouns() -> frozenset[str]:
+    """GENERAL_TERMS의 낱말과, 그 낱말을 Kiwi가 쪼갠 명사. Kiwi는 "도착통지서"를 도착·통지서, "인도지시서"를 인도·지시서로 나눠서
+    일반 용어를 그대로만 비교하면 답에 "도착통지서"가 나올 때 조각 둘이 근거 없는 낱말로 센다. 같은 분석기로 허용 목록도 쪼개 맞춘다."""
+    words = set(GENERAL_TERMS.split())
+    for w in GENERAL_TERMS.split():
+        words.update(_nouns(w))
+    return frozenset(words)
 
 
 def skill_unsupported_terms(reply: str, skills_text: str, user_text: str = "") -> list[str]:
-    """V14 보강: 답의 핵심 낱말(한글 2글자 이상, 조사 뗌) 중 Skill 원문 어디에도 없는 것의 목록. 순서는 답에 나온 차례.
-    제외: 흔한 말·활용형(_UNSUPPORTED_STOP·_VERBISH_END), 일반 해운 용어(GENERAL_TERMS: 3층도 허용하는 말), 사용자가 질문에 쓴 낱말.
-    원문 비교는 quote_found처럼 공백·표시를 뺀 글에서 부분 문자열로 한다 ("선하증권"이 "선하증권을"에도 맞게).
-    조사·어미 한 글자 차이는 끝 글자를 한 자 뗀 꼴(4글자 이상일 때만. 3글자는 "야적료"가 "야적"에 맞아 버린다)도 있으면 있는 것으로 본다."""
+    """V14 보강: 답의 명사(Kiwi, 2글자 이상) 중 Skill 원문 어디에도 없는 것의 목록. 순서는 답에 나온 차례, 중복 없음.
+    제외: 사용자가 질문에 쓴 명사, 일반 해운 용어(GENERAL_TERMS: 3층도 허용하는 말), 흔한 말(_UNSUPPORTED_STOP·_SUPPORT_STOP).
+    원문 비교는 quote_found처럼 공백·표시를 뺀 글에서 부분 문자열로 한다 ("선하증권"이 "선하증권을"에도 맞게)."""
     flat_source = _flat(skills_text)
-    general = {_stem(w) for w in GENERAL_TERMS.split()}
-    asked = _key_words(user_text)
-    seen, out = set(), []
-    for w in _KOREAN_WORD.findall(_flat_keep_space(reply)):
-        stem = _stem(w)
-        for p in _EXTRA_PARTICLES:
-            if stem.endswith(p) and len(stem) - len(p) >= 2:
-                stem = stem[: -len(p)]
-                break
-        if len(stem) < 2 or stem in seen:
+    asked = set(_nouns(user_text))
+    general = _general_nouns()
+    out = []
+    for noun in dict.fromkeys(_nouns(reply)):
+        if noun in asked or noun in general or noun in _UNSUPPORTED_STOP or noun in _SUPPORT_STOP:
             continue
-        seen.add(stem)
-        if stem in _UNSUPPORTED_STOP or stem in _SUPPORT_STOP or stem in general or stem in asked or _VERBISH_END.search(stem):
+        if noun in flat_source:
             continue
-        if any(g in stem for g in general if len(g) >= 2) and stem not in flat_source:
-            continue  # "선박이름"처럼 일반 용어가 든 합성어는 일반 용어로 본다
-        if stem in flat_source or (len(stem) >= 4 and stem[:-1] in flat_source):
-            continue
-        root = stem[:-1]
-        if len(stem) == 3 and stem[-1] in _ROOT_END and (root in flat_source or root in _UNSUPPORTED_STOP or root in _SUPPORT_STOP):
-            continue  # 뿌리가 Skill에 있거나 흔한 말이면 활용형일 뿐이다 (_ROOT_END 주석)
-        out.append(stem)
+        out.append(noun)
     return out
-
-
-def _flat_keep_space(text: str) -> str:
-    """낱말을 자르기 전에 마크다운 표시만 뺀다 (공백은 둔다. _flat은 공백을 지워 낱말이 붙어 버린다)."""
-    return re.sub(r"[*`|>#\"'“”‘’.,·()\[\]/]", " ", text or "")
 
 
 def skill_unsupported(reply: str, skills_text: str, user_text: str = "") -> bool:
