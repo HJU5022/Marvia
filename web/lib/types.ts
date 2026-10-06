@@ -7,6 +7,8 @@ export type Verdict = 'fine' | 'watch' | 'act';
 export type Status = 'ok' | 'partial' | 'insufficient' | 'failed' | 'unsupported';
 export type VesselMatch = 'confirmed' | 'uncertain' | 'none';
 export type Freshness = 'fresh' | 'stale' | 'unknown';
+/** 서류 사진에서 확인한 출항일을 /api/chat에 실어 보내는 칸 (10-06). 서버가 같은 B/L 조회에만 departed_on으로 싣는다 */
+export interface ChatDocument { bl_no: string; departed_on: string }
 export interface AgentRequest {
   bl_no: string;
   bl_type: 'MASTER' | 'HOUSE';
@@ -17,6 +19,8 @@ export interface AgentRequest {
   resolved_mmsi?: number | null;
   voyage_no?: string | null;
   forwarder_eta?: string | null;
+  /** 서류 사진에서 사용자가 확인한 출항일 (10-06). 내 화물 현황 표 출항 칸에만 쓰이고 판정에는 안 쓰인다. 직접 적은 날짜는 덮지 않는다 */
+  departed_on?: string | null;
   /** 적하목록 관리번호. 세관에 아직 없는 화물을 해수부 입항 신고로 찾을 때 (docs/specs/mrn-fallback.md) */
   mrn?: string | null;
 }
@@ -81,13 +85,16 @@ export type DocumentFieldKey = 'bl_no' | 'vessel' | 'voyage' | 'eta' | 'pol' | '
 export interface DocumentResponse {
   status: 'ok' | 'partial';
   needs_review: boolean;
-  fields: Record<DocumentFieldKey, DocumentField>;
+  /** etd(출항일, 10-06)는 옛 서버 응답에 없을 수 있어 선택이다 */
+  fields: Record<DocumentFieldKey, DocumentField> & {etd?: DocumentField};
   ocr: { lines: number; rotation: 0 | 180 | 270; runs: number; ocr_ms: number };
   trace_id: string;
   /** 서류의 MRN (코드가 뽑음). 없으면 null */
   mrn?: string | null;
   /** 서류 종류. 거래처를 기억할 때 출처로 쓴다. 모르면 null (10-02) */
   doc_kind?: 'B/L' | 'A/N' | null;
+  /** AI가 서류 글자를 정리하지 못했을 때 실패 종류(bad_format, timeout 등). 성공이면 null. 옛 서버 응답에는 없다 (10-06) */
+  llm_error?: string | null;
 }
 
 /** 화물 비서 기억 (backend/app/schemas/memory.py, docs/specs/memory.md, 10-02). 원본 B/L은 오지 않는다 */
@@ -235,6 +242,8 @@ export interface CargoSheetRow {
   /** 입항·입고는 서버가 UNI-PASS에서 채운다. arrived_on이 비었을 때만 eta(입항 예정)를 보인다 */
   arrived_on: string | null; eta: string | null; warehoused_on: string | null; last_stage: string | null;
   forwarder_name: string | null; carrier_name: string | null; container_no: string | null;
+  /** 확정된 배의 이름·국적 (021). 새 칸이라 기존 줄은 비어 있을 수 있다 */
+  vessel_name?: string | null; vessel_flag?: string | null;
 }
 /** lc가 null인 묶음은 아직 신용장에 안 묶인 B/L이다 (맨 끝) */
 export interface CargoSheetGroup { lc: CargoLc | null; rows: CargoSheetRow[] }
