@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, MemoryResponse, MeResponse, OperatorsResponse, ProfileData, UnmaskResponse, ActionItem, ChatResponse, VesselDetailResponse } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -54,6 +54,12 @@ export const liveExamples = [
 
 const SESSION_KEY = 'marvia-session-id';
 let memorySession = '';
+let activeSession = '';
+
+/** 지금 대화의 session_id를 정한다. 빈 값이면 브라우저 값(위 SESSION_KEY)으로 돌아간다 */
+export function setActiveSession(id: string): void { activeSession = id; }
+/** 새 대화용 session_id. 서버가 이 값으로 대화를 만들어 저장한다 */
+export function newSessionId(): string { return crypto.randomUUID(); }
 
 /** 실제 모드에서 이 브라우저를 구분하는 ID. 이력(GET /api/history)이 이 값으로 묶인다.
  * localStorage가 막힌 창(사생활 보호 모드 등)에서는 탭이 열려 있는 동안만 같은 값을 쓴다.
@@ -61,6 +67,9 @@ let memorySession = '';
  */
 export function currentSessionId(): string {
   if (!isLive) return demo.session_id;
+  // 대화 하나가 chat session_id 하나다 (10-06 결정). 대화를 열거나 새로 시작하면 AppProvider가 이 값을 정한다.
+  // 그래서 다음 /api/chat 요청과 Langfuse 세션이 그 대화로 이어진다. 정하지 않았으면 아래의 브라우저 값을 쓴다
+  if (activeSession) return activeSession;
   if (typeof window === 'undefined') return '';
   try {
     const saved = window.localStorage.getItem(SESSION_KEY);
@@ -117,7 +126,7 @@ async function callOnce(path: string, init: RequestInit, timeoutMs: number): Pro
     const headers = new Headers(init.headers);
     if (token) headers.set('authorization', `Bearer ${token}`);
     const res = await fetch(`${API_BASE}${path}`, {...init, headers, signal: controller.signal});
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw Object.assign(new Error(await errorMessage(res)), {status: res.status});  // 대화 목록이 401/503/404를 가르려고 상태 코드를 붙인다
     return res;
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw new Error('응답이 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.');
@@ -166,6 +175,33 @@ async function liveAgentResponse(req: AgentRequest): Promise<AgentResponse> {
     body: JSON.stringify(wireRequest(req)),
   }, AGENT_TIMEOUT_MS);
   return res.json();
+}
+
+/** call이 던진 오류의 HTTP 상태 코드. 연결 실패 같은 응답 없는 오류는 undefined */
+export function errorStatus(e: unknown): number | undefined {
+  const s = (e as {status?: unknown} | null)?.status;
+  return typeof s === 'number' ? s : undefined;
+}
+
+/* ---------- 대화 목록 (10-06 결정) ---------- */
+// 로그인해야 쓸 수 있다(401). DB가 없으면 503. 호출하는 쪽이 이 둘을 "목록 없음"으로 본다. 데모 모드에는 저장된 대화가 없다.
+
+/** GET /api/conversations. 최근 순, 서버가 최대 50개까지 준다 */
+export async function listConversations(): Promise<ConversationSummary[]> {
+  if (!isLive) return [];
+  return ((await (await call('/api/conversations', {}, HISTORY_TIMEOUT_MS)).json()).conversations ?? []) as ConversationSummary[];
+}
+
+/** GET /api/conversations/{id}. 없으면 404 */
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  if (!isLive) throw new Error('데모 모드에는 저장된 대화가 없습니다.');
+  return (await call(`/api/conversations/${encodeURIComponent(id)}`, {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** DELETE /api/conversations/{id} */
+export async function deleteConversation(id: string): Promise<{deleted: boolean}> {
+  if (!isLive) throw new Error('데모 모드에는 지울 대화가 없습니다.');
+  return liveDelete(`/api/conversations/${encodeURIComponent(id)}`);
 }
 
 /** 이력은 부가 기능이다. 못 읽으면 화면을 죽이지 않고 available:false로 돌려준다 (routers/history.py와 같은 원칙). */
@@ -245,7 +281,10 @@ async function demoChat(message: string, context: AgentRequest | null): Promise<
   if (choice) {
     const request = choice.request as AgentRequest;
     const agent = await demoAgentResponse(request);
-    return {...empty, kind: 'cargo', reply: agent.answer, agent, request};
+    // 데모에서도 작은 지도가 보이게, 위치가 있는 예시 화물은 그 위치를 map으로 함께 돌려준다 (실제 모드는 서버가 채운다)
+    const pos = agent.position;
+    const map = pos ? {lat: pos.lat, lng: pos.lng, ship_name: agent.vessel?.name ?? null, distance_nm: agent.eta?.distance_nm ?? null, received_at: pos.last_time, source: 'shipfinder'} : null;
+    return {...empty, kind: 'cargo', reply: agent.answer, agent, request, map};
   }
   // 화물을 보고 있을 때 "배 지금 어디쯤이야?"처럼 그 화물의 배를 묻는 문장은 후속 질문이다. 선박 검색은 지역·목록을 찾는
   // 문장 모양일 때만 고른다 (10-02 UI 점검 F6). 실제 모드는 서버 LLM이 의도를 고르므로 이 규칙은 데모에만 있다
@@ -269,18 +308,37 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
   return isLive ? liveAgentResponse(req) : demoAgentResponse(req);
 }
 
-/** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다) */
-export async function sendChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
+/** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다).
+ * history는 지금 질문보다 앞선 대화다. 데모 모드는 저장된 예시만 돌려주므로 쓰지 않는다 */
+export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
-    body: chatBody(message, context)}, AGENT_TIMEOUT_MS);
+    body: chatBody(message, context, history)}, AGENT_TIMEOUT_MS);
   return res.json();
 }
 
-/** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다 */
-function chatBody(message: string, context: AgentRequest | null): string {
+/** 서버에 보내는 앞선 대화의 상한. 최근 6줄, 한 줄 500자까지만 보낸다 (에이전트가 맥락을 잇는 데 필요한 만큼만, 요청 크기와 LLM 비용을 묶는다) */
+const HISTORY_MAX_TURNS = 6;
+const HISTORY_MAX_CHARS = 500;
+
+/** 긴 줄은 앞과 끝을 함께 남긴다 (10-06). 지켜보기 제안("이 화물을 지켜볼까요?")은 답 끝에 붙는데 앞에서만 자르면 잘려 나가서,
+ * 다음 턴의 "응"을 서버가 제안에 대한 대답으로 알아보지 못한다. 띄어쓰기 자리에서만 잘라 B/L 번호가 반쯤 남지 않게 한다
+ * (반쪽 번호는 B/L 모양이 아니라 서버가 가리지 못한다) */
+function clip(text: string): string {
+  if (text.length <= HISTORY_MAX_CHARS) return text;
+  const half = Math.floor((HISTORY_MAX_CHARS - 3) / 2);
+  const head = text.slice(0, half), tail = text.slice(-half);
+  const cutHead = head.lastIndexOf(' ') > 0 ? head.slice(0, head.lastIndexOf(' ')) : '';
+  const cutTail = tail.indexOf(' ') >= 0 ? tail.slice(tail.indexOf(' ') + 1) : '';
+  return `${cutHead} … ${cutTail}`;
+}
+
+/** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다.
+ * history는 오래된 것부터 두고, role과 text만 남긴다(화면용 kind는 보내지 않는다). B/L 번호는 서버가 가린다 */
+function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = []): string {
   const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
-  return JSON.stringify({message, session_id: currentSessionId(), context: ctx});
+  const turns = history.slice(-HISTORY_MAX_TURNS).map(t => ({role: t.role, text: clip(t.text)}));
+  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns});
 }
 
 /** 스트림 통로를 못 쓰는 경우의 표시. 서버가 요청을 받지 않은 것이 확실할 때만 쓴다 (chat-progress.md EC-05) */
@@ -291,18 +349,18 @@ class StreamUnavailable extends Error {}
  * - 응답을 받기 시작한 뒤 끊기면 다시 보내지 않는다. 서버는 이미 유료 호출을 하고 있을 수 있다 (EC-06)
  * - 데모 모드는 서버가 없어 단계 소식도 없다. 단계를 지어내지 않는다 (EC-07) */
 export async function sendChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   try {
-    return await liveChatStream(message, context, onStage);
+    return await liveChatStream(message, context, onStage, history);
   } catch (e) {
-    if (e instanceof StreamUnavailable) return sendChat(message, context);
+    if (e instanceof StreamUnavailable) return sendChat(message, context, history);
     throw e;
   }
 }
 
 async function liveChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
   const controller = new AbortController();
   // 전체 시간 제한은 /api/chat과 같다. 판정 LLM 재시도까지 기다린다
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
@@ -313,7 +371,7 @@ async function liveChatStream(message: string, context: AgentRequest | null,
       const token = await accessToken();
       const headers = new Headers({'content-type': 'application/json', accept: 'text/event-stream'});
       if (token) headers.set('authorization', `Bearer ${token}`);
-      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context), signal: controller.signal});
+      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history), signal: controller.signal});
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
       if (e instanceof TypeError) throw new StreamUnavailable();  // 응답이 없었다. /api/chat이 재시도까지 맡는다
@@ -423,6 +481,152 @@ export async function saveDocumentFacts(facts: DocumentFactsRequest): Promise<Do
   const res = await call('/api/memory/document-facts', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify(facts)}, HISTORY_TIMEOUT_MS);
   return res.json();
+}
+
+/* ---------- 카카오톡 "나에게 보내기" 알림 (10-02/10-05 결정, backend/app/routers/kakao.py) ---------- */
+
+/** GET /api/kakao/status. 연결 버튼을 보여 줄지 정한다. 데모 모드에는 연결할 실제 카카오톡이 없다. */
+export async function getKakaoStatus(): Promise<KakaoStatus> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return (await call('/api/kakao/status', {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** POST /api/kakao/connect. 카카오 동의 화면 주소를 받는다. 부르는 쪽이 그 주소로 브라우저를 보낸다. */
+export async function connectKakao(): Promise<{url: string}> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return (await call('/api/kakao/connect', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** POST /api/kakao/callback. 카카오가 돌려 보낸 code·state를 서버에 넘겨 연결을 마무리한다 (/settings/kakao 화면만 부른다).
+ * 로그인 출입증이 붙어서, 서버가 "연결을 시작한 사람 = 지금 로그인한 사람"인지 확인한다. code는 한 번만 쓸 수 있어 다시 보내지 않는다. */
+export async function finishKakaoLink(code: string, state: string): Promise<KakaoLinkResult> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  const res = await call('/api/kakao/callback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({code, state})}, HISTORY_TIMEOUT_MS);
+  return (await res.json()).result;
+}
+
+/** POST /api/kakao/test. 시험 메시지를 한 통 보낸다. 실패하면 서버 안내 문장이 그대로 올라온다. 자동으로 다시 보내지 않는다. */
+export async function sendKakaoTest(): Promise<{sent: boolean}> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return (await call('/api/kakao/test', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** DELETE /api/kakao/link. 연결을 끊고 서버에 둔 토큰을 지운다. */
+export async function unlinkKakao(): Promise<{linked: boolean}> {
+  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  return liveDelete('/api/kakao/link');
+}
+
+/* ---------- 화물 지켜보기 (G5 작업 리스트, 10-05 결정, 백엔드 routers의 watch) ---------- */
+
+/** B/L은 URL에 넣지 않는다(서버·프록시 로그에 남는다). 본문 JSON으로만 보낸다. 조회 때와 같게 공백 제거·대문자로 맞춘다 */
+export const watchKey = (blNo: string) => blNo.replace(/\s/g, '').toUpperCase();
+const watchBody = (blNo: string) => ({bl_no: watchKey(blNo)});
+
+/** POST /api/cargo/watch/state. 이 화물이 저장됐는지, 지켜보는 중인지. 데모 모드에는 계정이 없어 지켜볼 수 없다. */
+export async function getWatchState(blNo: string): Promise<WatchState> {
+  if (!isLive) throw new Error('데모 모드에서는 화물을 지켜볼 수 없습니다.');
+  const res = await call('/api/cargo/watch/state', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(watchBody(blNo))}, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
+
+/** PUT /api/cargo/watch. 지켜보기를 켜거나 끈다. 실패하면 서버 안내 문장이 그대로 올라온다(404 아직 저장 전, 409 끝난 화물·5건 한도, 503). */
+export async function setWatch(blNo: string, on: boolean): Promise<{watch: boolean}> {
+  if (!isLive) throw new Error('데모 모드에서는 화물을 지켜볼 수 없습니다.');
+  const res = await call('/api/cargo/watch', {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify({...watchBody(blNo), on})}, HISTORY_TIMEOUT_MS);
+  return res.json();
+}
+
+/** GET /api/watch/changes. 지난 접속 뒤 판정이 바뀐 화물 목록. 데모 모드에는 지켜보는 화물이 없어 빈 목록이다. */
+export async function getWatchChanges(): Promise<WatchChange[]> {
+  if (!isLive) return [];
+  const res = await call('/api/watch/changes', {}, HISTORY_TIMEOUT_MS);
+  return (await res.json()).changes ?? [];
+}
+
+/** POST /api/watch/changes/seen. 보여 준 변경을 확인 처리한다. 다시 접속해도 같은 알림이 뜨지 않는다. */
+export async function markWatchChangesSeen(): Promise<{cleared: number}> {
+  if (!isLive) return {cleared: 0};
+  return (await call('/api/watch/changes/seen', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/* ---------- 내 화물 현황 표 (10-06, 수입자가 손으로 쓰던 표) ---------- */
+
+/** 데모 모드의 가짜 표. 값은 전부 지어낸 것이다(MRVDEMO B/L, DEMO 신용장). 실제 번호를 쓰지 않는다 (CLAUDE.md) */
+const demoRow = (n: number, extra: Partial<CargoSheetRow>): CargoSheetRow => ({
+  cargo_key: `demo-${n}`, bl_masked: `MRVD***${String(n).padStart(4, '0')}`, label: null, status: 'active',
+  departed_on: null, departed_source: null, arrived_on: null, eta: null, warehoused_on: null, last_stage: null,
+  forwarder_name: null, carrier_name: null, container_no: null, ...extra,
+});
+let demoSheet: CargoSheet = {groups: [
+  {lc: {id: 1, lc_no: 'DEMO-LC-0001', opened_on: '2026-08-20'}, rows: [
+    demoRow(1, {status: 'done', departed_on: '2026-09-02', departed_source: 'manual', arrived_on: '2026-09-18', warehoused_on: '2026-09-22', last_stage: '반출', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO1234567'}),
+    demoRow(2, {departed_on: '2026-09-20', departed_source: 'document', arrived_on: '2026-10-03', last_stage: '입항 후 하선', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO7654321'}),
+  ]},
+  {lc: {id: 2, lc_no: 'DEMO-LC-0002', opened_on: '2026-09-10'}, rows: [
+    demoRow(3, {departed_on: '2026-10-01', departed_source: 'manual', eta: '2026-10-20', last_stage: '선적', carrier_name: '데모선사'}),
+  ]},
+  {lc: null, rows: [demoRow(4, {})]},
+]};
+
+/** 데모 모드의 출항일 수정. 새로고침하면 처음 모양으로 돌아간다 */
+function demoSetDeparted(cargoKey: string, departedOn: string | null): CargoSheet {
+  const row = demoSheet.groups.flatMap(g => g.rows).find(r => r.cargo_key === cargoKey);
+  if (!row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했습니다.'), {status: 404});
+  row.departed_on = departedOn;
+  row.departed_source = departedOn ? 'manual' : null;
+  return structuredClone(demoSheet);
+}
+
+/** 데모 모드의 L/C 묶기. 서버가 하는 일(같은 번호면 같은 묶음, 빈 묶음 정리, 미연결 묶음은 맨 끝)을 흉내 낸다 */
+function demoSetLc(cargoKey: string, lcNo: string | null, openedOn: string | null): CargoSheet {
+  const from = demoSheet.groups.find(g => g.rows.some(r => r.cargo_key === cargoKey));
+  const row = from?.rows.find(r => r.cargo_key === cargoKey);
+  if (!from || !row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했습니다.'), {status: 404});
+  from.rows = from.rows.filter(r => r !== row);
+  let target = demoSheet.groups.find(g => (g.lc?.lc_no ?? null) === lcNo);
+  if (!target) {
+    target = {lc: lcNo ? {id: Date.now(), lc_no: lcNo, opened_on: openedOn} : null, rows: []};
+    const unlinked = demoSheet.groups.findIndex(g => g.lc === null);
+    demoSheet.groups.splice(lcNo && unlinked >= 0 ? unlinked : demoSheet.groups.length, 0, target);
+  }
+  if (target.lc) target.lc.opened_on = openedOn;
+  target.rows.push(row);
+  demoSheet.groups = demoSheet.groups.filter(g => g.rows.length > 0);
+  return structuredClone(demoSheet);
+}
+
+/** GET /api/cargo/sheet. 로그인한 사용자의 화물 표. L/C별 묶음이고, 마지막 묶음은 L/C가 아직 없을 수 있다. */
+export async function getCargoSheet(): Promise<CargoSheet> {
+  if (!isLive) return structuredClone(demoSheet);
+  return (await call('/api/cargo/sheet', {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** PUT /api/cargo/sheet/{cargo_key}/lc. 이 B/L을 신용장에 묶는다. lc_no가 null이면 묶음을 푼다. 표 전체를 돌려받는다. */
+export async function saveCargoLc(cargoKey: string, lcNo: string | null, openedOn: string | null): Promise<CargoSheet> {
+  const body = {lc_no: lcNo, opened_on: lcNo ? openedOn : null};
+  if (!isLive) return demoSetLc(cargoKey, body.lc_no, body.opened_on);
+  return (await call(`/api/cargo/sheet/${encodeURIComponent(cargoKey)}/lc`, {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** PUT /api/cargo/sheet/{cargo_key}/departed. 출항일을 사용자가 직접 적는다(source는 늘 manual). null이면 지운다. 표 전체를 돌려받는다. */
+export async function saveCargoDeparted(cargoKey: string, departedOn: string | null): Promise<CargoSheet> {
+  if (!isLive) return demoSetDeparted(cargoKey, departedOn);
+  const body = JSON.stringify({departed_on: departedOn, source: 'manual'});
+  return (await call(`/api/cargo/sheet/${encodeURIComponent(cargoKey)}/departed`, {method: 'PUT', headers: {'content-type': 'application/json'}, body}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** GET /api/cargo/sheet.xlsx. 출입증 헤더가 필요해서 링크 대신 blob으로 받는다. 파일 이름은 Content-Disposition, 없으면 marvia_cargo.xlsx. */
+export async function downloadCargoSheet(): Promise<{blob: Blob; filename: string}> {
+  if (!isLive) throw new Error('데모 모드에서는 엑셀을 받을 수 없습니다.');
+  const res = await call('/api/cargo/sheet.xlsx', {}, HISTORY_TIMEOUT_MS);
+  const disposition = res.headers.get('content-disposition') ?? '';
+  // filename*=UTF-8''... 이 있으면 먼저, 없으면 filename="..."
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(disposition)?.[1];
+  let filename = 'marvia_cargo.xlsx';
+  try { filename = (star ? decodeURIComponent(star) : plain) || filename; } catch { /* 깨진 인코딩이면 기본 이름 */ }
+  return {blob: await res.blob(), filename};
 }
 
 /* ---------- 운영자 관리 (docs/specs/operator-admin.md) ---------- */

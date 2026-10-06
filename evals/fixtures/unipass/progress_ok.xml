@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!-- 가공값. 필드 구성과 순서는 UNI-PASS 연계가이드 v4.1과 09-27 실제 응답 1건을 따랐고, 값은 모두 만든 것이다.
+<!-- 가공값. 필드 구성과 순서는 UNI-PASS 연계가이드 v4.1과 09-27 실제 응답 1건을 따랐고, 값은 모두 만든 것이다. 포워더·선사 이름과 컨테이너 번호(10-06 추가)도 가공값이다.
      이력(cargCsclPrgsInfoDtlQryVo)은 실제처럼 최신이 위에 온다. 이력 줄에는 단계 코드가 없고 처리구분(cargTrcnRelaBsopTpcd)이 한글 이름이다. -->
 <cargCsclPrgsInfoQryRtnVo>
 <ntceInfo></ntceInfo>
@@ -10,6 +10,7 @@
 <etprDt>20260925</etprDt><etprCstm>부산세관</etprCstm><dsprCd>KRPUS</dsprCd><dsprNm>부산항</dsprNm>
 <prnm>의류</prnm><ttwg>1200</ttwg><wghtUt>KG</wghtUt><cargTp>수입 일반화물</cargTp>
 <rlseDtyPridPassTpcd>N</rlseDtyPridPassTpcd><dclrDelyAdtxYn>N</dclrDelyAdtxYn>
+<shcoFlcoSgn>TSTC</shcoFlcoSgn><shcoFlco>테스트선사(주)</shcoFlco><frwrSgn>TSTF</frwrSgn><frwrEntsConm>테스트포워딩(주)</frwrEntsConm><cntrNo>TSTU1234560</cntrNo>
 </cargCsclPrgsInfoQryVo>
 <tCnt>7</tCnt>
 <cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>반출신고</cargTrcnRelaBsopTpcd><prcsDttm>20260929100000</prcsDttm><shedNm>TEST터미널 CY</shedNm><rlbrCn>수입신고 수리후 반출</rlbrCn><wght>1200</wght><bfhnGdncCn></bfhnGdncCn></cargCsclPrgsInfoDtlQryVo>

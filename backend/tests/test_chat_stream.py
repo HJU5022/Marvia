@@ -56,7 +56,8 @@ def test_broken_listener_does_not_stop_work():
 def test_stream_sends_progress_then_same_result_as_chat(monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
 
-    def fake_handle(message, session_id, context, run_agent, user_id=None):  # user_id: 화물 비서 기억 (10-02)
+    # user_id: 화물 비서 기억 (10-02). history·run_tool: 채팅 에이전트 (10-05)
+    def fake_handle(message, session_id, context, run_agent, user_id=None, history=None, run_tool=None, watch=None, kakao=None):
         progress.step("understand")
         progress.step("customs")
         return svc.ChatResult(kind="message", reply="B/L 번호를 넣어 주세요")
@@ -78,7 +79,7 @@ def test_stream_reports_bad_message_and_crash_as_error_event(monkeypatch):
             ("error", {"status": 400, "detail": chat_router.BAD_MESSAGE})]
         assert client.post("/api/chat/stream", json={"message": "가" * 501, "session_id": "s1"}).status_code == 422
 
-        def crash(*args):
+        def crash(*args, **kwargs):  # 라우터가 history·run_tool을 이름으로 넘긴다 (10-05)
             raise RuntimeError("TESTBL01 비밀")  # 예외 메시지는 화면에도 로그에도 가지 않는다
         monkeypatch.setattr(svc, "handle", crash)
         events = _events(client.post("/api/chat/stream", json={"message": "안녕", "session_id": "s1"}).text)
@@ -91,7 +92,8 @@ def test_real_flow_stage_order(tmp_path, monkeypatch):
     from backend.app.schemas.agent import AgentRequest
 
     for key in ("LLM_MODEL", "OPENROUTER_API_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
-                "DATABASE_URL", "SHIPFINDER_KEY", "UNIPASS_KEY", "DATA_GO_KR_KEY"):
+                "DATABASE_URL", "SHIPFINDER_KEY", "UNIPASS_KEY", "DATA_GO_KR_KEY",
+                "MCP_URL"):  # Dockerfile이 MCP_URL을 박아 둔다. 남아 있으면 없는 서버에 HTTP로 붙다가 partial이 된다
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("REPLAY_MODE", "true")
     monkeypatch.setattr(replay, "REPLAY_DIR", tmp_path)

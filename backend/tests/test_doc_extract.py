@@ -62,3 +62,20 @@ def test_bad_shape_is_format_error(monkeypatch):
     _fake_chat(monkeypatch, {"vessel": "SEA STAR"})  # 칸이 빠진 답
     with pytest.raises(llm.LLMFormatError):
         llm.extract_doc_fields("[BL]")
+
+
+def test_etd_is_read_and_defaults_to_none(monkeypatch):
+    """etd(10-06): 프롬프트가 Langfuse에 등록되기 전에는 LLM이 null을 내도, 칸이 없는 옛 모양이어도 읽힌다."""
+    _fake_chat(monkeypatch, {**ANSWER, "etd": "2026-09-28"})
+    assert llm.extract_doc_fields("[BL]").output.etd == "2026-09-28"
+    _fake_chat(monkeypatch, {**ANSWER, "etd": None})
+    assert llm.extract_doc_fields("[BL]").output.etd is None
+    _fake_chat(monkeypatch, ANSWER)  # etd 키가 아예 없는 답
+    assert llm.extract_doc_fields("[BL]").output.etd is None
+
+
+def test_schema_asks_for_etd_and_repo_prompt_describes_it(monkeypatch):
+    calls = _fake_chat(monkeypatch, ANSWER)
+    llm.extract_doc_fields("[BL]")
+    assert "etd" in calls[0]["response_format"]["json_schema"]["schema"]["required"]
+    assert "etd: departure date" in calls[0]["messages"][0]["content"]  # 레포 예비 프롬프트 (Langfuse 키 없음)

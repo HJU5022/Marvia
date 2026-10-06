@@ -367,7 +367,8 @@ def test_forget_user_deletes_cargo_and_memo():
     assert sqls[0] == ["INSERT", "INTO", "user_forget"]
     assert conn.calls[0][1][1] is not None and conn.calls[0][1][2] is not None  # 메모장·화물 표 둘 다 삭제 시각
     assert conn.calls[1][0] == "DELETE FROM user_cargo WHERE user_id = %s"
-    assert conn.calls[2][0].startswith("DELETE FROM user_memory")
+    assert conn.calls[2][0] == "DELETE FROM user_lc WHERE user_id = %s"  # 신용장도 같이 (019)
+    assert conn.calls[3][0].startswith("DELETE FROM user_memory")
 
 
 def test_delete_all_is_memo_only():

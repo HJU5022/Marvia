@@ -104,7 +104,8 @@ def test_demo_cases_end_to_end(tmp_path, monkeypatch):
     from backend.app.schemas.agent import AgentRequest
 
     for key in ("LLM_MODEL", "OPENROUTER_API_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
-                "DATABASE_URL", "SHIPFINDER_KEY", "UNIPASS_KEY", "DATA_GO_KR_KEY"):
+                "DATABASE_URL", "SHIPFINDER_KEY", "UNIPASS_KEY", "DATA_GO_KR_KEY",
+                "MCP_URL"):  # Dockerfile이 MCP_URL을 박아 둔다. 남아 있으면 없는 서버에 HTTP로 붙다가 partial이 된다
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("REPLAY_MODE", "true")
     monkeypatch.setattr(replay, "REPLAY_DIR", tmp_path)

@@ -11,6 +11,7 @@ import {ChatBar} from '@/components/ChatBar';
 import {VesselList} from '@/components/VesselList';
 import {useApp} from '@/components/AppProvider';
 import {VerdictCard} from '@/components/VerdictCard';
+import {WatchToggle} from '@/components/WatchToggle';
 import {VesselCard} from '@/components/VesselCard';
 import {EtaCompare} from '@/components/EtaCompare';
 import {MapPanel} from '@/components/MapPanel';
@@ -24,7 +25,7 @@ import {dateTime,maskBl,ruleLabels,statusLabels} from '@/lib/format';
 import type {AgentRequest} from '@/lib/types';
 
 export default function CargoPage(){
- const {data,lookup,request,result:r,loading,error,replaying,view,vessels,thread,showCargo,cargoKey,usage}=useApp();const started=useRef(false);const [mofOnly,setMofOnly]=useState(false);
+ const {data,lookup,request,result:r,loading,error,replaying,view,vessels,thread,backToCargo,cargoKey,usage,authEnabled,user}=useApp();const started=useRef(false);const [mofOnly,setMofOnly]=useState(false);
  // 데모 모드만 첫 화면에 저장된 예시를 연다. ?fixture=는 개발 서버에서 상태별 화면을 확인하는 용도다 (scripts/verify.mjs)
  useEffect(()=>{if(started.current)return;started.current=true;if(r||isLive)return;const id=process.env.NODE_ENV==='development'?new URLSearchParams(window.location.search).get('fixture'):null;const choice=data.demo.choices.find(c=>c.id===id)??data.demo.choices[0];selectFixture(id);void lookup(choice.request as AgentRequest);},[data,lookup,r]);
  // 새 화물일 때만 해수부 근거 거르기를 푼다. 후속 질문 답이 와도 보던 상태를 유지한다 (F10)
@@ -43,10 +44,11 @@ export default function CargoPage(){
    <p>B/L 조회부터 입항 선박 검색까지. 질문 하나로, 근거까지 명확하게.</p>
    <ChatBar idle={idle}/>
   </section>
+  {/* 지켜보던 화물의 판정이 바뀐 알림은 이제 대화의 첫 말풍선으로 온다 (AppProvider, 10-06 결정) */}
   {/* 데모 첫 조회처럼 대화 없이 실패한 경우만 여기 알린다. 문장 질문의 실패는 대화 칸에 이미 있다 */}
   {error&&!thread.length&&!showing&&<p role="alert" className="request-error page-error">{error}</p>}
   {/* 화물 결과를 기억하고 있는데 다른 답(선박 표·안내)이 보일 때 돌아갈 길 (F4) */}
-  {r&&showing!=='cargo'&&!loading&&<div className="back-to-cargo"><button type="button" className="button secondary" onClick={showCargo}><ArrowLeft size={15}/>내 화물 결과로 돌아가기<span className="mono">B/L {maskBl(request.bl_no)}</span></button></div>}
+  {r&&showing!=='cargo'&&!loading&&<div className="back-to-cargo"><button type="button" className="button secondary" onClick={backToCargo}><ArrowLeft size={15}/>내 화물 결과로 돌아가기<span className="mono">B/L {maskBl(request.bl_no)}</span></button></div>}
   {showing==='vessels'&&vessels&&<VesselList data={vessels}/>}
   {/* key: 새 화물 조회일 때만 카드가 한 번 떠오른다. 후속 질문 답은 같은 key라 지도·펼친 근거를 다시 만들지 않는다 (구현작업서 5절, F10) */}
   {showing==='cargo'&&r&&<section key={cargoKey||r.trace_id} className={loading?'result updating':'result'} aria-busy={loading} aria-label="화물 조회 결과" data-testid="result" data-status={r.status}>
@@ -61,6 +63,7 @@ export default function CargoPage(){
    {r.status==='insufficient'?<CandidatePicker key={r.trace_id} response={r} request={request} onResolve={req=>void lookup(req)} busy={loading||blocked}/>
     :failedLike?<div className="unknown-note"><CircleHelp size={22}/><div><h2>확인하지 못한 값은 비워 둡니다.</h2><p>판정·현재 위치·도착 예정일을 추정해서 채우지 않습니다. 응답에 남은 근거만 아래에서 확인하세요.</p></div></div>
     :<>{r.verdict&&<VerdictCard response={r} request={request}/>}
+     {r.verdict&&isLive&&authEnabled&&!!user&&<WatchToggle blNo={request.bl_no}/>}
      <div className="result-grid"><MapPanel response={r}/><EtaCompare response={r}/></div>
      <div className="result-subgrid"><CustomsTimeline response={r}/><VesselCard response={r}/></div></>}
    {r.status!=='insufficient'&&<CustomsDetailTable rows={r.customs_detail}/>}

@@ -27,6 +27,13 @@ F04만 배를 바꾼다:
 판정 LLM:
   LLM_MODEL이 비어 있으면 evals/fixtures/replay/llm/marvia-judge.json의 녹화 답을 쓴다 (services/llm.py _replay_answer).
   녹화 답은 이 데모 입력(판매 예정일을 안내한 날짜로 넣거나 비움)에만 맞다.
+
+서류 대조 데모 10건 (10-05 추가, 임시):
+  TESTBL41~50. 동명 선박 중 세관 입항일·적재항과 해수부 입항 신고가 맞는 배를 확정하는 기능
+  (services/identify.match_by_papers)과 그 경계를 보여 준다. 문항은 evals/fixtures/demo_papers.jsonl
+  (평가셋이 아니다. 모양만 같아 같은 재생 파일 작성기를 쓴다. 기대 결과는 제품 책임자가 검토해 정한다).
+  3건보다 먼저 쓴다. 해수부 _ALL.xml은 마지막에 쓴 문항 것이 남으므로 N01이 마지막이어야 기존 3건 결과가 같다.
+  그래서 10건의 MRN 조회(identify_mrn)는 늘 못 찾고 이름 검색과 서류 대조로 간다. 데모가 보여 주려는 경로다.
 """
 from __future__ import annotations
 
@@ -42,6 +49,7 @@ from evals.replay_fixtures import write_replay_files
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASET = ROOT / "evals" / "dataset.jsonl"
+PAPERS = ROOT / "evals" / "fixtures" / "demo_papers.jsonl"  # 서류 대조 데모 10건 (평가셋 아님, 모듈 설명)
 
 # (평가셋 문항 id, 화면에 보일 이름, 기대 결과). 쓰는 순서도 이 순서다. N01을 마지막에 둬서
 # 해수부 _ALL.xml(호출부호 없이 부를 때 읽는 전체 목록)이 정상 건의 배로 남게 한다 (evals/replay_fixtures.py _write_mof)
@@ -103,11 +111,55 @@ def rename_vessel(record: dict, mapping: dict[str, str]) -> dict:
     return json.loads(text)
 
 
+def _clear(out_dir: Path) -> None:
+    """지난번에 만든 재생 파일이 남아 섞이지 않게 지운다."""
+    for name in GENERATED:
+        shutil.rmtree(out_dir / name, ignore_errors=True)
+
+
 def build(now: datetime, out_dir: Path = REPLAY_DIR) -> list[dict]:
     """데모 3건의 재생 파일을 out_dir에 새로 쓰고, 화면에 넣을 입력값을 돌려준다."""
+    _clear(out_dir)
+    return _write_three(now, out_dir)
+
+
+def build_all(now: datetime, out_dir: Path = REPLAY_DIR) -> tuple[list[dict], list[dict]]:
+    """서류 대조 10건을 먼저, 데모 3건을 나중에 쓴다 (순서 이유는 모듈 설명). (3건 안내, 10건 안내)를 돌려준다."""
+    _clear(out_dir)
+    papers = _write_papers(now, out_dir)
+    return _write_three(now, out_dir), papers
+
+
+def load_papers() -> list[dict]:
+    """서류 대조 데모 문항을 읽는다. '#'로 시작하는 줄은 머리 설명이라 건너뛴다."""
+    lines = PAPERS.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip() and not line.startswith("#")]
+
+
+def expected_text(record: dict) -> str:
+    """표에 보일 기대 결과 한 줄. 문항의 expected_* 칸에서 만든다 (같은 값을 두 곳에 적지 않으려고)."""
+    if record["expected_vessel_match"] == "confirmed":
+        return f"confirmed: MMSI {record['expected_mmsi']} 확정, 판정 진행"
+    return f"{record['expected_status']}·{record['expected_vessel_match']}: 어느 배인지 되묻기"
+
+
+def _write_papers(now: datetime, out_dir: Path) -> list[dict]:
+    """서류 대조 10건을 now 기준으로 옮겨 쓴다. 3건과 같은 shift_record·write_replay_files를 쓴다."""
+    guide = []
+    for original in load_papers():
+        record = shift_record(original, now)
+        write_replay_files(record, out_dir)
+        guide.append({"bl_no": record["request"]["bl_no"], "label": record["demo_title"], "case_id": record["id"],
+                      "sale_due_date": record["request"].get("sale_due_date"), "expected": expected_text(record),
+                      "entry_date": record["fixtures"]["unipass"]["etprDt"],
+                      "loading_port": record["fixtures"]["unipass"]["ldprNm"],
+                      "expected_mmsi": record["expected_mmsi"]})
+    return guide
+
+
+def _write_three(now: datetime, out_dir: Path) -> list[dict]:
+    """기존 데모 3건을 쓴다. 지우지 않는다 (지우는 것은 부르는 쪽이 _clear로)."""
     records = {r["id"]: r for r in map(json.loads, DATASET.read_text(encoding="utf-8").splitlines()) if r}
-    for name in GENERATED:  # 지난번에 만든 것이 남아 섞이지 않게 지운다
-        shutil.rmtree(out_dir / name, ignore_errors=True)
     guide = []
     for case_id, label, expected in DEMO_CASES:
         record = shift_record(records[case_id], now)
@@ -119,9 +171,34 @@ def build(now: datetime, out_dir: Path = REPLAY_DIR) -> list[dict]:
     return guide
 
 
+def refresh(out_dir: Path = REPLAY_DIR) -> datetime:
+    """서버가 도는 중에 데모 재생 파일을 새로 만든다 (10-05 결정: 재생 모드 배포는 4시간마다 자동으로, backend/app/main.py).
+
+    _clear로 지우고 다시 쓰면 그 사이(수 밀리초) 들어온 요청이 파일을 못 찾는다. 그래서 옆 임시 폴더에 다 만든 뒤
+    폴더 이름을 바꿔 끼운다. 녹화 LLM 답(llm/)처럼 이 스크립트가 만들지 않는 폴더는 건드리지 않는다.
+    돌려주는 값: 이번 파일이 오래된 위치가 되기 전까지의 시각 (로그용).
+    """
+    now = datetime.now(timezone.utc)
+    staging = out_dir.parent / f".{out_dir.name}_staging"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True)
+    build_all(now, staging)
+    for name in GENERATED:
+        new, old, trash = staging / name, out_dir / name, out_dir / f".{name}_old"
+        if not new.exists():
+            continue
+        shutil.rmtree(trash, ignore_errors=True)
+        if old.exists():
+            old.rename(trash)
+        new.rename(old)
+        shutil.rmtree(trash, ignore_errors=True)
+    shutil.rmtree(staging, ignore_errors=True)
+    return now + timedelta(hours=5, minutes=30)
+
+
 def main() -> None:
     now = datetime.now(timezone.utc)
-    guide = build(now)
+    guide, papers = build_all(now)
     until = (now + timedelta(hours=5, minutes=30)).astimezone(KST)
     print(f"데모 재생 파일을 만들었습니다: {REPLAY_DIR.relative_to(ROOT)}")
     print(f"위치가 '오래된 위치'가 되기 전까지: {until:%m-%d %H:%M} (한국 시각). 넘으면 다시 실행하세요\n")
@@ -130,6 +207,12 @@ def main() -> None:
     for g in reversed(guide):  # 정상 → 되묻기 → 실패 순으로 보여 준다
         print(f"| {g['bl_no']} | {g['label']} ({g['case_id']}) | {g['sale_due_date'] or '-'} | {g['expected']} |")
     print("\n판매 예정일은 비워도 됩니다. 넣을 때는 위 날짜를 넣어야 키 없는 녹화 답과 맞습니다.")
+
+    print("\n서류 대조 데모 (임시 모의 문항, 평가셋 아님. evals/fixtures/demo_papers.jsonl)\n")
+    print("| B/L | 시나리오 | 판매 예정일 | 기대 결과 |")
+    print("|---|---|---|---|")
+    for g in papers:
+        print(f"| {g['bl_no']} | {g['label']} | {g['sale_due_date'] or '-'} | {g['expected']} |")
 
 
 if __name__ == "__main__":

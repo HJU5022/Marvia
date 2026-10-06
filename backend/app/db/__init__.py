@@ -157,6 +157,15 @@ def purge_done_cargo(conn) -> int:
     return conn.execute("SELECT purge_done_cargo()").fetchall()[0][0]
 
 
+def purge_old_conversations(conn) -> int:
+    """마지막 대화로부터 90일 지난 대화(말풍선 포함)를 지우고 지운 대화 수를 돌려준다 (10-06 결정, 대화 목록).
+
+    규칙(90일)은 DB 함수 purge_old_conversations()에만 있다 (migrations/018). purge_old_queries와 같이 pg_cron이 하루 한 번,
+    pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
+    """
+    return conn.execute("SELECT purge_old_conversations()").fetchall()[0][0]
+
+
 def recent_positions(conn, mmsi: int, limit: int = 20) -> list[dict]:
     """워커가 모은 같은 배의 위치 이력을 오래된 순으로 읽는다. anchor_wait 정지 시간 계산용 (services/signals.py).
 

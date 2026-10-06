@@ -186,6 +186,13 @@ def test_router_blocks_without_calling_llm(monkeypatch):
 needs_chat = pytest.mark.skipif(importlib.util.find_spec("backend.app.services.chat") is None,
                                 reason="services/chat.py가 아직 없는 브랜치 (자연어 창구 PR 전)")
 
+
+@pytest.fixture(autouse=True)
+def classic_path(monkeypatch):
+    # 채팅 테스트는 의도 분류 방식(route_chat)을 본다. 에이전트 방식은 test_chat_agent.py가 본다
+    monkeypatch.setenv("CHAT_AGENT", "off")
+
+
 def _chat_route(monkeypatch, **out):
     from backend.app.services import llm
 

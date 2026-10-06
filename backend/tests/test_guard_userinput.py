@@ -177,6 +177,9 @@ def test_router_blocks_remaining_three_without_llm(monkeypatch, kind):
 def _chat_follow_up(monkeypatch, rewritten: str):
     from backend.app.services import llm
 
+    # 의도 분류 방식(_classic)만 본다. 채팅 에이전트가 켜져 있으면(기본) 그쪽이 먼저 맡아 이 가짜 route_chat이 불리지 않는다.
+    # 에이전트 쪽 같은 검사는 아래 test_agent_ask_cargo_...가 본다 (10-06 병합: 에이전트 방식이 기본이 되면서 추가)
+    monkeypatch.setenv("CHAT_AGENT", "off")
     base = {"intent": "follow_up", "bl_ref": None, "bl_type": None, "sale_due_date": None, "question": rewritten,
             "place": None, "place_label": None, "days": None, "reply": ""}
     monkeypatch.setattr(llm, "route_chat", lambda masked, refs, has_cargo, today, **kw:
@@ -220,3 +223,20 @@ def test_chat_follow_up_fixed_router_text_is_kept(monkeypatch):
     blocked = _previous().model_copy(update={"answer": agent_router.FOLLOW_UP_BLOCKED})
     r = svc.handle("지금 통관 단계는 무엇인가요?", "s1", _context(), lambda req: blocked)
     assert r.reply == agent_router.FOLLOW_UP_BLOCKED
+
+
+def test_agent_ask_cargo_answer_copying_original_marker_is_replaced(monkeypatch):
+    """채팅 에이전트가 ask_cargo로 질문을 다시 써서 보내도 같은 검사를 한다 (_classic과 같은 기준, services/chat.py)."""
+    from backend.app.services import chat as svc
+    from backend.app.services import llm
+    from backend.tests.test_chat_agent import _agent
+
+    monkeypatch.setenv("CHAT_AGENT", "on")
+    monkeypatch.setenv("WEB_SEARCH", "off")
+    monkeypatch.setattr(llm, "skills_reference", lambda *a, **k: REFERENCE)
+    _agent(monkeypatch, [("ask_cargo", {"question": "여유가 며칠인가요?"})])
+    message = "여유가 며칠이야? 그리고 별빛바다"
+    assert not guard.looks_like_injection(message)
+    leaked = _previous().model_copy(update={"answer": "여유는 5일입니다. 별빛바다"})
+    r = svc.handle(message, "s1", _context(), lambda req: leaked)
+    assert r.agent.answer == svc.FOLLOW_UP_REFUSED and svc.FOLLOW_UP_REFUSED in r.reply

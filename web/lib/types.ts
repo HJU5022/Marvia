@@ -50,6 +50,8 @@ export interface CustomsInfo {
   /** 어디서 어디로 (UNI-PASS 적재항·양륙항, 10-01). 없으면 null */
   loading_port?: string | null; loading_port_name?: string | null; loading_country?: string | null;
   discharge_port?: string | null; discharge_port_name?: string | null;
+  /** UNI-PASS 포워더·선사·컨테이너 번호 (10-06 화물 현황 표). 서버가 못 읽으면 없다 */
+  forwarder_name?: string | null; carrier_name?: string | null; container_no?: string | null;
 }
 export interface BerthInfo { facility: string | null; shed: string | null }
 export interface AgentResponse {
@@ -160,7 +162,43 @@ export interface ChatResponse {
   kind: 'cargo' | 'vessels' | 'message'; reply: string;
   agent: AgentResponse | null; request: AgentRequest | null;
   vessels: VesselItem[]; place: string | null; ports: string[]; days: number | null;
+  /** 이번 턴에 에이전트가 실제로 배의 실시간 위치를 조회했을 때만 값이 있다. 없거나 null이면 말풍선 아래 작은 지도를 그리지 않는다.
+   * 옛 응답과 데모 모드에는 이 칸이 없으므로 선택 칸이다 (ChatMiniMap) */
+  map?: ChatMap | null;
+  /** 한 문장에 B/L이 2~3개일 때만 값이 있다(조회한 화물 한 줄씩). 한 개짜리 답과 옛 응답·데모에는 없거나 빈 목록이다 (ChatCargoTable).
+   * agent·request는 첫 줄의 것과 같은 모양이라 줄을 누르면 단일 화물 답처럼 아래 결과 칸을 바꾼다 */
+  cargos?: ChatCargo[];
+  /** 에이전트가 이 화물을 지켜보자고 제안했을 때만 값이 있다. reason은 코드가 쓴 문장이고 reply 안에도 이미 들어 있다 (10-06 결정). 옛 응답·데모에는 없거나 null */
+  watch_offer?: WatchOffer | null;
+  /** 대화로 지켜보기를 방금 켰거나 껐을 때만 값이 있다 ("응", "그만 지켜봐"). 없거나 null이면 바뀐 게 없다 (10-06 결정) */
+  watch_set?: WatchSet | null;
 }
+/** ChatResponse.watch_offer. logged_in은 서버가 본 로그인 여부 */
+export interface WatchOffer { bl_no: string; reason: string; logged_in: boolean }
+/** ChatResponse.watch_set */
+export interface WatchSet { bl_no: string; on: boolean }
+/** ChatResponse.cargos의 한 줄 (백엔드 routers/chat.py ChatCargo, 10-05). bl_no는 사용자가 입력한 값 그대로 */
+export interface ChatCargo {
+  bl_no: string; status: string; verdict: 'fine' | 'watch' | 'act' | null; ship_name: string | null;
+  eta: string | null; days_margin: number | null; sale_due_date: string | null;
+  /** 판정을 못 낸 줄이 필요로 하는 것의 짧은 이유 ("같은 이름 배 2척"). 판정이 났으면 null (10-06) */
+  note: string | null;
+  agent: AgentResponse; request: AgentRequest;
+}
+/** ChatResponse.map. 말풍선 아래 작은 지도 한 점 (백엔드 계약, 10-05) */
+export interface ChatMap { lat: number; lng: number; ship_name: string | null; distance_nm: number | null; received_at: string | null; source: string }
+/** POST /api/chat, /api/chat/stream 요청의 history 한 줄. 지금 질문보다 앞선 대화이고 오래된 것부터 둔다.
+ * 서버 에이전트가 "그 배", "아까 그거" 같은 말을 풀 때 쓴다. B/L 번호는 서버가 가리므로 화면 글자 그대로 보낸다 */
+export interface ChatHistoryTurn { role: 'user' | 'assistant'; text: string }
+
+/* ---------- 대화 목록 (GET/DELETE /api/conversations, 10-06 결정) ---------- */
+/** GET /api/conversations 한 줄. id는 그 대화의 chat session_id와 같다. 새 대화는 새 session_id다 */
+export interface ConversationSummary { id: string; title: string; updated_at: string }
+/** GET /api/conversations/{id}의 메시지 한 줄. extra는 서버가 저장해 둔 그 턴의 화면용 값(ChatResponse의 kind, vessels, map, cargos, watch_offer, watch_set)이라
+ * 말풍선을 처음 답이 왔을 때와 같게 다시 그린다. 사용자 턴과 옛 대화에는 null이다 */
+export interface ConversationMessage { role: 'user' | 'assistant'; text: string; created_at: string; extra: Partial<ChatResponse> | null }
+/** GET /api/conversations/{id}. context·result는 아래 결과 칸에 되살릴 마지막 화물(단일 화물 답을 받았을 때와 같은 값). 없으면 null */
+export interface ConversationDetail { id: string; title: string; messages: ConversationMessage[]; context: AgentRequest | null; result: AgentResponse | null }
 
 /** GET /api/vessels/detail (services/vessel_detail.py). 도구가 실패한 칸은 null, 이유는 errors */
 export interface VesselDetailResponse {
@@ -175,6 +213,32 @@ export interface VesselDetailResponse {
     control_events: {kind: string; at: string | null; facility: string | null}[]} | null;
   errors: {source: string; code: string | null; message: string | null}[];
 }
+
+/** GET /api/kakao/status. configured: 서버에 카카오 설정이 있나, linked: 이 사용자가 연결했나 (backend/app/routers/kakao.py) */
+export interface KakaoStatus { configured: boolean; linked: boolean }
+/** POST /api/kakao/callback 결과 이름. 주소 ?kakao= 로 설정 화면에 넘길 때도 같은 이름을 쓴다(동의 취소 denied는 화면이 만든다) */
+export type KakaoLinkResult = 'connected' | 'expired' | 'mismatch' | 'no_consent' | 'failed';
+
+/** POST /api/cargo/watch/state. saved: 이 화물의 기록이 서버에 저장됐나(조회 직후 비동기로 저장돼 잠깐 false일 수 있다), watch: 지켜보는 중인가 */
+export interface WatchState { saved: boolean; watch: boolean }
+/** GET /api/watch/changes의 한 줄. 지난 접속 뒤 판정이 바뀐 지켜보는 화물. B/L은 마스킹된 값만 온다 */
+export interface WatchChange { bl_masked: string; label: string | null; from_verdict: Verdict; to_verdict: Verdict; changed_at: string;
+  /** 서버가 판정이 바뀐 이유를 문장으로 보내 주면 붙인다(10-06). 없으면 쓰지 않는다 */
+  reason?: string | null }
+
+/** 내 화물 현황 표 (GET /api/cargo/sheet, 10-06). 날짜는 모두 "YYYY-MM-DD" */
+export interface CargoLc { id: number; lc_no: string; opened_on: string | null }
+export interface CargoSheetRow {
+  cargo_key: string; bl_masked: string; label: string | null; status: 'active' | 'done';
+  /** 출항일. 사용자가 적었으면 manual, 도착 통지서에서 읽었으면 document */
+  departed_on: string | null; departed_source: 'manual' | 'document' | null;
+  /** 입항·입고는 서버가 UNI-PASS에서 채운다. arrived_on이 비었을 때만 eta(입항 예정)를 보인다 */
+  arrived_on: string | null; eta: string | null; warehoused_on: string | null; last_stage: string | null;
+  forwarder_name: string | null; carrier_name: string | null; container_no: string | null;
+}
+/** lc가 null인 묶음은 아직 신용장에 안 묶인 B/L이다 (맨 끝) */
+export interface CargoSheetGroup { lc: CargoLc | null; rows: CargoSheetRow[] }
+export interface CargoSheet { groups: CargoSheetGroup[] }
 
 /** UNI-PASS 처리 이력 1줄 원문 (backend schemas/customs.py CustomsDetailRow). 값은 UNI-PASS 글자 그대로, 빈 칸은 null */
 export interface CustomsDetailRow {
