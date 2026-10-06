@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import logging
 import os
 import re
 import threading
@@ -35,7 +36,7 @@ from backend.app.clients.replay import replay_enabled
 from backend.app.db import connect
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
-from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, validate
+from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, referrals, validate
 from backend.app.services.verdict import VERDICT_LABEL
 from backend.app.services.watch import MAX_WATCH
 from backend.app.services.rules import load_file
@@ -530,6 +531,13 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         log_failure("chat", "blocked prompt injection pattern")
         return ChatResult(kind="message", reply=INJECTION_REPLY)
 
+    # 범위 밖 주제(항공·육상, 창고 수령일, 일정 변경, 날씨, 품목 요건)는 LLM 없이 고정 문장으로 답한다 (docs/specs/referral-guide.md, 10-06).
+    # B/L이 있는 문장은 그 화물 조회가 먼저라 보지 않는다. 문장과 주제 낱말은 skills/referrals/rules.md out_of_scope
+    hit = None if refs else referrals.out_of_scope_topic(masked)
+    if hit:
+        logging.getLogger(__name__).info("out_of_scope topic=%s", hit[0])  # 실패가 아니라 INFO. 주제만 남기고 문장은 남기지 않는다
+        return ChatResult(kind="message", reply=hit[1])
+
     progress.step("understand")  # 화면에 실제 단계를 알린다 (docs/specs/chat-progress.md)
     if agent_enabled():
         try:
@@ -704,7 +712,8 @@ WEB_SOURCES_SHOWN = 3  # "웹 참고" 줄에 올리는 출처 수 상한 (검색
 # 관세사는 제외한다 ("관세사가 누군지"는 실무 질문이다). 웹에 답이 있어도 이 주제는 관세사에게 묻게 한다 (PRD 4절, 10-05 결정)
 BROKER_TOPIC = re.compile(r"관세(?!사)|세율|세금|세액|부가세|부가가치세|과세|면세|환급|HS\s*코드|품목\s*분류|FTA|원산지|"
                           r"통관\s*(?:이|은|도)?\s*(?:될|되|가능|불가|안\s*되|문제|막|걸리|거부)", re.IGNORECASE)
-BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않습니다. 관세사에게 문의해 주세요."
+# 뒤에 공식 창구 줄을 붙인다. 주소·전화는 skills/referrals/rules.md broker_referral에만 있다 (docs/specs/referral-guide.md, 10-06)
+BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않습니다. 관세사에게 문의해 주세요.\n" + referrals.broker_tail()
 WEB_NOTE = "웹 참고: "  # 웹 근거 답 뒤에 코드가 붙이는 줄의 머리. 출처 제목과 주소는 가져온 결과에서만 온다
 
 

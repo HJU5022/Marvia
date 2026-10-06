@@ -35,6 +35,8 @@ def test_each_rules_file_has_its_own_keys():
         "customs-stages": {"customs_hold_words", "customs_stages", "customs_subject_words", "customs_assessment_words"},
         "port-busan": {"busan_ref", "busan_radius_nm", "busan_port_code"},
         "cargo-verdict": {"margin_act_days", "act_signals", "gray_signals", "ignore_signals", "ignore_dest_values"},
+        "referrals": {"signal_referrals", "referral_order", "referral_max", "referral_prefix", "signal_referral_links",
+                      "broker_referral", "out_of_scope"},
     }
     for folder, keys in expected.items():
         assert set(rules._front_matter(rules.SKILLS_DIR / folder / "rules.md")) == keys, folder
@@ -83,7 +85,7 @@ def test_busan_port_code_change_is_followed(monkeypatch):
 
 def test_every_skill_folder_has_skill_and_rules_with_spec_front_matter():
     folders = sorted(p for p in rules.SKILLS_DIR.iterdir() if p.is_dir())
-    assert {f.name for f in folders} == {"ais-reliability", "customs-stages", "port-busan", "cargo-verdict"}
+    assert {f.name for f in folders} == {"ais-reliability", "customs-stages", "port-busan", "cargo-verdict", "referrals"}
     for folder in folders:
         assert (folder / "rules.md").is_file(), folder.name
         front = rules._front_matter(folder / "SKILL.md")
