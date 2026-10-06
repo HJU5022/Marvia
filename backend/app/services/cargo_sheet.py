@@ -33,9 +33,9 @@ SOURCES = ("manual", "document")
 # "masked"로 되돌릴 때도 바꾸는 곳은 이 상수 하나뿐이다
 XLSX_BL_SOURCE = "original"
 
-# 엑셀 머리글. 앞 여섯 칸은 아버지 표 그대로이고 뒤 넷은 UNI-PASS에서 오는 참고 칸이다 (10-06, 품명은 오후 추가)
-HEADERS = ("신용장 개설일", "신용장 번호", "B/L 번호", "출항", "입항", "입고", "포워더", "선사", "컨테이너 번호", "품명")
-WIDTHS = (14, 22, 20, 10, 12, 10, 24, 20, 26, 24)
+# 엑셀 머리글. 앞 여섯 칸은 아버지 표 그대로이고 뒤 여섯은 UNI-PASS·조회 결과에서 오는 참고 칸이다 (10-06, 품명은 오후 추가, 선명·국적은 021 마이그레이션으로 맨 뒤에 추가해 앞 칸 위치를 지킨다)
+HEADERS = ("신용장 개설일", "신용장 번호", "B/L 번호", "출항", "입항", "입고", "포워더", "선사", "컨테이너 번호", "품명", "선명", "국적")
+WIDTHS = (14, 22, 20, 10, 12, 10, 24, 20, 26, 24, 22, 10)
 DATE_FORMAT = "m/d"  # 아버지 표처럼 월/일만. 엑셀에는 진짜 날짜로 들어가서 정렬·계산이 된다
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -60,12 +60,12 @@ def clean_lc_no(value: str) -> str:
 # 읽어 올 칸. 맨 뒤 셋(lc 쪽)은 LEFT JOIN이라 신용장이 없으면 None이다
 _SELECT = """SELECT c.cargo_key, c.bl_masked, c.bl_encrypted, c.label, c.status, c.departed_on, c.departed_source,
                     c.arrived_on, c.last_eta, c.warehoused_on, c.last_stage, c.forwarder_name, c.carrier_name,
-                    c.container_no, c.goods_name, c.created_at, l.id, l.lc_no, l.opened_on, l.created_at
+                    c.container_no, c.goods_name, c.created_at, c.vessel_name, c.vessel_flag, l.id, l.lc_no, l.opened_on, l.created_at
              FROM user_cargo c LEFT JOIN user_lc l ON l.id = c.lc_id
              WHERE c.user_id = %s ORDER BY c.created_at LIMIT %s"""
 _FIELDS = ("cargo_key", "bl_masked", "bl_encrypted", "label", "status", "departed_on", "departed_source",
            "arrived_on", "eta", "warehoused_on", "last_stage", "forwarder_name", "carrier_name",
-           "container_no", "goods_name", "created_at")
+           "container_no", "goods_name", "created_at", "vessel_name", "vessel_flag")
 # API로 내보내는 칸. bl_encrypted·created_at 같은 안쪽 값은 넣지 않는다 (API 계약 10-06)
 _ROW_OUT = tuple(f for f in _FIELDS if f not in ("bl_encrypted", "created_at"))
 
@@ -153,7 +153,7 @@ def bl_for_xlsx(row: dict) -> str:
 
 def _text(cell, value: str) -> None:
     """글자 칸을 쓴다. 값이 =로 시작해도 수식으로 풀리지 않도록 글자 형식(s)으로 못 박는다.
-    신용장 번호는 사용자 입력이고 포워더·선사·컨테이너·품명은 외부(UNI-PASS) 값이라, 수식 주입으로 파일을 여는 사람의 엑셀이 움직이면 안 된다."""
+    신용장 번호는 사용자 입력이고 포워더·선사·컨테이너·품명·선명·국적은 외부(UNI-PASS·선박 정보) 값이라, 수식 주입으로 파일을 여는 사람의 엑셀이 움직이면 안 된다."""
     cell.value = value
     cell.data_type = "s"
 
@@ -173,7 +173,7 @@ def build_xlsx(conn, user_id: str) -> bytes:
     ws.append(HEADERS)
     for cell in ws[1]:
         cell.font = Font(bold=True)
-    for letter, width in zip("ABCDEFGHIJ", WIDTHS):
+    for letter, width in zip("ABCDEFGHIJKL", WIDTHS):
         ws.column_dimensions[letter].width = width
     ws.freeze_panes = "A2"
 
@@ -191,7 +191,8 @@ def build_xlsx(conn, user_id: str) -> bytes:
                     ws.cell(r, col, row[field]).number_format = DATE_FORMAT
             if not row["arrived_on"] and row["eta"]:
                 _text(ws.cell(r, 5), f"예정 {row['eta'].month}/{row['eta'].day}")
-            for col, field in ((7, "forwarder_name"), (8, "carrier_name"), (9, "container_no"), (10, "goods_name")):
+            for col, field in ((7, "forwarder_name"), (8, "carrier_name"), (9, "container_no"), (10, "goods_name"),
+                              (11, "vessel_name"), (12, "vessel_flag")):
                 if row[field]:
                     _text(ws.cell(r, col), row[field])
     out = io.BytesIO()

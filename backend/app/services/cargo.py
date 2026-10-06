@@ -4,7 +4,7 @@
   cargo_key()          화물 지문. 원본 B/L에 BL_ENCRYPTION_KEY에서 파생한 열쇠를 섞은 HMAC (crypto.fingerprint 재사용)
   upsert_assessment()  조회가 끝난 뒤 이번 입력·확정된 배·판정 요약을 적는다. 반출이면 done (Spec 쓰기 흐름 2)
   active_rows()        진행 중 화물 최대 MAX_ACTIVE건. 판정·후속 LLM의 <user_cargo> 블록 재료 (Spec 읽기 흐름 1)
-  previous_line()      "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요." 코드가 쓰는 한 줄 (10-02 결정 4)
+  previous_line()      "지난 조회(10.01)에서는 '주의'였고, 판매 예정일까지 여유가 3일이었어요." 코드가 쓰는 한 줄 (10-02 결정 4)
   add_pending()        대화에서 나온 화물 값 변경(set_cargo)을 확인 대상으로만 둔다 (Spec 쓰기 흐름 4)
   apply_document_facts() 서류 사진에서 사용자가 확인한 B/L 조건을 적는다 (10-02 결정 7)
   find_by_container()  컨테이너 번호로 그 사용자의 화물 한 건을 찾는다 (채팅 "(컨테이너 번호) 어디쯤이야?", 10-06)
@@ -182,6 +182,16 @@ def _kst_date(moment: datetime | None) -> date | None:
     return moment.astimezone(KST).date()
 
 
+# 서류 사진에서 읽은 출항일을 화물 줄에 적는 SQL 조각 (10-06). upsert_assessment의 DO UPDATE SET 안에 들어간다.
+# 규칙: 사용자가 직접 적은 날짜(departed_source = 'manual')는 절대 덮지 않는다. 서류 값끼리는 새 값이 옛 값을 바꾼다.
+# 이번 조회에 서류 출항일이 없으면(EXCLUDED가 NULL) 저장된 값을 그대로 둔다. 날짜와 출처는 항상 같은 쪽 값을 같이 고른다
+# (둘이 어긋나면 표가 "직접 입력한 날짜"로 잘못 보인다). 테스트가 이 조각을 그대로 SQLite에 돌려 규칙을 확인한다
+DEPARTED_UPSERT_SQL = """departed_on = CASE WHEN user_cargo.departed_source = 'manual' THEN user_cargo.departed_on
+                                ELSE COALESCE(EXCLUDED.departed_on, user_cargo.departed_on) END,
+              departed_source = CASE WHEN user_cargo.departed_source = 'manual' THEN user_cargo.departed_source
+                                     ELSE COALESCE(EXCLUDED.departed_source, user_cargo.departed_source) END"""
+
+
 def upsert_assessment(conn, user_id: str, request: AgentRequest, response: AgentResponse, *, released: bool,
                       now: datetime | None = None) -> bool:
     """조회 한 번이 끝난 뒤 화물 표 한 줄을 쓴다 (Spec 쓰기 흐름 2). 썼으면 True.
@@ -198,6 +208,7 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
     today = now.astimezone(KST).date()
     mmsi, source = _vessel(request, response)
     customs = response.customs
+    confirmed = response.vessel if response.vessel_match == "confirmed" else None
     entered =[f for f in ("sale_due_date", "forwarder_eta") if getattr(request, f)]
     values = {
         "user_id": user_id, "cargo_key": key, "bl_masked": mask_bl(request.bl_no),
@@ -218,6 +229,13 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
         "container_no": customs.container_no if customs else None,
         # 품명 (020, 10-06 오후). 외부 글자라 주입 모양이면 저장하지 않는다: <user_cargo> 블록으로 LLM에 다시 간다
         "goods_name": (None if guard.looks_like_injection(customs.goods_name) else customs.goods_name) if customs else None,
+        # 선명·국적 (021, 감시 목록 한 줄). 배가 확정된 조회에서만 적는다: 되묻기 중인 후보 이름을 내 화물의 배로 남기지 않는다
+        "vessel_name": confirmed.name if confirmed else None,
+        "vessel_flag": confirmed.flag if confirmed else None,
+        # 출항일 (019, 10-06). 서류 사진에서 사용자가 확인한 값이 요청에 실려 왔을 때만 적는다. 출처는 늘 'document'.
+        # 판정에는 쓰지 않는다(요청에서 여기로만 온다). manual을 지키는 규칙은 DEPARTED_UPSERT_SQL
+        "departed_on": request.departed_on,
+        "departed_source": "document" if request.departed_on else None,
     }
     names = list(values)
     conn.execute(
@@ -245,12 +263,33 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
               carrier_name = COALESCE(EXCLUDED.carrier_name, user_cargo.carrier_name),
               container_no = COALESCE(EXCLUDED.container_no, user_cargo.container_no),
               goods_name = COALESCE(EXCLUDED.goods_name, user_cargo.goods_name),
+              vessel_name = COALESCE(EXCLUDED.vessel_name, user_cargo.vessel_name),
+              vessel_flag = COALESCE(EXCLUDED.vessel_flag, user_cargo.vessel_flag),
+              {DEPARTED_UPSERT_SQL},
               pending = COALESCE((SELECT jsonb_agg(p) FROM jsonb_array_elements(user_cargo.pending) p
                                   WHERE NOT (p->>'field' = ANY(%s::text[]))), '[]'::jsonb),
               updated_at = now()""",
         [*values.values(), entered],
     )
+    _keep_position(conn, mmsi, response)
     return True
+
+
+def _keep_position(conn, mmsi: int | None, response: AgentResponse) -> None:
+    """이번 조회에서 받은 배 위치를 감시·지도 위치 이력(watch_positions, 017)에 한 점 쌓는다 (10-06 감시 목록).
+
+    왜: 그 테이블은 원래 worker가 6시간마다 채우는데 스케줄러가 꺼져 있어(ShipFinder 호출 한도) 비어 있다.
+    조회·재판정은 어차피 위치를 받으므로 그 값을 버리지 않고 남기면, 수집 없이도 감시 목록 지도에 마지막 위치와
+    지나온 길(조회할 때마다 한 점)이 생긴다. 같은 보고 시각은 한 줄만 남는다(UNIQUE (mmsi, ts), worker/collector.py와 같다).
+    배가 확정돼 화물 표에 배 번호를 적은 경우(mmsi)만 쌓는다. 위치가 없으면 아무것도 하지 않는다."""
+    pos = response.position
+    if not mmsi or pos is None:
+        return
+    conn.execute(
+        """INSERT INTO watch_positions (mmsi, ts, fetched_at, lat, lng, sog, cog, navistat)
+           VALUES (%s, %s, now(), %s, %s, %s, %s, %s) ON CONFLICT (mmsi, ts) DO NOTHING""",
+        [mmsi, pos.last_time, pos.lat, pos.lng, pos.sog, pos.cog, pos.navistat],
+    )
 
 
 def add_pending(conn, user_id: str, key: str, changes: list[dict]) -> int:
@@ -320,15 +359,15 @@ def margin_text(margin: int | None) -> str | None:
     return f"여유 {margin}일" if margin >= 0 else f"판매 예정일보다 {abs(margin)}일 늦음"
 
 
-# 등급 이름 뒤 "이었/였" (받침 있으면 이었, 없으면 였). 괜찮음·지켜볼 것은 받침, 지금 조치는 받침 없음 (10-02 검증: "지금 조치이었어요")
-_PAST = {"fine": "이었", "watch": "이었", "act": "였"}
+# 등급 이름 뒤 "이었/였" (받침 있으면 이었, 없으면 였). 순항·긴급은 받침, 주의는 받침 없음 (10-02 검증: "지금 조치이었어요", 10-06 이름을 바꿔 다시 맞춤, 정운 결정)
+_PAST = {"fine": "이었", "watch": "였", "act": "이었"}
 
 
 def previous_line(row: dict | None) -> str | None:
     """덮어쓰기 전 화물 줄로 지난 조회 한 줄을 만든다 (10-02 결정 4). LLM을 부르지 않는다.
-    예: "지난 조회(10.01)에서는 '지켜볼 것'이었고, 판매 예정일까지 여유가 3일이었어요."
-        "지난 조회(10.01)에서는 '지금 조치'였고, 판매 예정일보다 2일 늦게 도착할 예정이었어요."
-        "지난 조회(10.01)에서는 '괜찮음'이었어요." (여유 일수 없음)
+    예: "지난 조회(10.01)에서는 '주의'였고, 판매 예정일까지 여유가 3일이었어요."
+        "지난 조회(10.01)에서는 '긴급'이었고, 판매 예정일보다 2일 늦게 도착할 예정이었어요."
+        "지난 조회(10.01)에서는 '순항'이었어요." (여유 일수 없음)
     지난 판정이 없으면(처음 조회, 판정 보류) None."""
     if not row or not row.get("last_verdict") or not row.get("last_checked_at"):
         return None

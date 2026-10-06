@@ -52,7 +52,7 @@ class FakeConn:
                "bl_encrypted": crypto.encrypt(bl), "label": None, "status": "active", "departed_on": None,
                "departed_source": None, "arrived_on": None, "last_eta": None, "warehoused_on": None,
                "last_stage": None, "forwarder_name": None, "carrier_name": None, "container_no": None,
-               "goods_name": None, "created_at": T0 + timedelta(minutes=self._n), "lc_id": lc["id"] if lc else None, **over}
+               "goods_name": None, "vessel_name": None, "vessel_flag": None, "created_at": T0 + timedelta(minutes=self._n), "lc_id": lc["id"] if lc else None, **over}
         self.cargo.append(row)
         return row
 
@@ -78,6 +78,7 @@ class FakeConn:
                             r["departed_on"], r["departed_source"], r["arrived_on"], r["last_eta"],
                             r["warehoused_on"], r["last_stage"], r["forwarder_name"], r["carrier_name"],
                             r["container_no"], r["goods_name"], r["created_at"],
+                            r["vessel_name"], r["vessel_flag"],
                             lc and lc["id"], lc and lc["lc_no"], lc and lc["opened_on"], lc and lc["created_at"]))
             return _Cur(out)
         if q.startswith("SELECT 1 FROM user_cargo"):
@@ -187,7 +188,7 @@ def test_load_sheet_row_shape_hides_inner_values():
     row = cargo_sheet.load_sheet(db, USER)["groups"][0]["rows"][0]
     assert set(row) == {"cargo_key", "bl_masked", "label", "status", "departed_on", "departed_source", "arrived_on",
                         "eta", "warehoused_on", "last_stage", "forwarder_name", "carrier_name", "container_no",
-                        "goods_name"}
+                        "goods_name", "vessel_name", "vessel_flag"}
     assert row["eta"] == date(2026, 10, 9) and row["label"] == "고추"
     assert cargo_sheet.load_sheet(FakeConn(), USER) == {"groups": []}
 
@@ -266,9 +267,9 @@ def _father_sheet() -> FakeConn:
 def test_xlsx_headers_layout_and_freeze():
     ws = _sheet(_father_sheet())
     headers = [c.value for c in ws[1]]
-    assert headers == ["신용장 개설일", "신용장 번호", "B/L 번호", "출항", "입항", "입고", "포워더", "선사", "컨테이너 번호", "품명"]
+    assert headers == ["신용장 개설일", "신용장 번호", "B/L 번호", "출항", "입항", "입고", "포워더", "선사", "컨테이너 번호", "품명", "선명", "국적"]
     assert all(c.font.bold for c in ws[1]) and ws.freeze_panes == "A2"
-    assert ws.column_dimensions["B"].width > 10 and ws.column_dimensions["J"].width > 10  # 품명 칸(J)까지 너비가 잡힌다
+    assert ws.column_dimensions["B"].width > 10 and ws.column_dimensions["L"].width > 5  # 국적 칸(L)까지 너비가 잡힌다
     assert ws.max_row == 5
 
 
@@ -505,6 +506,19 @@ def test_xlsx_goods_name_column():
     ws = _sheet(_father_sheet())
     assert ws["J2"].value == "MOCK GOODS" and ws["J2"].data_type == "s"
     assert ws["J3"].value is None  # 품명이 없는 줄은 빈칸
+
+
+def test_xlsx_vessel_columns_are_text_at_the_end():
+    """선명·국적(10-06 오후)은 맨 뒤 11·12번째 칸이다. 외부 글자라 글자 형식으로 쓰고, =로 시작해도 수식이 되지 않는다."""
+    db = FakeConn()
+    db.add("MOCKBL000000A1", vessel_name="MOCK VESSEL", vessel_flag="PA")
+    db.add("MOCKBL000000B1", vessel_name="=1+1", vessel_flag=None)
+    db.add("MOCKBL000000C1")
+    ws = _sheet(db)
+    assert (ws["K2"].value, ws["L2"].value) == ("MOCK VESSEL", "PA")
+    assert ws["K2"].data_type == "s" and ws["L2"].data_type == "s"
+    assert ws["K3"].value == "=1+1" and ws["K3"].data_type == "s" and ws["L3"].value is None
+    assert ws["K4"].value is None and ws["L4"].value is None  # 선명·국적이 없는 줄은 빈칸
 
 
 def test_migration_020_shape():
