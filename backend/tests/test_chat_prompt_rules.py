@@ -11,3 +11,14 @@ def test_vague_remark_rule_exists():
 
 def test_polite_tone_rule_exists():
     assert "polite Korean ending in 습니다 or 요" in PROMPT
+
+
+def test_unknown_person_rule_exists():
+    """10-07 (트레이스 bc9c239a): 화면 화물과 이어지지 않는 사람·대상을 화물로 읽지 않고 도구 없이 되묻는다."""
+    assert "Unknown person or thing" in PROMPT
+    assert "never read it as the cargo on screen" in PROMPT
+
+
+def test_follow_up_subject_scope_rule_exists():
+    follow_up = (Path(__file__).resolve().parents[1] / "app" / "prompts" / "marvia-follow-up.md").read_text(encoding="utf-8")
+    assert "If the subject of the question is not this cargo" in follow_up
