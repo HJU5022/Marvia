@@ -508,10 +508,15 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     # 기억 뽑기 재료는 가린 문장이다. B/L·MRN 원본은 넘기지 않는다 (CLAUDE.md, docs/specs/memory.md 쓰기 흐름 3)
     types_token = _STORED_TYPES.set(stored_types)
     try:
-        with memory.user_text(masked):
+        with memory.user_text(masked) as turn:
             result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao)
     finally:
         _STORED_TYPES.reset(types_token)
+    # 로그인 사용자의 평범한 대화 턴도 기억 뽑기에 보낸다 (10-06 정운 결정). 기억 뽑기는 화물 조회·후속 질문 뒤에만 돌아
+    # "우리 포워더는 가온 김과장이야" 같은 말이 B/L 없는 턴에서 버려졌다. 같은 문장을 두 번 보내지 않도록,
+    # 이 턴에 조회가 이미 맡겼으면(turn.fired) 건너뛴다. 무엇을 기억할지는 LLM이 정한다. 가린 문장만 넘긴다
+    if user_id and not turn.fired:
+        memory.remember_chat_later(user_id, masked)
     if repair_notes:
         result = replace(result, reply="\n".join([result.reply, *repair_notes]))
     return result
