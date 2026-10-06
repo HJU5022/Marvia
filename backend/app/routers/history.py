@@ -29,7 +29,7 @@ class HistoryItem(BaseModel):
     verdict: str | None
     vessel_match: str | None
     decided_by: Literal["rule", "llm"] | None
-    model: str | None
+    model: str | None = None  # 018에서 DB 칸을 지웠다. 화면 계약을 깨지 않게 null로 남긴다
     trace_id: str | None
     created_at: datetime
 
