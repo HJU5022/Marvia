@@ -286,3 +286,7 @@
 .cand-pick{min-width:64px;min-height:32px;background:none;border:1px solid var(--border-strong,#cfcfcf);color:var(--text);font-weight:400;letter-spacing:.06em}
 .cand-row:hover .cand-pick{background:none;color:var(--text);border-color:var(--text)}
 .cand-row.selected .cand-pick{background:var(--text);color:#fff;border-color:var(--text)}
+
+/* 선박 자세히의 구역 제목(부산항 일정·선박 위치)을 다른 표 제목처럼 작은 흐린 라벨로 (10-07 정운 엘레강스) */
+.vessel-detail.vd section h4{font-size:12px;font-weight:400;letter-spacing:.06em;color:var(--muted);display:flex;align-items:center;gap:6px}
+.vessel-detail.vd section h4 svg{width:13px;height:13px}
