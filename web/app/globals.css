@@ -195,6 +195,7 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .chat-turn.user{align-self:flex-end}
 .chat-turn.user p{background:var(--rail);color:var(--rail-text);border-bottom-right-radius:3px}
 .chat-turn.assistant p{background:var(--soft);color:var(--body);border-bottom-left-radius:3px}
+.chat-link{color:var(--blue);text-decoration:underline;text-underline-offset:2px;word-break:break-all}  /* 웹 참고 주소. 긴 주소가 말풍선 밖으로 안 나가게 */
 .chat-avatar{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--rail);margin-top:4px}
 .chat-form{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:10px 12px 8px;transition:border-color .15s}
 .chat-form:focus-within{border-color:var(--accent-dark);box-shadow:0 0 0 3px #d5e9ad55}

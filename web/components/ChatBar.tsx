@@ -31,6 +31,15 @@ function scrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
 
+/** 답 글 속 http(s) 주소만 누를 수 있는 링크로 바꾼다. 서버는 "웹 참고: 제목 (주소)"를 평문으로 붙인다(services/chat.py WEB_NOTE).
+ * 주소는 서버가 가져온 검색 결과에서만 오지만, 그래도 http·https만 링크로 만들고 새 탭으로 연다(noopener: 열린 쪽이 이 창을 못 건드리게).
+ * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
+const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
+function linkify(text: string) {
+  return text.split(URL_PATTERN).map((part, i) =>
+    i % 2 === 1 ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a> : part);
+}
+
 export function ChatBar({idle = false}: {idle?: boolean}) {
   const {ask, loading, stages, pendingSince, thread, result, request, setDocHints} = useApp();
   const [text, setText] = useState('');
@@ -118,7 +127,7 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
 
     {thread.length > 0 && <ol className="chat-thread" ref={threadRef} onScroll={onScroll} aria-live="polite" aria-label="대화" tabIndex={0}>
       {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-        {t.role === 'assistant' && <span className="chat-avatar"><Sparkles size={12}/></span>}<div className="chat-body"><p>{t.text}</p>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
+        {t.role === 'assistant' && <span className="chat-avatar"><Sparkles size={12}/></span>}<div className="chat-body"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
     </ol>}
 
     {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}
