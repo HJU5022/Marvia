@@ -235,7 +235,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       const kind = last?.extra?.kind;
       if (kind === 'vessels' && last?.extra) {
         setVessels({kind: 'vessels', reply: last.text, agent: null, request: null, vessels: [], place: null, ports: [], days: null, ...last.extra} as ChatResponse); setView('vessels');
-      } else setView(kind === 'message' || !(c.context && c.result) ? 'none' : 'cargo');
+      } else setView(!(c.context && c.result) ? 'none' : 'cargo');  // 안내 문장이 마지막이어도 저장된 화물 결과가 있으면 보인다 (10-07 15번)
       syncUrl(id);
       return true;
     } catch (e) {
@@ -304,8 +304,7 @@ export function AppProvider({children}:{children:ReactNode}) {
         setView('cargo');
       }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
-      // 안내 문장(B/L 없음 등)이면 아래의 지난 결과를 숨긴다. 새 답과 지난 카드가 섞여 보이지 않게
-      if (res.kind === 'message') setView('none');
+      // 안내 문장(B/L 없음, 화물과 상관없는 질문 등)이 와도 보던 화물 결과는 그대로 둔다. 새 화물 조회가 올 때만 바뀐다 (10-07 정운 실사용 15번)
       // 서버가 이 턴을 저장했다. 주소에 대화 id를 붙이고 목록을 새로 읽는다. 제목은 조금 늦게 생길 수 있어 한 번 더 읽는다 (10-06 결정)
       if (conversationsOn) { syncUrl(currentSessionId()); void refreshConversations(); setTimeout(() => void refreshConversations(), 3000); }
       return true;

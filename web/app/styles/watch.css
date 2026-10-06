@@ -3,7 +3,7 @@
 
 /* 머리: 작은 상위 경로 + 큰 제목 */
 .wm-head small{display:block;font-size:var(--text-sm);color:var(--muted);margin-bottom:2px}
-.wm-head h2{display:block;font-size:var(--text-xl);font-weight:800;margin:0}
+.wm-head h2{display:block;font-size:var(--fs-xl,22px);font-weight:500;margin:0}
 
 /* 본문: 왼쪽 지도 카드, 오른쪽 "내 화물" 카드 */
 .wm-body{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
@@ -14,7 +14,7 @@
 /* 지도 위 줄: 기준 시각은 왼쪽, 버튼과 체크는 오른쪽. 지도 밖에 두어 겹치지 않는다 */
 .wm-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .watch-updated{margin-right:auto;font-size:var(--text-sm);color:var(--muted)}
-.watch-fit{position:static;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:var(--surface);color:var(--brand);border:1px solid var(--border-strong);border-radius:var(--small-radius);padding:8px 14px;font-weight:700;font-size:var(--text-base)}
+.watch-fit{position:static;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:var(--surface);color:var(--brand);border:1px solid var(--border-strong);border-radius:var(--small-radius);padding:8px 14px;font-weight:500;font-size:var(--text-base)}
 .watch-fit:hover{background:var(--brand-soft)}
 .watch-track-toggle{position:static;box-shadow:none;border:0;background:transparent;padding:0;font-size:var(--text-base);color:var(--text-2);display:inline-flex;align-items:center;gap:8px}
 .watch-track-toggle input{width:18px;height:18px;accent-color:var(--brand)}
@@ -23,7 +23,7 @@
 .watch-map{height:620px;border:0;border-radius:var(--small-radius);background:var(--sea)}
 .watch-map .leaflet-host,.watch-map .leaflet-container{background:var(--sea)}
 .port-marker span{background:var(--text);color:#fff;border-color:#fff}
-.leaflet-tooltip.port-tooltip{font-weight:700;color:var(--text);background:#fff;border:0;border-radius:var(--small-radius);padding:3px 8px;box-shadow:0 1px 4px #191f2826;font-size:var(--text-sm)}
+.leaflet-tooltip.port-tooltip{font-weight:500;color:var(--text);background:#fff;border:0;border-radius:var(--small-radius);padding:3px 8px;box-shadow:0 1px 4px #191f2826;font-size:var(--text-sm)}
 .leaflet-tooltip.port-tooltip:before{display:none}
 
 /* 배 핀: 시안처럼 둥근 핀. 배 색 테두리, 안에 알파벳, 판정은 바깥 고리 */
@@ -32,7 +32,7 @@
 
 /* 오른쪽 카드 머리 */
 .wm-side-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.wm-side-head h3{margin:0;font-size:var(--text-xl);font-weight:800}
+.wm-side-head h3{margin:0;font-size:var(--text-xl);font-weight:500}
 .wm-count{margin:0 0 12px;font-size:var(--text-base);color:var(--muted)}
 
 /* 목록 카드: 품명 > 배 이름 > B/L > 통관 단계, 오른쪽 위에 등급 */
@@ -43,18 +43,18 @@
 .watch-list button.selected{border-color:var(--brand);background:var(--brand-soft);box-shadow:inset 4px 0 0 var(--brand)}
 .watch-chip{width:32px;height:32px;font-size:var(--text-sm);border:3px solid #fff;box-shadow:0 0 0 1px var(--border)}
 .watch-main{gap:2px}
-.watch-goods{font-size:var(--text-lg);font-weight:800;color:var(--text);line-height:1.35;overflow-wrap:anywhere}
-.watch-ship{font-size:var(--text-base);font-weight:600;color:var(--text);overflow-wrap:anywhere}
+.watch-goods{font-size:var(--text-lg);font-weight:500;color:var(--text);line-height:1.35;overflow-wrap:anywhere}
+.watch-ship{font-size:var(--text-base);font-weight:500;color:var(--text);overflow-wrap:anywhere}
 .watch-bl{font-size:var(--text-sm);color:var(--muted);font-family:var(--mono);white-space:normal}
-.watch-stage{font-size:var(--text-base);font-weight:600;color:var(--text-2);margin-top:4px}
-.wm-selected{margin-top:6px;align-self:flex-start;font-size:var(--text-sm);font-weight:700;color:var(--brand)}
+.watch-stage{font-size:var(--text-base);font-weight:500;color:var(--text-2);margin-top:4px}
+.wm-selected{margin-top:6px;align-self:flex-start;font-size:var(--text-sm);font-weight:500;color:var(--brand)}
 .watch-list .verdict-badge{align-self:start}
 
 /* 위치 수집 전 화물: 지도에는 못 올리고 이름만 */
 .wm-waiting{margin-top:12px;padding-top:14px;border-top:1px solid var(--border)}
 .wm-waiting strong{font-size:var(--text-base)}
 .wm-waiting ul{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:8px}
-.wm-waiting li span{display:block;font-weight:700}
+.wm-waiting li span{display:block;font-weight:500}
 .wm-waiting li small,.wm-waiting p{font-size:var(--text-sm);color:var(--muted);margin:0}
 .watch-done{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--border);font-size:var(--text-base);color:var(--text-2)}
 
@@ -161,3 +161,10 @@
 .watch-pin.hovered .pin-body{transform:scale(1.18);box-shadow:0 0 0 4px color-mix(in srgb,var(--pin) 28%,transparent),0 3px 10px #191f2859}
 .track-hit{cursor:pointer}
 @media (prefers-reduced-motion: reduce){.watch-pin .pin-body{transition:none}}
+
+/* ===== 10-07 정리 (정운 실사용 17번): 위치 없는 화물도 같은 행 모양, 지도는 늘 보인다 ===== */
+.watch-map{border-radius:var(--small-radius)}
+.watch-list li.no-pos .watch-row-static{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:12px;padding:14px 12px}
+.watch-chip.idle{background:var(--neutral-bg);color:var(--muted);display:grid;place-items:center}
+.wm-waiting-note{margin:8px 12px 0;font-size:var(--fs-sm,13px);color:var(--muted)}
+.wm-side-head h3{font-size:var(--fs-lg,18px);font-weight:500}

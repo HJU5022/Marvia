@@ -12,6 +12,8 @@ import {InfoTip} from './VerdictCard';
 export function EtaCompare({response:r,part='schedule'}:{response:AgentResponse;part?:'schedule'|'sources'}) {
  if(part==='schedule'){
   const c=r.customs,p=r.position;
+  // 현재 위치와 입항 예정이 둘 다 모르면 보여 줄 게 출항지뿐이라 줄을 숨긴다 (10-07 정운 실사용 14번)
+  if(!p&&!r.eta?.trusted_eta)return null;
   const from=c?.loading_port_name??(c?.loading_port?portLabel(c.loading_port):null);
   const to=c?.discharge_port_name??(c?.discharge_port?portLabel(c.discharge_port):null);
   return <section className="schedule-row" aria-label="일정">

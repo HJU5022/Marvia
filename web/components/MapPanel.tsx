@@ -10,8 +10,7 @@ import type {ReactNode} from 'react';
 import type {AgentResponse} from '@/lib/types';
 import {getPresentationData} from '@/lib/api';
 import {addBasemap,drawLocalGeography,type Basemap} from '@/lib/basemap';
-import {countryLabel,dateTime,sourceLabels} from '@/lib/format';
-import {VerdictBadge} from './Shared';
+import {countryLabel,dateTime,sourceLabels,verdictLabels} from '@/lib/format';
 import {conflictBadge,InfoTip} from './VerdictCard';
 /** 지도 펼치기 목표 칸(fixed 좌표)과 뒷배경(작업 공간 전체) 좌표 */
 type Box={bt:number;bl:number;bw:number;bh:number;top:number;left:number;width:number;height:number};
@@ -32,9 +31,9 @@ export function MapPanel({response:r,watch}:{response:AgentResponse;watch?:React
    const labels:{el:()=>HTMLElement|undefined;ll:L.LatLngTuple}[]=[];const hideNearLabels=()=>{const pts=[port,...(position?[position]:[])].map(q=>map.latLngToContainerPoint(q));
     labels.forEach(l=>{const el=l.el();if(!el)return;const q=map.latLngToContainerPoint(l.ll);el.classList.toggle('map-place-hide',pts.some(a=>Math.abs(q.x-a.x)<110&&Math.abs(q.y-a.y)<46));});};
    map.on('zoomend moveend',hideNearLabels);
-   // 떠 있는 카드(오른쪽 아래)가 배와 부산항을 덮지 않도록 카드 쪽에 여백을 두고 맞춘다: 지도가 넓으면 카드 폭만큼 오른쪽을, 좁으면 카드 높이만큼 아래쪽을 비운다
-   const home=()=>{if(!position){map.setView(port,6);return;}const w=host.current?.clientWidth??0,c=card.current,cw=(c?.offsetWidth??0)+24,ch=(c?.offsetHeight??0)+24;const side=w>cw*1.5;
-    map.invalidateSize();map.fitBounds(L.latLngBounds([position,port]),{maxZoom:8,animate:false,paddingTopLeft:[56,72],paddingBottomRight:side?[cw+16,56]:[56,ch+44]});hideNearLabels();};
+   // 요약 줄(판정·선명·거리)은 지도 아래로 옮겼다(10-07 정운 실사용 12번). 지도 위에는 배와 부산항뿐이라 여백은 사방 같게 둔다
+   const home=()=>{if(!position){map.setView(port,6);return;}
+    map.invalidateSize();map.fitBounds(L.latLngBounds([position,port]),{maxZoom:8,animate:false,padding:[56,56]});hideNearLabels();};
 home();reset.current=home;
    // 바탕: 세계 지도. 못 쓰면(WebGL 없음, 4초 안에 안 옴, 오류) 예전 해안선과 격자, 손으로 쓴 이름표로 되돌린다. 모두 마커·경로 밑에 깔린다
    baseRef.current=addBasemap(L,map,()=>{
@@ -108,6 +107,11 @@ home();reset.current=home;
    <button ref={toggle} type="button" className="map-tool map-expand" aria-pressed={big} aria-label={big?'지도 줄이기':'지도 펼치기'} title={big?'지도 줄이기 (Esc)':'지도 펼치기'} onClick={big?close:open}>{big?<Minimize2 size={18}/>:<Maximize2 size={18}/>}</button>
   </div>
   <div className="map-zoom"><button type="button" className="map-tool" aria-label="지도 확대" title="확대" onClick={()=>{touched.current=true;mapRef.current?.zoomIn();}}><Plus size={18}/></button><button type="button" className="map-tool" aria-label="지도 축소" title="축소" onClick={()=>{touched.current=true;mapRef.current?.zoomOut();}}><Minus size={18}/></button><button type="button" className="map-tool map-reset" onClick={()=>{touched.current=false;reset.current();}} aria-label="선박과 부산항에 지도 맞추기" title="선박과 부산항에 맞추기"><LocateFixed size={18}/></button></div>
-  <div className="map-card" ref={card}><div className="map-card-head">{r.verdict&&<VerdictBadge verdict={r.verdict} size="lg"/>}{watch}</div>{r.vessel?.name&&<strong className="map-card-ship">{r.customs?.goods_name&&<span className="map-card-goods">{r.customs.goods_name} 실은 </span>}{r.vessel.name}{r.vessel.flag&&<span> ({countryLabel(r.vessel.flag)})</span>}</strong>}<div className="map-card-meta">{distance!==null&&distance!==undefined&&<span>부산까지 <b>{distance}</b>해리</span>}<small className={`freshness ${p?.freshness??'unknown'}`}>{fresh}{p&&` · ${dateTime(p.last_time,true)} 기준`}{p&&stale&&' (현재 위치 아님)'}</small></div></div>
- </div></div></section>;
+ </div></div>
+  {/* 지도 아래 한 줄 요약: 판정은 작은 점과 글자로, 선명·거리·수신 상태는 옅은 글씨로 (10-07 디자인 방향: 채운 배지·떠 있는 흰 카드 대신) */}
+  <div className="map-summary" ref={card}>
+   <div className="map-summary-main">{r.verdict&&<span className={`verdict-dot ${r.verdict}`}><i aria-hidden="true"/>{verdictLabels[r.verdict]}</span>}{r.vessel?.name&&<strong className="map-card-ship">{r.customs?.goods_name&&<span className="map-card-goods">{r.customs.goods_name} 실은 </span>}{r.vessel.name}{r.vessel.flag&&<span> ({countryLabel(r.vessel.flag)})</span>}</strong>}</div>
+   {watch&&<div className="map-summary-watch">{watch}</div>}
+   <div className="map-card-meta">{distance!==null&&distance!==undefined&&<span>부산까지 <b>{distance}</b>해리</span>}<small className={`freshness ${p?.freshness??'unknown'}`}>{fresh}{p&&` · ${dateTime(p.last_time,true)} 기준`}{p&&stale&&' (현재 위치 아님)'}</small></div>
+  </div></section>;
 }

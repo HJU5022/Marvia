@@ -10,10 +10,10 @@
    1. 비교 표 (대화 칸 안, 폭 약 480~560px): 상자 없이 말풍선 아래에 선과 글자로만
    ========================================================= */
 .cmp-card{max-width:100%;min-width:0;width:100%;margin-top:12px;padding:0;border:0;background:none;overflow:visible;animation:cv-up var(--cv-enter) var(--ease) both}
-.cmp-title{font-size:var(--text-base);font-weight:800;color:var(--text);margin:0}
+.cmp-title{font-size:var(--text-base);font-weight:500;color:var(--text);margin:0}
 .cmp-sub{margin:2px 0 8px;font-size:var(--text-sm);color:var(--muted)}
 .cmp-card table.cmp-table{width:100%;border-collapse:collapse;font-size:var(--text-base);color:var(--text);table-layout:fixed}
-.cmp-table thead th{padding:8px 12px 8px 0;background:none;color:var(--muted);font-size:var(--text-sm);font-weight:600;text-align:left;border:0;border-bottom:1px solid var(--border-strong);white-space:normal;line-height:1.4;word-break:keep-all}
+.cmp-table thead th{padding:8px 12px 8px 0;background:none;color:var(--muted);font-size:var(--text-sm);font-weight:500;text-align:left;border:0;border-bottom:1px solid var(--border-strong);white-space:normal;line-height:1.4;word-break:keep-all}
 .cmp-table thead th:nth-child(1){width:38%}
 .cmp-table thead th:nth-child(2){width:32%}
 .cmp-table tbody th,.cmp-table tbody td{padding:14px 12px 14px 0;text-align:left;vertical-align:top;border:0;border-bottom:1px solid var(--border);white-space:normal;font-weight:400;background:transparent}
@@ -24,22 +24,22 @@
 .cmp-table tbody tr.on{background:var(--brand-soft)}
 /* 줄 첫 칸: 누르는 버튼 (B/L + 판정 배지) */
 .cmp-table tbody th button{appearance:none;display:flex;flex-direction:column;align-items:flex-start;gap:8px;width:100%;padding:0;margin:0;border:0;background:none;color:var(--text);text-align:left;cursor:pointer;position:static}
-.cmp-bl{display:flex;align-items:center;gap:6px;font-size:var(--text-sm);font-weight:700;color:var(--text);overflow-wrap:anywhere;letter-spacing:-.02em}
+.cmp-bl{display:flex;align-items:center;gap:6px;font-size:var(--text-sm);font-weight:500;color:var(--text);overflow-wrap:anywhere;letter-spacing:-.02em}
 .chat-cargo-table.cmp-card tbody th button svg{position:static;right:auto;top:auto}
 .cmp-bl svg{color:var(--brand)}
 .cmp-table tbody th button:hover .cmp-bl{color:var(--brand)}
 .cmp-state{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
 .cmp-state small{font-size:var(--text-sm);color:var(--muted);font-weight:400}
 .cmp-table .verdict-badge{font-size:var(--text-sm);padding:2px 10px}
-.cmp-table .verdict-badge.neutral{background:var(--neutral-bg);color:var(--text-2);font-weight:600}
+.cmp-table .verdict-badge.neutral{background:var(--neutral-bg);color:var(--text-2);font-weight:500}
 /* 둘째 칸: 선박 / 국적 / 도착 예정 */
-.cmp-ship{display:block;font-size:var(--text-base);font-weight:700;color:var(--text);overflow-wrap:anywhere}
+.cmp-ship{display:block;font-size:var(--text-base);font-weight:500;color:var(--text);overflow-wrap:anywhere}
 .cmp-table td small{display:block;font-size:var(--text-sm);color:var(--muted)}
 .cmp-eta{display:block;margin-top:4px;font-size:var(--text-sm);color:var(--text-2)}
 .cmp-none{color:var(--muted)}
 /* 셋째 칸: 여유 일수는 크고 굵게, 색은 판정 등급 */
 .cmp-margin{display:flex;flex-direction:column;gap:2px;font-size:var(--text-sm);color:var(--text)}
-.cmp-margin b{font-size:var(--text-lg);font-weight:800;line-height:1.3}
+.cmp-margin b{font-size:var(--text-lg);font-weight:500;line-height:1.3}
 .cmp-margin small{font-size:var(--text-sm);color:var(--muted);font-weight:400}
 .cmp-margin.fine b{color:var(--grade-fine)}
 .cmp-margin.watch b{color:var(--grade-watch)}
@@ -51,7 +51,7 @@
    2. 후보 고르기: 제목과 안내는 배경 위에 바로, 누르는 후보 줄만 흰 상자
    ========================================================= */
 .cand-card{display:block;padding:8px 0 0;margin:0;border:0;border-radius:0;background:none;box-shadow:none;animation:cv-up var(--cv-enter) var(--ease) both}
-.cand-title{font-size:var(--text-lg);font-weight:800;color:var(--text);margin:0}
+.cand-title{font-size:var(--text-lg);font-weight:500;color:var(--text);margin:0}
 .cand-sub{margin:6px 0 0;font-size:var(--text-base);color:var(--text-2);line-height:1.6;max-width:720px}
 .cand-list{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:20px 0 0;min-width:0}
 .cand-card .candidate.cand-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;border:0;border-radius:var(--radius);background:var(--surface);box-shadow:inset 0 0 0 1px var(--border);cursor:pointer;transition:box-shadow var(--cv-fast) var(--ease),background var(--cv-fast) var(--ease),transform var(--cv-fast) var(--ease);animation:cv-up var(--cv-enter) var(--ease) both}
@@ -63,12 +63,12 @@
 .cand-row>input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
 .cand-row>input:focus-visible~.cand-pick{outline:2px solid var(--brand);outline-offset:2px}
 .cand-body{display:flex;flex-direction:column;gap:4px;min-width:0}
-.cand-body strong{font-size:var(--text-base);font-weight:800;color:var(--text)}
+.cand-body strong{font-size:var(--text-base);font-weight:500;color:var(--text)}
 .cand-meta{font-size:var(--text-base);color:var(--text)}
 .cand-ids,.cand-why{font-size:var(--text-sm);color:var(--muted);line-height:1.5}
 .cand-ids .mono{font-size:var(--text-sm)}
 /* "선택" 알약: 테두리 상자 대신 글자 버튼. 고르면 파랑 채움 */
-.cand-pick{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:72px;min-height:36px;padding:0 14px;border-radius:999px;background:var(--bg);color:var(--text-2);font-size:var(--text-sm);font-weight:700;white-space:nowrap;transition:background var(--cv-fast) var(--ease),color var(--cv-fast) var(--ease)}
+.cand-pick{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:72px;min-height:36px;padding:0 14px;border-radius:999px;background:var(--bg);color:var(--text-2);font-size:var(--text-sm);font-weight:500;white-space:nowrap;transition:background var(--cv-fast) var(--ease),color var(--cv-fast) var(--ease)}
 .cand-row:hover .cand-pick{background:var(--brand-soft);color:var(--brand)}
 .cand-row.selected .cand-pick{background:var(--brand);color:#fff}
 .cand-extra{display:flex;flex-direction:column;gap:16px;margin-top:20px;max-width:720px}
@@ -91,10 +91,10 @@
 .vl .vmap .map-slot{height:clamp(240px,40vh,520px)}
 .vl-body{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -8px;padding:0 8px 8px}
 .vl-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;animation:cv-up var(--cv-enter) var(--ease) 40ms both}
-.vl-head h2{font-size:var(--text-lg);font-weight:800;color:var(--text);margin:0;line-height:1.3}
+.vl-head h2{font-size:var(--text-lg);font-weight:500;color:var(--text);margin:0;line-height:1.3}
 .vl-head p{margin:4px 0 0;font-size:var(--text-sm);color:var(--muted)}
 /* 필터 토글: 글자 버튼 하나(아이콘 + 글자). 켜면 파란 글씨 */
-.vl-kinds-toggle{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border:0;border-radius:var(--small-radius);background:transparent;color:var(--text-2);font-size:var(--text-sm);font-weight:600;white-space:nowrap;transition:background var(--cv-fast) var(--ease),color var(--cv-fast) var(--ease),transform var(--cv-fast) var(--ease)}
+.vl-kinds-toggle{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border:0;border-radius:var(--small-radius);background:transparent;color:var(--text-2);font-size:var(--text-sm);font-weight:500;white-space:nowrap;transition:background var(--cv-fast) var(--ease),color var(--cv-fast) var(--ease),transform var(--cv-fast) var(--ease)}
 .vl-kinds-toggle:hover{background:var(--surface);color:var(--text)}
 .vl-kinds-toggle:active{transform:scale(.98)}
 .vl-kinds-toggle[aria-pressed=true]{background:var(--brand-soft);color:var(--brand)}
@@ -102,11 +102,11 @@
 .vl .vl-table{flex:none;border-radius:var(--radius);background:var(--surface);overflow:hidden;animation:cv-up var(--cv-enter) var(--ease) 80ms both}
 .vl .vl-table table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--text-sm);color:var(--text)}
 .vl .vl-table th.c-name{width:28%}.vl .vl-table th.c-flag{width:13%}.vl .vl-table th.c-prev{width:23%}.vl .vl-table th.c-eta{width:19%}.vl .vl-table th.c-etd{width:17%}
-.vl .vl-table thead th{padding:14px 8px;background:transparent;color:var(--muted);font-size:var(--text-sm);font-weight:600;text-align:left;vertical-align:bottom;border:0;border-bottom:1px solid var(--border-strong)}
+.vl .vl-table thead th{padding:14px 8px;background:transparent;color:var(--muted);font-size:var(--text-sm);font-weight:500;text-align:left;vertical-align:bottom;border:0;border-bottom:1px solid var(--border-strong)}
 .vl .vl-table thead{background:transparent}
 .vl .vl-table th:first-child,.vl .vl-table td:first-child{padding-left:20px}
 .vl .vl-table th:last-child,.vl .vl-table td:last-child{padding-right:20px}
-.vl .sort-head{display:inline-flex;align-items:center;gap:4px;padding:0;margin:0;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;text-align:left;line-height:1.4;cursor:pointer;transition:color var(--cv-fast) var(--ease)}
+.vl .sort-head{display:inline-flex;align-items:center;gap:4px;padding:0;margin:0;border:0;background:none;color:var(--muted);font:inherit;font-weight:500;text-align:left;line-height:1.4;cursor:pointer;transition:color var(--cv-fast) var(--ease)}
 .vl .sort-head svg{opacity:.4}
 .vl .sort-head:hover{color:var(--text);background:none}
 .vl .sort-head.on,.vl .sort-head.on svg{color:var(--brand);opacity:1}
@@ -119,7 +119,7 @@
 .vl .vl-table tbody tr.row-sel>td:first-child{box-shadow:inset 3px 0 0 var(--brand)}
 .vl .vl-table tbody tr.row-open>td{background:var(--brand-soft)}
 .vl .vl-table tbody tr.row-open>td{border-bottom-color:transparent}
-.vl .ship-link{padding:0;border:0;background:none;color:var(--text);font:inherit;font-weight:700;font-size:var(--text-base);line-height:1.4;text-decoration:none;cursor:pointer;text-align:left;overflow-wrap:anywhere}
+.vl .ship-link{padding:0;border:0;background:none;color:var(--text);font:inherit;font-weight:500;font-size:var(--text-base);line-height:1.4;text-decoration:none;cursor:pointer;text-align:left;overflow-wrap:anywhere}
 .vl .ship-link:hover{color:var(--brand-hover)}
 .vl .vl-table tr.row-open .ship-link{color:var(--brand-hover)}
 .vl .vl-table tbody tr.vl-exp>td{padding:4px 20px 24px;background:var(--brand-soft);white-space:normal}
@@ -138,7 +138,7 @@
 .vl .pager-num.active{background:var(--brand);color:#fff}
 .vl .pager-num-wrap{display:inline-flex;align-items:center;gap:4px}
 .vl-empty{background:var(--surface);border-radius:var(--radius)}
-.vl-empty h3{font-size:var(--text-base);font-weight:700;color:var(--text)}
+.vl-empty h3{font-size:var(--text-base);font-weight:500;color:var(--text)}
 
 /* =========================================================
    4. 펼친 줄 안의 자세히: 상자 없이 간격과 글씨 크기로만 나눈다
@@ -151,17 +151,17 @@
 .vd-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px}
 .vd-fact{display:flex;flex-direction:column;gap:0}
 .vd-fact span{font-size:var(--text-sm);color:var(--muted)}
-.vd-fact b{font-size:var(--text-xl);font-weight:800;color:var(--text);line-height:1.3}
+.vd-fact b{font-size:var(--text-xl);font-weight:500;color:var(--text);line-height:1.3}
 .vd-fact small{font-size:var(--text-sm);color:var(--text-2)}
 /* 수신 상태: 알약 상자 대신 점 + 글자 */
-.fresh-chip{display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px 8px;flex:none;padding:0;font-size:var(--text-sm);font-weight:600;color:var(--text-2);background:none}
+.fresh-chip{display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px 8px;flex:none;padding:0;font-size:var(--text-sm);font-weight:500;color:var(--text-2);background:none}
 .fresh-chip i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .fresh-chip small{font-size:var(--text-sm);font-weight:400;color:var(--muted)}
 .fresh-chip.fresh i{background:var(--grade-fine-solid)}
 .fresh-chip.stale i{background:var(--grade-watch-solid)}
 .vd .vd-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px 40px;min-width:0;border:0;border-radius:0;padding:0}
 .vd .vd-info section{padding:0;border:0;border-radius:0;background:none;min-width:0}
-.vd .vd-info h4{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:var(--text-base);font-weight:800;color:var(--text)}
+.vd .vd-info h4{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:var(--text-base);font-weight:500;color:var(--text)}
 .vd .vd-info h4 svg{color:var(--muted)}
 .vd dl{margin:0;display:flex;flex-direction:column;gap:8px}
 .vd .vd-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px}
@@ -170,12 +170,12 @@
 .vd .vd-row dd.unknown{color:var(--muted)}
 .vd .control-events{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
 .vd .control-events li{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:var(--text-sm);color:var(--muted);align-items:baseline}
-.vd .control-events strong{font-weight:600;color:var(--text-2)}
+.vd .control-events strong{font-weight:500;color:var(--text-2)}
 .vd .control-events small{margin-left:auto}
 .vd .info-note{display:flex;align-items:center;gap:8px;padding:0;background:none;color:var(--text-2);font-size:var(--text-sm)}
 .vd-caveat{margin:0;font-size:var(--text-sm);line-height:1.6;color:var(--muted);max-width:720px}
 .vd-more{padding-top:0}
-.vd-more summary{display:flex;align-items:center;gap:12px;padding:10px 12px;margin:0 -12px;border-radius:var(--small-radius);cursor:pointer;font-size:var(--text-sm);font-weight:700;color:var(--text-2);list-style:none;transition:background var(--cv-enter) var(--ease)}
+.vd-more summary{display:flex;align-items:center;gap:12px;padding:10px 12px;margin:0 -12px;border-radius:var(--small-radius);cursor:pointer;font-size:var(--text-sm);font-weight:500;color:var(--text-2);list-style:none;transition:background var(--cv-enter) var(--ease)}
 .vd-more summary:hover{background:var(--hover)}
 .vd-more summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .vd-more-label{display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -210,7 +210,7 @@
 .vmap .heading-marker.sel span{color:var(--brand)}
 .vmap .heading-marker::after{content:'';position:absolute;inset:3px;border-radius:50%;border:2px solid var(--brand);opacity:0;transform:scale(.7);transition:opacity var(--cv-fast) var(--ease),transform var(--cv-fast) var(--ease);pointer-events:none}
 .vmap .heading-marker.hl::after{opacity:.9;transform:none}
-.vmap .leaflet-tooltip.ship-tooltip{font-family:var(--font);font-size:var(--text-sm);font-weight:700;color:var(--text);background:#fff;border:0;border-radius:var(--small-radius);padding:3px 8px;box-shadow:0 1px 4px #191f2826}
+.vmap .leaflet-tooltip.ship-tooltip{font-family:var(--font);font-size:var(--text-sm);font-weight:500;color:var(--text);background:#fff;border:0;border-radius:var(--small-radius);padding:3px 8px;box-shadow:0 1px 4px #191f2826}
 .vmap .leaflet-tooltip.ship-tooltip:before{display:none}
 .vmap .map-tool:disabled{opacity:.4;cursor:default}
 @media(prefers-reduced-motion:reduce){.vd-skel .skeleton{animation:none}.vmap .heading-marker::after{transition:none}}
@@ -221,13 +221,13 @@
 .vessel-section.vc{padding:20px 0 0;border:0}
 .vc-name{display:flex;align-items:center;gap:12px}
 .vc .vessel-mark{display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:50%;background:none;color:var(--text-2)}
-.vc-name h3{font-size:var(--text-base);font-weight:800;color:var(--text);margin:0}
+.vc-name h3{font-size:var(--text-base);font-weight:500;color:var(--text);margin:0}
 .vc-name p{margin:2px 0 0;font-size:var(--text-sm);color:var(--muted)}
-.vc-name b{font-weight:600;color:var(--text)}
+.vc-name b{font-weight:500;color:var(--text)}
 .vc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px;margin:16px 0 0}
 .vc-grid dt{font-size:var(--text-sm);color:var(--muted)}
 .vc-grid dd{margin:2px 0 0;font-size:var(--text-sm);color:var(--text);font-family:var(--font)}
-.vc-strip{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;padding-top:0;border-top:0;font-size:var(--text-sm);font-weight:600;color:var(--text-2)}
+.vc-strip{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;padding-top:0;border-top:0;font-size:var(--text-sm);font-weight:500;color:var(--text-2)}
 .vc-strip.stale{color:var(--grade-watch)}
 .vc-strip time{font-family:var(--font);font-weight:400;color:var(--muted)}
 
