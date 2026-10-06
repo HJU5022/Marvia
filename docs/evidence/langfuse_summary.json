@@ -1,0 +1,1135 @@
+{
+  "generated_at": "2026-10-02T13:03:17+00:00",
+  "host": "https://cloud.langfuse.com",
+  "window": {
+    "from": "2026-09-01T00:00:00Z",
+    "to": "2026-10-02T23:59:59Z"
+  },
+  "observations_by_type": [
+    {
+      "type": "SPAN",
+      "count_count": 2203
+    },
+    {
+      "type": "GENERATION",
+      "count_count": 2058
+    },
+    {
+      "type": "EVALUATOR",
+      "count_count": 714
+    },
+    {
+      "type": "TOOL",
+      "count_count": 566
+    }
+  ],
+  "observations_by_environment": [
+    {
+      "environment": "sdk-experiment",
+      "count_count": 3936
+    },
+    {
+      "environment": "default",
+      "count_count": 1605
+    }
+  ],
+  "observations_by_name": [
+    {
+      "name": "marvia-judge",
+      "count": 1142
+    },
+    {
+      "name": "experiment-item-evaluation",
+      "count": 714
+    },
+    {
+      "name": "experiment-item-run",
+      "count": 714
+    },
+    {
+      "name": "experiment-item-task",
+      "count": 714
+    },
+    {
+      "name": "evaluator",
+      "count": 714
+    },
+    {
+      "name": "marvia-judge-eval",
+      "count": 426
+    },
+    {
+      "name": "mcp:estimate_distance",
+      "count": 198
+    },
+    {
+      "name": "mcp:get_vessel_candidates",
+      "count": 168
+    },
+    {
+      "name": "marvia-doc-extract",
+      "count": 157
+    },
+    {
+      "name": "marvia-chat-route",
+      "count": 128
+    },
+    {
+      "name": "mcp:get_port_schedule",
+      "count": 114
+    },
+    {
+      "name": "marvia-follow-up",
+      "count": 87
+    },
+    {
+      "name": "mcp:get_live_position",
+      "count": 86
+    },
+    {
+      "name": "marvia-pick-vessel",
+      "count": 68
+    },
+    {
+      "name": "eval <문항>",
+      "count": 60
+    },
+    {
+      "name": "marvia-port-match",
+      "count": 44
+    },
+    {
+      "name": "marvia-memory-write",
+      "count": 5
+    },
+    {
+      "name": "link-check",
+      "count": 1
+    },
+    {
+      "name": "link-check-gen",
+      "count": 1
+    }
+  ],
+  "generations_total": [
+    {
+      "count_count": 2058,
+      "sum_inputTokens": 6235471,
+      "sum_outputTokens": 769036,
+      "sum_totalCost": 3.000717,
+      "p50_latency": 2061,
+      "p95_latency": 12393.45
+    }
+  ],
+  "generations_by_model": [
+    {
+      "providedModelName": "google/gemini-2.5-flash",
+      "count_count": 1062,
+      "sum_inputTokens": 3422384,
+      "sum_outputTokens": 497241,
+      "sum_totalCost": 2.247093,
+      "p50_latency": 1891.5,
+      "p95_latency": 12842.0
+    },
+    {
+      "providedModelName": "openai/gpt-4o-mini",
+      "count_count": 626,
+      "sum_inputTokens": 2033705,
+      "sum_outputTokens": 64778,
+      "sum_totalCost": 0.222905,
+      "p50_latency": 2379,
+      "p95_latency": 4603.25
+    },
+    {
+      "providedModelName": "replay/invalid",
+      "count_count": 118,
+      "sum_inputTokens": 0,
+      "sum_outputTokens": 0,
+      "sum_totalCost": 0,
+      "p50_latency": 0,
+      "p95_latency": 2
+    },
+    {
+      "providedModelName": "qwen/qwen3-235b-a22b-2507",
+      "count_count": 68,
+      "sum_inputTokens": 318714,
+      "sum_outputTokens": 146576,
+      "sum_totalCost": 0.147928,
+      "p50_latency": 8572,
+      "p95_latency": 23040.95
+    },
+    {
+      "providedModelName": null,
+      "count_count": 63,
+      "sum_inputTokens": 0,
+      "sum_outputTokens": 0,
+      "sum_totalCost": 0,
+      "p50_latency": 2711,
+      "p95_latency": 8822.3
+    },
+    {
+      "providedModelName": "upstage/solar-pro4",
+      "count_count": 43,
+      "sum_inputTokens": 135165,
+      "sum_outputTokens": 10579,
+      "sum_totalCost": 0.011586,
+      "p50_latency": 3076,
+      "p95_latency": 13899.0
+    },
+    {
+      "providedModelName": "openai/gpt-4.1-mini",
+      "count_count": 30,
+      "sum_inputTokens": 120184,
+      "sum_outputTokens": 6026,
+      "sum_totalCost": 0.027994,
+      "p50_latency": 3012.5,
+      "p95_latency": 4108.7
+    },
+    {
+      "providedModelName": "google/gemini-3.8-flash",
+      "count_count": 24,
+      "sum_inputTokens": 110112,
+      "sum_outputTokens": 43008,
+      "sum_totalCost": 0.243864,
+      "p50_latency": 12842.5,
+      "p95_latency": 29150.3
+    },
+    {
+      "providedModelName": "anthropic/claude-haiku-4.5",
+      "count_count": 24,
+      "sum_inputTokens": 95207,
+      "sum_outputTokens": 828,
+      "sum_totalCost": 0.099347,
+      "p50_latency": 1320,
+      "p95_latency": 2300.1
+    }
+  ],
+  "generations_by_prompt": [
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 8,
+      "count_count": 398
+    },
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 2,
+      "count_count": 293
+    },
+    {
+      "promptName": "marvia-judge-eval",
+      "promptVersion": 3,
+      "count_count": 231
+    },
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 1,
+      "count_count": 168
+    },
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 3,
+      "count_count": 105
+    },
+    {
+      "promptName": "marvia-chat-route",
+      "promptVersion": 1,
+      "count_count": 105
+    },
+    {
+      "promptName": "marvia-judge-eval",
+      "promptVersion": 1,
+      "count_count": 104
+    },
+    {
+      "promptName": null,
+      "promptVersion": null,
+      "count_count": 100
+    },
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 4,
+      "count_count": 83
+    },
+    {
+      "promptName": "marvia-doc-extract",
+      "promptVersion": 1,
+      "count_count": 80
+    },
+    {
+      "promptName": "marvia-pick-vessel",
+      "promptVersion": 1,
+      "count_count": 48
+    },
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 7,
+      "count_count": 43
+    },
+    {
+      "promptName": "marvia-judge-eval",
+      "promptVersion": 2,
+      "count_count": 41
+    },
+    {
+      "promptName": "marvia-follow-up",
+      "promptVersion": 3,
+      "count_count": 40
+    },
+    {
+      "promptName": "marvia-doc-extract",
+      "promptVersion": 4,
+      "count_count": 38
+    },
+    {
+      "promptName": "marvia-doc-extract",
+      "promptVersion": 3,
+      "count_count": 36
+    },
+    {
+      "promptName": "marvia-port-match",
+      "promptVersion": 1,
+      "count_count": 28
+    },
+    {
+      "promptName": "marvia-follow-up",
+      "promptVersion": 5,
+      "count_count": 26
+    },
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 6,
+      "count_count": 25
+    },
+    {
+      "promptName": "marvia-judge",
+      "promptVersion": 5,
+      "count_count": 24
+    },
+    {
+      "promptName": "marvia-pick-vessel",
+      "promptVersion": 3,
+      "count_count": 16
+    },
+    {
+      "promptName": "marvia-follow-up",
+      "promptVersion": 2,
+      "count_count": 11
+    },
+    {
+      "promptName": "marvia-follow-up",
+      "promptVersion": 4,
+      "count_count": 8
+    },
+    {
+      "promptName": "marvia-pick-vessel",
+      "promptVersion": 2,
+      "count_count": 4
+    },
+    {
+      "promptName": "marvia-doc-extract",
+      "promptVersion": 5,
+      "count_count": 3
+    }
+  ],
+  "generations_by_day": [
+    {
+      "time_dimension": "2026-09-28",
+      "count_count": 195,
+      "sum_totalCost": 0.894898
+    },
+    {
+      "time_dimension": "2026-09-29",
+      "count_count": 591,
+      "sum_totalCost": 1.111637
+    },
+    {
+      "time_dimension": "2026-09-30",
+      "count_count": 249,
+      "sum_totalCost": 0.151209
+    },
+    {
+      "time_dimension": "2026-10-01",
+      "count_count": 499,
+      "sum_totalCost": 0.315759
+    },
+    {
+      "time_dimension": "2026-10-02",
+      "count_count": 524,
+      "sum_totalCost": 0.527214
+    }
+  ],
+  "generations_eval_sessions": [
+    {
+      "count_count": 1232,
+      "sum_inputTokens": 4923316,
+      "sum_outputTokens": 730975,
+      "sum_totalCost": 2.622249,
+      "p50_latency": 2743.5,
+      "p95_latency": 15032.35
+    }
+  ],
+  "tool_observations_by_name": [
+    {
+      "name": "mcp:estimate_distance",
+      "count_count": 198,
+      "p95_latency": 50.9
+    },
+    {
+      "name": "mcp:get_vessel_candidates",
+      "count_count": 168,
+      "p95_latency": 454.9
+    },
+    {
+      "name": "mcp:get_port_schedule",
+      "count_count": 114,
+      "p95_latency": 1521
+    },
+    {
+      "name": "mcp:get_live_position",
+      "count_count": 86,
+      "p95_latency": 299.25
+    }
+  ],
+  "tool_observations_by_day": [
+    {
+      "time_dimension": "2026-10-02",
+      "count_count": 566
+    }
+  ],
+  "tool_observations_eval_sessions": [
+    {
+      "count_count": 359
+    }
+  ],
+  "distinct_ids": [
+    {
+      "count_uniqueUserIds": 169,
+      "count_uniqueSessionIds": 2812,
+      "uniq_traceId": 2194
+    }
+  ],
+  "scores_by_name": [
+    {
+      "name": "exact_match",
+      "count_count": 780,
+      "avg_value": 0.924359
+    },
+    {
+      "name": "schema_pass",
+      "count_count": 780,
+      "avg_value": 1
+    },
+    {
+      "name": "verdict_match",
+      "count_count": 565,
+      "avg_value": 0.941593
+    },
+    {
+      "name": "customs_explanation",
+      "count_count": 353,
+      "avg_value": 0.790368
+    }
+  ],
+  "prompts": [
+    {
+      "name": "marvia-chat-route",
+      "versions": [
+        1
+      ],
+      "production_version": 1,
+      "production_created_at": "2026-10-01T03:25:30.139Z",
+      "production_commit_message": null,
+      "last_updated_at": "2026-10-01T03:25:30.139Z"
+    },
+    {
+      "name": "marvia-doc-extract",
+      "versions": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "production_version": 5,
+      "production_created_at": "2026-10-01T05:23:02.174Z",
+      "production_commit_message": "10-01 역할 고정 문장 2줄 추가 (프롬프트 주입 방어, commit ebd8f84). 기존 글은 그대로",
+      "last_updated_at": "2026-10-01T05:23:02.174Z"
+    },
+    {
+      "name": "marvia-follow-up",
+      "versions": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "production_version": 5,
+      "production_created_at": "2026-10-01T05:23:00.874Z",
+      "production_commit_message": "10-01 역할 고정 문장 2줄 추가 (프롬프트 주입 방어, commit ebd8f84). 기존 글은 그대로",
+      "last_updated_at": "2026-10-01T05:23:00.874Z"
+    },
+    {
+      "name": "marvia-judge",
+      "versions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "production_version": 8,
+      "production_created_at": "2026-10-01T05:23:00.194Z",
+      "production_commit_message": "10-01 역할 고정 문장 2줄 추가 (프롬프트 주입 방어, commit ebd8f84). 기존 글은 그대로",
+      "last_updated_at": "2026-10-01T05:23:00.194Z"
+    },
+    {
+      "name": "marvia-judge-eval",
+      "versions": [
+        1,
+        2,
+        3
+      ],
+      "production_version": 3,
+      "production_created_at": "2026-10-01T05:23:02.803Z",
+      "production_commit_message": "10-01 역할 고정 문장 2줄 추가 (프롬프트 주입 방어, commit ebd8f84). 기존 글은 그대로",
+      "last_updated_at": "2026-10-01T05:23:02.803Z"
+    },
+    {
+      "name": "marvia-pick-vessel",
+      "versions": [
+        1,
+        2,
+        3
+      ],
+      "production_version": 3,
+      "production_created_at": "2026-10-01T05:23:01.543Z",
+      "production_commit_message": "10-01 역할 고정 문장 2줄 추가 (프롬프트 주입 방어, commit ebd8f84). 기존 글은 그대로",
+      "last_updated_at": "2026-10-01T05:23:01.543Z"
+    },
+    {
+      "name": "marvia-port-match",
+      "versions": [
+        1
+      ],
+      "production_version": 1,
+      "production_created_at": "2026-10-01T03:25:30.464Z",
+      "production_commit_message": null,
+      "last_updated_at": "2026-10-01T03:25:30.464Z"
+    }
+  ],
+  "datasets": [
+    {
+      "name": "marvia-golden-30",
+      "item_count": 30,
+      "created_at": "2026-09-29T13:20:44.737Z",
+      "run_count": 26,
+      "runs": [
+        "b google/gemini-2.5-flash thinking=0 10-02 12:42",
+        "c qwen/qwen3-235b-a22b-2507 thinking=0 10-02 11:58",
+        "b openai/gpt-4o-mini thinking=0 10-02 11:54",
+        "b openai/gpt-4o-mini thinking=0 10-02 11:50",
+        "b openai/gpt-4o-mini thinking=0 10-02 11:47",
+        "b openai/gpt-4o-mini thinking=0 10-02 11:44",
+        "b openai/gpt-4o-mini thinking=0 10-02 11:41",
+        "b vertex/google/gemini-2.5-flash thinking=0 10-02 11:34",
+        "b openai/gpt-4o-mini thinking=0 10-01 21:29",
+        "c qwen/qwen3-235b-a22b-2507 thinking=0 10-01 20:03",
+        "b openai/gpt-4o-mini thinking=0 10-01 19:50",
+        "b openai/gpt-4o-mini thinking=0 10-01 19:44",
+        "b openai/gpt-4o-mini thinking=0 10-01 16:33",
+        "a baseline/rules 10-01 16:31",
+        "b vertex/google/gemini-2.5-flash thinking=0 10-01 10:35",
+        "b vertex/google/gemini-2.5-flash thinking=0 10-01 10:06",
+        "b vertex/google/gemini-2.5-flash thinking=0 09-30 12:29",
+        "b vertex/google/gemini-2.5-flash thinking=0 09-30 12:17",
+        "b vertex/google/gemini-2.5-flash thinking=0 09-30 01:15",
+        "b vertex/google/gemini-2.5-flash thinking=0 09-30 00:19",
+        "b vertex/google/gemini-2.5-flash thinking=0 09-29 22:49",
+        "a baseline/rules 09-29 22:49",
+        "b vertex/google/gemini-2.5-flash thinking=0 09-29 22:35",
+        "a baseline/rules 09-29 22:34",
+        "b vertex/google/gemini-2.5-flash thinking=0 09-29 22:31",
+        "a baseline/rules 09-29 22:30"
+      ]
+    }
+  ],
+  "experiments": [
+    {
+      "name": "b google/gemini-2.5-flash thinking=0 10-02 12:42",
+      "start": "2026-10-02T03:42:44.740Z",
+      "end": "2026-10-02T03:44:22.297Z",
+      "item_count": 29,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "customs_explanation": {
+          "n": 20,
+          "pass": 15
+        },
+        "exact_match": {
+          "n": 29,
+          "pass": 29
+        }
+      }
+    },
+    {
+      "name": "c qwen/qwen3-235b-a22b-2507 thinking=0 10-02 11:58",
+      "start": "2026-10-02T02:58:39.321Z",
+      "end": "2026-10-02T03:41:47.697Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 20
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-02 11:54",
+      "start": "2026-10-02T02:54:15.258Z",
+      "end": "2026-10-02T02:56:28.664Z",
+      "item_count": 30,
+      "scores": {
+        "customs_explanation": {
+          "n": 21,
+          "pass": 14
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-02 11:50",
+      "start": "2026-10-02T02:51:00.946Z",
+      "end": "2026-10-02T02:53:07.322Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 13
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-02 11:47",
+      "start": "2026-10-02T02:47:42.486Z",
+      "end": "2026-10-02T02:49:53.529Z",
+      "item_count": 30,
+      "scores": {
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 14
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-02 11:44",
+      "start": "2026-10-02T02:44:39.745Z",
+      "end": "2026-10-02T02:46:34.837Z",
+      "item_count": 29,
+      "scores": {
+        "schema_pass": {
+          "n": 29,
+          "pass": 29
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 16
+        },
+        "exact_match": {
+          "n": 29,
+          "pass": 29
+        },
+        "verdict_match": {
+          "n": 21,
+          "pass": 21
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-02 11:41",
+      "start": "2026-10-02T02:41:23.852Z",
+      "end": "2026-10-02T02:43:30.571Z",
+      "item_count": 30,
+      "scores": {
+        "customs_explanation": {
+          "n": 21,
+          "pass": 17
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 10-02 11:34",
+      "start": "2026-10-02T02:34:47.357Z",
+      "end": "2026-10-02T02:35:02.600Z",
+      "item_count": 26,
+      "scores": {
+        "verdict_match": {
+          "n": 22,
+          "pass": 0
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 2
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-01 21:29",
+      "start": "2026-10-01T12:29:30.851Z",
+      "end": "2026-10-01T12:31:31.765Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 11
+        }
+      }
+    },
+    {
+      "name": "c qwen/qwen3-235b-a22b-2507 thinking=0 10-01 20:03",
+      "start": "2026-10-01T11:03:12.245Z",
+      "end": "2026-10-01T11:25:23.806Z",
+      "item_count": 30,
+      "scores": {
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "customs_explanation": {
+          "n": 18,
+          "pass": 17
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 28
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-01 19:50",
+      "start": "2026-10-01T10:50:44.167Z",
+      "end": "2026-10-01T10:52:59.743Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 28
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "customs_explanation": {
+          "n": 23,
+          "pass": 12
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-01 19:44",
+      "start": "2026-10-01T10:45:02.174Z",
+      "end": "2026-10-01T10:47:16.890Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 28
+        }
+      }
+    },
+    {
+      "name": "b openai/gpt-4o-mini thinking=0 10-01 16:33",
+      "start": "2026-10-01T07:33:05.422Z",
+      "end": "2026-10-01T07:34:43.617Z",
+      "item_count": 30,
+      "scores": {
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 28
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "a baseline/rules 10-01 16:31",
+      "start": "2026-10-01T07:31:08.987Z",
+      "end": "2026-10-01T07:31:24.294Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 27
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 10-01 10:35",
+      "start": "2026-10-01T01:35:50.277Z",
+      "end": "2026-10-01T01:37:25.274Z",
+      "item_count": 30,
+      "scores": {
+        "customs_explanation": {
+          "n": 20,
+          "pass": 19
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 10-01 10:06",
+      "start": "2026-10-01T01:06:14.872Z",
+      "end": "2026-10-01T01:07:56.911Z",
+      "item_count": 30,
+      "scores": {
+        "customs_explanation": {
+          "n": 21,
+          "pass": 19
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 09-30 12:29",
+      "start": "2026-09-30T03:29:09.500Z",
+      "end": "2026-09-30T03:30:52.072Z",
+      "item_count": 30,
+      "scores": {
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 16
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 09-30 12:17",
+      "start": "2026-09-30T03:17:49.370Z",
+      "end": "2026-09-30T03:19:35.115Z",
+      "item_count": 30,
+      "scores": {
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 19
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 09-30 01:15",
+      "start": "2026-09-29T16:15:57.293Z",
+      "end": "2026-09-29T16:17:58.496Z",
+      "item_count": 30,
+      "scores": {
+        "exact_match": {
+          "n": 30,
+          "pass": 30
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 20
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 22,
+          "pass": 22
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 09-30 00:19",
+      "start": "2026-09-29T15:19:45.047Z",
+      "end": "2026-09-29T15:21:42.842Z",
+      "item_count": 30,
+      "scores": {
+        "verdict_match": {
+          "n": 21,
+          "pass": 20
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 29
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "customs_explanation": {
+          "n": 20,
+          "pass": 18
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 09-29 22:49",
+      "start": "2026-09-29T13:49:42.295Z",
+      "end": "2026-09-29T13:51:33.738Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "customs_explanation": {
+          "n": 21,
+          "pass": 19
+        },
+        "verdict_match": {
+          "n": 21,
+          "pass": 18
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 27
+        }
+      }
+    },
+    {
+      "name": "a baseline/rules 09-29 22:49",
+      "start": "2026-09-29T13:49:20.321Z",
+      "end": "2026-09-29T13:49:31.669Z",
+      "item_count": 30,
+      "scores": {
+        "exact_match": {
+          "n": 30,
+          "pass": 27
+        },
+        "verdict_match": {
+          "n": 21,
+          "pass": 21
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        }
+      }
+    },
+    {
+      "name": "b vertex/google/gemini-2.5-flash thinking=0 09-29 22:35",
+      "start": "2026-09-29T13:35:35.430Z",
+      "end": "2026-09-29T13:37:13.847Z",
+      "item_count": 30,
+      "scores": {
+        "exact_match": {
+          "n": 30,
+          "pass": 26
+        },
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "verdict_match": {
+          "n": 21,
+          "pass": 17
+        }
+      }
+    },
+    {
+      "name": "a baseline/rules 09-29 22:34",
+      "start": "2026-09-29T13:34:47.503Z",
+      "end": "2026-09-29T13:34:59.253Z",
+      "item_count": 30,
+      "scores": {
+        "schema_pass": {
+          "n": 30,
+          "pass": 30
+        },
+        "exact_match": {
+          "n": 30,
+          "pass": 27
+        },
+        "verdict_match": {
+          "n": 21,
+          "pass": 21
+        }
+      }
+    }
+  ],
+  "dataset_runs_not_in_experiments": [
+    "a baseline/rules 09-29 22:30",
+    "b vertex/google/gemini-2.5-flash thinking=0 09-29 22:31"
+  ],
+  "dataset_runs_duplicate_names": [],
+  "legacy_endpoints": {
+    "/api/public/traces": "HTTP 410",
+    "/api/public/scores": "HTTP 410",
+    "/api/public/sessions": "HTTP 410"
+  },
+  "carried_over": {
+    "observations_by_type": "2026-10-02T12:46:29+00:00",
+    "observations_by_environment": "2026-10-02T12:46:29+00:00",
+    "observations_by_name": "2026-10-02T12:46:29+00:00",
+    "generations_total": "2026-10-02T12:46:29+00:00",
+    "generations_by_model": "2026-10-02T12:46:29+00:00",
+    "generations_by_prompt": "2026-10-02T12:46:29+00:00",
+    "generations_by_day": "2026-10-02T12:46:29+00:00",
+    "generations_eval_sessions": "2026-10-02T12:46:29+00:00",
+    "tool_observations_by_name": "2026-10-02T12:46:29+00:00",
+    "tool_observations_by_day": "2026-10-02T12:46:29+00:00",
+    "tool_observations_eval_sessions": "2026-10-02T12:46:29+00:00",
+    "distinct_ids": "2026-10-02T12:46:29+00:00",
+    "scores_by_name": "2026-10-02T12:46:29+00:00"
+  }
+}
