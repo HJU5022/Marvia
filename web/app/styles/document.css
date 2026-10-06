@@ -8,7 +8,7 @@
 /* 제목은 패널이 직접 그린다. 서랍 제목은 스크린리더(aria-labelledby)용으로만 남기고, 닫기 버튼만 오른쪽 위에 둔다 */
 .drawer:has(.document-panel) .drawer-head{position:sticky;top:0;height:0;margin:0;z-index:5;display:block;overflow:visible}
 .drawer:has(.document-panel) .drawer-head > div{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
-.drawer:has(.document-panel) .drawer-close{position:absolute;top:-12px;right:-12px;width:40px;height:40px;border:0;background:var(--surface)}
+.drawer:has(.document-panel) .drawer-close{position:absolute;top:-12px;right:-12px;width:40px;height:40px;border:0;background:transparent}
 .drawer:has(.document-panel) .drawer-close:hover{background:var(--neutral-bg)}
 
 .document-panel{display:block}
@@ -22,9 +22,9 @@
 .document-result>*:nth-child(2){animation-delay:40ms}.document-result>*:nth-child(3){animation-delay:80ms}.document-result>*:nth-child(4){animation-delay:120ms}.document-result>*:nth-child(5){animation-delay:160ms}.document-result>*:nth-child(6){animation-delay:200ms}
 
 /* 올리기 전: 점선 칸 하나 */
-.document-panel .dropzone{min-height:220px;gap:8px;border:1.5px dashed var(--border-strong);border-radius:0;background:var(--surface);color:var(--text-2);transition:background 150ms var(--ease),border-color 150ms var(--ease)}
-.document-panel .dropzone:hover,.document-panel .dropzone.dragging{background:var(--brand-soft);border-color:var(--brand)}
-.document-panel .dropzone strong{font-size:var(--text-lg);font-weight:700;color:var(--text);margin:6px 0 0}
+.document-panel .dropzone{min-height:220px;gap:8px;border:1px solid var(--border-strong);border-radius:0;background:var(--surface);color:var(--text-2);transition:background 150ms var(--ease),border-color 150ms var(--ease)}
+.document-panel .dropzone:hover,.document-panel .dropzone.dragging{background:var(--soft,#f7f7f7);border-color:var(--text)}
+.document-panel .dropzone strong{font-size:var(--fs-md,15px);font-weight:var(--fw-medium,500);letter-spacing:.02em;color:var(--text);margin:6px 0 0}
 .document-panel .dropzone span{font-size:var(--text-base);color:var(--muted)}
 
 /* 상단 안내: 상자 없이 아이콘 + 굵은 한 줄 + 걸린 칸 이름 */
@@ -39,12 +39,12 @@
 
 /* 읽은 값: 흰 판 하나, 안은 3칸 격자(간격으로만 나눔) */
 .doc-group{background:var(--surface);border-radius:0;padding:24px}
-.doc-section-title{font-size:var(--text-base);font-weight:var(--fw-semibold,600);color:var(--text);margin:0 0 20px}
+.doc-section-title{font-size:var(--text-base);font-weight:var(--fw-medium,500);color:var(--text);margin:0 0 20px}
 .doc-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 32px;margin-bottom:-24px}
 .document-panel.in-drawer .doc-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
 .doc-field{display:grid;grid-row:span 2;grid-template-rows:subgrid;row-gap:6px;margin-bottom:24px;padding:0;background:none;border:0;border-radius:0;min-width:0}
 .doc-field-top{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
-.doc-field label{font-size:var(--text-sm);font-weight:600;color:var(--text-2);line-height:1.5}
+.doc-field label{font-size:var(--text-sm);font-weight:var(--fw-medium,500);color:var(--text-2);line-height:1.5}
 .doc-field label small{font-size:var(--text-sm);font-weight:400;color:var(--muted)}
 .doc-value{display:flex;align-items:center;gap:8px;min-height:44px;font-size:var(--text-base);font-weight:500;color:var(--text);overflow-wrap:anywhere;position:relative}
 .doc-value svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
@@ -73,7 +73,7 @@ output.doc-value{color:var(--text)}
 .doc-contact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 32px;margin-top:24px}
 .doc-cond{display:flex;flex-direction:column;gap:8px;min-width:0;border:0;border-radius:0;padding:0;margin:0}
 .doc-cond-top{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:24px}
-.doc-cond label{font-size:var(--text-sm);font-weight:600;color:var(--text-2)}
+.doc-cond label{font-size:var(--text-sm);font-weight:var(--fw-medium,500);color:var(--text-2)}
 .doc-cond small{font-size:var(--text-sm);color:var(--muted);line-height:1.5}
 .doc-select{position:relative}
 .doc-select select{appearance:none;width:100%;min-height:48px;padding:8px 36px 8px 14px;border:1px solid var(--border-strong);border-radius:0;background:var(--surface);font-family:var(--font);font-size:var(--text-base);color:var(--text);transition:border-color 150ms var(--ease)}
@@ -93,9 +93,9 @@ output.doc-value{color:var(--text)}
 
 /* 버튼: 아래에 붙여 두고 오른쪽 끝에 주 버튼. 긴 화면에서도 항상 보인다 */
 .doc-actions{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:12px;padding:16px 0 24px;margin:0;background:var(--bg)}
-.doc-actions .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 28px;min-height:52px;font-size:var(--text-base);font-weight:700;transition:background 150ms var(--ease),transform 150ms var(--ease)}
+.doc-actions .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 28px;min-height:48px;font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400);letter-spacing:.06em;transition:background 150ms var(--ease),transform 150ms var(--ease)}
 .doc-actions .button:active{transform:scale(.98)}
-.doc-actions .button.secondary{background:transparent;color:var(--text-2);border:0}
+.doc-actions .button.secondary{background:transparent;color:var(--text-2);border:1px solid var(--border-strong)}
 .doc-actions .button.secondary:hover{background:var(--surface)}
 .doc-actions .button.primary{min-width:180px}
 

@@ -5,9 +5,9 @@
  * 서류 사진은 입력을 돕는 보조 동작이라 드로어에서 확인한 뒤 문장에 넣는다. 읽은 값으로 바로 조회하지 않는다.
  * 화면을 내려 입력창이 안 보이면 "AI에게 이어서 물어보기" 버튼이 나타나 입력창으로 돌려보낸다.
  */
-import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
+import {useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {ArrowUp, Camera, Check, LoaderCircle, Sparkles} from 'lucide-react';
+import {ArrowRight, Camera, LoaderCircle, Sparkles} from 'lucide-react';
 import {verdictLabels} from '@/lib/format';
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentValues} from './DocumentPanel';
@@ -184,7 +184,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
+          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
         {seedAnswer && <li className="chat-seed"><div className="chat-body"><div className="chat-bubble"><p>{seedAnswer.answer}</p>{verdictBlock}</div></div></li>}
       </ol>}
       {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}
@@ -203,12 +203,12 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
             placeholder={cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호를 입력해 주세요'}
             aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
           <div className="composer-foot">
-            <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={16}/>서류 사진으로 채우기</button>
+            <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={16} strokeWidth={1.5}/>서류 사진으로 채우기</button>
             <div className="composer-send">
               {/* 글자 수는 쓰기 시작한 뒤에만 보인다. 빈 입력창에 숫자를 늘 두면 어수선하다 */}
               {text.length > 0 && <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>}
               <button type="submit" className="send" disabled={loading || blocked || !text.trim()} aria-label="AI에게 질문 보내기">
-                {loading ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
+                {loading ? <LoaderCircle size={20} strokeWidth={1.5} className="spin"/> : <ArrowRight size={20} strokeWidth={1.5}/>}</button>
             </div>
           </div>
         </form>
@@ -233,21 +233,39 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
 function Pending({stages, since}: {stages: ProgressStage[]; since: number}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  // 단계별 경과 시간: 브라우저가 단계를 처음 본 시각만 잰다 (서버가 단계별 시간을 주지 않는다. 지어내지 않는다)
+  const seenAt = useRef(new Map<ProgressStage, number>());
+  for (const s of stages) if (!seenAt.current.has(s)) seenAt.current.set(s, Date.now());
   const seconds = Math.max(0, Math.floor((now - since) / 1000));
   return <div className="pending-card">
     <div className="pending-head">
-      <strong>답을 준비하고 있어요</strong><span className="pending-dots" aria-hidden="true"><i/><i/><i/></span>
+      <span>답을 준비하고 있어요</span><span className="pending-dots" aria-hidden="true"><i/><i/><i/></span>
       <span className="mono pending-time">{seconds}초</span>
     </div>
     {stages.length > 0
+      // 세로 타임라인 (10-07 정운 엘레강스). li 글자는 "단계 이름 + 완료/진행 중"만 둔다: 경과 시간은 CSS ::after로 그린다 (e2e가 글자 끝을 본다)
       ? <ol className="pending-steps" aria-live="polite" aria-label="답변 준비 단계">{stages.map((s, i) => {
           const done = i < stages.length - 1;
-          return <li key={s} className={done ? 'done' : 'current'}>
-            <span className="step-icon">{done ? <Check size={16}/> : <LoaderCircle size={16} className="spin"/>}</span>
+          const start = seenAt.current.get(s) ?? now;
+          return <li key={s} className={done ? 'done' : 'current'} data-elapsed={done ? undefined : `${Math.max(0, Math.floor((now - start) / 1000))}초`}>
+            <span className="step-icon" aria-hidden="true"/>
             <span className="step-name">{stageLabels[s]}</span><span className="step-state">{done ? '완료' : '진행 중'}</span></li>;
         })}</ol>
       : <p className="pending-note" role="status">{isLive ? '진행 단계를 불러오는 중이에요.' : '체험 모드에서는 진행 단계를 보여 드리지 않아요.'}</p>}
     {/* 답이 올 자리를 흐릿한 줄로 먼저 잡아 둔다. 실제로 기다리는 동안만 보인다 */}
     <div className="pending-skeleton" aria-hidden="true"><span/><span/><span/></div>
+  </div>;
+}
+
+/** 답이 온 뒤 접힌 한 줄 요약 "N단계 · M초". 누르면 같은 타임라인이 모두 완료로 펼쳐진다 (10-07 정운 엘레강스).
+ * 단계 시간은 브라우저가 처음 본 시각 차이다. 마지막 단계는 답이 온 시각까지로 잰다 */
+function StepsSummary({steps, tookMs}: {steps: {stage: ProgressStage; at: number}[]; tookMs: number}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return <div className="steps-summary">
+    <button type="button" className="steps-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(o => !o)}>
+      {steps.length}단계 · {Math.max(1, Math.round(tookMs / 1000))}초<span aria-hidden="true">{open ? '▾' : '▸'}</span></button>
+    {open && <ol id={id} className="pending-steps settled" aria-label="답변 준비 단계">{steps.map(s =>
+      <li key={s.stage} className="done"><span className="step-icon" aria-hidden="true"/><span className="step-name">{stageLabels[s.stage]}</span><span className="step-state">완료</span></li>)}</ol>}
   </div>;
 }

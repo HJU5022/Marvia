@@ -17,7 +17,9 @@ export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: Cha
   /** B/L을 2~3개 물었을 때 조회한 화물 표 (ChatCargoTable). 서버로 되돌려 보내지 않는다 */
   cargos?: ChatCargo[];
   /** 에이전트가 이 화물을 지켜보자고 제안한 답이면 말풍선 아래에 버튼을 그린다 (WatchOfferAction, 10-06 결정). 서버로 되돌려 보내지 않는다 */
-  watchOffer?: WatchOffer | null }
+  watchOffer?: WatchOffer | null;
+  /** 답이 오기까지 서버가 알린 단계와 브라우저가 처음 본 시각(ms). 답 아래 "N단계 · M초" 접힌 요약에 쓴다. 이 화면에서 받은 답에만 있고 서버에서 불러온 대화·체험 모드에는 없다 (10-07 정운 엘레강스) */
+  steps?: {stage: ProgressStage; at: number}[]; tookMs?: number }
 
 /** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 (10-06 결정) */
 function changesText(changes: WatchChange[]): string {
@@ -285,12 +287,14 @@ export function AppProvider({children}:{children:ReactNode}) {
       // 카드를 숨긴 상태(선박 표·안내 문장)에서 보낸 문장이 보이지 않는 화물의 후속 질문이 되지 않게 한다 (10-02 UI 점검 F5)
       const context = view === 'cargo' && result && request.bl_no ? request : null;
       const seen: ProgressStage[] = [];
+      const stepLog: {stage: ProgressStage; at: number}[] = [];  // 단계별 처음 본 시각 (접힌 요약용)
+      const startedAt = Date.now();
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
       // 서류에서 확인한 출항일이 있으면 그 B/L과 함께 보낸다. 서버가 그 B/L 조회에만 실어 화물 표에 적는다 (10-06)
       const document = docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
       const res = await sendChatStream(message, context,
-        s => { seen.push(s); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document);
-      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null}]);
+        s => { seen.push(s); if (!stepLog.some(x => x.stage === s)) stepLog.push({stage: s, at: Date.now()}); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document);
+      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null, ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);
       // 대화로 지켜보기를 켜고 껐으면 결과 칸의 버튼·말풍선 버튼이 같은 상태를 보게 한다
       if (res.watch_set) setWatching(res.watch_set.bl_no, res.watch_set.on);
       if (res.kind === 'cargo' && res.agent && res.request) {
