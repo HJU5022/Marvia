@@ -41,13 +41,19 @@ class FakeConn:
         q = " ".join(sql.split())
         if q.startswith("INSERT INTO kakao_links"):
             self.links[params[0]] = {"access": params[1], "refresh": params[2], "access_at": params[3],
-                                     "refresh_at": params[4]}
+                                     "refresh_at": params[4], "linked_at": datetime.now(timezone.utc), "last_sent_at": None}
             return _Result(rowcount=1)
         if q.startswith("SELECT 1 FROM kakao_links"):
             return _Result([(1,)] if params[0] in self.links else [])
         if q.startswith("SELECT access_token_enc, refresh_token_enc, access_expires_at FROM kakao_links"):
             row = self.links.get(params[0])
             return _Result([(row["access"], row["refresh"], row["access_at"])] if row else [])
+        if q.startswith("SELECT linked_at, last_sent_at FROM kakao_links"):
+            row = self.links.get(params[0])
+            return _Result([(row["linked_at"], row["last_sent_at"])] if row else [])
+        if q.startswith("UPDATE kakao_links SET last_sent_at"):
+            self.links[params[0]]["last_sent_at"] = datetime.now(timezone.utc)
+            return _Result(rowcount=1)
         if q.startswith("SELECT access_token_enc FROM kakao_links"):
             row = self.links.get(params[0])
             return _Result([(row["access"],)] if row else [])
@@ -316,3 +322,17 @@ def test_unlink_without_row_is_fine(monkeypatch):
 
 def test_delete_returns_row_count(linked):
     assert svc.delete(linked, "u1") == 1 and svc.delete(linked, "u1") == 0
+
+
+def test_send_records_last_sent_at_only_on_success(linked, monkeypatch):
+    assert linked.links["u1"]["last_sent_at"] is None
+    _spy(monkeypatch, send_error=KakaoError("failed"))
+    with pytest.raises(KakaoError):
+        svc.send_to_user(linked, "u1", "안녕", "http://web/settings")
+    assert linked.links["u1"]["last_sent_at"] is None  # 실패한 시도는 적지 않는다
+    _spy(monkeypatch)
+    svc.send_to_user(linked, "u1", "안녕", "http://web/settings")
+    assert linked.links["u1"]["last_sent_at"] is not None
+    linked_at, sent_at = svc.link_times(linked, "u1")
+    assert linked_at is not None and sent_at is not None
+    assert svc.link_times(linked, "nobody") is None

@@ -71,7 +71,7 @@ def get_memory(user_id: Annotated[str | None, Depends(current_user_id)] = None) 
                         cargo_name=memory.cargo_name(rows.get(i.get("cargo_key"))) if i["section"] == "cargo" else None)
              for i in seen["items"]]
     return MemoryResponse(markdown=seen["markdown"], items=items, cargo=[_summary(r) for r in seen["cargo"]],
-                          full=seen["full"])
+                          full=seen["full"], used_chars=len(seen["markdown"]), max_chars=memory.MAX_CHARS)
 
 
 @router.delete("/memory", response_model=MemoryDeleteResponse)

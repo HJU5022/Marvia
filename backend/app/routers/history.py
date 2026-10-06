@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from backend.app.auth import current_user_id
 from backend.app.db import atomic, connect, delete_user_queries, recent_queries
-from backend.app.services import conversations
+from backend.app.services import cargo, conversations
 from backend.app.observability.logging import log_failure
 from backend.app.services.memory import forget_user
 from backend.app.services import quota
@@ -34,6 +34,13 @@ class HistoryItem(BaseModel):
     model: str | None = None  # 018에서 DB 칸을 지웠다. 화면 계약을 깨지 않게 null로 남긴다
     trace_id: str | None
     created_at: datetime
+    reason: str | None = None  # 한 줄 이유 (코드가 만든다, LLM 아님). 근거가 되는 값이 없으면 null
+
+
+def _reason(margin: int | None, stage: str | None) -> str | None:
+    """이력 한 줄 이유. 저장된 결과의 여유 일수·통관 단계를 사람 말로 (services/watch._change_reason과 같은 규칙, 없는 값은 안 쓴다)."""
+    parts = [p for p in (cargo.margin_text(margin), f"통관 {cargo.clean_stage(stage)}" if stage else None) if p]
+    return ", ".join(parts) if parts else None
 
 
 class HistoryResponse(BaseModel):
@@ -45,6 +52,7 @@ class HistoryResponse(BaseModel):
 def get_history(
     session_id: str = Query(description="조회할 세션 ID"),
     limit: int = Query(default=20, ge=1, le=100, description="가져올 개수. 최대 100"),
+    since: datetime | None = Query(default=None, description="이 시각 이후(>=)의 조회만. 설정 화면 기간 필터 (ISO 8601)"),
     user_id: Annotated[str | None, Depends(current_user_id)] = None,
 ) -> HistoryResponse:
     """이 세션이 지금까지 무엇을 조회했는지 최신순으로 돌려준다.
@@ -56,12 +64,14 @@ def get_history(
         return HistoryResponse(items=[], available=False)
     try:
         with connect() as conn:
-            rows = recent_queries(conn, session_id, limit, user_id)
+            rows = recent_queries(conn, session_id, limit, user_id, since=since) if since else \
+                recent_queries(conn, session_id, limit, user_id)
     except Exception as e:
         log_failure("history_read", type(e).__name__)
         return HistoryResponse(items=[], available=False)
 
-    return HistoryResponse(items=[HistoryItem(**row) for row in rows])
+    items = [HistoryItem(**row, reason=_reason(row.get("days_margin"), row.get("stage_name"))) for row in rows]
+    return HistoryResponse(items=items)
 
 
 class DeleteResponse(BaseModel):

@@ -75,11 +75,12 @@ def get_status(user: Annotated[CurrentUser | None, Depends(current_user)] = None
     user = _login_required(user)
     try:
         with ops.open_conn() as conn:
-            linked = svc.is_linked(conn, user.id)
+            times = svc.link_times(conn, user.id)
     except Exception as e:
         log_failure("kakao_status", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN)
-    return {"configured": _configured(), "linked": linked}
+    return {"configured": _configured(), "linked": times is not None,
+            "linked_at": times[0] if times else None, "last_sent_at": times[1] if times else None}
 
 
 @router.post("/connect")

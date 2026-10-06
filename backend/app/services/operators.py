@@ -145,11 +145,23 @@ def _audit(conn, action: str, target_email: str, actor_user_id: str, actor_email
 
 
 def list_operators(conn) -> list[dict]:
-    """활성 운영자. 운영자끼리는 누가 권한을 가졌는지 알아야 하므로 풀어서 보여 준다 (화면 응답 모양은 그대로)."""
+    """활성 운영자. 운영자끼리는 누가 권한을 가졌는지 알아야 하므로 풀어서 보여 준다.
+    granted_by_email: 등록한 사람의 이메일. operator_audit의 최신 grant 줄에서 찾는다 (A5, 10-06).
+    암호문은 같은 값이어도 매번 달라 SQL로 못 맞추므로, 풀어낸 이메일끼리 여기서 맞춘다. 못 찾거나 스크립트 등록이면 None."""
     rows = conn.execute(
         "SELECT email_enc, email_masked, granted_by, granted_at FROM operators WHERE revoked_at IS NULL ORDER BY granted_at"
     ).fetchall()
-    return [{"email": _open(r[0], r[1]) or "", "granted_by": r[2], "granted_at": r[3]} for r in rows]
+    granter: dict[str, str | None] = {}
+    for t_enc, t_masked, a_enc, a_masked in conn.execute(
+        "SELECT target_email_enc, target_email_masked, actor_email_enc, actor_email_masked "
+        "FROM operator_audit WHERE action = 'grant' ORDER BY created_at DESC, id DESC"
+    ).fetchall():
+        granter.setdefault(_open(t_enc, t_masked) or "", _open(a_enc, a_masked))  # 최신 줄이 먼저 오므로 첫 값만 둔다
+    out = []
+    for r in rows:
+        email = _open(r[0], r[1]) or ""
+        out.append({"email": email, "granted_by": r[2], "granted_at": r[3], "granted_by_email": granter.get(email)})
+    return out
 
 
 def list_audit(conn, limit: int = AUDIT_LIMIT) -> list[dict]:

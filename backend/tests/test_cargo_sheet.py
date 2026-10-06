@@ -85,11 +85,13 @@ class FakeConn:
             found = [r for r in self.cargo if (r["user_id"], r["cargo_key"]) == tuple(params)]
             return _Cur([(1,)] if found else [])
         if q.startswith("INSERT INTO user_lc"):
-            user, lc_no, opened_on = params
+            user, lc_no, opened_on, clear = params
             lc = next((x for x in self.lcs if (x["user_id"], x["lc_no"]) == (user, lc_no)), None)
             if lc is None:
                 lc = self.add_lc(lc_no, opened_on, user)
-            elif opened_on is not None:  # COALESCE(EXCLUDED.opened_on, 기존)
+            elif clear:  # CASE WHEN 비움 표시 THEN NULL
+                lc["opened_on"] = None
+            elif opened_on is not None:  # ELSE COALESCE(EXCLUDED.opened_on, 기존)
                 lc["opened_on"] = opened_on
             return _Cur([(lc["id"],)])
         if q.startswith("UPDATE user_cargo SET lc_id"):
@@ -190,7 +192,20 @@ def test_load_sheet_row_shape_hides_inner_values():
                         "eta", "warehoused_on", "last_stage", "forwarder_name", "carrier_name", "container_no",
                         "goods_name", "vessel_name", "vessel_flag"}
     assert row["eta"] == date(2026, 10, 9) and row["label"] == "고추"
-    assert cargo_sheet.load_sheet(FakeConn(), USER) == {"groups": []}
+    assert cargo_sheet.load_sheet(FakeConn(), USER) == {"groups": [], "truncated": False}
+
+
+def test_load_sheet_truncated_flag(monkeypatch):
+    """SHEET_MAX줄까지는 잘림 없음, 한 줄 넘으면 truncated=True이고 SHEET_MAX줄만 담는다 (S5)."""
+    monkeypatch.setattr(cargo_sheet, "SHEET_MAX", 3)
+    db = FakeConn()
+    for i in range(3):
+        db.add(f"MOCKBL00000{i}A1")
+    sheet = cargo_sheet.load_sheet(db, USER)
+    assert sheet["truncated"] is False and len(sheet["groups"][0]["rows"]) == 3
+    db.add("MOCKBL000009A1")
+    sheet = cargo_sheet.load_sheet(db, USER)
+    assert sheet["truncated"] is True and len(sheet["groups"][0]["rows"]) == 3
 
 
 # ── 신용장 잇기·풀기, 출항 ──
@@ -202,6 +217,17 @@ def test_set_lc_creates_links_and_shares_by_number():
     cargo_sheet.set_lc(db, USER, b["cargo_key"], "LC-1", None)  # 같은 번호: 개설일을 또 적지 않아도 된다
     assert len(db.lcs) == 1 and db.lcs[0]["opened_on"] == date(2026, 9, 1)
     assert a["lc_id"] == b["lc_id"] == db.lcs[0]["id"]
+
+
+def test_set_lc_clear_opened_date():
+    """clear_opened=True면 개설일을 비운다. 기본(False)이나 날짜를 안 넘긴 경우는 기존 값을 둔다 (S3)."""
+    db = FakeConn()
+    a = db.add("MOCKBL000000A1")
+    cargo_sheet.set_lc(db, USER, a["cargo_key"], "LC-1", date(2026, 9, 1))
+    cargo_sheet.set_lc(db, USER, a["cargo_key"], "LC-1", None)
+    assert db.lcs[0]["opened_on"] == date(2026, 9, 1)
+    cargo_sheet.set_lc(db, USER, a["cargo_key"], "LC-1", None, clear_opened=True)
+    assert db.lcs[0]["opened_on"] is None
 
 
 def test_set_lc_unlink_removes_empty_lc_only():
@@ -422,6 +448,7 @@ def test_get_sheet_json_shape(db, me):
     assert group["lc"] == {"id": lc["id"], "lc_no": "LC-1", "opened_on": "2026-09-01"}
     assert group["rows"][0]["eta"] == "2026-10-09" and group["rows"][0]["arrived_on"] is None
     assert "MOCKBL20261001" not in r.text and "bl_encrypted" not in r.text
+    assert r.json()["truncated"] is False
 
 
 def test_put_lc_links_and_returns_updated_sheet(db, me):
@@ -431,6 +458,17 @@ def test_put_lc_links_and_returns_updated_sheet(db, me):
     assert r.json()["groups"][0]["lc"]["lc_no"] == "LC-9" and r.json()["groups"][0]["lc"]["opened_on"] == "2026-09-01"
     r = _call("put", f"/api/cargo/sheet/{row['cargo_key']}/lc", {"lc_no": None}, me)
     assert r.status_code == 200 and r.json()["groups"][0]["lc"] is None and db.lcs == []
+
+
+def test_put_lc_explicit_null_clears_opened_date_but_omitted_keeps(db, me):
+    """opened_on 키를 생략하면 개설일 유지, 명시적 null이면 비움 (S3)."""
+    row = db.add()
+    url = f"/api/cargo/sheet/{row['cargo_key']}/lc"
+    _call("put", url, {"lc_no": "LC-1", "opened_on": "2026-09-01"}, me)
+    r = _call("put", url, {"lc_no": "LC-1"}, me)
+    assert r.json()["groups"][0]["lc"]["opened_on"] == "2026-09-01"
+    r = _call("put", url, {"lc_no": "LC-1", "opened_on": None}, me)
+    assert r.status_code == 200 and r.json()["groups"][0]["lc"]["opened_on"] is None
 
 
 @pytest.mark.parametrize("bad", ["", "  ", "A" * 36, "LC\n1"])

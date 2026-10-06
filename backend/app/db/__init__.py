@@ -6,6 +6,7 @@ psycopg 설치 없이 돌게 하려는 것이다 (CLAUDE.md: 테스트는 키 �
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from pathlib import Path
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
@@ -82,18 +83,28 @@ def _owner(session_id: str, user_id: str | None) -> tuple[str, str]:
     return ("user_id = %s", user_id) if user_id else ("session_id = %s AND user_id IS NULL", session_id)
 
 
-def recent_queries(conn, session_id: str, limit: int = 20, user_id: str | None = None) -> list[dict]:
-    """세션(로그인했으면 사용자)의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4)."""
+def recent_queries(conn, session_id: str, limit: int = 20, user_id: str | None = None,
+                   since: datetime | None = None) -> list[dict]:
+    """세션(로그인했으면 사용자)의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4).
+    since가 있으면 그 시각 이후(>=)만 읽는다 (설정 화면 기간 필터, 10-06).
+    days_margin·stage_name은 저장된 결과(response JSONB)에서 두 값만 꺼낸다. 이력 한 줄 이유(routers/history)를 코드로 만드는 재료다."""
     where, owner = _owner(session_id, user_id)
+    params: list = [owner]
+    if since is not None:
+        where += " AND created_at >= %s"
+        params.append(since)
+    params.append(min(limit, 100))
     rows = conn.execute(
         f"""
-        SELECT request_id, bl_masked, status, verdict, vessel_match, decided_by, trace_id, created_at
+        SELECT request_id, bl_masked, status, verdict, vessel_match, decided_by, trace_id, created_at,
+               (response->>'days_margin')::int, response->'customs'->>'stage_name'
         FROM query_log WHERE {where} ORDER BY created_at DESC LIMIT %s
         """,
-        [owner, min(limit, 100)],
+        params,
     ).fetchall()
     # model 칸은 018에서 지웠다 (저장하는 코드가 없어 늘 비어 있었다). 이력 응답의 model은 null로 남긴다
-    keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "trace_id", "created_at")
+    keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "trace_id", "created_at",
+            "days_margin", "stage_name")
     return [dict(zip(keys, row)) for row in rows]
 
 

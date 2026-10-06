@@ -86,6 +86,8 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
                     distance["calc_eta"] = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
 
     result = {"call_sign": call_sign, "ship_name": ship_name, "vessel": vessel, "position": position,
-              "distance": distance, "schedule": schedule, "errors": errors}
+              "distance": distance, "schedule": schedule, "errors": errors,
+              # 이 결과를 만든 시각. 10분 캐시에서 다시 나가도 그대로라 화면이 "몇 시 기준"인지 보여 줄 수 있다 (10-06)
+              "cached_at": datetime.now(timezone.utc).isoformat()}
     _cache[key] = (time.monotonic(), result)
     return result

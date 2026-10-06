@@ -117,6 +117,7 @@ class OperatorItem(BaseModel):
     email: str
     granted_by: str
     granted_at: datetime
+    granted_by_email: str | None = None  # 등록한 사람 이메일. 이력에서 못 찾으면 null (A5)
 
 
 class AuditItem(BaseModel):
