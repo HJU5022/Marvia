@@ -268,8 +268,10 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
                                 watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
         except svc.ChatError as e:
             raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
-    response = ChatResponse(**result.__dict__)
-    _save_conversation(body, user_id, response)
+        response = ChatResponse(**result.__dict__)
+        # session_scope 안에서 맡긴다. 뒤에서 도는 제목 LLM이 이 문맥(사용량 주인·Langfuse user_id)을 복사해 가야
+        # 하루 토큰 한도에 잡힌다. 밖에서 부르면 주인이 이미 비어 토큰이 버려진다 (10-06 점검)
+        _save_conversation(body, user_id, response)
     return response
 
 
@@ -300,8 +302,9 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
                     result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id),
                                         user_id, history=_history(body), run_tool=_follow_up_tool,
                                         watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
-            response = ChatResponse(**result.__dict__)
-            _save_conversation(body, user_id, response)  # 맡기기만 한다. 저장·제목은 뒤에서 돈다
+                    response = ChatResponse(**result.__dict__)
+                    # 맡기기만 한다. 저장·제목은 뒤에서 돈다. session_scope 안이라 제목 LLM 토큰도 이 사용자 몫으로 쌓인다 (10-06 점검)
+                    _save_conversation(body, user_id, response)
             events.put(("result", response.model_dump(mode="json")))
         except svc.ChatError:
             events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))

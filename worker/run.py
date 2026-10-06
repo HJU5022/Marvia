@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 from backend.app.db import apply_migrations, connect, purge_done_cargo, purge_old_conversations, purge_old_queries
-from backend.app.services.watch import run_watch
+from backend.app.services.watch import RUN_LIMIT, run_watch
 from worker.collector import Budget, collect_port, collect_positions, collect_watch_positions, purge_positions, select_targets
 
 DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
@@ -58,6 +58,14 @@ def run_once(shipfinder_calls: int) -> dict:
         summary["port"] = {"error": e.to_dict()}
 
     budget = Budget(shipfinder_calls)
+    # 지켜보기 재판정(run_watch)도 화물마다 ShipFinder를 부르는데 Budget을 거치지 않는다 (MCP·판정 경로).
+    # 그래서 재판정할 화물 수만큼 예산을 먼저 떼어 두고, 수집은 남은 예산으로 한다. 안 그러면 한 번 실행이
+    # WORKER_SHIPFINDER_CALLS_PER_RUN을 넘어 하루 50회 한도를 깰 수 있다 (10-06 점검). 화물 하나에 한 번으로 셈한다:
+    # 지켜보는 배는 바로 아래 collect_watch_positions가 먼저 받아 두므로 재판정의 위치 조회는 대개 캐시에서 끝난다
+    watch_reserved = 0
+    if watch_enabled():
+        while watch_reserved < RUN_LIMIT and budget.take():
+            watch_reserved += 1
     if shipfinder_calls > 0:
         try:
             sf = ShipFinderClient()
@@ -76,7 +84,7 @@ def run_once(shipfinder_calls: int) -> dict:
     summary["conversations_purged"] = purge_old_conversations(conn)  # 90일 지난 대화 목록 삭제 (migrations/018)
     if watch_enabled():
         try:
-            summary["watch"] = run_watch(conn)  # 지켜보는 화물 재판정 (services/watch.py)
+            summary["watch"] = run_watch(conn, limit=watch_reserved)  # 지켜보는 화물 재판정 (services/watch.py), 떼어 둔 예산만큼만
         except Exception as e:  # 재판정이 실패해도 위에서 끝낸 수집 결과는 그대로 남긴다
             summary["watch"] = {"error": type(e).__name__}
     conn.close()

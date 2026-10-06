@@ -499,6 +499,8 @@ def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
 # 판정에 쓰이지 않고(프롬프트·평가 결과를 그대로 두려고), 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 LLM에 줄 수 없다.
 # 포워더·선사 이름은 채팅 에이전트가 받는다 (services/chat.py _cargo_summary)
 JUDGE_CUSTOMS_EXCLUDE = {"bl_masked", "mrn", "fetched_at", "forwarder_name", "carrier_name", "container_no"}
+# 후속 질문 LLM 입력에서 뺄 통관 칸 (answer_follow_up, 응답의 CustomsInfo 기준). 화물을 특정하는 번호만 뺀다
+FOLLOW_UP_CUSTOMS_EXCLUDE = {"container_no"}
 
 
 def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None,
@@ -837,7 +839,10 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). judge()와 같은 자리에 넣는다.
     """
     # customs_detail(UNI-PASS 처리 이력 원문)은 화면 전용이라 LLM에 넘기지 않는다. 중량·관세법인명 등이 들어 있다 (docs/specs/customs-detail.md)
-    result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "customs_detail"})
+    # 통관 칸 중 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 뺀다 (schemas/customs.py, 판정의 JUDGE_CUSTOMS_EXCLUDE와 같은 이유).
+    # 포워더·선사 이름은 남긴다. "포워더가 어디야" 같은 후속 질문에 답하는 재료다 (10-06 점검)
+    result = response.model_dump(mode="json", exclude={"trace_id": True, "vessel_candidates": True, "customs_detail": True,
+                                                        "customs": FOLLOW_UP_CUSTOMS_EXCLUDE})
     result["evidence"] = [e for e in result.get("evidence") or []
                           if not (e["source"] == "shipfinder" and e["field"] == "dest")]
     data = {"result": result, "question": question}

@@ -154,6 +154,16 @@ def ensure_allowed(session_id: str | None, user_id: str | None) -> None:
         raise QuotaExceeded(owner)
 
 
+def forget_user(conn, user_id: str) -> None:
+    """탈퇴할 때 그 사용자의 사용량 줄을 지운다 (services/account.py withdraw, 10-06 점검).
+    가명 ID라 위험은 작지만 탈퇴하면 그 사람 몫 기록을 남기지 않는다는 원칙을 따른다. 메모리 사용량도 같이 비운다."""
+    owner = owner_key(None, user_id)
+    conn.execute("DELETE FROM token_usage WHERE owner = %s", [owner])
+    with _lock:
+        for key in [k for k in _memory if k[0] == owner]:
+            del _memory[key]
+
+
 def reset_memory() -> None:
     """테스트용. 메모리 사용량과 운영자 캐시를 비운다."""
     with _lock:

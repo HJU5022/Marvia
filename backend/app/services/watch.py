@@ -37,6 +37,7 @@ from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest
 from backend.app.services import cargo
 from backend.app.services import kakao
+from backend.app.services import quota
 from backend.app.services.kakao import KakaoLinkError
 from backend.app.services.verdict import VERDICT_LABEL
 
@@ -46,7 +47,7 @@ RUN_LIMIT = 5      # 워커 한 번에 다시 판정하는 화물 수. ShipFinde
 
 class WatchError(Exception):
     """우리 쪽 규칙 때문에 못 했다. kind: not_saved(화물 줄이 아직 없음) / done(반출이 끝난 화물)
-    / limit(이미 MAX_WATCH건) / no_key(B/L 지문 열쇠 없음)."""
+    / limit(이미 MAX_WATCH건) / no_key(B/L 지문 열쇠 없음) / quota(그 사용자가 오늘 LLM 토큰 한도를 다 씀)."""
 
     def __init__(self, kind: str):
         super().__init__(kind)
@@ -173,7 +174,14 @@ def _check_one(conn, row: tuple, now: datetime, assess) -> tuple[bool, bool, boo
                            voyage_no=voyage_no, resolved_mmsi=mmsi, session_id=f"watch-{now:%Y%m%d}")
     from backend.app.routers.agent import is_released  # 맨 위에서 부르면 라우터와 서비스가 서로 불러오는 순환이 된다
 
-    with session_scope(request.session_id):
+    # 지켜보기 재판정도 그 사용자의 LLM 사용량이다 (docs/specs/token-quota.md, 10-06 점검).
+    # user_id를 넘겨야 토큰이 그 사람 몫으로 쌓이고 Langfuse 트레이스에도 user_id가 붙는다 (SDD 5.11).
+    # 오늘 한도를 다 쓴 사람의 화물은 재판정하지 않는다. 화면 조회를 막는 것과 같은 한도다
+    try:
+        quota.ensure_allowed(None, user_id)
+    except quota.QuotaExceeded as e:
+        raise WatchError("quota") from e
+    with session_scope(request.session_id, user_id):
         response = assess(request, None)
     new = response.verdict
     if new is None:  # 판정이 없는 결과로 기준 등급을 지우지 않는다 (위 "왜 이렇게 했나")
