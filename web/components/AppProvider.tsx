@@ -80,7 +80,7 @@ interface AppState {
   /** 지켜보는 중인 화물(정규화한 B/L → 켜짐/꺼짐). WatchToggle과 말풍선 버튼이 같이 쓴다. 값이 없으면 아직 모른다 (10-06 결정) */
   watching: Record<string, boolean>; setWatching: (blNo: string, on: boolean) => void;
   /** 대화 목록 (10-06 결정). conversationsOn이 false(로그아웃·로그인 기능 꺼짐·서버가 401/503)면 목록을 그리지 않고 탭 sessionStorage로 대화를 이어 간다 */
-  conversationsOn: boolean; conversations: ConversationSummary[];
+  conversationsOn: boolean; conversations: ConversationSummary[]; refreshConversations: () => Promise<void>;
   /** 지금 대화의 chat session_id. 열린 대화는 이 값이 목록의 id와 같다 */
   activeId: string;
   /** 서버에 저장된 것을 확인한(첫 답을 받았거나 열어 본) 대화 id. 이 값이 있을 때만 주소에 ?c=가 붙는다. 없으면 null */
@@ -333,7 +333,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     try { window.sessionStorage.removeItem(CHAT_STATE_KEY); } catch { /* 괜찮다 */ }
   }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,backToCargo,cargoKey,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,usage,refreshUsage,watching,setWatching,conversationsOn,conversations,activeId,savedId,opening,newConversation,openConversation,removeConversation}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,backToCargo,cargoKey,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,usage,refreshUsage,watching,setWatching,conversationsOn,conversations,refreshConversations,activeId,savedId,opening,newConversation,openConversation,removeConversation}}>{children}</Context.Provider>;
 }
 /** 화물 답이 후속 질문의 답인지 고른다. 응답 계약(C1, ChatResponse)에 표시 칸이 없어 화면이 확인할 수 있는 사실로만 본다.
  * - 같은 B/L이 아니면 새 조회다

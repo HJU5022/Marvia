@@ -15,8 +15,9 @@ const REVEAL_SECONDS = 60;  // 원문을 보여 두는 시간. 자리를 비워�
 
 export type CustomerMode = 'unmask' | 'edit' | 'delete' | 'suspend';
 
-export function CustomerActions({customer, mode, onDone, onClose}: {
+export function CustomerActions({customer, mode, onDone, onClose, onLogged}: {
   customer: CustomerItem; mode: CustomerMode; onDone: (msg: string) => void; onClose: () => void;
+  onLogged?: () => void;  // 원문 열람처럼 패널을 연 채로 이력이 남는 동작 뒤에 부른다 (10-07 정운: 작업 이력에 바로 안 올라옴)
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -46,7 +47,7 @@ export function CustomerActions({customer, mode, onDone, onClose}: {
   function submitUnmask(e: FormEvent) {
     e.preventDefault();
     if (reason.trim().length < 10) { setError('사유를 10자 이상 적어 주세요.'); return; }
-    void run(async () => { setRaw(await unmaskCustomer(customer.user_id, reason.trim())); setLeft(REVEAL_SECONDS); });
+    void run(async () => { setRaw(await unmaskCustomer(customer.user_id, reason.trim())); setLeft(REVEAL_SECONDS); onLogged?.(); });
   }
 
   // 수정은 원문을 미리 채우지 않는다. 원문을 보려면 마스킹 해제(사유서)를 거쳐야 한다

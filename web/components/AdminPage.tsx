@@ -56,7 +56,8 @@ function CustomersPanel() {
     getAdminActions().then(setActions).catch(() => setActions([]));
   }, []);
   useEffect(reload, [reload]);
-  const close = useCallback(() => { setOpen(null); getAdminActions().then(setActions).catch(() => {}); }, []);
+  const refreshActions = useCallback(() => { getAdminActions().then(setActions).catch(() => {}); }, []);
+  const close = useCallback(() => { setOpen(null); refreshActions(); }, [refreshActions]);
 
   // 고객 검색은 전화번호 뒷 4자리로 한다 (10-06 정운: 전화로 문의한 고객을 찾는 일이 많다). 목록에는 가린 번호
   // (010-****-1234)만 오고 뒷 4자리는 보이므로 화면에서 끝자리를 비교한다. 숫자가 아닌 글자를 넣으면 예전처럼 이메일 앞부분으로 찾는다
@@ -124,7 +125,7 @@ function CustomersPanel() {
     </div>
 
     {/* 선택한 고객의 작업 카드: 시안 4-6처럼 표 아래에 펼친다 */}
-    {open && openCustomer && <CustomerActions key={`${open.id}-${open.mode}`} customer={openCustomer} mode={open.mode} onClose={close} onDone={msg => { setMessage(msg); setOpen(null); reload(); }}/>}
+    {open && openCustomer && <CustomerActions key={`${open.id}-${open.mode}`} customer={openCustomer} mode={open.mode} onClose={close} onLogged={refreshActions} onDone={msg => { setMessage(msg); setOpen(null); reload(); }}/>}
 
     <section className="adm-audit">
       <div className="adm-section-head"><h2>최근 작업 이력</h2><span>최근 {actions.length}건</span></div>
