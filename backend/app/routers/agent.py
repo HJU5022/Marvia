@@ -50,7 +50,7 @@ from backend.app.schemas.agent import (
     VesselInfo,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import guard, identify, llm, progress, quota, validate
+from backend.app.services import guard, identify, llm, progress, quota, referrals, validate
 from backend.app.services import memory as memory_service
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
@@ -356,7 +356,9 @@ def _after_customs(request: AgentRequest, customs: CustomsRecord, memory: str | 
                 if judge_memory:
                     violations += validate.check_memory_ids(texts, _evidence_text(response))
                 if not violations:
-                    return response
+                    # 검증을 통과한 뒤에 확인처(다음 행선지)를 붙인다. LLM이 쓴 문장이 아니라 코드 문장이라
+                    # V1~V12 검사 대상이 아니고, 전화번호·시각 숫자가 V7 근거 검사에 걸리지도 않는다 (services/referrals.py, 10-06)
+                    return response.model_copy(update={"actions": referrals.with_signal_lines(response.actions, signal_set)})
                 # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
                 log_failure("validate", f"{','.join(v.rule for v in violations)} attempt {attempt}")
                 feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
@@ -413,6 +415,7 @@ def _llm_gave_up(signal_set, margin: int | None, table: str, gray: bool, customs
         verdict=table,
         decided_by="rule",
         reasons=verdict_table.table_reasons(signal_set, margin) if table != "fine" else [],
+        actions=referrals.signal_lines(signal_set),  # 설명은 못 만들었어도 신호별 확인처는 코드가 붙인다 (10-06)
         answer=TABLE_FALLBACK.format(label=VERDICT_LABEL[table]),
         customs=_customs_info(customs, None),
         **collected,

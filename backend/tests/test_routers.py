@@ -143,7 +143,9 @@ def test_table_verdict_with_llm_text(fake, monkeypatch):
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("ok", "watch", "rule")
     assert (seen["table_verdict"], seen["verdict_mode"]) == ("watch", "fixed")
-    assert body["actions"] == ["포워더에 확인"] and body["answer"] == JUDGED["answer"]
+    # LLM이 쓴 할 일 뒤에 켜진 신호의 확인처 줄을 코드가 붙인다 (services/referrals.py, 10-06)
+    assert body["actions"][0] == "포워더에 확인" and body["answer"] == JUDGED["answer"]
+    assert all(a.startswith("확인처: ") or a.startswith("진행 상황") for a in body["actions"][1:])
     assert body["customs"]["stage_name"] == "반입신고" and body["customs"]["next_stage"] == "수입신고"
     assert body["position"]["freshness"] in ("fresh", "stale")  # unknown이 아니라 signals가 계산한 값
 
