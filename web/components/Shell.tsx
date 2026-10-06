@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {useEffect,useState} from 'react';
-import {ArrowUpRight, Boxes, ChartNoAxesCombined, Compass, History, LogOut, MessagesSquare, Settings2, ShieldUser, Waves} from 'lucide-react';
+import {ArrowUpRight, Boxes, ChartNoAxesCombined, Compass, History, Table2, LogOut, MessagesSquare, Settings2, ShieldUser, Waves} from 'lucide-react';
 import {LoginScreen} from './LoginScreen';
 import {ProfileForm} from './ProfileForm';
 import {ConversationList} from './ConversationList';
@@ -14,7 +14,7 @@ import {SUSPENDED_MESSAGE} from '@/lib/api';
 import {useApp} from './AppProvider';
 import {isLive} from '@/lib/api';
 // operatorOnly: 운영자에게만 보이는 탭 (10-01). 평가 지표는 일반 사용자에게 필요 없는 시스템 품질 화면이다
-const links=[{href:'/',label:'내 화물',en:'MY CARGO',icon:Boxes},{href:'/history',label:'조회 이력',en:'HISTORY',icon:History},{href:'/metrics',label:'평가 지표',en:'EVALUATION',icon:ChartNoAxesCombined,operatorOnly:true},{href:'/settings',label:'설정',en:'SETTINGS',icon:Settings2}];
+const links=[{href:'/',label:'내 화물',en:'MY CARGO',icon:Boxes},{href:'/cargo',label:'화물 현황',en:'CARGO SHEET',icon:Table2},{href:'/history',label:'조회 이력',en:'HISTORY',icon:History},{href:'/metrics',label:'평가 지표',en:'EVALUATION',icon:ChartNoAxesCombined,operatorOnly:true},{href:'/settings',label:'설정',en:'SETTINGS',icon:Settings2}];
 // 운영자에게만 보이는 탭 (docs/specs/operator-admin.md). 숨김은 편의이고 권한은 서버가 막는다
 const adminLink={href:'/admin',label:'관리',en:'ADMIN',icon:ShieldUser};
 export function Shell({children}:{children:React.ReactNode}) {

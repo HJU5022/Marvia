@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, VesselDetailResponse, ConversationSummary, ConversationDetail } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -530,6 +530,85 @@ export async function getWatchChanges(): Promise<WatchChange[]> {
 export async function markWatchChangesSeen(): Promise<{cleared: number}> {
   if (!isLive) return {cleared: 0};
   return (await call('/api/watch/changes/seen', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/* ---------- 내 화물 현황 표 (10-06, 수입자가 손으로 쓰던 표) ---------- */
+
+/** 데모 모드의 가짜 표. 값은 전부 지어낸 것이다(MRVDEMO B/L, DEMO 신용장). 실제 번호를 쓰지 않는다 (CLAUDE.md) */
+const demoRow = (n: number, extra: Partial<CargoSheetRow>): CargoSheetRow => ({
+  cargo_key: `demo-${n}`, bl_masked: `MRVD***${String(n).padStart(4, '0')}`, label: null, status: 'active',
+  departed_on: null, departed_source: null, arrived_on: null, eta: null, warehoused_on: null, last_stage: null,
+  forwarder_name: null, carrier_name: null, container_no: null, ...extra,
+});
+let demoSheet: CargoSheet = {groups: [
+  {lc: {id: 1, lc_no: 'DEMO-LC-0001', opened_on: '2026-08-20'}, rows: [
+    demoRow(1, {status: 'done', departed_on: '2026-09-02', departed_source: 'manual', arrived_on: '2026-09-18', warehoused_on: '2026-09-22', last_stage: '반출', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO1234567'}),
+    demoRow(2, {departed_on: '2026-09-20', departed_source: 'document', arrived_on: '2026-10-03', last_stage: '입항 후 하선', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO7654321'}),
+  ]},
+  {lc: {id: 2, lc_no: 'DEMO-LC-0002', opened_on: '2026-09-10'}, rows: [
+    demoRow(3, {departed_on: '2026-10-01', departed_source: 'manual', eta: '2026-10-20', last_stage: '선적', carrier_name: '데모선사'}),
+  ]},
+  {lc: null, rows: [demoRow(4, {})]},
+]};
+
+/** 데모 모드의 출항일 수정. 새로고침하면 처음 모양으로 돌아간다 */
+function demoSetDeparted(cargoKey: string, departedOn: string | null): CargoSheet {
+  const row = demoSheet.groups.flatMap(g => g.rows).find(r => r.cargo_key === cargoKey);
+  if (!row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했습니다.'), {status: 404});
+  row.departed_on = departedOn;
+  row.departed_source = departedOn ? 'manual' : null;
+  return structuredClone(demoSheet);
+}
+
+/** 데모 모드의 L/C 묶기. 서버가 하는 일(같은 번호면 같은 묶음, 빈 묶음 정리, 미연결 묶음은 맨 끝)을 흉내 낸다 */
+function demoSetLc(cargoKey: string, lcNo: string | null, openedOn: string | null): CargoSheet {
+  const from = demoSheet.groups.find(g => g.rows.some(r => r.cargo_key === cargoKey));
+  const row = from?.rows.find(r => r.cargo_key === cargoKey);
+  if (!from || !row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했습니다.'), {status: 404});
+  from.rows = from.rows.filter(r => r !== row);
+  let target = demoSheet.groups.find(g => (g.lc?.lc_no ?? null) === lcNo);
+  if (!target) {
+    target = {lc: lcNo ? {id: Date.now(), lc_no: lcNo, opened_on: openedOn} : null, rows: []};
+    const unlinked = demoSheet.groups.findIndex(g => g.lc === null);
+    demoSheet.groups.splice(lcNo && unlinked >= 0 ? unlinked : demoSheet.groups.length, 0, target);
+  }
+  if (target.lc) target.lc.opened_on = openedOn;
+  target.rows.push(row);
+  demoSheet.groups = demoSheet.groups.filter(g => g.rows.length > 0);
+  return structuredClone(demoSheet);
+}
+
+/** GET /api/cargo/sheet. 로그인한 사용자의 화물 표. L/C별 묶음이고, 마지막 묶음은 L/C가 아직 없을 수 있다. */
+export async function getCargoSheet(): Promise<CargoSheet> {
+  if (!isLive) return structuredClone(demoSheet);
+  return (await call('/api/cargo/sheet', {}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** PUT /api/cargo/sheet/{cargo_key}/lc. 이 B/L을 신용장에 묶는다. lc_no가 null이면 묶음을 푼다. 표 전체를 돌려받는다. */
+export async function saveCargoLc(cargoKey: string, lcNo: string | null, openedOn: string | null): Promise<CargoSheet> {
+  const body = {lc_no: lcNo, opened_on: lcNo ? openedOn : null};
+  if (!isLive) return demoSetLc(cargoKey, body.lc_no, body.opened_on);
+  return (await call(`/api/cargo/sheet/${encodeURIComponent(cargoKey)}/lc`, {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** PUT /api/cargo/sheet/{cargo_key}/departed. 출항일을 사용자가 직접 적는다(source는 늘 manual). null이면 지운다. 표 전체를 돌려받는다. */
+export async function saveCargoDeparted(cargoKey: string, departedOn: string | null): Promise<CargoSheet> {
+  if (!isLive) return demoSetDeparted(cargoKey, departedOn);
+  const body = JSON.stringify({departed_on: departedOn, source: 'manual'});
+  return (await call(`/api/cargo/sheet/${encodeURIComponent(cargoKey)}/departed`, {method: 'PUT', headers: {'content-type': 'application/json'}, body}, HISTORY_TIMEOUT_MS)).json();
+}
+
+/** GET /api/cargo/sheet.xlsx. 출입증 헤더가 필요해서 링크 대신 blob으로 받는다. 파일 이름은 Content-Disposition, 없으면 marvia_cargo.xlsx. */
+export async function downloadCargoSheet(): Promise<{blob: Blob; filename: string}> {
+  if (!isLive) throw new Error('데모 모드에서는 엑셀을 받을 수 없습니다.');
+  const res = await call('/api/cargo/sheet.xlsx', {}, HISTORY_TIMEOUT_MS);
+  const disposition = res.headers.get('content-disposition') ?? '';
+  // filename*=UTF-8''... 이 있으면 먼저, 없으면 filename="..."
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(disposition)?.[1];
+  let filename = 'marvia_cargo.xlsx';
+  try { filename = (star ? decodeURIComponent(star) : plain) || filename; } catch { /* 깨진 인코딩이면 기본 이름 */ }
+  return {blob: await res.blob(), filename};
 }
 
 /* ---------- 운영자 관리 (docs/specs/operator-admin.md) ---------- */

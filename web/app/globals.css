@@ -711,3 +711,30 @@ th{background:#f7faff;color:#506c85}
 .conv-sheet-head{display:flex;align-items:center;justify-content:space-between;font-size:14px}
 .conv-sheet-head button{min-height:36px;padding:0 10px;border:0;background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
 @media(max-width:900px){.conv-section{display:none}.conv-toggle{display:inline-flex}.conv-delete{opacity:1}}
+
+/* 내 화물 현황 표 (CargoSheet, 10-06). 새 색 없이 기존 토큰만 쓴다. 전체 화면 개편 전까지 최소한의 모양 */
+.cargo-sheet-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.cargo-sheet-bar p{margin:0;font-size:12px}
+.cargo-sheet .table-scroll{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+.cargo-sheet table{width:100%;border-collapse:collapse;font-size:12px}
+.cargo-sheet th,.cargo-sheet td{padding:10px 12px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--border);white-space:nowrap}
+.cargo-sheet td.cargo-lc{vertical-align:top;border-right:1px solid var(--border);background:var(--soft)}
+.cargo-sheet tr.cargo-done td:not(.cargo-lc){color:var(--muted)}
+.cargo-label{display:block;font-family:var(--font);font-size:11px;color:var(--muted)}
+.cargo-badge{margin-left:8px}
+.cargo-eta{color:var(--muted)}
+.cargo-doc{display:inline-flex;vertical-align:middle;margin-left:5px;color:var(--muted)}
+.cargo-edit-cell{text-align:right}
+.cargo-edit{display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);color:var(--blue-dark);font-size:11px;font-weight:600;cursor:pointer}
+.cargo-edit:hover{background:#edf5ff}
+.cargo-editor-row td{background:var(--soft);white-space:normal}
+.cargo-editor{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+.cargo-editor-group{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.cargo-editor .form-field{margin-bottom:0}
+.cargo-editor .request-error{flex-basis:100%;margin:0}
+.cargo-editor .request-error:empty{padding:0;height:0;overflow:hidden}
+/* 통관 카드의 포워더·선사·컨테이너 (CustomsTimeline). 값이 있는 것만 보인다 */
+.cargo-parties{display:flex;flex-wrap:wrap;gap:4px 18px;margin:0 0 14px;font-size:12px}
+.cargo-parties>div{display:flex;gap:6px;min-width:0}
+.cargo-parties dt{color:var(--muted)}
+.cargo-parties dd{margin:0;font-weight:600;overflow-wrap:anywhere}

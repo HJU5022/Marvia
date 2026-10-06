@@ -50,6 +50,8 @@ export interface CustomsInfo {
   /** 어디서 어디로 (UNI-PASS 적재항·양륙항, 10-01). 없으면 null */
   loading_port?: string | null; loading_port_name?: string | null; loading_country?: string | null;
   discharge_port?: string | null; discharge_port_name?: string | null;
+  /** UNI-PASS 포워더·선사·컨테이너 번호 (10-06 화물 현황 표). 서버가 못 읽으면 없다 */
+  forwarder_name?: string | null; carrier_name?: string | null; container_no?: string | null;
 }
 export interface BerthInfo { facility: string | null; shed: string | null }
 export interface AgentResponse {
@@ -221,3 +223,17 @@ export interface WatchState { saved: boolean; watch: boolean }
 export interface WatchChange { bl_masked: string; label: string | null; from_verdict: Verdict; to_verdict: Verdict; changed_at: string;
   /** 서버가 판정이 바뀐 이유를 문장으로 보내 주면 붙인다(10-06). 없으면 쓰지 않는다 */
   reason?: string | null }
+
+/** 내 화물 현황 표 (GET /api/cargo/sheet, 10-06). 날짜는 모두 "YYYY-MM-DD" */
+export interface CargoLc { id: number; lc_no: string; opened_on: string | null }
+export interface CargoSheetRow {
+  cargo_key: string; bl_masked: string; label: string | null; status: 'active' | 'done';
+  /** 출항일. 사용자가 적었으면 manual, 도착 통지서에서 읽었으면 document */
+  departed_on: string | null; departed_source: 'manual' | 'document' | null;
+  /** 입항·입고는 서버가 UNI-PASS에서 채운다. arrived_on이 비었을 때만 eta(입항 예정)를 보인다 */
+  arrived_on: string | null; eta: string | null; warehoused_on: string | null; last_stage: string | null;
+  forwarder_name: string | null; carrier_name: string | null; container_no: string | null;
+}
+/** lc가 null인 묶음은 아직 신용장에 안 묶인 B/L이다 (맨 끝) */
+export interface CargoSheetGroup { lc: CargoLc | null; rows: CargoSheetRow[] }
+export interface CargoSheet { groups: CargoSheetGroup[] }
