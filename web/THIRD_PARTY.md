@@ -6,8 +6,12 @@
 - **Manrope / Noto Sans KR / IBM Plex Mono** - SIL Open Font License 1.1. Fontsource npm 패키지의 라이선스와 폰트를 로컬 번들로 사용합니다. https://fontsource.org
 - **Lucide** - ISC. https://lucide.dev/license
 - **Next.js / React** - MIT. https://nextjs.org / https://react.dev
+- **MapLibre GL JS 6** - BSD-3-Clause. 세계지도 그리기(WebGL). https://github.com/maplibre/maplibre-gl-js/blob/main/LICENSE.txt
+- **@maplibre/maplibre-gl-leaflet** - ISC. MapLibre 지도를 Leaflet 레이어로 얹는다. https://github.com/maplibre/maplibre-gl-leaflet
+- **OpenFreeMap (positron 스타일, 벡터 타일)** - 무료 공개 서비스, 키 없음. 지도 데이터는 **© OpenStreetMap contributors, ODbL 1.0**. 화면에 "© OpenStreetMap · OpenFreeMap"을 표시합니다. https://openfreemap.org / https://www.openstreetmap.org/copyright
+- **미리 구운 지도 조각 `public/basemap/`** - 위 OpenFreeMap 지도를 같은 스타일로 그려 저장한 그림(WebGL 없는 PC용, `scripts/bake-basemap.mjs`, 10-06). OpenStreetMap 데이터로 만든 결과물이라 같은 출처 표시를 따릅니다.
 
-지도에는 Leaflet·Natural Earth 출처를 표시합니다. ShipFinder·UNI-PASS·해수부 실제 응답과 원본 프로젝트 자산을 복사하지 않았습니다. 화면에 표시된 해당 출처명은 가공 fixture의 근거 유형입니다.
+지도에는 쓰는 바탕에 따라 "© OpenStreetMap · OpenFreeMap" 또는 Natural Earth 출처를 표시합니다. ShipFinder·UNI-PASS·해수부 실제 응답과 원본 프로젝트 자산을 복사하지 않았습니다. 화면에 표시된 해당 출처명은 가공 fixture의 근거 유형입니다.
 
 Next.js 공식 설치·라우팅 문서와 Leaflet 공식 레퍼런스를 확인해 구성했습니다:
 https://nextjs.org/docs/app/getting-started/installation

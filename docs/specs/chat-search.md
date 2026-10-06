@@ -1,4 +1,4 @@
-# Spec: 자연어 입력 하나로 조회 (검색 폼 대체, 입항 선박 검색)
+# Spec: 자연어 입력 하나로 조회 (검색 폼 대체, 입항 선박 검색, 10-06 현행화)
 
 작성 2026-10-01 김승욱. 사용자 지시: "내 화물" 화면의 검색 조건(B/L, 구분, 판매 예정일, 예시 메뉴)을 지우고 LLM 자연어로만 처리한다. "네덜란드에서 한국으로 들어오는 배 뭐야?" 같은 질문도 받는다.
 
@@ -58,3 +58,17 @@
 - searoute estimate_distance: 부산까지 남은 바닷길, 지금 속력이면 걸리는 시간(계산 도착)
 - 위치 신선도는 rules.md position_stale_hours로 코드가 정한다. 판정은 하지 않는다
 - 도구 하나가 실패해도 나머지를 보여 주고 errors에 출처별로 남긴다. ShipFinder 한도 때문에 같은 배는 10분 캐시
+
+## 구현 상태 (10-06)
+
+처음 설계(의도 4개 분류 후 코드 실행)는 두 번 넓어졌다. 아래가 지금 코드(`backend/app/services/chat.py`, `routers/chat.py`)다.
+
+- **채팅 에이전트 (10-05 결정)**: 의도 4개에 안 맞는 실무 질문이 모두 고정 안내로 가고 앞 대화를 몰라 "이건"을 못 알아듣던 문제를 고치려고, 기본 경로가 에이전트로 바뀌었다. LLM(프롬프트 marvia-chat-agent)이 도구를 골라 부르고 코드가 실행한다. 도구는 `check_cargo`(화물 조회), `ask_cargo`(화면의 화물 후속 질문), `search_arrivals`(부산 입항 선박 검색), `set_watch`(지켜보기 켜고 끄기, 10-06), `send_kakao`(지금 상태를 카카오톡으로, 10-06), 읽기 전용 MCP 도구 4종, 좁은 범위의 `web_search`(10-05)다. 등급·여유 일수는 여전히 판정 흐름(코드)이 정한다. 화면은 최근 대화(history)도 함께 보낸다
+- **처음 설계의 4개 의도 분류는 대비 경로로 남았다**: 에이전트를 못 쓰면(키 없음, 도구를 거절하는 모델, `CHAT_AGENT=off`) `_classic`이 의도 고르기(`llm.route_chat`)와 실행을 맡는다. 그것도 안 되면 규칙(EC-01)이다
+- **LLM에 가는 것**: B/L은 [BL1]로, MRN은 [MRN]으로, 컨테이너 번호는 [CNTR1]로 가린다. 컨테이너 번호가 로그인 사용자의 화물 표에 있으면 코드가 원본 B/L로 바꿔 조회한다 (10-06). 주입 모양 문장(`guard`)은 LLM에 보내지 않는다
+- **범위 밖 주제**: 항공·육상, 창고 수령일, 일정 변경, 날씨, 품목 요건은 LLM 없이 고정 문장과 공식 창구로 답한다 (`skills/referrals/rules.md`, docs/specs/referral-guide.md). 세액·관세율·통관 가능 여부는 관세사 안내 고정 문장(`BROKER_ONLY`)이다
+- **응답**: `ChatResponse.kind`는 `cargo` / `vessels` / `message`이고, `map`(지도), `cargos`(B/L 2~3개 문장의 줄), `watch_offer`, `watch_set`이 더해졌다
+- **대화 저장**: 로그인 사용자의 대화는 답을 만든 뒤 뒤에서 저장한다 (conversations 표, docs/ERD.md). 기억 쓰기와 지난 조회 한 줄은 docs/specs/memory.md
+- **화면**: 입력창은 하나. 서류 사진 버튼과 예시 문장 칩이 있다 (`web/components/ChatBar.tsx`, `AskPanel.tsx`). 입력 한도는 500자
+- 선박 자세히 보기 `GET /api/vessels/detail`은 그대로 있다 (`services/vessel_detail.py`)
+- 테스트: `backend/tests/test_chat.py`, `test_chat_agent.py`, `test_chat_multi_bl.py`, `test_chat_watch.py`, `test_chat_kakao_now.py`, `test_chat_map.py` 등

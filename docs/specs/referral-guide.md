@@ -1,6 +1,20 @@
-# 안내처 표 (초안, 10-06)
+# 안내처 표 (10-06 구현, 같은 날 코드와 대조)
 
-상태: 1(신호별 다음 행선지)과 2(범위 밖 질문)를 10-06에 구현했다. 재료는 skills/referrals/rules.md, 코드는 backend/app/services/referrals.py. 문장과 주소는 팀이 다시 확인한다.
+상태: 1(신호별 다음 행선지)과 2(범위 밖 질문)를 10-06에 구현했다 (PR #71). 재료는 `skills/referrals/rules.md`(새 skills 폴더, "정해야 할 것" 3번의 답), 코드는 `backend/app/services/referrals.py`, 테스트는 `backend/tests/test_referrals.py`. 문장과 주소는 팀이 다시 확인한다.
+
+### 구현 상태 (10-06 코드 확인)
+
+| 항목 | 설계 | 실제 |
+|---|---|---|
+| 신호별 확인처 | 켜진 신호마다 "확인처:" 한 줄, 두 개까지 | 구현. `referrals.signal_lines/with_signal_lines`, `routers/agent.py`가 LLM 답의 actions 뒤에 붙이고, 설명을 못 만든 폴백에서도 붙인다. `referral_order`, `referral_max: 2`, `referral_prefix`는 rules.md. 입력 오류로 세지 않는 신호는 뺀다 |
+| 통관 보류의 UNI-PASS 줄 | 한 줄 더 | 구현 (`signal_referral_links`) |
+| navstat_mismatch | 붙이지 않음 | 구현 (rules.md에 항목이 없다) |
+| 범위 밖 질문 | 5개 주제를 고정 문장으로 | 5개 구현: air_land, warehouse_date, schedule_change(`require`가 있어야 걸림), weather, import_requirement. B/L이 있는 문장은 건너뛴다 (`services/chat._route`). 주제는 LLM 분류가 아니라 정규식(rules.md `out_of_scope`)이다 |
+| 세액·통관 가부 | `BROKER_ONLY`에 확인처 | 구현. `broker_referral`을 `BROKER_ONLY` 끝에 붙인다 (`referrals.broker_tail`) |
+| 품목별 요건 답의 한국관세사회 링크 | 붙임 | 안 붙였다. 현재 답은 관세사에게 확인하라는 문장만 있다. 아래 "공식 창구" 표의 `broker_search`는 코드에 쓰이지 않는다 |
+| `CLEARANCE_TAG`, `NOT_IN_SKILLS`, `BROKER_SHORT`에 확인처 | 붙이거나 맞춤 | 바뀌지 않았다 (`services/chat.py`). 아래 "기존 고정 문구와의 관계" 표의 이 줄들은 아직 안 했다 |
+| 링크 확인 스크립트 | `scripts/`에 둠 | 만들지 않았다 (scripts/에 없음) |
+| 범위 밖 질문 평가 5~10건 | 사람이 따로 | evals/에서 확인하지 못했다 |
 
 ## 왜 만드나
 
@@ -154,7 +168,7 @@ out_of_scope:
 - 평가: 판정 답 본문은 그대로라 기존 평가셋에는 영향이 없다. 범위 밖 질문 평가 5~10건은 사람이 써서 따로 둔다
 - 링크 확인 스크립트: scripts/에 공식 창구 주소가 살아 있는지 보는 스크립트를 둔다
 
-## 정해야 할 것
+## 정해야 할 것 (10-06 현재: 1·3은 구현으로 정해졌고 2·4·5는 열려 있다)
 
 1. 신호별 안내 문장과 순서
 2. 범위 밖 주제 목록과 답 문장. 날씨 답처럼 "B/L 번호를 알려 주시면" 꼬리를 다른 답에도 붙일지

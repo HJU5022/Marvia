@@ -12,7 +12,7 @@ MCP_TOKEN이 있으면 /mcp는 Authorization: Bearer <MCP_TOKEN> 없이 부를 �
 MCP_TOKEN이 없으면 REPLAY_MODE일 때만 열고, 아니면 같은 컨테이너 안의 요청만 받습니다 (10-06 점검, mcp_server/auth.py).
 
 어디서 뜨나 (09-29 결정, SDD 5.9):
-  기본은 API 서버(backend/app/main.py) 안의 /mcp 경로입니다. 서버·Cloud Run 서비스가 하나로 끝납니다.
+  기본은 API 서버(backend/app/main.py) 안의 /mcp 경로입니다. 배포 서비스(Railway marvia-api)가 하나로 끝납니다.
   이 파일을 직접 실행하는 길(아래)은 로컬 확인용으로 남깁니다.
   서비스(routers/agent.py 등)도 /mcp를 거쳐 도구를 부릅니다 (10-02, backend/app/services/mcp_client.py).
   외부 MCP 클라이언트와 같은 창구입니다.
@@ -72,9 +72,9 @@ def _in_thread(fn):
 def create_mcp(token: str | None = None) -> FastMCP:
     """도구 4종을 등록한 FastMCP를 새로 만든다.
 
-    Host 검사: FastMCP는 기본으로 localhost에서 온 요청만 받는다(DNS 리바인딩 방지). 그대로면 Cloud Run 주소
+    Host 검사: FastMCP는 기본으로 localhost에서 온 요청만 받는다(DNS 리바인딩 방지). 그대로면 배포 주소
     (xxx.run.app)로 온 요청이 421로 막힌다 (09-29 라이브러리 코드 확인, mcp 1.30 fastmcp/server.py).
-    토큰이 있으면 이 검사를 끄고 토큰이 막는다. Cloud Run 주소는 미리 알 수 없어 허용 목록을 적기 어렵다.
+    토큰이 있으면 이 검사를 끄고 토큰이 막는다. 배포 주소는 미리 알 수 없어 허용 목록을 적기 어렵다.
     compose의 worker도 같다: MCP_URL=http://api:8000/mcp라 Host가 api:8000이고, 토큰이 있으면 그대로 통과한다.
     토큰이 없으면 localhost에 compose 서비스 이름(api)만 더해 받는다 (10-06 점검: 전에는 localhost만이라 worker가 421).
     토큰 없이 밖에서 오는 요청은 어차피 auth.protect가 막는다(REPLAY_MODE가 아니면 루프백만). 이 목록은 REPLAY_MODE에서
