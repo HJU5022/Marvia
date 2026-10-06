@@ -171,10 +171,10 @@ try {
     await cargo(page, 'unsupported'); await page.getByRole('button', {name: '질문 고치기'}).click(); assert.equal(await activeId(page), 'chat-input');
     check(`unsupported returns to composer ${width}`);
 
-    // 입항 선박 검색 → 표 10열 → 선명을 누르면 표 아래 카드(드로어 아님)가 그 배로 바뀐다. 여러 번 바꿔도 지도는 하나만 남는다
+    // 입항 선박 검색 → 표 5열 → 선명을 누르면 표 아래 카드(드로어 아님)가 그 배로 바뀐다. 여러 번 바꿔도 지도는 하나만 남는다
     await home(page); await input(page).fill('중국에서 부산 들어오는 배 보여줘'); await input(page).press('Enter');
     await page.locator('.vessel-results').waitFor();
-    assert.equal(await page.locator('.vessel-results thead th').count(), 10);
+    assert.equal(await page.locator('.vessel-results thead th').count(), 5);
     // 휴대폰: 상세는 아래 시트다. 입력창에 포커스가 있으면 접혀 있어서 손잡이로 편다
     const handle = page.locator('.sheet-handle');
     if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'false') await handle.click();
