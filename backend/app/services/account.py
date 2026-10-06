@@ -21,6 +21,7 @@ import os
 
 from backend.app.clients.supabase_admin import AdminError, delete_account
 from backend.app.db import atomic, connect, delete_user_queries
+from backend.app.services import quota
 from backend.app.services.conversations import delete_all as delete_conversations
 from backend.app.services.kakao import delete as delete_kakao_link
 from backend.app.services.memory import forget_user
@@ -52,6 +53,8 @@ def withdraw(user_id: str) -> int:
             # 카카오톡 알림 토큰도 계정보다 먼저 지운다 (10-02). 줄만 지운다. 카카오 쪽 연결 해제는 부르지 않는다
             # (카카오 서버 실패가 탈퇴를 막으면 안 되고, 토큰이 사라지면 우리는 더 보낼 수 없다)
             delete_kakao_link(conn, user_id)
+            # 하루 LLM 토큰 사용량 줄도 지운다 (migrations/016, 10-06 점검)
+            quota.forget_user(conn, user_id)
     except Exception as e:  # 연결·SQL 실패 모두. 오류 종류만 남긴다
         raise WithdrawError("account_records", type(e).__name__) from None
 

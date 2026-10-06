@@ -59,7 +59,8 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
         masked, status = None, "partial"
 
     if masked is not None and ocr.lines:
-        with session_scope(session_id, user_id) if session_id else nullcontext():  # session 없이 오면 트레이스만 남긴다
+        # 로그인 사용자면 session 없이 와도 범위를 연다. 안 열면 서류 판독 토큰이 하루 한도에 안 쌓인다 (services/quota.py, 10-06 점검)
+        with session_scope(session_id, user_id) if (session_id or user_id) else nullcontext():  # 둘 다 없으면 트레이스만 남긴다
             try:
                 out = llm.extract_doc_fields(masked).output
                 values.update({k: getattr(out, k) for k in LLM_FIELDS})

@@ -38,7 +38,7 @@ def collect_stubs(monkeypatch):
 
 def test_watch_off_by_default_is_not_called(collect_stubs, monkeypatch):
     monkeypatch.delenv("WATCH_ENABLED", raising=False)
-    monkeypatch.setattr(run, "run_watch", lambda conn: pytest.fail("꺼져 있으면 부르지 않는다"))
+    monkeypatch.setattr(run, "run_watch", lambda conn, **k: pytest.fail("꺼져 있으면 부르지 않는다"))
     summary = run.run_once(0)
     assert "watch" not in summary and collect_stubs.closed
 
@@ -46,22 +46,67 @@ def test_watch_off_by_default_is_not_called(collect_stubs, monkeypatch):
 @pytest.mark.parametrize("value", ["", "off", "false", "0"])
 def test_watch_off_values_are_not_called(collect_stubs, monkeypatch, value):
     monkeypatch.setenv("WATCH_ENABLED", value)
-    monkeypatch.setattr(run, "run_watch", lambda conn: pytest.fail("꺼져 있으면 부르지 않는다"))
+    monkeypatch.setattr(run, "run_watch", lambda conn, **k: pytest.fail("꺼져 있으면 부르지 않는다"))
     assert "watch" not in run.run_once(0)
 
 
 @pytest.mark.parametrize("value", ["on", "ON", "true", "1"])
 def test_watch_on_runs_after_collection(collect_stubs, monkeypatch, value):
     monkeypatch.setenv("WATCH_ENABLED", value)
-    monkeypatch.setattr(run, "run_watch", lambda conn: {"checked": 2})
+    monkeypatch.setattr(run, "run_watch", lambda conn, **k: {"checked": 2})
     summary = run.run_once(0)
     assert summary["watch"] == {"checked": 2} and "port" in summary  # 수집 결과도 그대로
+
+
+def _sf_stubs(monkeypatch, seen: dict):
+    """ShipFinder 수집 단계를 가짜로 바꾸고, 각 단계가 받은 남은 예산을 적는다."""
+    monkeypatch.setattr(run, "ShipFinderClient", lambda: None)
+    for name in ("collect_watch_positions", "collect_positions", "select_targets"):
+        def stub(*a, _name=name):
+            budget = a[-1]
+            seen[_name] = budget.remaining
+            while budget.take():  # 수집이 남은 예산을 다 쓴다고 본다
+                pass
+            return {}
+        monkeypatch.setattr(run, name, stub)
+
+
+def test_watch_budget_is_reserved_before_collection(collect_stubs, monkeypatch):
+    """재판정은 Budget 밖에서 ShipFinder를 부르므로 화물 수만큼 먼저 떼어 둔다 (10-06 점검). 합이 실행 예산을 넘지 않는다."""
+    monkeypatch.setenv("WATCH_ENABLED", "on")
+    seen: dict = {}
+    _sf_stubs(monkeypatch, seen)
+    monkeypatch.setattr(run, "run_watch", lambda conn, limit: seen.setdefault("watch_limit", limit) and {"checked": limit})
+    summary = run.run_once(12)
+    assert seen["watch_limit"] == run.RUN_LIMIT
+    assert seen["collect_watch_positions"] == 12 - run.RUN_LIMIT  # 수집은 남은 예산으로
+    assert summary["shipfinder_calls_used"] == 12
+
+
+def test_watch_budget_smaller_than_run_limit(collect_stubs, monkeypatch):
+    """실행 예산이 RUN_LIMIT보다 작으면 그만큼만 재판정한다. 예산 0이면 재판정도 0건이다."""
+    monkeypatch.setenv("WATCH_ENABLED", "on")
+    seen: dict = {}
+    _sf_stubs(monkeypatch, seen)
+    monkeypatch.setattr(run, "run_watch", lambda conn, limit: seen.update(watch_limit=limit) or {"checked": limit})
+    run.run_once(2)
+    assert seen["watch_limit"] == 2 and seen["collect_watch_positions"] == 0
+    run.run_once(0)
+    assert seen["watch_limit"] == 0
+
+
+def test_watch_off_keeps_whole_budget_for_collection(collect_stubs, monkeypatch):
+    monkeypatch.delenv("WATCH_ENABLED", raising=False)
+    seen: dict = {}
+    _sf_stubs(monkeypatch, seen)
+    run.run_once(12)
+    assert seen["collect_watch_positions"] == 12
 
 
 def test_watch_failure_does_not_break_collection(collect_stubs, monkeypatch):
     monkeypatch.setenv("WATCH_ENABLED", "on")
 
-    def boom(conn):
+    def boom(conn, **k):
         raise RuntimeError("secret detail")
 
     monkeypatch.setattr(run, "run_watch", boom)

@@ -956,7 +956,10 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 trace_id=response.trace_id,
                 # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다.
                 # UNI-PASS 처리 이력 원문(customs_detail)은 화면 전용이라 저장하지 않는다 (docs/specs/customs-detail.md)
-                response=_as_jsonb(response.model_dump(mode="json", exclude={"customs_detail"})),
+                # 컨테이너 번호도 평문 이력에 남기지 않는다. B/L처럼 화물을 특정하는 번호다 (schemas/customs.py, 10-06 점검).
+                # 내 화물 현황 표에 필요한 값은 user_cargo가 따로 가진다 (services/cargo.py)
+                response=_as_jsonb(response.model_dump(mode="json", exclude={"customs_detail": True,
+                                                                             "customs": {"container_no"}})),
             )
     except Exception as e:
         log_failure("db_write", type(e).__name__)
