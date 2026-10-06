@@ -78,7 +78,9 @@ def _hash(email: str) -> str:
 
 def is_operator(conn, email: str | None) -> bool:
     """지금 활성 운영자인가. 출입증 이메일의 지문을 operators.email_hash와 비교한다 (013).
-    이메일이 없거나 열쇠가 없으면 운영자가 아니다(닫힌 쪽으로 실패)."""
+    이메일이 없거나 열쇠가 없으면 운영자가 아니다(닫힌 쪽으로 실패).
+    email은 확인된 이메일만 와야 한다. auth.current_user가 email_verified가 false인 출입증의 이메일을 None으로 넘긴다
+    (auth.verified_email, 10-06 점검). 그래서 확인 안 된 이메일은 여기서 None이 되어 운영자가 아니다."""
     if not email:
         return False
     h = crypto.fingerprint(email.lower())

@@ -97,8 +97,7 @@ def current_user(authorization: str | None = Header(default=None)) -> CurrentUse
         raise _unauthorized()
     try:
         claims = verify_claims(token.strip(), base_url)
-        email = claims.get("email")
-        user = CurrentUser(id=claims["sub"], email=email.strip().lower() if isinstance(email, str) and email.strip() else None)
+        user = CurrentUser(id=claims["sub"], email=verified_email(claims))
     except jwt.PyJWKClientConnectionError:
         # 공개키를 못 받은 것은 사용자 잘못이 아니다. 401을 주면 다시 로그인해도 안 풀린다
         log_failure("auth", "jwks_unreachable")
@@ -116,6 +115,25 @@ def current_user(authorization: str | None = Header(default=None)) -> CurrentUse
     if holder is not None:
         holder["email"] = user.email
     return user
+
+
+def verified_email(claims: dict) -> str | None:
+    """출입증의 이메일. 확인되지 않은 이메일이면 None (10-06 점검).
+
+    운영자 판단(services/operators.is_operator)과 토큰 한도 운영자 예외(services/quota.is_exempt)가 이 이메일을 본다.
+    확인 안 된 이메일을 믿으면, 이메일 확인을 끈 가입 경로로 운영자 주소를 등록한 사람이 운영자가 된다.
+    Supabase 출입증은 email_verified를 맨 위나 user_metadata 안에 둔다(구글 로그인은 user_metadata.email_verified=true).
+    둘 중 하나라도 있으면 true일 때만 이메일을 쓴다. 둘 다 없으면 예전처럼 쓴다(그런 출입증을 주는 로그인 경로가 지금 없다).
+    user_metadata는 사용자가 고칠 수 있는 칸이라 이 검사는 "확인 안 됨"을 걸러 내는 데만 의미가 있다.
+    """
+    email = claims.get("email")
+    if not isinstance(email, str) or not email.strip():
+        return None
+    metadata = claims.get("user_metadata") if isinstance(claims.get("user_metadata"), dict) else {}
+    for flag in (claims.get("email_verified"), metadata.get("email_verified")):
+        if flag is not None and flag is not True:
+            return None
+    return email.strip().lower()
 
 
 SUSPENDED = "account_suspended"  # 화면이 이 값으로 정지 안내를 띄운다 (lib/api.ts)

@@ -10,7 +10,10 @@ ShipFinder는 하루 호출 한도가 있어 같은 배는 10분 동안 다시 �
 """
 from __future__ import annotations
 
+import re
+import threading
 import time
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
 from backend.app.services.rules import rule
@@ -22,7 +25,46 @@ from backend.app.services.mcp_client import (
 from mcp_server.tools.distance import route_points
 
 CACHE_SEC = 600  # services/chat.py CACHE_SEC와 같다 (입항 예정 캐시와 같은 수명)
-_cache: dict[tuple[str, str], tuple[float, dict]] = {}
+# 캐시에 두는 배 수 상한 (10-06 점검). 전에는 상한이 없고 사용자가 친 글자 그대로를 열쇠로 써서,
+# 선명을 조금씩 바꿔 부르면 메모리가 끝없이 늘었다. 가장 오래 안 쓴 것부터 버린다(LRU)
+CACHE_MAX = 256
+_cache: OrderedDict[tuple[str, str], tuple[float, dict]] = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _key(call_sign: str | None, ship_name: str | None) -> tuple[str, str]:
+    """캐시 열쇠. 앞뒤 공백을 떼고 안쪽 공백을 하나로, 대문자로 맞춘다. 같은 배를 표기만 달리 불러도 한 칸을 쓴다.
+    호출부호가 있으면 그것으로만 찾으므로(detail) 선명은 열쇠에서 뺀다."""
+    def norm(value: str | None) -> str:
+        return re.sub(r"\s+", " ", (value or "").strip()).upper()
+    cs = norm(call_sign)
+    return (cs, "") if cs else ("", norm(ship_name))
+
+
+def _cache_get(key: tuple[str, str]) -> dict | None:
+    """수명 안의 캐시 값. 쓰면 맨 뒤(최근)로 옮긴다. 수명이 지난 값은 지운다."""
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is None:
+            return None
+        if time.monotonic() - hit[0] >= CACHE_SEC:
+            del _cache[key]
+            return None
+        _cache.move_to_end(key)
+        return hit[1]
+
+
+def _cache_put(key: tuple[str, str], value: dict) -> None:
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), value)
+        _cache.move_to_end(key)
+        while len(_cache) > CACHE_MAX:
+            _cache.popitem(last=False)
+
+
+def cached(call_sign: str | None, ship_name: str | None) -> bool:
+    """캐시에 있어 외부 호출 없이 답할 수 있나. 라우터가 하루 횟수 상한을 캐시 밖 조회에만 걸 때 쓴다 (routers/chat.py)."""
+    return _cache_get(_key(call_sign, ship_name)) is not None
 
 
 def _err(source: str, result: dict) -> dict | None:
@@ -47,10 +89,10 @@ def _freshness(last_time: str | None) -> str:
 
 def detail(call_sign: str | None, ship_name: str | None) -> dict:
     """한 척의 자세한 정보. 호출부호가 있으면 그것으로 찾는다(선명은 한글·영문이 달라 매칭이 약하다)."""
-    key = ((call_sign or "").upper(), (ship_name or "").upper())
-    hit = _cache.get(key)
-    if hit and time.monotonic() - hit[0] < CACHE_SEC:
-        return hit[1]
+    key = _key(call_sign, ship_name)
+    hit = _cache_get(key)
+    if hit is not None:
+        return hit
 
     errors: list[dict] = []
     schedule = get_port_schedule(call_sign=call_sign or None, ship_name=None if call_sign else ship_name)
@@ -87,5 +129,5 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
 
     result = {"call_sign": call_sign, "ship_name": ship_name, "vessel": vessel, "position": position,
               "distance": distance, "schedule": schedule, "errors": errors}
-    _cache[key] = (time.monotonic(), result)
+    _cache_put(key, result)
     return result

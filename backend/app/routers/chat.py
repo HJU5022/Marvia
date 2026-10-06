@@ -33,7 +33,7 @@ from backend.app.clients.kakao import KakaoError
 from backend.app.observability.logging import log_failure
 from backend.app.routers.agent import _follow_up_tool, quota_guard, run_agent
 from backend.app.routers.kakao import _web
-from backend.app.schemas.agent import AgentRequest, AgentResponse
+from backend.app.schemas.agent import SESSION_ID_MAX, AgentRequest, AgentResponse
 from backend.app.services import cargo as cargo_service
 from backend.app.services import conversations as conversations_service
 from backend.app.services import chat as svc
@@ -66,7 +66,7 @@ class ChatTurn(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(max_length=svc.MESSAGE_MAX)
-    session_id: str
+    session_id: str = Field(max_length=SESSION_ID_MAX)  # /api/agent와 같은 상한 (schemas/agent.py, 10-06 점검)
     context: ChatContext | None = None
     # 최근 대화. 서버는 마지막 몇 줄만 쓴다 (services/chat.HISTORY_TURNS). 보내지 않아도 된다 (전 화면·평가 스크립트)
     history: list[ChatTurn] = Field(default_factory=list, max_length=50)
