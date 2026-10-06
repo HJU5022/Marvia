@@ -142,9 +142,9 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {onA
     {!result && <label htmlFor={inputId} className={`dropzone ${dragging ? 'dragging' : ''} ${busy ? 'busy' : ''} ${disabled ? 'disabled' : ''}`} aria-disabled={disabled || undefined}
       onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       {busy ? <LoaderCircle size={32} className="spin"/> : <Camera size={32} strokeWidth={1.5}/>}
-      <strong>{busy ? '사진에서 글자를 읽는 중' : '사진을 끌어 놓거나 눌러서 골라 주세요'}</strong>
-      <span>{busy ? fileName : 'JPG·PNG, 10MB 이하예요. 사진은 저장하지 않아요'}</span>
-      <input ref={inputRef} id={inputId} type="file" accept="image/*" className="sr-only" disabled={busy || disabled}
+      <strong>{busy ? '서류에서 글자를 읽는 중' : '사진이나 PDF를 끌어 놓거나 눌러서 골라 주세요'}</strong>
+      <span>{busy ? fileName : 'JPG·PNG·PDF, 10MB 이하예요. 파일은 저장하지 않아요'}</span>
+      <input ref={inputRef} id={inputId} type="file" accept="image/*,application/pdf" className="sr-only" disabled={busy || disabled}
         onChange={(e: ChangeEvent<HTMLInputElement>) => void upload(e.target.files?.[0])}/>
     </label>}
 

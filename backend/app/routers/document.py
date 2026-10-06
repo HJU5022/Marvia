@@ -1,7 +1,7 @@
 """POST /api/document: 서류 사진에서 조회 값 7칸과 출항일(etd)을 뽑아 확인 화면용으로 돌려준다 (docs/specs/document-extract.md).
 
 처리 순서 (Spec "흐름"):
-  1~2. 전처리 + OCR               services/doc_ocr.read_lines (로컬, 외부 호출 없음)
+  1~2. 전처리 + OCR               services/doc_ocr.read_lines (로컬, 외부 호출 없음). PDF(%PDF로 시작)는 read_pdf: 글자층 먼저, 없으면 그림으로 OCR
   3.   B/L 번호를 코드로 뽑고 가림   doc_ocr.take_bl, mask_bl. 가려지지 않으면 LLM을 부르지 않는다
   4.   나머지 6칸                   services/llm.extract_doc_fields (소형 모델, LLM_MODEL)
   5.   칸 검사                      doc_ocr.check_fields, B/L 조건·연락처는 doc_ocr.check_conditions (10-02 결정 6)
@@ -40,10 +40,16 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
     data = file.file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=400, detail="too_large")
-    try:
-        ocr = doc_ocr.read_lines(data)
-    except (UnidentifiedImageError, OSError):
-        raise HTTPException(status_code=400, detail="invalid_image")
+    if doc_ocr.is_pdf(data):  # 앞 4바이트로 가른다. 파일 이름·content-type은 믿지 않는다 (10-06 결정)
+        try:
+            ocr = doc_ocr.read_pdf(data)
+        except doc_ocr.InvalidPdf:
+            raise HTTPException(status_code=400, detail="invalid_pdf")
+    else:
+        try:
+            ocr = doc_ocr.read_lines(data)
+        except (UnidentifiedImageError, OSError):
+            raise HTTPException(status_code=400, detail="invalid_image")
 
     bl = doc_ocr.take_bl(ocr.lines)
     values: dict[str, str | None] = {"bl_no": bl, **{k: None for k in LLM_FIELDS}}
