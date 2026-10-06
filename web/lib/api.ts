@@ -115,6 +115,7 @@ async function errorMessage(res: Response): Promise<string> {
   if (res.status === 401) return '로그인이 필요해요. 로그인한 뒤 다시 시도해 주세요.';
   if (res.status === 413 || detail === 'too_large') return '사진이 너무 커요. 10MB 이하로 올려 주세요.';
   if (detail === 'invalid_image') return '사진을 읽지 못했어요. JPG·PNG 사진인지 확인해 주세요.';
+  if (detail === 'invalid_pdf') return 'PDF를 열지 못했어요. 암호가 걸렸거나 파일이 손상됐는지 확인해 주세요.';
   if (res.status === 503) return detail || '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
   if (detail === 'account_suspended') return SUSPENDED_MESSAGE;
   if (res.status === 403) return detail || '운영자만 쓸 수 있어요.';
@@ -450,10 +451,10 @@ export async function getHistory(sessionId: string = currentSessionId(), since?:
   return isLive ? liveHistory(since) : demoHistory(sessionId);
 }
 
-/** POST /api/document. 서류 사진에서 조회 값 후보를 읽는다. 크기는 보내기 전에 먼저 본다. */
+/** POST /api/document. 서류 사진·PDF에서 조회 값 후보를 읽는다. 크기는 보내기 전에 먼저 본다. */
 export async function readDocument(file: File): Promise<DocumentResponse> {
   if (file.size > DOCUMENT_MAX_BYTES) throw new Error('사진이 너무 커요. 10MB 이하로 올려 주세요.');
-  if (file.type && !file.type.startsWith('image/')) throw new Error('사진 파일(JPG·PNG)만 올릴 수 있어요.');
+  if (file.type && !file.type.startsWith('image/') && file.type !== 'application/pdf') throw new Error('사진(JPG·PNG)이나 PDF만 올릴 수 있어요.');
   return isLive ? liveDocument(file) : demoDocument();
 }
 
