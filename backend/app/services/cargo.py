@@ -7,7 +7,8 @@
   previous_line()      "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요." 코드가 쓰는 한 줄 (10-02 결정 4)
   add_pending()        대화에서 나온 화물 값 변경(set_cargo)을 확인 대상으로만 둔다 (Spec 쓰기 흐름 4)
   apply_document_facts() 서류 사진에서 사용자가 확인한 B/L 조건을 적는다 (10-02 결정 7)
-  delete_all()         탈퇴·내 기록 삭제·메모장 전부 지우기 (Spec "개인정보")
+  delete_all()         탈퇴·내 기록 삭제 때 화물 표와 신용장 줄을 지운다 (Spec "개인정보")
+  stage_date()         이력에서 입항·입고 날짜를 뽑는다 (내 화물 현황 표, 019). 표 읽기·쓰기는 services/cargo_sheet.py
 
 저장 기준 (Spec "저장 기준"): 다시 조회하면 또 나오는 값(선명, 입항일 원본, 통관 이력)은 저장하지 않는다.
 B/L 원본은 잠근 값(bl_encrypted, crypto.encrypt)과 가린 값(bl_masked, schemas.customs.mask_bl)으로만 둔다 (SDD 3.5).
@@ -27,6 +28,7 @@ from backend.app.schemas.customs import mask_bl
 from backend.app.services import guard
 from backend.app.services.evidence import KST
 from backend.app.services.llm import STAGE_SUSPECT  # 주입 모양 단계명 대신 쓰는 글자 (llm._clean_customs와 같다)
+from backend.app.services.rules import stage_key
 from backend.app.services.verdict import VERDICT_LABEL
 
 # 판정에 넣는 진행 중 화물 상한 (Spec "보관과 크기" 상한 설정값 30건). 부르는 쪽이 limit으로 바꿀 수 있다
@@ -119,6 +121,31 @@ def _vessel(request: AgentRequest, response: AgentResponse) -> tuple[int | None,
     return None, None
 
 
+# 내 화물 현황 표의 입항·입고 날짜를 뽑는 UNI-PASS 이력 단계 (019 마이그레이션, 10-06 아버지 관리표 기준).
+# 이름은 skills/customs-stages/rules.md customs_stages의 name 그대로다. 띄어쓰기는 rules.stage_key로 무시한다
+ARRIVED_STAGE = "입항보고 수리"  # 실제 입항 신고된 날 (예정일 etprDt가 아니다)
+WAREHOUSED_STAGE = "반입신고"  # 화물이 터미널·보세창고에 들어간 날
+
+
+def stage_date(history: list[dict], stage: str) -> date | None:
+    """이력에서 그 단계가 처음 처리된 날짜. 없으면 None (아직 그 단계 전).
+
+    UNI-PASS 처리일시(prcsDttm)는 시간대 없이 한국 시각으로 온다(services/customs._dt). 그래서 시간대가 없으면
+    그 날짜를 그대로 쓰고, 시간대가 있으면 한국 날짜로 바꾼다. _kst_date처럼 UTC로 보면 하루가 밀릴 수 있다.
+    """
+    want = stage_key(stage)
+    days = []
+    for item in history or []:
+        if stage_key(item.get("name") or "") != want or not item.get("at"):
+            continue
+        try:
+            moment = datetime.fromisoformat(str(item["at"]))
+        except ValueError:
+            continue
+        days.append(moment.date() if moment.tzinfo is None else moment.astimezone(KST).date())
+    return min(days) if days else None
+
+
 def _kst_date(moment: datetime | None) -> date | None:
     """시각을 한국 날짜로. 근거 카드와 같은 기준이다 (services/evidence.KST)."""
     if moment is None:
@@ -143,7 +170,8 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
     now = now or datetime.now(timezone.utc)
     today = now.astimezone(KST).date()
     mmsi, source = _vessel(request, response)
-    entered = [f for f in ("sale_due_date", "forwarder_eta") if getattr(request, f)]
+    customs = response.customs
+    entered =[f for f in ("sale_due_date", "forwarder_eta") if getattr(request, f)]
     values = {
         "user_id": user_id, "cargo_key": key, "bl_masked": mask_bl(request.bl_no),
         "bl_encrypted": crypto.encrypt(request.bl_no), "bl_type": request.bl_type,
@@ -155,6 +183,12 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
         "last_eta": _kst_date(response.eta.trusted_eta) if response.eta else None,
         "last_stage": clean_stage(response.customs.stage_name) if response.customs else None,
         "done_at": now if released else None,
+        # 내 화물 현황 표 (019). 날짜는 실제 신고된 날만, 회사 이름·컨테이너는 UNI-PASS 값 그대로. 이번에 없으면 저장 값을 둔다
+        "arrived_on": stage_date(customs.history, ARRIVED_STAGE) if customs else None,
+        "warehoused_on": stage_date(customs.history, WAREHOUSED_STAGE) if customs else None,
+        "forwarder_name": customs.forwarder_name if customs else None,
+        "carrier_name": customs.carrier_name if customs else None,
+        "container_no": customs.container_no if customs else None,
     }
     names = list(values)
     conn.execute(
@@ -176,6 +210,11 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
               last_eta = EXCLUDED.last_eta,
               last_stage = EXCLUDED.last_stage,
               done_at = CASE WHEN EXCLUDED.status = 'done' THEN COALESCE(user_cargo.done_at, EXCLUDED.done_at) END,
+              arrived_on = COALESCE(EXCLUDED.arrived_on, user_cargo.arrived_on),
+              warehoused_on = COALESCE(EXCLUDED.warehoused_on, user_cargo.warehoused_on),
+              forwarder_name = COALESCE(EXCLUDED.forwarder_name, user_cargo.forwarder_name),
+              carrier_name = COALESCE(EXCLUDED.carrier_name, user_cargo.carrier_name),
+              container_no = COALESCE(EXCLUDED.container_no, user_cargo.container_no),
               pending = COALESCE((SELECT jsonb_agg(p) FROM jsonb_array_elements(user_cargo.pending) p
                                   WHERE NOT (p->>'field' = ANY(%s::text[]))), '[]'::jsonb),
               updated_at = now()""",
@@ -226,8 +265,12 @@ def apply_document_facts(conn, user_id: str, bl_no: str, bl_type: str, facts: di
 
 
 def delete_all(conn, user_id: str) -> int:
-    """그 사용자의 화물 표 줄을 전부 지운다 (탈퇴·내 기록 삭제, Spec "개인정보"). 지운 줄 수."""
-    return conn.execute("DELETE FROM user_cargo WHERE user_id = %s", [user_id]).rowcount
+    """그 사용자의 화물 표 줄과 신용장(user_lc)을 전부 지운다 (탈퇴·내 기록 삭제, Spec "개인정보"). 지운 화물 줄 수.
+    신용장 번호도 사용자가 넣은 거래 정보라 같이 지운다 (019, 10-06). 화물 줄을 먼저 지워 신용장이 가리키는 줄이 없게 한다.
+    신용장 줄 수는 세지 않는다. 알리는 숫자는 지금처럼 화물 줄 수다 (응답 모양을 바꾸지 않는다)."""
+    rows = conn.execute("DELETE FROM user_cargo WHERE user_id = %s", [user_id]).rowcount
+    conn.execute("DELETE FROM user_lc WHERE user_id = %s", [user_id])
+    return rows
 
 
 # ── 글로 옮기기 (코드가 쓴다. LLM은 쓰지 않는다) ──

@@ -184,7 +184,9 @@ def test_injection_shaped_stage_is_not_stored_or_rendered(bl_key):
 def test_delete_all_targets_one_user():
     conn = FakeConn(rowcount=4)
     assert cargo.delete_all(conn, "u1") == 4
-    assert conn.calls == [("DELETE FROM user_cargo WHERE user_id = %s", ["u1"])]
+    # 화물 줄을 먼저, 그다음 신용장(019). 알리는 숫자는 화물 줄 수다
+    assert conn.calls == [("DELETE FROM user_cargo WHERE user_id = %s", ["u1"]),
+                          ("DELETE FROM user_lc WHERE user_id = %s", ["u1"])]
 
 
 def test_done_summary_uses_code_values_only():

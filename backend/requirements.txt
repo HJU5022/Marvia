@@ -15,4 +15,5 @@ pycountry>=24.6      # 세관 국적 코드 ↔ ShipFinder 국적 이름 대조 
 psycopg[binary]>=3.2  # 수집 워커의 Postgres 저장 (D1). 동기 드라이버라 주기 실행 스크립트에 단순하다
 PyJWT[crypto]>=2.8   # 로그인 출입증(ES256) 확인 (G3, auth.py). [crypto]가 cryptography를 같이 깐다. 09-30 설치본 2.15.0·cryptography 50.0.1
 kiwipiepy>=0.24,<0.25  # 한국어 형태소 분석: Skill 답의 명사만 뽑아 근거 없는 낱말을 센다 (validate.py V14, 10-06). 0.24부터 Apache-2.0 (0.23 이하는 LGPL이라 범위를 묶는다)
+openpyxl>=3.1,<4      # 내 화물 현황 표를 .xlsx로 받기 (services/cargo_sheet.py, 10-06). MIT, PyPI 3.1.5 확인
 # 서류 사진 OCR 패키지는 requirements-doc.txt에 따로 둔다. api(app 스테이지)만 쓰고 worker는 안 쓴다 (09-29 결정 (a))
