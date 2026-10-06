@@ -156,11 +156,11 @@ def test_chat_lookup_gets_previous_line(monkeypatch):
     """10-02 결정 4: 로그인 사용자가 다시 조회한 화물이면 답 끝에 코드가 쓴 한 줄. 후속 질문에는 안 붙인다."""
     notes = []
     monkeypatch.setattr(svc.memory, "lookup_notes",
-                        lambda user_id, bl: notes.append((user_id, bl)) or ["지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요."])
+                        lambda user_id, bl: notes.append((user_id, bl)) or ["지난 조회(10.01)에서는 주의, 여유 3일이었어요."])
     _route(monkeypatch, intent="cargo", bl_ref="[BL1]", bl_type="MASTER")
     agent, run = _agent_calls()
     r = svc.handle("TESTBL01 괜찮아?", "s1", None, run, user_id="user-123")
-    assert r.reply == "괜찮습니다\n지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요."
+    assert r.reply == "괜찮습니다\n지난 조회(10.01)에서는 주의, 여유 3일이었어요."
     assert notes == [("user-123", "TESTBL01")]
 
     _route(monkeypatch, intent="follow_up", question="여유 며칠?")
@@ -348,11 +348,11 @@ def test_follow_up_memo_word_does_not_pass_v10(fake, monkeypatch):
 def test_chat_never_appends_memo_full_notice(monkeypatch):
     """D1 (10-02 결정): 메모장이 가득 찼다는 줄은 채팅 답에 붙지 않는다. lookup_notes가 다른 줄을 돌려줘도 지난 조회 줄만 나간다."""
     monkeypatch.setattr(svc.memory, "lookup_notes", lambda user_id, bl: [
-        "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요.", "메모장이 가득 찼어요. 설정의 '내 기억'에서 정리해 주세요."])
+        "지난 조회(10.01)에서는 주의, 여유 3일이었어요.", "메모장이 가득 찼어요. 설정의 '내 기억'에서 정리해 주세요."])
     _route(monkeypatch, intent="cargo", bl_ref="[BL1]", bl_type="MASTER")
     agent, run = _agent_calls()
     r = svc.handle("TESTBL01 괜찮아?", "s1", None, run, user_id="user-123")
-    assert r.reply == "괜찮습니다\n지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요."
+    assert r.reply == "괜찮습니다\n지난 조회(10.01)에서는 주의, 여유 3일이었어요."
 
     monkeypatch.setattr(svc.memory, "lookup_notes", lambda user_id, bl: ["메모장이 가득 찼어요. 설정의 '내 기억'에서 정리해 주세요."])
     assert svc.handle("TESTBL01 괜찮아?", "s1", None, run, user_id="user-123").reply == "괜찮습니다"

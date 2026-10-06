@@ -69,7 +69,7 @@ class Hooks:
 CONTEXT = AgentRequest(bl_no=BL, bl_type="HOUSE", session_id="s1")
 ASK = [("ask_cargo", {"question": "지금 어디쯤이야?"})]
 WATCH_ON = [("set_watch", {"on": True})]
-OFFER_TURN = {"role": "assistant", "text": "조회 결과 답입니다.\n\n판매 예정일까지 여유가 2일이고 '지켜볼 것' 판정이에요. " + svc.WATCH_ASK}
+OFFER_TURN = {"role": "assistant", "text": "조회 결과 답입니다.\n\n판매 예정일까지 여유가 2일이고 '주의' 판정이에요. " + svc.WATCH_ASK}
 
 
 def _handle(message, *, user_id=USER, hooks=None, context=CONTEXT, history=None, run=None):
@@ -183,7 +183,7 @@ def test_cargo_answer_gets_offer_with_real_reasons(monkeypatch):
     _llm(monkeypatch, ASK)
     r = _handle("지금 어디쯤이야?", hooks=Hooks())
     assert r.watch_offer == {"bl_no": BL, "reason": r.watch_offer["reason"], "logged_in": True}
-    assert r.watch_offer["reason"] == "판매 예정일까지 여유가 2일이고 '지켜볼 것' 판정이에요. 이 화물을 지켜볼까요?"
+    assert r.watch_offer["reason"] == "판매 예정일까지 여유가 2일이고 '주의' 판정이에요. 이 화물을 지켜볼까요?"
     assert r.reply.endswith(r.watch_offer["reason"]) and "조회 결과 답입니다." in r.reply
 
 
@@ -197,9 +197,9 @@ def test_offer_mentions_worry_memo_when_user_has_one(monkeypatch):
 def test_offer_without_margin_or_late(monkeypatch):
     _llm(monkeypatch, ASK)
     r = _handle("지금 어디쯤이야?", hooks=Hooks(), run=_run("act", None))
-    assert r.watch_offer["reason"] == "'지금 조치' 판정이에요. 이 화물을 지켜볼까요?"
+    assert r.watch_offer["reason"] == "'긴급' 판정이에요. 이 화물을 지켜볼까요?"
     r = _handle("지금 어디쯤이야?", hooks=Hooks(), run=_run("act", -3))
-    assert r.watch_offer["reason"].startswith("판매 예정일보다 3일 늦게 도착할 예정이고 '지금 조치' 판정이에요.")
+    assert r.watch_offer["reason"].startswith("판매 예정일보다 3일 늦게 도착할 예정이고 '긴급' 판정이에요.")
 
 
 def test_no_offer_without_a_verdict(monkeypatch):

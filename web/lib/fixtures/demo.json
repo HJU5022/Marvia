@@ -5,7 +5,7 @@
   "choices": [
     {
       "id": "ok",
-      "label": "정상 · 괜찮음",
+      "label": "정상 · 순항",
       "request": {
         "bl_no": "MRVDEMO1101",
         "bl_type": "MASTER",
@@ -55,7 +55,7 @@
     },
     {
       "id": "watch",
-      "label": "정상 응답 · 지켜볼 것",
+      "label": "정상 응답 · 주의",
       "request": {
         "bl_no": "MRVDEMO1106",
         "bl_type": "MASTER",
@@ -65,7 +65,7 @@
     },
     {
       "id": "act",
-      "label": "정상 응답 · 지금 조치",
+      "label": "정상 응답 · 긴급",
       "request": {
         "bl_no": "MRVDEMO1107",
         "bl_type": "MASTER",

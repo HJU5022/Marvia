@@ -39,7 +39,7 @@
     },
     {
       "id": "act_recall",
-      "label": "지금 조치 재현율",
+      "label": "긴급 재현율",
       "baseline": null,
       "model_a": null,
       "model_b": null
@@ -75,7 +75,7 @@
   ],
   "gates": [
     {
-      "label": "지금 조치 누락",
+      "label": "긴급 누락",
       "target": "0건",
       "value": null
     },

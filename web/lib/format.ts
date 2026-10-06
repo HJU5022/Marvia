@@ -1,7 +1,7 @@
 /** Presentation only: all timestamps use Asia/Seoul; unknown values never become zero. */
 import type { Status, Verdict } from './types';
 export const statusLabels: Record<Status, string> = {ok:'조회 완료',partial:'일부만 확인',insufficient:'정보 확인 필요',failed:'조회 실패',unsupported:'지원 범위 밖'};
-export const verdictLabels: Record<Verdict, string> = {fine:'괜찮음',watch:'지켜볼 것',act:'지금 조치'};
+export const verdictLabels: Record<Verdict, string> = {fine:'순항',watch:'주의',act:'긴급'};
 // 출처 이름. 서비스 이름 대신 무엇을 하는 곳인지로 적는다 (10-02 화면 용어 점검)
 export const sourceLabels: Record<string, string> = {shipfinder:'선박 위치 신호',unipass:'관세청 통관 조회',mof:'해양수산부 입항 신고',searoute:'해상 거리 계산',rule:'Marvia 계산'};
 

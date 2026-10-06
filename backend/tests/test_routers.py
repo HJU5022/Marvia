@@ -170,7 +170,7 @@ def test_llm_keeps_wrong_verdict_falls_back_to_table(fake, monkeypatch):
         body = client.post("/api/agent", json=_request()).json()
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("partial", "fine", "rule")
-    assert body["answer"] == agent_router.TABLE_FALLBACK.format(label="괜찮음")
+    assert body["answer"] == agent_router.TABLE_FALLBACK.format(label="순항")
 
 
 def test_gray_zone_llm_failure_gives_no_verdict(fake, monkeypatch):

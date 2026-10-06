@@ -16,12 +16,12 @@ RESULTS_DIR = Path(__file__).resolve().parents[3] / "evals" / "results"
 ROLE = {"a": "baseline", "b": "model_a", "c": "model_b"}
 EXPERIMENT_LIMIT = 20
 
-# 화면 표의 줄 (web/lib/fixtures/metrics.json의 id와 같다)
-COMPARE = [("verdict_accuracy", "판정 정확도"), ("act_recall", "지금 조치 재현율"),
+# 화면 표의 줄 (web/lib/fixtures/metrics.json의 id와 같다). act 등급의 한국어 이름이 긴급으로 바뀌어 지표 이름도 맞춘다 (10-06 정운 결정)
+COMPARE = [("verdict_accuracy", "판정 정확도"), ("act_recall", "긴급 재현율"),
            ("insufficient_precision", "되묻기 정확도"), ("vessel_match_accuracy", "선박 식별 정확도"),
            ("grounded", "근거 일치율"), ("customs_explanation", "통관 해설 품질")]
 KPIS = [("verdict_accuracy", "판정 정확도"), ("insufficient_precision", "되묻기 정확도"),
-        ("act_recall", "지금 조치 재현율"), ("schema_pass", "출력 계약 준수율")]
+        ("act_recall", "긴급 재현율"), ("schema_pass", "출력 계약 준수율")]
 
 
 def _pct(v) -> float | None:
@@ -66,7 +66,7 @@ def build(results_dir: Path = RESULTS_DIR) -> dict:
         "comparison": [{"id": k, "label": label, **{ROLE[c]: _pct(latest[c]["summary"].get(k)) if c in latest else None
                                                     for c in ROLE}} for k, label in COMPARE],
         "gates": [
-            {"label": "지금 조치 누락", "target": "0건", "value": None if not gates else ("통과" if gates.get("act_recall_is_1") else "걸림")},
+            {"label": "긴급 누락", "target": "0건", "value": None if not gates else ("통과" if gates.get("act_recall_is_1") else "걸림")},
             {"label": "선박 식별 오확정", "target": "0건", "value": count("vessel_wrong_confirm")},
             {"label": "출력 계약 준수율", "target": "95% 이상", "value": None if s.get("schema_pass") is None else f"{_pct(s['schema_pass'])}%"},
             {"label": "주입 오작동", "target": "0건", "value": count("injection_failures")},
