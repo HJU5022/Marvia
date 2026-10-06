@@ -233,13 +233,16 @@ def quote_supports(reply: str, quote: str, source: str, user_text: str = "") -> 
 # 버리지 않는다: 호출하는 쪽(chat.py)이 3층(일반 설명)으로 내려 꼬리표를 붙인다 (정운 결정). 느슨한 quote_supports와 달리 낱말마다 본다.
 UNSUPPORTED_MIN = 2  # Skill에 없는 핵심 낱말이 이만큼 이상이면 Skill 근거 답이 아니다 (한 개는 말투·조사 변형일 수 있어 봐 준다)
 _UNSUPPORTED_STOP = set("""여러 모든 어떤 아래 직접 바로 먼저 우선 함께 다시 아직 이미 매우 조금 정말 가장 자주 보통 대략 참고 상황 상태 결과 여부
-도움 문제 질문 답변 말씀 사용자 서비스 마르비아 화면 조회 확인 안내 문의 연락 요청 정보 내용 방법 절차 진행 처리 필요 가능 이용 경우 이후 이전 다음 때문 통해 위해
+도움 문제 질문 답변 말씀 사용자 서비스 마르비아 화면 조회 확인 안내 문의 연락 요청 정보 내용 사항 방법 절차 진행 처리 필요 가능 이용 경우 이후 이전 다음 때문 통해 위해
 대한 관련 아니라 아니면 그리고 하지만 그래서 따라서 그러면 그러나 또는 혹은 오늘 지금 안에 때가 많기 나간 그건 정확한 미리 대해 대해서 이름인지 번호인지 점이
 시각 날짜 시간 이번 없지 어디 넣어 질문하신 이때 이것 그것 그때 하나 처음 마지막 거나 대로 만큼 정도 이상 이하 부분 쪽에 사이 가운데 중에""".split())
 # 활용형 어미로 끝나는 낱말(동사·형용사)은 명사가 아니라 세지 않는다. 한 글자 어미 중 명사 끝 글자와 겹치는 것(서·고·지·다)은 넣지 않는다.
 _VERBISH_END = re.compile(r"(니다|세요|해요|어요|아요|하는|하고|하여|하면|하지|하며|하게|한다|된다|되는|되면|되어|있는|없는|않는|않을|않은|"
                           r"지만|으면|으며|이며|해야|할때|할수|수있|수없|시면|시기|드릴|드리고|하세|주세|해서|세|해|릴|할|한|는|며|면|은|인|운|온|난|린)$")
-_EXTRA_PARTICLES = ("이나", "나", "이라도", "보다", "처럼", "에는", "에도", "으로는", "이라고", "라고")  # PARTICLES에 없는 것 (사본이나, 센터나)
+_EXTRA_PARTICLES = ("이나", "나", "이라도", "보다", "처럼", "에는", "에도", "으로는", "이라고", "라고", "이고")  # PARTICLES에 없는 것 (사본이나, 센터나, 상태이고)
+# 3글자 낱말의 끝 글자가 활용 어미·조사 한 글자면(입력하·고치지·다르게·안내된·서쪽의·등급일) 그 글자를 뗀 뿌리로 다시 본다 (10-06 오전 배포 실측,
+# Skill 문장을 풀어 쓴 답 3건이 이 꼴 때문에 일반 설명으로 낮춰졌다). 명사 끝 글자(료·증 등)는 넣지 않는다: "야적료"는 "야적"이 있어도 센다
+_ROOT_END = set("하지게된의일")
 
 
 def skill_unsupported_terms(reply: str, skills_text: str, user_text: str = "") -> list[str]:
@@ -266,6 +269,9 @@ def skill_unsupported_terms(reply: str, skills_text: str, user_text: str = "") -
             continue  # "선박이름"처럼 일반 용어가 든 합성어는 일반 용어로 본다
         if stem in flat_source or (len(stem) >= 4 and stem[:-1] in flat_source):
             continue
+        root = stem[:-1]
+        if len(stem) == 3 and stem[-1] in _ROOT_END and (root in flat_source or root in _UNSUPPORTED_STOP or root in _SUPPORT_STOP):
+            continue  # 뿌리가 Skill에 있거나 흔한 말이면 활용형일 뿐이다 (_ROOT_END 주석)
         out.append(stem)
     return out
 

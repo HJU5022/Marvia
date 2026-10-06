@@ -51,6 +51,32 @@ def test_words_from_the_question_are_not_counted():
     assert not validate.skill_unsupported(reply, SKILLS, "야적료 체화료 감면이 어때?")
 
 
+# (c) 10-06 오전 배포 실측: Skill 문장을 활용형으로 풀어 쓴 답이 "Skill에 없는 낱말"로 걸려 일반 설명으로 낮춰졌다.
+# 걸린 낱말은 입력하·고치지·다르게(7번), 등급일·안내된·상태이고·사항(13번), 서쪽의·이용하(10번)처럼 뿌리는 Skill에 있는 말이다.
+# 원본: 위키 프로젝트/Marvia-근거/skill_baseline_15q_20261006_1005.txt
+INFLECTED = [
+    ("목적지가 BUSAN이 아니라 이상한 글자로 나와. 딴 데 가는 거야?",
+     "AIS의 목적지나 ETA는 선원이 손으로 직접 입력하는 값이라 항구를 떠난 뒤 고치지 않아 실제 목적지와 다르게 남는 경우가 종종 있습니다."),
+    ("신항이랑 북항은 뭐가 달라? 내 짐은 어디로 와?",
+     "신항은 부산 서쪽의 가덕도와 진해 쪽에 위치한 대형 컨테이너선 대부분이 이용하는 항만이며, 북항은 부산 도심 쪽에 위치한 기존 항만입니다. "
+     "화물이 어느 곳으로 들어오는지는 선사의 입항 정보나 B/L 번호로 화물을 조회하시면 확인하실 수 있습니다."),
+    ("watch랑 act는 뭐가 달라? watch면 뭘 해야 돼?",
+     "괜찮음 등급은 판매 예정일 전에 할 일이 없는 상태이고, 지켜볼 것 등급은 아직 여유는 있지만 확인할 것이 있는 상태이며, "
+     "지금 조치 등급은 지금 조치하지 않으면 판매 예정일을 놓치는 상태입니다. 지켜볼 것 등급일 때는 안내된 신호나 확인할 사항을 점검하시면 됩니다."),
+]
+
+
+@pytest.mark.parametrize("question,reply", INFLECTED)
+def test_inflected_skill_answers_pass(question, reply):
+    assert not validate.skill_unsupported(reply, SKILLS, question)
+
+
+def test_noun_with_skill_root_is_still_flagged():
+    # 뿌리 낱말이 Skill에 있어도 명사 끝(료·증 등)이 붙은 새 낱말은 봐 주지 않는다 ("야적료"는 "야적"이 있어도 센다)
+    terms = validate.skill_unsupported_terms("야적료와 인도증을 챙기세요.", SKILLS)
+    assert "인도증" in terms
+
+
 def test_general_terms_are_not_counted():
     # 3층(일반 설명)도 허용하는 일반 해운 용어는 Skill에 없어도 센 것이 아니다
     reply = "수하인은 마스터 하우스 선하증권 도착통지서 인도지시서를 포워더에게 받습니다."
