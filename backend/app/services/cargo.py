@@ -7,6 +7,7 @@
   previous_line()      "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요." 코드가 쓰는 한 줄 (10-02 결정 4)
   add_pending()        대화에서 나온 화물 값 변경(set_cargo)을 확인 대상으로만 둔다 (Spec 쓰기 흐름 4)
   apply_document_facts() 서류 사진에서 사용자가 확인한 B/L 조건을 적는다 (10-02 결정 7)
+  find_by_container()  컨테이너 번호로 그 사용자의 화물 한 건을 찾는다 (채팅 "(컨테이너 번호) 어디쯤이야?", 10-06)
   delete_all()         탈퇴·내 기록 삭제 때 화물 표와 신용장 줄을 지운다 (Spec "개인정보")
   stage_date()         이력에서 입항·입고 날짜를 뽑는다 (내 화물 현황 표, 019). 표 읽기·쓰기는 services/cargo_sheet.py
 
@@ -42,7 +43,7 @@ COLUMNS = (
     "cargo_key", "bl_masked", "bl_type", "label", "status", "sale_due_date", "sale_due_asked",
     "forwarder_eta", "forwarder_eta_noted_at", "vessel_mmsi", "voyage_no", "vessel_source",
     "last_verdict", "last_checked_at", "last_days_margin", "last_eta", "last_stage", "done_at",
-    "original_bl", "to_order_bank", "freight_term", "incoterm", "pending",
+    "original_bl", "to_order_bank", "freight_term", "incoterm", "pending", "goods_name",
 )
 
 
@@ -65,6 +66,32 @@ def get_row(conn, user_id: str, key: str) -> dict | None:
     found = conn.execute(f"SELECT {', '.join(COLUMNS)} FROM user_cargo WHERE user_id = %s AND cargo_key = %s",
                          [user_id, key]).fetchone()
     return _row(found) if found else None
+
+
+def find_by_container(conn, user_id: str, container: str) -> dict | None:
+    """그 사용자의 화물 중 container_no에 이 컨테이너 번호가 들어 있는 한 건. 없으면 None.
+
+    container_no는 UNI-PASS 값 그대로라 한 칸에 번호 하나("ABCU1234560") 또는 여럿을 ", "로 이어 붙인 글이다 (019).
+    "ABCU123456" 같은 앞부분이 다른 번호 안에 걸려 잘못 찾지 않게, SQL은 후보만 좁히고(ILIKE) 코드가 ", "로 나눈
+    항목 하나와 통째로 같은지(대소문자 무시) 다시 본다. 진행 중 화물을 먼저, 그다음 최근 조회 순으로 첫 줄을 쓴다.
+    돌려주는 dict는 COLUMNS 칸에 container_no와 bl_encrypted(잠근 원본 B/L)를 더한 것이다.
+    bl_encrypted는 채팅이 B/L을 열어 기존 B/L 흐름에 넘기려는 용도뿐이다. 화면 응답이나 LLM에는 주지 않는다 (SDD 3.5).
+    """
+    want = container.strip().upper()
+    if not want:
+        return None
+    rows = conn.execute(
+        f"""SELECT {', '.join(COLUMNS)}, container_no, bl_encrypted FROM user_cargo
+            WHERE user_id = %s AND container_no ILIKE %s
+            ORDER BY status = 'done', last_checked_at DESC NULLS LAST, updated_at DESC""",
+        [user_id, f"%{want}%"],
+    ).fetchall()
+    for values in rows:
+        row = dict(zip((*COLUMNS, "container_no", "bl_encrypted"), values))
+        items = [item.strip().upper() for item in (row["container_no"] or "").split(",")]
+        if want in items:
+            return row
+    return None
 
 
 def active_rows(conn, user_id: str, limit: int = MAX_ACTIVE) -> list[dict]:
@@ -189,6 +216,8 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
         "forwarder_name": customs.forwarder_name if customs else None,
         "carrier_name": customs.carrier_name if customs else None,
         "container_no": customs.container_no if customs else None,
+        # 품명 (020, 10-06 오후). 외부 글자라 주입 모양이면 저장하지 않는다: <user_cargo> 블록으로 LLM에 다시 간다
+        "goods_name": (None if guard.looks_like_injection(customs.goods_name) else customs.goods_name) if customs else None,
     }
     names = list(values)
     conn.execute(
@@ -215,6 +244,7 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
               forwarder_name = COALESCE(EXCLUDED.forwarder_name, user_cargo.forwarder_name),
               carrier_name = COALESCE(EXCLUDED.carrier_name, user_cargo.carrier_name),
               container_no = COALESCE(EXCLUDED.container_no, user_cargo.container_no),
+              goods_name = COALESCE(EXCLUDED.goods_name, user_cargo.goods_name),
               pending = COALESCE((SELECT jsonb_agg(p) FROM jsonb_array_elements(user_cargo.pending) p
                                   WHERE NOT (p->>'field' = ANY(%s::text[]))), '[]'::jsonb),
               updated_at = now()""",
@@ -337,6 +367,9 @@ def cargo_line(row: dict) -> str:
     """<user_cargo> 블록의 한 줄. 가린 번호만 쓴다. 내부 번호(id)는 넣지 않는다 (Spec "번호를 보여 주는 LLM은 기억 뽑기 하나뿐")."""
     name = f"{row['label']} ({row['bl_masked']})" if row.get("label") else row["bl_masked"]
     parts = [name, "하우스 B/L" if row.get("bl_type") == "HOUSE" else "마스터 B/L"]
+    if row.get("goods_name"):
+        # 세관 품명 (020, 10-06 오후). "고추 화물 어디야?"처럼 품명으로 물을 때 어느 줄인지 LLM이 알게. 저장할 때 주입 모양은 걸렀다
+        parts.append(f"품명 {row['goods_name']}")
     if row.get("sale_due_date"):
         parts.append(f"받아야 하는 날 {row['sale_due_date'].isoformat()}")
     if row.get("forwarder_eta"):

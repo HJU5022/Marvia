@@ -71,11 +71,12 @@ def test_stage_history_is_sorted_by_time():
 
 
 def test_excluded_fields_are_not_carried():
-    """품명·중량·세관명은 계약 C5에 자리가 없어 LLM에 갈 수 없다 (SDD 3.5)."""
+    """중량·세관명은 계약 C5에 자리가 없어 LLM에 갈 수 없다 (SDD 3.5). 품명은 10-06 오후부터 goods_name으로 옮긴다 (정운 결정)."""
     record = _client("progress_ok.xml").fetch("TESTMBL0000001")
     dumped = record.model_dump_json()
-    for leaked in ("의류", "1200", "부산세관"):
+    for leaked in ("1200", "부산세관"):
         assert leaked not in dumped
+    assert record.goods_name == "의류"  # fixture의 가공 품명
 
 
 def test_bl_number_is_masked():
@@ -141,7 +142,7 @@ def test_reads_forwarder_carrier_and_container():
     record = _client("progress_ok.xml").fetch("TESTMBL0000001")
     assert (record.forwarder_name, record.carrier_name, record.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560")
     assert record.party_fields() == {"forwarder_name": "테스트포워딩(주)", "carrier_name": "테스트선사(주)",
-                                     "container_no": "TSTU1234560"}
+                                     "container_no": "TSTU1234560", "goods_name": "의류"}
 
 
 def test_empty_party_tags_become_none():
@@ -183,3 +184,25 @@ def test_judge_input_has_no_container_forwarder_or_carrier():
     for value in ("TSTU1234560", "테스트포워딩", "테스트선사"):
         assert value not in text
     assert set(json.loads(text)["customs"]).isdisjoint({"container_no", "forwarder_name", "carrier_name"})
+
+
+# ── 품명 (10-06 오후, 정운 결정: 저장하고 채팅 에이전트 LLM에도 준다) ──
+
+def test_empty_goods_name_becomes_none():
+    """품명이 빈 태그(<prnm/>)거나 태그가 없으면 None. 실패하지 않는다"""
+    xml = (FIXTURES / "progress_ok.xml").read_text(encoding="utf-8")
+    assert _fetch_xml(xml.replace("<prnm>의류</prnm>", "<prnm/>")).goods_name is None
+    assert _fetch_xml(xml.replace("<prnm>의류</prnm>", "")).goods_name is None
+
+
+def test_judge_input_has_no_goods_name():
+    """품명은 판정에 쓰지 않아 판정 LLM 입력에서 뺀다 (llm.JUDGE_CUSTOMS_EXCLUDE). 채팅 에이전트만 받는다"""
+    import json
+
+    from backend.app.schemas.signals import SignalSet
+    from backend.app.services import llm
+
+    record = _client("progress_ok.xml").fetch("TESTMBL0000001")
+    signals = SignalSet(signals=[], freshness="fresh", distance_nm=None, calc_eta=None, eta_gap_hours=None, computed_at=record.fetched_at)
+    text = llm._judge_input(signals, record, 5)
+    assert "의류" not in text and "goods_name" not in json.loads(text)["customs"]

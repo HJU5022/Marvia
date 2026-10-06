@@ -473,7 +473,7 @@ def _released(customs: CustomsRecord) -> AgentResponse:
             needs_broker=signals_service.needs_broker(customs.stage_name),
             history=[s.model_dump(mode="json") for s in customs.stage_history],
             **customs.route_fields(),
-            **customs.party_fields(),  # 포워더·선사·컨테이너 (10-06)
+            **customs.party_fields(),  # 포워더·선사·컨테이너·품명 (10-06)
         ),
         berth=BerthInfo(facility=None, shed=customs.shed_name),
         evidence=build_evidence(customs, None, None, None, None, None),
@@ -528,22 +528,28 @@ def _follow_up(request: AgentRequest, user_id: str | None = None, memory: str | 
         # LLM이 부른 도구 결과를 근거 카드로 붙인다. 답에 쓴 새 숫자·낱말이 근거에 있어야 검증(V7·V9·V10)을 통과하고,
         # 화면에도 어디서 온 값인지 남는다 (가이드 Grounding: 도구가 준 근거·출처를 보존)
         grounded = previous.model_copy(update={"evidence": previous.evidence + _tool_evidence(answer.tool_calls)})
+        # 컨테이너 번호표 [CNTR1]은 번호가 아니라 이름표다 (10-06). 검증에는 번호표를 뺀 글을 넣는다: 그대로 두면 V7이 번호표 속
+        # 숫자 1을 근거에 없는 숫자로, V9가 CNTR을 근거에 없는 낱말로 잡는다. 사용자 화면에는 아래 return에서 원래 번호로 되돌린다
+        text = llm.CONTAINER_TOKEN.sub("", out.answer)
         answered = grounded.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
         # V11은 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
-        checked = answered.model_copy(update={"actions": [], "customs": None})
+        checked = answered.model_copy(update={"answer": text, "actions": [], "customs": None})
         violations = [v for v in validate.check(checked, extra=validate.user_supplied_text(memory)) if v.rule in FOLLOW_UP_RULES]
         # V9: 근거에 없는 영문 낱말 금지. 주입이 끼워 넣는 표식을 문장 모양과 상관없이 잡는다 (10-01, validate.py)
         # 기억 블록의 낱말은 V9·V10 근거가 아니다 (10-02 검증 F8)
-        violations += validate.check_follow_up_words(out.answer, grounded,
+        violations += validate.check_follow_up_words(text, grounded,
                                                      llm.skills_reference((), llm.FOLLOW_UP_PROMPT))
         # V10: 질문에만 있는 낱말을 답이 그대로 옮기면 위반. 한국어 표식 주입을 잡는다 (10-01, validate.py)
-        violations += validate.check_follow_up_echo(out.answer, request.follow_up_question, grounded,
+        violations += validate.check_follow_up_echo(text, request.follow_up_question, grounded,
                                                     llm.skills_reference(llm.FOLLOW_UP_SKILLS, llm.FOLLOW_UP_PROMPT))
         # V12 (10-02): 메모장 내부 번호가 새어 나오지 않게 (docs/specs/memory.md EC-09). 기억 블록을 줬을 때만 건다
         if memory:
-            violations += validate.check_memory_ids([out.answer], _evidence_text(grounded))
+            violations += validate.check_memory_ids([text], _evidence_text(grounded))
         if not violations:
-            return answered
+            # 검증을 통과한 뒤에 되돌린다. LLM에는 번호표만 갔고(llm.answer_follow_up), 화면의 답에는 사용자 화물의 실제 번호가 나간다.
+            # 같은 container_tokens로 지난 결과에서 다시 만들어서 LLM이 본 번호표와 번호가 맞는다
+            tokens = llm.container_tokens(previous.customs.container_no if previous.customs else None)
+            return answered.model_copy(update={"answer": llm.restore_containers(out.answer, tokens)})
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")
         feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
     # 세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정·근거는 그대로 둔다
@@ -618,7 +624,39 @@ def _previous_response(request: AgentRequest, user_id: str | None = None) -> Age
     except Exception as e:
         log_failure("db_read", type(e).__name__)
         return None
-    return AgentResponse.model_validate(saved) if saved else None
+    return AgentResponse.model_validate(_open_containers(saved)) if saved else None
+
+
+# 이력(query_log.response)에 컨테이너 번호를 잠가 두는 칸 이름. AgentResponse에는 없는 칸이라 읽을 때 꺼내고 지운다
+SEALED_CONTAINER_KEY = "container_no_sealed"
+
+
+def _seal_containers(response: AgentResponse) -> dict:
+    """이력에 저장할 결과. 컨테이너 번호를 평문으로 남기지 않는다 (10-06 점검, #69).
+
+    - customs.container_no 칸은 빼고, 같은 번호를 B/L과 같은 열쇠로 잠가 SEALED_CONTAINER_KEY에 둔다 (crypto.encrypt, BL_ENCRYPTION_KEY).
+      빼기만 하면 후속 질문이 이력을 읽을 때 번호를 몰라 "컨테이너 번호 뭐야?"에 답하지 못한다 (10-06 정운 결정: 알아야 한다)
+    - 다른 글자(후속 답 등)에 남은 번호는 [CNTR1] 번호표로 바꾼다. 풀린 번호로 같은 번호표가 다시 만들어진다 (llm.container_tokens)
+    - 열쇠가 없으면(encrypt가 None) 잠근 칸 없이 저장한다. 그때는 번호를 잃는 쪽이 원문을 남기는 쪽보다 낫다
+    """
+    number = response.customs.container_no if response.customs else None
+    data = llm.hide_containers(
+        response.model_dump(mode="json", exclude={"customs_detail": True, "customs": {"container_no"}}),
+        llm.container_tokens(number))
+    sealed = crypto.encrypt(number) if number else None
+    if sealed:
+        data[SEALED_CONTAINER_KEY] = sealed
+    return data
+
+
+def _open_containers(saved: dict) -> dict:
+    """이력에서 꺼낸 결과에 잠가 둔 컨테이너 번호를 풀어 customs.container_no로 되돌린다. 못 풀면 칸 없이 둔다."""
+    saved = dict(saved)
+    sealed = saved.pop(SEALED_CONTAINER_KEY, None)
+    number = crypto.decrypt(sealed) if sealed else None
+    if number and isinstance(saved.get("customs"), dict):
+        saved["customs"] = {**saved["customs"], "container_no": number}
+    return saved
 
 
 def _same_cargo(rows: list[tuple[dict, str | None]], bl_no: str) -> dict | None:
@@ -919,7 +957,7 @@ def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
         needs_broker=signals_service.needs_broker(customs.stage_name),
         history=[s.model_dump(mode="json") for s in customs.stage_history],
         **customs.route_fields(),  # 어디서 어디로 (10-01)
-        **customs.party_fields(),  # 포워더·선사·컨테이너 (10-06)
+        **customs.party_fields(),  # 포워더·선사·컨테이너·품명 (10-06)
     )
 
 
@@ -958,8 +996,10 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 # UNI-PASS 처리 이력 원문(customs_detail)은 화면 전용이라 저장하지 않는다 (docs/specs/customs-detail.md)
                 # 컨테이너 번호도 평문 이력에 남기지 않는다. B/L처럼 화물을 특정하는 번호다 (schemas/customs.py, 10-06 점검).
                 # 내 화물 현황 표에 필요한 값은 user_cargo가 따로 가진다 (services/cargo.py)
-                response=_as_jsonb(response.model_dump(mode="json", exclude={"customs_detail": True,
-                                                                             "customs": {"container_no"}})),
+                # 칸을 빼는 것만으로는 부족하다: 후속 답(answer)은 화면용으로 실제 번호를 되돌린 문장이라(_follow_up) 그대로 두면
+                # 다음 후속 질문 때 이력에서 원문이 LLM에 간다. 그래서 저장 전에 남은 글자 속 번호도 [CNTR1] 번호표로 바꾼다 (10-06 병합).
+                # 번호 자체는 잠가서 따로 둔다(_seal_containers). 후속 질문이 이력을 읽을 때 풀어야 LLM이 번호표로 알고 답할 수 있다 (10-06 정운 결정)
+                response=_as_jsonb(_seal_containers(response)),
             )
     except Exception as e:
         log_failure("db_write", type(e).__name__)

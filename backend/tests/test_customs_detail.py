@@ -7,9 +7,10 @@ import contextlib
 import json
 
 import httpx
+import pytest
 
 from backend.app.routers import agent as agent_router
-from backend.app.schemas.agent import AgentRequest
+from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.schemas.customs import CustomsDetailRow
 from backend.app.services import llm
 from backend.app.services.customs import UnipassClient
@@ -123,7 +124,8 @@ def test_container_no_is_not_sent_to_follow_up_llm(monkeypatch):
         llm.answer_follow_up("포워더가 어디야?", _response_with_container())
     except llm.LLMError:
         pass
-    assert "TCNU0000001" not in sent["content"] and "container_no" not in sent["content"]
+    # 원문 번호는 안 가고 [CNTR1] 번호표로만 간다 (10-06 정운 결정, llm.hide_containers). 칸 이름은 남아도 된다
+    assert "TCNU0000001" not in sent["content"] and "[CNTR1]" in sent["content"]
     assert "테스트포워딩" in sent["content"]  # 포워더 이름은 후속 질문 재료라 남긴다
 
 
@@ -138,3 +140,66 @@ def test_container_no_is_not_saved_to_history(monkeypatch):
     assert agent_router._logged(request, response).customs.container_no == "TCNU0000001"  # 화면 응답에는 그대로
     assert "TCNU0000001" not in json.dumps(saved["response"], ensure_ascii=False)
     assert saved["response"]["customs"]["stage_name"]  # 다른 통관 칸은 그대로 남는다
+
+
+def test_container_no_in_answer_text_is_not_saved_to_history(monkeypatch):
+    """후속 답은 화면용으로 실제 번호를 되돌린 문장이다. 이력에는 그 문장 속 번호도 번호표로 저장한다 (10-06 병합).
+    안 그러면 다음 후속 질문 때 이력의 답 문장이 원문 그대로 LLM에 간다"""
+    saved = {}
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test")
+    monkeypatch.setattr(agent_router, "connect", lambda: contextlib.nullcontext(object()))
+    monkeypatch.setattr(agent_router, "log_query", lambda conn, session_id, **kw: saved.update(kw))
+    monkeypatch.setattr(agent_router, "_as_jsonb", lambda data: data)
+    response = _response_with_container().model_copy(update={"answer": "컨테이너 번호는 TCNU0000001입니다."})
+    request = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s1")
+    assert agent_router._logged(request, response).answer == "컨테이너 번호는 TCNU0000001입니다."  # 화면에는 그대로
+    stored = json.dumps(saved["response"], ensure_ascii=False)
+    assert "TCNU0000001" not in stored and saved["response"]["answer"] == "컨테이너 번호는 [CNTR1]입니다."
+
+
+# ── 이력의 컨테이너 번호는 잠가 두고 후속 질문이 읽을 때 푼다 (10-06 정운 결정: 후속 질문도 번호를 알아야 한다) ──
+
+@pytest.fixture
+def bl_key(monkeypatch):
+    from cryptography.fernet import Fernet
+    monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+
+
+def test_history_seals_container_and_previous_response_opens_it(monkeypatch, bl_key):
+    """저장된 이력에는 평문 번호가 없고, 후속 질문이 이력을 읽으면 원래 번호가 customs.container_no로 돌아온다"""
+    saved = {}
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test")
+    monkeypatch.setattr(agent_router, "connect", lambda: contextlib.nullcontext(object()))
+    monkeypatch.setattr(agent_router, "log_query", lambda conn, session_id, **kw: saved.update(kw))
+    monkeypatch.setattr(agent_router, "_as_jsonb", lambda data: data)
+    request = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s1")
+    agent_router._logged(request, _response_with_container())
+
+    stored = saved["response"]
+    assert "TCNU0000001" not in json.dumps(stored, ensure_ascii=False) and stored[agent_router.SEALED_CONTAINER_KEY]
+    monkeypatch.setattr(agent_router, "latest_response", lambda *a, **k: stored)
+    previous = agent_router._previous_response(request)
+    assert previous.customs.container_no == "TCNU0000001"
+
+
+def test_follow_up_from_history_knows_container_as_token(monkeypatch, bl_key):
+    """이력에서 되살린 결과로 후속 질문을 하면 LLM은 [CNTR1]을 받는다. 번호를 '모르는' 상태가 아니다"""
+    stored = agent_router._seal_containers(_response_with_container())
+    sent = {}
+
+    def fake_ask(prompt, user_content, *args, **kwargs):
+        sent["content"] = user_content
+        raise llm.LLMError("stop", kind="test")
+
+    monkeypatch.setattr(llm, "_ask_json", fake_ask)
+    with pytest.raises(llm.LLMError):
+        llm.answer_follow_up("컨테이너 번호 뭐야?", AgentResponse.model_validate(agent_router._open_containers(stored)))
+    assert "[CNTR1]" in sent["content"] and "TCNU0000001" not in sent["content"]
+
+
+def test_history_without_key_drops_container_instead_of_plain_text(monkeypatch):
+    """열쇠가 없으면 잠근 칸 없이 저장한다. 원문을 남기지 않는다"""
+    monkeypatch.delenv("BL_ENCRYPTION_KEY", raising=False)
+    stored = agent_router._seal_containers(_response_with_container())
+    assert agent_router.SEALED_CONTAINER_KEY not in stored and "TCNU0000001" not in json.dumps(stored, ensure_ascii=False)
+    assert agent_router._open_containers(stored)["customs"].get("container_no") is None
