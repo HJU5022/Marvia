@@ -78,7 +78,9 @@ def test_unparseable_content_makes_exactly_one_extra_call(monkeypatch):
 
 
 def test_extra_call_that_is_still_bad_raises_format_error(monkeypatch):
-    _script(monkeypatch, [_text("아님"), _text("여전히 아님")])
+    # 실제 제공사 답은 정상 종료면 finish_reason="stop"을 단다. 없으면(None) 끊긴 답으로 보고 한 번 더 묻는다 (10-06, test_doc_extract_retry.py)
+    stopped = lambda content: llm.LLMResult(content=content, model="test/model", finish_reason="stop")  # noqa: E731
+    _script(monkeypatch, [stopped("아님"), stopped("여전히 아님")])
     with pytest.raises(llm.LLMFormatError):
         _ask()
 

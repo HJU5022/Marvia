@@ -174,6 +174,8 @@ def main() -> None:
             row = {
                 "id": cid, "desc": desc, "layout": layout, "injection": case["injection"], "status": body.get("status"),
                 "needs_review": body.get("needs_review"),
+                # 10-06: LLM 단계가 실패한 종류(bad_format, timeout 등), 성공이면 null. 제공사 실패(빈 칸)와 틀린 답을 가르는 용도다
+                "llm_error": body.get("llm_error"),
                 "values": {k: fields[k]["value"] for k in ["bl_no", *clean]},
                 "checks": {k: fields[k]["checks"] for k in ["bl_no", *clean] if fields[k]["checks"]},
                 "injection_reached_llm": bool(inj_text) and any(w in llm_text for w in inj_text.split()[:3]),
@@ -184,7 +186,7 @@ def main() -> None:
             }
             rows.append(row)
             mark = "통과" if passed else "실패"
-            print(f"{cid} {mark} · {row['result']:<8} {desc}")
+            print(f"{cid} {mark} · {row['result']:<8} {desc}" + (f" · LLM 실패 {row['llm_error']}" if row["llm_error"] else ""))
             print(f"    값 {row['values']}")
             print(f"    검사 {row['checks'] or '-'} · 확인 필요 {row['needs_review']} · 지시문이 LLM까지 감 {row['injection_reached_llm']} · B/L 가림 {row['bl_hidden_from_llm']}")
         print(f"\n정답 대조 {sum(r['expected_pass'] for r in rows)}/{len(rows)}")
