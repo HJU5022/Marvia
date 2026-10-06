@@ -28,7 +28,7 @@ import memoryFixture from './fixtures/memory.json';
 
 /** 끝 슬래시를 뗀 백엔드 주소. 비어 있으면 데모 모드다. */
 /** 정지된 계정에 서버가 403 account_suspended를 줄 때 보여 줄 문장. getMe가 이 문장으로 정지를 알아본다 */
-export const SUSPENDED_MESSAGE = '운영자가 이 계정을 일시 정지했습니다. 문의가 필요하면 운영자에게 연락해 주세요.';
+export const SUSPENDED_MESSAGE = '운영자가 이 계정을 일시 정지했어요. 문의가 필요하면 운영자에게 연락해 주세요.';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').trim().replace(/\/+$/, '');
 export const isLive = API_BASE !== '';
@@ -49,18 +49,18 @@ export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
  */
 export const liveExamples = [
   {id: 'DEMOQD2610001', label: '순항 · 황해 항해 중', bl_no: 'DEMOQD2610001', bl_type: 'HOUSE' as const, sale_in_days: 10},
-  {id: 'DEMOSH2610002', label: '주의 · AIS ETA와 입항 예정 어긋남', bl_no: 'DEMOSH2610002', bl_type: 'HOUSE' as const, sale_in_days: 8},
+  {id: 'DEMOSH2610002', label: '주의 · 도착 예정일이 서로 다름', bl_no: 'DEMOSH2610002', bl_type: 'HOUSE' as const, sale_in_days: 8},
   {id: 'DEMONB2610003', label: '긴급 · 도착이 판매 예정일보다 늦음', bl_no: 'DEMONB2610003', bl_type: 'HOUSE' as const, sale_in_days: 2},
   {id: 'DEMOHC2610004', label: '긴급 · 세관 검사 지정', bl_no: 'DEMOHC2610004', bl_type: 'HOUSE' as const},
   {id: 'DEMOTJ2610005', label: '긴급 · 부산 앞 30시간 대기', bl_no: 'DEMOTJ2610005', bl_type: 'HOUSE' as const},
-  {id: 'DEMODL2610006', label: '주의 · 위치 수신 10시간 전', bl_no: 'DEMODL2610006', bl_type: 'HOUSE' as const, sale_in_days: 9},
-  {id: 'DEMOKH2610007', label: '주의 · AIS 목적지 모지', bl_no: 'DEMOKH2610007', bl_type: 'HOUSE' as const, sale_in_days: 10},
-  {id: 'DEMOHP2610008', label: '되묻기 · 같은 이름 배 2척', bl_no: 'DEMOHP2610008', bl_type: 'HOUSE' as const, sale_in_days: 7},
+  {id: 'DEMODL2610006', label: '주의 · 10시간 전 위치만 받음', bl_no: 'DEMODL2610006', bl_type: 'HOUSE' as const, sale_in_days: 9},
+  {id: 'DEMOKH2610007', label: '주의 · 목적지가 부산이 아님', bl_no: 'DEMOKH2610007', bl_type: 'HOUSE' as const, sale_in_days: 10},
+  {id: 'DEMOHP2610008', label: '확인 필요 · 같은 이름 배 2척', bl_no: 'DEMOHP2610008', bl_type: 'HOUSE' as const, sale_in_days: 7},
   {id: 'DEMOSH2610009', label: '순항 · 수입신고 수리', bl_no: 'DEMOSH2610009', bl_type: 'HOUSE' as const},
   {id: 'DEMOQD2610010', label: '반출 완료 · 순항', bl_no: 'DEMOQD2610010', bl_type: 'HOUSE' as const},
-  {id: 'TESTBL01', label: '정상 · 순항 (평가셋)', bl_no: 'TESTBL01', bl_type: 'HOUSE' as const},
-  {id: 'TESTBL04', label: '같은 이름 배 2척 · 되묻기 (평가셋)', bl_no: 'TESTBL04', bl_type: 'HOUSE' as const},
-  {id: 'TESTBL26', label: '위치 권한 없음 · 판정 보류 (평가셋)', bl_no: 'TESTBL26', bl_type: 'HOUSE' as const},
+  {id: 'TESTBL01', label: '정상 · 순항 (평가용 예시)', bl_no: 'TESTBL01', bl_type: 'HOUSE' as const},
+  {id: 'TESTBL04', label: '같은 이름 배 2척 · 확인 필요 (평가용 예시)', bl_no: 'TESTBL04', bl_type: 'HOUSE' as const},
+  {id: 'TESTBL26', label: '위치 권한 없음 · 판정 보류 (평가용 예시)', bl_no: 'TESTBL26', bl_type: 'HOUSE' as const},
 ];
 
 /* ---------- 세션 ID ---------- */
@@ -102,7 +102,7 @@ export function currentSessionId(): string {
 // 422 응답의 칸 이름(C2 요청 필드)을 화면 말로. 모르는 칸은 "입력한 값"으로 쓴다 (10-02 화면 용어 점검)
 const FIELD_NAMES: Record<string, string> = {
   bl_no: 'B/L 번호', sale_due_date: '판매 예정일', bl_type: 'B/L 구분', voyage_no: '항차 번호',
-  forwarder_eta: '포워더 안내 입항 예정일', follow_up_question: '질문', message: '입력한 문장', resolved_mmsi: '선택한 선박',
+  forwarder_eta: '포워더가 알려 준 입항 예정일', follow_up_question: '질문', message: '입력한 문장', resolved_mmsi: '선택한 선박',
 };
 async function errorMessage(res: Response): Promise<string> {
   let detail = '';
@@ -112,17 +112,17 @@ async function errorMessage(res: Response): Promise<string> {
     // 422는 detail이 [{loc, msg}] 목록이다. 첫 칸 이름만 보여 준다
     else if (Array.isArray(body?.detail) && body.detail[0]) detail = `${FIELD_NAMES[String(body.detail[0].loc?.at(-1) ?? '')] ?? '입력한 값'}을(를) 확인해 주세요.`;
   } catch { /* 본문이 JSON이 아니면 상태 코드로만 안내한다 */ }
-  if (res.status === 401) return '로그인이 필요합니다. 로그인한 뒤 다시 시도해 주세요.';
-  if (res.status === 413 || detail === 'too_large') return '사진이 너무 큽니다. 10MB 이하로 올려 주세요.';
-  if (detail === 'invalid_image') return '사진을 읽지 못했습니다. JPG·PNG 사진인지 확인해 주세요.';
-  if (res.status === 503) return detail || '저장소에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+  if (res.status === 401) return '로그인이 필요해요. 로그인한 뒤 다시 시도해 주세요.';
+  if (res.status === 413 || detail === 'too_large') return '사진이 너무 커요. 10MB 이하로 올려 주세요.';
+  if (detail === 'invalid_image') return '사진을 읽지 못했어요. JPG·PNG 사진인지 확인해 주세요.';
+  if (res.status === 503) return detail || '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
   if (detail === 'account_suspended') return SUSPENDED_MESSAGE;
-  if (res.status === 403) return detail || '운영자만 쓸 수 있습니다.';
-  if (res.status === 409) return detail || '이미 처리된 요청입니다.';
+  if (res.status === 403) return detail || '운영자만 쓸 수 있어요.';
+  if (res.status === 409) return detail || '이미 처리된 요청이에요.';
   if (detail === 'daily_token_limit') return QUOTA_MESSAGE;
-  if (res.status === 429) return '요청이 많습니다. 잠시 뒤 다시 시도해 주세요.';
+  if (res.status === 429) return '요청이 많아요. 잠시 뒤 다시 시도해 주세요.';
   if (res.status === 400 || res.status === 422) return detail || '입력값을 확인해 주세요.';
-  return detail || '요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+  return detail || '요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
 }
 
 /** 타임아웃을 건 fetch. 연결 자체가 안 되면 주소를 알려 줘서 백엔드가 떠 있는지 확인하게 한다. */
@@ -142,7 +142,7 @@ async function callOnce(path: string, init: RequestInit, timeoutMs: number): Pro
     if (!res.ok) throw Object.assign(new Error(await errorMessage(res)), {status: res.status});  // 대화 목록이 401/503/404를 가르려고 상태 코드를 붙인다
     return res;
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') throw new Error('응답이 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.');
+    if (e instanceof DOMException && e.name === 'AbortError') throw new Error('답이 너무 늦어져 중단했어요. 다시 시도해 주세요.');
     throw e;
   } finally {
     clearTimeout(timer);
@@ -159,7 +159,7 @@ async function call(path: string, init: RequestInit, timeoutMs: number): Promise
     } catch (e) {
       if (!(e instanceof TypeError)) throw e;
       if (attempt >= RETRY_DELAYS_MS.length) {
-        throw new Error('서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 잠시 뒤 다시 시도해 주세요.');
+        throw new Error('서버에 연결하지 못했어요. 인터넷 연결을 확인하고 잠시 뒤 다시 시도해 주세요.');
       }
       await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
     }
@@ -207,20 +207,20 @@ export async function listConversations(): Promise<ConversationSummary[]> {
 
 /** GET /api/conversations/{id}. 없으면 404 */
 export async function getConversation(id: string): Promise<ConversationDetail> {
-  if (!isLive) throw new Error('데모 모드에는 저장된 대화가 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 저장된 대화가 없어요.');
   return (await call(`/api/conversations/${encodeURIComponent(id)}`, {}, HISTORY_TIMEOUT_MS)).json();
 }
 
 /** DELETE /api/conversations/{id} */
 export async function deleteConversation(id: string): Promise<{deleted: boolean}> {
-  if (!isLive) throw new Error('데모 모드에는 지울 대화가 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 지울 대화가 없어요.');
   return liveDelete(`/api/conversations/${encodeURIComponent(id)}`);
 }
 
 /** 이력은 부가 기능이다. 못 읽으면 화면을 죽이지 않고 available:false로 돌려준다 (routers/history.py와 같은 원칙). */
-async function liveHistory(): Promise<HistoryResponse> {
+async function liveHistory(since?: string): Promise<HistoryResponse> {
   try {
-    const res = await call(`/api/history?session_id=${encodeURIComponent(currentSessionId())}`, {}, HISTORY_TIMEOUT_MS);
+    const res = await call(`/api/history?session_id=${encodeURIComponent(currentSessionId())}${since ? `&since=${encodeURIComponent(since)}` : ''}`, {}, HISTORY_TIMEOUT_MS);
     return await res.json();
   } catch {
     return {items: [], available: false};
@@ -258,10 +258,10 @@ async function demoAgentResponse(req: AgentRequest): Promise<AgentResponse> {
   const key = `${req.session_id}:${normalized}`;
   const choice = demo.choices.find(c => c.request.bl_no === normalized);
   if (choice && ((req.sale_due_date ?? null) !== choice.request.sale_due_date || req.bl_type !== choice.request.bl_type)) {
-    throw new Error('저장된 예시와 조회 조건이 다릅니다. 예시 화물을 다시 선택하면 저장된 판매 예정일·B/L 구분으로 돌아갑니다.');
+    throw new Error('저장된 예시와 조회 조건이 달라요. 예시 화물을 다시 선택하면 저장된 판매 예정일·B/L 구분으로 돌아가요.');
   }
   const id = selectedFixture ?? choice?.id;
-  if (!id || !responses[id]) throw new Error('저장된 예시 B/L이 없습니다. 상단에서 예시 화물을 선택해 주세요.');
+  if (!id || !responses[id]) throw new Error('저장된 예시 B/L이 없어요. 위에서 예시 화물을 선택해 주세요.');
   let result = structuredClone(responses[id]);
   // 되묻기 해소를 한 가지로만 흉내 낸다. 실제 식별 알고리즘이 아니다
   if (id === 'insufficient' && (req.resolved_mmsi === insufficient.vessel_candidates[0].mmsi || (!req.resolved_mmsi && (req.voyage_no?.trim() || req.forwarder_eta)))) {
@@ -311,7 +311,7 @@ async function demoChat(message: string, context: AgentRequest | null): Promise<
     return {...empty, kind: 'cargo', reply: agent.answer, agent, request: context};
   }
   await pause();
-  return {...empty, kind: 'message', reply: '데모에서는 예시 B/L(MRVDEMO1101~1107)이 든 문장이나 "중국에서 오는 배"처럼 물어볼 수 있습니다.'};
+  return {...empty, kind: 'message', reply: '체험 모드에서는 예시 B/L(MRVDEMO1101~1107)이 든 문장이나 "중국에서 오는 배"처럼 물어볼 수 있어요.'};
 }
 
 /* ---------- 화면이 쓰는 함수 ---------- */
@@ -377,7 +377,7 @@ async function liveChatStream(message: string, context: AgentRequest | null,
   const controller = new AbortController();
   // 전체 시간 제한은 /api/chat과 같다. 판정 LLM 재시도까지 기다린다
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
-  const timeout = '응답이 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.';
+  const timeout = '답이 너무 늦어져 중단했어요. 다시 시도해 주세요.';
   try {
     let res: Response;
     try {
@@ -392,7 +392,7 @@ async function liveChatStream(message: string, context: AgentRequest | null,
     }
     if (res.status === 404 || res.status === 405) throw new StreamUnavailable();
     if (!res.ok) throw new Error(await errorMessage(res));  // 로그인·권한·입력 오류는 스트림을 열기 전에 온다
-    if (!res.body) throw new Error('이 브라우저에서 답을 읽지 못했습니다. 다시 시도해 주세요.');
+    if (!res.body) throw new Error('이 브라우저에서 답을 읽지 못했어요. 다시 시도해 주세요.');
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     const parse = createSseParser();
     for (;;) {
@@ -400,17 +400,17 @@ async function liveChatStream(message: string, context: AgentRequest | null,
       try { chunk = await reader.read(); }
       catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
-        throw new Error('답을 받는 중 연결이 끊겼습니다. 다시 물어봐 주세요.');
+        throw new Error('답을 받는 중 연결이 끊겼어요. 다시 물어봐 주세요.');
       }
       if (chunk.done) break;
       for (const ev of parse(chunk.value)) {
         const data = JSON.parse(ev.data);
         if (ev.event === 'progress' && isStage(data?.stage)) onStage(data.stage);
         else if (ev.event === 'result') { void reader.cancel(); return data as ChatResponse; }
-        else if (ev.event === 'error') throw new Error(typeof data?.detail === 'string' ? data.detail : '답하지 못했습니다. 다시 시도해 주세요.');
+        else if (ev.event === 'error') throw new Error(typeof data?.detail === 'string' ? data.detail : '답을 만들지 못했어요. 다시 시도해 주세요.');
       }
     }
-    throw new Error('답을 받기 전에 연결이 끊겼습니다. 다시 물어봐 주세요.');
+    throw new Error('답을 받기 전에 연결이 끊겼어요. 다시 물어봐 주세요.');
   } finally {
     clearTimeout(timer);
   }
@@ -433,36 +433,39 @@ export async function getUsage(): Promise<UsageInfo> {
 export async function getVesselDetail(callSign: string | null, shipName: string): Promise<VesselDetailResponse> {
   if (!isLive) {
     await pause();
-    return {call_sign: callSign, ship_name: shipName, vessel: {mmsi: 990000001, name: shipName, flag: 'Panama', call_sign: callSign, ship_type: 70},
-      position: {lat: 33.2, lng: 127.6, sog: 13.5, cog: 82, navistat: 0, dest: 'KRPUS', ais_eta: null, last_time: new Date().toISOString(), freshness: 'fresh'},
-      distance: {distance_nm: 140, calc_hours_at_sog: 10.4, calc_eta: null}, schedule: null,
-      errors: [{source: 'mof', code: 'demo', message: '가공 예시라 해수부 일정은 없습니다'}]};
+    const now = new Date().toISOString();
+    return {call_sign: callSign, ship_name: shipName, vessel: {mmsi: 990000001, name: shipName, flag: 'Panama', call_sign: callSign, ship_type: 70,
+        imo: 9990001, similarity: 0.92, source: 'shipfinder', fetched_at: now, cached_at: null},
+      position: {lat: 33.2, lng: 127.6, sog: 13.5, cog: 82, navistat: 0, dest: 'KRPUS', destcode: 'KRPUS', ais_eta: null, last_time: now, freshness: 'fresh',
+        source: 'shipfinder', fetched_at: now, cached_at: null},
+      distance: {distance_nm: 140, calc_hours_at_sog: 10.4, calc_eta: null, source: 'searoute', fetched_at: now}, schedule: null, cached_at: now,
+      errors: [{source: 'mof', code: 'demo', message: '예시라서 해수부 일정은 없어요'}]};
   }
   const q = new URLSearchParams({ship_name: shipName, ...(callSign ? {call_sign: callSign} : {})});
   return (await call(`/api/vessels/detail?${q}`, {}, AGENT_TIMEOUT_MS)).json();
 }
 
 /** GET /api/history. available:false(못 읽음)와 빈 목록을 구분한다. */
-export async function getHistory(sessionId: string = currentSessionId()): Promise<HistoryResponse> {
-  return isLive ? liveHistory() : demoHistory(sessionId);
+export async function getHistory(sessionId: string = currentSessionId(), since?: string): Promise<HistoryResponse> {
+  return isLive ? liveHistory(since) : demoHistory(sessionId);
 }
 
 /** POST /api/document. 서류 사진에서 조회 값 후보를 읽는다. 크기는 보내기 전에 먼저 본다. */
 export async function readDocument(file: File): Promise<DocumentResponse> {
-  if (file.size > DOCUMENT_MAX_BYTES) throw new Error('사진이 너무 큽니다. 10MB 이하로 올려 주세요.');
-  if (file.type && !file.type.startsWith('image/')) throw new Error('사진 파일(JPG·PNG)만 올릴 수 있습니다.');
+  if (file.size > DOCUMENT_MAX_BYTES) throw new Error('사진이 너무 커요. 10MB 이하로 올려 주세요.');
+  if (file.type && !file.type.startsWith('image/')) throw new Error('사진 파일(JPG·PNG)만 올릴 수 있어요.');
   return isLive ? liveDocument(file) : demoDocument();
 }
 
 /** DELETE /api/history. 로그인한 사용자의 조회 기록을 전부 지운다. 데모 모드에는 지울 실제 기록이 없다. */
 export async function deleteMyHistory(): Promise<{deleted: number}> {
-  if (!isLive) throw new Error('데모 모드에는 지울 실제 기록이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 지울 실제 이력이 없어요.');
   return liveDelete('/api/history');
 }
 
 /** DELETE /api/account. 기록과 계정을 지운다. 실패하면 503이고 다시 누르면 이어서 끝난다 (services/account.py). */
 export async function deleteMyAccount(): Promise<{deleted_records: number; account_deleted: boolean}> {
-  if (!isLive) throw new Error('데모 모드에는 탈퇴할 계정이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 탈퇴할 계정이 없어요.');
   return liveDelete('/api/account');
 }
 
@@ -477,13 +480,13 @@ export async function getMemory(): Promise<MemoryResponse> {
 
 /** DELETE /api/memory. 메모장과 기억한 화물을 모두 지운다. 실패를 숨기지 않는다(503). 데모 모드에는 지울 실제 기억이 없다. */
 export async function deleteAllMemory(): Promise<{deleted: number}> {
-  if (!isLive) throw new Error('데모 모드에는 지울 실제 기억이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 지울 실제 기억이 없어요.');
   return liveDelete('/api/memory');
 }
 
 /** DELETE /api/memory/items/{id}. 메모 한 줄을 지운다. */
 export async function deleteMemoryItem(id: string): Promise<{deleted: number}> {
-  if (!isLive) throw new Error('데모 모드에는 지울 실제 기억이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 지울 실제 기억이 없어요.');
   return liveDelete(`/api/memory/items/${encodeURIComponent(id)}`);
 }
 
@@ -500,33 +503,33 @@ export async function saveDocumentFacts(facts: DocumentFactsRequest): Promise<Do
 
 /** GET /api/kakao/status. 연결 버튼을 보여 줄지 정한다. 데모 모드에는 연결할 실제 카카오톡이 없다. */
 export async function getKakaoStatus(): Promise<KakaoStatus> {
-  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 연결할 실제 카카오톡이 없어요.');
   return (await call('/api/kakao/status', {}, HISTORY_TIMEOUT_MS)).json();
 }
 
 /** POST /api/kakao/connect. 카카오 동의 화면 주소를 받는다. 부르는 쪽이 그 주소로 브라우저를 보낸다. */
 export async function connectKakao(): Promise<{url: string}> {
-  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 연결할 실제 카카오톡이 없어요.');
   return (await call('/api/kakao/connect', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
 }
 
 /** POST /api/kakao/callback. 카카오가 돌려 보낸 code·state를 서버에 넘겨 연결을 마무리한다 (/settings/kakao 화면만 부른다).
  * 로그인 출입증이 붙어서, 서버가 "연결을 시작한 사람 = 지금 로그인한 사람"인지 확인한다. code는 한 번만 쓸 수 있어 다시 보내지 않는다. */
 export async function finishKakaoLink(code: string, state: string): Promise<KakaoLinkResult> {
-  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 연결할 실제 카카오톡이 없어요.');
   const res = await call('/api/kakao/callback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({code, state})}, HISTORY_TIMEOUT_MS);
   return (await res.json()).result;
 }
 
 /** POST /api/kakao/test. 시험 메시지를 한 통 보낸다. 실패하면 서버 안내 문장이 그대로 올라온다. 자동으로 다시 보내지 않는다. */
 export async function sendKakaoTest(): Promise<{sent: boolean}> {
-  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 연결할 실제 카카오톡이 없어요.');
   return (await call('/api/kakao/test', {method: 'POST'}, HISTORY_TIMEOUT_MS)).json();
 }
 
 /** DELETE /api/kakao/link. 연결을 끊고 서버에 둔 토큰을 지운다. */
 export async function unlinkKakao(): Promise<{linked: boolean}> {
-  if (!isLive) throw new Error('데모 모드에는 연결할 실제 카카오톡이 없습니다.');
+  if (!isLive) throw new Error('체험 모드에는 연결할 실제 카카오톡이 없어요.');
   return liveDelete('/api/kakao/link');
 }
 
@@ -538,14 +541,14 @@ const watchBody = (blNo: string) => ({bl_no: watchKey(blNo)});
 
 /** POST /api/cargo/watch/state. 이 화물이 저장됐는지, 지켜보는 중인지. 데모 모드에는 계정이 없어 지켜볼 수 없다. */
 export async function getWatchState(blNo: string): Promise<WatchState> {
-  if (!isLive) throw new Error('데모 모드에서는 화물을 지켜볼 수 없습니다.');
+  if (!isLive) throw new Error('체험 모드에서는 화물을 지켜볼 수 없어요.');
   const res = await call('/api/cargo/watch/state', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(watchBody(blNo))}, HISTORY_TIMEOUT_MS);
   return res.json();
 }
 
 /** PUT /api/cargo/watch. 지켜보기를 켜거나 끈다. 실패하면 서버 안내 문장이 그대로 올라온다(404 아직 저장 전, 409 끝난 화물·5건 한도, 503). */
 export async function setWatch(blNo: string, on: boolean): Promise<{watch: boolean}> {
-  if (!isLive) throw new Error('데모 모드에서는 화물을 지켜볼 수 없습니다.');
+  if (!isLive) throw new Error('체험 모드에서는 화물을 지켜볼 수 없어요.');
   const res = await call('/api/cargo/watch', {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify({...watchBody(blNo), on})}, HISTORY_TIMEOUT_MS);
   return res.json();
 }
@@ -571,23 +574,23 @@ const demoRow = (n: number, extra: Partial<CargoSheetRow>): CargoSheetRow => ({
   departed_on: null, departed_source: null, arrived_on: null, eta: null, warehoused_on: null, last_stage: null,
   forwarder_name: null, carrier_name: null, container_no: null, ...extra,
 });
-let demoSheet: CargoSheet = {groups: [
+let demoSheet: CargoSheet = {truncated: false, groups: [
   {lc: {id: 1, lc_no: 'DEMO-LC-0001', opened_on: '2026-08-20'}, rows: [
-    demoRow(1, {status: 'done', departed_on: '2026-09-02', departed_source: 'manual', arrived_on: '2026-09-18', warehoused_on: '2026-09-22', last_stage: '반출', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO1234567'}),
-    demoRow(2, {departed_on: '2026-09-20', departed_source: 'document', arrived_on: '2026-10-03', last_stage: '입항 후 하선', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO7654321'}),
+    demoRow(1, {status: 'done', departed_on: '2026-09-02', departed_source: 'manual', arrived_on: '2026-09-18', warehoused_on: '2026-09-22', last_stage: '반출', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO1234567', goods_name: '건조 고추', vessel_name: 'DEMO TRADER', vessel_flag: 'PA'}),
+    demoRow(2, {departed_on: '2026-09-20', departed_source: 'document', arrived_on: '2026-10-03', last_stage: '입항 후 하선', forwarder_name: '데모포워딩', carrier_name: '데모선사', container_no: 'DEMO7654321', goods_name: '냉동 오징어', vessel_name: 'DEMO HARMONY', vessel_flag: 'LR'}),
   ]},
   {lc: {id: 2, lc_no: 'DEMO-LC-0002', opened_on: '2026-09-10'}, rows: [
-    demoRow(3, {departed_on: '2026-10-01', departed_source: 'manual', eta: '2026-10-20', last_stage: '선적', carrier_name: '데모선사'}),
+    demoRow(3, {departed_on: '2026-10-01', departed_source: 'manual', eta: '2026-10-20', last_stage: '선적', carrier_name: '데모선사', goods_name: '참깨', vessel_name: 'DEMO STAR', vessel_flag: 'KR'}),
   ]},
   {lc: null, rows: [demoRow(4, {})]},
 ]};
 
 /** 데모 모드의 출항일 수정. 새로고침하면 처음 모양으로 돌아간다 */
-function demoSetDeparted(cargoKey: string, departedOn: string | null): CargoSheet {
+function demoSetDeparted(cargoKey: string, departedOn: string | null, source: 'manual' | 'document' = 'manual'): CargoSheet {
   const row = demoSheet.groups.flatMap(g => g.rows).find(r => r.cargo_key === cargoKey);
-  if (!row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했습니다.'), {status: 404});
+  if (!row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했어요.'), {status: 404});
   row.departed_on = departedOn;
-  row.departed_source = departedOn ? 'manual' : null;
+  row.departed_source = departedOn ? source : null;
   return structuredClone(demoSheet);
 }
 
@@ -595,7 +598,7 @@ function demoSetDeparted(cargoKey: string, departedOn: string | null): CargoShee
 function demoSetLc(cargoKey: string, lcNo: string | null, openedOn: string | null): CargoSheet {
   const from = demoSheet.groups.find(g => g.rows.some(r => r.cargo_key === cargoKey));
   const row = from?.rows.find(r => r.cargo_key === cargoKey);
-  if (!from || !row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했습니다.'), {status: 404});
+  if (!from || !row) throw Object.assign(new Error('이 화물을 표에서 찾지 못했어요.'), {status: 404});
   from.rows = from.rows.filter(r => r !== row);
   let target = demoSheet.groups.find(g => (g.lc?.lc_no ?? null) === lcNo);
   if (!target) {
@@ -622,16 +625,16 @@ export async function saveCargoLc(cargoKey: string, lcNo: string | null, openedO
   return (await call(`/api/cargo/sheet/${encodeURIComponent(cargoKey)}/lc`, {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}, HISTORY_TIMEOUT_MS)).json();
 }
 
-/** PUT /api/cargo/sheet/{cargo_key}/departed. 출항일을 사용자가 직접 적는다(source는 늘 manual). null이면 지운다. 표 전체를 돌려받는다. */
-export async function saveCargoDeparted(cargoKey: string, departedOn: string | null): Promise<CargoSheet> {
-  if (!isLive) return demoSetDeparted(cargoKey, departedOn);
-  const body = JSON.stringify({departed_on: departedOn, source: 'manual'});
+/** PUT /api/cargo/sheet/{cargo_key}/departed. 출항일을 쓴다. source 기본값 manual은 사용자가 직접 적은 값, document는 도착 통지서 사진에서 읽어 사용자가 확인한 값이다. null이면 지운다. 표 전체를 돌려받는다. */
+export async function saveCargoDeparted(cargoKey: string, departedOn: string | null, source: 'manual' | 'document' = 'manual'): Promise<CargoSheet> {
+  if (!isLive) return demoSetDeparted(cargoKey, departedOn, source);
+  const body = JSON.stringify({departed_on: departedOn, source});
   return (await call(`/api/cargo/sheet/${encodeURIComponent(cargoKey)}/departed`, {method: 'PUT', headers: {'content-type': 'application/json'}, body}, HISTORY_TIMEOUT_MS)).json();
 }
 
 /** GET /api/cargo/sheet.xlsx. 출입증 헤더가 필요해서 링크 대신 blob으로 받는다. 파일 이름은 Content-Disposition, 없으면 marvia_cargo.xlsx. */
 export async function downloadCargoSheet(): Promise<{blob: Blob; filename: string}> {
-  if (!isLive) throw new Error('데모 모드에서는 엑셀을 받을 수 없습니다.');
+  if (!isLive) throw new Error('체험 모드에서는 엑셀을 받을 수 없어요.');
   const res = await call('/api/cargo/sheet.xlsx', {}, HISTORY_TIMEOUT_MS);
   const disposition = res.headers.get('content-disposition') ?? '';
   // filename*=UTF-8''... 이 있으면 먼저, 없으면 filename="..."
@@ -667,7 +670,7 @@ export async function getOperators(): Promise<OperatorsResponse> {
 
 /** 등록·해지는 바뀐 목록을 바로 돌려받는다. 데모 모드에는 바꿀 실제 권한이 없다. */
 async function changeOperator(path: string, email: string): Promise<OperatorsResponse> {
-  if (!isLive) throw new Error('데모 모드에서는 운영자를 바꿀 수 없습니다.');
+  if (!isLive) throw new Error('체험 모드에서는 운영자를 바꿀 수 없어요.');
   const res = await call(path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({email: email.trim()})}, HISTORY_TIMEOUT_MS);
   return res.json();
 }
@@ -676,7 +679,7 @@ export const revokeOperator = (email: string) => changeOperator('/api/admin/oper
 
 /** 고객 한 명 동작 (operator-admin 추가 절). 데모 모드에는 실제 고객이 없어 막는다. */
 async function customerCall<T>(path: string, init: RequestInit): Promise<T> {
-  if (!isLive) throw new Error('데모 모드에서는 고객 정보를 바꾸거나 열 수 없습니다.');
+  if (!isLive) throw new Error('체험 모드에서는 고객 정보를 바꾸거나 열 수 없어요.');
   const res = await call(path, init, HISTORY_TIMEOUT_MS);
   return res.json();
 }
@@ -715,7 +718,7 @@ const PROFILE_MISSING = '회원 정보가 없습니다';
 
 /** PUT /api/profile. 동의(consent)가 없으면 서버가 거절한다. 저장은 서버에서 암호화된다. */
 export async function saveProfile(p: ProfileData & {consent: boolean}): Promise<ProfileData> {
-  if (!isLive) throw new Error('데모 모드에서는 회원 정보를 저장하지 않습니다.');
+  if (!isLive) throw new Error('체험 모드에서는 회원 정보를 저장하지 않아요.');
   const res = await call('/api/profile', {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(p)}, HISTORY_TIMEOUT_MS);
   return res.json();
 }

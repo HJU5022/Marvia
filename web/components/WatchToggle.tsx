@@ -1,5 +1,5 @@
 'use client';
-/** 판정 카드 바로 아래의 "이 화물 지켜보기" 칸. 켜 두면 판정이 바뀐 것을 다음 접속 때 알리고, 카카오톡을 연결했으면 카톡으로도 보낸다 (backend 지켜보기 API).
+/** 지도 위 작은 카드 안의 "지켜보기" 칸 (예전에는 판정 카드 바로 아래). 켜 두면 판정이 바뀐 것을 다음 접속 때 알리고, 카카오톡을 연결했으면 카톡으로도 보낸다 (backend 지켜보기 API).
  *
  * 흐름: 마운트될 때 상태를 읽는다(POST /api/cargo/watch/state) → 버튼으로 켜고 끈다(PUT /api/cargo/watch).
  * 상태를 읽고도 바로 버튼을 못 보이는 이유: 조회 결과의 화물 기록은 응답을 준 뒤 서버가 비동기로 저장한다.
@@ -15,6 +15,7 @@ import {useEffect, useRef, useState} from 'react';
 import {Eye, EyeOff, LoaderCircle} from 'lucide-react';
 import {getWatchState, setWatch, watchKey} from '@/lib/api';
 import {useApp} from './AppProvider';
+import {InfoTip} from './VerdictCard';
 
 /** 저장 전(saved=false)일 때 다시 읽기까지 기다리는 시간. 두 번 기다리고도 false면 버튼을 보인다 */
 const SAVE_RETRY_DELAYS_MS = [1500, 3000];
@@ -52,7 +53,7 @@ export function WatchToggle({blNo}: {blNo: string}) {
         setWatching(s.watch); share(blNo, s.watch); setLoading(false);
       } catch (e) {
         if (!alive) return;
-        setError(e instanceof Error ? e.message : '지켜보기 상태를 불러오지 못했습니다.'); setStateFailed(true); setLoading(false);
+        setError(e instanceof Error ? e.message : '지켜보기 상태를 불러오지 못했어요.'); setStateFailed(true); setLoading(false);
       }
     }
     void read(0);
@@ -69,26 +70,27 @@ export function WatchToggle({blNo}: {blNo: string}) {
     try {
       const r = await setWatch(blNo, next);
       setWatching(r.watch); share(blNo, r.watch);
-      setMessage(r.watch ? '이 화물을 지켜보는 중입니다.' : '지켜보기를 껐습니다.');
-    } catch (e) { setError(e instanceof Error ? e.message : '지켜보기를 바꾸지 못했습니다.'); }
+      setMessage(r.watch ? '이제 이 화물을 지켜봐요.' : '지켜보기를 껐어요.');
+    } catch (e) { setError(e instanceof Error ? e.message : '지켜보기를 바꾸지 못했어요.'); }
     finally { setBusy(false); }
   }
 
+  // 지도 위 작은 카드 안에 들어가는 작은 칸이다 (마누스 시안 3-4). 상태는 실제 서버 값만 보이고, 켜져 있으면 "지켜보는 중" 배지를 분명히 단다.
+  // 켜짐/꺼짐 설명 문장은 ⓘ 뒤로 접었다 (사용법 문장은 화면에 늘어놓지 않는다). 버튼 글자는 짧게 두고 낭독용 이름은 원래 문구를 쓴다
   return <section className="watch-toggle" aria-label="화물 지켜보기">
     <div className="watch-row">
       {loading ? <p className="muted"><LoaderCircle size={14} className="spin"/> 지켜보기 상태를 확인하는 중</p>
       : stateFailed ? <button type="button" className="button secondary" onClick={() => setReload(n => n + 1)}>다시 불러오기</button>
       : <>
-        {watching && <span className="subtle-badge">지켜보는 중</span>}
-        <button type="button" ref={buttonRef} className={watching ? 'button secondary' : 'button primary'} onClick={() => void toggle()} disabled={busy}>
+        {watching && <span className="subtle-badge watching-badge">지켜보는 중</span>}
+        <button type="button" ref={buttonRef} className={watching ? 'button secondary' : 'button primary'} aria-label={watching ? '지켜보기 끄기' : '이 화물 지켜보기'} onClick={() => void toggle()} disabled={busy}>
           {busy ? <LoaderCircle size={15} className="spin"/> : watching ? <EyeOff size={15}/> : <Eye size={15}/>}
-          {watching ? '지켜보기 끄기' : '이 화물 지켜보기'}</button>
+          {watching ? '끄기' : '지켜보기'}</button>
+        <InfoTip label="지켜보기 설명">판정이 바뀌면 다음에 접속할 때 알려 드리고, 카카오톡을 연결했다면 카톡으로도 보내 드려요.</InfoTip>
       </>}
     </div>
-    <p className="muted watch-note">판정이 바뀌면 다음 접속 때 알려 드리고, 카카오톡을 연결했으면 카톡으로도 보냅니다.</p>
     {/* 칸은 처음부터 있고 글만 바뀐다. 나중에 생긴 칸은 화면 낭독기가 읽지 않는 경우가 있다. 비어 있을 때는 CSS(:empty)로 안 보이게 한다 */}
     <p role="status" className="account-message" tabIndex={-1}>{message}</p>
     <p role="alert" className="request-error">{error}</p>
   </section>;
 }
-

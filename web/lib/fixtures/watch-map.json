@@ -5,6 +5,7 @@
     {
       "bl_masked": "TE****01",
       "label": "의류",
+      "goods_name": "면 티셔츠",
       "ship_name": "TEST STAR",
       "status": "active",
       "verdict": "fine",
@@ -52,6 +53,7 @@
     {
       "bl_masked": "TE****02",
       "label": "건고추",
+      "goods_name": "건고추(홍고추)",
       "ship_name": "TEST OCEAN",
       "status": "active",
       "verdict": "watch",
@@ -99,6 +101,7 @@
     {
       "bl_masked": "TE****03",
       "label": null,
+      "goods_name": "냉동 닭고기",
       "ship_name": "TEST BREEZE",
       "status": "active",
       "verdict": "act",
@@ -140,6 +143,7 @@
     {
       "bl_masked": "TE****04",
       "label": "전자부품",
+      "goods_name": "반도체 부품",
       "ship_name": "TEST HARBOR",
       "status": "active",
       "verdict": "fine",
@@ -187,6 +191,7 @@
     {
       "bl_masked": "TE****06",
       "label": "냉동 수산물",
+      "goods_name": "냉동 오징어",
       "ship_name": "TEST WAVE",
       "status": "active",
       "verdict": "watch",
@@ -228,6 +233,7 @@
     {
       "bl_masked": "TE****07",
       "label": "자동차 부품",
+      "goods_name": "자동차 브레이크 패드",
       "ship_name": "TEST CORAL",
       "status": "active",
       "verdict": "fine",
@@ -263,6 +269,7 @@
     {
       "bl_masked": "TE****08",
       "label": null,
+      "goods_name": "플라스틱 완구",
       "ship_name": "TEST PEARL",
       "status": "active",
       "verdict": "act",
@@ -304,6 +311,7 @@
     {
       "bl_masked": "TE****09",
       "label": "화장품",
+      "goods_name": "화장품 원료",
       "ship_name": "TEST ANCHOR",
       "status": "active",
       "verdict": "fine",
@@ -351,6 +359,7 @@
     {
       "bl_masked": "TE****10",
       "label": "목재",
+      "goods_name": "침엽수 제재목",
       "ship_name": "TEST HORIZON",
       "status": "active",
       "verdict": "watch",
@@ -392,6 +401,7 @@
     {
       "bl_masked": "TE****05",
       "label": "가구",
+      "goods_name": "책상용 가구",
       "ship_name": "TEST RIVER",
       "status": "done",
       "verdict": "fine",

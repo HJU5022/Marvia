@@ -56,6 +56,8 @@ export interface CustomsInfo {
   discharge_port?: string | null; discharge_port_name?: string | null;
   /** UNI-PASS 포워더·선사·컨테이너 번호 (10-06 화물 현황 표). 서버가 못 읽으면 없다 */
   forwarder_name?: string | null; carrier_name?: string | null; container_no?: string | null;
+  /** 품명 prnm. 적하목록 영어 그대로 (백엔드 10-06 추가) */
+  goods_name?: string | null;
 }
 export interface BerthInfo { facility: string | null; shed: string | null }
 export interface AgentResponse {
@@ -72,6 +74,8 @@ export interface HistoryItem {
   request_id: string | null; bl_masked: string | null; status: string | null;
   verdict: string | null; vessel_match: string | null; decided_by: 'rule' | 'llm' | null;
   model: string | null; trace_id: string | null; created_at: string;
+  /** 한 줄 이유 (서버가 코드로 만든다). 근거가 되는 값이 없으면 null (M2) */
+  reason?: string | null;
 }
 export interface HistoryResponse { items: HistoryItem[]; available: boolean }
 
@@ -121,6 +125,8 @@ export interface MemoryResponse {
   markdown: string; items: MemoryItem[]; cargo: CargoSummary[];
   /** 상한을 넘어 새 기억을 저장하지 못했다 (EC-06) */
   full: boolean; available: boolean;
+  /** 메모장 글자 수와 상한 (M5). 옛 서버 응답에는 없을 수 있다 */
+  used_chars?: number; max_chars?: number;
 }
 /** POST /api/memory/document-facts. 서류 확인 화면에서 사용자가 확인한 값만 보낸다 (10-02 결정 7) */
 export interface DocumentFactsRequest {
@@ -145,7 +151,7 @@ export interface CustomerItem {
   created_at: string | null; last_sign_in_at: string | null; is_operator: boolean;
 }
 export interface CustomersResponse { items: CustomerItem[]; total: number }
-export interface OperatorItem { email: string; granted_by: string; granted_at: string }
+export interface OperatorItem { email: string; granted_by: string; granted_at: string; granted_by_email?: string | null }
 export interface AuditItem { action: 'grant' | 'revoke'; target_email: string; actor_user_id: string; actor_email: string | null; created_at: string }
 export interface OperatorsResponse { operators: OperatorItem[]; audit: AuditItem[] }
 /** 운영자의 고객 동작 (operator-admin 추가 절). 마스킹 해제는 사유를 남기고 한 명만 원문 */
@@ -210,19 +216,25 @@ export interface ConversationDetail { id: string; title: string; messages: Conve
 /** GET /api/vessels/detail (services/vessel_detail.py). 도구가 실패한 칸은 null, 이유는 errors */
 export interface VesselDetailResponse {
   call_sign: string | null; ship_name: string | null;
-  vessel: {mmsi: number; name: string; flag: string | null; call_sign: string | null; ship_type: number | null} | null;
+  /** imo·similarity·source·fetched_at·cached_at는 MCP 도구 응답이 그대로 온다(10-06). 없으면 쓰지 않는다. similarity는 선명이 비슷한 정도일 뿐 내 배라는 뜻이 아니다 */
+  vessel: {mmsi: number; name: string; flag: string | null; call_sign: string | null; ship_type: number | null;
+    imo?: number | null; similarity?: number | null; source?: string | null; fetched_at?: string | null; cached_at?: string | null} | null;
   position: {lat: number; lng: number; sog: number | null; cog: number | null; navistat: number | null; dest: string | null;
     ais_eta: string | null; last_time: string | null; freshness: Freshness;
     /** 배 → 부산 남은 예상 바닷길 [위도, 경도] (searoute 계산, 실제 항적 아님) */
-    route?: [number, number][]} | null;
-  distance: {distance_nm: number; calc_hours_at_sog: number | null; calc_eta?: string | null} | null;
+    route?: [number, number][];
+    destcode?: string | null; source?: string | null; fetched_at?: string | null; cached_at?: string | null} | null;
+  distance: {distance_nm: number; calc_hours_at_sog: number | null; calc_eta?: string | null; source?: string | null; fetched_at?: string | null} | null;
   schedule: {planned_arrival: string | null; actual_arrival: string | null; facility: string | null;
-    control_events: {kind: string; at: string | null; facility: string | null}[]} | null;
+    control_events: {kind: string; at: string | null; facility: string | null}[]; source?: string | null; fetched_at?: string | null} | null;
   errors: {source: string; code: string | null; message: string | null}[];
+  /** 이 자세히 보기 결과를 서버가 만든 시각 (10분 캐시 기준) */
+  cached_at?: string | null;
 }
 
 /** GET /api/kakao/status. configured: 서버에 카카오 설정이 있나, linked: 이 사용자가 연결했나 (backend/app/routers/kakao.py) */
-export interface KakaoStatus { configured: boolean; linked: boolean }
+/** linked_at: 연결한 시각, last_sent_at: 마지막으로 보낸 시각(보낸 적 없으면 null). 옛 서버 응답에는 없을 수 있다 (M7) */
+export interface KakaoStatus { configured: boolean; linked: boolean; linked_at?: string | null; last_sent_at?: string | null }
 /** POST /api/kakao/callback 결과 이름. 주소 ?kakao= 로 설정 화면에 넘길 때도 같은 이름을 쓴다(동의 취소 denied는 화면이 만든다) */
 export type KakaoLinkResult = 'connected' | 'expired' | 'mismatch' | 'no_consent' | 'failed';
 
@@ -242,12 +254,15 @@ export interface CargoSheetRow {
   /** 입항·입고는 서버가 UNI-PASS에서 채운다. arrived_on이 비었을 때만 eta(입항 예정)를 보인다 */
   arrived_on: string | null; eta: string | null; warehoused_on: string | null; last_stage: string | null;
   forwarder_name: string | null; carrier_name: string | null; container_no: string | null;
+  /** 품명(020). 있으면 B/L 아래 굵은 줄로 보이고, 없으면 label로 대신한다 */
+  goods_name?: string | null;
   /** 확정된 배의 이름·국적 (021). 새 칸이라 기존 줄은 비어 있을 수 있다 */
   vessel_name?: string | null; vessel_flag?: string | null;
 }
 /** lc가 null인 묶음은 아직 신용장에 안 묶인 B/L이다 (맨 끝) */
 export interface CargoSheetGroup { lc: CargoLc | null; rows: CargoSheetRow[] }
-export interface CargoSheet { groups: CargoSheetGroup[] }
+/** truncated: 화물이 500줄을 넘어 앞쪽만 담았다 (S5). 옛 서버는 이 칸이 없다 */
+export interface CargoSheet { groups: CargoSheetGroup[]; truncated?: boolean }
 
 /** UNI-PASS 처리 이력 1줄 원문 (backend schemas/customs.py CustomsDetailRow). 값은 UNI-PASS 글자 그대로, 빈 칸은 null */
 export interface CustomsDetailRow {

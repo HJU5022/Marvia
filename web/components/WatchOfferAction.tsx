@@ -26,7 +26,7 @@ export function WatchOfferAction({offer}: {offer: WatchOffer}) {
       if (!loggedIn) { await signInWithGoogle(); return; }  // 성공하면 구글로 페이지가 넘어간다
       const r = await setWatch(offer.bl_no, true);
       setWatching(offer.bl_no, r.watch);
-    } catch (e) { setError(e instanceof Error ? e.message : '지켜보기를 켜지 못했습니다. 잠시 뒤 다시 눌러 주세요.'); }
+    } catch (e) { setError(e instanceof Error ? e.message : '지켜보기를 켜지 못했어요. 잠시 뒤 다시 눌러 주세요.'); }
     finally { setBusy(false); }
   }
 
@@ -34,7 +34,7 @@ export function WatchOfferAction({offer}: {offer: WatchOffer}) {
   // 로그인 기능이 꺼진 서버에서는 로그인할 곳이 없다. 눌러도 되지 않는 버튼을 보이지 않는다
   if (!loggedIn && !authEnabled) return null;
   return <div className="watch-offer">
-    <button type="button" className="button secondary" onClick={() => void start()} disabled={busy}>
+    <button type="button" className="button primary" onClick={() => void start()} disabled={busy}>
       {busy ? <LoaderCircle size={15} className="spin"/> : <Eye size={15}/>}{loggedIn ? '지켜보기' : '로그인하고 지켜보기'}</button>
     <p role="alert" className="request-error">{error}</p>
   </div>;

@@ -515,6 +515,46 @@
               "type": "null"
             }
           ]
+        },
+        "forwarder_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "carrier_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "container_no": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "goods_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -528,7 +568,11 @@
         "loading_port_name",
         "loading_country",
         "discharge_port",
-        "discharge_port_name"
+        "discharge_port_name",
+        "forwarder_name",
+        "carrier_name",
+        "container_no",
+        "goods_name"
       ]
     },
     "BerthInfo": {
@@ -805,6 +849,16 @@
         "created_at": {
           "type": "string",
           "format": "datetime"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -816,7 +870,8 @@
         "decided_by",
         "model",
         "trace_id",
-        "created_at"
+        "created_at",
+        "reason"
       ]
     },
     "HistoryResponse": {
@@ -881,6 +936,9 @@
         },
         "contact_phone": {
           "ref": "FieldResult"
+        },
+        "etd": {
+          "ref": "FieldResult"
         }
       },
       "required": [
@@ -897,7 +955,8 @@
         "incoterm",
         "contact_company",
         "contact_role",
-        "contact_phone"
+        "contact_phone",
+        "etd"
       ]
     },
     "FieldResult": {
@@ -1312,6 +1371,12 @@
         },
         "available": {
           "type": "boolean"
+        },
+        "used_chars": {
+          "type": "integer"
+        },
+        "max_chars": {
+          "type": "integer"
         }
       },
       "required": [
@@ -1319,7 +1384,9 @@
         "items",
         "cargo",
         "full",
-        "available"
+        "available",
+        "used_chars",
+        "max_chars"
       ]
     }
   }

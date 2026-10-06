@@ -22,7 +22,7 @@ export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: Cha
 /** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 (10-06 결정) */
 function changesText(changes: WatchChange[]): string {
   const lines = changes.map(c => {
-    const base = `지켜보던 화물 ${c.label ?? c.bl_masked}의 판정이 '${verdictLabels[c.from_verdict]}'에서 '${verdictLabels[c.to_verdict]}'(으)로 바뀌었어요.`;
+    const base = `지켜보던 화물 ${c.label ?? c.bl_masked}의 판정이 ${verdictLabels[c.from_verdict]}에서 ${verdictLabels[c.to_verdict]} 등급으로 바뀌었어요.`;
     return c.reason ? `${base} ${c.reason}` : base;
   });
   return `${lines.join('\n')}\nB/L로 다시 조회하면 이유를 자세히 볼 수 있어요.`;
@@ -244,7 +244,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       if (status === 401 || status === 503) setConvAvail(false);
       // 못 찾거나 못 읽으면 빈 새 대화로 시작하고 이유를 알린다. 주소의 ?c=도 지운다
       startSession(newSessionId()); clearScreen(); syncUrl(null);
-      setError(status === 404 ? '찾는 대화가 없어요. 새 대화로 시작합니다.' : e instanceof Error ? e.message : '대화를 불러오지 못했어요.');
+      setError(status === 404 ? '찾는 대화가 없어요. 새 대화로 시작할게요.' : e instanceof Error ? e.message : '대화를 불러오지 못했어요.');
       return false;
     } finally { if (mine === epoch.current) setOpening(false); }
   }
@@ -270,7 +270,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 정해진 칸 조회(POST /api/agent: 되묻기 답·다시 조회)는 단계 소식이 없다. 화면은 기다림과 경과 시간만 보인다
     try { const response = await getAgentResponse(req); setResult(response); setRequest(req); setView('cargo'); setCargoKey(response.trace_id); return true; }
-    catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했습니다. 다시 시도해 주세요.'); return false; }
+    catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했어요. 다시 시도해 주세요.'); return false; }
     finally {setLoading(false);setPendingSince(null);inflight.current=false;refreshUsage();}
   }
   async function ask(message: string) {
@@ -311,7 +311,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       return true;
     } catch (e) {
       // 실패는 대화 칸에만 알린다. 보고 있던 화물 결과는 그대로 둔다 (F3, 다시 조회 실패와 같은 방식)
-      const msg = e instanceof Error ? e.message : '답하지 못했습니다. 다시 시도해 주세요.';
+      const msg = e instanceof Error ? e.message : '답을 만들지 못했어요. 다시 시도해 주세요.';
       setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
     } finally { setLoading(false); setPendingSince(null); inflight.current = false; refreshUsage(); }
   }

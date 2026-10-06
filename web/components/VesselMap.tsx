@@ -5,13 +5,12 @@
  * - 배를 가운데 두고 확대해서 시작한다(30해리 안 10, 150해리 안 9, 그 밖 7단계). 부산까지 가까울수록 더 확대한다
  * - 배 모양을 침로(cog) 방향으로 돌리고, 선명·속력·침로를 라벨로 붙인다
  * - 부산까지 남은 예상 바닷길(서버 searoute 계산)을 점선으로 그린다. 실제 항적이 아니다
- * 외부 지도 타일을 부르지 않는다. 레포에 넣은 Natural Earth 해안선만 쓰므로 너무 확대하면 해안선이 거칠다(최대 10단계).
+ * 바탕은 lib/basemap.ts의 세계 지도다(10-06). 못 쓰면 레포의 Natural Earth 해안선으로 되돌리며, 그때는 너무 확대하면 해안선이 거칠다(최대 10단계).
  */
 import {useEffect, useRef} from 'react';
-import {Maximize2, Navigation} from 'lucide-react';
-import type {GeoJsonObject} from 'geojson';
-import {getGeography, getPresentationData} from '@/lib/api';
-import {dateTime} from '@/lib/format';
+import {LocateFixed, Route} from 'lucide-react';
+import {getPresentationData} from '@/lib/api';
+import {addBasemap, drawLocalGeography} from '@/lib/basemap';
 import type {Freshness} from '@/lib/types';
 
 export interface VesselMapProps {
@@ -53,13 +52,11 @@ export function VesselMap(p: VesselMapProps) {
       // 중심·확대를 먼저 정해야 한다. 정하기 전에 선(해안선·경로)을 올리면 Leaflet이 화면 범위를 몰라 멈춘다
       // (10-01 "Cannot read properties of undefined (reading 'min')", 배가 아예 안 보였다)
       map.setView(ship, startZoom(p.distanceNm), {animate: false});
-      L.geoJSON(getGeography() as GeoJsonObject, {
-        style: {color: color('--coast'), weight: 1, fillColor: color('--land'), fillOpacity: 1}, interactive: false,
-      }).addTo(map);
-      map.attributionControl.setPrefix(false).addAttribution('Leaflet · Natural Earth (public domain)');
+      const base = addBasemap(L, map, () => { drawLocalGeography(L, map); });
+      map.attributionControl.setPrefix(false);
 
       // 남은 예상 바닷길: 점선. 실제 항적이 아니다
-      const line = p.route.length > 1 ? L.polyline(p.route, {color: color('--accent-dark'), weight: 2.5, dashArray: '6 7', opacity: .9, interactive: false}).addTo(map) : null;
+      const line = p.route.length > 1 ? L.polyline(p.route, {color: color('--text-2'), weight: 2.5, dashArray: '6 7', opacity: .9, interactive: false}).addTo(map) : null;
 
       // 부산항
       L.marker(port, {icon: L.divIcon({className: 'port-marker', html: '<span>⚑</span>', iconSize: [28, 28], iconAnchor: [14, 14]}), interactive: false})
@@ -80,20 +77,20 @@ export function VesselMap(p: VesselMapProps) {
       // 펼침 애니메이션 뒤 크기를 다시 잰다
       const ro = new ResizeObserver(() => map.invalidateSize());
       ro.observe(host.current);
-      cleanup = () => { ro.disconnect(); map.remove(); };
+      cleanup = () => { ro.disconnect(); base.dispose(); map.remove(); };
     });
     return () => { disposed = true; cleanup?.(); };
   }, [p.lat, p.lng, p.cog, p.sog, p.name, p.freshness, p.distanceNm, p.route]);
 
-  return <section className="vessel-map" aria-label={`${p.name} 현재 위치 지도`}>
+  // 시안 2-4: 지도 위에 작은 칩 둘. 좌표·수신 시각은 오른쪽 "선박 위치" 칸에 이미 있어 지도 안에서는 뺐다
+  return <section className="vessel-map" aria-label={`${p.name} 현재 위치 지도예요. 화살표는 진행 방향이에요`}>
     <div className="vessel-map-frame">
       <div ref={host} className="leaflet-host"/>
+      <span className="vm-chip vm-bottom">실제로 지나온 길이 아닌 예상 경로</span>
       <div className="vessel-map-tools">
-        <button type="button" className="icon-button" onClick={() => focus.current()} title="배로 돌아가기" aria-label="배로 돌아가기"><Navigation size={15}/></button>
-        <button type="button" className="icon-button" onClick={() => fitAll.current()} title="부산까지 전체 경로 보기" aria-label="부산까지 전체 경로 보기"><Maximize2 size={15}/></button>
+        <button type="button" className="icon-button" onClick={() => focus.current()} title="배로 돌아가기" aria-label="배로 돌아가기"><LocateFixed size={18} strokeWidth={1.75}/></button>
+        <button type="button" className="icon-button" onClick={() => fitAll.current()} title="부산까지 전체 경로 보기" aria-label="부산까지 전체 경로 보기"><Route size={18} strokeWidth={1.75}/></button>
       </div>
-      <div className="vessel-map-caption mono">{p.lat.toFixed(2)}° N · {p.lng.toFixed(2)}° E<small>{p.lastTime ? `${dateTime(p.lastTime, true)} 수신` : '수신 시각 확인되지 않음'}</small></div>
     </div>
-    <p className="vessel-map-note"><span className="legend-line"/>부산까지 남은 예상 바닷길(계산값, 실제 항적 아님) · 화살표는 진행 방향(침로)</p>
   </section>;
 }

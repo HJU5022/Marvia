@@ -93,8 +93,8 @@ const {marginText}=fm.exports;
 assert.equal(marginText({days_margin:3,sale_due_date:'2026-10-11'}),'3일 여유');
 assert.equal(marginText({days_margin:-2,sale_due_date:'2026-10-11'}),'2일 늦음');
 assert.equal(marginText({days_margin:0,sale_due_date:'2026-10-11'}),'0일 여유');
-assert.equal(marginText({days_margin:null,sale_due_date:'2026-10-11'}),'미확인');
-assert.equal(marginText({days_margin:null,sale_due_date:null}),'판매일 없음');
+assert.equal(marginText({days_margin:null,sale_due_date:'2026-10-11'}),'확인 안 됨');
+assert.equal(marginText({days_margin:null,sale_due_date:null}),'판매 예정일 없음');
 // 로그인 뒤 돌아올 주소에 #이 남으면 ##access_token이 되어 supabase-js가 출입증을 못 읽는다 (lib/auth.ts returnAddress, 10-02)
 const authFile=path.join(root,'lib/auth.ts');
 const am=new Module(authFile);am.filename=authFile;am.paths=Module._nodeModulePaths(path.dirname(authFile));am._compile(ts.transpileModule(fs.readFileSync(authFile,'utf8'),tsOptions).outputText,authFile);

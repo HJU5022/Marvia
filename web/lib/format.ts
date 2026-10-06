@@ -10,7 +10,7 @@ export const sourceLabels: Record<string, string> = {shipfinder:'선박 위치 �
 export const ruleLabels: Record<string, string> = {
   position_stale:'선박 위치 수신이 끊김', eta_conflict:'도착 예정 시각이 서로 다름', anchor_wait:'항구 앞 대기',
   dest_changed:'목적지가 부산이 아님', navstat_mismatch:'항해 상태와 속력이 안 맞음', customs_hold:'통관 검사·보류',
-  sales_date_exceeded:'판매 예정일 넘김',
+  sales_date_exceeded:'판매 예정일을 넘김',
 };
 // 근거 카드 항목. field는 backend/app/services/evidence.py, services/mrn_fallback.py가 붙인다
 export const fieldLabels: Record<string, string> = {
@@ -40,19 +40,19 @@ export function evidenceValue(field: string, value: string) {
   if (ISO_TIME.test(v)) return dateTime(v);
   const unit = fieldUnits[field.split(/[.:]/).pop() ?? field];
   if (unit && /^-?\d+(\.\d+)?$/.test(v)) return `${v}${unit === '도' ? '°' : ` ${unit}`}`;
-  return v || '확인되지 않음';
+  return v || '확인 안 됨';
 }
 
 // AIS 항해 상태 코드 (ITU-R M.1371 navigational status)
-const navStatus: Record<number, string> = {0:'항해 중',1:'닻을 내리고 정박',2:'조종 불능',3:'조종 제한',4:'흘수 제약',5:'부두에 계류',6:'좌초',7:'조업 중',8:'항해 중(돛)',15:'확인 안 됨'};
+const navStatus: Record<number, string> = {0:'항해 중',1:'닻을 내리고 정박',2:'조종 불능',3:'조종 제한',4:'선체가 깊어 움직임이 제한됨',5:'부두에 계류',6:'좌초',7:'조업 중',8:'항해 중(돛)',15:'확인 안 됨'};
 export function navStatusLabel(code: number | string | null | undefined) {
-  if (code === null || code === undefined || code === '') return '확인되지 않음';
-  return navStatus[Number(code)] ?? '확인되지 않음';
+  if (code === null || code === undefined || code === '') return '확인 안 됨';
+  return navStatus[Number(code)] ?? '확인 안 됨';
 }
 // AIS 선종 코드. 십의 자리로 큰 갈래만 나눈다 (ITU-R M.1371 ship type)
 export function shipTypeLabel(code: number | string | null | undefined) {
   const n = Number(code);
-  if (code === null || code === undefined || code === '' || Number.isNaN(n)) return '확인되지 않음';
+  if (code === null || code === undefined || code === '' || Number.isNaN(n)) return '확인 안 됨';
   if (n >= 70 && n < 80) return '화물선';
   if (n >= 80 && n < 90) return '유조선';
   if (n >= 60 && n < 70) return '여객선';
@@ -62,7 +62,7 @@ export function shipTypeLabel(code: number | string | null | undefined) {
 }
 /** 국가 코드(KR, PA)를 한국어 이름으로. 모르는 코드는 그대로 둔다 */
 export function countryLabel(code: string | null | undefined) {
-  if (!code) return '확인되지 않음';
+  if (!code) return '확인 안 됨';
   try { return new Intl.DisplayNames(['ko'], {type:'region'}).of(code.toUpperCase()) ?? code; } catch { return code; }
 }
 // 선박 검색의 지명은 서버가 영어(China)로 줄 때가 있다 (services/chat.py search_vessels, 사용자 말이 없을 때).
@@ -88,7 +88,7 @@ const ports: Record<string, string> = {
 };
 /** 항구 코드나 AIS 목적지 문자열을 이름으로. 읽을 수 없으면 원문 대신 "확인되지 않음" */
 export function portLabel(code: string | null | undefined) {
-  if (!code) return '확인되지 않음';
+  if (!code) return '확인 안 됨';
   const k = code.replace(/[\s-]/g, '').toUpperCase();
   if (ports[k]) return ports[k];
   if (/^[A-Z]{5}$/.test(k)) { const c = countryLabel(k.slice(0, 2)); return c === k.slice(0, 2) ? code : `${c}의 항구`; }
@@ -102,15 +102,17 @@ export function maskBl(value: string) {
   return v.slice(0, start) + '*'.repeat(hidden) + v.slice(start + hidden);
 }
 export function dateTime(value: string | null | undefined, short = false) {
-  if (!value) return '확인되지 않음';
+  if (!value) return '확인 안 됨';
   const d = new Date(value);
-  if (Number.isNaN(d.valueOf())) return '확인되지 않음';
-  return new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', ...(short ? {} : {year:'numeric' as const}), month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);
+  if (Number.isNaN(d.valueOf())) return '확인 안 됨';
+  // "10월 20일 09:40", 연도까지 필요하면 "2026년 10월 20일 09:40"
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Seoul', year:'numeric', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).formatToParts(d).map(x => [x.type, x.value]));
+  return `${short ? '' : `${p.year}년 `}${p.month}월 ${p.day}일 ${p.hour}:${p.minute}`;
 }
-export function day(value: string | null | undefined) { return value?.slice(0,10).replaceAll('-','.') ?? '확인되지 않음'; }
-export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '확인되지 않음' : String(value); }
+export function day(value: string | null | undefined) { return value ? `${value.slice(0,4)}년 ${Number(value.slice(5,7))}월 ${Number(value.slice(8,10))}일` : '확인 안 됨'; }
+export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '확인 안 됨' : String(value); }
 /** 판매 예정일까지 여유. days_margin = 판매 예정일 - 신뢰 입항 예정일 (VerdictCard와 같은 말: 음수는 "입항이 판매일보다 늦다") */
 export function marginText(c: {days_margin: number | null; sale_due_date: string | null}): string {
-  if (c.days_margin === null || c.days_margin === undefined) return c.sale_due_date ? '미확인' : '판매일 없음';
+  if (c.days_margin === null || c.days_margin === undefined) return c.sale_due_date ? '확인 안 됨' : '판매 예정일 없음';
   return c.days_margin < 0 ? `${Math.abs(c.days_margin)}일 늦음` : `${c.days_margin}일 여유`;
 }

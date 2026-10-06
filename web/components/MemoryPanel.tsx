@@ -10,9 +10,9 @@
  * 데모 모드는 가공 예시를 보여 주고 지우기는 막는다. 로그인이 꺼진 서버는 기억을 만들지 않는다 (EC-08).
  */
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {Brain, LoaderCircle, Trash2} from 'lucide-react';
+import {LoaderCircle, Trash2, X, Check} from 'lucide-react';
 import {useApp} from './AppProvider';
-import {SectionTitle} from './Shared';
+import {VerdictBadge} from './Shared';
 import {deleteAllMemory, deleteMemoryItem, getMemory, isLive} from '@/lib/api';
 import {day, verdictLabels} from '@/lib/format';
 import type {CargoSummary, MemoryItem, MemoryResponse} from '@/lib/types';
@@ -44,7 +44,15 @@ function itemText(item: MemoryItem): string {
 function kstMonthDay(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.valueOf())) return '';
-  return new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit'}).format(d).replace('-', '.');
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric'}).formatToParts(d).map(x => [x.type, x.value]));
+  return `${p.month}월 ${p.day}일`;
+}
+
+/** 시각을 한국 시각 "10.01 11:00"으로 (kstMonthDay와 같은 기준). 읽을 수 없으면 빈 글자 */
+function kstMonthDayTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.valueOf())) return '';
+  return `${kstMonthDay(iso)} ${new Intl.DateTimeFormat('en-GB', {timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false}).format(d)}`;
 }
 
 /** 여유 일수를 사람 말로. 음수는 판매 예정일보다 늦게 도착한다는 뜻 (서버 cargo.margin_text와 같다) */
@@ -64,20 +72,26 @@ function conditions(c: CargoSummary): string[] {
 }
 
 function CargoRow({c}: {c: CargoSummary}) {
-  const name = c.label ? `${c.label} (${c.bl_masked})` : c.bl_masked;
-  if (c.status === 'done') return <li className="memory-cargo done"><strong>{c.summary ?? name}</strong><span className="subtle-badge">끝난 화물</span></li>;
-  const last = c.last_checked_at && c.last_verdict
-    ? `지난 조회 ${kstMonthDay(c.last_checked_at)}: ${[verdictLabels[c.last_verdict], margin(c.last_days_margin)].filter(Boolean).join(', ')}`
-    : '아직 판정 기록이 없습니다';
+  const name = c.label ? `${c.label} · ${c.bl_masked}` : c.bl_masked;
+  if (c.status === 'done') return <li className="memory-cargo done"><div className="mc-head"><strong>{c.summary ?? name}</strong><span className="mc-done">끝난 화물</span></div></li>;
+  // "여유 N일"은 크게, 신호등 색을 판정 등급에서 따라간다 (순항=초록, 주의=노랑, 긴급=빨강). 값이 없으면 색을 쓰지 않는다
+  const slack = c.last_verdict ? margin(c.last_days_margin) : null;
+  const rows: [string, React.ReactNode][] = [];
+  if (c.sale_due_date) rows.push(['판매 예정일', day(c.sale_due_date)]);
+  if (c.forwarder_eta) rows.push(['포워더가 알려 준 입항 예정일', day(c.forwarder_eta)]);
+  // 통관 단계는 서버가 저장한 UNI-PASS 단계 이름 그대로 (진행 칸). 시각은 시·분까지 (M4)
+  if (c.last_stage) rows.push(['통관 단계', c.last_stage]);
+  if (c.last_checked_at && c.last_verdict) rows.push(['마지막 확인', `${kstMonthDayTime(c.last_checked_at)} 판정`]);
+  // 보조 정보는 한 줄로 합친다: B/L 종류와 거래 조건
+  const sub = [c.bl_type === 'HOUSE' ? 'House B/L' : 'Master B/L', ...conditions(c)].join(' · ');
   return <li className="memory-cargo">
-    <strong>{name}</strong>
-    <span>{last}</span>
-    {c.sale_due_date && <span>받아야 하는 날 {day(c.sale_due_date)}</span>}
-    {c.forwarder_eta && <span>포워더가 알려 준 입항일 {day(c.forwarder_eta)}</span>}
-    {conditions(c).length > 0 && <span>{conditions(c).join(' · ')}</span>}
-    {c.pending.map(p => <span key={p.field} className="memory-pending">
+    <div className="mc-head"><strong>{name}</strong>{c.last_verdict ? <VerdictBadge verdict={c.last_verdict}/> : <span className="mc-none">판정 이력 없음</span>}</div>
+    <p className="mc-cond">{sub}</p>
+    {slack && c.last_verdict && <p className={`memory-slack ${c.last_verdict}`}>{slack}</p>}
+    {rows.length > 0 && <dl className="mc-rows">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+    {c.pending.map(p => <p key={p.field} className="memory-pending">
       {(PENDING_SENTENCES[p.field] ?? PENDING_FALLBACK)(p.value)} 바꾸려면 그 값을 넣어 다시 조회해 주세요.
-    </span>)}
+    </p>)}
   </li>;
 }
 
@@ -111,7 +125,7 @@ export function MemoryPanel() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try { setMemory(await getMemory()); }
-    catch (e) { setError(e instanceof Error ? e.message : '기억을 불러오지 못했습니다.'); }
+    catch (e) { setError(e instanceof Error ? e.message : '기억을 불러오지 못했어요.'); }
     finally { setLoading(false); }
   }, []);
 
@@ -129,74 +143,78 @@ export function MemoryPanel() {
     const neighbors = [ordered[at + 1], ordered[at - 1]].filter((i): i is MemoryItem => !!i).map(i => `del-${i.id}`);
     setBusyId(id); setError(''); setMessage('');
     try {
-      await deleteMemoryItem(id); setMessage('메모 한 줄을 지웠습니다.'); setConfirmId(null);
+      await deleteMemoryItem(id); setMessage('메모 한 줄을 지웠어요.'); setConfirmId(null);
       await load(); setFocusKeys([...neighbors, 'status']);
     }
-    catch (e) { setError(e instanceof Error ? e.message : '지우지 못했습니다.'); setFocusKeys([`confirm-${id}`]); }
+    catch (e) { setError(e instanceof Error ? e.message : '지우지 못했어요.'); setFocusKeys([`confirm-${id}`]); }
     finally { setBusyId(null); }
   }
 
   async function removeAll() {
     setAllStep('busy'); setError(''); setMessage('');
     try {
-      const r = await deleteAllMemory(); setMessage(`메모 ${r.deleted}건을 지웠습니다. 기억한 화물 목록은 그대로입니다.`); setAllStep('idle');
+      const r = await deleteAllMemory(); setMessage(`메모 ${r.deleted}건을 지웠어요. 기억한 화물 목록은 그대로예요.`); setAllStep('idle');
       await load(); setFocusKeys(['all-start', 'status']);
     }
-    catch (e) { setError(e instanceof Error ? e.message : '지우지 못했습니다.'); setAllStep('confirm'); setFocusKeys(['all-confirm']); }
+    catch (e) { setError(e instanceof Error ? e.message : '지우지 못했어요.'); setAllStep('confirm'); setFocusKeys(['all-confirm']); }
   }
 
   function itemRow(item: MemoryItem) {
     const text = itemText(item);
     const label = `${KIND_LABELS[item.kind]} ${text}`;
     return <li key={item.id} className="memory-item">
-      <span><small>{KIND_LABELS[item.kind]}</small>{text}{item.noted_at && <em> · {day(item.noted_at).slice(5)}</em>}</span>
+      <span className="memory-body"><small>{KIND_LABELS[item.kind]}</small><span className="memory-text">{text}</span>{item.noted_at && <em>{day(item.noted_at).slice(5)}</em>}</span>
       {deletable && (confirmId === item.id
         ? <span className="danger-actions">
-            <button type="button" className="button danger" data-focus={`confirm-${item.id}`} aria-label={`이 메모 지우기 확인: ${label}`}
+            <button type="button" className="icon-btn" disabled={busyId === item.id} aria-label="취소" title="취소"
+              onClick={() => { setConfirmId(null); setFocusKeys([`del-${item.id}`]); }}><X size={18}/></button>
+            <button type="button" className="icon-btn danger" data-focus={`confirm-${item.id}`} aria-label={`이 메모 지우기 확인: ${label}`} title="지우기 확인"
               onClick={() => void removeOne(item.id)} disabled={busyId === item.id}>
-              {busyId === item.id ? <LoaderCircle size={14} className="spin"/> : <Trash2 size={14}/>}지우기</button>
-            <button type="button" className="button secondary" disabled={busyId === item.id}
-              onClick={() => { setConfirmId(null); setFocusKeys([`del-${item.id}`]); }}>취소</button>
+              {busyId === item.id ? <LoaderCircle size={18} className="spin"/> : <Check size={18}/>}</button>
           </span>
-        : <button type="button" className="button secondary" data-focus={`del-${item.id}`} aria-label={`이 메모 지우기: ${label}`}
-            onClick={() => { setConfirmId(item.id); setMessage(''); setFocusKeys([`confirm-${item.id}`]); }}>지우기</button>)}
+        : <button type="button" className="icon-btn" data-focus={`del-${item.id}`} aria-label={`이 메모 지우기: ${label}`} title="메모 지우기"
+            onClick={() => { setConfirmId(item.id); setMessage(''); setFocusKeys([`confirm-${item.id}`]); }}><Trash2 size={18}/></button>)}
     </li>;
   }
 
-  return <section ref={sectionRef} className="account-panel memory-panel" aria-labelledby="memory-title">
-    <SectionTitle label="내 기억" kicker="WHAT MARVIA REMEMBERS" side={<Brain size={22}/>}/>
-    <span id="memory-title" className="sr-only">내 기억</span>
-    <p className="muted">조회하고 대화한 내용 중 다시 쓸 만한 것만 기억합니다. 받아야 하는 날, 할 일, 거래처 같은 것들이에요.
-      배 이름·입항일·통관 단계는 조회할 때마다 새로 확인하므로 기억하지 않습니다.
-      끝난 화물은 반출 후 3년 보관 뒤 그 메모와 함께 지워집니다.</p>
-    {!viewable ? <p className="muted account-off">{!authEnabled
-      ? '이 서버는 로그인이 꺼져 있어 기억을 만들지 않습니다.'
-      : '로그인하면 Marvia가 기억한 내용을 보고 지울 수 있습니다.'}</p>
+  const empty = memory && memory.available && memory.items.length === 0 && memory.cargo.length === 0;
+  return <section ref={sectionRef} className="memory-panel" aria-labelledby="memory-title">
+    <span id="memory-title" className="sr-only">기억한 화물</span>
+    <p className="st-intro">조회하고 대화한 내용 중 다시 쓸 만한 것만 기억해요. 받아야 하는 날, 할 일, 거래처 같은 것들이에요.
+      배 이름·입항일·통관 단계는 조회할 때마다 새로 확인하므로 기억하지 않아요.
+      끝난 화물은 반출 후 3년 보관 뒤 그 메모와 함께 지워져요.</p>
+    {!viewable ? <p className="st-note account-off">{!authEnabled
+      ? '지금은 로그인 기능이 꺼져 있어 기억을 만들지 않아요.'
+      : '로그인하면 Marvia가 기억한 내용을 보고 지울 수 있어요.'}</p>
     : <>
-      {!isLive && <p className="help-text"><span className="subtle-badge">가공 예시</span> 데모 모드라 실제 기억이 아닙니다. 지우기는 실제 모드에서만 됩니다.</p>}
-      {loading && !memory && <p className="muted"><LoaderCircle size={14} className="spin"/> 기억을 불러오는 중</p>}
-      {memory && !memory.available && <p className="muted">지금은 기억 저장소에 연결하지 못했습니다. 잠시 뒤 다시 열어 주세요.</p>}
-      {memory?.full && <p role="status" className="memory-full">메모장이 가득 찼어요. 지울 메모를 골라 정리해 주세요. 정리하기 전에는 새 메모를 저장하지 않습니다.</p>}
-      {memory && memory.available && memory.items.length === 0 && memory.cargo.length === 0 && <p className="muted">아직 기억한 것이 없습니다.</p>}
-      {memory && memory.cargo.length > 0 && <div className="memory-block"><h3>기억한 화물</h3>
-        <ul className="memory-list">{memory.cargo.map((c, i) => <CargoRow key={`${i}-${c.bl_masked}-${c.status}-${c.last_checked_at ?? ''}`} c={c}/>)}</ul></div>}
-      {about.length > 0 && <div className="memory-block"><h3>이 사람에 대해</h3><ul className="memory-list">{about.map(itemRow)}</ul></div>}
-      {groups.map(g => <div className="memory-block" key={g}><h3>화물별 · {g}</h3>
-        <ul className="memory-list">{perCargo.filter(i => (i.cargo_name ?? '지난 화물') === g).map(itemRow)}</ul></div>)}
-      {deletable && memory && memory.items.length > 0 && <div className="danger-row">
-        <div><h3><Trash2 size={16}/>메모 모두 지우기</h3>
-          <p id="memory-all-desc">선호, 반복 일정, 거래처, 걱정, 할 일 메모만 모두 지웁니다. 기억한 화물 목록은 지워지지 않습니다.
-            화물 목록은 "내 조회 기록 지우기"나 회원 탈퇴를 할 때 함께 지워집니다. 되돌릴 수 없습니다.</p></div>
-        {allStep === 'idle'
-          ? <button type="button" className="button secondary" data-focus="all-start" aria-describedby="memory-all-desc"
-              onClick={() => { setAllStep('confirm'); setMessage(''); setFocusKeys(['all-confirm']); }}>메모 모두 지우기</button>
-          : <div className="danger-actions">
-              <button type="button" className="button danger" data-focus="all-confirm" aria-describedby="memory-all-desc"
-                aria-label={`메모 ${memory.items.length}건 모두 지우기 확인`} onClick={() => void removeAll()} disabled={allStep === 'busy'}>
-                {allStep === 'busy' ? <LoaderCircle size={15} className="spin"/> : <Trash2 size={15}/>}모두 지우기</button>
-              <button type="button" className="button secondary" disabled={allStep === 'busy'}
-                onClick={() => { setAllStep('idle'); setFocusKeys(['all-start']); }}>취소</button>
-            </div>}
+      {!isLive && <p className="st-note">체험 모드라 실제 기억이 아니에요. 지우기는 실제 서비스에서만 할 수 있어요.</p>}
+      {loading && !memory && <p className="st-note"><LoaderCircle size={16} className="spin"/> 기억을 불러오는 중</p>}
+      {memory && !memory.available && <p className="st-note">지금은 기억을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.</p>}
+      {memory?.full && <p role="status" className="memory-full">메모장이 가득 찼어요. 지울 메모를 골라 정리해 주세요. 정리하기 전에는 새 메모를 저장하지 않아요.</p>}
+      {empty && <p className="st-note">아직 기억한 것이 없어요.</p>}
+      {memory && memory.available && !empty && <div className="st-cols memory">
+        <section className="st-card"><h2>기억한 화물</h2><p className="st-sub">{memory.cargo.length > 0 ? `최근 저장된 화물 ${memory.cargo.length}건` : '기억한 화물이 없어요.'}</p>
+          {memory.cargo.length > 0 && <ul className="memory-list cargo-cards">{memory.cargo.map((c, i) => <CargoRow key={`${i}-${c.bl_masked}-${c.status}-${c.last_checked_at ?? ''}`} c={c}/>)}</ul>}</section>
+        <section className="st-card"><h2>메모</h2><p className="st-sub">{memory.items.length > 0
+          ? `${memory.items.length}개 저장${memory.max_chars ? `, ${memory.used_chars ?? 0}/${memory.max_chars}자 사용` : ''}`
+          : '저장된 메모가 없어요.'}</p>
+          {about.length > 0 && <div className="memory-block"><h3>나에 대해</h3><ul className="memory-list">{about.map(itemRow)}</ul></div>}
+          {groups.map(g => <div className="memory-block" key={g}><h3>화물별 · {g}</h3>
+            <ul className="memory-list">{perCargo.filter(i => (i.cargo_name ?? '지난 화물') === g).map(itemRow)}</ul></div>)}
+          {deletable && memory.items.length > 0 && <div className="st-danger-row memory-clear">
+            <p id="memory-all-desc">메모만 모두 지워요. 기억한 화물 목록은 그대로고, "내 조회 이력 지우기"나 회원 탈퇴 때 함께 지워져요. 되돌릴 수 없어요.</p>
+            {allStep === 'idle'
+              ? <button type="button" className="button secondary danger-outline" data-focus="all-start" aria-describedby="memory-all-desc"
+                  onClick={() => { setAllStep('confirm'); setMessage(''); setFocusKeys(['all-confirm']); }}><Trash2 size={16}/>메모 모두 지우기</button>
+              : <div className="danger-actions">
+                  <button type="button" className="button secondary" disabled={allStep === 'busy'}
+                    onClick={() => { setAllStep('idle'); setFocusKeys(['all-start']); }}>취소</button>
+                  <button type="button" className="button danger" data-focus="all-confirm" aria-describedby="memory-all-desc"
+                    aria-label={`메모 ${memory.items.length}건 모두 지우기 확인`} onClick={() => void removeAll()} disabled={allStep === 'busy'}>
+                    {allStep === 'busy' ? <LoaderCircle size={16} className="spin"/> : <Trash2 size={16}/>}모두 지우기</button>
+                </div>}
+          </div>}
+        </section>
       </div>}
     </>}
     {/* 칸은 처음부터 있고 글만 바뀐다. 나중에 생긴 칸은 화면 낭독기가 읽지 않는 경우가 있다. 비어 있을 때는 CSS(:empty)로 안 보이게 한다 */}

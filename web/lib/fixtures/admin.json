@@ -57,7 +57,14 @@
       {
         "email": "operator@marvia.test",
         "granted_by": "bootstrap",
+        "granted_by_email": null,
         "granted_at": "2026-09-29T05:10:00Z"
+      },
+      {
+        "email": "second@marvia.test",
+        "granted_by": "demo-u1",
+        "granted_by_email": "operator@marvia.test",
+        "granted_at": "2026-09-30T09:00:00Z"
       }
     ],
     "audit": [

@@ -8,8 +8,6 @@
 import {useState} from 'react';
 import {LoaderCircle, Trash2, UserRoundX} from 'lucide-react';
 import {useApp} from './AppProvider';
-import {SectionTitle} from './Shared';
-import {ProfileForm} from './ProfileForm';
 import {deleteMyAccount, deleteMyHistory, isLive} from '@/lib/api';
 import {signOut} from '@/lib/auth';
 
@@ -29,45 +27,45 @@ export function AccountPanel() {
     setHistoryStep('busy'); setError(''); setMessage('');
     try {
       const r = await deleteMyHistory();
-      setMessage(`조회 기록 ${r.deleted}건을 지웠습니다.`); setHistoryStep('done'); reset();
-    } catch (e) { setError(e instanceof Error ? e.message : '기록을 지우지 못했습니다.'); setHistoryStep('confirm'); }
+      setMessage(`조회 이력 ${r.deleted}건과 기억한 화물·메모장·대화 목록을 지웠어요.`); setHistoryStep('done'); reset();
+    } catch (e) { setError(e instanceof Error ? e.message : '이력을 지우지 못했어요.'); setHistoryStep('confirm'); }
   }
 
   async function removeAccount() {
     setAccountStep('busy'); setError(''); setMessage('');
     try {
       const r = await deleteMyAccount();
-      setMessage(`조회 기록 ${r.deleted_records}건과 계정을 지웠습니다. 이용해 주셔서 감사합니다.`); setAccountStep('done');
+      setMessage(`조회 이력 ${r.deleted_records}건과 계정을 지웠어요. 그동안 이용해 주셔서 감사해요.`); setAccountStep('done');
       await signOut(); reset();  // 서버에서 계정이 지워졌으니 브라우저의 로그인 정보도 지운다
-    } catch (e) { setError(e instanceof Error ? e.message : '탈퇴를 끝내지 못했습니다.'); setAccountStep('confirm'); }
+    } catch (e) { setError(e instanceof Error ? e.message : '탈퇴를 마치지 못했어요.'); setAccountStep('confirm'); }
   }
 
-  return <section className="account-panel" aria-labelledby="account-title">
-    <SectionTitle label="계정과 기록" kicker="YOUR DATA, YOUR CALL"/>
-    <span id="account-title" className="sr-only">계정과 기록</span>
-    {!usable ? <p className="muted account-off">{!isLive
-      ? '데모 모드에는 실제 계정과 기록이 없습니다.'
+  return <div className="st-cols account-stack">
+    {!usable ? <p className="st-note account-off">{!isLive
+      ? '체험 모드에는 실제 계정과 이력이 없어요.'
       : !authEnabled
-        ? '이 서버는 로그인이 꺼져 있어 기록을 사람별로 나누지 않습니다. 조회 기록은 90일 뒤 자동으로 지워집니다.'
-        : '로그인하면 내 기록을 지우거나 탈퇴할 수 있습니다.'}</p>
+        ? '지금은 로그인 기능이 꺼져 있어 이력을 사용자별로 나누지 않아요. 조회 이력은 90일 뒤 자동으로 지워져요.'
+        : '로그인하면 내 이력을 지우거나 탈퇴할 수 있어요.'}</p>
     : <>
-      <p className="account-who">로그인 계정 <strong>{user.email ?? user.name ?? user.id}</strong></p>
-      <div className="danger-row profile-row"><div><h3>내 회원 정보</h3><p>이름, 휴대전화, 주소. 본인에게만 원문이 보이고 운영자에게는 가린 값만 보입니다.</p><ProfileForm mode="edit"/></div></div>
-      <div className="danger-row">
-        <div><h3><Trash2 size={16}/>내 조회 기록 지우기</h3><p>지금까지 조회한 기록을 모두 지웁니다. 계정은 남습니다. 되돌릴 수 없습니다.</p></div>
+      <section className="st-card st-danger-card" aria-labelledby="account-title">
+        <h2 id="account-title">내 조회 이력 지우기</h2>
+        <p className="st-sub">조회 이력, 기억한 화물, 메모, 대화 목록을 모두 지워요. 계정과 카카오톡 연결은 그대로 남아요. 되돌릴 수 없어서 지우기 전에 한 번 더 확인해요.</p>
         {historyStep === 'confirm' || historyStep === 'busy'
-          ? <div className="danger-actions"><button type="button" className="button danger" onClick={() => void removeHistory()} disabled={historyStep === 'busy'}>{historyStep === 'busy' ? <LoaderCircle size={15} className="spin"/> : <Trash2 size={15}/>}모두 지우기</button><button type="button" className="button secondary" onClick={() => setHistoryStep('idle')} disabled={historyStep === 'busy'}>취소</button></div>
-          : <button type="button" className="button secondary" onClick={() => { setHistoryStep('confirm'); setMessage(''); }} disabled={accountStep === 'busy'}>기록 지우기</button>}
-      </div>
-      <div className="danger-row">
-        <div><h3><UserRoundX size={16}/>회원 탈퇴</h3><p>조회 기록을 먼저 지우고 계정을 지웁니다. 되돌릴 수 없습니다.</p>
-          {(accountStep === 'confirm' || accountStep === 'busy') && <div className="form-field confirm-field"><label htmlFor="withdraw-confirm">계속하려면 <strong>탈퇴</strong>를 입력하세요</label><input id="withdraw-confirm" value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" disabled={accountStep === 'busy'}/></div>}</div>
-        {accountStep === 'confirm' || accountStep === 'busy'
-          ? <div className="danger-actions"><button type="button" className="button danger" onClick={() => void removeAccount()} disabled={typed.trim() !== '탈퇴' || accountStep === 'busy'}>{accountStep === 'busy' ? <LoaderCircle size={15} className="spin"/> : <UserRoundX size={15}/>}탈퇴하기</button><button type="button" className="button secondary" onClick={() => { setAccountStep('idle'); setTyped(''); }} disabled={accountStep === 'busy'}>취소</button></div>
-          : <button type="button" className="button secondary danger-outline" onClick={() => { setAccountStep('confirm'); setMessage(''); }} disabled={historyStep === 'busy'}>탈퇴</button>}
+          ? <div className="st-confirm"><div><strong>정말 내 이력을 지울까요?</strong><span>되돌릴 수 없어요.</span></div>
+              <div className="danger-actions"><button type="button" className="button secondary" onClick={() => setHistoryStep('idle')} disabled={historyStep === 'busy'}>취소</button><button type="button" className="button danger" onClick={() => void removeHistory()} disabled={historyStep === 'busy'}>{historyStep === 'busy' ? <LoaderCircle size={16} className="spin"/> : <Trash2 size={16}/>}모두 지우기</button></div></div>
+          : <div className="st-actions"><button type="button" className="button secondary danger-outline" onClick={() => { setHistoryStep('confirm'); setMessage(''); }} disabled={accountStep === 'busy'}><Trash2 size={16}/>이력 지우기</button></div>}
+      </section>
+      {/* 탈퇴는 눈에 덜 띄게 맨 아래에 작은 글자 버튼으로 둔다. 누르면 확인 칸이 열리고 "탈퇴"를 직접 입력해야 켜진다 */}
+      <div className="st-span st-withdraw st-withdraw-low">
+        {accountStep === 'idle' && <button type="button" className="withdraw-link" onClick={() => { setAccountStep('confirm'); setMessage(''); }} disabled={historyStep === 'busy'}>회원 탈퇴</button>}
+        {(accountStep === 'confirm' || accountStep === 'busy') && <div className="withdraw-confirm" role="group" aria-labelledby="withdraw-title">
+          <strong id="withdraw-title">정말 탈퇴할까요?</strong>
+          <p className="st-sub">조회 이력을 먼저 지우고 계정을 지워요. 되돌릴 수 없고, 탈퇴하면 바로 로그아웃돼요.</p>
+          <div className="form-field confirm-field"><label htmlFor="withdraw-confirm">계속하려면 <strong>탈퇴</strong>라고 입력해 주세요</label><input id="withdraw-confirm" value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" disabled={accountStep === 'busy'}/></div>
+          <div className="danger-actions st-actions"><button type="button" className="button secondary" onClick={() => { setAccountStep('idle'); setTyped(''); }} disabled={accountStep === 'busy'}>취소</button><button type="button" className="button danger" onClick={() => void removeAccount()} disabled={typed.trim() !== '탈퇴' || accountStep === 'busy'}>{accountStep === 'busy' ? <LoaderCircle size={16} className="spin"/> : <UserRoundX size={16}/>}탈퇴하기</button></div></div>}
       </div>
     </>}
-    {message && <p role="status" className="account-message">{message}</p>}
-    {error && <p role="alert" className="request-error">{error}</p>}
-  </section>;
+    {message && <p role="status" className="account-message st-span">{message}</p>}
+    {error && <p role="alert" className="request-error st-span">{error}</p>}
+  </div>;
 }

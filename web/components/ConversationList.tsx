@@ -4,7 +4,7 @@
  * 로그인했을 때만 Shell이 그린다. 넓은 화면은 사이드바 안에, 좁은 화면(900px 이하)은 상단바의 "대화" 버튼이 여는 패널 안에 같은 컴포넌트를 쓴다.
  */
 import {useState} from 'react';
-import {MessageSquarePlus, Trash2} from 'lucide-react';
+import {Plus, Trash2} from 'lucide-react';
 import {useApp} from './AppProvider';
 import type {ConversationSummary} from '@/lib/types';
 
@@ -43,7 +43,7 @@ export function ConversationList({onPick}: {onPick?: () => void}) {
   }
 
   return <div className="conv-list">
-    <button type="button" className="conv-new" onClick={start} disabled={locked}><MessageSquarePlus size={16}/>새 대화</button>
+    <button type="button" className="conv-new" onClick={start} disabled={locked}><span>새 대화</span><Plus size={16} aria-hidden="true"/></button>
     {error && <p role="alert" className="conv-error">{error}</p>}
     {grouped.length === 0 ? <p className="conv-empty">아직 저장된 대화가 없어요.</p>
       : grouped.map(({g, items}) => <section key={g} className="conv-group" aria-label={g}>
@@ -52,14 +52,14 @@ export function ConversationList({onPick}: {onPick?: () => void}) {
           const active = c.id === activeId;
           return <li key={c.id} className={`conv-row${active ? ' active' : ''}`}>
             {confirmId === c.id
-              ? <div className="conv-confirm" role="group" aria-label="대화 삭제 확인">
+              ? <div className="conv-confirm" role="group" aria-label="대화 지우기 확인">
                   <span>이 대화를 지울까요?</span>
-                  <button type="button" className="conv-danger" onClick={() => void remove(c.id)} disabled={busyId === c.id}>{busyId === c.id ? '지우는 중' : '삭제'}</button>
                   <button type="button" onClick={() => setConfirmId(null)} disabled={busyId === c.id}>취소</button>
+                  <button type="button" className="conv-danger" onClick={() => void remove(c.id)} disabled={busyId === c.id}>{busyId === c.id ? '지우는 중' : '지우기'}</button>
                 </div>
               : <>
                   <button type="button" className="conv-title" onClick={() => void open(c)} disabled={locked && !active} aria-current={active ? 'true' : undefined} title={c.title}>{c.title || '제목 없는 대화'}</button>
-                  <button type="button" className="conv-delete" onClick={() => { setError(''); setConfirmId(c.id); }} disabled={locked} aria-label={`${c.title || '제목 없는 대화'} 삭제`}><Trash2 size={14}/></button>
+                  <button type="button" className="conv-delete" onClick={() => { setError(''); setConfirmId(c.id); }} disabled={locked} aria-label={`${c.title || '제목 없는 대화'} 지우기`}><Trash2 size={14}/></button>
                 </>}
           </li>;
         })}</ul>

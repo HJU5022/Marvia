@@ -4,3 +4,6 @@ node_modules/
 !.env.example
 *.tsbuildinfo
 screenshots/
+
+# MapLibre 워커 사본. predev/prebuild가 node_modules에서 복사한다 (scripts/copy-maplibre-worker.mjs, 10-06)
+public/maplibre/

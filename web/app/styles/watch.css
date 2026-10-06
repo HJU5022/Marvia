@@ -1,0 +1,163 @@
+/* 담당 영역: 감시·지도와 지켜보기 (WatchMap, WatchToggle, /watch). 시안 3-3(PC), 3-6(휴대폰).
+   토큰은 globals.css :root, 이 파일은 globals.css 뒤에 불러와져 같은 선택자를 덮는다. */
+
+/* 머리: 작은 상위 경로 + 큰 제목 */
+.wm-head small{display:block;font-size:var(--text-sm);color:var(--muted);margin-bottom:2px}
+.wm-head h2{display:block;font-size:var(--text-xl);font-weight:800;margin:0}
+
+/* 본문: 왼쪽 지도 카드, 오른쪽 "내 화물" 카드 */
+.wm-body{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
+.wm-map-card{background:var(--surface);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.wm-side{background:var(--surface);border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.wm-body:not(:has(.wm-map-card)){grid-template-columns:minmax(0,640px)}
+
+/* 지도 위 줄: 기준 시각은 왼쪽, 버튼과 체크는 오른쪽. 지도 밖에 두어 겹치지 않는다 */
+.wm-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.watch-updated{margin-right:auto;font-size:var(--text-sm);color:var(--muted)}
+.watch-fit{position:static;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:var(--surface);color:var(--brand);border:1px solid var(--border-strong);border-radius:var(--small-radius);padding:8px 14px;font-weight:700;font-size:var(--text-base)}
+.watch-fit:hover{background:var(--brand-soft)}
+.watch-track-toggle{position:static;box-shadow:none;border:0;background:transparent;padding:0;font-size:var(--text-base);color:var(--text-2);display:inline-flex;align-items:center;gap:8px}
+.watch-track-toggle input{width:18px;height:18px;accent-color:var(--brand)}
+
+/* 지도: 바다는 연한 파랑 */
+.watch-map{height:620px;border:0;border-radius:var(--small-radius);background:var(--sea)}
+.watch-map .leaflet-host,.watch-map .leaflet-container{background:var(--sea)}
+.port-marker span{background:var(--text);color:#fff;border-color:#fff}
+.leaflet-tooltip.port-tooltip{font-weight:700;color:var(--text);background:#fff;border:0;border-radius:var(--small-radius);padding:3px 8px;box-shadow:0 1px 4px #191f2826;font-size:var(--text-sm)}
+.leaflet-tooltip.port-tooltip:before{display:none}
+
+/* 배 핀: 시안처럼 둥근 핀. 배 색 테두리, 안에 알파벳, 판정은 바깥 고리 */
+.watch-pin .pin-body{width:34px;height:34px;border-radius:50%;transform:none;border:3px solid #fff;background:var(--pin);box-shadow:0 2px 8px #191f2840}
+.watch-pin .pin-body b{transform:none;font-size:var(--text-sm)}
+
+/* 오른쪽 카드 머리 */
+.wm-side-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.wm-side-head h3{margin:0;font-size:var(--text-xl);font-weight:800}
+.wm-count{margin:0 0 12px;font-size:var(--text-base);color:var(--muted)}
+
+/* 목록 카드: 품명 > 배 이름 > B/L > 통관 단계, 오른쪽 위에 등급 */
+.watch-list{gap:10px;max-height:none;padding:0;margin:0}
+.watch-list button{grid-template-columns:auto 1fr auto;align-items:start;gap:12px;padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:none}
+.watch-list button:hover,.watch-list button:focus-visible{border-color:var(--border-strong);background:var(--surface)}
+.watch-list button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.watch-list button.selected{border-color:var(--brand);background:var(--brand-soft);box-shadow:inset 4px 0 0 var(--brand)}
+.watch-chip{width:32px;height:32px;font-size:var(--text-sm);border:3px solid #fff;box-shadow:0 0 0 1px var(--border)}
+.watch-main{gap:2px}
+.watch-goods{font-size:var(--text-lg);font-weight:800;color:var(--text);line-height:1.35;overflow-wrap:anywhere}
+.watch-ship{font-size:var(--text-base);font-weight:600;color:var(--text);overflow-wrap:anywhere}
+.watch-bl{font-size:var(--text-sm);color:var(--muted);font-family:var(--mono);white-space:normal}
+.watch-stage{font-size:var(--text-base);font-weight:600;color:var(--text-2);margin-top:4px}
+.wm-selected{margin-top:6px;align-self:flex-start;font-size:var(--text-sm);font-weight:700;color:var(--brand)}
+.watch-list .verdict-badge{align-self:start}
+
+/* 위치 수집 전 화물: 지도에는 못 올리고 이름만 */
+.wm-waiting{margin-top:12px;padding-top:14px;border-top:1px solid var(--border)}
+.wm-waiting strong{font-size:var(--text-base)}
+.wm-waiting ul{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.wm-waiting li span{display:block;font-weight:700}
+.wm-waiting li small,.wm-waiting p{font-size:var(--text-sm);color:var(--muted);margin:0}
+.watch-done{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--border);font-size:var(--text-base);color:var(--text-2)}
+
+/* 지도 말풍선: 머리에 배 이름 + 판정 배지, 아래에 항목 */
+.watch-tip{min-width:0;width:250px;padding:14px 16px}
+.watch-tip header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px}
+.watch-tip header strong{font-size:var(--text-base)}
+.watch-tip dl div{grid-template-columns:72px 1fr}
+.watch-tip dd{overflow-wrap:anywhere}
+.watch-tooltip{box-shadow:0 4px 16px #191f2824}
+
+/* 클러스터 상세 창: 지도 오른쪽 일부만 쓴다 */
+.cluster-panel{width:300px;top:12px;bottom:auto;max-height:calc(100% - 24px);border:0;box-shadow:0 4px 16px #191f2824}
+.cluster-panel dl div{grid-template-columns:72px 1fr}
+.cluster-go{font-size:var(--text-sm)}
+
+/* 휴대폰(시안 3-6): 지도 카드 → 목록 카드 순으로 쌓는다 */
+@media(max-width:900px){
+  .wm-body{grid-template-columns:1fr;gap:12px}
+  .wm-body:not(:has(.wm-map-card)){grid-template-columns:1fr}
+  .wm-map-card{padding:12px}
+  .wm-side{padding:16px}
+  .watch-map{height:300px}
+  .cluster-panel{left:12px;right:12px;width:auto;top:auto;bottom:12px;max-height:75%}
+}
+
+/* PC: 오른쪽 목록 카드는 지도 카드 높이에 맞추고, 화물이 많으면 목록 안에서만 스크롤한다 (10-06 정운 지적:
+   목록이 끝없이 길어져 지도 아래가 텅 비었다). height:0 + min-height:100%는 줄 높이를 지도 카드가 정하게 하는 그리드 기법 */
+@media(min-width:901px){
+  .wm-body{align-items:stretch}
+  .wm-body:has(.wm-map-card) .wm-side{height:0;min-height:100%}
+  .wm-body:has(.wm-map-card) .watch-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
+}
+
+/* ===== 10-06 3차 다듬기: 상자 줄이고, 목록은 구분선 행으로, 선택 강조에 움직임 ===== */
+.wm-head{margin-bottom:16px}
+.wm-head h2{font-size:var(--text-xl)}
+
+/* 도구 줄: 버튼은 테두리 없는 은은한 모양 */
+.watch-fit{border:0;background:transparent;padding:8px 10px;transition:background .15s var(--ease),transform .15s var(--ease)}
+.watch-fit:active{transform:scale(.98)}
+.watch-track-toggle{font-size:var(--text-sm)}
+
+/* 오른쪽 목록 패널: 머리 한 줄(제목 + 건수), 아래로 구분선이 있는 행 */
+.wm-side{padding:20px 12px 12px;gap:0;animation:wm-in .32s var(--ease) both}
+.wm-side-head{padding:0 8px 12px}
+.wm-count{margin:0;font-size:var(--text-sm);color:var(--muted)}
+.watch-list{gap:0;padding:0}
+.watch-list li{animation:wm-rise .22s var(--ease) both;animation-delay:calc(var(--i,0) * 40ms)}
+.watch-list li + li{border-top:1px solid var(--border)}
+.watch-list button{position:relative;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;padding:14px 12px;border:0;border-radius:var(--small-radius);background:transparent;transition:background-color .2s var(--ease)}
+.watch-list button:hover{background:var(--bg);border-color:transparent}
+.watch-list button:active{background:var(--bg)}
+.watch-list button.selected{background:var(--brand-soft);box-shadow:none;border-color:transparent}
+.watch-list button::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:3px;background:var(--brand);transform:scaleY(0);transition:transform .22s var(--ease)}
+.watch-list button.selected::before{transform:scaleY(1)}
+/* 선택된 행 위아래 구분선은 숨겨 파란 배경이 깔끔하게 붙게 한다 */
+.watch-list li:has(button.selected),.watch-list li:has(button.selected) + li{border-top-color:transparent}
+.watch-chip{border:0;box-shadow:none}
+.watch-goods{font-size:var(--text-base)}
+.watch-ship{font-size:var(--text-sm);font-weight:500;color:var(--text-2)}
+.watch-stage{margin-top:0;font-size:var(--text-sm);font-weight:400;color:var(--muted)}
+.watch-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.watch-side .watch-bl{font-size:var(--text-sm);color:var(--muted)}
+.wm-waiting{margin:8px 8px 0}
+.watch-done{margin:8px 8px 0;font-size:var(--text-sm);color:var(--muted);border-top:0;padding-top:0}
+
+/* "지도에서 보기": 위치 아이콘 버튼 */
+.cluster-go{width:32px;height:32px;padding:0;justify-content:center;border-radius:50%;margin-left:auto;transition:background .15s var(--ease),transform .15s var(--ease)}
+.cluster-go:hover{background:var(--brand);color:#fff}
+.cluster-go:active{transform:scale(.94)}
+.cluster-panel{animation:wm-in .32s var(--ease) both}
+
+/* 불러오는 동안: 지도와 목록 자리를 깜빡이는 블록으로 */
+.wm-skeleton{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px}
+.wm-sk-map,.wm-sk-list i{border-radius:var(--radius);background:linear-gradient(90deg,#eceef1 25%,#f5f6f8 50%,#eceef1 75%);background-size:200% 100%;animation:wm-shimmer 1.4s linear infinite}
+.wm-sk-map{height:min(620px,70vh)}
+.wm-sk-list{display:flex;flex-direction:column;gap:12px}
+.wm-sk-list i{display:block;height:72px}
+@keyframes wm-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+@keyframes wm-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes wm-in{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+/* 넓은 화면: 지도와 목록이 같이 커진다 */
+@media(min-width:1500px){
+  .wm-body,.wm-skeleton{grid-template-columns:minmax(0,1fr) 440px;gap:24px}
+  .watch-map{height:clamp(620px,72vh,820px)}
+}
+@media(max-width:900px){
+  .wm-skeleton{grid-template-columns:1fr}
+  .wm-sk-map{height:300px}
+  .wm-side{padding:16px 8px 8px}
+}
+@media (prefers-reduced-motion:reduce){
+  .wm-side,.watch-list li,.cluster-panel,.wm-sk-map,.wm-sk-list i{animation:none !important}
+  .watch-list button,.watch-list button::before,.cluster-go,.watch-fit{transition:none !important}
+}
+
+/* 지도 선·핀 위에 마우스를 올리거나 목록 줄에 마우스·키보드 초점을 두면 짝이 되는 쪽을 강조한다 (선택 상태와 별개인 임시 강조) */
+.watch-list button.hovered:not(.selected),.watch-list button:focus-visible:not(.selected){background:var(--bg);box-shadow:inset 0 0 0 1.5px var(--border-strong)}
+.watch-list button.hovered::before,.watch-list button:focus-visible::before{transform:scaleY(1)}
+.watch-list button.hovered:not(.selected)::before{opacity:.55}
+.watch-pin .pin-body{transition:transform .15s var(--ease),box-shadow .15s var(--ease)}
+.watch-pin.hovered .pin-body{transform:scale(1.18);box-shadow:0 0 0 4px color-mix(in srgb,var(--pin) 28%,transparent),0 3px 10px #191f2859}
+.track-hit{cursor:pointer}
+@media (prefers-reduced-motion: reduce){.watch-pin .pin-body{transition:none}}

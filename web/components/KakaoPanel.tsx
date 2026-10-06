@@ -14,18 +14,18 @@ import {useEffect, useRef, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {LoaderCircle, MessageCircle, Send, Unlink} from 'lucide-react';
 import {useApp} from './AppProvider';
-import {SectionTitle} from './Shared';
 import {connectKakao, getKakaoStatus, isLive, sendKakaoTest, unlinkKakao} from '@/lib/api';
 import type {KakaoStatus} from '@/lib/types';
+import {dateTime} from '@/lib/format';
 
 /** 주소 ?kakao= 로 돌아온 결과 이름별 안내. ok면 성공 글, 아니면 오류 글로 보여 준다. 여기에 없는 값은 무시한다 */
 const RESULT_MESSAGES: Record<string, {ok: boolean; text: string}> = {
-  connected: {ok: true, text: "카카오톡이 연결되었습니다. '시험 발송'으로 확인해 보세요."},
-  denied: {ok: false, text: '카카오 동의를 취소했습니다.'},
-  expired: {ok: false, text: '연결 시간이 지났습니다. 다시 연결해 주세요.'},
-  mismatch: {ok: false, text: '연결을 시작한 계정과 지금 로그인한 계정이 다릅니다. 다시 연결해 주세요.'},
-  no_consent: {ok: false, text: "'카카오톡 메시지 전송'에 동의해야 알림을 받을 수 있습니다. 다시 연결해 주세요."},
-  failed: {ok: false, text: '연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'},
+  connected: {ok: true, text: "카카오톡이 연결됐어요. '시험 메시지 보내기'로 확인해 보세요."},
+  denied: {ok: false, text: '카카오 동의를 취소했어요.'},
+  expired: {ok: false, text: '연결 시간이 지났어요. 다시 연결해 주세요.'},
+  mismatch: {ok: false, text: '연결을 시작한 계정과 지금 로그인한 계정이 달라요. 다시 연결해 주세요.'},
+  no_consent: {ok: false, text: "'카카오톡 메시지 전송'에 동의해야 알림을 받을 수 있어요. 다시 연결해 주세요."},
+  failed: {ok: false, text: '연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'},
 };
 
 export function KakaoPanel() {
@@ -71,7 +71,7 @@ export function KakaoPanel() {
     setLoading(true);
     getKakaoStatus()
       .then(s => { if (alive) setStatus(s); })
-      .catch(e => { if (alive) setError(e instanceof Error ? e.message : '카카오톡 연결 상태를 불러오지 못했습니다.'); })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : '카카오톡 연결 상태를 불러오지 못했어요.'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [usable]);
@@ -81,13 +81,13 @@ export function KakaoPanel() {
     try {
       const {url} = await connectKakao();
       window.location.assign(url);  // 카카오 동의 화면으로 넘어간다. 페이지가 바뀌므로 busy는 풀지 않는다
-    } catch (e) { setError(e instanceof Error ? e.message : '카카오톡 연결을 시작하지 못했습니다.'); setBusy(''); }
+    } catch (e) { setError(e instanceof Error ? e.message : '카카오톡 연결을 시작하지 못했어요.'); setBusy(''); }
   }
 
   async function sendTest() {
     setBusy('test'); setError(''); setMessage('');
-    try { await sendKakaoTest(); setMessage('카카오톡으로 시험 메시지를 보냈습니다. 휴대폰을 확인해 보세요.'); }
-    catch (e) { setError(e instanceof Error ? e.message : '시험 메시지를 보내지 못했습니다.'); }
+    try { await sendKakaoTest(); setMessage('카카오톡으로 시험 메시지를 보냈어요. 휴대폰을 확인해 보세요.'); }
+    catch (e) { setError(e instanceof Error ? e.message : '시험 메시지를 보내지 못했어요.'); }
     finally { setBusy(''); }
   }
 
@@ -96,47 +96,54 @@ export function KakaoPanel() {
     try {
       await unlinkKakao();
       setStatus(s => s && {...s, linked: false}); setUnlinkStep('idle');
-      setMessage('카카오톡 연결을 해제했습니다.'); setFocusKeys(['connect', 'status']);
-    } catch (e) { setError(e instanceof Error ? e.message : '연결을 해제하지 못했습니다.'); setFocusKeys(['unlink-confirm']); }
+      setMessage('카카오톡 연결을 해제했어요.'); setFocusKeys(['connect', 'status']);
+    } catch (e) { setError(e instanceof Error ? e.message : '연결을 해제하지 못했어요.'); setFocusKeys(['unlink-confirm']); }
     finally { setBusy(''); }
   }
 
-  return <section ref={sectionRef} className="account-panel kakao-panel" aria-labelledby="kakao-title">
-    <SectionTitle label="카카오톡 알림" kicker="KAKAOTALK NOTICE" side={<MessageCircle size={22}/>}/>
-    <span id="kakao-title" className="sr-only">카카오톡 알림</span>
-    {!usable ? <p className="muted account-off">{!isLive
-      ? '데모 모드에는 연결할 실제 카카오톡이 없습니다.'
+  return <section ref={sectionRef} className="st-card kakao-panel" aria-labelledby="kakao-title">
+    <h2 id="kakao-title">카카오톡 알림</h2>
+    {!usable ? <p className="st-note account-off">{!isLive
+      ? '체험 모드에는 연결할 실제 카카오톡이 없어요.'
       : !authEnabled
-        ? '이 서버는 로그인이 꺼져 있어 카카오톡을 사람별로 연결할 수 없습니다.'
-        : '로그인하면 카카오톡 알림을 연결할 수 있습니다.'}</p>
+        ? '지금은 로그인 기능이 꺼져 있어 카카오톡을 연결할 수 없어요.'
+        : '로그인하면 카카오톡 알림을 연결할 수 있어요.'}</p>
     : <>
-      {loading && !status && <p className="muted"><LoaderCircle size={14} className="spin"/> 연결 상태를 불러오는 중</p>}
-      {status && !status.configured && <p className="muted">서버에 카카오 설정이 없어 아직 쓸 수 없습니다.</p>}
+      {/* 실제 연결 상태가 이 구역에서 가장 큰 글이다. 서버가 보낸 값(linked)만 따르고, 상태를 모르면 "연결됨"이라고 하지 않는다 */}
+      {loading && !status && <p className="kakao-state pending"><LoaderCircle size={18} className="spin"/> 연결 상태를 확인하는 중</p>}
+      {status && !status.configured && <p className="kakao-state off">사용할 수 없음<small>카카오 연결이 아직 준비되지 않아 쓸 수 없어요.</small></p>}
       {status && status.configured && !status.linked && <>
-        <p className="muted">카카오톡 "나와의 채팅"으로 알림을 받을 수 있습니다. 연결은 언제든 끊을 수 있습니다.</p>
+        <p className="kakao-state off">연결되지 않음</p>
+        <p className="st-sub">카카오톡 "나와의 채팅"으로 알림을 받을 수 있어요. 연결은 언제든 끊을 수 있어요.</p>
         <div className="kakao-actions">
           <button type="button" className="button primary" data-focus="connect" onClick={() => void connect()} disabled={busy !== ''}>
-            {busy === 'connect' ? <LoaderCircle size={15} className="spin"/> : <MessageCircle size={15}/>}카카오톡 연결</button>
+            {busy === 'connect' ? <LoaderCircle size={16} className="spin"/> : <MessageCircle size={16}/>}카카오톡 연결</button>
         </div>
       </>}
       {status && status.configured && status.linked && <>
+        <p className="kakao-state on">연결됨</p>
+        <p className="st-sub">판정이 바뀌면 카카오톡 "나와의 채팅"으로도 알려 드려요.</p>
+        {/* 서버가 값을 보낸 것만 보여 준다. 아직 보낸 적이 없으면 마지막 발송 줄은 없다 (M7) */}
+        {(status.linked_at || status.last_sent_at) && <p className="st-sub kakao-times">
+          {status.linked_at && <>{dateTime(status.linked_at, true)}에 연결</>}
+          {status.linked_at && status.last_sent_at && ' · '}
+          {status.last_sent_at && <>{dateTime(status.last_sent_at, true)}에 마지막으로 보냄</>}</p>}
         <div className="kakao-actions">
-          <span className="subtle-badge">연결됨</span>
           <button type="button" className="button secondary" data-focus="test" onClick={() => void sendTest()} disabled={busy !== ''}>
-            {busy === 'test' ? <LoaderCircle size={15} className="spin"/> : <Send size={15}/>}시험 발송</button>
+            {busy === 'test' ? <LoaderCircle size={16} className="spin"/> : <Send size={16}/>}시험 메시지 보내기</button>
         </div>
-        <div className="danger-row">
-          <div><h3><Unlink size={16}/>연결 해제</h3>
-            <p id="kakao-unlink-desc">카카오톡 연결을 끊고 서버에 둔 연결 정보를 지웁니다. 알림을 다시 받으려면 새로 연결해야 합니다.</p></div>
+        {/* 연결 해제는 조용한 줄로 아래에 둔다. 누르면 [취소][연결 해제하기] 순서로 확인을 받는다 */}
+        <div className="st-danger-row">
+          <p id="kakao-unlink-desc">카카오톡 연결을 끊고 저장해 둔 연결 정보를 지워요. 알림을 다시 받으려면 새로 연결해야 해요.</p>
           {unlinkStep === 'idle'
-            ? <button type="button" className="button secondary" data-focus="unlink-start" aria-describedby="kakao-unlink-desc" disabled={busy !== ''}
+            ? <button type="button" className="button secondary danger-outline" data-focus="unlink-start" aria-describedby="kakao-unlink-desc" disabled={busy !== ''}
                 onClick={() => { setUnlinkStep('confirm'); setMessage(''); setFocusKeys(['unlink-confirm']); }}>연결 해제</button>
             : <div className="danger-actions">
-                <button type="button" className="button danger" data-focus="unlink-confirm" aria-describedby="kakao-unlink-desc"
-                  onClick={() => void unlink()} disabled={busy !== ''}>
-                  {busy === 'unlink' ? <LoaderCircle size={15} className="spin"/> : <Unlink size={15}/>}연결 해제하기</button>
                 <button type="button" className="button secondary" disabled={busy !== ''}
                   onClick={() => { setUnlinkStep('idle'); setFocusKeys(['unlink-start']); }}>취소</button>
+                <button type="button" className="button danger" data-focus="unlink-confirm" aria-describedby="kakao-unlink-desc"
+                  onClick={() => void unlink()} disabled={busy !== ''}>
+                  {busy === 'unlink' ? <LoaderCircle size={16} className="spin"/> : <Unlink size={16}/>}연결 해제하기</button>
               </div>}
         </div>
       </>}

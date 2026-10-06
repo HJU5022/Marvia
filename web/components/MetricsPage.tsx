@@ -1,11 +1,90 @@
 'use client';
 /** 평가 지표 (운영자 전용). 실제 모드는 GET /api/metrics(evals/results의 실행 결과), 데모는 fixture.
- * 제목 옆 "평가 지표" 테두리 글자는 제목을 되풀이해 지웠다 (10-02 UI 점검 V8).
- * 값이 없으면 0이 아니라 미측정으로 보인다 (CLAUDE.md: 실행하지 않은 숫자를 만들지 않는다). */
+ * 값이 없으면 0이 아니라 미측정으로 보인다 (CLAUDE.md: 실행하지 않은 숫자를 만들지 않는다).
+ * 게이트 통과·미통과는 신호등 색이 아니라 아이콘+글자로 구분한다 (초록·노랑·빨강은 순항·주의·긴급 전용, 10-06 결정). */
 import {useEffect,useState} from 'react';
-import {FlaskConical,ShieldCheck,ArrowUpRight} from 'lucide-react';
+import {ArrowUpRight,CircleCheck,CircleX,FlaskConical,Hourglass,Info} from 'lucide-react';
 import {getMetrics} from '@/lib/api';
 import {dateTime} from '@/lib/format';
 import {useApp} from './AppProvider';
-import {SectionTitle} from './Shared';
-export function MetricsPage(){const {data}=useApp();const [live,setLive]=useState<typeof data.metrics|null>(null);useEffect(()=>{void getMetrics().then(setLive);},[]);const m=live??data.metrics;const runs=(m.experiments??[]) as Array<Record<string,unknown>>;return <div className="page"><div className="page-heading"><div><span className="eyebrow">MEASURED, NOT ASSUMED</span><h1>좋은 판단은 검증에서<span className="accent-dot">.</span></h1><p>규칙만 쓴 결과와 에이전트의 결과를 같은 기준으로 비교합니다.</p></div></div><div className="evaluation-banner"><ShieldCheck size={38} strokeWidth={1.1}/><div><span className="eyebrow">RELEASE GATE</span><h2>{m.gate_passed===null?'아직 통과 여부를 판단하지 않았습니다.':m.gate_passed?'게이트 통과':'게이트 미통과'}</h2><p>{m.updated_at?`서비스 구성(b) ${dateTime(m.updated_at as unknown as string)} 실행 기준입니다.`:'실측 평가 결과가 연결되면 표시됩니다. 현재 값은 미측정 상태입니다.'}</p></div><span className="gate-pending">{m.gate_passed===null?'측정 대기':m.gate_passed?'통과':'미통과'}</span></div><div className="metric-kpis">{m.kpis.map((k,i)=><div key={k.id}><span className="metric-number">0{i+1}</span><h2>{k.label}</h2><strong>{k.value??'-'}<span>{k.value===null?'미측정':k.unit}</span></strong><small className="mono">{k.id}</small></div>)}</div><section className="comparison-section"><SectionTitle label="에이전트가 더한 가치는?" kicker="BASELINE COMPARISON" side={<span className="subtle-badge">동일 조건 비교</span>}/><div className="table-scroll" role="region" aria-label="평가 비교 표" tabIndex={0}><table><thead><tr><th>평가 항목</th><th>규칙만 <small>BASELINE</small></th><th>규칙 + 모델 A</th><th>규칙 + 모델 B</th></tr></thead><tbody>{m.comparison.map(row=><tr key={row.id}><td>{row.label}<small className="mono">{row.id}</small></td><td>{row.baseline??'-'}</td><td>{row.model_a??'-'}</td><td>{row.model_b??'-'}</td></tr>)}</tbody></table></div></section><div className="metrics-bottom"><section><SectionTitle label="배포 전 확인할 기준" kicker="QUALITY GATES"/>{m.gates.map((g,i)=><div className="gate-row" key={i}><span>{g.label}<small>목표: {g.target??'미정'}</small></span><span className="subtle-badge">{g.value??'측정 대기'}</span></div>)}</section><section><SectionTitle label="한 번에 하나씩, 개선" kicker="EXPERIMENT LOG"/>{runs.length?<ol className="experiment-list">{runs.map((r,i)=><li key={String(r.file??i)}><span className="role-chip">({String(r.config)})</span><div><strong>{String(r.model??'-')}</strong><small className="mono">{dateTime(r.run_at as string)} · {String(r.commit??'').slice(0,12)}</small></div><span className="mono">{r.exact_match==null?'-':`${r.exact_match}/${r.count}`}</span><span className={`role-chip ${r.gate_passed?'operator':r.gate_passed===false?'revoked':''}`}>{r.gate_passed==null?'게이트 -':r.gate_passed?'게이트 통과':'게이트 걸림'}</span></li>)}</ol>:<div className="experiment-empty"><FlaskConical size={37} strokeWidth={1}/><h3>기록된 실험이 없습니다.</h3><p>모델, 프롬프트, 임계값 중 하나를 바꾸고<br/>전후 결과를 비교한 기록이 표시됩니다.</p></div>}<div className="info-note">{live?'evals/run_eval.py 실행 결과(evals/results)를 읽어 보여 줍니다. 실행하지 않은 구성은 빈 값입니다.':'평가 결과 파일 미제공 · 점수와 실험 이력은 빈 값으로 보존했습니다.'}</div></section></div><a className="quiet-link" href="/about">Marvia의 평가 방식 알아보기 <ArrowUpRight size={15}/></a></div>;}
+
+/** 게이트 결과 칩. 통과/걸림/대기를 아이콘 모양과 굵기로 가른다 */
+function GateChip({passed,passText,failText,waitText,large}:{passed:boolean|null|undefined;passText:string;failText:string;waitText:string;large?:boolean}){
+  const state=passed==null?'wait':passed?'pass':'fail';
+  const Icon=state==='pass'?CircleCheck:state==='fail'?CircleX:Hourglass;
+  return <span className={`mx-gate ${state}${large?' lg':''}`}><Icon size={large?22:16}/>{state==='pass'?passText:state==='fail'?failText:waitText}</span>;
+}
+
+/** 가는 막대 하나. 값이 없으면(null) 비운 채 "측정 전", 숫자는 0~100으로 잘라 그린다. 막대는 글자 값을 돕는 그림이라 값 글자는 항상 같이 보인다
+ * (role="img" + aria-label로 읽히게). 없는 숫자를 만들어 채우지 않는다 */
+function Bar({value,label,tone}:{value:number|null|undefined;label:string;tone?:'a'|'b'|'c'}){
+  const has=typeof value==='number'&&Number.isFinite(value);
+  const pct=has?Math.min(100,Math.max(0,value)):0;
+  return <span className={`mx-bar${tone?` ${tone}`:''}`} role="img" aria-label={has?`${label} ${value}%`:`${label} 측정 전`}><i style={{width:`${pct}%`}}/></span>;
+}
+function Val({value}:{value:number|null|undefined}){
+  return typeof value==='number'?<span className="mx-val">{value}<small>%</small></span>:<span className="mx-val none">측정 전</span>;
+}
+
+/** 비교표 항목 옆 ⓘ. 재료(4차 A-51)에 뜻이 있는 항목만 단다. 누르면 아래에 한 줄 설명 */
+const TERM_HELP: Record<string, string> = {grounded: '설명이 근거와 일치한 비율'};
+
+export function MetricsPage(){
+  const {data}=useApp();
+  const [live,setLive]=useState<typeof data.metrics|null>(null);
+  const [help,setHelp]=useState<string|null>(null);
+  useEffect(()=>{void getMetrics().then(setLive);},[]);
+  const m=live??data.metrics;
+  const runs=(m.experiments??[]) as Array<Record<string,unknown>>;
+  const datasetSize=(m as {dataset_size?:number|null}).dataset_size;
+  // 시안 4-8의 열 이름. 서버 필드 baseline=기준선(a), model_a=서비스(b), model_b=비교 모델(c)
+  return <div className="page mx-page">
+    <div className="page-heading adm-heading">
+      <div><span className="eyebrow">운영자</span><h1>평가 지표</h1><p>서비스 구성(b)의 평가 결과와 합격 기준을 확인해요.</p></div>
+    </div>
+
+    <div className="mx-banner">
+      <h2 className="mx-banner-state"><GateChip large passed={m.gate_passed} passText="합격 기준 통과" failText="합격 기준 미달" waitText="측정 대기"/></h2>
+      <p>{m.updated_at?`서비스 구성(b) · ${dateTime(m.updated_at as unknown as string)}${datasetSize?` · 평가 문항 ${datasetSize}개`:''}`:'실제 평가 결과가 연결되면 여기에 표시돼요. 지금은 아직 측정하지 않았어요.'}</p>
+    </div>
+
+    <div className="mx-kpis">{m.kpis.map(k=>
+      <div key={k.id} className="mx-kpi"><h2>{k.label}</h2>
+        <strong>{k.value===null?<span className="mx-none">측정 전</span>:<>{k.value}<span>{k.unit}</span></>}</strong>
+        <Bar value={k.value as number|null} label={k.label} tone="b"/></div>)}</div>
+
+    <section className="mx-section">
+      <div className="mx-card-head"><h2>구성별 비교</h2><span className="mx-legend"><i className="mx-key a"/>기준선(a)<i className="mx-key b"/>서비스(b)<i className="mx-key c"/>비교(c)</span></div>
+      <div className="table-scroll mx-table" role="region" aria-label="평가 비교 표" tabIndex={0}><table>
+        <thead><tr><th>평가 항목</th><th>기준선 (a)</th><th className="mx-service">서비스 (b)</th><th>비교 모델 (c)</th></tr></thead>
+        <tbody>{m.comparison.map(row=>
+          <tr key={row.id}><td data-label="평가 항목">{row.label}{TERM_HELP[row.id]&&<button type="button" className="mx-info" aria-label={`${row.label} 설명`} title={TERM_HELP[row.id]} aria-expanded={help===row.id} onClick={()=>setHelp(h=>h===row.id?null:row.id)}><Info size={16}/></button>}
+              {help===row.id&&<small className="mx-help">{TERM_HELP[row.id]}</small>}</td>
+            {([['기준선 (a)',row.baseline,'a'],['서비스 (b)',row.model_a,'b'],['비교 모델 (c)',row.model_b,'c']] as const).map(([name,v,tone])=>
+              <td key={tone} className={tone==='b'?'mx-service':''} data-label={name}><Val value={v as number|null}/><Bar value={v as number|null} label={`${row.label} ${name}`} tone={tone}/></td>)}</tr>)}</tbody>
+      </table></div>
+    </section>
+
+    <div className="mx-bottom">
+      <section className="mx-section">
+        <div className="mx-card-head"><h2>합격 기준</h2></div>
+        <ul className="mx-gates">{m.gates.map((g,i)=>
+          <li key={i}><span>{g.label}</span><small>{g.target??'-'}</small><strong>{g.value??'측정 대기'}</strong>
+            {g.passed!=null?<GateChip passed={g.passed} passText="통과" failText="미달" waitText="-"/>:<span className="mx-gate-slot" aria-hidden="true"/>}</li>)}</ul>
+      </section>
+      <section className="mx-section">
+        <div className="mx-card-head"><h2>최근 평가 기록</h2>{runs.length>0&&<span className="mx-legend">{runs.length}건</span>}</div>
+        {runs.length?<ol className="mx-runs">{runs.map((r,i)=>
+          <li key={String(r.file??i)}>
+            <span className="mx-config">({String(r.config)})</span>
+            <div><strong>{String(r.model??'-')}</strong>
+              <small>{dateTime(r.run_at as string)} · {String(r.commit??'').slice(0,12)} · {r.exact_match==null?'-':`${r.exact_match}/${r.count}`}</small></div>
+            <GateChip passed={r.gate_passed as boolean|null|undefined} passText="합격 기준 통과" failText="합격 기준 미달" waitText="합격 기준 -"/>
+          </li>)}</ol>
+        :<div className="mx-empty"><FlaskConical size={28} strokeWidth={1.5}/><h3>기록된 실험이 없어요.</h3></div>}
+        {!live&&<p className="mx-note">체험용 예시 값이에요. 운영 서버에 연결하면 실제 평가 결과로 바뀌어요.</p>}
+      </section>
+    </div>
+    <a className="quiet-link" href="/about">Marvia의 평가 방식 알아보기 <ArrowUpRight size={16}/></a>
+  </div>;
+}

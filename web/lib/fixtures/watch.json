@@ -57,6 +57,10 @@
     "plain_explanation": "세관이 화물 목록을 확인했습니다. 입항과 하선 절차를 기다리는 단계입니다.",
     "next_stage": "하선신고 수리",
     "needs_broker": false,
+    "goods_name": "PLASTIC TOYS",
+    "forwarder_name": "한별해운(예시)",
+    "carrier_name": "DEMO LINE",
+    "container_no": "DEMU2468135",
     "history": [
       {
         "code": "",
