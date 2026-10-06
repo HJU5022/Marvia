@@ -40,21 +40,39 @@ def atomic(conn):
     return conn.transaction() if hasattr(conn, "transaction") else nullcontext()
 
 
+# 마이그레이션 전체를 감싸는 pg advisory lock 번호 (10-06 점검). 아무 값이나 되지만 앱 안에서 이 용도로만 쓴다.
+# 'marvia-migrations'의 뜻으로 고정한 64비트 정수다
+MIGRATION_LOCK_ID = 7_310_620_261_006
+
+
 def apply_migrations(conn) -> list[str]:
-    """migrations/*.sql을 이름 순서대로 한 번씩만 적용하고, 새로 적용한 파일 이름을 돌려준다."""
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT now())"
-    )
-    done = {row[0] for row in conn.execute("SELECT name FROM schema_migrations").fetchall()}
-    applied = []
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        if path.name in done:
-            continue
-        # 파라미터 없는 execute는 여러 문장을 한 번에 보낼 수 있다 (psycopg 3)
-        conn.execute(path.read_text(encoding="utf-8"))
-        conn.execute("INSERT INTO schema_migrations (name) VALUES (%s)", (path.name,))
-        applied.append(path.name)
-    return applied
+    """migrations/*.sql을 이름 순서대로 한 번씩만 적용하고, 새로 적용한 파일 이름을 돌려준다.
+
+    10-06 점검으로 두 가지를 더했다.
+    - 전체를 pg_advisory_lock으로 감싼다. api와 worker가 동시에 떠서 같은 파일을 두 번 적용하려다 한쪽이
+      "already exists"나 schema_migrations 중복 키로 죽는 경쟁을 막는다. 뒤에 온 쪽은 앞쪽이 끝날 때까지 기다린 뒤
+      적용된 목록을 다시 읽어 건너뛴다. 잠금은 finally에서 풀고, 연결이 끊겨도 DB가 풀어 준다(세션 잠금)
+    - 파일 하나를 한 트랜잭션으로 묶는다. connect()가 autocommit이라 전에는 파일 중간 문장이 실패하면 앞 문장만 남고
+      schema_migrations에는 안 적혀, 다음 기동 때 반쯤 적용된 상태에서 다시 돌았다. 이제 파일과 기록이 함께 들어가거나 함께 빠진다
+    """
+    conn.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_ID,))
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT now())"
+        )
+        done = {row[0] for row in conn.execute("SELECT name FROM schema_migrations").fetchall()}
+        applied = []
+        for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            if path.name in done:
+                continue
+            with atomic(conn):
+                # 파라미터 없는 execute는 여러 문장을 한 번에 보낼 수 있다 (psycopg 3)
+                conn.execute(path.read_text(encoding="utf-8"))
+                conn.execute("INSERT INTO schema_migrations (name) VALUES (%s)", (path.name,))
+            applied.append(path.name)
+        return applied
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(%s)", (MIGRATION_LOCK_ID,))
 
 
 def log_query(conn, session_id: str, **fields) -> None:
@@ -164,6 +182,15 @@ def purge_old_conversations(conn) -> int:
     pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
     """
     return conn.execute("SELECT purge_old_conversations()").fetchall()[0][0]
+
+
+def purge_watch_positions(conn) -> int:
+    """더 지켜보지 않는 배의 30일 지난 감시·지도 위치(watch_positions)를 지우고 지운 줄 수를 돌려준다 (10-06 점검).
+
+    규칙(30일, 지금 지켜보는 배는 남김)은 DB 함수 purge_old_watch_positions()에만 있다 (migrations/021). purge_old_queries와
+    같이 pg_cron이 하루 한 번, pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
+    """
+    return conn.execute("SELECT purge_old_watch_positions()").fetchall()[0][0]
 
 
 def recent_positions(conn, mmsi: int, limit: int = 20) -> list[dict]:

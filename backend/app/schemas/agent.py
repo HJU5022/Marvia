@@ -25,6 +25,12 @@ Freshness = Literal["fresh", "stale", "unknown"]
 # B/L 번호 형식: 영문 대문자+숫자 8~20자 (SDD 3.1). 공백은 검증 전에 제거한다.
 _BL_PATTERN = re.compile(r"^[A-Z0-9]{8,20}$")
 _MRN_PATTERN = re.compile(r"^[0-9]{2}[A-Z0-9]{8}[IE]$")  # 적하목록 관리번호 (mrn-fallback, 10-01)
+# 항차 번호 (10-06 점검). 이 값은 배 고르기 LLM(llm.pick_vessel) 프롬프트에 그대로 들어가서, 자유 글이면 지시문을 넣을 수 있었다.
+# 실제 항차 모양(0925W, 2634E, 108A, 045S/N, FE-12)에 맞춰 영문·숫자로 시작하고 영문·숫자·공백·하이픈·슬래시·점만, 20자까지
+VOYAGE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9 ./-]{0,19}$"
+# 세션 ID 길이 상한. 화면은 crypto.randomUUID()(36자), 지켜보기는 watch-YYYYMMDD, 데모는 marvia-demo-session을 쓴다.
+# 넉넉히 128자. 이력·트레이스·사용량 이름에 그대로 들어가는 값이라 끝없이 긴 값을 받지 않는다 (10-06 점검)
+SESSION_ID_MAX = 128
 
 
 class AgentRequest(BaseModel):
@@ -35,13 +41,23 @@ class AgentRequest(BaseModel):
     # 선택 입력 (09-29 결정). 필수는 B/L 하나다. 판매일이 정해진 경우가 많지만 품목에 따라 안 정하는 경우도 많다
     # (하정운 실무 경험). 없으면 여유 일수 없이 배 상태만으로 판정한다 (routers/agent.py, skills/cargo-verdict/rules.md 판정 표)
     sale_due_date: date | None = Field(default=None, description="판매 예정일 (필요 입고일). 선택")
-    session_id: str
+    session_id: str = Field(max_length=SESSION_ID_MAX)
     follow_up_question: str | None = Field(default=None, max_length=300, description="후속 질의. 300자 제한 (SDD 7절)")
     resolved_mmsi: int | None = Field(default=None, description="되묻기 후 사용자가 고른 선박")
-    voyage_no: str | None = Field(default=None, description="되묻기 후 입력")
+    voyage_no: str | None = Field(default=None, max_length=20, pattern=VOYAGE_PATTERN,
+                                  description="되묻기 후 입력. 영문·숫자·공백·-·/·. 20자까지 (10-06 점검)")
     forwarder_eta: date | None = None
     # 적하목록 관리번호(예: 26PCLUVK37I). UNI-PASS에 B/L이 아직 없을 때 해수부 입항 신고로 배를 찾는 데만 쓴다 (docs/specs/mrn-fallback.md, 10-01)
     mrn: str | None = Field(default=None, description="MRN 11자. 선택")
+
+    @field_validator("voyage_no", mode="before")
+    @classmethod
+    def _trim_voyage(cls, v):
+        """앞뒤 공백을 떼고, 비면 None. 화면이 빈 칸을 ""로 보내도 422가 나지 않게 한다 (기존 동작과 맞춤)."""
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
 
     @field_validator("mrn")
     @classmethod

@@ -32,6 +32,7 @@
 """
 import json
 import logging
+from contextvars import ContextVar
 import os
 import time
 from datetime import datetime, timezone
@@ -42,7 +43,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app import crypto
 from backend.app.auth import current_user_id
-from backend.app.db import connect, latest_response, log_query, recent_positions, recent_responses
+from backend.app.db import connect, log_query, recent_positions, recent_responses
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
@@ -56,6 +57,7 @@ from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
 from backend.app.services.evidence import KST, build as build_evidence, days_margin
 from backend.app.services.rules import is_listed_stage, rule
+from backend.app.clients import shipfinder as shipfinder_client
 from backend.app.services.customs import CustomsError, UnipassClient
 # MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py)
 from backend.app.services.mcp_client import (
@@ -74,7 +76,11 @@ ASK_BACK = "같은 이름의 배가 여러 척입니다. 항차 번호나 포워
 ASK_BACK_AFTER_EVIDENCE = ("알려 주신 항차나 입항 예정일로도 어느 배인지 가르지 못했습니다. "
                            "화면의 후보 중에서 고르시거나, 포워더에게 받은 입항 예정일을 알려 주세요.")
 NO_VESSEL = "선박 위치 서비스에서 이 배를 찾지 못했습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
-NO_VESSEL_AFTER_ETA = "선박 위치 서비스에서 이 배를 찾지 못해 판정하지 못했습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
+# 사용자가 고른 배(resolved_mmsi)가 이 화물의 후보에 없을 때 (10-06 점검). 전에는 어떤 MMSI든 그대로 확정해서,
+# 화면을 거치지 않고 아무 번호나 보내면 남의 배로 판정했고 "배는 확인했지만" 같은 앞뒤 안 맞는 답이 나왔다
+RESOLVED_NOT_CANDIDATE = "고르신 배가 이 화물의 후보 목록에 없어 확정하지 않았습니다. 화면의 후보 중에서 다시 골라 주세요."
+RESOLVED_NO_CANDIDATES = "고르신 배를 이 화물의 후보에서 확인하지 못했습니다."
+NO_VESSEL_AFTER_ETA ="선박 위치 서비스에서 이 배를 찾지 못해 판정하지 못했습니다. 입항 일정은 포워더에게 직접 확인해 주세요."
 VESSEL_TOOL_FAILED = "선박 위치 서비스에 연결하지 못해 판정하지 못했습니다. 잠시 뒤 다시 조회해 주세요."
 # 위치 없음 (09-29 결정, 09-27 "위치 없음 → 판정 보류" 문구: 조회되지 않는다고 그대로 말하고 포워더 입항 예정일을 묻는다)
 POSITION_MISSING = "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요."
@@ -86,6 +92,9 @@ NO_ETA_WITH_ESTIMATE = ("판매 예정일은 받았지만 도착 예정일을 �
                         "현재 위치와 속도로 계산한 대략적인 부산 도착은 {month}월 {day}일쯤입니다. 참고용이며 속도나 기항지에 따라 달라질 수 있습니다. "
                         "포워더 도착 통지서(A/N)의 입항 예정일을 알려주시면 판매 예정일까지 여유를 봐 드립니다.")
 POSITION_TOOL_FAILED = "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요."
+# ShipFinder 하루 호출 한도를 다 썼을 때 (status 38, clients/shipfinder.py quota_exhausted). 오늘은 다시 조회해도 안 되므로
+# "잠시 뒤"가 아니라 내일이라고 알린다 (10-06 점검)
+QUOTA_EXHAUSTED_TAIL = " 오늘 선박 위치 조회 한도를 다 써서, 내일 다시 조회해 주세요."
 NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다."
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 # 판정 LLM이 끝내 실패했을 때 표 등급으로 확정하며 쓰는 문구 (09-30 결정, _llm_gave_up). 숫자를 넣지 않는다 (V7)
@@ -120,7 +129,7 @@ FOLLOW_UP_BLOCKED = "이 화물의 조회 결과에 대한 질문에만 답할 �
 # 후속 답에 거는 검증 규칙. answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기),
 # V7(근거에 없는 숫자 금지), V11(통관 진행 평가 금지)이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
 # 여기에 후속 답 전용 V9(근거에 없는 영문 낱말 금지, validate.check_follow_up_words)와 V10(질문 낱말 옮기기 금지)을 더 건다 (10-01)
-FOLLOW_UP_RULES = {"V1", "V7", "V11"}  # V11: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01)
+FOLLOW_UP_RULES = {"V1", "V7", "V11", "V15"}  # V11: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01). V15: 판매 예정일이 지났다고 쓰지 않는다 (10-06 점검)
 # 후속 질문에서 LLM이 부른 도구 결과를 근거 카드로 붙일 때의 출처 (10-02). Evidence.source 값 중에서 고른다 (계약 C1, 바꾸지 않음)
 TOOL_SOURCE = {"get_vessel_candidates": "shipfinder", "get_live_position": "shipfinder",
                "get_port_schedule": "mof", "estimate_distance": "searoute"}
@@ -231,22 +240,32 @@ def _after_customs(request: AgentRequest, customs: CustomsRecord, memory: str | 
 
     progress.step("identify")
     candidates, vessel_match, mmsi, call_sign = _identify(customs, request)
+    # 사용자가 고른 배를 후보에서 확인하지 못했다 (10-06 점검). 다른 근거로 1척이 확정됐어도 사용자가 고른 배와 다르니
+    # 바꿔 끼우지 않고 되묻는다. 도구 실패는 아래에서 그대로 partial로 끝낸다
+    rejected = bool(request.resolved_mmsi) and mmsi != request.resolved_mmsi and vessel_match != TOOL_FAILED
+    if rejected and vessel_match == "confirmed":
+        vessel_match, mmsi, call_sign = "uncertain", None, None
     # 배를 못 정하면 판정하지 않는다. 위치·입항 정보 없이 판정하면 근거 없이 "괜찮다"가 나온다 (09-28 실제 B/L)
     if vessel_match == TOOL_FAILED:
         # 검색 도구 실패는 우리 쪽 문제라 사용자에게 되묻지 않는다 (SDD 4.1 4단계·8절)
-        return _response(status="partial", answer=VESSEL_TOOL_FAILED)
+        return _response(status="partial", answer=_tool_failed_text(VESSEL_TOOL_FAILED))
     if vessel_match == "none":
         # 0척 → insufficient (SDD 4.1 3단계). 포워더 입항 예정일을 이미 받았으면 더 물을 게 없어 partial (V5)
+        prefix = f"{RESOLVED_NO_CANDIDATES} " if rejected else ""
         if request.forwarder_eta:
-            return _response(status="partial", answer=NO_VESSEL_AFTER_ETA)
-        return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=NO_VESSEL)
+            return _response(status="partial", answer=prefix + NO_VESSEL_AFTER_ETA)
+        return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=prefix + NO_VESSEL)
     if vessel_match == "uncertain":
+        if rejected:
+            answer = RESOLVED_NOT_CANDIDATE
+        else:
+            answer = ASK_BACK_AFTER_EVIDENCE if (request.voyage_no or request.forwarder_eta) else ASK_BACK
         return _response(
             status="insufficient",
             vessel_match="uncertain",
             vessel_candidates=candidates,
             missing_inputs=[f for f in ("voyage_no", "forwarder_eta") if not getattr(request, f)],
-            answer=ASK_BACK_AFTER_EVIDENCE if (request.voyage_no or request.forwarder_eta) else ASK_BACK,
+            answer=answer,
         )
 
     progress.step("position")
@@ -437,7 +456,15 @@ def _no_position(position: dict | None, request: AgentRequest, collected: dict) 
         if request.forwarder_eta:
             return _response(status="partial", answer=POSITION_MISSING_AFTER_ETA, **collected)
         return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=POSITION_MISSING, **collected)
-    return _response(status="partial", answer=POSITION_TOOL_FAILED, **collected)
+    return _response(status="partial", answer=_tool_failed_text(POSITION_TOOL_FAILED, error_code), **collected)
+
+
+def _tool_failed_text(base: str, error_code: str | None = None) -> str:
+    """도구 실패 문구. ShipFinder 하루 한도를 다 쓴 날이면 "잠시 뒤 다시"를 "내일 다시"로 바꾼다 (10-06 점검).
+    도구 응답의 오류 코드가 quota_exhausted이거나, 같은 프로세스가 오늘 38을 받았으면 한도 소진으로 본다."""
+    if error_code == "quota_exhausted" or shipfinder_client.quota_blocked():
+        return base.replace(" 잠시 뒤 다시 조회해 주세요.", "") + QUOTA_EXHAUSTED_TAIL
+    return base
 
 
 def _no_eta(signal_set, collected: dict) -> AgentResponse:
@@ -613,28 +640,60 @@ def _previous_response(request: AgentRequest, user_id: str | None = None) -> Age
 
     가린 번호가 같은 두 화물을 가른다 (docs/specs/memory.md EC-05). 로그인 사용자의 이력 줄에는 잠긴 원본 B/L이 있어서
     (007 마이그레이션), 가린 번호가 같은 최근 줄들을 열어 이번 B/L과 같은 줄만 쓴다(_same_cargo). 스키마는 바꾸지 않는다.
-    로그인이 꺼진 환경은 원본을 저장하지 않으므로 지금처럼 가린 번호로 찾는다.
+    로그인이 꺼진 환경은 원본을 저장하지 않는다. 대신 결과 JSON에 B/L 지문(열쇠 있는 HMAC, BL_FINGERPRINT_KEY)을 넣어 두고
+    같은 지문의 줄만 쓴다 (10-06 점검: 가린 번호만으로 찾으면 가린 모양이 같은 두 화물이 섞였다). 열쇠가 없으면 지문도 없어 예전처럼 찾는다.
+
+    입력이 바뀌었으면 지난 결과를 쓰지 않는다 (10-06 점검, _inputs_changed). 판매 예정일이나 포워더 입항 예정일을 새로 주고
+    물었는데 옛 여유 일수·등급으로 답하면 틀린 답이다. None을 돌려주면 _follow_up이 새로 조회·판정한 결과로 답한다.
     """
     if not _db_configured("db_read"):
         return None
     try:
         with connect() as conn:
-            if user_id:
-                saved = _same_cargo(recent_responses(conn, request.session_id, mask_bl(request.bl_no), user_id),
-                                    request.bl_no)
-            else:
-                saved = latest_response(conn, request.session_id, mask_bl(request.bl_no), user_id)
+            saved = _same_cargo(recent_responses(conn, request.session_id, mask_bl(request.bl_no), user_id), request.bl_no)
     except Exception as e:
         log_failure("db_read", type(e).__name__)
         return None
-    return AgentResponse.model_validate(_open_containers(saved)) if saved else None
+    if not saved:
+        return None
+    previous = AgentResponse.model_validate(_open_containers(saved))
+    if _inputs_changed(request, previous):
+        logger.info("follow_up inputs changed, reassessing")
+        return None
+    return previous
+
+
+# 사용자가 준 날짜 중 바뀌면 여유 일수·등급이 달라지는 것. 지난 결과의 근거 카드(services/evidence.py, source=rule)에 같은 이름으로 있다
+_DATE_INPUTS = ("sale_due_date", "forwarder_eta")
+
+
+def _inputs_changed(request: AgentRequest, previous: AgentResponse) -> bool:
+    """이번 요청의 판매 예정일·포워더 입항 예정일이 지난 결과를 만들 때 쓴 값과 다른가 (10-06 점검).
+    지난 값은 근거 카드에서 읽는다. 이번 요청에 값이 없으면 바뀐 것으로 보지 않는다(후속 질문은 보통 날짜를 다시 안 보낸다)."""
+    used = {e.field: e.value for e in previous.evidence if e.source == "rule" and e.field in _DATE_INPUTS}
+    for field in _DATE_INPUTS:
+        value = getattr(request, field)
+        if value is not None and used.get(field) != value.isoformat():
+            return True
+    return False
 
 
 # 이력(query_log.response)에 컨테이너 번호를 잠가 두는 칸 이름. AgentResponse에는 없는 칸이라 읽을 때 꺼내고 지운다
 SEALED_CONTAINER_KEY = "container_no_sealed"
+# 이력에 B/L 지문을 두는 칸 이름 (10-06 점검). 원문이 아니라 BL_ENCRYPTION_KEY로 만든 HMAC이라 되돌릴 수 없다.
+# 로그인 없이 남긴 줄도 가린 번호가 같은 다른 화물과 가를 수 있게 한다 (_cargo_rows). 읽을 때 지운다
+BL_FINGERPRINT_KEY = "bl_fingerprint"
 
 
-def _seal_containers(response: AgentResponse) -> dict:
+def _bl_fingerprint(bl_no: str) -> str | None:
+    """B/L 지문. 열쇠가 없으면 None (그때는 지문 없이 저장하고, 찾을 때도 예전처럼 가린 번호로 찾는다).
+    열쇠가 없는 채점 환경에서 요청마다 no_key 로그가 쌓이지 않게 먼저 열쇠를 본다."""
+    if not os.environ.get(crypto.BL_KEY_ENV, "").strip():
+        return None
+    return crypto.fingerprint(bl_no, key_env=crypto.BL_KEY_ENV)
+
+
+def _seal_containers(response: AgentResponse, bl_no: str | None = None) -> dict:
     """이력에 저장할 결과. 컨테이너 번호를 평문으로 남기지 않는다 (10-06 점검, #69).
 
     - customs.container_no 칸은 빼고, 같은 번호를 B/L과 같은 열쇠로 잠가 SEALED_CONTAINER_KEY에 둔다 (crypto.encrypt, BL_ENCRYPTION_KEY).
@@ -649,12 +708,16 @@ def _seal_containers(response: AgentResponse) -> dict:
     sealed = crypto.encrypt(number) if number else None
     if sealed:
         data[SEALED_CONTAINER_KEY] = sealed
+    fingerprint = _bl_fingerprint(bl_no) if bl_no else None
+    if fingerprint:
+        data[BL_FINGERPRINT_KEY] = fingerprint
     return data
 
 
 def _open_containers(saved: dict) -> dict:
     """이력에서 꺼낸 결과에 잠가 둔 컨테이너 번호를 풀어 customs.container_no로 되돌린다. 못 풀면 칸 없이 둔다."""
     saved = dict(saved)
+    saved.pop(BL_FINGERPRINT_KEY, None)
     sealed = saved.pop(SEALED_CONTAINER_KEY, None)
     number = crypto.decrypt(sealed) if sealed else None
     if number and isinstance(saved.get("customs"), dict):
@@ -663,17 +726,35 @@ def _open_containers(saved: dict) -> dict:
 
 
 def _same_cargo(rows: list[tuple[dict, str | None]], bl_no: str) -> dict | None:
-    """(결과, 잠긴 B/L) 줄들 중 원본이 이번 B/L과 같은 가장 최근 결과 (EC-05).
-    한 줄도 열 수 없으면(열쇠가 없어 잠그지 못했던 줄들) 예전처럼 가장 최근 줄을 쓴다. 다른 화물로 확인된 줄은 쓰지 않는다."""
-    opened = False
+    """(결과, 잠긴 B/L) 줄들 중 이번 B/L과 같은 가장 최근 결과 (EC-05). 가르는 기준은 _cargo_rows."""
+    matched = _cargo_rows(rows, bl_no)
+    return matched[0] if matched else None
+
+
+def _cargo_rows(rows: list[tuple[dict, str | None]], bl_no: str) -> list[dict]:
+    """(결과, 잠긴 B/L) 줄들 중 이번 B/L의 결과만 최신순으로.
+
+    줄마다 잠긴 원본(로그인 사용자, 007)을 열어 보고, 없으면 결과 JSON의 B/L 지문(BL_FINGERPRINT_KEY, 10-06)과 비교한다.
+    한 줄도 확인할 수 없으면(열쇠가 없어 원본도 지문도 없던 줄들) 예전처럼 모두 쓴다. 다른 화물로 확인된 줄은 쓰지 않는다."""
+    import hmac
+
+    mine = _bl_fingerprint(bl_no)
+    checked, matched, unknown = False, [], []
     for response, sealed in rows:
         original = crypto.decrypt(sealed) if sealed else None
-        if original is None:
+        if original is not None:
+            checked = True
+            if original == bl_no:
+                matched.append(response)
             continue
-        opened = True
-        if original == bl_no:
-            return response
-    return rows[0][0] if rows and not opened else None
+        stored = response.get(BL_FINGERPRINT_KEY) if isinstance(response, dict) else None
+        if stored and mine:
+            checked = True
+            if hmac.compare_digest(str(stored), mine):
+                matched.append(response)
+            continue
+        unknown.append(response)
+    return matched if checked else unknown
 
 
 def _fetch_customs(request: AgentRequest) -> tuple[CustomsRecord | None, AgentResponse | None]:
@@ -704,8 +785,17 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     """
     mrn_call_sign = identify.call_sign_from_mrn(customs)
     if request.resolved_mmsi:
-        # 사용자가 고른 배. 호출부호를 알면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)
-        return [], "confirmed", request.resolved_mmsi, mrn_call_sign
+        # 사용자가 고른 배. 이 화물의 후보 중 하나일 때만 확정한다 (10-06 점검, _resolved_pick)
+        picked = _resolved_pick(customs, request, mrn_call_sign)
+        if picked == TOOL_FAILED:
+            return [], TOOL_FAILED, None, None
+        if picked is not None:
+            chosen, picked_call_sign = picked
+            # 호출부호를 알면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)
+            return [chosen], "confirmed", chosen.mmsi, mrn_call_sign or picked_call_sign
+        # 후보에 없는 번호: 무시하고 보통 식별로 간다. 결과는 부르는 쪽(_after_customs)이 되묻기로 바꾼다
+        log_failure("identify", "resolved_mmsi_not_candidate")
+        request = request.model_copy(update={"resolved_mmsi": None})
 
     if mrn_call_sign:
         result = get_vessel_candidates(ship_name=customs.ship_name or "", call_sign=mrn_call_sign)
@@ -773,6 +863,70 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
         call_sign = next((row.get("call_sign") for row in rows if row["mmsi"] == picked.choice), None)
         return candidates, "confirmed", picked.choice, call_sign
     return candidates, "uncertain", None, None
+
+
+# 지켜보기 재판정이 다시 쓰는 배 (services/watch.py). 그 화물을 처음 조회할 때 이미 확정해 user_cargo.vessel_mmsi에 저장한 배라
+# 후보 확인 검색(ShipFinder 1~2회)을 다시 하지 않는다. 워커는 화물당 ShipFinder 1회만 떼어 두기 때문이다 (worker/run.py, 10-06 점검).
+# 사용자 요청 경로에서는 늘 None이다. 화면이 보낸 resolved_mmsi는 아래처럼 후보와 대조한다
+trusted_vessel: ContextVar[int | None] = ContextVar("trusted_vessel", default=None)
+
+
+def _resolved_pick(customs: CustomsRecord, request: AgentRequest,
+                   mrn_call_sign: str | None) -> tuple[VesselCandidate, str | None] | str | None:
+    """사용자가 고른 MMSI가 이 화물의 후보인지 확인한다 (10-06 점검).
+    (후보, 호출부호), 후보가 아니면 None, 검색 도구가 모두 실패하면 TOOL_FAILED.
+
+    1. 이 화물의 지난 되묻기 응답(조회 이력)에 실린 후보 목록. 외부 호출이 없어 먼저 본다
+    2. 없으면 식별과 같은 검색을 다시 한다: MRN 호출부호 검색, 그다음 선명 검색. ShipFinder 호출이 1~2번 늘지만
+       남의 배를 확정하는 것보다 낫다 (PRD 6.2). 지켜보기 재판정처럼 이력이 없는 세션도 이 길로 확인된다
+    """
+    target = request.resolved_mmsi
+    if trusted_vessel.get() == target:
+        # 지켜보기 재판정: 저장해 둔 확정 배. 후보 줄 대신 세관 선명으로 최소한의 후보를 만든다 (_vessel_info가 쓰는 칸만)
+        return VesselCandidate(mmsi=target, imo=None, name=customs.ship_name or "", flag=None, dest=None,
+                               last_time=datetime.now(timezone.utc), ship_type=None,
+                               match_reasons=["지켜보기에 저장된 확정 배"]), None
+    for saved in _saved_cargo_responses(request):
+        for row in saved.get("vessel_candidates") or []:
+            if isinstance(row, dict) and row.get("mmsi") == target:
+                try:
+                    return VesselCandidate.model_validate(row), None
+                except ValueError:
+                    continue
+
+    searches = []
+    if mrn_call_sign:
+        searches.append(("vessel_candidates_mrn", dict(ship_name=customs.ship_name or "", call_sign=mrn_call_sign)))
+    if customs.ship_name:
+        searches.append(("vessel_candidates", dict(ship_name=customs.ship_name)))
+    failed = 0
+    for stage, args in searches:
+        result = get_vessel_candidates(**args)
+        if "error" in result:
+            _log_tool_error(stage, result)
+            failed += 1
+            continue
+        rows = result.get("candidates", [])
+        for candidate in _candidates(rows, "사용자가 후보에서 고른 배"):
+            if candidate.mmsi == target:
+                return candidate, next((r.get("call_sign") for r in rows if r.get("mmsi") == target), None)
+    return TOOL_FAILED if searches and failed == len(searches) else None
+
+
+def _saved_cargo_responses(request: AgentRequest) -> list[dict]:
+    """이 세션(로그인했으면 사용자)·이 화물의 최근 결과 JSON들. DB가 없거나 못 읽으면 빈 목록.
+    사용자 ID는 지금 요청의 사용량 이름(quota.owner_var, session_scope가 정한다)에서 꺼낸다. _assess의 인자를 늘리지 않으려는 것이다."""
+    if not _db_configured("db_read"):
+        return []
+    owner = quota.owner_var.get() or ""
+    user_id = owner[len("user:"):] if owner.startswith("user:") else None
+    try:
+        with connect() as conn:
+            rows = recent_responses(conn, request.session_id, mask_bl(request.bl_no), user_id)
+    except Exception as e:
+        log_failure("db_read", type(e).__name__)
+        return []
+    return [r for r in _cargo_rows(rows, request.bl_no) if isinstance(r, dict)]
 
 
 def _log_tool_error(stage: str, result: dict | None) -> None:
@@ -1002,7 +1156,7 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 # 칸을 빼는 것만으로는 부족하다: 후속 답(answer)은 화면용으로 실제 번호를 되돌린 문장이라(_follow_up) 그대로 두면
                 # 다음 후속 질문 때 이력에서 원문이 LLM에 간다. 그래서 저장 전에 남은 글자 속 번호도 [CNTR1] 번호표로 바꾼다 (10-06 병합).
                 # 번호 자체는 잠가서 따로 둔다(_seal_containers). 후속 질문이 이력을 읽을 때 풀어야 LLM이 번호표로 알고 답할 수 있다 (10-06 정운 결정)
-                response=_as_jsonb(_seal_containers(response)),
+                response=_as_jsonb(_seal_containers(response, request.bl_no)),
             )
     except Exception as e:
         log_failure("db_write", type(e).__name__)

@@ -115,3 +115,59 @@ def test_missing_key_rejected(monkeypatch):
     with pytest.raises(ShipFinderError) as e:
         ShipFinderClient()
     assert e.value.code == "bad_key"
+
+
+# ── 하루 한도 소진 status 38 (10-06 점검) ──
+
+def test_quota_exhausted_fixture_is_distinct_code():
+    """38은 일반 error가 아니라 quota_exhausted다. 오늘은 다시 불러도 같아 retryable이 아니다."""
+    with pytest.raises(ShipFinderError) as e:
+        _client("quota_exhausted.json").position(440999001)
+    assert (e.value.code, e.value.status, e.value.retryable) == ("quota_exhausted", 38, False)
+
+
+def test_quota_exhausted_stops_further_calls_today():
+    """38을 한 번 받으면 같은 날에는 호출하지 않고 바로 실패한다. 다른 클라이언트 객체여도 같다 (프로세스 단위)."""
+    calls = []
+    with pytest.raises(ShipFinderError):
+        _client("quota_exhausted.json", calls=calls).search("TEST STAR")
+    assert len(calls) == 1
+
+    with pytest.raises(ShipFinderError) as e:
+        _client("position_ok.json", calls=calls).position(440999002)
+    assert e.value.code == "quota_exhausted" and len(calls) == 1  # 두 번째는 부르지 않았다
+
+
+def test_quota_block_ends_on_next_kst_day(monkeypatch):
+    from datetime import date
+
+    from backend.app.clients import shipfinder
+
+    with pytest.raises(ShipFinderError):
+        _client("quota_exhausted.json").position(440999001)
+    assert shipfinder.quota_blocked()
+    monkeypatch.setattr(shipfinder, "_today_kst", lambda: date(2099, 1, 1))  # 한국 날짜가 바뀌었다
+    assert not shipfinder.quota_blocked()
+    assert _client("position_ok.json").position(440999002).mmsi == 440999002
+
+
+def test_quota_exhausted_serves_cache_even_past_ttl():
+    """한도 소진은 시간 초과처럼 TTL이 지난 캐시도 마지막 수신 위치로 쓴다."""
+    from datetime import datetime, timedelta, timezone
+
+    client = _client("position_ok.json")
+    pos = client.position(440999002)
+    old = datetime.now(timezone.utc) - timedelta(hours=30)
+    ShipFinderClient.cache.set("shipfinder:pos:440999002", pos, cached_at=old)
+
+    cached = _client("quota_exhausted.json")
+    assert cached.position(440999002).mmsi == 440999002
+    assert cached.last_cached_at == old
+
+
+def test_position_without_lat_is_shipfinder_error():
+    """좌표가 빠진 위치 응답은 KeyError가 아니라 ShipFinderError로 올린다 (MCP 도구가 {error}로 바꾸게)."""
+    body = {"status": 0, "data": {"mmsi": 440999002, "lng": 129.0, "ship_name": "TEST"}}
+    with pytest.raises(ShipFinderError) as e:
+        _client(handler=lambda r: httpx.Response(200, json=body)).position(440999002)
+    assert e.value.code == "error"

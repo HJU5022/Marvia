@@ -43,3 +43,29 @@ def test_plain_facts_are_not_violation():
     assert not _v9(answer="통관은 수입신고수리 단계로, 통관이 끝났습니다.")
     # 평가 낱말은 있지만 통관 이야기가 아닌 문장
     assert not _v9(answer="모든 신호가 정상이고 선박 운항도 원활합니다.")
+
+
+# V11 보강 (10-06 점검): 수입신고수리 전 단계에서 통관이 끝났다고 말한 문장이 통과했다
+MANIFEST = {**CUSTOMS, "stage_name": "입항적재화물목록 심사완료", "plain_explanation": "세관이 목록을 확인했습니다.",
+            "next_stage": "하선신고 수리"}
+
+
+def test_customs_done_claim_before_clearance_is_violation():
+    # 10-06 점검에서 V11을 통과한 실제 문장들 (단계: 입항적재화물목록 심사완료)
+    assert _v9(customs=MANIFEST, answer="현재 통관이 완료된 상태이며 배는 부산으로 오고 있습니다.")
+    assert _v9(customs=MANIFEST, answer="통관이 완료되었고 하선만 남았습니다.")
+    assert _v9(customs=MANIFEST, answer="세관 확인 결과 문제가 없습니다.")
+    assert _v9(customs=MANIFEST, actions=["세관 절차는 끝났으니 운송사에 연락하세요."])
+
+
+def test_stage_name_with_done_word_is_not_violation():
+    # 단계 이름 속 "완료"는 걸리지 않는다. 바른 해설 문장 (marvia-judge 프롬프트 예시와 같은 모양)
+    assert not _v9(customs=MANIFEST, answer="입항적재화물목록 심사완료 단계로, 세관이 목록을 확인했다는 뜻입니다.")
+    assert not _v9(customs=MANIFEST, answer="입항적재화물목록 심사 완료 단계로, 세관이 목록을 확인했다는 뜻입니다.")
+    # 앞으로의 일을 말하는 조건 문장
+    assert not _v9(customs=MANIFEST, answer="세관 심사가 완료되면 하선신고 수리 단계로 넘어갑니다.")
+
+
+def test_customs_done_claim_after_clearance_is_allowed():
+    cleared = {**CUSTOMS, "stage_name": "수입신고수리", "plain_explanation": "통관이 끝났습니다.", "next_stage": "반출신고"}
+    assert not _v9(customs=cleared, answer="수입신고수리 단계로, 통관이 완료되었습니다.")

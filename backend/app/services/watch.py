@@ -43,6 +43,12 @@ from backend.app.services.verdict import VERDICT_LABEL
 
 MAX_WATCH = 5      # 사용자당 지켜볼 수 있는 화물 수 (10-05 결정)
 RUN_LIMIT = 5      # 워커 한 번에 다시 판정하는 화물 수. ShipFinder 하루 한도 50회를 지키려는 상한이다
+# 배(vessel_mmsi)를 아는 화물 한 건을 다시 판정할 때 ShipFinder를 부르는 횟수 (10-06 점검, routers/agent.py에서 확인).
+# resolved_mmsi가 있으면 _identify가 후보 검색을 건너뛰고(확정), _after_customs가 get_live_position 한 번만 부른다.
+# 규칙이 아니라 코드 경로를 센 값이라 rules.md가 아니라 여기 둔다. 판정 경로가 ShipFinder를 더 부르게 바뀌면 같이 고친다.
+# 배를 모르는 화물은 후보 검색(검색 1 + 후보 5척 x 위치·국적 = 최대 11회, mcp_server/tools/vessel_candidates.py)이라
+# 워커가 예산 안에서 돌릴 때는 아예 다시 판정하지 않는다 (run_watch known_vessel_only)
+SHIPFINDER_CALLS_PER_KNOWN_VESSEL = 1
 
 
 class WatchError(Exception):
@@ -135,15 +141,29 @@ def mark_seen(conn, user_id: str) -> int:
 
 # ── 주기 재판정 (워커) ──
 
-def _due_rows(conn, limit: int) -> list[tuple]:
-    """지켜보는 중이고 진행 중인 화물을 마지막 확인이 오래된 순으로 limit건. 한 번도 안 본 줄이 먼저다."""
+def _due_rows(conn, limit: int, known_vessel_only: bool = False) -> list[tuple]:
+    """지켜보는 중이고 진행 중인 화물을 마지막 확인이 오래된 순으로 limit건. 한 번도 안 본 줄이 먼저다.
+    known_vessel_only면 배(vessel_mmsi)를 아는 화물만 고른다 (워커 예산, SHIPFINDER_CALLS_PER_KNOWN_VESSEL 설명)."""
+    vessel = " AND vessel_mmsi IS NOT NULL" if known_vessel_only else ""
     return conn.execute(
-        """SELECT user_id, cargo_key, bl_encrypted, bl_masked, label, bl_type, sale_due_date, forwarder_eta,
+        f"""SELECT user_id, cargo_key, bl_encrypted, bl_masked, label, bl_type, sale_due_date, forwarder_eta,
                   voyage_no, vessel_mmsi, last_verdict
-           FROM user_cargo WHERE watch AND status = 'active'
+           FROM user_cargo WHERE watch AND status = 'active'{vessel}
            ORDER BY last_checked_at ASC NULLS FIRST LIMIT %s""",
         [limit],
     ).fetchall()
+
+
+def known_vessel_due_count(conn) -> int:
+    """배를 아는, 지켜보는 진행 중 화물 수. 워커가 재판정 몫의 ShipFinder 예산을 이만큼만 떼어 두려고 쓴다 (worker/run.py)."""
+    return conn.execute(
+        "SELECT count(*) FROM user_cargo WHERE watch AND status = 'active' AND vessel_mmsi IS NOT NULL").fetchone()[0]
+
+
+def _no_vessel_count(conn) -> int:
+    """배를 모르는(vessel_mmsi 없음), 지켜보는 진행 중 화물 수. known_vessel_only로 건너뛴 건수로 알린다."""
+    return conn.execute(
+        "SELECT count(*) FROM user_cargo WHERE watch AND status = 'active' AND vessel_mmsi IS NULL").fetchone()[0]
 
 
 def _notify(conn, user_id: str, name: str, old: str, new: str) -> bool:
@@ -172,7 +192,7 @@ def _check_one(conn, row: tuple, now: datetime, assess) -> tuple[bool, bool, boo
         raise WatchError("no_bl")
     request = AgentRequest(bl_no=bl_no, bl_type=bl_type, sale_due_date=sale_due, forwarder_eta=forwarder_eta,
                            voyage_no=voyage_no, resolved_mmsi=mmsi, session_id=f"watch-{now:%Y%m%d}")
-    from backend.app.routers.agent import is_released  # 맨 위에서 부르면 라우터와 서비스가 서로 불러오는 순환이 된다
+    from backend.app.routers.agent import is_released, trusted_vessel  # 맨 위에서 부르면 라우터와 서비스가 서로 불러오는 순환이 된다
 
     # 지켜보기 재판정도 그 사용자의 LLM 사용량이다 (docs/specs/token-quota.md, 10-06 점검).
     # user_id를 넘겨야 토큰이 그 사람 몫으로 쌓이고 Langfuse 트레이스에도 user_id가 붙는다 (SDD 5.11).
@@ -181,8 +201,13 @@ def _check_one(conn, row: tuple, now: datetime, assess) -> tuple[bool, bool, boo
         quota.ensure_allowed(None, user_id)
     except quota.QuotaExceeded as e:
         raise WatchError("quota") from e
-    with session_scope(request.session_id, user_id):
-        response = assess(request, None)
+    # 저장된 확정 배(vessel_mmsi)는 후보 확인 검색 없이 쓴다. 워커 예산은 화물당 ShipFinder 1회라서다 (routers/agent.py trusted_vessel)
+    trust = trusted_vessel.set(mmsi)
+    try:
+        with session_scope(request.session_id, user_id):
+            response = assess(request, None)
+    finally:
+        trusted_vessel.reset(trust)
     new = response.verdict
     if new is None:  # 판정이 없는 결과로 기준 등급을 지우지 않는다 (위 "왜 이렇게 했나")
         return False, False, False
@@ -194,8 +219,14 @@ def _check_one(conn, row: tuple, now: datetime, assess) -> tuple[bool, bool, boo
     return True, True, _notify(conn, user_id, label or bl_masked, old, new)
 
 
-def run_watch(conn, *, limit: int = RUN_LIMIT, now: datetime | None = None, assess=None) -> dict:
+def run_watch(conn, *, limit: int = RUN_LIMIT, now: datetime | None = None, assess=None,
+              known_vessel_only: bool = False) -> dict:
     """지켜보는 화물을 다시 판정하고 결과 개수를 돌려준다: checked / changed / notified / failed / unjudged.
+
+    known_vessel_only: 배(vessel_mmsi)를 아는 화물만 다시 판정한다. 수집 워커(worker/run.py)가 ShipFinder 예산을
+    화물당 SHIPFINDER_CALLS_PER_KNOWN_VESSEL회로 떼어 두고 부를 때 쓴다 (10-06 점검). 배를 모르는 화물은 후보 검색으로
+    최대 11회를 써서 예산을 깬다. 그 화물은 skipped_no_vessel로 센다 (이 값일 때만 결과에 들어간다).
+    사용자가 화면에서 다시 조회하면 배가 정해져 vessel_mmsi가 채워지고, 그다음부터 워커가 다시 판정한다.
 
     assess: 판정 함수 (request, memory) -> AgentResponse. 기본은 조회 화면과 같은 routers.agent._assess다.
     테스트가 가짜를 끼운다. 한 건이 어디서 실패하든 나머지는 계속하고, 로그에는 오류 종류만 남긴다.
@@ -205,7 +236,9 @@ def run_watch(conn, *, limit: int = RUN_LIMIT, now: datetime | None = None, asse
         from backend.app.routers.agent import _assess as assess
     now = now or datetime.now(timezone.utc)
     summary = {"checked": 0, "changed": 0, "notified": 0, "failed": 0, "unjudged": 0}
-    for row in _due_rows(conn, limit):
+    if known_vessel_only:
+        summary["skipped_no_vessel"] = _no_vessel_count(conn)
+    for row in _due_rows(conn, limit, known_vessel_only):
         try:
             judged, changed, notified = _check_one(conn, row, now, assess)
         except Exception as e:  # 한 건 실패가 다른 사람의 감시를 막지 않는다. 종류만 남긴다

@@ -21,8 +21,9 @@ from datetime import datetime, timezone
 
 from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
-from backend.app.db import apply_migrations, connect, purge_done_cargo, purge_old_conversations, purge_old_queries
-from backend.app.services.watch import RUN_LIMIT, run_watch
+from backend.app.db import (apply_migrations, connect, purge_done_cargo, purge_old_conversations, purge_old_queries,
+                            purge_watch_positions)
+from backend.app.services.watch import RUN_LIMIT, SHIPFINDER_CALLS_PER_KNOWN_VESSEL, known_vessel_due_count, run_watch
 from worker.collector import Budget, collect_port, collect_positions, collect_watch_positions, purge_positions, select_targets
 
 DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
@@ -59,13 +60,20 @@ def run_once(shipfinder_calls: int) -> dict:
 
     budget = Budget(shipfinder_calls)
     # 지켜보기 재판정(run_watch)도 화물마다 ShipFinder를 부르는데 Budget을 거치지 않는다 (MCP·판정 경로).
-    # 그래서 재판정할 화물 수만큼 예산을 먼저 떼어 두고, 수집은 남은 예산으로 한다. 안 그러면 한 번 실행이
-    # WORKER_SHIPFINDER_CALLS_PER_RUN을 넘어 하루 50회 한도를 깰 수 있다 (10-06 점검). 화물 하나에 한 번으로 셈한다:
-    # 지켜보는 배는 바로 아래 collect_watch_positions가 먼저 받아 두므로 재판정의 위치 조회는 대개 캐시에서 끝난다
-    watch_reserved = 0
+    # 그래서 재판정할 화물 몫의 예산을 먼저 떼어 두고, 수집은 남은 예산으로 한다. 안 그러면 한 번 실행이
+    # WORKER_SHIPFINDER_CALLS_PER_RUN을 넘어 하루 50회 한도를 깰 수 있다 (10-06 점검).
+    # 재판정은 api 프로세스의 MCP(/mcp)를 거쳐 api 쪽 ShipFinderClient로 부른다. 이 워커의 ShipFinderClient 캐시와는
+    # 프로세스가 달라 아래 collect_watch_positions가 받아 둔 위치를 다시 쓰지 못한다. 화물마다 실제로 호출된다고 센다.
+    # 배를 아는 화물만 다시 판정한다(known_vessel_only): 그 경로는 화물당 SHIPFINDER_CALLS_PER_KNOWN_VESSEL회(위치 1회)다.
+    # 배를 모르는 화물은 후보 검색으로 최대 11회를 써서 예산으로 묶기 어렵다 (services/watch.py 설명)
+    watch_limit = 0
     if watch_enabled():
-        while watch_reserved < RUN_LIMIT and budget.take():
-            watch_reserved += 1
+        try:
+            due = min(known_vessel_due_count(conn), RUN_LIMIT)
+        except Exception:  # 017 칸이 없는 DB 등. 아래 run_watch도 같은 이유로 실패해 결과에 남는다
+            due = 0
+        watch_limit = min(due, budget.remaining // SHIPFINDER_CALLS_PER_KNOWN_VESSEL)
+        budget.remaining -= watch_limit * SHIPFINDER_CALLS_PER_KNOWN_VESSEL
     if shipfinder_calls > 0:
         try:
             sf = ShipFinderClient()
@@ -82,9 +90,11 @@ def run_once(shipfinder_calls: int) -> dict:
     summary["queries_purged"] = purge_old_queries(conn)  # 90일 지난 조회 기록 삭제 (migrations/008)
     summary["done_cargo_purged"] = purge_done_cargo(conn)  # 반출 3년 지난 끝난 화물과 그 메모 삭제 (migrations/015)
     summary["conversations_purged"] = purge_old_conversations(conn)  # 90일 지난 대화 목록 삭제 (migrations/018)
+    summary["watch_positions_purged"] = purge_watch_positions(conn)  # 안 지켜보는 배의 30일 지난 감시 위치 삭제 (migrations/021)
     if watch_enabled():
         try:
-            summary["watch"] = run_watch(conn, limit=watch_reserved)  # 지켜보는 화물 재판정 (services/watch.py), 떼어 둔 예산만큼만
+            # 지켜보는 화물 재판정 (services/watch.py). 떼어 둔 예산만큼, 배를 아는 화물만
+            summary["watch"] = run_watch(conn, limit=watch_limit, known_vessel_only=True)
         except Exception as e:  # 재판정이 실패해도 위에서 끝낸 수집 결과는 그대로 남긴다
             summary["watch"] = {"error": type(e).__name__}
     conn.close()

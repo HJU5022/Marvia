@@ -79,8 +79,13 @@ class FakeConn:
             for r in found:
                 r["change_seen"] = True
             return _Cur(rowcount=len(found))
+        if q.startswith("SELECT count(*) FROM user_cargo WHERE watch AND status = 'active' AND vessel_mmsi IS"):
+            want_null = q.endswith("IS NULL")
+            return _Cur([(sum(1 for r in self.rows if r["watch"] and r["status"] == "active"
+                              and (r["vessel_mmsi"] is None) == want_null),)])
         if q.startswith("SELECT user_id, cargo_key, bl_encrypted"):
-            found = [r for r in self.rows if r["watch"] and r["status"] == "active"]
+            found = [r for r in self.rows if r["watch"] and r["status"] == "active"
+                     and ("vessel_mmsi IS NOT NULL" not in q or r["vessel_mmsi"] is not None)]
             found.sort(key=lambda r: (r["last_checked_at"] is not None, r["last_checked_at"] or NOW))
             cols = ("user_id", "cargo_key", "bl_encrypted", "bl_masked", "label", "bl_type", "sale_due_date",
                     "forwarder_eta", "voyage_no", "vessel_mmsi", "last_verdict")
@@ -413,3 +418,25 @@ def test_rejudge_skipped_when_owner_is_over_quota(upserts, sent, monkeypatch):
     monkeypatch.setattr(quota, "ensure_allowed", over)
     out = svc.run_watch(conn, now=NOW, assess=lambda req, mem: pytest.fail("한도를 다 쓴 사람의 화물은 재판정하지 않는다"))
     assert out["failed"] == 1 and failures == [("watch_cargo", "quota")] and upserts == []
+
+
+def test_known_vessel_only_skips_cargo_without_vessel(upserts, sent):
+    """워커 예산 안에서 돌 때(known_vessel_only)는 배를 모르는 화물을 다시 판정하지 않고 skipped_no_vessel로 센다 (10-06 점검).
+    배를 모르면 후보 검색으로 ShipFinder를 최대 11회 써서 화물당 1회로 떼어 둔 예산을 깬다."""
+    conn = FakeConn()
+    _watched(conn, bl="MOCKBL20261001", vessel_mmsi=None, last_checked_at=None)
+    _watched(conn, bl="MOCKBL20261002", vessel_mmsi=440999001)
+    seen = []
+    out = svc.run_watch(conn, now=NOW, known_vessel_only=True,
+                        assess=lambda req, mem: seen.append((req.bl_no, req.resolved_mmsi)) or _resp("watch"))
+    assert seen == [("MOCKBL20261002", 440999001)]
+    assert out["checked"] == 1 and out["skipped_no_vessel"] == 1
+    assert svc.known_vessel_due_count(conn) == 1
+
+
+def test_default_run_watch_still_checks_cargo_without_vessel(upserts, sent):
+    """python -m worker.watch(예산 없음)는 지금처럼 배를 모르는 화물도 다시 판정한다. 결과 모양도 그대로다."""
+    conn = FakeConn()
+    _watched(conn, vessel_mmsi=None)
+    out = svc.run_watch(conn, now=NOW, assess=lambda req, mem: _resp("watch"))
+    assert out == {"checked": 1, "changed": 0, "notified": 0, "failed": 0, "unjudged": 0}

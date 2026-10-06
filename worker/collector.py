@@ -156,7 +156,8 @@ def collect_watch_positions(conn, sf: ShipFinderClient, budget: Budget) -> dict:
     """지켜보는 사용자 화물(user_cargo 진행 중, watch 켬)의 배 위치를 받아 watch_positions에 쌓는다. 예산이 떨어지면 멈춘다.
 
     감시·지도 경로의 재료다. 연구용 대상(positions)보다 먼저 부른다. 사용자가 보는 화면이라 우선한다 (run.py).
-    같은 실행의 지켜보기 재판정(run_watch)은 여기서 받은 위치를 ShipFinderClient 캐시로 다시 쓴다.
+    같은 실행의 지켜보기 재판정(run_watch)은 이 위치를 다시 쓰지 않는다. 재판정은 api의 MCP(/mcp)를 거쳐 api 프로세스의
+    ShipFinderClient로 부르므로, 이 워커 프로세스의 캐시와 따로다. 그래서 worker/run.py가 재판정 몫의 예산을 따로 떼어 둔다 (10-06 점검).
     """
     mmsis = [row[0] for row in conn.execute(SELECT_WATCHED).fetchall()]
     saved, failed = 0, []

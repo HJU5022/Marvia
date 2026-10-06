@@ -31,25 +31,30 @@ def get_live_position(
     last_time은 선박이 보고한 시각이고 fetched_at은 조회한 시각이다. 이 도구는 위치가 오래됐는지 판정하지 않는다.
     두 시각이 벌어진 만큼 그 좌표는 과거의 위치다.
     cached_at이 있으면 호출 한도에 걸려 그 시각에 담아둔 값을 돌려준 것이다.
+    error.code가 quota_exhausted면 오늘 ShipFinder 호출 한도를 다 쓴 것이다. 오늘은 다시 불러도 같다.
     """
-    client = make_client()
+    # 클라이언트 만들기(키 없음 = bad_key)와 응답 변환(좌표 없음, 계약 검사 실패)까지 try 안에 둔다 (10-06 점검).
+    # 전에는 make_client()와 LivePositionResult가 try 밖이라 예외가 도구 밖으로 새어, 계약(C4, SDD 3.4)의
+    # {error: {code, message, retryable}} 대신 MCP 오류 문장이 나갔다. ShipFinder가 준 코드(bad_key 등)는 그대로 둔다
     try:
+        client = make_client()
         pos = client.position(mmsi)
+        return LivePositionResult(
+            mmsi=pos.mmsi,
+            lat=pos.lat,
+            lng=pos.lng,
+            sog=pos.sog,
+            cog=pos.cog,
+            navistat=pos.navistat,
+            dest=pos.dest,
+            destcode=pos.destcode,
+            ais_eta=pos.ais_eta,
+            last_time=pos.last_time,
+            fetched_at=pos.fetched_at or datetime.now(timezone.utc),
+            # 빈도 초과·한도 소진·시간 초과로 캐시 값을 받았으면 언제 담긴 값인지 알린다
+            cached_at=client.last_cached_at,
+        ).model_dump(mode="json")
     except ShipFinderError as e:
         return {"error": ToolError(**e.to_dict()).model_dump()}
-
-    return LivePositionResult(
-        mmsi=pos.mmsi,
-        lat=pos.lat,
-        lng=pos.lng,
-        sog=pos.sog,
-        cog=pos.cog,
-        navistat=pos.navistat,
-        dest=pos.dest,
-        destcode=pos.destcode,
-        ais_eta=pos.ais_eta,
-        last_time=pos.last_time,
-        fetched_at=pos.fetched_at or datetime.now(timezone.utc),
-        # 빈도 초과로 캐시 값을 받았으면 언제 담긴 값인지 알린다
-        cached_at=client.last_cached_at,
-    ).model_dump(mode="json")
+    except Exception as e:  # 응답 모양이 계약과 다름(ValidationError 등). 같은 응답이면 다시 불러도 같다
+        return {"error": ToolError(code="bad_response", message=type(e).__name__, retryable=False).model_dump()}

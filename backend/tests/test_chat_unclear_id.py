@@ -24,11 +24,27 @@ def test_destination_place_is_rejected_with_error_and_no_vessel_table(monkeypatc
     assert r.kind == "message" and not r.vessels and "들른 배" not in r.reply and r.place is None
 
 
-def test_destination_label_alone_is_rejected(monkeypatch):
-    calls = _agent(monkeypatch, [("search_arrivals", {"place": None, "place_label": "부산", "days": 7})], [("", "tool", "")])
-    monkeypatch.setattr(svc, "_arrivals", lambda days: pytest.fail("목적지 label로 입항 목록을 받으면 안 된다"))
-    svc.handle("부산 오는 배 알려줘", "s1", None, lambda req: None)
-    assert calls[0]["tool_calls"][0]["result"]["error"]["code"] == "place_is_destination"
+@pytest.mark.parametrize("args", [{"place": None, "place_label": "부산"}, {"place": "Busan", "place_label": "부산"},
+                                  {"place": "Busan New Port", "place_label": None}])
+def test_destination_without_identifier_lists_all_arrivals(monkeypatch, args):
+    """10-06 점검: "이번 주 부산 들어오는 배"가 국내 항구 필터("부산(고현, 광양, ...)를 직전에 들른 배")가 됐다.
+    식별자 없는 입항 질문에서 도착지 place는 거르지 않고 전체 목록이다. 항구 고르기 LLM은 부르지 않는다."""
+    _agent(monkeypatch, [("search_arrivals", {**args, "days": 7})])
+    monkeypatch.setattr(svc, "_arrivals", lambda days: PLANS)
+    monkeypatch.setattr(llm, "match_ports", lambda *a, **kw: pytest.fail("도착지로 항구를 고르면 안 된다"))
+    svc._ports_cache.clear()
+    r = svc.handle("이번 주 부산 들어오는 배", "s1", None, lambda req: None)
+    assert r.kind == "vessels" and r.ports == [] and len(r.vessels) == len(PLANS)
+    assert "직전에 들른 부산 입항" not in r.reply
+
+
+@pytest.mark.parametrize("place,label", [("Busan", "부산"), ("Korea", None), (None, "부산항")])
+def test_search_vessels_destination_means_no_filter(monkeypatch, place, label):
+    """전 방식(_classic)도 search_vessels를 부른다. 도착지 place·label은 필터 없음과 같다 (10-06 점검)."""
+    monkeypatch.setattr(svc, "_arrivals", lambda days: PLANS)
+    monkeypatch.setattr(llm, "match_ports", lambda *a, **kw: pytest.fail("도착지로 항구를 고르면 안 된다"))
+    r = svc.search_vessels(place, 7, label)
+    assert r.ports == [] and len(r.vessels) == len(PLANS) and r.place is None
 
 
 def test_foreign_place_and_null_place_still_work(monkeypatch):

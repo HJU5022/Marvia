@@ -12,6 +12,15 @@ customs_hold_words: [검사, 보류, 정지, 반송, 폐기]
 customs_subject_words: [통관, 세관]
 customs_assessment_words: [순조, 원활, 양호, 문제없, 문제 없, 정상적으로 진행, 정상 진행, 잘 진행, 지연될, 늦어질, 곧 끝]
 
+# 통관 끝 문장 (V11 보강, 10-06 점검). "통관이 완료된 상태이며", "통관이 완료되었고"가 입항적재화물목록 심사완료 단계에서 V11을 통과했다.
+# 주어 낱말(customs_subject_words)과 이 낱말이 한 문장에 있고, 현재 단계가 customs_done_stages에 없으면 위반이다.
+# 단계 이름 자체에 "완료"·"수리"가 들어 있어("심사완료") 코드는 문장에서 customs_stages 이름을 먼저 지운 뒤 본다 (services/validate.py)
+customs_done_words: [완료, 끝났, 끝난, 마쳤, 마친, 문제가 없, 문제는 없, 이상 없, 이상이 없]
+# 앞으로의 일을 말하는 조건 문장("세관 심사가 완료되면 하선신고로 넘어갑니다")은 끝났다는 주장이 아니라 통관 끝 검사에서 뺀다
+customs_done_except_words: [되면, 하면, 나면, 될 때, 할 때, 되어야, 돼야]
+# 통관이 끝났다고 말해도 되는 단계. customs_stages의 "수입신고수리"(meaning: 통관이 끝났다)와 그 뒤 단계
+customs_done_stages: [수입신고수리, 반출신고]
+
 # 정상 단계 목록 (해상 수입 일반화물). name은 UNI-PASS 이력의 처리구분 이름 그대로다.
 # 코드는 name만 읽어 "목록에 없는 단계"를 가린다 (띄어쓰기는 무시, rules.stage_key). meaning·next·todo는 LLM 설명용이다.
 # next가 null이면 다음 단계가 없다(통관 끝, 또는 앞 단계에 따라 다음이 달라짐. 이유는 meaning).
