@@ -57,13 +57,14 @@ def test_general_answer_passes_without_quote_and_gets_fixed_tag(monkeypatch, web
     _no_classic(monkeypatch)
     r = _ask("마스터 b/l 하우스 b/l? 그게 뭐야?")
     assert len(calls) == 1 and r.kind == "message"
-    assert r.reply == f"{GENERAL}\n\n{svc.GENERAL_TAG}"  # 근거 조각(skill_quote)이 빈 문자열이어도 나간다
-    assert svc.GENERAL_TAG == "일반 설명이에요. 실제 처리는 포워더에게 확인해 주세요."
+    assert r.reply == GENERAL  # 근거 조각(skill_quote)이 빈 문자열이어도 나간다. 꼬리표는 없다 (10-07, 이용약관으로 이동)
+    assert not hasattr(svc, "GENERAL_TAG") and not hasattr(svc, "CLEARANCE_TAG")
 
 
 def test_tag_written_by_model_is_not_doubled(monkeypatch, web_off):
-    _agent(monkeypatch, [], [_general(GENERAL + " " + svc.GENERAL_TAG)])
-    assert _ask("마스터 b/l이 뭐야?").reply.count(svc.GENERAL_TAG) == 1
+    _agent(monkeypatch, [], [_general(GENERAL + " 일반 설명이에요. 실제 처리는 포워더에게 확인해 주세요.")])
+    r = _ask("마스터 b/l이 뭐야?")  # 모델이 예전 꼬리표를 스스로 써도 지운다
+    assert r.reply == GENERAL and "일반 설명이에요" not in r.reply
 
 
 @pytest.mark.parametrize("bad, rule", [
@@ -81,7 +82,7 @@ def test_general_answer_with_number_or_stray_word_is_rejected(monkeypatch, web_o
 def test_general_answer_is_fixed_on_retry_and_shown(monkeypatch, web_off):
     calls = _agent(monkeypatch, [], [_general(GENERAL + " 보통 3일 걸려요."), _general()])
     r = _ask("마스터 b/l이 뭐야?")
-    assert len(calls) == 2 and r.reply.startswith(GENERAL) and r.reply.endswith(svc.GENERAL_TAG)
+    assert len(calls) == 2 and r.reply == GENERAL
 
 
 def test_general_answer_may_use_common_shipping_terms(monkeypatch, web_off):
@@ -122,7 +123,7 @@ def test_general_answer_copying_user_marker_or_injection_is_rejected(monkeypatch
 
 def test_general_answer_repeating_earlier_answer_is_rejected(monkeypatch, web_off):
     calls = _agent(monkeypatch, [], [_general(), _general()])
-    r = _ask("마스터 b/l이 뭐야?", history=_assistant(f"{GENERAL}\n\n{svc.GENERAL_TAG}"))
+    r = _ask("마스터 b/l이 뭐야?", history=_assistant(GENERAL))
     assert len(calls) == 2 and calls[1]["feedback"].startswith("V13:")  # 앞 답을 되풀이하면 한 번 다시 묻고
     assert r.reply == svc.NOT_IN_SKILLS  # 그래도 같으면 고정 안내 (앞 답은 고정 안내가 아니므로 줄이지 않는다)
 
@@ -135,7 +136,7 @@ def test_not_in_skills_triggers_one_web_attempt_when_web_is_on(monkeypatch, web)
     r = _ask("하우스 b/l은 누가 만들어?")
     assert len(calls) == 2 and calls[1]["feedback"] == svc.WEB_HINT and calls[1]["tools"]  # 도구를 준 채 한 번 더 묻는다
     assert web == [WEB_ARGS["query"]]
-    assert r.reply.startswith(WEB_ANSWER) and "웹 참고: 선하증권 안내" in r.reply
+    assert r.reply.startswith(WEB_ANSWER) and "웹 참고: [선하증권 안내](" in r.reply
 
 
 def test_no_web_attempt_when_web_is_off(monkeypatch, web_off):
@@ -194,18 +195,18 @@ def test_web_fails_then_general_answer_is_accepted(monkeypatch, web):
     monkeypatch.setattr(llm, "web_search", broken)
     calls = _agent(monkeypatch, [], [("", "not_in_skills", ""), _general()], retry_script=[("web_search", WEB_ARGS)])
     r = _ask("마스터 b/l 하우스 b/l? 그게 뭐야?")
-    assert len(calls) == 2 and r.reply == f"{GENERAL}\n\n{svc.GENERAL_TAG}"
+    assert len(calls) == 2 and r.reply == GENERAL
 
 
 def test_web_gives_nothing_usable_then_general_answer_is_accepted(monkeypatch, web):
     monkeypatch.setattr(llm, "web_search", lambda q: [])
     _agent(monkeypatch, [], [("", "not_in_skills", ""), _general()], retry_script=[("web_search", WEB_ARGS)])
-    assert _ask("마스터 b/l이 뭐야?").reply.endswith(svc.GENERAL_TAG)
+    assert _ask("마스터 b/l이 뭐야?").reply == GENERAL
 
 
 def test_web_ran_but_answer_is_not_from_web_then_general_is_accepted(monkeypatch, web):
     _agent(monkeypatch, [("web_search", WEB_ARGS)], [_general()])
-    assert _ask("마스터 b/l이 뭐야?").reply == f"{GENERAL}\n\n{svc.GENERAL_TAG}"
+    assert _ask("마스터 b/l이 뭐야?").reply == GENERAL
 
 
 def test_skill_answer_is_still_tier_one(monkeypatch, web_off):

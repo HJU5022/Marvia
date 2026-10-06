@@ -9,7 +9,7 @@ def test_skill_answer_with_outside_terms_gets_general_tag(monkeypatch, web_off):
     mixed = "포워더 도착 통지서의 배 이름과 항차로 확인하고, 화물 인도증 사본은 선사 고객센터에 요청해 보세요."
     _agent(monkeypatch, [], [(mixed, "skill", QUOTE)])
     r = _ask("포워더가 항차를 안 알려줘")
-    assert r.reply == f"{mixed}\n\n{svc.GENERAL_TAG}"  # 버리지 않고 꼬리표를 붙여 일반 설명으로
+    assert r.reply == mixed  # 버리지 않고 일반 설명으로 내보낸다 (꼬리표는 10-07에 없앴다)
 
 
 def test_grounded_skill_answer_stays_untagged(monkeypatch, web_off):

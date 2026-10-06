@@ -129,13 +129,98 @@ CLARIFY_TAIL = "B/L 번호는 보통 영문과 숫자 8~20자입니다."
 CLARIFY_NO_ID = "B/L 번호인지 배 이름인지 알려 주세요. " + CLARIFY_TAIL
 
 
-def clarify_reply(masked: str) -> str:
+CLARIFY_AGAIN = "아직 어떤 이름인지 알 수 없어요. B/L 번호라면 번호 전체를, 배 이름이라면 영문 이름으로 입력해 주세요."
+
+
+def _flat_text(t: str) -> str:
+    return re.sub(r"\s+", "", t or "")
+
+
+def not_same_twice(reply: str, alternatives: list[str], last: str | None) -> str:
+    """바로 앞 assistant 답과 글자가 같으면 다른 문장으로 바꾼다 (10-07 정운 실사용 6: 같은 되묻기가 세 번 나갔다).
+    alternatives는 차례대로 시도한다. 모두 앞 답과 같으면 마지막 것을 쓴다."""
+    if not last or _flat_text(reply) != _flat_text(last):
+        return reply
+    for alt in alternatives:
+        if _flat_text(alt) != _flat_text(last):
+            return alt
+    return alternatives[-1] if alternatives else reply
+
+
+def clarify_reply(masked: str, last: str | None = None) -> str:
     """B/L도 배 이름도 확정 못 했을 때 되묻는 고정 문장. 식별자는 가린 문장에서 코드가 뽑는다 (LLM 글은 쓰지 않는다).
-    가려진 B/L·MRN 토큰은 뽑히지 않으므로 번호가 되돌아가지 않는다."""
+    가려진 B/L·MRN 토큰은 뽑히지 않으므로 번호가 되돌아가지 않는다. last: 바로 앞 assistant 답. 같은 문장을 두 번 연달아 내지 않는다."""
     m = _ID_LIKE.search(masked)
-    if not m:
-        return CLARIFY_NO_ID
-    return f"'{m.group(0)}'가 B/L 번호인지 배 이름인지 알려 주세요. {CLARIFY_TAIL}"
+    reply = CLARIFY_NO_ID if not m else f"'{m.group(0)}'가 B/L 번호인지 배 이름인지 알려 주세요. {CLARIFY_TAIL}"
+    return not_same_twice(reply, [CLARIFY_AGAIN, CLARIFY_NO_ID], last)
+
+
+# ── 한글 배 이름 찾기 (10-07 정운 실사용 6: "애플호"라고 세 번 말해도 같은 되묻기만 나갔다) ──
+# 원인: 한글 이름은 숫자가 없어 _ID_LIKE에 안 잡히고, LLM이 clarify를 내면 이름을 한 번도 찾지 않은 채 고정 문장이 나갔다.
+# "배이름이야" 같은 짧은 답은 이름이 앞 사용자 말에 있다. 그래서 코드가 문장(필요하면 앞 사용자 말)에서 이름을 뽑아 입항 예정 목록에서 직접 찾는다.
+_SHIP_HO_ENDINGS = r"(?:야|예요|이야|이에요|입니다|라고|라는|이라|이란|인데|를|가|는|은|도|의|로|에|랑|와|요)"
+_SHIP_HO = re.compile(r"(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]{2,15}?)\s?호(?:(?![가-힣])|(?=" + _SHIP_HO_ENDINGS + "))")
+_SHIP_HO_NOT = ("번", "부", "기", "신", "상", "암", "등", "차", "별", "계", "표")  # 번호·부호·기호·신호·상호·암호처럼 배 이름이 아닌 낱말의 끝 글자
+_SHIP_NAMED = re.compile(r"(?:배|선박|선명)\s*이름\s*(?:이|은|는|:)?\s*([가-힣A-Za-z][가-힣A-Za-z0-9]{1,14})")
+_SHIP_NAMED_TAIL = re.compile(r"(?:이야|이에요|입니다|이라고|라고|인데요?|예요|에요|야|요)$")
+_SHIP_TALK = re.compile(r"배\s*이름|선박\s*명|선명|배\s*명")  # "배이름이야"처럼 이름은 앞 말에 있고 이번 말은 가리키기만 하는 문장
+
+
+def _ship_name_in(text: str) -> str | None:
+    for m in _SHIP_HO.finditer(text):
+        if not m.group(1).endswith(_SHIP_HO_NOT):
+            return m.group(1) + "호"
+    m = _SHIP_NAMED.search(text)
+    if m:
+        name = _SHIP_NAMED_TAIL.sub("", m.group(1))
+        if len(name) >= 2:
+            return name
+    return None
+
+
+def ship_name_guess(masked: str, user_turns: list[str]) -> str | None:
+    """사용자가 배 이름으로 말한 글을 뽑는다. 이번 문장에 있으면 그것. 없고 이번 문장이 "배 이름이야"처럼 이름 이야기면 앞 사용자 말(최근 것부터)에서.
+    B/L 토큰 안쪽 글자는 이미 가려져 있어 뽑히지 않는다."""
+    found = _ship_name_in(masked)
+    if found or not _SHIP_TALK.search(masked):
+        return found
+    for text in reversed(user_turns):
+        found = _ship_name_in(text)
+        if found:
+            return found
+    return None
+
+
+def _vessel_rows(chosen: list) -> list[dict]:
+    """입항 예정 줄(해수부 신고)을 화면이 받는 선박 목록 모양으로. 검색 둘(지역·이름)이 같이 쓴다."""
+    return [{
+        "ship_name": p.ship_name, "call_sign": p.call_sign, "nationality": p.nationality, "ship_kind": p.ship_kind,
+        "previous_port": p.previous_port, "next_port": p.next_port, "purpose": p.purpose,
+        "expected_arrival": p.expected_arrival.isoformat() if p.expected_arrival else None, "facility": p.facility,
+        # 부산을 떠나는 예정 시각 (입항 신고의 출항 detail). 처음 출발한 항구의 출발 시각은 신고에 없다
+        "planned_departure": p.planned_departure.isoformat() if p.planned_departure else None,
+        "is_cargo": is_cargo_ship(p.ship_kind, p.purpose),  # 화면 기본값은 이 배들만 (모든 선종 보기로 전체)
+    } for p in chosen]
+
+
+def search_ship_name(name: str, last: str | None = None) -> ChatResult | None:
+    """부산 입항 예정 목록(앞으로 DAYS_MAX일)에서 배 이름으로 찾는다. 이름 글자가 선박 이름에 들어 있으면 맞는 것 (대소문자 무시, 끝의 "호" 뺌).
+    찾으면 선박 표, 없으면 무엇을 찾았는지 말하는 문장. 입항 목록을 못 받으면 None (호출한 쪽이 되묻는다)."""
+    needle = re.sub(r"호$", "", name).strip().upper() or name.upper()
+    try:
+        plans = _arrivals(DAYS_MAX)
+    except MofError as e:
+        log_failure("chat_vessels", e.code)
+        return None
+    chosen = [p for p in plans if needle in (p.ship_name or "").upper()]
+    if not chosen:
+        reply = (f"'{name}' 이름의 배는 앞으로 {DAYS_MAX}일 부산 입항 예정 목록에서 찾지 못했어요. "
+                 "목록은 영문 배 이름이 기준이라 한글 이름은 안 나올 수 있어요. 영문 배 이름이나 B/L 번호를 알려 주세요.")
+        reply = not_same_twice(reply, [f"'{name}'는 이번에도 목록에 없어요. 영문 배 이름이나 B/L 번호가 있으면 알려 주세요."], last)
+        return ChatResult(kind="message", reply=reply)
+    chosen.sort(key=lambda p: p.expected_arrival or datetime.max.replace(tzinfo=timezone.utc))
+    return ChatResult(kind="vessels", reply=f"앞으로 {DAYS_MAX}일 부산 입항 예정 선박 중 '{name}' 이름이 들어간 배는 {len(chosen)}척입니다.",
+                      vessels=_vessel_rows(chosen), place=None, ports=[], days=DAYS_MAX)
 
 
 class ChatError(Exception):
@@ -476,14 +561,7 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
     else:
         chosen = list(plans)
     chosen.sort(key=lambda p: p.expected_arrival or datetime.max.replace(tzinfo=timezone.utc))
-    vessels = [{
-        "ship_name": p.ship_name, "call_sign": p.call_sign, "nationality": p.nationality, "ship_kind": p.ship_kind,
-        "previous_port": p.previous_port, "next_port": p.next_port, "purpose": p.purpose,
-        "expected_arrival": p.expected_arrival.isoformat() if p.expected_arrival else None, "facility": p.facility,
-        # 부산을 떠나는 예정 시각 (입항 신고의 출항 detail). 처음 출발한 항구의 출발 시각은 신고에 없다
-        "planned_departure": p.planned_departure.isoformat() if p.planned_departure else None,
-        "is_cargo": is_cargo_ship(p.ship_kind, p.purpose),  # 화면 기본값은 이 배들만 (모든 선종 보기로 전체)
-    } for p in chosen]
+    vessels = _vessel_rows(chosen)
     cargo = sum(v["is_cargo"] for v in vessels)
     if place and not vessels:
         reply = f"앞으로 {days}일 동안 {name} 항구를 직전에 들른 부산 입항 예정 선박은 없습니다. {PREV_PORT_NOTE}"
@@ -685,12 +763,17 @@ LOOKUP_NOT_SUMMARIZED = "조회는 했지만 결과를 문장으로 정리하지
 # 도메인 조언은 제품 담당이 쓴 skills/*.md에서만 나온다. 문서에 없으면 지어내지 않고 없다고 말한다 (10-05 실측)
 NOT_IN_SKILLS = "그 내용은 마르비아가 가진 자료에 없습니다. " + OTHER_REPLY
 # ── 세 층 답 (10-05 결정): Skill 문서(1층) → 웹 검색(2층) → 모델 일반 지식(3층) → 마지막에야 "자료에 없다" ──
-# 3층은 교과서 수준의 일반 설명(용어 뜻, 일반 절차)만이다. 근거 조각 없이 내보내는 대신 아래 꼬리표를 코드가 붙이고,
+# 3층은 교과서 수준의 일반 설명(용어 뜻, 일반 절차)만이다. 근거 조각 없이 내보내는 대신 아래 검사로 막고,
 # 숫자·세액·특정 화물이나 배 이야기는 막는다 (general_violations). 제품 담당의 도메인 판단은 1층(Skill)에서만 나온다
-GENERAL_TAG = "일반 설명이에요. 실제 처리는 포워더에게 확인해 주세요."
-# 통관 시기 질문 (10-05 결정): 본문이 관세사 이야기를 하는데 꼬리표가 포워더만 말하면 어긋난다. 이 주제에는 관세사도 같이 적는다.
-# BROKER_TOPIC(세액·통관 가능 여부)와는 따로 둔 것이다: 이쪽은 "언제·며칠"을 묻는 질문이라 답을 막지 않고 꼬리표만 바꾼다
-CLEARANCE_TAG = "일반 설명이에요. 실제 일정은 신고를 맡은 관세사나 포워더에게 확인해 주세요."
+# 3층 답 끝에 붙이던 고정 꼬리표("일반 설명이에요. 실제 처리는 포워더에게...")는 없앴다 (10-07 정운 실사용 2·5: 매 답마다 되풀이돼 기계 같다).
+# 같은 고지는 사이트 이용약관으로 옮겼다. 모델이 예전 문구를 스스로 써도 내보내기 전에 지운다 (_strip_notice)
+_OLD_NOTICE = re.compile(r"일반 설명이에요\.\s*실제\s*(?:처리는|일정은)[^.]*\.")
+# 통관 시기 질문 낱말. 꼬리표는 없어졌지만 화면에 화물이 있을 때 ask_cargo로 다시 묻는 판단(CLEARANCE_HINT)이 쓴다
+def _strip_notice(text: str) -> str:
+    """답에서 예전 고정 꼬리표 문구를 지운다 (모델이 스스로 쓴 경우). 지운 뒤 양끝 공백을 정리한다."""
+    return _OLD_NOTICE.sub("", text).strip()
+
+
 CLEARANCE_TIMING = re.compile(r"(?:통관|반출|수입\s*신고)[^.?!]{0,10}?(?:며칠|언제|얼마|걸려|걸리|기간|소요|시간)|"
                               r"(?:언제|며칠|얼마)[^.?!]{0,10}?(?:통관|반출)")
 # 화면에 화물이 있는데 통관 시기를 도구 없이 답했을 때 다시 묻는 말: 그 화물의 실제 통관 단계로 답해야 한다 (날짜 약속은 하지 않는다)
@@ -779,6 +862,22 @@ BROKER_TOPIC = re.compile(r"관세(?!사)|세율|세금|세액|부가세|부가�
 # 뒤에 공식 창구 줄을 붙인다. 주소·전화는 skills/referrals/rules.md broker_referral에만 있다 (docs/specs/referral-guide.md, 10-06)
 BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않습니다. 관세사에게 문의해 주세요.\n" + referrals.broker_tail()
 WEB_NOTE = "웹 참고: "  # 웹 근거 답 뒤에 코드가 붙이는 줄의 머리. 출처 제목과 주소는 가져온 결과에서만 온다
+WEB_TITLE_MAX = 30  # 링크 글자(출처 제목) 길이 상한. 긴 주소를 그대로 보이던 것을 짧은 제목 링크로 바꿨다 (10-07 정운 실사용 4)
+
+
+def web_note_line(sources: list[dict]) -> str:
+    """"웹 참고: [제목](주소) · [제목](주소)" 한 줄. 화면이 [글자](주소)를 글자만 보이는 링크로 그린다.
+    제목과 주소는 가져온 결과(sources)에서만 온다. 제목은 WEB_TITLE_MAX자로 줄이고(없으면 사이트 이름), 마크다운이 깨지는 글자는 정리한다."""
+    links = []
+    for r in sources:
+        url = str(r.get("url") or "").strip().replace(" ", "%20").replace("(", "%28").replace(")", "%29")
+        title = re.sub(r"[\[\]\s]+", " ", str(r.get("title") or "")).strip()
+        if not title:
+            title = re.sub(r"^https?://(?:www\.)?", "", url).split("/")[0]
+        if len(title) > WEB_TITLE_MAX:
+            title = title[:WEB_TITLE_MAX - 1].rstrip() + "…"
+        links.append(f"[{title}]({url})")
+    return WEB_NOTE + " · ".join(links)
 
 
 def web_search_enabled() -> bool:
@@ -1158,7 +1257,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     - 읽기 전용 도구만 썼으면 LLM 문장을 검사해 내보낸다. 걸리면 정리하지 못했다고 한다
     - 도구를 안 썼으면 세 층(10-05 결정) 중 하나이거나 안내다. 1층 실무 답(answer_kind=skill)은 Skill 원문 근거 조각(skill_quote)이
       원문에 그대로 있어야 내보낸다 (V14). 1층이 안 되면 웹 검색을 한 번 시킨다(2층). 그것도 안 되면 3층 일반 설명(general)을
-      검사(숫자·특정 화물·세액 금지 등) 통과 시 꼬리표(GENERAL_TAG)를 붙여 내보낸다. 한 문장 잡담 답(unrelated)도 검사를 통과하면 쓴다.
+      검사(숫자·특정 화물·세액 금지 등) 통과 시 내보낸다 (고정 꼬리표는 10-07에 없앴다). 한 문장 잡담 답(unrelated)도 검사를 통과하면 쓴다.
       그 밖의 안내는 LLM 문장 대신 고정 문구를 쓴다. 앞 답을 베꼈거나(V13) 화면에 화물이 있는데
       도구를 안 불렀으면 한 번 다시 묻는다 (10-05 실측)
     LLM이 첫 도구 전에 실패하면 LLMError를 그대로 올린다 (_route가 전 방식으로 보낸다). 도구가 이미 돌았으면
@@ -1507,9 +1606,17 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     earlier = [t["text"] for t in turns if t["role"] == "assistant"]
 
     # 3층(일반 설명)과 잡담 답의 근거 글. 고정 문구와 오늘 날짜뿐이다: Skill 문서와 지시문에 든 숫자는 근거가 아니다 (V7이 엄격하게 남는다)
-    general_grounded = GENERAL_TAG + " " + CLEARANCE_TAG + " " + OTHER_REPLY
+    general_grounded = OTHER_REPLY
     unrelated_grounded = OTHER_REPLY + " " + today
     skills_only = llm.skills_reference(llm.CHAT_AGENT_SKILLS)
+
+    def clarify_out() -> ChatResult:
+        """식별자를 모르겠을 때의 답. 먼저 한글·영문 배 이름이 말에 있는지 보고 입항 예정 목록에서 이름으로 찾는다 (10-07 정운 실사용 6).
+        이름이 없거나 목록을 못 받으면 코드 문장으로 되묻되, 바로 앞 답과 같은 문장은 내지 않는다."""
+        last = earlier[-1] if turns and turns[-1]["role"] == "assistant" and earlier else None
+        name = ship_name_guess(masked, [t["text"] for t in turns if t["role"] == "user"])
+        found = search_ship_name(name, last) if name else None
+        return found or ChatResult(kind="message", reply=clarify_reply(masked, last))
 
     def fixed(reply: str) -> str:
         """고정 안내를 내보내기 직전의 마지막 손질. 바로 앞 답이 같은 계열의 고정 안내면 더 짧은 말로 바꾼다 (같은 안내 연속 금지, 10-05)."""
@@ -1541,23 +1648,21 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                                          extra_words=validate.GENERAL_WORDS, copy_allowed=skills_only + " " + validate.GENERAL_TERMS)
 
     def general_reply(out: llm.ChatAgentOutput | None, text: str) -> str | None:
-        """3층 답이 검사를 통과하면 꼬리표를 붙인 최종 문장. 아니면 None (고정 안내로 간다)."""
+        """3층 답이 검사를 통과하면 최종 문장. 아니면 None (고정 안내로 간다). 꼬리표는 붙이지 않는다 (10-07, 이용약관으로 이동)."""
         if out is None or out.answer_kind != "general" or not text or BROKER_TOPIC.search(masked) or general_violations(text):
             return None
-        tag = CLEARANCE_TAG if CLEARANCE_TIMING.search(masked) else GENERAL_TAG  # 통관 시기 질문은 관세사도 적는다 (본문과 꼬리표가 어긋나지 않게)
-        return f"{text.replace(GENERAL_TAG, '').replace(CLEARANCE_TAG, '').strip()}\n\n{tag}"
+        return _strip_notice(text)
 
     def skill_or_general(text: str) -> str | None:
         """Skill 근거라고 낸 답을 내보내기 직전 한 번 더 본다 (10-06 결정). 근거 조각은 맞았는데 답의 핵심 낱말이
         Skill 문서에 2개 이상 없으면(validate.skill_unsupported) 모델 지식이 섞인 것이다. 버리지 않고 3층(일반 설명)으로 낮춰
-        꼬리표를 붙인다. 10-06 재현: "B/L도 없고 포워더 연락 안 돼"에 Skill에 없는 "화물 인도증"이 꼬리표 없이 나갔다.
+        내보낸다 (꼬리표는 10-07에 없앴다). 10-06 재현: "B/L도 없고 포워더 연락 안 돼"에 Skill에 없는 "화물 인도증"이 Skill 답으로 나갔다.
         3층 검사(general_violations, 세액 주제)에 걸리면 None (고정 안내로 간다)"""
         if not validate.skill_unsupported(text, skills_only, user_text):
             return text
         if BROKER_TOPIC.search(text) or general_violations(text):
             return None
-        tag = CLEARANCE_TAG if CLEARANCE_TIMING.search(masked) else GENERAL_TAG
-        return f"{text.replace(GENERAL_TAG, '').replace(CLEARANCE_TAG, '').strip()}\n\n{tag}"
+        return _strip_notice(text)
 
     def unrelated_violations(text: str) -> list[validate.Violation]:
         """잡담 한 문장 답(answer_kind=unrelated)을 내보내도 되는지. 빈 목록이면 통과. 한 문장(UNRELATED_MAX_CHARS 이하, 한 줄)이고,
@@ -1684,7 +1789,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
 
     if out is not None and out.answer_kind == "clarify" and not done:
         # 식별자가 B/L인지 배 이름인지 모른다 (배 이름 조회도 후보가 없었거나 부르지 않았다). LLM 문장 대신 코드가 되묻는다
-        return ChatResult(kind="message", reply=clarify_reply(masked))
+        return clarify_out()
 
     if not done and not calls and (kakao_out.get("msg") or kakao_out.get("refused")) and not watch_out:
         # 카카오톡 보내기만 한 문장이다. 결과나 못 보낸 이유를 코드 문장으로 낸다 (거절됐으면 안내)
@@ -1730,7 +1835,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     if looked_up and all(c["name"] == "get_vessel_candidates" and isinstance(c["result"], dict) and c["result"].get("candidates") == []
                          for c in looked_up):
         # 사용자가 쓴 이름으로 후보를 찾았지만 한 척도 없다. "찾지 못했다"만 말하지 않고 B/L 번호인지 배 이름인지 되묻는다 (10-05 실측)
-        return ChatResult(kind="message", reply=clarify_reply(masked))
+        return clarify_out()
     if looked_up:
         ok = bool(text) and not _reply_violations(text, reference + lookups, user_text, earlier)
         return ChatResult(kind="message", reply=text if ok else LOOKUP_NOT_SUMMARIZED, map=_map_payload(calls, done, started))
@@ -1749,8 +1854,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                     checked = skill_or_general(text)
                     return ChatResult(kind="message", reply=checked or fixed(NOT_IN_SKILLS))
                 sources = validate.quote_sources(out.skill_quote, web_state["results"])[:WEB_SOURCES_SHOWN]
-                lines = [f"{WEB_NOTE}{r['title']} ({r['url']})" for r in sources]
-                return ChatResult(kind="message", reply="\n".join([text, "", *lines]))
+                return ChatResult(kind="message", reply=f"{_strip_notice(text)}\n\n{web_note_line(sources)}")
         # 웹 결과가 답을 못 받쳤다. 3층(일반 설명)이 통과하면 그것, 아니면 고정 안내
         log_failure("chat_agent_reply", f"kind={out.answer_kind if out is not None else 'none'}")  # 종류만 남긴다 (사용자 글은 로그에 없다)
         general = general_reply(out, text)
@@ -1767,12 +1871,12 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 return ChatResult(kind="message", reply=general)
         if "need_bl" in codes and _ID_LIKE.search(masked):
             # B/L 모양은 아닌데 식별자 같은 글자가 있다(TESTBL4 같은 오타). 조회할 번호를 달라고만 하지 않고 그 글자를 되묻는다 (10-05 실측)
-            return ChatResult(kind="message", reply=clarify_reply(masked))
+            return clarify_out()
         fixed_msgs = {"need_bl": NEED_BL, "no_cargo": NO_CARGO, "broker_topic": BROKER_ONLY}
         return ChatResult(kind="message", reply=fixed(next((fixed_msgs[c] for c in codes if c in fixed_msgs), FAILED_LOOKUP)))
 
     # 도구를 하나도 쓰지 않았다. LLM 문장을 내보내는 것은 검사를 통과한 답뿐이다: Skill 근거 조각까지 통과한 실무 답(skill),
-    # 3층 일반 설명(general, 꼬리표를 붙여서), 한 문장 잡담 답(unrelated). 나머지는 코드의 고정 문구다:
+    # 3층 일반 설명(general), 한 문장 잡담 답(unrelated). 나머지는 코드의 고정 문구다:
     # 문서에 없는 질문은 없다고(NOT_IN_SKILLS), 상관없는 말은 할 수 있는 일(OTHER_REPLY). 같은 안내가 연달아 나가지 않게 fixed()를 거친다
     if out is not None and out.answer_kind == "help":
         return ChatResult(kind="message", reply=USAGE_GUIDE)  # 사용법은 LLM이 쓰지 않는다 (없는 기능 방지, 10-05 결정)
