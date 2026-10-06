@@ -386,3 +386,30 @@ def test_default_assess_is_the_user_lookup_path(upserts, sent, monkeypatch):
     seen = []
     monkeypatch.setattr(agent, "_assess", lambda req, mem=None: seen.append((req.bl_no, mem)) or _resp("watch"))
     assert svc.run_watch(conn, now=NOW)["checked"] == 1 and seen == [(BL, None)]
+
+
+# ── 하루 토큰 한도 (10-06 점검). 재판정도 그 사용자의 LLM 사용량이다 ──
+
+def test_rejudge_is_scoped_to_the_cargo_owner(upserts, sent, monkeypatch):
+    """session_scope에 user_id를 넘겨 토큰이 그 사람 몫으로 쌓인다 (services/quota.py owner_var)."""
+    from backend.app.services import quota
+    conn = FakeConn()
+    _watched(conn, last_verdict="watch")
+    owners = []
+    svc.run_watch(conn, now=NOW, assess=lambda req, mem: owners.append(quota.owner_var.get()) or _resp("watch"))
+    assert owners == [f"user:{USER}"]
+
+
+def test_rejudge_skipped_when_owner_is_over_quota(upserts, sent, monkeypatch):
+    from backend.app.services import quota
+    conn = FakeConn()
+    _watched(conn, last_verdict="watch")
+    failures = []
+    monkeypatch.setattr(svc, "log_failure", lambda stage, kind: failures.append((stage, kind)))
+
+    def over(session_id, user_id):
+        raise quota.QuotaExceeded(user_id)
+
+    monkeypatch.setattr(quota, "ensure_allowed", over)
+    out = svc.run_watch(conn, now=NOW, assess=lambda req, mem: pytest.fail("한도를 다 쓴 사람의 화물은 재판정하지 않는다"))
+    assert out["failed"] == 1 and failures == [("watch_cargo", "quota")] and upserts == []

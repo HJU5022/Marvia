@@ -100,3 +100,57 @@ def test_assess_attaches_detail_after_judging(monkeypatch):
     out = agent_router._assess(AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s1"))
     assert not seen["response"].customs_detail
     assert [r.kind for r in out.customs_detail] == ["반입신고", "입항보고 수리"]
+
+
+# ── 컨테이너 번호 (10-06 점검). B/L처럼 화물을 특정하는 번호라 후속 LLM과 평문 이력에 넣지 않는다 ──
+
+def _response_with_container():
+    from backend.app.schemas.agent import CustomsInfo
+    customs = CustomsInfo(stage_code="X", stage_name="입항보고 수리", plain_explanation="모의 해설", next_stage=None,
+                          needs_broker=False, forwarder_name="테스트포워딩", container_no="TCNU0000001")  # 모의값
+    return agent_router._response().model_copy(update={"customs": customs})
+
+
+def test_container_no_is_not_sent_to_follow_up_llm(monkeypatch):
+    sent = {}
+
+    def fake_ask(prompt, user_content, *args, **kwargs):
+        sent["content"] = user_content
+        raise llm.LLMError("stop", kind="test")
+
+    monkeypatch.setattr(llm, "_ask_json", fake_ask)
+    try:
+        llm.answer_follow_up("포워더가 어디야?", _response_with_container())
+    except llm.LLMError:
+        pass
+    # 원문 번호는 안 가고 [CNTR1] 번호표로만 간다 (10-06 정운 결정, llm.hide_containers). 칸 이름은 남아도 된다
+    assert "TCNU0000001" not in sent["content"] and "[CNTR1]" in sent["content"]
+    assert "테스트포워딩" in sent["content"]  # 포워더 이름은 후속 질문 재료라 남긴다
+
+
+def test_container_no_is_not_saved_to_history(monkeypatch):
+    saved = {}
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test")
+    monkeypatch.setattr(agent_router, "connect", lambda: contextlib.nullcontext(object()))
+    monkeypatch.setattr(agent_router, "log_query", lambda conn, session_id, **kw: saved.update(kw))
+    monkeypatch.setattr(agent_router, "_as_jsonb", lambda data: data)
+    response = _response_with_container()
+    request = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s1")
+    assert agent_router._logged(request, response).customs.container_no == "TCNU0000001"  # 화면 응답에는 그대로
+    assert "TCNU0000001" not in json.dumps(saved["response"], ensure_ascii=False)
+    assert saved["response"]["customs"]["stage_name"]  # 다른 통관 칸은 그대로 남는다
+
+
+def test_container_no_in_answer_text_is_not_saved_to_history(monkeypatch):
+    """후속 답은 화면용으로 실제 번호를 되돌린 문장이다. 이력에는 그 문장 속 번호도 번호표로 저장한다 (10-06 병합).
+    안 그러면 다음 후속 질문 때 이력의 답 문장이 원문 그대로 LLM에 간다"""
+    saved = {}
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test")
+    monkeypatch.setattr(agent_router, "connect", lambda: contextlib.nullcontext(object()))
+    monkeypatch.setattr(agent_router, "log_query", lambda conn, session_id, **kw: saved.update(kw))
+    monkeypatch.setattr(agent_router, "_as_jsonb", lambda data: data)
+    response = _response_with_container().model_copy(update={"answer": "컨테이너 번호는 TCNU0000001입니다."})
+    request = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s1")
+    assert agent_router._logged(request, response).answer == "컨테이너 번호는 TCNU0000001입니다."  # 화면에는 그대로
+    stored = json.dumps(saved["response"], ensure_ascii=False)
+    assert "TCNU0000001" not in stored and saved["response"]["answer"] == "컨테이너 번호는 [CNTR1]입니다."

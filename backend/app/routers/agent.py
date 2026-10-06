@@ -962,7 +962,13 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 trace_id=response.trace_id,
                 # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다.
                 # UNI-PASS 처리 이력 원문(customs_detail)은 화면 전용이라 저장하지 않는다 (docs/specs/customs-detail.md)
-                response=_as_jsonb(response.model_dump(mode="json", exclude={"customs_detail"})),
+                # 컨테이너 번호도 평문 이력에 남기지 않는다. B/L처럼 화물을 특정하는 번호다 (schemas/customs.py, 10-06 점검).
+                # 내 화물 현황 표에 필요한 값은 user_cargo가 따로 가진다 (services/cargo.py)
+                # 칸을 빼는 것만으로는 부족하다: 후속 답(answer)은 화면용으로 실제 번호를 되돌린 문장이라(_follow_up) 그대로 두면
+                # 다음 후속 질문 때 이력에서 원문이 LLM에 간다. 그래서 저장 전에 남은 글자 속 번호도 [CNTR1] 번호표로 바꾼다 (10-06 병합)
+                response=_as_jsonb(llm.hide_containers(
+                    response.model_dump(mode="json", exclude={"customs_detail": True, "customs": {"container_no"}}),
+                    llm.container_tokens(response.customs.container_no if response.customs else None))),
             )
     except Exception as e:
         log_failure("db_write", type(e).__name__)

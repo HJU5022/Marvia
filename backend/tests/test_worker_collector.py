@@ -278,3 +278,10 @@ def test_watch_positions_stop_when_budget_runs_out():
     conn = _WatchConn([1, 2, 3])
     result = collect_watch_positions(conn, _FakeSF(), Budget(1))
     assert result["watch_positions_new"] == 1 and len(conn.inserted) == 1
+
+
+def test_watch_positions_only_for_watched_cargo():
+    """진행 중 화물 전체가 아니라 지켜보기를 켠 화물의 배만 받는다 (user_cargo.watch, 017_cargo_watch, 10-06 점검)."""
+    from worker.collector import SELECT_WATCHED
+    sql = " ".join(SELECT_WATCHED.split())
+    assert "status = 'active' AND watch AND vessel_mmsi IS NOT NULL" in sql

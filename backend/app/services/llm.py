@@ -877,6 +877,9 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     사용자에게 가는 문장에서는 라우터가 원래 번호로 되돌린다 (container_tokens, restore_containers).
     """
     # customs_detail(UNI-PASS 처리 이력 원문)은 화면 전용이라 LLM에 넘기지 않는다. 중량·관세법인명 등이 들어 있다 (docs/specs/customs-detail.md)
+    # 통관 칸 중 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 원문을 주지 않는다 (10-06 점검). 칸을 빼지 않고 아래에서 [CNTR1]
+    # 번호표로 바꾼다: "컨테이너 번호 뭐야?"에 LLM이 번호표로 답하면 라우터가 화면에서만 원래 번호로 되돌린다 (10-06 정운 결정).
+    # 포워더·선사 이름은 남긴다. "포워더가 어디야" 같은 후속 질문에 답하는 재료다 (10-06 점검)
     result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "customs_detail"})
     result["evidence"] = [e for e in result.get("evidence") or []
                           if not (e["source"] == "shipfinder" and e["field"] == "dest")]

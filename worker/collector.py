@@ -135,9 +135,13 @@ def collect_positions(conn, sf: ShipFinderClient, budget: Budget, now: datetime 
     return {"tracked": len(mmsis), "positions_new": saved, "positions_failed": failed}
 
 
-# 감시·지도 (docs/specs/cargo-watch.md, 017). 사용자 화물 배 중 위치를 가장 오래 못 받은 배부터
+# 감시·지도 (docs/specs/cargo-watch.md, 017). 사용자가 지켜보기를 켠 화물(user_cargo.watch, 017_cargo_watch)의 배 중
+# 위치를 가장 오래 못 받은 배부터. 진행 중 화물 전체로 잡으면 로그인 사용자의 조회마다 대상이 늘어
+# (services/memory.py가 user_cargo를 채운다) 실행 예산을 다 써서 연구용 수집이 굶는다 (10-06 점검).
+# 지켜보기는 사용자당 최대 5건이다 (services/watch.py MAX_WATCH)
 SELECT_WATCHED = """
-SELECT c.mmsi FROM (SELECT DISTINCT vessel_mmsi AS mmsi FROM user_cargo WHERE status = 'active' AND vessel_mmsi IS NOT NULL) c
+SELECT c.mmsi FROM (SELECT DISTINCT vessel_mmsi AS mmsi FROM user_cargo
+                    WHERE status = 'active' AND watch AND vessel_mmsi IS NOT NULL) c
 LEFT JOIN (SELECT mmsi, max(fetched_at) AS last FROM watch_positions GROUP BY mmsi) w ON w.mmsi = c.mmsi
 ORDER BY w.last NULLS FIRST
 """
@@ -149,10 +153,10 @@ ON CONFLICT (mmsi, ts) DO NOTHING
 
 
 def collect_watch_positions(conn, sf: ShipFinderClient, budget: Budget) -> dict:
-    """사용자 화물(user_cargo 진행 중)의 배 위치를 받아 watch_positions에 쌓는다. 예산이 떨어지면 멈춘다.
+    """지켜보는 사용자 화물(user_cargo 진행 중, watch 켬)의 배 위치를 받아 watch_positions에 쌓는다. 예산이 떨어지면 멈춘다.
 
     감시·지도 경로의 재료다. 연구용 대상(positions)보다 먼저 부른다. 사용자가 보는 화면이라 우선한다 (run.py).
-    지금은 user_cargo를 채우는 코드가 없어 대상이 0척이고, ShipFinder를 부르지 않는다.
+    같은 실행의 지켜보기 재판정(run_watch)은 여기서 받은 위치를 ShipFinderClient 캐시로 다시 쓴다.
     """
     mmsis = [row[0] for row in conn.execute(SELECT_WATCHED).fetchall()]
     saved, failed = 0, []

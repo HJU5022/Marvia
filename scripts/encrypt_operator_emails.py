@@ -30,6 +30,11 @@ def main() -> int:
     load_dotenv(".env")
     with connect() as conn:
         apply_migrations(conn)
+        # 018_db_cleanup이 평문 이메일 칸(operators.email 등)을 지웠다. 그 뒤에는 옮길 평문이 없고 아래 SQL이 칸을 못 찾아 실패한다.
+        # 칸이 없으면 이미 끝난 이전이라 알리고 끝낸다 (10-06 점검)
+        if not conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name = 'operators' AND column_name = 'email'").fetchone():
+            print("018 이후라 평문 이메일 칸이 없습니다. 옮길 것이 없습니다")
+            return 0
         with conn.transaction():
             moved = {"operators": 0, "operator_audit": 0, "admin_actions": 0}
             for (email,) in conn.execute("SELECT email FROM operators WHERE email IS NOT NULL").fetchall():
