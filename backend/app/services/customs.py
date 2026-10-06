@@ -3,8 +3,8 @@
 B/L 번호로 통관 진행 상태와 선박 정보를 가져온다. 이 조회는 LLM이 하지 않고 코드가 직접 한다.
 B/L 번호를 LLM에 넘기면 숫자를 잘못 옮기거나 프롬프트 주입에 쓰일 수 있어서다 (SDD 6.3, CLAUDE.md).
 
-응답에서 계약 C5(CustomsRecord)에 있는 필드만 남긴다. 품명·중량·세관명·화주 정보는
-모델에 자리가 없어 자연히 빠진다. 로그와 트레이스에는 mask_bl()로 가린 번호만 남는다.
+응답에서 계약 C5(CustomsRecord)에 있는 필드만 남긴다. 중량·세관명·화주 정보는
+모델에 자리가 없어 자연히 빠진다. 품명은 10-06 오후부터 남긴다 (새 화면이 품명으로 화물을 구분, 정운 결정). 로그와 트레이스에는 mask_bl()로 가린 번호만 남는다.
 
 확인한 것 (2026-09-23):
 - 엔드포인트는 https://unipass.customs.go.kr:38010/ext/rest/cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo
@@ -56,6 +56,9 @@ FIELD_CANDIDATES = {
     # 10-06 추가 (연계가이드 v4.1 API001 응답 항목). 포워더명은 비어 오는 화물이 많아 None이 흔하다
     "forwarder_name": ("frwrEntsConm",),
     "carrier_name": ("shcoFlco",),
+    # 10-06 오후 추가. 품명은 처음엔 버렸지만(SDD 3.5) 새 화면이 품명으로 화물을 구분해서 읽는다 (정운 결정).
+    # 10-06 실제 응답(마스터 B/L 1건)에서 상단에 영어 그대로 1건 왔다 (가공 예: TEST GOODS)
+    "goods_name": ("prnm",),
 }
 CONTAINER_TAG = "cntrNo"  # 컨테이너 번호. 가이드상 API001은 1건(size 11)이라 보통 하나, 여럿이면 _join_all이 이어 붙인다
 CONTAINER_JOIN = ", "
@@ -181,7 +184,7 @@ class UnipassClient:
 
     @staticmethod
     def _refine(root, bl_no: str) -> CustomsRecord:
-        """계약 C5에 있는 필드만 남긴다. 품명·중량·화주는 애초에 옮기지 않는다.
+        """계약 C5에 있는 필드만 남긴다. 중량·화주는 애초에 옮기지 않는다 (품명은 10-06 오후부터 옮긴다).
 
         예외로 처리 이력 원문(display_rows)은 화면에 보여 주려고 13칸을 그대로 옮긴다. 이 칸은 model_dump에서 빠져
         LLM 입력에 들어가지 않는다 (schemas/customs.py, docs/specs/customs-detail.md).
@@ -217,6 +220,7 @@ class UnipassClient:
             forwarder_name=_first(root, FIELD_CANDIDATES["forwarder_name"]),
             carrier_name=_first(root, FIELD_CANDIDATES["carrier_name"]),
             container_no=_join_all(root, CONTAINER_TAG),
+            goods_name=_first(root, FIELD_CANDIDATES["goods_name"]),
             stage_history=stages,
             display_rows=rows,
             bl_masked=mask_bl(bl_no),

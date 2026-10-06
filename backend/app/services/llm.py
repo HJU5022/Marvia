@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -497,8 +498,9 @@ def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
 
 # 판정 LLM 입력에서 뺄 통관 칸. B/L(bl_masked)·MRN·조회 시각 외에, 10-06에 붙은 포워더·선사·컨테이너 번호도 뺀다:
 # 판정에 쓰이지 않고(프롬프트·평가 결과를 그대로 두려고), 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 LLM에 줄 수 없다.
-# 포워더·선사 이름은 채팅 에이전트가 받는다 (services/chat.py _cargo_summary)
-JUDGE_CUSTOMS_EXCLUDE = {"bl_masked", "mrn", "fetched_at", "forwarder_name", "carrier_name", "container_no"}
+# 포워더·선사 이름은 채팅 에이전트가 받는다 (services/chat.py _cargo_summary).
+# 품명(goods_name, 10-06 오후)도 판정에 쓰이지 않아 뺀다. 채팅 에이전트만 받는다
+JUDGE_CUSTOMS_EXCLUDE = {"bl_masked", "mrn", "fetched_at", "forwarder_name", "carrier_name", "container_no", "goods_name"}
 
 
 def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None,
@@ -819,6 +821,41 @@ class FollowUpOutput(BaseModel):
     answer: str
 
 
+# 컨테이너 번호 토큰 (10-06 결정, CLAUDE.md "컨테이너 번호는 B/L처럼 LLM에 원문을 넘기지 않는다").
+# 컨테이너 번호도 화물을 특정하는 번호라 LLM은 [CNTR1], [CNTR2] 번호표만 본다. 화면에 나가는 답에서는 코드가 원래 번호로 되돌린다
+CONTAINER_TOKEN = re.compile(r"\[CNTR\d+\]")
+
+
+def container_tokens(container_no: str | None) -> dict[str, str]:
+    """컨테이너 번호 문자열(여러 개면 ', '로 이음)을 {"[CNTR1]": 번호, "[CNTR2]": 번호}로 만든다. 없으면 빈 dict.
+
+    왜 한 함수인가: LLM에 넘기는 쪽(answer_follow_up)과 답을 되돌리는 쪽(routers/agent.py _follow_up)이 같은 번호표를
+    써야 해서, 둘 다 이 함수로 같은 값(response.customs.container_no)에서 다시 만든다. 순서가 같으면 번호표도 같다.
+    같은 번호가 두 번 나오면 하나로 본다."""
+    numbers = list(dict.fromkeys(n.strip() for n in (container_no or "").split(", ") if n.strip()))
+    return {f"[CNTR{i}]": number for i, number in enumerate(numbers, start=1)}
+
+
+def hide_containers(value, tokens: dict[str, str]):
+    """dict·list 안 모든 글자에서 컨테이너 번호를 번호표로 바꾼다. 통관 칸뿐 아니라 근거 카드 값, 지난 답(answer)에
+    번호가 섞여 있어도 LLM에는 안 가게 하는 안전망이다 (지난 후속 답은 화면용으로 되돌린 번호를 담은 채 저장된다)."""
+    if isinstance(value, str):
+        for token, number in tokens.items():
+            value = value.replace(number, token)
+        return value
+    if isinstance(value, dict):
+        return {k: hide_containers(v, tokens) for k, v in value.items()}
+    if isinstance(value, list):
+        return [hide_containers(v, tokens) for v in value]
+    return value
+
+
+def restore_containers(text: str, tokens: dict[str, str]) -> str:
+    """답 글자 속 [CNTR1]을 원래 컨테이너 번호로 되돌린다. 화면에만 가는 글자에 쓴다 (LLM에는 되돌린 글이 안 간다).
+    모르는 번호표(LLM이 지어낸 [CNTR9])는 그대로 둔다."""
+    return CONTAINER_TOKEN.sub(lambda m: tokens.get(m.group(0), m.group(0)), text)
+
+
 def answer_follow_up(question: str, response: AgentResponse, *, model: str | None = None,
                      feedback: str | None = None, tools: list[dict] | None = None,
                      run_tool: Callable[[str, dict], dict] | None = None, memory: str | None = None) -> LLMAnswer:
@@ -835,11 +872,23 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     읽기 전용 MCP 도구를 직접 골라 부른다. 목록은 mcp_client.read_only_tools(), 실행은 routers/agent.py가 /mcp로 한다.
     판정 흐름(judge)은 지금처럼 코드가 도구를 부른다.
     memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). judge()와 같은 자리에 넣는다.
+
+    컨테이너 번호는 원문을 넘기지 않고 [CNTR1] 번호표로 바꿔 준다 (10-06 결정). LLM은 번호표를 그대로 답에 쓰고,
+    사용자에게 가는 문장에서는 라우터가 원래 번호로 되돌린다 (container_tokens, restore_containers).
     """
     # customs_detail(UNI-PASS 처리 이력 원문)은 화면 전용이라 LLM에 넘기지 않는다. 중량·관세법인명 등이 들어 있다 (docs/specs/customs-detail.md)
     result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "customs_detail"})
     result["evidence"] = [e for e in result.get("evidence") or []
                           if not (e["source"] == "shipfinder" and e["field"] == "dest")]
+    # 컨테이너 번호는 번호표로만 (10-06). customs.container_no는 [CNTR1], [CNTR2]가 되고, 다른 칸(근거 카드 값, 지난 답)에
+    # 같은 번호가 있어도 같은 번호표로 바뀐다. 되돌리는 쪽은 routers/agent.py _follow_up (같은 container_tokens로 다시 만든다)
+    tokens = container_tokens(response.customs.container_no if response.customs else None)
+    if tokens:
+        result = hide_containers(result, tokens)
+        question = hide_containers(question, tokens)  # 사용자가 질문에 이 화물의 컨테이너 번호를 직접 써도 번호표로만 간다
+    # 품명(10-06 오후)은 해외 화주가 적하목록에 쓴 글자라 주입 모양이면 뺀다 (chat._cargo_summary와 같은 예방 조치)
+    if result.get("customs") and guard.looks_like_injection(result["customs"].get("goods_name")):
+        result["customs"]["goods_name"] = None
     data = {"result": result, "question": question}
     return _ask_json(FOLLOW_UP_PROMPT, json.dumps(data, ensure_ascii=False), "follow_up",
                      FOLLOW_UP_SCHEMA, FollowUpOutput, model, feedback=feedback, skills=FOLLOW_UP_SKILLS,

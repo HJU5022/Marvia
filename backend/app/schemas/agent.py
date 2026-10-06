@@ -158,6 +158,7 @@ class CustomsInfo(BaseModel):
     forwarder_name: str | None = Field(default=None, description="포워더명 frwrEntsConm")
     carrier_name: str | None = Field(default=None, description="선사·항공사 shcoFlco")
     container_no: str | None = Field(default=None, description="컨테이너 번호 cntrNo. 여러 개면 ', '로 이은 한 문자열")
+    goods_name: str | None = Field(default=None, description="품명 prnm. 적하목록 영어 그대로 (10-06 오후 추가)")
 
 
 class BerthInfo(BaseModel):

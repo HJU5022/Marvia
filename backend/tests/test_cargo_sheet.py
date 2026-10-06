@@ -52,7 +52,7 @@ class FakeConn:
                "bl_encrypted": crypto.encrypt(bl), "label": None, "status": "active", "departed_on": None,
                "departed_source": None, "arrived_on": None, "last_eta": None, "warehoused_on": None,
                "last_stage": None, "forwarder_name": None, "carrier_name": None, "container_no": None,
-               "created_at": T0 + timedelta(minutes=self._n), "lc_id": lc["id"] if lc else None, **over}
+               "goods_name": None, "created_at": T0 + timedelta(minutes=self._n), "lc_id": lc["id"] if lc else None, **over}
         self.cargo.append(row)
         return row
 
@@ -77,7 +77,7 @@ class FakeConn:
                 out.append((r["cargo_key"], r["bl_masked"], r["bl_encrypted"], r["label"], r["status"],
                             r["departed_on"], r["departed_source"], r["arrived_on"], r["last_eta"],
                             r["warehoused_on"], r["last_stage"], r["forwarder_name"], r["carrier_name"],
-                            r["container_no"], r["created_at"],
+                            r["container_no"], r["goods_name"], r["created_at"],
                             lc and lc["id"], lc and lc["lc_no"], lc and lc["opened_on"], lc and lc["created_at"]))
             return _Cur(out)
         if q.startswith("SELECT 1 FROM user_cargo"):
@@ -186,7 +186,8 @@ def test_load_sheet_row_shape_hides_inner_values():
     db.add(last_eta=date(2026, 10, 9), label="고추")
     row = cargo_sheet.load_sheet(db, USER)["groups"][0]["rows"][0]
     assert set(row) == {"cargo_key", "bl_masked", "label", "status", "departed_on", "departed_source", "arrived_on",
-                        "eta", "warehoused_on", "last_stage", "forwarder_name", "carrier_name", "container_no"}
+                        "eta", "warehoused_on", "last_stage", "forwarder_name", "carrier_name", "container_no",
+                        "goods_name"}
     assert row["eta"] == date(2026, 10, 9) and row["label"] == "고추"
     assert cargo_sheet.load_sheet(FakeConn(), USER) == {"groups": []}
 
@@ -254,7 +255,8 @@ def _father_sheet() -> FakeConn:
     db = FakeConn()
     lc1, lc2 = db.add_lc("LC-0001", date(2026, 7, 21)), db.add_lc("LC-0002", date(2026, 8, 5))
     db.add("MOCKBL000000A1", lc=lc1, departed_on=date(2026, 8, 1), arrived_on=date(2026, 8, 30),
-           warehoused_on=date(2026, 9, 2), forwarder_name="모의포워더", carrier_name="모의선사", container_no="MOCU1234567, MOCU7654321")
+           warehoused_on=date(2026, 9, 2), forwarder_name="모의포워더", carrier_name="모의선사", container_no="MOCU1234567, MOCU7654321",
+           goods_name="MOCK GOODS")
     db.add("MOCKBL000000B1", lc=lc1, departed_on=date(2026, 8, 3), last_eta=date(2026, 10, 9))  # 입항 전: 예정
     db.add("MOCKBL000000C1", lc=lc2)
     db.add("MOCKBL000000D1")
@@ -264,9 +266,9 @@ def _father_sheet() -> FakeConn:
 def test_xlsx_headers_layout_and_freeze():
     ws = _sheet(_father_sheet())
     headers = [c.value for c in ws[1]]
-    assert headers == ["신용장 개설일", "신용장 번호", "B/L 번호", "출항", "입항", "입고", "포워더", "선사", "컨테이너 번호"]
+    assert headers == ["신용장 개설일", "신용장 번호", "B/L 번호", "출항", "입항", "입고", "포워더", "선사", "컨테이너 번호", "품명"]
     assert all(c.font.bold for c in ws[1]) and ws.freeze_panes == "A2"
-    assert ws.column_dimensions["B"].width > 10 and ws.column_dimensions["I"].width > 10
+    assert ws.column_dimensions["B"].width > 10 and ws.column_dimensions["J"].width > 10  # 품명 칸(J)까지 너비가 잡힌다
     assert ws.max_row == 5
 
 
@@ -496,3 +498,18 @@ def test_delete_all_removes_lc_rows_too():
     assert cargo.delete_all(conn, "u1") == 4  # 알리는 숫자는 화물 줄 수 그대로
     assert [c[0] for c in conn.calls] == ["DELETE FROM user_cargo WHERE user_id = %s", "DELETE FROM user_lc WHERE user_id = %s"]
     assert all(c[1] == ["u1"] for c in conn.calls)
+
+
+def test_xlsx_goods_name_column():
+    """품명(10-06 오후)은 10번째 칸. UNI-PASS 외부 글자라 다른 회사 칸처럼 글자 형식으로 쓴다"""
+    ws = _sheet(_father_sheet())
+    assert ws["J2"].value == "MOCK GOODS" and ws["J2"].data_type == "s"
+    assert ws["J3"].value is None  # 품명이 없는 줄은 빈칸
+
+
+def test_migration_020_shape():
+    from backend.app.db import MIGRATIONS_DIR
+
+    sql = (MIGRATIONS_DIR / "020_goods_name.sql").read_text(encoding="utf-8")
+    assert "ALTER TABLE user_cargo ADD COLUMN IF NOT EXISTS goods_name TEXT" in sql
+    assert "\u2014" not in sql  # em dash 금지 (CLAUDE.md)

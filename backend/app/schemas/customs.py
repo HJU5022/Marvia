@@ -4,7 +4,9 @@
 - 넘기는 것: 선명, 국적, 항차, 입항일, 통관 진행 상태·코드, 장치장명, 단계 이력, MRN(배 특정용).
 - 포워더명(forwarder_name)·선사명(carrier_name)은 화물 정보로 채팅 에이전트 LLM에도 간다 (10-06 결정).
   컨테이너 번호(container_no)는 B/L처럼 화물을 특정하는 번호라 LLM에 넘기지 않고 화면·엑셀에만 쓴다 (10-06 결정).
-- 넘기지 않는 것: 품명(prnm), 중량(wght), 세관명, 화주 정보. 이 모델에 아예 필드가 없다.
+- 품명(goods_name, prnm)은 처음엔 버렸지만 10-06 오후부터 남긴다. 새 화면이 선명·국적·품명으로 화물을 구분하고,
+  "고추 화물 어디야?"처럼 품명으로 묻는 말을 채팅 에이전트가 알아들어야 해서다 (정운 결정). 판정 LLM에는 안 넘긴다.
+- 넘기지 않는 것: 중량(wght), 세관명, 화주 정보. 이 모델에 아예 필드가 없다.
 - B/L 번호는 LLM에 안 넘기고, 트레이스·로그에는 mask_bl()로 남긴다 (SDD 3.5, 7절).
 - 예외: display_rows(UNI-PASS 처리 이력 원문)는 화면에만 보여 준다. model_dump에서 빠져(exclude) LLM 입력에
   들어가지 않고, 응답(C1 customs_detail)으로 옮긴 뒤에도 DB 저장·후속 질문 LLM 입력에서 뺀다 (docs/specs/customs-detail.md, 10-02).
@@ -74,6 +76,10 @@ class CustomsRecord(BaseModel):
         description="cntrNo, 컨테이너 번호(11자, 예: ABCD1234567). 가이드상 API001에서는 1건(size 11)이지만 "
                     "컨테이너 여러 개면 서로 다른 번호를 ', '로 이어 한 문자열로 둔다. 화물을 특정하는 번호라 LLM에 넘기지 않는다",
     )
+    goods_name: str | None = Field(
+        default=None,
+        description="prnm, 품명. 적하목록에 적힌 영어 그대로(예: TEST GOODS). 채팅 에이전트 LLM에는 가고 판정 LLM에는 안 간다 (10-06 오후)",
+    )
     stage_history: list[CustomsStage] = Field(default_factory=list)
     # 화면 전용 처리 이력 원문. exclude=True라 model_dump에 안 나와 판정 LLM 입력(llm.judge)에 섞이지 않는다
     display_rows: list[CustomsDetailRow] = Field(default_factory=list, exclude=True)
@@ -86,10 +92,10 @@ class CustomsRecord(BaseModel):
                 "discharge_port_name": self.discharge_port_name}
 
     def party_fields(self) -> dict:
-        """C1 CustomsInfo에 넣을 포워더·선사·컨테이너 칸 (10-06). route_fields와 같은 방식으로 응답을 만드는 곳이 펼쳐 넣는다.
-        화면·엑셀·다른 클라이언트가 읽는 값이다. 이 셋을 LLM에 넘길지는 쓰는 곳이 정한다 (container_no는 넘기지 않는다)."""
+        """C1 CustomsInfo에 넣을 포워더·선사·컨테이너·품명 칸 (10-06). route_fields와 같은 방식으로 응답을 만드는 곳이 펼쳐 넣는다.
+        화면·엑셀·다른 클라이언트가 읽는 값이다. 이 넷을 LLM에 넘길지는 쓰는 곳이 정한다 (container_no는 넘기지 않는다)."""
         return {"forwarder_name": self.forwarder_name, "carrier_name": self.carrier_name,
-                "container_no": self.container_no}
+                "container_no": self.container_no, "goods_name": self.goods_name}
     fetched_at: datetime
 
 

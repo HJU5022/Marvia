@@ -117,7 +117,8 @@ def test_signal_set_accepts_seven_ids_and_rejects_unknown():
 def test_customs_record_has_no_sensitive_fields():
     rec = CustomsRecord(ship_name="TEST CARGO A", ship_nat="KR", bl_masked=mask_bl("TESTBL0001"), fetched_at=NOW)
     assert rec.bl_masked == "TE*****001"  # 가운데 절반을 가린다 (SDD 3.5, 10-01). 홀수 남는 자리는 뒤로
-    for banned in ("prnm", "wght", "goods", "consignee", "customs_office"):
+    # 품명은 10-06 오후부터 goods_name으로 둔다 (정운 결정). 중량·화주·세관명은 여전히 자리가 없다
+    for banned in ("prnm", "wght", "consignee", "customs_office"):
         assert banned not in CustomsRecord.model_fields
 
 

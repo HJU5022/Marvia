@@ -10,6 +10,8 @@ LLM이 낸 칸은 믿기 전에 다시 본다: bl_ref는 가린 목록 안의 �
 코드가 쓴 "지난 조회" 한 줄을 붙이고, 가린 사용자 문장을 기억 뽑기 재료로 판정 흐름에 넘긴다 (memory.user_text).
 채팅 에이전트 (10-05 결정): 의도 넷에 안 맞는 실무 질문이 전부 고정 안내로 가고, 앞 대화를 몰라 "이건"을 못 알아듣던 문제를 고친다.
 도구는 화물 조회·화물 질문·입항 선박 검색과 읽기 전용 MCP 도구, 그리고 좁은 범위의 웹 검색(WEB_TOOL, 10-05)이다. 등급·여유 일수는 지금처럼 판정 흐름(코드)이 정한다.
+컨테이너 번호로 찾기 (10-06): 문장 속 컨테이너 번호(ISO 6346)는 B/L처럼 LLM에 원문을 주지 않는다. 로그인 사용자의 화물 표에서
+그 번호를 찾으면 코드가 원본 B/L로 바꿔 기존 B/L 흐름에 넘기고, 못 찾으면 [CNTR1] 번호표로 가린다 (_swap_containers).
 """
 from __future__ import annotations
 
@@ -27,8 +29,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
+from backend.app import crypto
 from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
+from backend.app.db import connect
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, validate
@@ -271,6 +275,118 @@ def mask_bls(message: str, refs: dict[str, str] | None = None) -> tuple[str, dic
     return _BL.sub(swap, message), refs
 
 
+# ── 컨테이너 번호 (10-06, "내 컨테이너 TEMU... 어디쯤이야?") ──
+# ISO 6346: 소유자 글자 3 + 장비 종류 글자 1(U 컨테이너, J 부속장비, Z 트레일러·섀시) + 숫자 6 + 검산 숫자 1 = 11자.
+# 앞뒤가 영숫자면 더 긴 글자의 일부라 제외한다. 이 모양만으로는 B/L(영문·숫자 8~20자)과 겹칠 수 있어 검산 숫자까지 맞아야 컨테이너로 본다.
+_CONTAINER = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{3}[UJZujz][0-9]{7}(?![A-Za-z0-9])")
+CONTAINER_NOT_FOUND = ("내 화물 목록에서 이 컨테이너 번호를 찾지 못했어요. 조회한 적 있는 화물만 컨테이너 번호로 찾을 수 있어요. "
+                       "B/L 번호로 조회해 주세요.")
+CONTAINER_NEED_LOGIN = ("컨테이너 번호로 찾기는 로그인한 뒤 조회한 적 있는 화물에서만 돼요. "
+                        "로그인하거나 B/L 번호로 조회해 주세요.")
+# 컨테이너 번호로 찾은 화물의 저장된 B/L 구분 {대문자 B/L: MASTER|HOUSE}. handle이 요청마다 채운다.
+# 이유: 구분을 말하지 않으면 _cargo가 HOUSE로 조회하는데, 저장된 화물이 MASTER면 세관에서 못 찾는다.
+# 인자로 내려보내려면 handle~_cargo 사이 시그니처 여럿을 바꿔야 해서, memory.user_text처럼 contextvar로 둔다
+# (여러 B/L을 동시에 조회하는 스레드는 contextvars.copy_context로 이 값을 이어 받는다)
+_STORED_TYPES: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar("chat_stored_bl_types", default=None)
+
+
+def _stored_type(bl: str) -> str | None:
+    """컨테이너 번호로 찾은 화물의 저장된 B/L 구분. 컨테이너로 온 B/L이 아니면 None."""
+    kind = (_STORED_TYPES.get() or {}).get(bl.upper())
+    return kind if kind in ("MASTER", "HOUSE") else None
+
+
+def container_check_digit(code10: str) -> int:
+    """ISO 6346 검산 숫자. 앞 10자(글자 4 + 숫자 6)로 계산한다.
+    글자 값은 A=10부터 이어 세되 11의 배수(11, 22, 33)는 건너뛴다. 각 자리 값에 2의 (자리 번호)제곱을 곱해 더하고 11로 나눈 나머지에서 10이면 0."""
+    values, value = {}, 10
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        if value % 11 == 0:
+            value += 1
+        values[letter] = value
+        value += 1
+    total = sum((values[c] if c.isalpha() else int(c)) * (2 ** i) for i, c in enumerate(code10.upper()))
+    return total % 11 % 10
+
+
+def find_containers(message: str) -> list[str]:
+    """문장 속 컨테이너 번호(대문자, 처음 나온 순서, 중복 없음). 모양과 검산 숫자가 모두 맞는 것만이다."""
+    found: list[str] = []
+    for m in _CONTAINER.finditer(message):
+        code = m.group(0).upper()
+        if int(code[10]) == container_check_digit(code[:10]) and code not in found:
+            found.append(code)
+    return found
+
+
+def mask_containers(message: str, refs: dict[str, str] | None = None) -> tuple[str, dict[str, str]]:
+    """문장 속 컨테이너 번호를 [CNTR1], [CNTR2]로 바꾸고 {토큰: 컨테이너}를 돌려준다. B/L 가리기(mask_bls)와 같은 방식이다.
+    mask_bls보다 먼저 해야 한다: 컨테이너 모양(영숫자 11자)이 B/L 모양에도 걸려 [BL1]로 잘못 바뀐다."""
+    refs = {} if refs is None else refs
+    valid = set(find_containers(message))
+
+    def swap(m: re.Match) -> str:
+        code = m.group(0).upper()
+        if code not in valid:
+            return m.group(0)
+        for token, value in refs.items():
+            if value == code:
+                return token
+        token = f"[CNTR{len(refs) + 1}]"
+        refs[token] = code
+        return token
+
+    return _CONTAINER.sub(swap, message), refs
+
+
+def _own_cargo_by_container(user_id: str | None, container: str) -> tuple[str, str | None] | None:
+    """로그인 사용자의 화물 표에서 이 컨테이너의 (원본 B/L, 저장된 B/L 구분). 못 찾으면 None.
+    로그인 안 함, DB 없음(채점 환경), 읽기 실패, 열쇠가 없어 B/L을 못 여는 경우 모두 "못 찾음"이다: 채팅은 계속 돈다 (EC-08, memory.lookup_notes와 같다).
+    원본 B/L은 이 함수 밖으로 나가도 LLM에는 가지 않는다. 호출한 쪽이 문장에 끼운 뒤 mask_bls가 [BLn]으로 가린다."""
+    if not user_id or not os.environ.get("DATABASE_URL"):
+        return None
+    try:
+        with connect() as conn:
+            row = cargo.find_by_container(conn, user_id, container)
+    except Exception as e:  # noqa: BLE001 - 화물 찾기는 부가 기능이다. 종류만 남기고 못 찾음으로 처리한다
+        log_failure("container_lookup", type(e).__name__)
+        return None
+    if not row or not row.get("bl_encrypted"):
+        return None
+    bl = crypto.decrypt(row["bl_encrypted"])
+    return (bl.strip().upper(), row.get("bl_type")) if bl else None
+
+
+def _swap_containers(message: str, user_id: str | None,
+                     exists: Callable[[str], bool] | None = None) -> tuple[str, int, dict[str, str]]:
+    """문장 속 컨테이너 번호를 LLM에 원문이 안 가는 모양으로 바꾼다. (바뀐 문장, 못 찾은 개수, {B/L: 저장된 구분})을 돌려준다.
+    - 내 화물에서 찾았으면 그 자리를 원본 B/L로 바꾼다. 이어지는 B/L 흐름(repair_message, mask_bls, check_cargo)이 그대로 맡는다
+    - 내 화물에 없으면 세관에 같은 번호의 B/L이 있는지 본다(exists, 보통 bl_parse.exists_in_customs). 있으면 컨테이너가 아니라
+      우연히 컨테이너 모양·검산까지 맞은 B/L이다: 그대로 두면 아래 mask_bls가 [BL1]로 가려 B/L로 조회한다 (10-06 정운 결정:
+      B/L을 넣었는데 "못 찾음"이 뜨는 게 가장 나쁘다). 대가는 이런 번호 하나당 UNI-PASS 최대 2번 호출이다
+    - 세관에도 없으면 [CNTR1] 번호표로 바꾼다 (mask_containers와 같은 모양). 이 번호표는 아무 도구에도 연결되지 않는다"""
+    containers = find_containers(message)
+    if not containers:
+        return message, 0, {}
+    types: dict[str, str] = {}
+    unmatched: list[str] = []
+    for code in containers:
+        own = _own_cargo_by_container(user_id, code)
+        if own is not None:
+            bl, kind = own
+            replacement = bl
+            if kind in ("MASTER", "HOUSE"):
+                types[bl] = kind
+        elif exists is not None and exists(code):
+            continue  # 세관에 있는 B/L이다. 글자를 그대로 두고 B/L 흐름에 맡긴다
+        else:
+            unmatched.append(code)
+            replacement = f"[CNTR{len(unmatched)}]"
+        # 번호 하나씩 그 자리만 바꾼다. 끼워 넣은 B/L이 우연히 컨테이너 모양이어도 다시 가려지지 않는다
+        message = re.sub(rf"(?<![A-Za-z0-9]){code}(?![A-Za-z0-9])", lambda _m, r=replacement: r, message, flags=re.I)
+    return message, len(unmatched), types
+
+
 def _valid_date(value: str | None) -> str | None:
     """YYYY-MM-DD이고 실제 있는 날짜일 때만. LLM이 만든 날짜를 그대로 믿지 않는다."""
     if not value or not isinstance(value, str):  # 도구 인자는 strict 스키마가 아니라 숫자·목록이 올 수 있다 (10-05 검토)
@@ -380,13 +496,22 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     if len(message) > MESSAGE_MAX:
         raise ChatError("too_long")
     mrn, message = extract_mrn(message)  # B/L 가리기보다 먼저 (MRN도 B/L 모양이라 [BL]로 잘못 가려진다)
+    # 컨테이너 번호도 B/L 가리기보다 먼저 (영숫자 11자라 B/L 모양에 걸린다). 내 화물이면 B/L로 바꾸고, 아니면 [CNTR1]로 가린다 (10-06)
+    message, unmatched_containers, stored_types = _swap_containers(message, user_id, bl_parse.exists_in_customs)
     # 기호·띄어쓰기로 흐트러진 B/L("test-bl-01")을 세관에 있는 것만 붙여 읽는다 (services/bl_parse.py, 10-05 결정).
     # 가리기 전에 한다: 붙인 번호도 아래 mask_bls가 [BL1]로 가려서 LLM에는 원본이 가지 않는다. 고쳐 읽었다는 알림은 코드 문장이다
     message, repair_notes = bl_parse.repair_message(message, bl_parse.exists_in_customs)
     masked, refs = mask_bls(message)
+    if unmatched_containers and not refs:
+        # 찾을 B/L이 없고 컨테이너만 못 찾았다: LLM을 부르지 않고 코드 문장으로 답한다 (컨테이너 번호를 LLM에 주지 않는 규칙, 10-06)
+        return ChatResult(kind="message", reply=CONTAINER_NOT_FOUND if user_id else CONTAINER_NEED_LOGIN)
     # 기억 뽑기 재료는 가린 문장이다. B/L·MRN 원본은 넘기지 않는다 (CLAUDE.md, docs/specs/memory.md 쓰기 흐름 3)
-    with memory.user_text(masked):
-        result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao)
+    types_token = _STORED_TYPES.set(stored_types)
+    try:
+        with memory.user_text(masked):
+            result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao)
+    finally:
+        _STORED_TYPES.reset(types_token)
     if repair_notes:
         result = replace(result, reply="\n".join([result.reply, *repair_notes]))
     return result
@@ -595,7 +720,7 @@ def agent_enabled() -> bool:
 
 
 def _masked_history(history: list[dict], refs: dict[str, str]) -> list[dict]:
-    """화면이 보낸 최근 대화를 LLM에 넘길 모양으로 만든다. B/L·MRN을 가리고 주입 모양 줄은 뺀다.
+    """화면이 보낸 최근 대화를 LLM에 넘길 모양으로 만든다. B/L·MRN·컨테이너 번호를 가리고 주입 모양 줄은 뺀다.
     화면이 보낸 값이라 assistant 줄도 우리가 쓴 글이라고 믿지 않는다 (SDD 7절 신뢰 경계). LLM에는 자료로만 간다."""
     turns = []
     for turn in history[-HISTORY_TURNS:]:
@@ -603,7 +728,8 @@ def _masked_history(history: list[dict], refs: dict[str, str]) -> list[dict]:
         if role not in ("user", "assistant") or not text:
             continue
         # 가린 뒤에 자른다. 먼저 자르면 경계에 걸린 B/L 앞부분(8자 미만)이 가려지지 않고 LLM에 간다 (10-05 테스트에서 발견)
-        text, _ = mask_bls(_MRN.sub("[MRN]", text), refs)
+        # 컨테이너 번호도 가린다. B/L 가리기보다 먼저 해야 한다 (영숫자 11자라 B/L 모양에 걸린다, 10-06)
+        text, _ = mask_bls(_MRN.sub("[MRN]", mask_containers(text)[0]), refs)
         text = text[:MESSAGE_MAX]
         if guard.looks_like_injection(text):
             continue
@@ -612,14 +738,16 @@ def _masked_history(history: list[dict], refs: dict[str, str]) -> list[dict]:
 
 
 def _cargo_summary(resp: AgentResponse) -> dict:
-    """화물 조회 결과 중 LLM에 돌려줄 부분. 다음 도구를 고르는 데 필요한 것만 준다 (배 이름·MMSI·호출부호, 도착 예정, 포워더·선사 이름).
+    """화물 조회 결과 중 LLM에 돌려줄 부분. 다음 도구를 고르는 데 필요한 것만 준다 (배 이름·MMSI·호출부호, 도착 예정, 포워더·선사 이름, 품명).
     근거 카드와 통관 정보는 뺀다: 자세한 질문은 ask_cargo가 지난 결과 전체로 답한다. B/L은 응답에 없다.
     포워더·선사 이름만 통관 정보에서 꺼내 준다 (10-06 결정). "포워더가 어디예요" 같은 물음에 도구를 또 부르지 않고 답하게 하려는 것이다.
-    컨테이너 번호(container_no)는 B/L처럼 화물을 특정하는 번호라 LLM에 주지 않는다: include에 없고 아래 customs도 두 칸만 만든다.
-    두 이름은 UNI-PASS 외부 글자라 주입 모양이면 뺀다 (SDD 7절, llm._clean_customs와 같은 예방 조치)."""
+    품명(goods_name)도 준다 (10-06 오후 정운 결정). "고추 화물 어디야?"처럼 품명으로 화물을 가리키는 말을 알아듣게 하려는 것이다.
+    컨테이너 번호(container_no)는 B/L처럼 화물을 특정하는 번호라 LLM에 주지 않는다: include에 없고 아래 customs에도 안 넣는다.
+    세 값은 UNI-PASS 외부 글자라 주입 모양이면 뺀다 (SDD 7절, llm._clean_customs와 같은 예방 조치)."""
     summary = resp.model_dump(mode="json", include={"status", "verdict", "days_margin", "missing_inputs", "vessel", "eta", "answer"})
     if resp.customs is not None:
-        names = {"forwarder_name": resp.customs.forwarder_name, "carrier_name": resp.customs.carrier_name}
+        names = {"forwarder_name": resp.customs.forwarder_name, "carrier_name": resp.customs.carrier_name,
+                 "goods_name": resp.customs.goods_name}
         summary["customs"] = {key: (None if guard.looks_like_injection(value) else value) for key, value in names.items()}
     return summary
 
@@ -988,7 +1116,8 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             outcomes = [f.result() for f in futures]
         multi_state["over"] = len(bls) > MAX_BLS_PER_TURN
         multi_state["failed"] = any(o is None for o in outcomes)
-        multi_state["house"] = bl_type is None
+        # 컨테이너 번호로 찾은 화물은 저장된 구분을 썼으니 "구분을 말하지 않아 하우스로 조회" 안내를 붙이지 않는다
+        multi_state["house"] = bl_type is None and any(not _stored_type(bl) for bl in picked)
         multi_state["results"] = [o for o in outcomes if o is not None]
         token_of = {bl: token for token, bl in message_refs.items()}
         summaries = [{"bl_ref": token_of.get(bl), **_cargo_summary(o.agent)} for bl, o in zip(picked, outcomes) if o is not None]
@@ -1632,7 +1761,8 @@ def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: 
     # 돌려줘도 사용자에게 보이지 않게 여기서 한 번 더 거른다. 가득 참은 설정 "내 기억" 화면만 보여 준다
     notes = [n for n in memory.lookup_notes(user_id, bl) if n.startswith(PREVIOUS_LINE_PREFIX)]
     same = context is not None and context.bl_no == bl
-    kind = bl_type or (context.bl_type if same else None)
+    # 사용자가 말한 구분 > 컨테이너 번호로 찾은 화물의 저장된 구분 > 지금 화물의 구분. 저장된 구분이 없으면 아래에서 HOUSE로 조회하고 알린다
+    kind = bl_type or _stored_type(bl) or (context.bl_type if same else None)
     req = AgentRequest(bl_no=bl, bl_type=kind or DEFAULT_BL_TYPE, session_id=session_id,
                        sale_due_date=sale_due_date or (context.sale_due_date if same else None),
                        mrn=mrn or (context.mrn if same else None),

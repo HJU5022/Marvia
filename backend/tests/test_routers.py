@@ -1192,9 +1192,10 @@ def test_party_fields_reach_response_released_path():
     HTTP를 거치지 않고 응답 만드는 함수를 직접 부른다: 라우터 테스트는 인증 설정에 기대지 않는 쪽이 환경에 덜 흔들린다"""
     record = CustomsRecord(ship_name="TEST STAR", discharge_port="KRPUS", stage_name="반출신고",
                            forwarder_name="테스트포워딩(주)", carrier_name="테스트선사(주)", container_no="TSTU1234560",
-                           bl_masked="TEST****0001", fetched_at=NOW)
+                           goods_name="TEST GOODS", bl_masked="TEST****0001", fetched_at=NOW)
     info = agent_router._released(record).customs
     assert (info.forwarder_name, info.carrier_name, info.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560")
+    assert info.goods_name == "TEST GOODS"  # 품명도 실린다 (10-06 오후)
 
 
 def test_party_fields_reach_response_judged_path():
@@ -1210,4 +1211,4 @@ def test_party_fields_default_to_null():
     """값이 없으면 세 칸 모두 null. 기존 응답 모양에 칸만 더해진다"""
     record = CustomsRecord(ship_name="TEST STAR", stage_name="반출신고", bl_masked="TEST****0001", fetched_at=NOW)
     info = agent_router._released(record).customs
-    assert (info.forwarder_name, info.carrier_name, info.container_no) == (None, None, None)
+    assert (info.forwarder_name, info.carrier_name, info.container_no, info.goods_name) == (None, None, None, None)
