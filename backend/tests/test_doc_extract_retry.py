@@ -4,6 +4,7 @@
 확인하는 것:
   - 끊긴 답(finish_reason 없음 + JSON 깨짐)은 같은 메시지로 한 번만 더 묻는다 (_ask_json)
   - 두 번 다 끊기면 LLMFormatError(bad_format)로 올리고, POST /api/document는 partial + llm_error를 돌려준다
+  - finish_reason="error"(제공사가 생성 중 멈춤, 10-06 판정 평가)도 끊김으로 보고 같은 방식으로 한 번 더 묻는다
   - finish_reason=length(토큰 한도)와 정상 답은 추가 호출이 없다
 """
 import json
@@ -58,6 +59,23 @@ def test_cut_then_valid_succeeds_with_one_retry(monkeypatch):
     assert len(calls) == 2
     assert calls[0]["messages"] == calls[1]["messages"]  # 같은 대화로 다시 묻는다
     assert answer.llm.attempts == 2  # Langfuse retry_count = attempts - 1 = 1
+
+
+def test_error_finish_then_valid_succeeds_with_one_retry(monkeypatch):
+    """제공사가 생성 중 멈춘 답(finish_reason="error", 10-06 판정 평가 실측)도 끊김으로 보고 한 번 더 묻는다."""
+    calls = _fake_chat(monkeypatch, [('{\n  "verdict": "act",\n  "answer": "', "error"), GOOD])
+    answer = llm.extract_doc_fields("[BL]")
+    assert answer.output.vessel == "SEA STAR"
+    assert len(calls) == 2
+    assert calls[0]["messages"] == calls[1]["messages"]  # 형식 오류 안내 없이 같은 대화로 다시 묻는다
+    assert answer.llm.attempts == 2
+
+
+def test_error_finish_twice_raises_format_error(monkeypatch):
+    calls = _fake_chat(monkeypatch, [(CUT, "error"), (CUT, "error")])
+    with pytest.raises(llm.LLMFormatError):
+        llm.extract_doc_fields("[BL]")
+    assert len(calls) == 2  # 끊김 재시도는 한 번뿐이다
 
 
 def test_cut_twice_raises_format_error(monkeypatch):

@@ -81,6 +81,10 @@ RETRY_WAIT_SEC = 2.0  # 과부하는 잠깐 뒤 풀리는 경우가 많다. 실�
 # 분류하는데 재시도만 안 해서 분류와 동작이 어긋나 있었다.
 # 타임아웃은 넣지 않는다. 60초를 한 번 더 기다리면 시간 예산을 넘는다.
 RETRYABLE_CODES = {429, 500, 502, 503}
+# 끝까지 못 쓰고 끊긴 답의 finish_reason. JSON이 깨졌고 이 값이면 _ask_json이 같은 대화로 한 번 더 묻는다.
+# None: 끝 신호 없이 스트림이 끊김 (10-06 서류 판독). "error": 제공사가 생성 중 오류로 멈춤 (10-06 판정 평가 3회, 74번 중 4번)
+# length(토큰 한도)와 stop(정상 종료)은 넣지 않는다. 다시 물어도 같은 한도에 닿거나, 형식 문제라 프롬프트로 고쳐야 한다
+CUT_FINISH_REASONS = {None, "error"}
 
 logger = logging.getLogger(__name__)
 
@@ -654,13 +658,16 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
             output = output_model.model_validate_json(result.content or "")
             break
         except ValidationError as e:
-            if result.finish_reason is None and not cut_retried:
+            if result.finish_reason in CUT_FINISH_REASONS and not cut_retried:
                 # 10-06 실측: 서류 판독에서 HTTP 200인데 스트림이 JSON 중간(`{"vessel":`)에서 끊기고 finish_reason도 None인 답이
                 # 두 번 왔다. 정상 종료(stop)나 토큰 한도(length) 신호가 없는 답은 모델이 끝까지 쓰지 못한 것이라, 같은 대화로
                 # 한 번 더 묻는다. chat()은 이 경우를 재시도하지 않으므로(RETRYABLE_CODES는 상태 코드만 본다) 여기서 한다.
                 # length는 다시 물어도 같은 한도에 닿으므로 건드리지 않고, 형식이 틀린 stop 답은 프롬프트 문제라 아래에서 올린다
+                # 10-06 평가 3회 실측: 판정 답 74번 중 4번이 finish_reason="error"·출력 토큰 0으로 JSON 중간에서 끊겼다(제공사 Google).
+                # None만 보던 때는 이것이 bad_format(프롬프트 문제)으로 잘못 세져 라우터가 형식 오류 안내를 붙여 다시 물었다
                 cut_retried = True
-                logger.warning("llm %s 답이 끊김(finish_reason 없음), %.1f초 뒤 한 번 더 묻는다", result.model, RETRY_WAIT_SEC)
+                logger.warning("llm %s 답이 끊김(finish_reason %s), %.1f초 뒤 한 번 더 묻는다",
+                               result.model, result.finish_reason, RETRY_WAIT_SEC)
                 time.sleep(RETRY_WAIT_SEC)  # 같은 대기 시간을 쓴다
                 previous = result
                 try:
