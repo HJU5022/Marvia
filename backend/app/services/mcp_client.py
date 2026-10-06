@@ -35,9 +35,31 @@ logger = logging.getLogger(__name__)
 _memory_server = None  # 메모리 통로용 MCP 서버. 처음 쓸 때 한 번 만든다
 
 
-def _failed(message: str) -> dict:
+def _failed(message: str, code: str = "mcp_failed", retryable: bool = True) -> dict:
     """MCP 통로 자체가 실패했을 때. 도구 실패와 같은 {error: ToolError} 모양이라 부르는 쪽이 따로 처리할 필요가 없다."""
-    return {"error": {"code": "mcp_failed", "message": message, "retryable": True}}
+    return {"error": {"code": code, "message": message, "retryable": retryable}}
+
+
+def _leaves(exc: BaseException):
+    """예외 그룹을 펼쳐 안쪽 예외를 하나씩 돌려준다. MCP 클라이언트는 HTTP 오류를 ExceptionGroup에 싸서 던진다."""
+    if isinstance(exc, BaseExceptionGroup):
+        for inner in exc.exceptions:
+            yield from _leaves(inner)
+    else:
+        yield exc
+
+
+def _transport_failed(exc: BaseException) -> dict:
+    """통로 예외를 오류 dict로 바꾼다 (10-02 점검).
+
+    인증 실패(401·403)는 다시 불러도 같은 결과라 retryable=False, 코드 unauthorized로 따로 낸다.
+    전에는 ExceptionGroup 하나로 뭉쳐 mcp_failed·retryable=True가 되어, 토큰 설정 문제가 일시 장애처럼 보였다.
+    그 밖의 연결 실패·응답 깨짐은 일시 장애일 수 있어 그대로 retryable=True다.
+    """
+    for leaf in _leaves(exc):
+        if isinstance(leaf, httpx.HTTPStatusError) and leaf.response.status_code in (401, 403):
+            return _failed(f"MCP 인증 실패 ({leaf.response.status_code})", code="unauthorized", retryable=False)
+    return _failed(type(exc).__name__)
 
 
 @asynccontextmanager
@@ -70,6 +92,11 @@ async def _call(name: str, arguments: dict) -> dict:
 
     text = result.content[0].text if result.content else ""
     if result.isError:  # 도구가 예외를 던졌을 때. 도구는 실패를 {error}로 돌려주게 돼 있어 보통은 없다
+        # 입력 스키마 검사 실패(위도 999 등)도 여기로 온다. FastMCP(mcp 1.30)는 이를 별도 코드 없이
+        # "... validation error(s) for <도구>Arguments" 문장으로만 알려 준다. 같은 입력으로 다시 불러도
+        # 실패하므로 도구의 입력 오류와 같은 bad_input·retryable=False로 낸다 (port_schedule.py와 같은 코드, 10-02 점검)
+        if "validation error" in text:
+            return _failed(text[:200], code="bad_input", retryable=False)
         return _failed(text[:200])
     return json.loads(text)
 
@@ -121,7 +148,7 @@ def call_tool(name: str, **arguments) -> dict:
         result = _run(_call(name, arguments))
     except Exception as e:  # 연결 실패·인증 실패(401)·응답 깨짐. 서비스는 도구 실패와 같은 경로(partial 등)로 간다
         logger.warning("MCP 도구 호출 실패: %s (%s)", name, type(e).__name__)
-        result = _failed(type(e).__name__)
+        result = _transport_failed(e)
     output, error = _summary(result)
     latency_ms = round((time.monotonic() - started) * 1000)
     end_tool(tool, output, {"transport": transport, "latency_ms": latency_ms}, error=error)

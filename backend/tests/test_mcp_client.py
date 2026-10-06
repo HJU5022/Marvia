@@ -3,6 +3,7 @@
 - MCP_URL이 없으면 메모리 통로로 붙고, 결과가 도구를 직접 부른 값과 같다
 - None 인자는 빠지고, 도구가 돌려준 {error}는 그대로 온다
 - 통로 자체가 실패해도 예외가 나지 않고 mcp_failed 오류 dict가 온다
+- 입력 스키마 위반은 bad_input, 인증 실패(401)는 unauthorized로 오고 둘 다 retryable=False다
 - 이벤트 루프가 이미 도는 곳(평가 실행기의 Langfuse 실험)에서 불러도 도구가 돈다
 - 호출마다 Langfuse tool 관측에 이름·인자·결과 요약·통로·지연이 넘어가고, 키가 없으면 결과에 영향이 없다 (SDD 5.11)
 
@@ -54,6 +55,25 @@ def test_transport_failure_returns_error_dict(monkeypatch):
     result = mcp_client.call_tool("estimate_distance", lat=34.5, lng=128.8)
     assert result["error"]["code"] == "mcp_failed"
     assert result["error"]["retryable"] is True
+
+
+# 입력 스키마 위반(위도 999)은 다시 불러도 같으니 bad_input·retryable=False여야 한다 (10-02 점검: 전엔 mcp_failed·True)
+def test_schema_violation_is_bad_input(monkeypatch):
+    monkeypatch.delenv("MCP_URL", raising=False)
+    result = mcp_client.estimate_distance(999, 999)
+    assert result["error"]["code"] == "bad_input"
+    assert result["error"]["retryable"] is False
+
+
+# 토큰이 틀려 401이면 unauthorized·retryable=False여야 한다 (10-02 점검: 전엔 ExceptionGroup·mcp_failed·True).
+# MCP 클라이언트가 HTTP 오류를 ExceptionGroup에 싸서 던지는 모양을 그대로 만들어 넣는다
+def test_unauthorized_is_not_retryable(monkeypatch):
+    import httpx
+    request = httpx.Request("POST", "http://127.0.0.1/mcp")
+    denied = httpx.HTTPStatusError("401", request=request, response=httpx.Response(401, request=request))
+    assert mcp_client._transport_failed(ExceptionGroup("tg", [denied]))["error"] == {
+        "code": "unauthorized", "message": "MCP 인증 실패 (401)", "retryable": False}
+    assert mcp_client._transport_failed(ExceptionGroup("tg", [OSError()]))["error"]["retryable"] is True
 
 
 # Langfuse 키가 없으면 트레이스는 빠지고 호출 결과는 그대로여야 한다 (테스트·REPLAY_MODE가 이 길을 탄다, SDD 5.11)

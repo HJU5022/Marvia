@@ -15,6 +15,8 @@ UNI-PASS는 선명과 국적만 주고 IMO·호출부호를 주지 않는다 (PR
 선명 대신 그것으로 찾는다 (backend/app/services/identify.py). 동명 선박·표기 차이 문제가 없다.
 
 출력 계약은 mcp_server/schemas.py의 VesselCandidatesResult다 (C4, SDD 3.4).
+
+MCP 등록: 이 함수는 mcp_server/server.py create_mcp()가 도구로 등록한다 (데코레이터 없음).
 """
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone

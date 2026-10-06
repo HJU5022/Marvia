@@ -7,6 +7,8 @@ python:3.12-slim(linux/amd64) 컨테이너에서 빌드 도구 없이 설치되�
 searoute 항로망은 노드가 성겨서 부산 기준점에 가장 가까운 노드가 약 9.6해리 앞바다에 있다.
 그래서 (1) 그 노드보다 안쪽 배는 기준점까지 대권거리, (2) 바깥 배는 배에서 노드까지 항로 + 노드에서 기준점까지
 대권거리로 계산한다. append_orig_dest로 양 끝 구간을 붙이면 항만 근처 배가 19.8해리처럼 부풀려진다.
+
+MCP 등록: 이 함수는 mcp_server/server.py create_mcp()가 도구로 등록한다 (데코레이터 없음).
 """
 import math
 from datetime import datetime, timezone
