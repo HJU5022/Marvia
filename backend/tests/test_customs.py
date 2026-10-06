@@ -126,3 +126,60 @@ def test_reads_loading_and_discharge_ports():
     record = client.fetch("TESTMBL0000001")
     assert (record.loading_port, record.loading_port_name, record.loading_country) == ("CNTAO", "Qingdao", "CN")
     assert record.route_fields()["loading_port_name"] == "Qingdao" and record.discharge_port_name is not None
+
+
+# ── 포워더·선사·컨테이너 번호 (10-06) ──
+
+def _fetch_xml(xml: str):
+    """주어진 XML을 UNI-PASS 응답으로 돌려주는 클라이언트로 조회한다."""
+    client = UnipassClient(key="test-key", transport=httpx.MockTransport(lambda r: httpx.Response(200, text=xml)))
+    return client.fetch("TESTMBL0000001")
+
+
+def test_reads_forwarder_carrier_and_container():
+    """frwrEntsConm → forwarder_name, shcoFlco → carrier_name, cntrNo → container_no (연계가이드 v4.1 API001). 값은 가공"""
+    record = _client("progress_ok.xml").fetch("TESTMBL0000001")
+    assert (record.forwarder_name, record.carrier_name, record.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560")
+    assert record.party_fields() == {"forwarder_name": "테스트포워딩(주)", "carrier_name": "테스트선사(주)",
+                                     "container_no": "TSTU1234560"}
+
+
+def test_empty_party_tags_become_none():
+    """실제 응답은 포워더명·컨테이너 번호가 빈 태그(<frwrEntsConm/>, <cntrNo/>)로 오는 화물이 많다. 빈 값은 None"""
+    xml = (FIXTURES / "progress_ok.xml").read_text(encoding="utf-8")
+    for tag in ("frwrEntsConm", "shcoFlco", "cntrNo"):
+        start, end = xml.index(f"<{tag}>"), xml.index(f"</{tag}>") + len(f"</{tag}>")
+        xml = xml[:start] + f"<{tag}/>" + xml[end:]
+    record = _fetch_xml(xml)
+    assert (record.forwarder_name, record.carrier_name, record.container_no) == (None, None, None)
+
+
+def test_missing_party_tags_become_none():
+    """태그 자체가 없어도(옛 fixture·REPLAY 응답) 실패하지 않고 None"""
+    xml = (FIXTURES / "progress_ok.xml").read_text(encoding="utf-8")
+    xml = xml.replace("<cntrNo>TSTU1234560</cntrNo>", "").replace("<shcoFlco>테스트선사(주)</shcoFlco>", "")
+    record = _fetch_xml(xml)
+    assert record.container_no is None and record.carrier_name is None
+
+
+def test_multiple_containers_are_joined_once_each():
+    """컨테이너가 여러 개면 서로 다른 번호를 ', '로 이어 한 문자열로 둔다 (같은 번호 중복은 한 번만)"""
+    xml = (FIXTURES / "progress_ok.xml").read_text(encoding="utf-8")
+    xml = xml.replace("<cntrNo>TSTU1234560</cntrNo>",
+                      "<cntrNo>TSTU1234560</cntrNo><cntrNo>TSTU7654321</cntrNo><cntrNo>TSTU1234560</cntrNo><cntrNo/>")
+    assert _fetch_xml(xml).container_no == "TSTU1234560, TSTU7654321"
+
+
+def test_judge_input_has_no_container_forwarder_or_carrier():
+    """판정 LLM 입력에는 컨테이너 번호(화물을 특정하는 번호)가 가지 않는다. 판정에 안 쓰는 포워더·선사 이름도 뺀다 (llm.JUDGE_CUSTOMS_EXCLUDE)"""
+    import json
+
+    from backend.app.schemas.signals import SignalSet
+    from backend.app.services import llm
+
+    record = _client("progress_ok.xml").fetch("TESTMBL0000001")
+    signals = SignalSet(signals=[], freshness="fresh", distance_nm=None, calc_eta=None, eta_gap_hours=None, computed_at=record.fetched_at)
+    text = llm._judge_input(signals, record, 5)
+    for value in ("TSTU1234560", "테스트포워딩", "테스트선사"):
+        assert value not in text
+    assert set(json.loads(text)["customs"]).isdisjoint({"container_no", "forwarder_name", "carrier_name"})

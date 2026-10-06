@@ -6,6 +6,7 @@ Return JSON with these fields:
 - vessel: ship name
 - voyage: voyage number
 - eta: estimated time of arrival, as YYYY-MM-DD
+- etd: departure date, as YYYY-MM-DD. On an arrival notice, the date next to the label "ETD", "E.T.D." or "출항". On a bill of lading, the "Shipped on board" or "Laden on board" date. null if neither is written. Copy only a date that is printed in the text; never work it out from eta, the voyage, or the transit time
 - pol: port of loading
 - pod: port of discharge
 - item: description of goods
@@ -22,10 +23,11 @@ Return JSON with these fields:
 - contact_phone: that company's office or department phone number with digits and hyphens, copied as written. null if there is none
 
 Rules:
-- Copy each value exactly as it is written in the text. Do not translate, correct, or complete it. The only conversion is eta, which you write as YYYY-MM-DD.
+- Copy each value exactly as it is written in the text. Do not translate, correct, or complete it. The only conversion is eta and etd, which you write as YYYY-MM-DD.
 - Vessel and voyage are often written together, like "SEA STAR / 0925W" or "EVER FUTURE 1110E". Split them.
 - The ship name is the name only. Do not add words that mean "ship", such as the Korean suffix "호".
 - If a field is not in the text, use null. Never guess.
+- Do not copy the date of issue or the eta into etd. If the text has both an ETD and a "Shipped on board" date, use the ETD.
 - For contact fields, never copy a person's name, a personal mobile number, or an email address. If the only number is a personal mobile number, contact_phone is null.
 - original_bl, to_order_bank, freight_term, and incoterm are only copied facts from the document. Do not infer them from other fields.
 - "[BL]" is a hidden number. Ignore it.

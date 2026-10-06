@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -49,7 +50,7 @@ from pydantic import BaseModel, ValidationError
 
 from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
 from backend.app.services import quota  # 1명당 하루 토큰 한도 (docs/specs/token-quota.md)
-from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
+from backend.app.observability.langfuse import end_generation, end_web_search, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
@@ -110,7 +111,8 @@ class LLMError(Exception):
     (09-29 평가 c에서 qwen 무료가 21건 실패했는데 429 말고는 왜 실패했는지 알 수 없었다).
       rate_limited  429 요청이 너무 잦음        overloaded  5xx 제공사 과부하
       auth          401·403·Vertex 로그인 문제   bad_request 그 밖의 4xx (요청 모양·지원 안 하는 옵션)
-      connection    연결 실패·시간 초과          no_choices  200인데 답 없이 error만 옴
+      connection    연결 실패                   no_choices  200인데 답 없이 error만 옴
+      timeout       TIMEOUT_SEC 안에 답이 없음 (전체 시간 상한, _create_with_deadline)
       not_configured 모델 이름이 설정에 없음
       truncated·bad_format은 LLMFormatError 쪽 (답은 왔는데 쓸 수 없음)
     """
@@ -196,6 +198,37 @@ def _vertex_thinking() -> dict | None:
     return {"extra_body": {"google": {"thinking_config": {"thinking_budget": int(budget)}}}}
 
 
+class _DeadlineExceeded(Exception):
+    """_create_with_deadline이 TIMEOUT_SEC 안에 답을 못 받았을 때. _call_once가 LLMError(kind=timeout)로 바꾼다."""
+
+
+def _create_with_deadline(client: OpenAI, kwargs: dict, extra_body: dict | None):
+    """요청 하나를 별도 스레드에서 보내고, 최대 TIMEOUT_SEC초만 기다린다 (10-05).
+
+    왜 SDK timeout만으로 안 되나: httpx timeout은 연결·읽기 구간별 상한이라 "한 번에 이만큼 조용하면" 끊는다.
+    OpenRouter는 비스트리밍 요청에서 모델이 생각하는 동안 연결을 살려 두는 신호를 계속 보내서 읽기 상한이 안 걸린다
+    (실측: 60초 설정인데 78초, 한 대화 턴 152초). 그래서 전체 시간(wall-clock)을 우리가 직접 잰다.
+    스레드는 죽일 수 없어서 시간이 지나면 버려 두고(daemon) 기다리기만 멈춘다. 버린 요청은 SDK timeout이나
+    제공사 쪽에서 끝나는 대로 사라진다. 예외는 그대로 다시 올려 _call_once의 기존 처리를 탄다.
+    """
+    box: dict = {}
+
+    def run():
+        try:
+            box["resp"] = client.chat.completions.create(**kwargs, extra_body=extra_body)
+        except BaseException as e:  # 스레드 밖에서 다시 올린다
+            box["error"] = e
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(TIMEOUT_SEC)
+    if worker.is_alive():
+        raise _DeadlineExceeded()
+    if "error" in box:
+        raise box["error"]
+    return box["resp"]
+
+
 def _call_once(kwargs: dict) -> LLMResult:
     """OpenRouter 또는 Vertex AI를 딱 한 번 부른다. 실패는 전부 LLMError로 바꿔서 올린다."""
     model = kwargs["model"]
@@ -213,7 +246,11 @@ def _call_once(kwargs: dict) -> LLMResult:
 
     start = time.monotonic()
     try:
-        resp = client.chat.completions.create(**kwargs, extra_body=extra_body)
+        resp = _create_with_deadline(client, kwargs, extra_body)
+    except _DeadlineExceeded:
+        # 시간 상한에 닿았다. 다시 부르지 않는다 (RETRYABLE_CODES 주석). code가 없어 retryable도 False다
+        raise LLMError(f"{model}: {TIMEOUT_SEC:g}초 안에 답이 없음",
+                       latency_ms=int((time.monotonic() - start) * 1000), kind="timeout") from None
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
                        latency_ms=int((time.monotonic() - start) * 1000), kind=_status_kind(e.status_code)) from e
@@ -458,6 +495,12 @@ def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
     return "\n\n".join(parts)
 
 
+# 판정 LLM 입력에서 뺄 통관 칸. B/L(bl_masked)·MRN·조회 시각 외에, 10-06에 붙은 포워더·선사·컨테이너 번호도 뺀다:
+# 판정에 쓰이지 않고(프롬프트·평가 결과를 그대로 두려고), 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 LLM에 줄 수 없다.
+# 포워더·선사 이름은 채팅 에이전트가 받는다 (services/chat.py _cargo_summary)
+JUDGE_CUSTOMS_EXCLUDE = {"bl_masked", "mrn", "fetched_at", "forwarder_name", "carrier_name", "container_no"}
+
+
 def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin: int | None,
                  trusted_eta: datetime | None = None, sale_due_date: date | None = None,
                  table_verdict: str | None = None, verdict_mode: str | None = None) -> str:
@@ -480,7 +523,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
         "sale_due_date": sale_due_date.isoformat() if sale_due_date else None,
         "calc_eta": _kst(signals.calc_eta),
         "days_margin": days_margin,
-        "customs": _clean_customs(customs.model_dump(mode="json", exclude={"bl_masked", "mrn", "fetched_at"})) if customs else None,
+        "customs": _clean_customs(customs.model_dump(mode="json", exclude=JUDGE_CUSTOMS_EXCLUDE)) if customs else None,
         "needs_broker": needs_broker(customs.stage_name) if customs and customs.stage_name else None,
     }
     return json.dumps(data, ensure_ascii=False)
@@ -508,6 +551,23 @@ def _kst(moment: datetime | None) -> str | None:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.astimezone(KST).strftime("%Y-%m-%d %H:%M")
+
+
+def _loose_json(content: str | None, output_model: type[BaseModel]) -> str | None:
+    """도구 라운드에서 모델이 response_format 없이 낸 본문을 output_model JSON으로 읽는다. 읽히면 깨끗한 JSON 문자열, 아니면 None.
+
+    ```json 코드 울타리와 앞뒤 공백만 벗긴다. 그 이상은 하지 않는다: 여기서 못 읽으면 _ask_json이
+    response_format을 붙여 한 번 더 묻는 쪽이 더 믿을 만하다 (10-05).
+    """
+    text = (content or "").strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0].strip()
+    try:
+        output_model.model_validate_json(text)
+    except ValidationError:
+        return None
+    return text
 
 
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
@@ -544,13 +604,28 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     response_format = {"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}}
     called: list[dict] = []
     try:
-        # 도구가 없으면 한 번 묻고 끝난다 (판정·배 고르기 등, 지금까지와 같음).
-        # 도구가 있으면(후속 질문, 10-02) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
+        # 도구가 없으면 한 번 묻고 끝난다 (판정·배 고르기 등, 지금까지와 같음: response_format을 붙인 한 번의 호출).
+        # 도구가 있으면(후속 질문·채팅 에이전트, 10-02) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
         # tool_choice="none"으로 더 부르지 말고 답하게 한다. 같은 도구를 끝없이 부르는 것을 막는 상한이다 (가이드 Tool trajectory)
+        # 도구를 고를 기회가 있는 라운드에는 response_format을 붙이지 않는다 (10-05 실측): deepseek-v4-flash(OpenRouter)는
+        # strict json_schema가 같이 오면 도구를 한 번도 안 부르고 JSON만 낸다. 빼면 바로 맞는 도구를 부른다.
+        # 대신 도구를 안 부르고 낸 본문을 JSON으로 읽어 보고, 안 읽히면 같은 대화에 response_format + tool_choice="none"으로 한 번 더 묻는다
         for round_no in range(MAX_TOOL_ROUNDS + 1):
             last_round = round_no == MAX_TOOL_ROUNDS
-            result = chat(messages, model=model, response_format=response_format, tools=tools or None,
-                          tool_choice="none" if (tools and last_round) else None)
+            if tools and not last_round:
+                result = chat(messages, model=model, tools=tools, tool_choice=None)
+                if not (run_tool and result.tool_calls):
+                    parsed = _loose_json(result.content, output_model)
+                    if parsed is not None:
+                        result.content = parsed  # 코드 울타리·공백을 벗긴 JSON 본문. 아래 검사가 그대로 읽는다
+                    else:
+                        # 도구 목록은 그대로 둔다: 기록에 role=tool 메시지가 있으면 제공사가 tools 없는 요청을 거부할 수 있다
+                        result = chat(messages, model=model, response_format=response_format, tools=tools,
+                                      tool_choice="none")
+                    break
+            else:
+                result = chat(messages, model=model, response_format=response_format, tools=tools or None,
+                              tool_choice="none" if (tools and last_round) else None)
             if not (tools and run_tool and result.tool_calls) or last_round:
                 break
             messages.append({"role": "assistant", "content": result.content, "tool_calls": [
@@ -783,7 +858,7 @@ DOC_EXTRACT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     # strict 모드는 모든 칸이 required
-    "required": ["vessel", "voyage", "eta", "pol", "pod", "item", "doc_kind",
+    "required": ["vessel", "voyage", "eta", "pol", "pod", "item", "etd", "doc_kind",
                  "original_bl", "original_bl_text", "to_order_bank", "to_order_bank_text",
                  "freight_term", "freight_term_text", "incoterm", "contact_company", "contact_role", "contact_phone"],
     "properties": {
@@ -793,6 +868,7 @@ DOC_EXTRACT_SCHEMA = {
         "pol": {"type": ["string", "null"]},
         "pod": {"type": ["string", "null"]},
         "item": {"type": ["string", "null"]},
+        "etd": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "doc_kind": {"type": ["string", "null"], "enum": ["bl", "arrival_notice", None]},
         "original_bl": {"type": ["string", "null"], "enum": ["required", "surrendered", None]},
         "original_bl_text": {"type": ["string", "null"]},
@@ -827,6 +903,9 @@ class DocFieldsOutput(BaseModel):
     contact_company: str | None = None    # 화물 인도 연락처 회사 (개인 이름 아님)
     contact_role: str | None = None       # 포워더 / 관세사 / 수출자 / 판매처
     contact_phone: str | None = None      # 회사·부서 전화 (개인 휴대폰 아님)
+    # 10-06 출항일 YYYY-MM-DD (A/N의 ETD, B/L의 Shipped on board). 기본값 None: 프롬프트가 Langfuse에 등록되기 전이라
+    # LLM이 이 칸을 모르거나 null로 두어도 읽힌다. 모양·서류 속 존재·eta와의 순서 검사는 doc_ocr.check_fields
+    etd: str | None = None
 
 
 def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnswer:
@@ -922,6 +1001,35 @@ def write_memory(content: str, *, model: str | None = None) -> LLMAnswer:
     return _ask_json(MEMORY_PROMPT, content, "memory_write", MEMORY_SCHEMA, MemoryOpsOutput, model, skills=())
 
 
+# ── 대화 제목 make_chat_title() ─────────────────────────────
+# 대화 목록(10-06 결정)의 제목. 첫 사용자 말을 코드가 B/L을 [BL1]로 가린 글만 받는다 (CLAUDE.md, B/L 원본은 LLM에 안 간다).
+# 결과 검사(한 줄·길이·주입 모양)와 실패 시 대신 쓸 제목은 services/conversations.py가 맡는다.
+
+TITLE_PROMPT = "marvia-chat-title"
+TITLE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title"],
+    "properties": {"title": {"type": "string"}},
+}
+
+
+class TitleOutput(BaseModel):
+    title: str
+
+
+def make_chat_title(masked_text: str, *, model: str | None = None) -> LLMAnswer:
+    """대화 제목 짓기. output은 TitleOutput. masked_text는 mask_bls를 거친 첫 사용자 말이다.
+
+    값싼 모델을 쓰려고 기억 뽑기와 같은 MEMORY_MODEL(.env)을 쓴다. 없으면 LLMError(not_configured)이고
+    부르는 쪽이 첫 말 앞 글자로 대신한다. 판단 기준 Skill은 넣지 않는다.
+    """
+    model = model or os.environ.get("MEMORY_MODEL")
+    if not model:
+        raise LLMError("MEMORY_MODEL이 없습니다", kind="not_configured")
+    return _ask_json(TITLE_PROMPT, masked_text, "chat_title", TITLE_SCHEMA, TitleOutput, model, skills=())
+
+
 # ── 통관 해설 채점 grade_customs() ─────────────────────────────
 # 평가 전용 LLM-as-judge (SDD 5.12 customs_explanation, 가이드 평가 4축 ④ "생성 모델 ≠ 판정 모델").
 # 서비스 요청에서는 부르지 않는다. evals/judge.py가 평가 실행 때만 부른다.
@@ -1002,6 +1110,148 @@ def route_chat(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
     data = {"message": masked_message, "bl_refs": bl_refs, "has_current_cargo": has_current_cargo, "today": today}
     return _ask_json(CHAT_ROUTE_PROMPT, json.dumps(data, ensure_ascii=False), "chat_route", CHAT_ROUTE_SCHEMA,
                      ChatRouteOutput, model, skills=())
+
+
+# ── 채팅 에이전트 chat_agent() (10-05 결정) ──────────────────────────
+# route_chat은 문장을 의도 하나로 나누고 끝났다. 그래서 네 의도에 안 맞는 실무 질문("포워더가 항차 번호를 안 줘")은
+# 전부 고정 안내로 갔고, 한 문장에 조회 둘이 필요한 일("상하이에서 오는 배 중 제일 먼저 오는 배 지금 어디야")도 못 했다 (10-05 실측 대화).
+# chat_agent는 LLM이 도구를 골라 부르고, 결과를 보고 다음 도구를 또 고른다 (_ask_json의 도구 루프, 상한 MAX_TOOL_ROUNDS).
+# 도구 목록과 실행은 services/chat.py가 준다: 화물 조회·화물 질문·입항 선박 검색 + 읽기 전용 MCP 도구.
+# 등급·여유 일수는 지금처럼 코드가 정한다. B/L은 가린 토큰만 온다 (CLAUDE.md).
+# Skill 문서를 통째로 넣는다: 도구가 필요 없는 실무 질문은 이 문서 안에서만 답하게 한다 (RAG 아님).
+
+CHAT_AGENT_PROMPT = "marvia-chat-agent"
+CHAT_AGENT_SKILLS = ALL_SKILLS  # 되묻기 설명법(cargo-verdict), 통관 단계, AIS, 부두를 모두 물을 수 있다
+# 도구 없이 답할 때의 근거 칸 (10-05 실측): 실무 질문 답에 Skill 문서에 없는 조언("판매처에 문의", "A/N에 B/L 번호가 보통 적혀 있다")이
+# 섞여 나왔는데, 숫자·영문·옮긴 낱말만 보는 V7·V9·V10으로는 못 잡았다. 그래서 답의 종류(answer_kind)와 근거 문장(skill_quote)을 받는다.
+#   skill: Skill 문서로 답했다. skill_quote는 그 답을 받치는 Skill 문서 원문 한 조각이고, 코드가 원문에 그대로 있는지 본다 (validate V14)
+#   not_in_skills: 수입 화물 질문이지만 Skill 문서에 없다. 코드가 고정 문구를 쓴다 (chat.NOT_IN_SKILLS)
+#   unrelated: 수입 화물과 상관없는 말. 코드가 고정 안내를 쓴다 (chat.OTHER_REPLY)
+#   tool: 도구를 불렀고 그 결과를 받은 뒤의 답. 도구 없이 tool을 내면 코드가 도구를 부르라고 다시 묻는다 (chat._agent).
+#     따로 둔 이유 (10-05 실측): 도구를 쓴 답을 unrelated + 빈 reply로 내게 했을 때 도구를 안 부른 답과 코드가 구별하지 못했다.
+#     같은 날 진단에서 deepseek-v4-flash(OpenRouter)는 strict response_format을 붙이면 도구를 전혀 부르지 않고 이 모양만 냈다
+#     (붙이지 않으면 search_arrivals·ask_cargo를 바로 불렀다). 그 문제는 _ask_json 쪽이고, 여기서는 tool을 낸 답을 코드가 알아보게만 한다
+# 도구를 쓴 답이면 근거 칸은 보지 않는다. 종류를 잘못 골라도 결과는 고정 문구 중 하나라 지어낸 조언이 화면에 가지 않는다
+#   web: 웹 검색 도구(chat.WEB_TOOL)로 받은 결과로 답했다 (10-05 결정). skill_quote는 웹 검색 결과 원문 한 조각이고,
+#     코드가 가져온 웹 글에 그대로 있는지 본다 (V14와 같은 방식, chat._web_violations)
+#   general: 3층 (10-05 결정). 교과서 수준의 일반 해운 설명(용어 뜻, 일반 절차)을 모델 지식으로 답했다. 근거 조각 없이 내보내되
+#     숫자·세액·특정 화물·배 이야기는 안 되고 코드가 짧은 고정 꼬리표를 붙인다 (chat.GENERAL_TAG, chat._agent). 검사는 V7·V9(허용 용어 확장)·V10·V13
+#   unrelated: 이제 한 문장짜리 직접 답을 낼 수 있다 (날짜·"마르비아가 뭐야?" 같은 잡담). 검사에 걸리면 고정 안내로 바뀐다
+#   clarify: 사용자가 쓴 식별자(예: TEST41)가 B/L 번호인지 배 이름인지 모르겠다 (10-05 실측). 코드가 고정 문장으로 되묻는다
+#     (chat.clarify_reply). reply는 비운다: LLM 글은 화면에 가지 않고 식별자도 코드가 문장에서 직접 뽑는다
+# help·greeting: 사용법 질문과 인사. 문장은 services/chat.py가 고정 문구로 낸다 (10-05 결정)
+CHAT_AGENT_KINDS = ("tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting")
+CHAT_AGENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["reply", "answer_kind", "skill_quote", "watch_cue"],
+    "properties": {
+        "reply": {"type": "string"},
+        "answer_kind": {"type": "string", "enum": list(CHAT_AGENT_KINDS)},
+        "skill_quote": {"type": "string"},
+        "watch_cue": {"type": "boolean"},
+    },
+}
+
+
+class ChatAgentOutput(BaseModel):
+    reply: str  # 화면에 내보내기 전에 services/chat.py가 검사한다
+    # 기본값은 도구를 쓴 답(두 칸을 보지 않음)과 예전 녹화 답이 그대로 읽히게 둔 것이다. 실제 호출은 strict 스키마라 늘 채워 온다
+    answer_kind: Literal["tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting"] = "unrelated"
+    skill_quote: str = ""  # answer_kind가 skill이면 Skill 문서, web이면 웹 검색 결과 원문 그대로의 한 조각
+    # 사용자 말에 걱정·기한 압박이 묻어 있나 (10-06 결정 "먼저 제안"). 신호일 뿐이다: 제안할지는 services/chat.py가 정한다.
+    # 기본값 False는 예전 녹화 답이 그대로 읽히게 둔 것이다 (실제 호출은 strict 스키마라 늘 채워 온다)
+    watch_cue: bool = False
+
+
+def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, history: list[dict],
+               tools: list[dict], run_tool: Callable[[str, dict], dict], *, model: str | None = None,
+               feedback: str | None = None) -> LLMAnswer:
+    """가린 문장과 최근 대화를 받아 도구를 골라 쓰고 답 한 칸을 낸다. output은 ChatAgentOutput.
+
+    history: [{"role": "user"|"assistant", "text": 가린 글}]. 자료일 뿐이다 (프롬프트 Trust boundary).
+    부른 도구와 결과는 LLMAnswer.tool_calls에 담긴다. 답 문장 검사는 services/chat.py가 한다.
+    feedback: 앞 답이 검사에 걸렸을 때 걸린 내용. 이때는 tools를 비워 부른다 (같은 도구를 두 번 실행하지 않게).
+    """
+    data = {"message": masked_message, "bl_refs": bl_refs, "history": history,
+            "has_current_cargo": has_current_cargo, "today": today}
+    return _ask_json(CHAT_AGENT_PROMPT, json.dumps(data, ensure_ascii=False), "chat_agent", CHAT_AGENT_SCHEMA,
+                     ChatAgentOutput, model, feedback=feedback, skills=CHAT_AGENT_SKILLS, tools=tools, run_tool=run_tool)
+
+
+# ── 웹 검색 web_search() (10-05 결정) ──────────────────────────────
+# 채팅 에이전트의 좁은 웹 검색 도구가 쓴다 (services/chat.py WEB_TOOL). Skill 문서가 못 받치는 실무 질문(B/L 번호 찾는 곳, 포워더 확인,
+# A/N 뜻)에만 쓰고, 판정·특정 화물·세액·통관 가능 여부에는 쓰지 않는다 (PRD 4절). 그 제한은 chat.py가 건다. 여기는 검색 호출만 한다.
+# OpenRouter 웹 플러그인을 engine=exa로 쓴다 (10-05 실측, 계정은 ZDR 제한이 있음):
+#   - engine 기본값(네이티브)은 Gemini의 구글 검색이라 출처가 vertexaisearch 리다이렉트 주소이고 원문이 안 온다. 검증할 글이 없어 못 쓴다
+#   - firecrawl은 ZDR 계정에서 400으로 막힌다
+#   - exa는 응답 annotations(url_citation)에 실제 주소·제목·가져온 원문(content)을 준다 -> 이것이 "가져온 웹 글"이다
+# 검색을 시키는 모델의 답 본문은 버린다 (max_tokens=16). 웹 글 속 지시가 모델을 움직여도 그 출력은 어디에도 안 쓰인다.
+# 에이전트가 읽는 것은 annotations의 글뿐이고, 그 글은 자료로만 간다 (프롬프트 Trust boundary)
+WEB_RESULTS = 3          # 한 번에 받는 결과 수. 비용(결과당 과금)과 에이전트 입력 길이를 같이 줄인다
+WEB_TEXT_CHARS = 1500    # 결과 하나에서 에이전트에 주는 글자 수 상한 (exa가 주는 길이가 대체로 이 안이다)
+WEB_QUERY_CHARS = 120    # 검색어 길이 상한
+WEB_FALLBACK_MODEL = "google/gemini-3.5-flash-lite"  # LLM_MODEL이 vertex/ 모델이면 OpenRouter 웹 플러그인을 못 쓴다. 그때 검색 호출만 이 모델로 한다
+WEB_BLOCKED_TOKENS = ("[BL", "[MRN")  # 가린 B/L·MRN 토큰이 든 검색어는 밖으로 안 나간다 (CLAUDE.md: B/L은 LLM·외부에 안 넘긴다)
+
+
+def web_search(query: str) -> list[dict]:
+    """검색어 하나로 웹을 검색해 [{"title", "url", "text"}]를 돌려준다 (최대 WEB_RESULTS개). 결과가 없으면 빈 목록.
+
+    검색어는 가린 문장에서 만든 것이어야 하고, 호출하는 쪽(chat.py)이 B/L 토큰·MRN·주입 모양을 먼저 거른다. 여기서도 B/L·MRN 토큰은 한 번 더 막는다.
+    TIMEOUT_SEC 전체 시간 상한은 일반 호출과 같다 (_create_with_deadline). 키가 없으면 LLMError. 실패는 전부 LLMError다.
+    """
+    query = (query or "").strip()
+    if not query or len(query) > WEB_QUERY_CHARS or any(t in query.upper() for t in WEB_BLOCKED_TOKENS):
+        raise LLMError("web_search: 검색어가 비었거나 너무 길거나 B/L·MRN 토큰이 들어 있음", kind="bad_query")
+    model = os.environ.get("LLM_MODEL") or WEB_FALLBACK_MODEL
+    if model.startswith(VERTEX_PREFIX):
+        model = WEB_FALLBACK_MODEL
+    start = time.monotonic()
+    # 검색도 요청 트레이스에 generation으로 남긴다 (10-05): 비용(약 $0.008)과 결과가 Langfuse에서 안 보였다.
+    # 검색어는 위에서 B/L·MRN 토큰을 막은 가린 문장이다. 트레이스 실패는 검색을 막지 않는다 (start/end가 삼킨다)
+    generation = start_generation("web_search", query)
+    resp = None
+    try:
+        resp = _create_with_deadline(
+            _client(),
+            {"model": model, "messages": [{"role": "user", "content": query}], "max_tokens": 16},
+            {"plugins": [{"id": "web", "engine": "exa", "max_results": WEB_RESULTS}], "provider": {"require_parameters": True}})
+    except LLMError as e:  # 키 없음 등 _client()가 올린 것. 열어 둔 기록을 닫는다
+        end_web_search(generation, None, model=model, error=str(e))
+        raise
+    except _DeadlineExceeded:
+        end_web_search(generation, None, model=model, error=f"timeout after {TIMEOUT_SEC:g}s")
+        raise LLMError(f"web_search: {TIMEOUT_SEC:g}초 안에 답이 없음", kind="timeout") from None
+    except openai.APIStatusError as e:  # ZDR 거부 등. 메시지는 키를 담지 않는다
+        end_web_search(generation, None, model=model, error=f"HTTP {e.status_code} {e.message}")
+        raise LLMError(f"web_search: HTTP {e.status_code} {e.message}", code=e.status_code, kind=_status_kind(e.status_code)) from e
+    except openai.APIConnectionError as e:
+        end_web_search(generation, None, model=model, error=f"connection {type(e).__name__}")
+        raise LLMError(f"web_search: 연결 실패 {type(e).__name__}", kind="connection") from e
+    if not resp.choices:
+        end_web_search(generation, None, resp.usage, model, error="no_choices")
+        raise LLMError("web_search: 응답에 choices 없음", kind="no_choices")
+    message = resp.choices[0].message
+    notes = getattr(message, "annotations", None) or (getattr(message, "model_extra", None) or {}).get("annotations") or []
+    found, seen = [], set()
+    for note in notes:
+        note = note if isinstance(note, dict) else note.model_dump()
+        cite = note.get("url_citation") or {}
+        url, text = str(cite.get("url") or ""), str(cite.get("content") or "").strip()
+        if not url.startswith(("http://", "https://")) or not text or url in seen:
+            continue
+        seen.add(url)
+        found.append({"title": str(cite.get("title") or url)[:120], "url": url, "text": text[:WEB_TEXT_CHARS]})
+    logger.info("web_search results=%d latency_ms=%d cost=%s", len(found), int((time.monotonic() - start) * 1000),
+                getattr(resp.usage, "cost", None) if resp.usage else None)
+    found = found[:WEB_RESULTS]
+    end_web_search(generation, found, resp.usage, getattr(resp, "model", None) or model)
+    # 웹 검색도 하루 토큰 한도에 쌓는다. chat()을 거치지 않는 호출이라 여기서 따로 더한다 (services/quota.py, docs/specs/token-quota.md).
+    # 검색 결과가 입력에 붙으므로 prompt_tokens가 작지 않다. usage가 없으면 0으로 본다
+    usage = resp.usage
+    quota.add((getattr(usage, "prompt_tokens", 0) or 0) + (getattr(usage, "completion_tokens", 0) or 0) if usage else 0)
+    return found
 
 
 PORT_MATCH_PROMPT = "marvia-port-match"

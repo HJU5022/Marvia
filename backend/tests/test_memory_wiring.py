@@ -2,6 +2,7 @@
 
 외부 API·DB·LLM 없이 돈다. test_routers.py의 가짜(fake)와 로그인 도장(_login)을 그대로 쓴다. B/L은 모의값이다.
 """
+import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,12 @@ from backend.tests.test_routers import JUDGED, POSITION, _candidate, _login, _re
 
 BLOCKS = ("<user_cargo>\n- 고추 (TEST*******001) · 마스터 B/L · 받아야 하는 날 2026-10-03\n</user_cargo>\n"
           "<user_memory>\n# 화물별\n## 고추 (TEST*******001)\n- 할 일: 은행에서 원본 B/L 받기 [ ] (9/28)\n</user_memory>")
+
+
+@pytest.fixture(autouse=True)
+def classic_path(monkeypatch):
+    # 채팅 테스트는 의도 분류 방식(route_chat)을 본다. 에이전트 방식은 test_chat_agent.py가 본다
+    monkeypatch.setenv("CHAT_AGENT", "off")
 
 
 def _with_memory(monkeypatch, blocks=BLOCKS):

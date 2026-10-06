@@ -63,6 +63,38 @@ assert(isStage('judge')&&!isStage('made-up'));
 // 화면 라벨과 서버 단계 이름이 같아야 한다. 한쪽에만 있으면 화면이 단계를 버리거나 서버가 못 보낸다
 const backendStages=[...fs.readFileSync(path.join(root,'../backend/app/services/progress.py'),'utf8').match(/STAGES = \(([\s\S]*?)\n\)/)[1].matchAll(/"([a-z_]+)"/g)].map(m=>m[1]);
 assert.deepEqual(Object.keys(stageLabels).sort(),backendStages.slice().sort(),'progress stage names differ between web and backend');
+// B/L 2~3개 비교 표 (ChatCargoTable, 10-05). 줄의 칸 이름이 서버 ChatCargo와 같아야 하고, 여유 일수 문구는 VerdictCard와 같은 말이다
+const chatSrc=fs.readFileSync(path.join(root,'../backend/app/routers/chat.py'),'utf8');
+const backendCargo=[...chatSrc.match(/class ChatCargo\(BaseModel\):[\s\S]*?\n\n\nclass/)[0].matchAll(/^    ([a-z_]+): /gm)].map(m=>m[1]);
+const webCargo=[...fs.readFileSync(path.join(root,'lib/types.ts'),'utf8').match(/export interface ChatCargo \{([\s\S]*?)\n\}/)[1].matchAll(/\b([a-z_]+)\??:/g)].map(m=>m[1]);
+assert.deepEqual([...new Set(webCargo)].sort(),backendCargo.slice().sort(),'ChatCargo fields differ between web and backend');
+assert(/cargos: list\[ChatCargo\] = \[\]/.test(chatSrc),'ChatResponse.cargos must default to an empty list');
+// 대화로 지켜보기 (10-06): 서버 ChatResponse의 watch_offer·watch_set 모양과 기본값(null)이 화면 타입과 같아야 한다
+assert(/watch_offer: [A-Za-z]+ \| None = None/.test(chatSrc),'ChatResponse.watch_offer must default to None');
+assert(/watch_set: [A-Za-z]+ \| None = None/.test(chatSrc),'ChatResponse.watch_set must default to None');
+const typesSrc=fs.readFileSync(path.join(root,'lib/types.ts'),'utf8');
+const backendFields=(cls)=>{const m=chatSrc.match(new RegExp(`class ${cls}\\(BaseModel\\):([\\s\\S]*?)(?:\\n\\n\\n|$)`));assert(m,`${cls} missing in backend chat.py`);return [...m[1].matchAll(/^    ([a-z_]+): /gm)].map(x=>x[1]).sort();};
+const webFields=(name)=>[...typesSrc.match(new RegExp(`export interface ${name} \\{([\\s\\S]*?)\\}`))[1].matchAll(/\b([a-z_]+)\??:/g)].map(x=>x[1]).sort();
+assert.deepEqual(webFields('WatchOffer'),backendFields('WatchOffer'),'WatchOffer fields differ between web and backend');
+assert.deepEqual(webFields('WatchSet'),backendFields('WatchSet'),'WatchSet fields differ between web and backend');
+// 대화 목록 (10-06): 고정된 계약의 칸 이름이 화면 타입과 같아야 한다. 백엔드 파일이 아직 없어도 돌 수 있게 화면 쪽만 정적으로 본다
+assert.deepEqual(webFields('ConversationSummary'),['id','title','updated_at'].sort(),'ConversationSummary fields');
+assert.deepEqual(webFields('ConversationMessage'),['created_at','extra','role','text'],'ConversationMessage fields');
+assert.deepEqual(webFields('ConversationDetail'),['context','id','messages','result','title'],'ConversationDetail fields');
+const apiSrc=fs.readFileSync(path.join(root,'lib/api.ts'),'utf8');
+for(const route of ["'/api/conversations'",'`/api/conversations/${encodeURIComponent(id)}`'])assert(apiSrc.includes(route),`api.ts must call ${route}`);
+// 대화 id가 곧 chat session_id다: 새 대화는 새 id를 쓰고, 열면 그 id가 /api/chat의 session_id가 된다. 대화 글은 주소에 넣지 않는다 (id만)
+assert(/export function setActiveSession/.test(apiSrc)&&/if \(activeSession\) return activeSession/.test(apiSrc),'api.ts must let a conversation set the session id');
+const providerSrc=fs.readFileSync(path.join(root,'components/AppProvider.tsx'),'utf8');
+assert(!/\/\?c=\$\{[^}]*(text|message|thread)/.test(providerSrc),'conversation text must never be placed in the URL');
+const fmtFile=path.join(root,'lib/format.ts');
+const fm=new Module(fmtFile);fm.filename=fmtFile;fm.paths=Module._nodeModulePaths(path.dirname(fmtFile));fm._compile(ts.transpileModule(fs.readFileSync(fmtFile,'utf8'),tsOptions).outputText,fmtFile);
+const {marginText}=fm.exports;
+assert.equal(marginText({days_margin:3,sale_due_date:'2026-10-11'}),'3일 여유');
+assert.equal(marginText({days_margin:-2,sale_due_date:'2026-10-11'}),'2일 늦음');
+assert.equal(marginText({days_margin:0,sale_due_date:'2026-10-11'}),'0일 여유');
+assert.equal(marginText({days_margin:null,sale_due_date:'2026-10-11'}),'미확인');
+assert.equal(marginText({days_margin:null,sale_due_date:null}),'판매일 없음');
 // 로그인 뒤 돌아올 주소에 #이 남으면 ##access_token이 되어 supabase-js가 출입증을 못 읽는다 (lib/auth.ts returnAddress, 10-02)
 const authFile=path.join(root,'lib/auth.ts');
 const am=new Module(authFile);am.filename=authFile;am.paths=Module._nodeModulePaths(path.dirname(authFile));am._compile(ts.transpileModule(fs.readFileSync(authFile,'utf8'),tsOptions).outputText,authFile);
@@ -72,4 +104,4 @@ for(const href of ['http://localhost:3000/settings#','http://localhost:3000/?fix
  assert(!back.includes('#'),`return address keeps #: ${back}`);
  assert.equal(parseParametersFromURL(`${back}#access_token=T&refresh_token=R`).access_token,'T','supabase-js must read the token');
 }
-console.log('PASS: 7 AgentResponse fixtures, history envelope, document and memory fixtures, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names and login return address.');
+console.log('PASS: 7 AgentResponse fixtures, history envelope, document and memory fixtures, null/enums/evidence, replay isolation, date/type mismatch, candidate resolution, session isolation, SSE parsing, stage names, chat cargo table fields, conversation list types and login return address.');

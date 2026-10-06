@@ -1,4 +1,4 @@
-"""POST /api/document: 서류 사진에서 조회 값 7칸을 뽑아 확인 화면용으로 돌려준다 (docs/specs/document-extract.md).
+"""POST /api/document: 서류 사진에서 조회 값 7칸과 출항일(etd)을 뽑아 확인 화면용으로 돌려준다 (docs/specs/document-extract.md).
 
 처리 순서 (Spec "흐름"):
   1~2. 전처리 + OCR               services/doc_ocr.read_lines (로컬, 외부 호출 없음)
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api", tags=["document"])
 
 # 사진 한 장 상한. 폰 사진이 보통 2~5MB라 넉넉히 잡되, 큰 파일로 서버 메모리를 쓰게 두지 않는다 (Spec EC-02, 임시값)
 MAX_BYTES = 10 * 1024 * 1024
-LLM_FIELDS = ("vessel", "voyage", "eta", "pol", "pod", "item")
+LLM_FIELDS = ("vessel", "voyage", "eta", "pol", "pod", "item", "etd")  # etd: 10-06, 없으면 null (프롬프트에 아직 없을 때도 안전)
 # 서류 종류 → 거래처 출처 이름 (메모장 거래처 출처 목록, docs/specs/memory.md)
 DOC_KIND = {"bl": "B/L", "arrival_notice": "A/N"}
 

@@ -45,7 +45,7 @@ def _normalize(name: str) -> str:
 
 
 def _by_name(records: list, ship_name: str | None) -> list:
-    """선명으로 거른다. 호출부호로 조회했으면 보통 1건이라 그대로 지나간다.
+    """선명으로 거른다. 선명만으로 조회했을 때 쓴다 (호출부호가 있으면 _same_ship이 호출부호로 먼저 거른다).
 
     정확히 같은 이름 → 한쪽이 다른 쪽을 품는 이름 → 많이 닮은 이름 순으로 찾는다.
     아무것도 못 찾으면 빈 목록을 돌려준다. 남의 배 입항 시각을 그 배 것처럼 답하는 쪽이
@@ -67,12 +67,29 @@ def _by_name(records: list, ship_name: str | None) -> list:
     return [r for r, n in names if n and SequenceMatcher(None, target, n).ratio() >= NAME_MATCH_RATIO]
 
 
-def _pick(calls: list[VesselCall], ship_name: str | None) -> VesselCall | None:
+def _same_ship(records: list, call_sign: str | None, ship_name: str | None) -> list:
+    """이 배의 기록만 남긴다. 호출부호로 조회했으면 호출부호가 같은 기록을 선명과 상관없이 쓴다 (10-05).
+
+    해수부는 국적선 선명을 한글로 준다(예: 테스트트윈사십팔). 세관·ShipFinder 선명은 영문이라, 호출부호로 정확히
+    찾은 기록을 선명으로 다시 거르면 국적선의 입항 예정·실적이 모두 버려졌다 (데모 TESTBL48, mof_eta 없음 → partial).
+    호출부호는 배마다 하나라 선명보다 정확하다. 비교 기준은 routers/agent.py _same_call_sign과 같다 (대소문자·앞뒤 공백 무시).
+    호출부호가 같은 기록이 하나도 없으면(호출부호 칸이 빈 기록 등) 예전처럼 선명으로 거른다.
+    선명만으로 조회했으면 지금까지와 같다 (_by_name).
+    """
+    if call_sign:
+        wanted = call_sign.strip().upper()
+        matched = [r for r in records if r.call_sign and r.call_sign.strip().upper() == wanted]
+        if matched:
+            return matched
+    return _by_name(records, ship_name)
+
+
+def _pick(calls: list[VesselCall], ship_name: str | None, call_sign: str | None = None) -> VesselCall | None:
     """실적 중 한 건. 입항 기록이 있는 것을 먼저 보고, 그중 가장 최근 입항을 쓴다.
 
     출항 기록만 있는 건은 "들어왔는가"라는 질문에 답하지 못하므로 뒤로 미룬다.
     """
-    calls = _by_name(calls, ship_name)
+    calls = _same_ship(calls, call_sign, ship_name)
     arrived = [c for c in calls if c.actual_arrival]
     if arrived:
         return max(arrived, key=lambda c: c.actual_arrival)
@@ -81,13 +98,13 @@ def _pick(calls: list[VesselCall], ship_name: str | None) -> VesselCall | None:
     return max(calls, key=lambda c: c.reported_arrival or datetime.min.replace(tzinfo=timezone.utc))
 
 
-def _pick_plan(plans: list[SailingPlan], ship_name: str | None) -> SailingPlan | None:
+def _pick_plan(plans: list[SailingPlan], ship_name: str | None, call_sign: str | None = None) -> SailingPlan | None:
     """예정 중 한 건. 가장 이른 입항 예정을 쓴다. 신고가 여러 번 바뀌어도 시각 기준으로 고른다.
 
     최종 신고는 뺀다. 입항 뒤 최종이 되면 시각이 실제 입항 시각으로 바뀌어 예정이 아니다
     (mof.py 모듈 설명, 2026-09-23 부산 실측).
     """
-    plans = [p for p in _by_name(plans, ship_name) if p.expected_arrival]
+    plans = [p for p in _same_ship(plans, call_sign, ship_name) if p.expected_arrival]
     if not plans:
         return None
     return min(plans, key=lambda p: p.expected_arrival)
@@ -128,8 +145,9 @@ def get_port_schedule(
         return {"error": ToolError(**e.to_dict()).model_dump()}
 
     fetched_at = datetime.now(timezone.utc)
-    chosen = _pick(calls, ship_name)
-    plan = _pick_plan(plans, ship_name)
+    # 호출부호로 조회했으면 호출부호가 같은 기록을 선명과 상관없이 쓴다 (_same_ship, 10-05)
+    chosen = _pick(calls, ship_name, call_sign)
+    plan = _pick_plan(plans, ship_name, call_sign)
 
     return PortScheduleResult(
         planned_arrival=plan.expected_arrival if plan else None,

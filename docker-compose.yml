@@ -32,6 +32,9 @@ services:
     environment:
       # 워커는 psycopg를 쓴다. api의 asyncpg 주소와 같은 DB다
       DATABASE_URL: postgresql://app:app@db:5432/app
+      # 지켜보는 화물 재판정(WATCH_ENABLED=on, G5)이 MCP 도구를 부를 주소. 워커 컨테이너에는 자기 안에 api가 없어
+      # Dockerfile의 127.0.0.1 기본값이 닿지 않으므로 api 서비스를 가리킨다
+      MCP_URL: http://api:8000/mcp
     depends_on:
       db:
         condition: service_healthy

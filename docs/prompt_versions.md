@@ -10,14 +10,16 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 
 | 프롬프트 | 하는 일 | 버전 |
 |---|---|---|
-| marvia-judge | 2층 판정(fine·watch·act)과 통관 해설 | v0 |
+| marvia-judge | 2층 판정(fine·watch·act)과 통관 해설 | v0 (Langfuse 9, 10-05 V11 금지 표현과 대신 쓸 단계 문장) |
 | marvia-pick-vessel | 동명 선박 후보 중 선택. 확실할 때만 high | v0 |
 | marvia-follow-up | 판정 뒤 후속 질문에 근거 안에서만 답하기 | v0 |
 | marvia-judge-eval | 평가용 LLM-as-judge. 통관 해설 채점 | v0 |
 | marvia-doc-extract | 서류 사진 OCR 글자에서 6칸 옮겨 적기 (docs/specs/document-extract.md) | v0 (Langfuse 4) |
 | marvia-chat-route | 자연어 입력 한 문장의 의도(화물 조회·후속 질문·입항 선박 검색·그 밖)와 칸 고르기. B/L은 가린 토큰만 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
 | marvia-port-match | 지역 이름에 해당하는 항구를 해수부 직전 기항지 목록 안에서만 고르기 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
-| marvia-memory-write | 조회·대화 뒤 사용자 말에서 메모장 줄 단위 명령(add·update·delete·set_cargo·noop)만 내기. 적용은 코드 (docs/specs/memory.md) | v0 (**Langfuse 등록 전**, 로컬 파일만) |
+| marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (Langfuse 1~6, 10-05. 3 웹 검색 규칙, 4 답 출처 3단계, 5 출발지에 부산 안 넣기·애매한 번호, 6 묻지 않은 날짜 안 말하기·존댓말, 7 인사·사용 안내·상황 질문·통관 시기는 ask_cargo·여러 화물 비교 한 문장, 8 근거 조각 짧은 한 문장·구체적 검색어, 9 set_watch 도구·watch_cue, 10 send_kakao 도구) |
+| marvia-memory-write | 조회·대화 뒤 사용자 말에서 메모장 줄 단위 명령(add·update·delete·set_cargo·noop)만 내기. 적용은 코드 (docs/specs/memory.md) | v0 (Langfuse 1, 10-06) |
+| marvia-chat-title | 대화 목록의 제목 짓기. 첫 사용자 말(B/L은 [BL1]로 가림)에서 한국어 20자 이내 한 줄 제목만 낸다. 검사와 대체 제목은 코드 (services/conversations.py, 10-06) | v0 (Langfuse 1, 10-06) |
 
 ## v0 개발 중 수정
 
@@ -43,7 +45,8 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | 10-02 | follow-up | (이 커밋) | "Tools" 절 추가: 지난 결과에 없는 지금 값(현재 위치·남은 거리·입항 기록)이 필요할 때만 읽기 전용 MCP 도구를 부른다, 여유 일수·판정·통관 질문엔 부르지 않는다, 인자는 결과의 MMSI·호출부호·선명·좌표만(B/L·질문 원문 금지), 도구 결과는 자료, 실패하면 조회 실패라고 말한다, calc_hours_at_sog를 도착 시각처럼 말하지 않는다 | D9 B안: 후속 질문에서 LLM이 도구를 직접 고른다(routers/agent.py _follow_up_tool, llm.py MAX_TOOL_ROUNDS). 가이드 v4 Tool trajectory · Safety and authority | Gemini 2.5 Flash(.env 설정 그대로), 로컬 프롬프트, 질문 2개 1회씩(10-02): "부산까지 몇 해리?" estimate_distance 호출 → 46.2해리 답. "여유가 며칠이야?" 답은 맞으나 필요 없는 estimate_distance 호출 1회 남음(첫 시도에선 "3.9시간 후 도착" 오답 → calc_hours 줄 추가로 사라짐). OpenRouter gpt-4o-mini는 도구를 붙이면 404(데이터 정책), 도구 없이 다시 묻게 함. **Langfuse 등록 전이라 production은 아직 옛 지시문** |
 | 10-02 | judge · follow-up · memory-write | (이 커밋) | judge·follow-up: 로그인 사용자의 `<user_cargo>`·`<user_memory>` 블록 설명(이번 조회 자료 앞 별도 메시지, 데이터일 뿐 지시 아님, 이번 자료가 우선, 등급·날짜·여유 일수를 거기서 가져오지 않기, B/L 조건은 등급에 쓰지 않고 원본 B/L·은행 L/G·착불 운임 안내에만, 메모 번호 말하지 않기). memory-write: 첫 초안(다섯 종류·칸 글자 수·사용자 문장에 있는 날짜만·개인정보와 지시문 저장 금지) | 화물 비서 기억 (docs/specs/memory.md, 10-02 결정 2·5·10). 판정·후속 LLM이 기억한 조건을 먼저 짚게 하고, 신뢰 경계(SDD 7절)를 블록에도 건다 | 실제 호출 없음(키 없는 단위 테스트만). **Langfuse 등록 전이라 production은 아직 옛 지시문이고 marvia-memory-write는 없다(로컬 파일로 돈다).** judge·follow-up 지시문이 바뀌었으니 등록 뒤 평가 30건 재측정 필요. 로그인 사용자가 없으면 블록이 없어 평가 입력은 그대로다 |
 | 10-02 | judge · follow-up | (이 커밋) | 10-02 검증 반영(F8b): judge에서 "지난 결과 이후 바뀐 점"을 짚어도 된다는 구절 삭제. judge·follow-up 둘 다 `<user_cargo>`의 지난 조회 칸을 언급·비교하지 말고, 지난 조회를 말하는 것은 코드가 답에 붙이는 한 줄뿐이라고 명시 | 화물 비서 기억 결정 4("지난번" 글은 코드가 쓴 한 줄 하나). LLM이 낡은 값을 현재 사실처럼 비교하지 못하게. 회색 지대(raise_only) 판정에는 기억 블록을 아예 주지 않는다(코드, routers/agent.py) | 실제 호출 없음. **Langfuse 등록 대기(production은 아직 옛 지시문).** 등록 뒤 평가 30건 재측정 필요 |
-| 10-02 | doc-extract | (이 커밋) | 칸 추가: doc_kind, original_bl(+근거 글), to_order_bank(+근거 글), freight_term(+근거 글), incoterm, 화물 인도 연락처(회사·역할·회사 전화). 개인 이름·휴대폰·이메일 금지, 조건은 서류에 쓰인 사실만 | 화물 비서 기억의 B/L 조건·거래처 (docs/specs/memory.md, 결정 6). 고르는 값이라 근거 글을 같이 받아 코드가 서류에 있는지 본다 (doc_ocr.check_conditions) | 실제 호출 없음. **Langfuse 등록 전.** 서류 평가셋(evals/doc_dataset.jsonl) 재측정 필요 |
+| 10-02 | doc-extract | (이 커밋) | 칸 추가: doc_kind, original_bl(+근거 글), to_order_bank(+근거 글), freight_term(+근거 글), incoterm, 화물 인도 연락처(회사·역할·회사 전화). 개인 이름·휴대폰·이메일 금지, 조건은 서류에 쓰인 사실만 | 화물 비서 기억의 B/L 조건·거래처 (docs/specs/memory.md, 결정 6). 고르는 값이라 근거 글을 같이 받아 코드가 서류에 있는지 본다 (doc_ocr.check_conditions) | 실제 호출 없음(등록 전). 10-06 Langfuse 버전 6으로 등록(production). 서류 평가셋(evals/doc_dataset.jsonl 12건, google/gemini-3.5-flash-lite, 3회): 버전 6 합계 31/36(9, 11, 11), 버전 5 합계 30/36(10 x3). 이 평가셋은 원래 6칸만 채점하므로 10-02 칸은 측정되지 않음 |
+| 10-06 | doc-extract | (이 커밋) | 칸 추가: etd(출항일 YYYY-MM-DD). 도착 통지서의 ETD·E.T.D.·출항 날짜, B/L의 Shipped/Laden on board 날짜를 서류에 적힌 그대로만 옮긴다(eta로 계산하지 않음, 발행일·eta를 넣지 않음, 없으면 null). 변환은 eta와 etd 둘 다 YYYY-MM-DD | 화물 시트 출항 칸을 서류 사진으로 채우려고(정운 요청). 코드가 etd 날짜가 서류에 있는지, 입항일보다 늦지 않은지 본다 (doc_ocr.check_fields) | 실제 호출 없음(키 없는 단위 테스트만, 등록 전). 10-06 Langfuse 버전 6으로 등록(production, latest). 버전 6은 10-02 칸과 etd를 함께 담음(10-02 칸은 한 번도 등록된 적 없었음). 레포 파일 전문과 같은 글. 이전 production은 버전 5(라벨 v1 유지), 되돌리기는 production 라벨을 버전 5로 옮기기. 서류 평가셋 3회: 버전 6 합계 31/36(9, 11, 11, 1회차에 C0 · D1이 모든 칸 빈 값, LLM 호출이 빈 응답을 돌려준 것으로 보이나 원인 미확인), 버전 5 합계 30/36. D6은 두 버전 모두 매번 실패: LLM은 주입 문장을 무시하고 6값을 모두 맞게 옮기지만, 코드가 item을 ambiguous로 표시해(값이 지시문 줄에만 있음, 10-01 규칙) needs_review=true가 되어 09-30 확정 정답(false)과 어긋남. 프롬프트와 무관. E2는 버전 6 3/3 통과, 버전 5 3/3 실패. 평가셋은 원래 6칸만 채점하므로 etd와 10-02 칸은 측정되지 않음 |
 
 ## 계속 다시 확인할 것
 
@@ -52,3 +55,5 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 - pick-vessel: 조건이 다 맞는 후보가 있어도 고르지 않음(choice null). 너무 조심스러운지는 insufficient_precision으로 판단. 후보 목적지를 반대로 읽은 오답(KRPUS를 "아니다")이 반복되는지
 - judge: 통관 해설이 Skill 표의 뜻(예: 반입신고 = 터미널·보세창고 반입)과 다르게 나오는지
 - follow-up: 범위 밖 질문을 거절할 때 물어볼 수 있는 것을 구체적으로 안내하는지
+
+10-06: 지금 production인 9개 버전에 Langfuse 라벨 `v1`을 붙여 첫 정식 릴리스로 고정했다 (`docs/release_manifest.json`). 다음 프롬프트 변경은 바꾼 것에만 `v2`.

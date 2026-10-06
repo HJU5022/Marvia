@@ -191,6 +191,7 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .chat-turn{display:flex;gap:8px;align-items:flex-start;max-width:86%}
 .chat-turn p{margin:0;line-height:1.75;white-space:pre-line}
 .chat-turn.user{align-self:flex-end}
+.chat-link{color:var(--blue);text-decoration:underline;text-underline-offset:2px;word-break:break-all}  /* 웹 참고 주소. 긴 주소가 말풍선 밖으로 안 나가게 */
 .chat-avatar{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;margin-top:4px}
 .chat-form{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:10px 12px 8px;transition:border-color .15s}
 .chat-form:focus-within{border-color:var(--accent-dark);box-shadow:0 0 0 3px #d5e9ad55}
@@ -630,8 +631,9 @@ th{background:#f7faff;color:#506c85}
 .memory-cargo.done{flex-direction:row;align-items:center}
 .memory-pending{padding:4px 8px;border-radius:5px;background:var(--warning-bg);color:var(--warning)!important}
 /* 늘 있는 결과·오류 칸은 비어 있을 때 상자가 보이지 않게 한다 (display:none은 쓰지 않는다. 낭독기가 나중 변화를 놓친다) */
-.memory-panel .account-message:empty,.memory-panel .request-error:empty{margin:0;padding:0;height:0;overflow:hidden}
-.memory-panel .account-message:focus-visible{outline-offset:2px}
+.memory-panel .account-message:empty,.memory-panel .request-error:empty,.kakao-panel .account-message:empty,.kakao-panel .request-error:empty{margin:0;padding:0;height:0;overflow:hidden}
+.memory-panel .account-message:focus-visible,.kakao-panel .account-message:focus-visible{outline-offset:2px}
+.kakao-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
 .memory-full{margin-top:12px;padding:12px;border-radius:5px;background:var(--warning-bg);color:var(--warning);font-size:12px}
 @media (max-width:720px){.memory-item{flex-direction:column;align-items:flex-start}}
 
@@ -639,6 +641,96 @@ th{background:#f7faff;color:#506c85}
 .document-field select{min-width:0;font-size:12px;min-height:36px;padding:7px 10px;border-radius:var(--small-radius);border:1px solid var(--border);background:var(--surface)}
 .document-field.flagged select{border-color:var(--warning);background:var(--warning-bg)}
 .document-subhead{margin:16px 0 4px;font-size:12px}
+
+/* 화물 지켜보기 (WatchToggle·WatchOfferAction, G5 10-05·10-06 결정). 새 값 없이 기존 토큰과 .button/.subtle-badge를 쓴다 */
+.watch-toggle{margin:-8px 0 24px;padding:16px 20px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+.watch-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.watch-row .muted{margin:0;font-size:12px}
+.watch-note{margin:10px 0 0;font-size:12px}
+.watch-toggle .account-message{margin-top:10px}
+.watch-toggle .request-error{margin:10px 0 0}
+.watch-toggle .account-message:empty,.watch-toggle .request-error:empty,.watch-offer .request-error:empty{margin:0;padding:0;height:0;overflow:hidden}
+.watch-offer{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.watch-offer .request-error{margin:0;flex-basis:100%}
+.watch-toggle .account-message:focus-visible{outline-offset:2px}
+/* 채팅 말풍선 아래 작은 지도 (ChatMiniMap, 10-05). 높이 180px, 말풍선 폭에 맞춘다 */
+.chat-body{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+.chat-mini-map{margin:0;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;max-width:420px}
+.chat-mini-map-host{height:180px;width:100%;position:relative;isolation:isolate;background:var(--sea);filter:saturate(.35);font-family:var(--font)}
+.chat-mini-map figcaption{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;font-size:11px;color:var(--body);line-height:1.5}
+.chat-mini-map figcaption button{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;padding:4px 9px;border-radius:999px;background:var(--soft);color:var(--accent-dark);font-size:11px;font-weight:600}
+.chat-mini-map figcaption button:hover{background:#e3effd}
+@media (max-width:700px){.chat-mini-map{max-width:100%}}
+/* B/L 2~3개 비교 표 (ChatCargoTable, 10-05). 좁은 화면은 가로로 밀어 볼 수 있게 한다 */
+.chat-cargo-table{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow-x:auto;max-width:520px}
+.chat-cargo-table table{width:100%;border-collapse:collapse;font-size:12px;color:var(--body)}
+.chat-cargo-table th,.chat-cargo-table td{padding:8px 10px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--border);white-space:nowrap}
+.chat-cargo-table thead th{font-size:11px;font-weight:600;color:var(--muted);background:var(--soft)}
+.chat-cargo-table tbody th{font-weight:400}
+.chat-cargo-table tr.on{background:var(--soft)}
+.chat-cargo-table tbody th button{appearance:none;-webkit-appearance:none;background:none;border:0;border-radius:0;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;color:inherit;position:relative;padding:0 16px 0 0}
+.chat-cargo-table tbody th button small{font-size:11px;color:var(--muted)}
+.chat-cargo-table tbody th button svg{position:absolute;right:0;top:2px;color:var(--success)}
+.chat-cargo-table .verdict-badge{min-width:0}
+.chat-cargo-hint{margin:0;padding:6px 10px;font-size:11px;color:var(--muted)}
+@media (max-width:700px){.chat-cargo-table{max-width:100%}}
+/* 대화 목록 (10-06 결정). 넓은 화면은 사이드바 안, 900px 이하는 상단바 "대화" 버튼이 여는 왼쪽 패널. 색·여백은 위 토큰만 쓴다 */
+.conv-section{flex:1 1 auto;min-height:120px;overflow-y:auto;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.conv-list{display:flex;flex-direction:column;gap:6px}
+.conv-new{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);color:var(--blue-dark);font-size:13px;font-weight:700;cursor:pointer;transition:background .18s}
+.conv-new:hover:not(:disabled){background:#edf5ff}
+.conv-new:disabled,.conv-title:disabled,.conv-delete:disabled{opacity:.55;cursor:not-allowed}
+.conv-group h3{margin:12px 14px 4px;font-size:10px;letter-spacing:.08em;font-weight:700;color:var(--quiet)}
+.conv-group ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.conv-row{display:flex;align-items:center;border-radius:10px;min-width:0}
+.conv-row:hover{background:#f0f6fd}
+.conv-row.active{background:#eaf3ff}
+.conv-title{flex:1;min-width:0;min-height:40px;padding:0 6px 0 14px;border:0;background:transparent;text-align:left;font-size:13px;color:#577089;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-row.active .conv-title{color:#145ce1;font-weight:700}
+.conv-delete{flex:none;display:grid;place-items:center;width:36px;height:40px;border:0;background:transparent;color:var(--quiet);cursor:pointer;opacity:0;transition:opacity .15s}
+.conv-row:hover .conv-delete,.conv-row:focus-within .conv-delete,.conv-row.active .conv-delete{opacity:1}
+.conv-delete:hover:not(:disabled){color:var(--danger)}
+.conv-confirm{flex:1;display:flex;align-items:center;gap:6px;padding:6px 8px 6px 14px;font-size:12px;color:var(--ink);flex-wrap:wrap}
+.conv-confirm span{flex:1 1 100%}
+.conv-confirm button{min-height:32px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:12px;cursor:pointer}
+.conv-confirm .conv-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.conv-confirm button:disabled{opacity:.55;cursor:not-allowed}
+.conv-empty,.conv-error{margin:6px 14px;font-size:12px;line-height:1.6;color:var(--muted)}
+.conv-error{color:var(--danger)}
+.conv-toggle{display:none;align-items:center;gap:6px;min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);color:var(--blue-dark);font-size:12px;font-weight:700;cursor:pointer}
+.conv-overlay{position:fixed;inset:0;z-index:70}
+.conv-backdrop{position:absolute;inset:0;border:0;background:#102b4966;cursor:pointer}
+.conv-sheet{position:absolute;inset:0 auto 0 0;width:min(340px,calc(100vw - 32px));padding:16px;background:var(--surface);box-shadow:0 10px 30px #203b3330;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.conv-sheet-head{display:flex;align-items:center;justify-content:space-between;font-size:14px}
+.conv-sheet-head button{min-height:36px;padding:0 10px;border:0;background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
+@media(max-width:900px){.conv-section{display:none}.conv-toggle{display:inline-flex}.conv-delete{opacity:1}}
+
+/* 내 화물 현황 표 (CargoSheet, 10-06). 새 색 없이 기존 토큰만 쓴다. 전체 화면 개편 전까지 최소한의 모양 */
+.cargo-sheet-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.cargo-sheet-bar p{margin:0;font-size:12px}
+.cargo-sheet .table-scroll{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+.cargo-sheet table{width:100%;border-collapse:collapse;font-size:12px}
+.cargo-sheet th,.cargo-sheet td{padding:10px 12px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--border);white-space:nowrap}
+.cargo-sheet td.cargo-lc{vertical-align:top;border-right:1px solid var(--border);background:var(--soft)}
+.cargo-sheet tr.cargo-done td:not(.cargo-lc){color:var(--muted)}
+.cargo-label{display:block;font-family:var(--font);font-size:11px;color:var(--muted)}
+.cargo-badge{margin-left:8px}
+.cargo-eta{color:var(--muted)}
+.cargo-doc{display:inline-flex;vertical-align:middle;margin-left:5px;color:var(--muted)}
+.cargo-edit-cell{text-align:right}
+.cargo-edit{display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:var(--small-radius);background:var(--surface);color:var(--blue-dark);font-size:11px;font-weight:600;cursor:pointer}
+.cargo-edit:hover{background:#edf5ff}
+.cargo-editor-row td{background:var(--soft);white-space:normal}
+.cargo-editor{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+.cargo-editor-group{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.cargo-editor .form-field{margin-bottom:0}
+.cargo-editor .request-error{flex-basis:100%;margin:0}
+.cargo-editor .request-error:empty{padding:0;height:0;overflow:hidden}
+/* 통관 카드의 포워더·선사·컨테이너 (CustomsTimeline). 값이 있는 것만 보인다 */
+.cargo-parties{display:flex;flex-wrap:wrap;gap:4px 18px;margin:0 0 14px;font-size:12px}
+.cargo-parties>div{display:flex;gap:6px;min-width:0}
+.cargo-parties dt{color:var(--muted)}
+.cargo-parties dd{margin:0;font-weight:600;overflow-wrap:anywhere}
 
 /* 관세청 처리 내역 원문 표 (docs/specs/customs-detail.md, 10-02). 칸이 많아 가로 스크롤, 안내 칸만 줄바꿈 */
 .customs-detail-section{margin-top:24px}
@@ -908,3 +1000,6 @@ td small,th small{font-size:11px}
  .schedule-line strong{margin:2px 0 8px auto}
  .back-to-cargo .button{width:100%;justify-content:center}
 }
+/* 접은 메뉴(아이콘만)에는 사이드바에 대화 목록을 둘 자리가 없다. 좁은 화면과 같이 상단바 "대화" 버튼이 여는 패널로 보인다 (Shell.tsx, 10-06) */
+.rail-collapsed .conv-section{display:none}
+.rail-collapsed .conv-toggle{display:inline-flex}

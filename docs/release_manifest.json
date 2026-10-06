@@ -1,0 +1,44 @@
+{
+  "_about": "Marvia 배포 단위 고정 (D10, 3주차 10강 PromptReleaseManifest). 프롬프트 버전만이 아니라 모델·평가셋·채점기·코드·배포를 한 묶음으로 적는다. 프롬프트를 바꾸면 이 파일도 같이 바꾼다. 되돌리기 절차는 rollback 항목.",
+  "release": "2026-10-06-r1",
+  "fixed_at": "2026-10-06T03:20+09:00",
+  "code": {"branch": "jeongun", "commit": "b986ada"},
+  "deploy": {
+    "platform": "Railway",
+    "api": {"service": "marvia-api", "url": "https://marvia-api-production.up.railway.app", "deployment": "36e64fe6-032d-4976-9eb5-bda5b18c400f"},
+    "web": {"service": "marvia-web", "url": "https://marvia.up.railway.app", "deployment": "5ec00d64-8fc2-40e9-8a7f-4f83b96a64fb"},
+    "replay_mode": true
+  },
+  "models": {
+    "service": "google/gemini-3.5-flash-lite",
+    "memory_and_title": "openai/gpt-4o-mini",
+    "eval_grader": "anthropic/claude-haiku-4.5",
+    "temperature": "공급자 기본값 (코드에서 따로 정하지 않음)"
+  },
+  "prompts": {
+    "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
+    "_release_label": "v1 — 아래 9개 버전에 Langfuse 라벨 v1을 붙여 이 묶음을 첫 정식 릴리스로 고정 (10-06). 다음 변경은 바꾼 프롬프트에만 v2",
+    "marvia-chat-agent": 10,
+    "marvia-chat-route": 1,
+    "marvia-judge": 9,
+    "marvia-judge-eval": 3,
+    "marvia-follow-up": 5,
+    "marvia-pick-vessel": 3,
+    "marvia-port-match": 1,
+    "marvia-doc-extract": 5,
+    "marvia-chat-title": 1,
+    "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
+  },
+  "knowledge": {"skills": "skills/*/*.md", "sha256_12": "dd37753b906c"},
+  "evaluation": {
+    "dataset": {"file": "evals/dataset.jsonl", "rows": 30, "sha256_12": "1d551b2c1d16", "last_changed": "2026-09-30"},
+    "runner": "python -m evals.run_eval --config b",
+    "last_result": {"file": "LLM_wiki 프로젝트/Marvia-근거/b_20261006_0045.json", "exact_match": "30/30", "gates": "4개 모두 통과", "p95_ms": 4507, "cost_per_request_usd": 0.0023}
+  },
+  "change_reason": "판정 프롬프트 V11 재시도 줄이기(judge 9), 채팅 에이전트 도구·지켜보기·카톡 보내기·대화 목록(chat-agent 10)",
+  "rollback": {
+    "prompt": "Langfuse에서 해당 프롬프트의 이전 version에 production label을 붙인다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
+    "prompt_previous": {"marvia-judge": 8, "marvia-chat-agent": 9},
+    "code": "Railway에서 이전 deployment를 Redeploy 하거나, git revert 뒤 railway up"
+  }
+}
