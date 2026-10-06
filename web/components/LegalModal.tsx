@@ -1,5 +1,5 @@
 'use client';
-/** 약관·처리방침을 띄우는 작은 창 (10-07 정운 요청 30). 파란 눈썹글, 큰 제목, 본문, 맨 아래 어두운 닫기 버튼 하나.
+/** 약관·처리방침을 띄우는 작은 창 (10-07 정운 요청 30). (10-07 정운 엘레강스) 가운데 가는 제목, 본문, 맨 아래 사각 외곽선 닫기 버튼 하나.
  * 접근성: role=dialog + aria-modal, 열면 창 안으로 포커스를 옮기고 Tab이 밖으로 못 나가게 가둔다.
  * Esc·바깥 클릭·X·닫기 버튼으로 닫고, 닫으면 눌렀던 버튼으로 포커스를 돌려준다. 스타일은 app/styles/entry.css (legal-*).
  */
@@ -33,8 +33,7 @@ export function LegalModal({title, onClose, children}: {title: string; onClose: 
   return createPortal(
     <div className="legal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legal-title" ref={box} tabIndex={-1}>
-        <button type="button" className="legal-x" aria-label="닫기" onClick={onClose}><X size={20} strokeWidth={1.6}/></button>
-        <p className="legal-eyebrow">MARVIA</p>
+        <button type="button" className="legal-x" aria-label="닫기" onClick={onClose}><X size={18} strokeWidth={1.2}/></button>
         <h2 id="legal-title">{title}</h2>
         <div className="legal-body">{children}</div>
         <button type="button" className="legal-close" onClick={onClose}>닫기</button>

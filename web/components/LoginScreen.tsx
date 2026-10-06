@@ -5,7 +5,7 @@
  * 로그인 로직(signInWithGoogle)은 G3 때 그대로다. 스타일은 app/styles/entry.css.
  */
 import {useState} from 'react';
-import {ArrowRight, LoaderCircle} from 'lucide-react';
+import {LoaderCircle} from 'lucide-react';
 import {signInWithGoogle} from '@/lib/auth';
 import {IntroContent} from './IntroContent';
 import {LegalLinks} from './LegalLinks';
@@ -23,15 +23,13 @@ export function LoginScreen() {
   // 큰 버튼(소개 본문 위·아래)과 맨 위 작은 로그인이 같은 동작을 부른다
   const action = <>
     <button type="button" className="intro-btn" onClick={start} disabled={busy}>
-      {busy ? <LoaderCircle size={16} className="spin"/> : <GoogleMark/>}{busy ? '구글로 이동 중' : 'Google로 시작하기'}{!busy && <ArrowRight size={16} strokeWidth={1.6}/>}
+      {busy ? <LoaderCircle size={16} className="spin"/> : <GoogleMark/>}{busy ? '구글로 이동 중' : 'Google로 시작하기'}
     </button>
     {error && <p role="alert" className="intro-error">{error}</p>}
   </>;
-  const nav = <header className="intro-nav">
-    <img src="/brand/marvia-logo.svg" alt="Marvia" height={28}/>
-    <button type="button" className="intro-nav-login" onClick={start} disabled={busy}>로그인</button>
-  </header>;
-  return <IntroContent action={action} nav={nav} footer={<footer className="intro-foot"><LegalLinks/></footer>}/>;
+  // 윗줄 오른쪽 작은 로그인 (10-07 정운 엘레강스: 글자만, 같은 동작)
+  const navRight = <button type="button" className="intro-nav-login" onClick={start} disabled={busy}>로그인</button>;
+  return <IntroContent action={action} navRight={navRight} footer={<footer className="intro-foot"><LegalLinks/></footer>}/>;
 }
 
 /** 구글 로고. 외부 이미지를 부르지 않으려고 SVG로 둔다. */

@@ -1,7 +1,7 @@
 'use client';
 /** 평가 지표 (운영자 전용). 실제 모드는 GET /api/metrics(evals/results의 실행 결과), 데모는 fixture.
  * 값이 없으면 0이 아니라 "측정 전" 한 곳으로만 보인다 (CLAUDE.md: 실행하지 않은 숫자를 만들지 않는다).
- * 10-07 정운 실사용 26번: 표·그래프·시각 요소 중심으로 다시 짬. 새 라이브러리 없이 CSS 막대와 인라인 SVG만 쓴다.
+ * 10-07 정운 엘레강스: 얇은 글씨, 2px 막대. 10-07 정운 실사용 26번: 표·그래프·시각 요소 중심으로 다시 짬. 새 라이브러리 없이 CSS 막대와 인라인 SVG만 쓴다.
  * 통과·미달은 신호등 색이 아니라 아이콘+글자로 구분한다 (초록·노랑·빨강은 순항·주의·긴급 전용, 10-06 결정). */
 import {useEffect,useState} from 'react';
 import {ArrowUpRight,CircleCheck,CircleX,Hourglass} from 'lucide-react';
@@ -18,7 +18,7 @@ const PASS_LINE:Record<string,number>={act_recall:100,schema_pass:95};
 function Mark({passed}:{passed:boolean|null|undefined}){
   const state=passed==null?'wait':passed?'pass':'fail';
   const Icon=state==='pass'?CircleCheck:state==='fail'?CircleX:Hourglass;
-  return <span className={`mt-mark ${state}`}><Icon size={16} strokeWidth={1.75}/>{state==='pass'?'통과':state==='fail'?'미달':'-'}</span>;
+  return <span className={`mt-mark ${state}`}><Icon size={16} strokeWidth={1.5}/>{state==='pass'?'통과':state==='fail'?'미달':'-'}</span>;
 }
 
 /** KPI 막대: 0~100 길이 + 합격선 눈금. 값이 없으면 그리지 않는다 */
