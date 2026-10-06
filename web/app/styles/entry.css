@@ -32,7 +32,7 @@
 .intro-action{margin-top:32px}
 
 /* 버튼: 어두운 사각 하나. 둥근 모서리 작게 */
-.intro-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 28px;border:0;border-radius:4px;background:#191f28;color:#fff;font-size:var(--fs-base,14px);font-weight:var(--fw-medium,500);letter-spacing:.02em;cursor:pointer;transition:background-color 150ms var(--ease,ease),transform 150ms var(--ease,ease)}
+.intro-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 28px;border:0;border-radius:0;background:#191f28;color:#fff;font-size:var(--fs-base,14px);font-weight:var(--fw-medium,500);letter-spacing:.02em;cursor:pointer;transition:background-color 150ms var(--ease,ease),transform 150ms var(--ease,ease)}
 .intro-btn:hover{background:#000}
 .intro-btn:active{transform:scale(.98)}
 .intro-btn:disabled{opacity:.6;cursor:default}
@@ -116,7 +116,7 @@
 .legal-body h3:first-child{margin-top:0}
 .legal-body p{margin:0}
 .legal-body ul{margin:0;padding-left:18px}
-.legal-close{width:100%;min-height:48px;margin-top:24px;border:0;border-radius:4px;background:#191f28;color:#fff;font-size:var(--fs-base,14px);font-weight:var(--fw-medium,500);cursor:pointer}
+.legal-close{width:100%;min-height:48px;margin-top:24px;border:0;border-radius:0;background:#191f28;color:#fff;font-size:var(--fs-base,14px);font-weight:var(--fw-medium,500);cursor:pointer}
 .legal-close:hover{background:#000}
 
 @media(max-width:900px){

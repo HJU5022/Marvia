@@ -10,29 +10,29 @@
 .result-id{gap:8px}
 .result-id strong{font-size:var(--text-sm);font-weight:500;color:var(--text-2)}
 .last-updated{font-size:var(--text-sm);color:var(--muted)}
-.stale-notice{margin:0 0 12px;border:0;border-radius:var(--small-radius);background:var(--neutral-bg);color:var(--text-2);align-self:flex-start}
-.result>.request-error{margin:0 0 12px;border-radius:var(--small-radius)}
+.stale-notice{margin:0 0 12px;border:0;border-radius:0;background:var(--neutral-bg);color:var(--text-2);align-self:flex-start}
+.result>.request-error{margin:0 0 12px;border-radius:0}
 .detail-sub{display:block}
 .result :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 
 /* 어려운 용어·주의에 다는 작은 설명(ⓘ). 누르면 풍선이 펼쳐진다 */
 .info-tip{position:relative;display:inline-flex;vertical-align:middle;margin-left:6px;font-size:var(--text-sm);font-weight:400}
-.info-tip>summary{list-style:none;display:inline-flex;align-items:center;color:var(--muted);cursor:pointer;border-radius:var(--small-radius);transition:color var(--t-fast)}
+.info-tip>summary{list-style:none;display:inline-flex;align-items:center;color:var(--muted);cursor:pointer;border-radius:0;transition:color var(--t-fast)}
 .info-tip>summary::-webkit-details-marker{display:none}
 .info-tip>summary:hover{color:var(--text)}
-.info-pop{position:absolute;z-index:700;top:calc(100% + 6px);left:0;width:max-content;max-width:min(320px,72vw);padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--small-radius);box-shadow:0 8px 24px #191f2814;color:var(--text-2);font-weight:400;line-height:1.6;text-align:left;white-space:normal;word-break:keep-all;animation:m-pop var(--t-fast) var(--ease) backwards}
+.info-pop{position:absolute;z-index:700;top:calc(100% + 6px);left:0;width:max-content;max-width:min(320px,72vw);padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:0;box-shadow:0 8px 24px #191f2814;color:var(--text-2);font-weight:400;line-height:1.6;text-align:left;white-space:normal;word-break:keep-all;animation:m-pop var(--t-fast) var(--ease) backwards}
 .info-tip.as-badge{margin-left:0}
 .info-tip.as-badge>summary{padding:3px 9px;background:var(--neutral-bg);color:var(--text-2);font-weight:500;line-height:1.4}
 
 /* ---- 1 지도: 이 칸의 유일한 카드. 떠 있는 작은 카드가 판정 등급·선박·거리를 한 번에 말한다 ---- */
-.map-section{position:relative;padding:0;border:0;background:none;border-radius:var(--radius)}
+.map-section{position:relative;padding:0;border:0;background:none;border-radius:0}
 /* slot은 지도가 펼쳐져도 제자리에 남아 높이를 지키는 자리 표시다. 지도 칸(frame)만 fixed로 올라간다 */
-.map-slot{position:relative;height:clamp(300px,42vh,460px);border-radius:var(--small-radius)}
+.map-slot{position:relative;height:clamp(300px,42vh,460px);border-radius:0}
 .map-frame .leaflet-container{isolation:isolate}
 .map-place{transition:opacity var(--t-fast) var(--ease)}.map-place.map-place-hide{opacity:0}
 .map-frame .leaflet-control-attribution{pointer-events:none}
-.map-frame{position:absolute;inset:0;height:auto;border-radius:var(--small-radius);background:var(--sea);overflow:hidden;transform-origin:0 0}
-.map-frame.is-overlay{position:fixed;inset:auto;z-index:900;border-radius:16px;box-shadow:0 24px 64px #191f2840}
+.map-frame{position:absolute;inset:0;height:auto;border-radius:0;background:var(--sea);overflow:hidden;transform-origin:0 0}
+.map-frame.is-overlay{position:fixed;inset:auto;z-index:900;border-radius:0;box-shadow:0 24px 64px #191f2840}
 .map-backdrop{position:fixed;z-index:890;background:#191f2873;animation:m-fade var(--t-panel) var(--ease) both}
 .map-backdrop.out{animation:m-fade-out 260ms var(--ease) both}
 /* 펼친 동안 뒤의 상세 칸이 휠로 같이 움직이지 않게 한다 */
@@ -68,22 +68,22 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 /* 지도 위 왼쪽 위: 주의 배지와 ⓘ */
 .map-chips{position:absolute;z-index:600;top:12px;left:12px;right:72px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;pointer-events:none}
 .map-chips>*{pointer-events:auto}
-.map-chip{padding:6px 12px;border-radius:var(--small-radius);background:var(--surface);color:var(--text);font-size:var(--text-sm);font-weight:500;box-shadow:0 2px 8px #191f280f}
+.map-chip{padding:6px 12px;border-radius:0;background:var(--surface);color:var(--text);font-size:var(--text-sm);font-weight:500;box-shadow:0 2px 8px #191f280f}
 .map-chips .info-tip{margin:0}
-.map-chips .info-tip:not(.as-badge)>summary{width:36px;height:36px;justify-content:center;border-radius:var(--small-radius);background:var(--surface);box-shadow:0 2px 8px #191f280f}
-.map-chips .info-tip.as-badge>summary{padding:6px 12px;background:var(--surface);color:var(--text);border-radius:var(--small-radius);box-shadow:0 2px 8px #191f280f}
+.map-chips .info-tip:not(.as-badge)>summary{width:36px;height:36px;justify-content:center;border-radius:0;background:var(--surface);box-shadow:0 2px 8px #191f280f}
+.map-chips .info-tip.as-badge>summary{padding:6px 12px;background:var(--surface);color:var(--text);border-radius:0;box-shadow:0 2px 8px #191f280f}
 .map-chips .info-pop{left:0;right:auto}
 /* 아이콘 단추: 오른쪽 위는 펼치기, 왼쪽 아래는 확대·축소·맞추기 묶음. 모두 36px 정사각, 아이콘 18px. 오른쪽 아래는 떠 있는 카드가 쓴다 */
 .map-tools{position:absolute;z-index:600;top:12px;right:12px}
-.map-zoom{position:absolute;z-index:600;left:12px;bottom:40px;display:flex;flex-direction:column;border-radius:var(--small-radius);background:var(--surface);box-shadow:0 2px 8px #191f280f}
+.map-zoom{position:absolute;z-index:600;left:12px;bottom:40px;display:flex;flex-direction:column;border-radius:0;background:var(--surface);box-shadow:0 2px 8px #191f280f}
 .map-zoom .map-tool{box-shadow:none;background:transparent;border-radius:0}
 .map-zoom .map-tool+.map-tool{border-top:1px solid var(--border)}
-.map-zoom .map-tool:first-child{border-radius:var(--small-radius) var(--small-radius) 0 0}
-.map-zoom .map-tool:last-child{border-radius:0 0 var(--small-radius) var(--small-radius)}
-.map-tool{position:static;display:inline-grid;place-items:center;width:36px;height:36px;min-height:36px;padding:0;margin:0;border:0;border-radius:var(--small-radius);background:var(--surface);color:var(--text-2);box-shadow:0 2px 8px #191f280f;cursor:pointer;transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease),transform var(--t-fast) var(--ease)}
+.map-zoom .map-tool:first-child{border-radius:0}
+.map-zoom .map-tool:last-child{border-radius:0}
+.map-tool{position:static;display:inline-grid;place-items:center;width:36px;height:36px;min-height:36px;padding:0;margin:0;border:0;border-radius:0;background:var(--surface);color:var(--text-2);box-shadow:0 2px 8px #191f280f;cursor:pointer;transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease),transform var(--t-fast) var(--ease)}
 .map-tool:hover,.map-zoom .map-tool:hover{background:var(--brand-soft);color:var(--brand)}
 .map-tool:active{transform:scale(.96)}
-.map-frame .leaflet-bottom.leaflet-left .leaflet-control-attribution{margin:0 0 6px 6px;border-radius:var(--small-radius);padding:2px 8px;font-size:12px!important}
+.map-frame .leaflet-bottom.leaflet-left .leaflet-control-attribution{margin:0 0 6px 6px;border-radius:0;padding:2px 8px;font-size:12px!important}
 
 /* ---- 2 판정: 배경 위 글. 작은 라벨 + 보통 굵기 문장, 여유 일수만 숫자로 눈에 띄게 (10-07 정운 실사용 12번) ---- */
 .verdict-hero,.verdict-hero.fine,.verdict-hero.watch,.verdict-hero.act{display:block;padding:24px 2px;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible}
@@ -129,14 +129,14 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 
 /* ---- 5 상세 정보: 구역 제목 + 근거 개수 + 펼치기 단추 모양. 위아래 얇은 선, 마우스를 올리면 배경이 깔린다 (10-07 정운 실사용 13번) ---- */
 .more-fold{background:none;border-top:1px solid var(--hairline,#e5e8eb);border-bottom:1px solid var(--hairline,#e5e8eb);border-radius:0;interpolate-size:allow-keywords}
-.more-fold>summary{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:2px 10px;width:100%;box-sizing:border-box;padding:16px 8px;margin:0;list-style:none;cursor:pointer;border-radius:var(--small-radius);transition:background var(--t-fast) var(--ease)}
+.more-fold>summary{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:2px 10px;width:100%;box-sizing:border-box;padding:16px 8px;margin:0;list-style:none;cursor:pointer;border-radius:0;transition:background var(--t-fast) var(--ease)}
 .more-fold>summary:hover{background:var(--hover)}
 .more-fold>summary:active{background:var(--border)}
 .more-fold>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .more-fold>summary::-webkit-details-marker{display:none}
 .more-fold>summary strong{font-size:var(--fs-lg,18px);font-weight:var(--fw-medium,500);letter-spacing:-.01em;white-space:nowrap}
 .more-count{font-style:normal;font-size:var(--fs-sm,13px);color:var(--muted)}
-.more-action{grid-column:3;grid-row:1;display:inline-flex;align-items:center;gap:4px;padding:6px 8px 6px 14px;border:1px solid var(--hairline,#e5e8eb);border-radius:999px;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);color:var(--text-2);background:var(--surface);transition:border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.more-action{grid-column:3;grid-row:1;display:inline-flex;align-items:center;gap:4px;padding:6px 8px 6px 14px;border:1px solid var(--hairline,#e5e8eb);border-radius:0;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);color:var(--text-2);background:var(--surface);transition:border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
 .more-fold>summary:hover .more-action{border-color:var(--border-strong);color:var(--text)}
 .more-names{grid-column:1/-1;font-size:var(--fs-sm,13px);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .more-chevron{flex:none;color:var(--text-2);transition:transform var(--t-panel) var(--ease)}
@@ -171,12 +171,12 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 /* 대화 말풍선 안: 지켜보기 제안 버튼과 작은 지도 */
 .watch-offer .button{min-height:40px;padding:8px 16px}
 .watch-offer .subtle-badge{font-weight:500}
-.chat-mini-map{margin:12px 0 0;border:0;border-radius:var(--radius);background:var(--surface);overflow:hidden;box-shadow:0 0 0 1px var(--border)}
+.chat-mini-map{margin:12px 0 0;border:0;border-radius:0;background:var(--surface);overflow:hidden;box-shadow:0 0 0 1px var(--border)}
 .chat-mini-map figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 14px;font-size:var(--text-sm);color:var(--text-2)}
 .chat-mini-map figcaption>span{display:flex;flex-direction:column;min-width:0}
 .chat-mini-map figcaption strong{font-weight:500;color:var(--text)}
 .chat-mini-map figcaption small{font-size:var(--text-sm);color:var(--muted)}
-.chat-mini-map figcaption button{display:inline-grid;place-items:center;flex:none;width:36px;height:36px;padding:0;border-radius:var(--small-radius);background:transparent;color:var(--text-2);transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.chat-mini-map figcaption button{display:inline-grid;place-items:center;flex:none;width:36px;height:36px;padding:0;border-radius:0;background:transparent;color:var(--text-2);transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
 .chat-mini-map figcaption button:hover{background:var(--brand-soft);color:var(--brand)}
 
 @media(max-width:900px){
@@ -222,7 +222,7 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 /* 신호 칩: 신호등 색은 판정 등급 전용이라 회색으로 */
 .signal-summary details.triggered{background:var(--neutral-bg);color:var(--text)}
 .signal-summary details.clear{background:none;color:var(--muted)}
-.more-body .filter-notice{border:0;border-radius:var(--small-radius);background:var(--neutral-bg);color:var(--text-2)}
+.more-body .filter-notice{border:0;border-radius:0;background:var(--neutral-bg);color:var(--text-2)}
 @media(max-width:700px){
  .more-body .evidence-item>summary{grid-template-columns:minmax(0,1fr) 16px;row-gap:2px}
  .more-body .evidence-source,.more-body .evidence-field,.more-body .evidence-item>summary strong,.more-body .evidence-item>summary time{grid-column:1}

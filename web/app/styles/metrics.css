@@ -18,15 +18,15 @@
 .mt-kpi strong span{margin-left:2px;font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400);color:var(--muted)}
 .mt-kpi strong.none{color:var(--border-strong,#d1d6db)}
 .mt-kpi small{font-size:var(--fs-xs,12px);color:var(--muted)}
-.mt-kbar{position:relative;display:block;height:4px;background:var(--hairline,#e5e8eb);border-radius:2px}
-.mt-kbar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);border-radius:2px}
+.mt-kbar{position:relative;display:block;height:4px;background:var(--hairline,#e5e8eb);border-radius:0}
+.mt-kbar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);border-radius:0}
 .mt-kbar b{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--muted)}
 
 .mt-section{margin-top:var(--space-8,32px)}
 .mt-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3,12px);flex-wrap:wrap;padding-bottom:var(--space-2,8px);border-bottom:1px solid var(--hairline,#e5e8eb)}
 .mt-head h2{margin:0;font-size:var(--fs-md,15px);font-weight:var(--fw-medium,500);letter-spacing:.01em}
 .mt-legend{display:flex;align-items:center;gap:var(--space-2,8px);font-size:var(--fs-xs,12px);color:var(--muted)}
-.mt-legend i{width:10px;height:4px;border-radius:2px;display:inline-block}
+.mt-legend i{width:10px;height:4px;border-radius:0;display:inline-block}
 .mt-legend i:not(:first-child){margin-left:var(--space-2,8px)}
 
 /* 구성별 막대: a 연한 회색, b 검정(서비스), c 중간 회색. 색은 구성을 가르는 용도뿐 */
@@ -36,8 +36,8 @@
 .mt-chart-label{font-size:var(--fs-sm,13px);color:var(--ink)}
 .mt-chart-bars{display:flex;flex-direction:column;gap:5px;min-width:0}
 .mt-chart-row{display:grid;grid-template-columns:1fr 48px;gap:var(--space-2,8px);align-items:center}
-.mt-bar{display:block;height:6px;background:var(--neutral-bg,#f2f4f6);border-radius:3px;overflow:hidden}
-.mt-bar i{display:block;height:100%;border-radius:3px}
+.mt-bar{display:block;height:6px;background:var(--neutral-bg,#f2f4f6);border-radius:0;overflow:hidden}
+.mt-bar i{display:block;height:100%;border-radius:0}
 .mt-bar.a i{background:#c9cfd6}.mt-bar.b i{background:var(--ink)}.mt-bar.c i{background:#8b95a1}
 .mt-bar.a,.mt-bar.b,.mt-bar.c{background:var(--neutral-bg,#f2f4f6)}
 .mt-chart-val{font-size:var(--fs-xs,12px);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}

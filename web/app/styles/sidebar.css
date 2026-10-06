@@ -21,14 +21,14 @@
 /* 맨 위: 로고 + 접기 */
 .sb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;height:40px;padding:0 4px 0 6px}
 .sb-brand{display:flex;align-items:center;gap:8px;min-width:0}
-.sb-brand img{display:block;width:26px;height:26px;border-radius:7px}
+.sb-brand img{display:block;width:26px;height:26px;border-radius:0}
 .sb-brand strong{font-size:var(--fs-md,15px);font-weight:var(--fw-semibold,600);letter-spacing:-.01em}
-.sb-collapse,.sb-close,.sb-burger{display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted,#5f6b7a);cursor:pointer}
+.sb-collapse,.sb-close,.sb-burger{display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:0;background:transparent;color:var(--muted,#5f6b7a);cursor:pointer}
 .sb-collapse:hover,.sb-close:hover,.sb-burger:hover{background:var(--hover,#f2f4f6);color:var(--text,#191f28)}
 .sb-close,.sb-burger{display:none}
 
 /* "새 대화": 이 사이드바의 유일한 채운 단추 */
-.sb-new{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin:12px 0 10px;padding:0 12px;border:0;border-radius:8px;background:var(--text,#191f28);color:#fff;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);cursor:pointer}
+.sb-new{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin:12px 0 10px;padding:0 12px;border:0;border-radius:0;background:var(--text,#191f28);color:#fff;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);cursor:pointer}
 .sb-new:hover:not(:disabled){background:#2b323d}
 .sb-new:disabled{opacity:.5;cursor:not-allowed}
 
@@ -43,7 +43,7 @@
 .app-shell .sb .sb-conv + nav.sb-nav{margin-top:2px}
 
 /* 메뉴 한 줄 */
-.sb-item,.sb-group-head{display:flex;align-items:center;gap:10px;width:100%;height:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--text-2,#4e5968);font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400)}
+.sb-item,.sb-group-head{display:flex;align-items:center;gap:10px;width:100%;height:32px;padding:0 8px;border:0;border-radius:0;background:transparent;text-align:left;color:var(--text-2,#4e5968);font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400)}
 .sb-item:hover,.sb-group-head:hover{background:var(--hover,#f2f4f6);color:var(--text,#191f28)}
 .sb-item.active{background:var(--hover,#f2f4f6);color:var(--text,#191f28);font-weight:var(--fw-medium,500)}
 .sb-item svg,.sb-group-head svg{flex:none;color:var(--muted,#5f6b7a)}
@@ -57,14 +57,14 @@
 
 /* 맨 아래: 계정 줄과 그 위로 뜨는 창 */
 .sb-foot{position:relative;flex:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline,#E5E8EB)}
-.sb-account{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 8px;border:0;border-radius:8px;background:transparent;text-align:left;color:var(--text,#191f28)}
+.sb-account{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 8px;border:0;border-radius:0;background:transparent;text-align:left;color:var(--text,#191f28)}
 .sb-account:not(.static):hover{background:var(--hover,#f2f4f6)}
 .sb-account.static{color:var(--muted,#5f6b7a);cursor:default}
 .sb-avatar{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--hover,#f2f4f6);border:1px solid var(--hairline,#E5E8EB);font-size:var(--fs-xs,12px);font-weight:var(--fw-medium,500);color:var(--text,#191f28)}
 .sb-account-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm,13px)}
 .sb-account .chev{flex:none;color:var(--muted,#5f6b7a)}
-.sb-pop{position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:5;display:flex;flex-direction:column;padding:4px;background:var(--surface,#fff);border:1px solid var(--hairline,#E5E8EB);border-radius:10px;box-shadow:0 8px 24px #191f281a;animation:m-pop .15s var(--ease,ease) both}
-.sb-pop a,.sb-pop button{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--text,#191f28);font-size:var(--fs-sm,13px);cursor:pointer}
+.sb-pop{position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:5;display:flex;flex-direction:column;padding:4px;background:var(--surface,#fff);border:1px solid var(--hairline,#E5E8EB);border-radius:0;box-shadow:0 8px 24px #191f281a;animation:m-pop .15s var(--ease,ease) both}
+.sb-pop a,.sb-pop button{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border:0;border-radius:0;background:transparent;text-align:left;color:var(--text,#191f28);font-size:var(--fs-sm,13px);cursor:pointer}
 .sb-pop a:hover,.sb-pop button:hover{background:var(--hover,#f2f4f6)}
 .sb-pop svg{color:var(--muted,#5f6b7a)}
 .sb-pop hr{margin:4px 2px}
@@ -72,13 +72,13 @@
 
 /* 대화 목록 (ConversationList). 사이드바와 좁은 화면 패널이 같이 쓴다 */
 .sb-cl{display:flex;flex-direction:column}
-.sb-cl-new{display:flex;align-items:center;gap:8px;height:36px;margin-bottom:8px;padding:0 10px;border:1px solid var(--hairline,#E5E8EB);border-radius:8px;background:var(--surface,#fff);color:var(--text,#191f28);font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);cursor:pointer}
+.sb-cl-new{display:flex;align-items:center;gap:8px;height:36px;margin-bottom:8px;padding:0 10px;border:1px solid var(--hairline,#E5E8EB);border-radius:0;background:var(--surface,#fff);color:var(--text,#191f28);font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);cursor:pointer}
 .sb-cl-new:hover:not(:disabled){background:var(--hover,#f2f4f6)}
 .sb-cl-new:disabled,.sb-cl-title:disabled,.sb-cl-del:disabled{opacity:.5;cursor:not-allowed}
 .sb-cl-group h3{margin:12px 0 2px;padding:0 8px;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:0;color:#8b95a1}
 .sb-cl-group:first-of-type h3{margin-top:2px}
 .sb-cl-group ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
-.sb-cl-row{display:flex;align-items:center;min-width:0;border-radius:6px}
+.sb-cl-row{display:flex;align-items:center;min-width:0;border-radius:0}
 .sb-cl-row:hover,.sb-cl-row.active{background:var(--hover,#f2f4f6)}
 .sb-cl-title{flex:1;min-width:0;height:32px;padding:0 8px;border:0;background:transparent;text-align:left;color:var(--text-2,#4e5968);font:inherit;font-size:var(--fs-sm,13px);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sb-cl-row.active .sb-cl-title{color:var(--text,#191f28);font-weight:var(--fw-medium,500)}
@@ -87,7 +87,7 @@
 .sb-cl-del:hover:not(:disabled){color:var(--danger,#c12f2f)}
 .sb-cl-confirm{flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px 8px;font-size:var(--fs-xs,12px);color:var(--text,#191f28)}
 .sb-cl-confirm span{flex:1 1 100%}
-.sb-cl-confirm button{height:28px;padding:0 10px;border:1px solid var(--hairline,#E5E8EB);border-radius:6px;background:var(--surface,#fff);font:inherit;font-size:var(--fs-xs,12px);cursor:pointer}
+.sb-cl-confirm button{height:28px;padding:0 10px;border:1px solid var(--hairline,#E5E8EB);border-radius:0;background:var(--surface,#fff);font:inherit;font-size:var(--fs-xs,12px);cursor:pointer}
 .sb-cl-confirm .danger{border-color:var(--danger-border,#f1c9c5);color:var(--danger,#c12f2f)}
 .sb-cl-confirm button:disabled{opacity:.5;cursor:not-allowed}
 .sb-cl-empty,.sb-cl-error{margin:0;padding:4px 8px;font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
@@ -107,7 +107,7 @@
 .rail-collapsed .sb-account[aria-expanded=true]::after{display:none!important}
 /* 접은 줄의 말풍선 이름표 (자체 속성 data-sbtip) */
 .rail-collapsed [data-sbtip]{position:relative}
-.rail-collapsed [data-sbtip]:hover::after,.rail-collapsed [data-sbtip]:focus-visible::after{content:attr(data-sbtip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);z-index:90;padding:4px 8px;border-radius:6px;background:var(--text,#191f28);color:#fff;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);white-space:nowrap;pointer-events:none}
+.rail-collapsed [data-sbtip]:hover::after,.rail-collapsed [data-sbtip]:focus-visible::after{content:attr(data-sbtip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);z-index:90;padding:4px 8px;border-radius:0;background:var(--text,#191f28);color:#fff;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);white-space:nowrap;pointer-events:none}
 .rail-collapsed .conv-toggle{display:inline-flex}
 
 /* ---- 상단 줄 ---- */

@@ -1,6 +1,7 @@
 /** Root layout bundles fonts locally so the delivered app needs no font CDN.
  * 글꼴: Pretendard는 설치돼 있지 않아 Noto Sans KR(번들)로 쓴다. 고정폭은 B/L 번호용 IBM Plex Mono만 남겼다 (10-06). */
 import type {Metadata} from 'next';
+import '@fontsource-variable/manrope';
 import '@fontsource-variable/noto-sans-kr';
 import '@fontsource/ibm-plex-mono/400.css';
 import 'leaflet/dist/leaflet.css';

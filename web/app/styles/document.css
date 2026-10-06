@@ -4,7 +4,7 @@
 @keyframes doc-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* ---------- 서랍을 "페이지처럼" 크게: 시안 2-5는 본문 전체를 쓰는 확인 화면이다. :has로 서류 확인일 때만 바꾼다 ---------- */
-.drawer:has(.document-panel){width:min(1120px,100%);background:var(--bg);padding:36px 40px 0;border-radius:var(--radius) 0 0 var(--radius);position:relative}
+.drawer:has(.document-panel){width:min(1120px,100%);background:var(--bg);padding:36px 40px 0;border-radius:0;position:relative}
 /* 제목은 패널이 직접 그린다. 서랍 제목은 스크린리더(aria-labelledby)용으로만 남기고, 닫기 버튼만 오른쪽 위에 둔다 */
 .drawer:has(.document-panel) .drawer-head{position:sticky;top:0;height:0;margin:0;z-index:5;display:block;overflow:visible}
 .drawer:has(.document-panel) .drawer-head > div{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
@@ -22,7 +22,7 @@
 .document-result>*:nth-child(2){animation-delay:40ms}.document-result>*:nth-child(3){animation-delay:80ms}.document-result>*:nth-child(4){animation-delay:120ms}.document-result>*:nth-child(5){animation-delay:160ms}.document-result>*:nth-child(6){animation-delay:200ms}
 
 /* 올리기 전: 점선 칸 하나 */
-.document-panel .dropzone{min-height:220px;gap:8px;border:1.5px dashed var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text-2);transition:background 150ms var(--ease),border-color 150ms var(--ease)}
+.document-panel .dropzone{min-height:220px;gap:8px;border:1.5px dashed var(--border-strong);border-radius:0;background:var(--surface);color:var(--text-2);transition:background 150ms var(--ease),border-color 150ms var(--ease)}
 .document-panel .dropzone:hover,.document-panel .dropzone.dragging{background:var(--brand-soft);border-color:var(--brand)}
 .document-panel .dropzone strong{font-size:var(--text-lg);font-weight:700;color:var(--text);margin:6px 0 0}
 .document-panel .dropzone span{font-size:var(--text-base);color:var(--muted)}
@@ -38,7 +38,7 @@
 .document-status .doc-flagged-names{font-weight:600;color:var(--text-2)}
 
 /* 읽은 값: 흰 판 하나, 안은 3칸 격자(간격으로만 나눔) */
-.doc-group{background:var(--surface);border-radius:var(--radius);padding:24px}
+.doc-group{background:var(--surface);border-radius:0;padding:24px}
 .doc-section-title{font-size:var(--text-base);font-weight:var(--fw-semibold,600);color:var(--text);margin:0 0 20px}
 .doc-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 32px;margin-bottom:-24px}
 .document-panel.in-drawer .doc-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -49,7 +49,7 @@
 .doc-value{display:flex;align-items:center;gap:8px;min-height:44px;font-size:var(--text-base);font-weight:500;color:var(--text);overflow-wrap:anywhere;position:relative}
 .doc-value svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
 .doc-value input[type=date]+svg{display:none}
-.doc-value input{flex:1;width:calc(100% + 24px);min-height:44px;padding:0 36px 0 12px;margin:0 -12px;border:1px solid transparent;border-radius:var(--small-radius);background:transparent;font-family:var(--font);font-size:var(--text-base);font-weight:500;color:var(--text);transition:background 150ms var(--ease),border-color 150ms var(--ease)}
+.doc-value input{flex:1;width:calc(100% + 24px);min-height:44px;padding:0 36px 0 12px;margin:0 -12px;border:1px solid transparent;border-radius:0;background:transparent;font-family:var(--font);font-size:var(--text-base);font-weight:500;color:var(--text);transition:background 150ms var(--ease),border-color 150ms var(--ease)}
 .doc-value input:hover{background:var(--bg)}
 .doc-value input:focus{outline:2px solid var(--brand);outline-offset:0;background:var(--surface)}
 .doc-value input[type=text]{font-family:var(--font)}
@@ -66,7 +66,7 @@ output.doc-value{color:var(--text)}
 .doc-badge.warn{color:var(--grade-watch);font-weight:700}
 
 /* B/L 조건 · 화물 인도 연락처: 흰 판 하나, 안은 간격으로만 */
-.doc-conditions{background:var(--surface);border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;gap:4px}
+.doc-conditions{background:var(--surface);border-radius:0;padding:24px;display:flex;flex-direction:column;gap:4px}
 .doc-conditions h3{font-size:var(--text-base);font-weight:var(--fw-semibold,600);color:var(--text)}
 .doc-hint-line{font-size:var(--text-sm);color:var(--muted);margin-bottom:16px}
 .doc-cond-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:24px 16px}
@@ -76,9 +76,9 @@ output.doc-value{color:var(--text)}
 .doc-cond label{font-size:var(--text-sm);font-weight:600;color:var(--text-2)}
 .doc-cond small{font-size:var(--text-sm);color:var(--muted);line-height:1.5}
 .doc-select{position:relative}
-.doc-select select{appearance:none;width:100%;min-height:48px;padding:8px 36px 8px 14px;border:1px solid var(--border-strong);border-radius:var(--small-radius);background:var(--surface);font-family:var(--font);font-size:var(--text-base);color:var(--text);transition:border-color 150ms var(--ease)}
+.doc-select select{appearance:none;width:100%;min-height:48px;padding:8px 36px 8px 14px;border:1px solid var(--border-strong);border-radius:0;background:var(--surface);font-family:var(--font);font-size:var(--text-base);color:var(--text);transition:border-color 150ms var(--ease)}
 .doc-select svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
-.doc-text{width:100%;min-height:48px;padding:8px 14px;border:1px solid var(--border-strong);border-radius:var(--small-radius);background:var(--surface);font-family:var(--font);font-size:var(--text-base);color:var(--text);transition:border-color 150ms var(--ease)}
+.doc-text{width:100%;min-height:48px;padding:8px 14px;border:1px solid var(--border-strong);border-radius:0;background:var(--surface);font-family:var(--font);font-size:var(--text-base);color:var(--text);transition:border-color 150ms var(--ease)}
 .doc-cond.flagged select,.doc-cond.flagged .doc-text{border-color:var(--grade-watch-solid);background:var(--grade-watch-bg)}
 .doc-select select:focus,.doc-text:focus{outline:2px solid var(--brand);outline-offset:1px;border-color:var(--brand)}
 
