@@ -48,6 +48,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
+from backend.app.services import quota  # 1명당 하루 토큰 한도 (docs/specs/token-quota.md)
 from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
@@ -309,6 +310,8 @@ def chat(
         try:
             result = _call_once(kwargs)
             result.attempts = attempt
+            # 1명당 하루 토큰 한도에 쌓는다 (services/quota.py, docs/specs/token-quota.md). 이 요청은 끝까지 답하고 다음 요청부터 막는다
+            quota.add((result.prompt_tokens or 0) + (result.completion_tokens or 0))
             return result
         except LLMError as e:
             if not e.retryable or attempt == MAX_ATTEMPTS:

@@ -22,7 +22,7 @@ from functools import lru_cache
 import jwt
 from fastapi import Header, HTTPException
 
-from backend.app.observability.logging import log_failure
+from backend.app.observability.logging import log_failure, request_user_var
 
 # 이 알고리즘만 받는다. 목록을 열어 두면 헤더의 alg를 HS256·none으로 바꾼 위조 출입증이 통할 수 있다
 ALGORITHMS = ["ES256"]
@@ -110,6 +110,11 @@ def current_user(authorization: str | None = Header(default=None)) -> CurrentUse
     if _suspended(user.id):
         log_failure("auth", "suspended")
         raise HTTPException(status_code=403, detail=SUSPENDED)
+    # 하루 토큰 한도의 운영자 예외가 이 이메일을 본다 (services/quota.py). 서명을 확인한 값만 적는다.
+    # 로그인 확인은 스레드풀에서 돌아 새 대입은 핸들러로 안 넘어가고, 미들웨어가 만든 dict를 고치면 넘어간다
+    holder = request_user_var.get()
+    if holder is not None:
+        holder["email"] = user.email
     return user
 
 

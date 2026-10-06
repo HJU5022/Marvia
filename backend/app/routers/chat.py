@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from backend.app.auth import current_user_id
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import log_failure
-from backend.app.routers.agent import run_agent
+from backend.app.routers.agent import quota_guard, run_agent
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.services import chat as svc
 from backend.app.services import progress
@@ -92,6 +92,7 @@ def _context(body: ChatRequest) -> AgentRequest | None:
 @router.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> ChatResponse:
     """문장 하나를 받아 화물 조회·후속 질문·입항 선박 검색·안내 중 하나로 답한다."""
+    quota_guard(body.session_id, user_id)  # 하루 토큰 한도 (docs/specs/token-quota.md)
     context = _context(body)
     with session_scope(body.session_id, user_id):
         try:
@@ -117,6 +118,7 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
     스레드에 지금 요청의 문맥(요청 ID, LLM 사용량 기록)을 복사해 넘겨야 로그와 트레이스가 이 요청에 묶인다.
     로그인 확인은 응답을 열기 전에 끝난다(Depends). 그래서 401·403은 스트림이 아니라 보통 오류 응답으로 간다.
     """
+    quota_guard(body.session_id, user_id)  # 스트림을 열기 전에 확인한다. 열린 뒤에는 429를 보낼 수 없다
     context = _context(body)
     events: queue.Queue[tuple[str, dict] | None] = queue.Queue()
 

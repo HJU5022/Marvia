@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import pycountry
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app import crypto
 from backend.app.auth import current_user_id
@@ -47,7 +47,7 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Evidence, Position, Reason, VesselCandidate,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import guard, identify, llm, progress, validate
+from backend.app.services import guard, identify, llm, progress, quota, validate
 from backend.app.services import memory as memory_service
 from backend.app.services import verdict as verdict_table
 from backend.app.services import signals as signals_service
@@ -132,6 +132,23 @@ def _response(**over) -> AgentResponse:
     return AgentResponse(**{**base, **over})
 
 
+# 하루 토큰 한도를 다 쓴 사람에게 주는 오류 (services/quota.py). 화면(web/lib/api.ts)이 이 값을 보고 입력을 막는다
+QUOTA_DETAIL = "daily_token_limit"
+
+
+def quota_guard(session_id: str | None, user_id: str | None) -> None:
+    """요청 시작 때 오늘 토큰 한도를 확인한다. 다 썼으면 429 (docs/specs/token-quota.md, 10-02).
+
+    처리 도중에 한도를 넘은 요청은 끝까지 답한다. 확인은 요청이 들어올 때 한 번뿐이다(quota.checked_var).
+    /api/agent, /api/chat, /api/chat/stream, /api/document가 부른다.
+    """
+    try:
+        quota.ensure_allowed(session_id, user_id)
+    except quota.QuotaExceeded:
+        log_failure("quota", "daily_token_limit")
+        raise HTTPException(status_code=429, detail=QUOTA_DETAIL) from None
+
+
 @router.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest,
               user_id: Annotated[str | None, Depends(current_user_id)] = None) -> AgentResponse:
@@ -145,6 +162,7 @@ def run_agent(request: AgentRequest,
 
     로그인 사용자면 기억(화물 표·메모장)을 읽어 LLM에 넣고, 응답 뒤 뒤에서 기억을 고친다 (docs/specs/memory.md).
     기억 쓰기는 응답을 늦추지 않고, 실패해도 응답에는 영향이 없다 (EC-07)."""
+    quota_guard(request.session_id, user_id)
     with session_scope(request.session_id, user_id):
         context = memory_service.load_context(user_id, request.bl_no)
         blocks = context.blocks if context else None
