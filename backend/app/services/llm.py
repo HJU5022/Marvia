@@ -48,6 +48,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
+from backend.app.services import quota  # 1명당 하루 토큰 한도 (docs/specs/token-quota.md)
 from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
@@ -309,6 +310,8 @@ def chat(
         try:
             result = _call_once(kwargs)
             result.attempts = attempt
+            # 1명당 하루 토큰 한도에 쌓는다 (services/quota.py, docs/specs/token-quota.md). 이 요청은 끝까지 답하고 다음 요청부터 막는다
+            quota.add((result.prompt_tokens or 0) + (result.completion_tokens or 0))
             return result
         except LLMError as e:
             if not e.retryable or attempt == MAX_ATTEMPTS:
@@ -758,7 +761,8 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     판정 흐름(judge)은 지금처럼 코드가 도구를 부른다.
     memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). judge()와 같은 자리에 넣는다.
     """
-    result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates"})
+    # customs_detail(UNI-PASS 처리 이력 원문)은 화면 전용이라 LLM에 넘기지 않는다. 중량·관세법인명 등이 들어 있다 (docs/specs/customs-detail.md)
+    result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "customs_detail"})
     result["evidence"] = [e for e in result.get("evidence") or []
                           if not (e["source"] == "shipfinder" and e["field"] == "dest")]
     data = {"result": result, "question": question}

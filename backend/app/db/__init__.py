@@ -87,12 +87,13 @@ def recent_queries(conn, session_id: str, limit: int = 20, user_id: str | None =
     where, owner = _owner(session_id, user_id)
     rows = conn.execute(
         f"""
-        SELECT request_id, bl_masked, status, verdict, vessel_match, decided_by, model, trace_id, created_at
+        SELECT request_id, bl_masked, status, verdict, vessel_match, decided_by, trace_id, created_at
         FROM query_log WHERE {where} ORDER BY created_at DESC LIMIT %s
         """,
         [owner, min(limit, 100)],
     ).fetchall()
-    keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "model", "trace_id", "created_at")
+    # model 칸은 018에서 지웠다 (저장하는 코드가 없어 늘 비어 있었다). 이력 응답의 model은 null로 남긴다
+    keys = ("request_id", "bl_masked", "status", "verdict", "vessel_match", "decided_by", "trace_id", "created_at")
     return [dict(zip(keys, row)) for row in rows]
 
 

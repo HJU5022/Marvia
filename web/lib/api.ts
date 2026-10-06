@@ -20,6 +20,7 @@ import history from './fixtures/history.json';
 import demo from './fixtures/demo.json';
 import metrics from './fixtures/metrics.json';
 import settings from './fixtures/settings.json';
+import watchMap from './fixtures/watch-map.json';
 import geography from './fixtures/geography.json';
 import documentFixture from './fixtures/document.json';
 import adminFixture from './fixtures/admin.json';
@@ -96,6 +97,7 @@ async function errorMessage(res: Response): Promise<string> {
   if (detail === 'account_suspended') return SUSPENDED_MESSAGE;
   if (res.status === 403) return detail || '운영자만 쓸 수 있습니다.';
   if (res.status === 409) return detail || '이미 처리된 요청입니다.';
+  if (detail === 'daily_token_limit') return QUOTA_MESSAGE;
   if (res.status === 429) return '요청이 많습니다. 잠시 뒤 다시 시도해 주세요.';
   if (res.status === 400 || res.status === 422) return detail || '입력값을 확인해 주세요.';
   return detail || '요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
@@ -245,7 +247,10 @@ async function demoChat(message: string, context: AgentRequest | null): Promise<
     const agent = await demoAgentResponse(request);
     return {...empty, kind: 'cargo', reply: agent.answer, agent, request};
   }
-  if (/배|선박|입항/.test(message)) {
+  // 화물을 보고 있을 때 "배 지금 어디쯤이야?"처럼 그 화물의 배를 묻는 문장은 후속 질문이다. 선박 검색은 지역·목록을 찾는
+  // 문장 모양일 때만 고른다 (10-02 UI 점검 F6). 실제 모드는 서버 LLM이 의도를 고르므로 이 규칙은 데모에만 있다
+  const searchLike = /(들어오는|들어올|오는|입항하는|입항할|입항 예정)\s*(배|선박)|(배|선박)\s*(보여|알려|목록|전부|있어|찾아)|중국|일본|베트남|상하이|싱가포르|대만|홍콩|태국/.test(message);
+  if (/배|선박|입항/.test(message) && (!context || searchLike)) {
     await pause();
     return {...empty, kind: 'vessels', ...structuredClone(demo.vessel_search), reply: demo.vessel_search.reply} as ChatResponse;
   }
@@ -338,6 +343,19 @@ async function liveChatStream(message: string, context: AgentRequest | null,
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** 하루 토큰 한도를 다 썼을 때 안내 (서버 429 daily_token_limit, docs/specs/token-quota.md) */
+export const QUOTA_MESSAGE = '오늘 쓸 수 있는 AI 사용량을 모두 썼어요. 내일(한국 시간 자정 이후) 다시 이용해 주세요.';
+export interface UsageInfo { limit: number | null; used: number; remaining: number | null; exhausted: boolean; near_limit: boolean }
+/** GET /api/usage. 오늘 LLM 토큰 사용량. 데모 모드와 옛 서버(404)는 한도 없음으로 본다. 못 읽으면 막지 않는다 */
+export async function getUsage(): Promise<UsageInfo> {
+  const none: UsageInfo = {limit: null, used: 0, remaining: null, exhausted: false, near_limit: false};
+  if (!isLive) return none;
+  try {
+    const res = await call(`/api/usage?session_id=${encodeURIComponent(currentSessionId())}`, {}, HISTORY_TIMEOUT_MS);
+    return res.ok ? await res.json() as UsageInfo : none;
+  } catch { return none; }
 }
 
 /** GET /api/vessels/detail. 선박 표에서 선명을 눌렀을 때. 데모 모드는 가공 예시 */
@@ -517,3 +535,20 @@ export function getReplaySnapshot(requestId: string) {
 
 /** 번들 Natural Earth 지형. 지도 타일 서버를 부르지 않는다 (THIRD_PARTY.md). */
 export function getGeography() { return geography; }
+
+
+/** 감시·지도 화면의 화물 한 건 (docs/specs/cargo-watch.md). 위치는 worker가 6시간마다 모은 마지막 값이다 */
+export interface WatchItem {
+  bl_masked: string; label: string | null; ship_name: string; status: 'active' | 'done';
+  verdict: 'fine' | 'watch' | 'act' | null; stage: string | null; eta: string | null; days_margin: number | null;
+  lat: number; lng: number; cog: number | null; sog: number | null; position_at: string;
+  /** 6시간마다 저장한 위치 이력, 오래된 순. 마지막 점이 현재 위치(lat·lng)와 같다 */
+  track?: {lat: number; lng: number; at: string; sog: number | null}[];
+}
+export interface WatchList { items: WatchItem[]; updated_at: string | null; sample: boolean }
+/** 내 감시 화물 목록. 위치 수집이 아직 꺼져 있어(ShipFinder 호출 한도, 10-02) 지금은 실제·데모 모두 예시 데이터를 돌려준다.
+ * 서버 통로(GET /api/watch)가 생기면 isLive일 때 그쪽을 부르고 sample을 false로 바꾼다 */
+export async function getWatchList(): Promise<WatchList> {
+  const data = structuredClone(watchMap) as {items: WatchItem[]; updated_at: string};
+  return {items: data.items, updated_at: data.updated_at, sample: true};
+}

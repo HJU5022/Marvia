@@ -135,6 +135,43 @@ def collect_positions(conn, sf: ShipFinderClient, budget: Budget, now: datetime 
     return {"tracked": len(mmsis), "positions_new": saved, "positions_failed": failed}
 
 
+# 감시·지도 (docs/specs/cargo-watch.md, 017). 사용자 화물 배 중 위치를 가장 오래 못 받은 배부터
+SELECT_WATCHED = """
+SELECT c.mmsi FROM (SELECT DISTINCT vessel_mmsi AS mmsi FROM user_cargo WHERE status = 'active' AND vessel_mmsi IS NOT NULL) c
+LEFT JOIN (SELECT mmsi, max(fetched_at) AS last FROM watch_positions GROUP BY mmsi) w ON w.mmsi = c.mmsi
+ORDER BY w.last NULLS FIRST
+"""
+INSERT_WATCH_POSITION = """
+INSERT INTO watch_positions (mmsi, ts, fetched_at, lat, lng, sog, cog, navistat)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (mmsi, ts) DO NOTHING
+"""
+
+
+def collect_watch_positions(conn, sf: ShipFinderClient, budget: Budget) -> dict:
+    """사용자 화물(user_cargo 진행 중)의 배 위치를 받아 watch_positions에 쌓는다. 예산이 떨어지면 멈춘다.
+
+    감시·지도 경로의 재료다. 연구용 대상(positions)보다 먼저 부른다. 사용자가 보는 화면이라 우선한다 (run.py).
+    지금은 user_cargo를 채우는 코드가 없어 대상이 0척이고, ShipFinder를 부르지 않는다.
+    """
+    mmsis = [row[0] for row in conn.execute(SELECT_WATCHED).fetchall()]
+    saved, failed = 0, []
+    for mmsi in mmsis:
+        if not budget.take():
+            break
+        try:
+            p = sf.position(mmsi)
+        except ShipFinderError as e:
+            failed.append({"mmsi": mmsi, "code": e.code})  # 한 척 실패로 전체를 멈추지 않는다
+            continue
+        if p.last_time is None:
+            failed.append({"mmsi": mmsi, "code": "no_time"})  # 언제 위치인지 모르면 경로에 넣지 않는다
+            continue
+        cur = conn.execute(INSERT_WATCH_POSITION, (p.mmsi, p.last_time, p.fetched_at, p.lat, p.lng, p.sog, p.cog, p.navistat))
+        saved += _inserted(cur)
+    return {"watched": len(mmsis), "watch_positions_new": saved, "watch_positions_failed": failed}
+
+
 def _pick_hit(hits, call_sign: str):
     """호출부호가 정확히 같은 검색 결과 중 가장 최근에 보고한 MMSI.
 

@@ -5,6 +5,8 @@ last_time(선박이 보고한 시각)과 fetched_at(우리가 조회한 시각)�
 services/signals.py가 position_stale을 계산한다 (C-4 경계, 작업 리스트 "경계 정리").
 
 출력 계약은 mcp_server/schemas.py의 LivePositionResult, 실패는 ToolError다 (C4, SDD 3.4).
+
+MCP 등록: 이 함수는 mcp_server/server.py create_mcp()가 도구로 등록한다 (데코레이터 없음).
 """
 from datetime import datetime, timezone
 from typing import Annotated

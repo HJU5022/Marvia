@@ -16,6 +16,7 @@ from backend.app.auth import current_user_id
 from backend.app.db import atomic, connect, delete_user_queries, recent_queries
 from backend.app.observability.logging import log_failure
 from backend.app.services.memory import forget_user
+from backend.app.services import quota
 
 router = APIRouter(prefix="/api", tags=["history"])
 
@@ -29,7 +30,7 @@ class HistoryItem(BaseModel):
     verdict: str | None
     vessel_match: str | None
     decided_by: Literal["rule", "llm"] | None
-    model: str | None
+    model: str | None = None  # 018에서 DB 칸을 지웠다. 화면 계약을 깨지 않게 null로 남긴다
     trace_id: str | None
     created_at: datetime
 
@@ -89,3 +90,22 @@ def delete_history(user_id: Annotated[str | None, Depends(current_user_id)] = No
         log_failure("history_delete", type(e).__name__)
         raise HTTPException(status_code=503, detail="기록 저장소에 연결하지 못해 삭제하지 못했습니다. 잠시 뒤 다시 시도하세요")
     return DeleteResponse(deleted=deleted)
+
+
+class UsageResponse(BaseModel):
+    """오늘 LLM 토큰 사용량 (docs/specs/token-quota.md). limit이 null이면 한도 없음."""
+
+    limit: int | None
+    used: int
+    remaining: int | None
+    exhausted: bool  # 다 썼다. 화면이 입력을 막고 안내를 띄운다
+    near_limit: bool  # 한도의 10% 아래로 남았다. 화면이 미리 알린다
+
+
+@router.get("/usage", response_model=UsageResponse)
+def get_usage(
+    session_id: str = Query(description="세션 ID. 로그인했으면 사용자 기준으로 센다"),
+    user_id: Annotated[str | None, Depends(current_user_id)] = None,
+) -> UsageResponse:
+    """오늘(한국 시각) 쓴 LLM 토큰과 한도. 화면이 요청을 마칠 때마다 다시 읽어 안내와 입력 막기를 정한다."""
+    return UsageResponse(**quota.status(session_id, user_id))
