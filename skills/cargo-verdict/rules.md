@@ -6,6 +6,16 @@ act_signals: [anchor_wait, customs_hold, sales_date_exceeded]
 gray_signals: [anchor_wait, customs_hold]
 ignore_signals: [navstat_mismatch]
 ignore_dest_values: [broken, empty]
+# 판매 예정일 문장 (검사 규칙 V15, services/validate.py, 10-06 점검).
+# days_margin이 음수면 "판매 예정일보다 늦게 도착"이라는 뜻이지 판매 예정일이 지났다는 뜻이 아니다. 오늘 날짜를 LLM에 주지 않으므로
+# "판매 예정일이 지난 상태입니다"는 근거가 없다. 한 문장에 sale_date_words와 sale_passed_words가 같이 있으면 위반
+sale_date_words: [판매 예정일, 판매예정일, 판매일, 필요 입고일]
+sale_passed_words: [지났, 지난 상태, 지나 버, 지나버, 넘겼, 넘긴 상태, 이미 지, 경과]
+# 판매 예정일을 받지 않았을 때(근거 카드에 sale_due_date가 없을 때) 쓰면 안 되는 비교 낱말 (10-06 점검: 날짜 없이 "예정보다 빠른 도착")
+plan_compare_words: [예정보다 빠, 예정보다 늦, 예정보다 일찍, 계획보다 빠, 계획보다 늦, 계획보다 일찍]
+# 판매 예정일이 없을 때 sale_date_words와 한 문장에 있으면 판매 예정일과 비교한 것으로 보는 낱말.
+# "판매 예정일을 알려 주시면 ..." 같은 안내 문장은 걸리지 않게 비교 표현만 둔다
+sale_compare_words: [보다, 앞서]
 ---
 
 # 2층 등급 판정 표

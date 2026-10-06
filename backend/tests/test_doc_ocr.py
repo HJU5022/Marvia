@@ -254,3 +254,20 @@ def test_etd_only_in_instruction_line_is_ambiguous():
 def test_etd_label_matches_dotted_and_bl_forms_only_as_words():
     assert doc_ocr.label_lines(["E.T.D.", "ETD", "SHIPPED ON BOARD"], "etd") == 3
     assert doc_ocr.label_lines(["METDA", "ETDX"], "etd") == 0
+
+
+# ── LLM 입력 가리기 보강 (10-06 점검: 두 번째 B/L·휴대폰·이메일이 LLM으로 갔다). 모두 가공 값이다 ──
+
+def test_mask_bl_hides_second_bl_and_personal_contacts_but_keeps_company_phone_and_dates():
+    lines = ["MASTER B/L NO. MRVM2026090009", "HOUSE B/L NO.", BL, "CONTACT 010-1234-5678 kim@example.com",
+             "GANADA LOGISTICS TEL 051-000-0000", "ETA 20261002", "SEA STAR / 0925W"]
+    text = doc_ocr.mask_bl(lines, BL)
+    assert BL not in text and "MRVM2026090009" not in text and "[ID]" in text
+    assert "010-1234-5678" not in text and "[PHONE]" in text
+    assert "kim@example.com" not in text and "[EMAIL]" in text
+    assert "051-000-0000" in text and "20261002" in text and "0925W" in text and "SEA STAR" in text
+
+
+def test_mask_without_bl_still_hides_mobile_and_email():
+    text = doc_ocr.mask_bl(["담당 82-10-1234-5678", "mail: kim@example.com", "TEL 051-000-0000"], None)
+    assert "1234-5678" not in text and "kim@example.com" not in text and "051-000-0000" in text
