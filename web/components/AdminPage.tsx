@@ -19,10 +19,12 @@ const DAY_MS = 86_400_000;
 const ACTION_LABELS: Record<ActionItem['action'], string> = {unmask: '마스킹 해제', customer_update: '수정', customer_delete: '강제 탈퇴', customer_suspend: '일시 정지', customer_resume: '정지 해제'};
 
 export function AdminPage() {
-  const {isOperator, authReady} = useApp();
+  const {isOperator, authReady, meReady} = useApp();
   const [tab, setTab] = useState<Tab>('customers');
 
-  if (!authReady) return <div className="page"><div className="initial-loading" role="status"><div className="loading-orbit"/><strong>권한을 확인하고 있어요.</strong></div></div>;
+  // 운영자 여부(GET /api/me)를 받기 전에는 판단하지 않는다. 받기 전 isOperator는 false라 운영자에게도
+  // "운영자만 볼 수 있는 화면"이 잠깐 보였다 (10-02 UI 점검 F12, OperatorOnly와 같은 조건)
+  if (!authReady || !meReady) return <div className="page"><div className="initial-loading" role="status"><div className="loading-orbit"/><strong>권한을 확인하고 있어요.</strong></div></div>;
   if (!isOperator) return <div className="page"><div className="empty-state admin-denied"><ShieldUser size={34} strokeWidth={1.2}/><h2>운영자만 볼 수 있는 화면입니다.</h2><p>권한이 필요하면 기존 운영자에게 등록을 요청하세요.</p></div></div>;
 
   return <div className="page">
@@ -82,7 +84,7 @@ function CustomersPanel() {
           <td className="mono">{c.email_masked ?? '없음'}</td><td>{c.name_masked ?? '-'}</td>
           <td className="mono">{c.phone_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td><td>{c.address_masked ?? (c.profile_complete ? '확인 불가' : '미입력')}</td>
           <td className="mono">{dateTime(c.created_at)}</td>
-          <td className="mono">{c.last_sign_in_at ? dateTime(c.last_sign_in_at) : '로그인 기록 없음'}</td>
+          <td className={c.last_sign_in_at ? 'mono' : undefined}>{c.last_sign_in_at ? dateTime(c.last_sign_in_at) : '로그인 기록 없음'}</td>
           <td>{c.is_operator ? <span className="role-chip operator"><ShieldCheck size={12}/>운영자</span> : <span className="role-chip">고객</span>}{c.is_suspended && <span className="role-chip revoked"><Pause size={11}/>정지</span>}</td>
           <td><div className="row-buttons">
             {([['unmask', Eye, '마스킹 해제'], ['edit', PencilLine, '수정'], ['suspend', c.is_suspended ? Play : Pause, c.is_suspended ? '정지 해제' : '일시 정지'], ['delete', UserRoundX, '탈퇴']] as const).map(([mode, Icon, label]) =>
@@ -92,7 +94,8 @@ function CustomersPanel() {
           </div></td>
         </tr>
         {open?.id === c.user_id && <tr className="action-row"><td colSpan={8}>
-          <CustomerActions customer={c} mode={open.mode} onClose={close} onDone={msg => { setMessage(msg); setOpen(null); reload(); }}/>
+          {/* key: 동작을 바꾸면 패널을 새로 만든다. 마스킹 해제의 60초 타이머·사유 글이 수정·정지로 넘어가지 않게 (F9) */}
+          <CustomerActions key={open.mode} customer={c} mode={open.mode} onClose={close} onDone={msg => { setMessage(msg); setOpen(null); reload(); }}/>
         </td></tr>}</Fragment>)}</tbody></table>
         {!rows.length && <div className="empty-state"><Search/><h2>조건에 맞는 고객이 없습니다.</h2></div>}
       </div>}

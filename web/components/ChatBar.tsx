@@ -11,7 +11,7 @@ import {ArrowUp, Camera, Check, FileText, LoaderCircle, PackageSearch, Ship, Spa
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentValues} from './DocumentPanel';
 import {Drawer} from './Drawer';
-import {isLive} from '@/lib/api';
+import {isLive, QUOTA_MESSAGE} from '@/lib/api';
 import {onComposerRequest} from '@/lib/composer';
 import {stageLabels, type ProgressStage} from '@/lib/progress';
 
@@ -29,10 +29,18 @@ function scrollBehavior(): ScrollBehavior {
 }
 
 export function ChatBar({idle = false}: {idle?: boolean}) {
-  const {ask, loading, stages, pendingSince, thread, result, request, setDocHints} = useApp();
+  const {ask, loading, stages, pendingSince, thread, result, request, setDocHints, usage, view} = useApp();
+  // 화물 카드가 실제로 보일 때만 "이 화물"로 안내한다. AppProvider.ask도 같은 조건으로 화물을 함께 보낸다 (10-02 UI 점검 F5)
+  const cargoShown = view === 'cargo' && !!result && !!request.bl_no;
+  // 하루 토큰 한도를 다 쓰면 입력·서류 사진을 막는다. 서버도 429로 막는다 (docs/specs/token-quota.md)
+  const blocked = !!usage?.exhausted;
   const [text, setText] = useState('');
   const [docOpen, setDocOpen] = useState(false);
   const [away, setAway] = useState(false);  // 입력창이 화면 밖이면 true
+  // 다른 입력칸에 글을 쓰는 중이면 true. 휴대폰에서 떠 있는 "이어서 물어보기" 버튼이 입력칸을 덮지 않게 그동안 숨긴다 (F18)
+  const [typing, setTyping] = useState(false);
+  // 입력창에 이미 글이 있을 때 예시·카드가 채우려던 문장. 덮어쓰지 않고 바꿀지 묻는다 (F11)
+  const [offer, setOffer] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLOListElement>(null);
@@ -57,11 +65,31 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
     return () => observer.disconnect();
   }, []);
 
-  // 다른 카드가 "AI에게 묻기"를 누르면 입력창으로 와서 글자를 채운다 (lib/composer.ts)
+  // 다른 카드가 "AI에게 묻기"를 누르면 입력창으로 와서 글자를 채운다 (lib/composer.ts). 쓰던 글이 있으면 덮지 않고 묻는다 (F11)
+  const textRef = useRef(text);
+  textRef.current = text;
   useEffect(() => onComposerRequest(t => {
-    if (t !== undefined) setText(t.slice(0, MAX));
+    if (t !== undefined) offerText(t);
     goToComposer();
-  }), []);
+  }), []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 입력칸(input·textarea·select)에 포커스가 있는지 본다. 화면 키보드가 올라온 동안 떠 있는 버튼을 숨기는 데만 쓴다
+  useEffect(() => {
+    const isField = (el: EventTarget | null) => el instanceof HTMLElement && el.matches('input, textarea, select, [contenteditable="true"]');
+    const onIn = (e: FocusEvent) => setTyping(isField(e.target));
+    const onOut = () => setTyping(isField(document.activeElement) && document.activeElement !== document.body);
+    document.addEventListener('focusin', onIn);
+    document.addEventListener('focusout', onOut);
+    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut); };
+  }, []);
+
+  /** 입력창이 비어 있으면 바로 채우고, 쓰던 글이 있으면 바꿀지 묻는다 */
+  function offerText(t: string) {
+    const next = t.slice(0, MAX);
+    const now = textRef.current.trim();
+    if (!now || now === next.trim()) { setText(next); setOffer(null); }
+    else setOffer(next);
+  }
 
   function goToComposer() {
     wrapRef.current?.scrollIntoView({behavior: scrollBehavior(), block: 'center'});
@@ -70,7 +98,7 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
 
   async function send(message: string) {
     const m = message.trim();
-    if (!m || loading || m.length > MAX) return;  // 보내는 중에는 한 번 더 보내지 않는다
+    if (!m || loading || blocked || m.length > MAX) return;  // 보내는 중이거나 한도를 다 썼으면 보내지 않는다
     setText('');
     stick.current = true;  // 내가 보낸 것은 항상 보이게
     const ok = await ask(m);
@@ -82,7 +110,7 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text); }
   }
-  function fill(example: string) { setText(example); inputRef.current?.focus(); }
+  function fill(example: string) { if (blocked) return; offerText(example); inputRef.current?.focus(); }
   function applyDocument(v: DocumentValues) {
     setDocOpen(false);
     // MRN이 있으면 문장에 같이 넣는다. 서버가 코드로 뽑아 세관 미등록 때 배를 찾는다 (LLM에는 안 감)
@@ -95,22 +123,28 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
     <div className="composer-wrap" ref={wrapRef}>
       <form className="composer" onSubmit={submit}>
         <label htmlFor="chat-input" className="composer-label"><Sparkles size={15}/>MARVIA AI<span className="sr-only">에게 질문하기</span></label>
-        <textarea id="chat-input" ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={2} maxLength={MAX}
-          placeholder={result && request.bl_no ? '이 화물에 대해 묻거나, 다른 B/L·입항 선박을 물어보세요' : 'B/L 번호와 함께 물어보세요. 예: 내 B/L 번호 + 화물 괜찮아? / 일본에서 부산 오는 배 보여줘'}
+        <textarea id="chat-input" ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={2} maxLength={MAX} disabled={blocked}
+          placeholder={cargoShown ? '이 화물에 대해 묻거나, 다른 B/L·입항 선박을 물어보세요' : 'B/L 번호와 함께 물어보세요. 예: 내 B/L 번호 + 화물 괜찮아? / 일본에서 부산 오는 배 보여줘'}
           aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
         <div className="composer-foot">
-          <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading}><Camera size={15}/>서류 사진에서 입력</button>
+          <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={15}/>서류 사진에서 입력</button>
           <div className="composer-send">
             <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>
-            <button type="submit" className="send" disabled={loading || !text.trim()} aria-label="AI에게 질문 보내기">
+            <button type="submit" className="send" disabled={loading || blocked || !text.trim()} aria-label="AI에게 질문 보내기">
               {loading ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
           </div>
         </div>
       </form>
+      {blocked ? <p className="quota-note blocked" role="alert">{QUOTA_MESSAGE}</p>
+        : usage?.near_limit && usage.remaining !== null ? <p className="quota-note" role="status">오늘 AI 사용량이 얼마 남지 않았어요 (남은 양 {Math.round(usage.remaining / 1000)}천 토큰). 다 쓰면 내일 다시 이용할 수 있어요.</p> : null}
     </div>
 
+    {offer !== null && <div className="fill-offer" role="status"><span>입력 중인 글이 있어요. 이 문장으로 바꿀까요? <strong>{offer}</strong></span>
+      <button type="button" className="button secondary" onClick={() => { setText(offer); setOffer(null); inputRef.current?.focus(); }}>바꾸기</button>
+      <button type="button" className="button text-button" onClick={() => { setOffer(null); inputRef.current?.focus(); }}>쓰던 글 두기</button></div>}
+
     <div className="chat-examples" aria-label="질문 예시">{EXAMPLES.map(e =>
-      <button key={e} type="button" onClick={() => fill(e)}>{e}<span aria-hidden="true">↗</span></button>)}</div>
+      <button key={e} type="button" onClick={() => fill(e)} disabled={blocked}>{e}<span aria-hidden="true">↗</span></button>)}</div>
     <p id="chat-help" className="composer-help">Enter로 보내기 · Shift + Enter로 줄바꿈 · 서류 사진은 확인한 뒤에만 입력에 넣어요</p>
 
     {thread.length > 0 && <ol className="chat-thread" ref={threadRef} onScroll={onScroll} aria-live="polite" aria-label="대화" tabIndex={0}>
@@ -121,17 +155,17 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
     {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}
 
     {idle && !loading && <div className="feature-tiles">
-      <button type="button" onClick={() => fill(isLive ? '' : EXAMPLES[0])}><PackageSearch size={22}/><strong>내 화물, 괜찮을까요?</strong><span>B/L 번호로 상태와 지금 할 일을 확인해요.</span></button>
-      <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])}><Ship size={22}/><strong>어떤 배가 들어오나요?</strong><span>부산 입항 예정 선박과 직전 기항지를 찾아요.</span></button>
-      <button type="button" onClick={() => setDocOpen(true)}><FileText size={22}/><strong>서류로 시작할까요?</strong><span>사진에서 읽은 값을 확인하고 질문에 넣어요.</span></button>
+      <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><PackageSearch size={22}/><strong>내 화물, 괜찮을까요?</strong><span>B/L 번호로 상태와 지금 할 일을 확인해요.</span></button>
+      <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><Ship size={22}/><strong>어떤 배가 들어오나요?</strong><span>부산 입항 예정 선박과 직전 기항지를 찾아요.</span></button>
+      <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><FileText size={22}/><strong>서류로 시작할까요?</strong><span>사진에서 읽은 값을 확인하고 질문에 넣어요.</span></button>
     </div>}
 
     {docOpen && <Drawer title="서류에서 질문으로" description="사진 올리기 → 읽은 값 확인 → 입력창에 넣기. 자동으로 조회하지 않습니다." onClose={() => setDocOpen(false)}>
-      <DocumentPanel heading={false} onApply={applyDocument} onClose={() => setDocOpen(false)} disabled={loading}/>
+      <DocumentPanel heading={false} onApply={applyDocument} onClose={() => setDocOpen(false)} disabled={loading || blocked}/>
     </Drawer>}
 
     {/* body로 뺀다. 헤드라인 영역(.hero, isolation)에 두면 아래 결과 카드가 버튼을 덮는다 */}
-    {away && !docOpen && createPortal(<button type="button" className="back-to-composer" onClick={goToComposer}><Sparkles size={15}/>AI에게 이어서 물어보기<span aria-hidden="true">↑</span></button>, document.body)}
+    {away && !docOpen && !typing && createPortal(<button type="button" className="back-to-composer" onClick={goToComposer}><Sparkles size={15}/>AI에게 이어서 물어보기<span aria-hidden="true">↑</span></button>, document.body)}
   </section>;
 }
 
