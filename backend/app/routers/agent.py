@@ -45,7 +45,7 @@ from backend.app import crypto
 from backend.app.auth import current_user_id
 from backend.app.clients.replay import position_history as replay_position_history, replay_enabled
 from backend.app.db import connect, log_query, recent_positions, recent_responses
-from backend.app.observability.langfuse import session_scope
+from backend.app.observability.langfuse import request_span, session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, CustomsInfo, EtaInfo, Evidence, Position, Reason, VesselCandidate,
@@ -186,16 +186,18 @@ def run_agent(request: AgentRequest,
 
     로그인 사용자면 기억(화물 표·메모장)을 읽어 LLM에 넣고, 응답 뒤 뒤에서 기억을 고친다 (docs/specs/memory.md).
     기억 쓰기는 응답을 늦추지 않고, 실패해도 응답에는 영향이 없다 (EC-07)."""
-    quota_guard(request.session_id, user_id)
-    with session_scope(request.session_id, user_id):
-        context = memory_service.load_context(user_id, request.bl_no)
-        blocks = context.blocks if context else None
-        if request.follow_up_question:
-            response = _logged(request, _follow_up(request, user_id, blocks), user_id)
-        else:
-            response = _logged(request, _assess(request, blocks), user_id)
-        memory_service.remember_later(user_id, request, response, released=is_released(response))
-        return response
+    # 요청 전체를 루트 span 하나로 감싼다 (10-07). 안의 LLM·MCP·UNI-PASS·해수부 span이 전부 자식이 된다. 키가 없으면 아무것도 안 한다
+    with request_span("/api/agent"):
+        quota_guard(request.session_id, user_id)
+        with session_scope(request.session_id, user_id):
+            context = memory_service.load_context(user_id, request.bl_no)
+            blocks = context.blocks if context else None
+            if request.follow_up_question:
+                response = _logged(request, _follow_up(request, user_id, blocks), user_id)
+            else:
+                response = _logged(request, _assess(request, blocks), user_id)
+            memory_service.remember_later(user_id, request, response, released=is_released(response))
+            return response
 
 
 def is_released(response: AgentResponse) -> bool:
