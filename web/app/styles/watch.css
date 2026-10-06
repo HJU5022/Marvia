@@ -23,7 +23,7 @@
 .watch-map{height:620px;border:0;border-radius:0;background:var(--sea)}
 .watch-map .leaflet-host,.watch-map .leaflet-container{background:var(--sea)}
 .port-marker span{background:var(--text);color:#fff;border-color:#fff}
-.leaflet-tooltip.port-tooltip{font-weight:500;color:var(--text);background:#fff;border:0;border-radius:0;padding:3px 8px;box-shadow:0 1px 4px #191f2826;font-size:var(--text-sm)}
+.leaflet-tooltip.port-tooltip{font-weight:400;color:var(--text);background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf);border-radius:0;padding:2px 8px;box-shadow:none;font-size:var(--fs-xs,12px);letter-spacing:.04em}
 .leaflet-tooltip.port-tooltip:before{display:none}
 
 /* 배 핀: 시안처럼 둥근 핀. 배 색 테두리, 안에 알파벳, 판정은 바깥 고리 */
@@ -168,3 +168,41 @@
 .watch-chip.idle{background:var(--neutral-bg);color:var(--muted);display:grid;place-items:center}
 .wm-waiting-note{margin:8px 12px 0;font-size:var(--fs-sm,13px);color:var(--muted)}
 .wm-side-head h3{font-size:var(--fs-lg,18px);font-weight:500}
+
+/* =========================================================
+   엘레강스 v2 (10-07 정운): 제목은 가볍게, 목록은 가는 선 행, 선택 표시는 얇은 선 하나, 체크는 네모
+   ========================================================= */
+.wm-head h2{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.wm-head small{letter-spacing:.06em}
+.wm-map-card{padding:0}
+.wm-side{padding:0 0 12px}
+.wm-side-head h3{font-size:var(--fs-md,15px);font-weight:400;letter-spacing:.06em}
+.wm-count{letter-spacing:.04em}
+.watch-updated{font-size:var(--fs-xs,12px);letter-spacing:.04em}
+/* "모든 배 보기": 글자 링크 */
+.watch-fit{padding:0;border:0;background:none;color:var(--brand);font-size:var(--fs-sm,13px);font-weight:400;letter-spacing:.04em;text-decoration:underline;text-underline-offset:3px}
+.watch-fit:hover{background:none;color:var(--brand-hover)}
+.watch-track-toggle{font-size:var(--fs-sm,13px);color:var(--text-2)}
+.watch-track-toggle input{appearance:none;-webkit-appearance:none;width:16px;height:16px;margin:0;border:1px solid var(--border-strong,#cfcfcf);border-radius:0;background:var(--surface);display:inline-grid;place-content:center;cursor:pointer}
+.watch-track-toggle input:checked{border-color:var(--text);background:var(--text)}
+.watch-track-toggle input:checked::after{content:"";width:8px;height:4px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+.watch-track-toggle input:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.watch-map .leaflet-control-zoom{margin:12px}
+/* 목록 행 */
+.watch-list li+li,.watch-list li:first-child{border-top:1px solid var(--hairline,#e5e8eb)}
+.watch-list button{padding:16px 8px}
+.watch-list button:hover,.watch-list button:active{background:none}
+.watch-list button.selected{background:var(--soft,#f7f7f7)}
+.watch-list button::before{width:2px;background:var(--text)}
+.watch-list li:has(button.selected),.watch-list li:has(button.selected)+li{border-top-color:var(--hairline,#e5e8eb)}
+.watch-list button.hovered:not(.selected),.watch-list button:focus-visible:not(.selected){background:var(--soft,#f7f7f7);box-shadow:none}
+.watch-goods{font-size:var(--fs-md,15px);font-weight:400}
+.watch-ship{font-weight:400;letter-spacing:.02em}
+.watch-bl{letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.watch-chip{width:30px;height:30px;font-size:var(--fs-xs,12px);font-weight:400}
+.wm-selected{color:var(--text);font-weight:400}
+.cluster-panel{box-shadow:none;border:1px solid var(--border-strong,#cfcfcf)}
+.watch-tooltip{box-shadow:none;border:1px solid var(--border-strong,#cfcfcf)}
+.cluster-go{border-radius:0;width:30px;height:30px;border:1px solid var(--border-strong,#cfcfcf);background:transparent}
+.cluster-go:hover{background:var(--text);color:#fff;border-color:var(--text)}
+.watch-pin .pin-body{box-shadow:none;border-width:2px}

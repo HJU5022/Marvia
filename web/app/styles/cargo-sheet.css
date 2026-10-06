@@ -176,3 +176,48 @@
 }
 .cargo-label-row:has(.cargo-label-none){display:none}
 .cargo-editor-departed{flex-basis:100%;margin-left:0}
+
+/* =========================================================
+   엘레강스 v2 (10-07 정운): 표는 바깥 상자 없이 머리글 아래 가는 선과 행마다 가는 선. 단추는 얇은 네모, 숫자는 같은 폭
+   ========================================================= */
+.cs-title h1{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.cs-title p{font-size:var(--fs-sm,13px);letter-spacing:.02em}
+.cs-btn{min-height:36px;padding:0 20px;font-size:var(--fs-sm,13px);font-weight:400;letter-spacing:.06em}
+.cs-btn-fill,.cs-btn-outline{background:transparent;color:var(--text);border:1px solid var(--text)}
+.cs-btn-fill:hover:not(:disabled),.cs-btn-outline:hover:not(:disabled){background:var(--text);color:#fff}
+.cs-export{min-height:36px;padding:0 20px}
+.cs-demo-pill{background:none;border:1px solid var(--hairline,#e5e8eb);font-weight:400;letter-spacing:.04em}
+.cs-summary{gap:48px}
+.cs-summary dt{font-weight:400;letter-spacing:.06em;font-size:var(--fs-xs,12px)}
+.cs-summary dd{font-size:var(--fs-xl,22px);font-weight:300}
+@media (min-width:821px){
+  .cargo-sheet .cs-card.table-scroll{border:0;background:none}
+  .cargo-sheet th{background:none;color:var(--muted);font-weight:400;font-size:var(--fs-xs,12px);letter-spacing:.06em;border-bottom:1px solid var(--text);padding:12px 12px}
+  .cargo-sheet td,.cargo-sheet td[rowspan]{border-bottom:1px solid var(--hairline,#e5e8eb);font-variant-numeric:tabular-nums;font-size:var(--fs-sm,13px)}
+  .cargo-sheet td[rowspan]:not(:last-child){border-bottom:1px solid var(--hairline,#e5e8eb)}
+  .cargo-sheet td.cargo-lc-no,.cargo-sheet th.cs-th-lc+th.cs-th-lc{border-right:0}
+  .cargo-sheet tr.cargo-row:hover td:not([rowspan]){background:var(--soft,#f7f7f7)}
+  .cargo-sheet tr.cargo-done td:not(.cargo-lc){background:none}
+  .cargo-sheet tbody tr:last-child td{border-bottom:1px solid var(--hairline,#e5e8eb)}
+}
+.cargo-sheet td.cargo-lc{font-weight:400}
+.cargo-sheet td.cargo-item{padding:16px 12px}
+.cargo-bl{font-size:var(--fs-xs,12px);letter-spacing:.06em;color:var(--muted)}
+.cargo-label{font-weight:400;font-size:var(--fs-base,14px)}
+.cargo-vessel{font-weight:400;font-size:var(--fs-xs,12px)}
+.cargo-badge{background:none;border:1px solid var(--hairline,#e5e8eb);padding:1px 10px;font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.04em;color:var(--muted)}
+.cargo-sheet tr.cargo-done .cargo-label{font-weight:400}
+.cargo-empty{color:var(--border-strong,#cfcfcf)}
+/* 줄 끝 수정: 얇은 네모 단추 */
+.cargo-edit{min-width:32px;width:32px;min-height:32px;height:32px;border:1px solid var(--border-strong,#cfcfcf);border-radius:0;color:var(--text-2)}
+.cargo-edit:hover,.cargo-edit[aria-expanded="true"]{background:none;color:var(--text);border-color:var(--text);border:1px solid var(--text)}
+.cargo-edit svg{stroke-width:1.5}
+.cargo-sheet tr.cargo-editor-row td{background:var(--soft,#f7f7f7)}
+.cs-field label{font-weight:400;letter-spacing:.04em;color:var(--muted);font-size:var(--fs-xs,12px)}
+.cs-field input{min-height:40px}
+@media (max-width:820px){
+  .cargo-sheet tr.cargo-row{border:0;border-top:1px solid var(--hairline,#e5e8eb);background:none;margin-bottom:0;padding-bottom:4px}
+  .cargo-sheet tr.cargo-done{background:none}
+  .cargo-sheet tr.cargo-editor-row{border:0;background:var(--soft,#f7f7f7)}
+  .cargo-sheet td[data-label]::before{font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.04em}
+}

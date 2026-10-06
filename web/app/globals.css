@@ -1065,13 +1065,13 @@ dt,dd{font-size:var(--text-sm)}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:1px}
 
 /* 판정 배지: 신호등 색은 여기서만 (순항·주의·긴급). 긴급은 더 굵게. 크게 쓰려면 .lg */
-.verdict-badge{gap:6px;padding:6px 14px;border-radius:0;font-size:var(--text-base);font-weight:500}
-.verdict-badge.fine{background:var(--grade-fine-bg);color:var(--grade-fine)}
-.verdict-badge.watch{background:var(--grade-watch-bg);color:var(--grade-watch)}
-.verdict-badge.act{background:var(--grade-act-bg);color:var(--grade-act);font-weight:500}
-.verdict-badge.neutral{background:var(--neutral-bg);color:var(--muted)}
-.verdict-badge.lg{padding:8px 18px;border-radius:0;font-size:var(--text-lg)}
-.verdict-badge.lg.act{font-weight:500}
+.verdict-badge{gap:6px;padding:0;background:none;border-radius:0;font-size:var(--text-sm);font-weight:400;letter-spacing:.02em}
+.verdict-badge .vb-dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.verdict-badge.fine{background:none;color:var(--grade-fine)}.verdict-badge.fine .vb-dot{background:var(--grade-fine-solid)}
+.verdict-badge.watch{background:none;color:var(--grade-watch)}.verdict-badge.watch .vb-dot{background:var(--grade-watch-solid)}
+.verdict-badge.act{background:none;color:var(--grade-act)}.verdict-badge.act .vb-dot{background:var(--grade-act-solid)}
+.verdict-badge.neutral{background:none;color:var(--muted)}
+.verdict-badge.lg{padding:0;font-size:var(--text-base)}.verdict-badge.lg .vb-dot{width:9px;height:9px}
 
 /* 판정이 아닌 상태 표시는 신호등 색을 쓰지 않는다: 중립 회색, 눌러서 고르는 것만 파랑 */
 .status-chip,.status-chip.ok,.status-chip.partial,.status-chip.insufficient,.status-chip.unsupported,.status-chip.replay{background:var(--neutral-bg);color:var(--text-2)}

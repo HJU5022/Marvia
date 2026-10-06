@@ -228,3 +228,74 @@ body[data-map-big] .detail-scroll{overflow:hidden}
  .more-body .evidence-source,.more-body .evidence-field,.more-body .evidence-item>summary strong,.more-body .evidence-item>summary time{grid-column:1}
  .more-body .evidence-item .expand-icon{grid-column:2;grid-row:1/span 4}
 }
+
+/* =========================================================
+   엘레강스 v2 (10-07 정운): 지도 위 겹침 요소는 둥근 흰 상자 대신 네모, 얇은 선, 반투명 흰색, 그림자 없음.
+   결과 패널은 가벼운 글자 + 얇은 선. 참고: imweb Reservation 테마 (images/57, 63).
+   ========================================================= */
+/* 지도 위 겹침: 줌·내 위치·펼치기·ⓘ·안내 칩·저작자 표시·선박/항구 이름표가 같은 모양 */
+.map-tool{width:30px;height:30px;min-height:30px;background:#ffffffe6;color:var(--text-2);box-shadow:none;border:1px solid var(--border-strong,#cfcfcf)}
+.map-tool svg{stroke-width:1.5}
+.map-tool:hover,.map-zoom .map-tool:hover{background:#fff;color:var(--text);border-color:var(--text)}
+.map-tool:active{transform:none}
+.map-zoom{background:none;box-shadow:none;gap:0}
+.map-zoom .map-tool{background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf)}
+.map-zoom .map-tool+.map-tool{border-top:0}
+.map-chip{padding:3px 10px;background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf);box-shadow:none;font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.02em;color:var(--text-2)}
+.map-chips .info-tip:not(.as-badge)>summary{width:30px;height:30px;background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf);box-shadow:none;color:var(--text-2)}
+.map-chips .info-tip.as-badge>summary{padding:3px 10px;background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf);box-shadow:none;font-size:var(--fs-xs,12px);font-weight:400;color:var(--text-2)}
+.map-chips .info-tip>summary svg{stroke-width:1.5}
+.map-frame .leaflet-bottom.leaflet-left .leaflet-control-attribution,.leaflet-container .leaflet-control-attribution{background:#ffffffcc;border:0;box-shadow:none;border-radius:0;color:var(--muted);padding:1px 6px;font-size:11px!important}
+.map-frame .leaflet-control-attribution a{color:var(--muted)}
+.leaflet-tooltip.port-tooltip,.leaflet-tooltip.ship-tooltip{background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf);box-shadow:none;border-radius:0;padding:2px 8px;font-family:var(--font);font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.04em;color:var(--text)}
+.leaflet-tooltip.port-tooltip:before,.leaflet-tooltip.ship-tooltip:before{display:none}
+.leaflet-container .leaflet-control-zoom{border:0;margin:0}
+.leaflet-container .leaflet-control-zoom a{width:30px;height:30px;line-height:28px;background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf);border-radius:0;color:var(--text-2);box-shadow:none}
+.leaflet-container .leaflet-control-zoom a+a{border-top:0}
+.leaflet-container .leaflet-control-zoom a:hover{background:#fff;color:var(--text)}
+.port-marker span{width:22px;height:22px;font-size:12px;border-width:2px}
+.vessel-map-caption{background:#ffffffe6;border:1px solid var(--border-strong,#cfcfcf);box-shadow:none;padding:4px 10px}
+.map-caption{background:#ffffffe6;box-shadow:none}
+.map-place{font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.1em}
+
+/* 결과 머리줄: B/L 번호는 가볍고 자간을 둔다 */
+.result-head{padding:0 2px 16px}
+.result-id strong{font-size:var(--fs-xs,12px);font-weight:300;letter-spacing:.12em;color:var(--muted)}
+.last-updated{font-size:var(--fs-xs,12px);font-weight:300;letter-spacing:.04em}
+/* 판정 줄: 점 + 글자 */
+.verdict-dot{font-size:var(--fs-sm,13px);font-weight:400;letter-spacing:.02em}
+.verdict-dot i{width:7px;height:7px}
+.map-summary{padding-top:16px}
+.map-summary .watch-row .button{min-height:32px;padding:0 16px;font-size:var(--fs-sm,13px);font-weight:400;letter-spacing:.06em;border:1px solid var(--text);color:var(--text);background:transparent}
+.map-summary .watch-row .button:hover:not(:disabled){background:var(--text);color:#fff;border-color:var(--text)}
+/* 지금 할 일 + 여유 일수: 큰 소리로 외치지 않는다 */
+.verdict-todo p,.verdict-hero.act .verdict-todo p{font-weight:400;font-size:var(--fs-md,15px)}
+.verdict-label{font-weight:400;letter-spacing:.08em}
+.slack-value{font-size:var(--fs-lg,18px);font-weight:300;letter-spacing:.01em}
+.verdict-slack small{letter-spacing:.02em}
+/* 일정·통관: 글자만, 숫자는 같은 폭 */
+.sch-node strong,.sch-node em,.cargo-parties dd{font-variant-numeric:tabular-nums}
+.sch-node strong{font-weight:400}
+.sch-node small{letter-spacing:.06em}
+.customs-head h2{font-weight:400;letter-spacing:.08em}
+.current-stage h3{font-weight:400;font-size:var(--fs-md,15px)}
+.customs-section .cargo-parties dd{font-weight:400}
+.customs-section .cargo-parties dt{letter-spacing:.04em}
+/* 상세 정보 접힘 줄: 조용하지만 눌러 볼 수 있게. 흰 바탕, 글자 + 얇은 네모 단추 */
+.more-fold>summary{padding:16px 2px}
+.more-fold>summary:hover{background:none}
+.more-fold>summary:active{background:none}
+.more-fold>summary strong{font-size:var(--fs-md,15px);font-weight:400;letter-spacing:.04em}
+.more-count{letter-spacing:.04em}
+.more-action{padding:5px 8px 5px 14px;border-color:var(--border-strong,#cfcfcf);font-weight:400;letter-spacing:.06em;color:var(--text)}
+.more-fold>summary:hover .more-action{border-color:var(--text);background:none}
+.more-chevron svg,.more-chevron{stroke-width:1.5}
+.more-names{letter-spacing:.02em}
+/* 근거 목록: 가는 줄로만 나눈 행 */
+.more-body .evidence-item{border-top:1px solid var(--hairline,#e5e8eb)}
+.more-body .evidence-item>summary:hover{background:none}
+.more-body .evidence-item>summary strong{font-weight:400}
+.more-body .evidence-source{letter-spacing:.04em}
+.fold-sub{font-size:var(--fs-base,14px);font-weight:400;letter-spacing:.06em}
+.more-body .eta-row.adopted strong{font-weight:500}
+.eta-row.adopted strong{color:var(--text)}
