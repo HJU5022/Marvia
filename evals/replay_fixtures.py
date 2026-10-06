@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -67,19 +68,38 @@ def write_replay_files(record: dict, out_dir: Path) -> None:
     _write_unipass(record["request"]["bl_no"], fixtures.get("unipass") or {}, out_dir)
     _write_shipfinder(fixtures.get("shipfinder") or {}, out_dir)
     _write_mof(fixtures.get("mof") or {}, out_dir)
+    _write_positions(fixtures, out_dir)
+
+
+def _write_positions(fixtures: dict, out_dir: Path) -> None:
+    """워커 위치 이력(worker_positions)을 positions/<MMSI>.json으로 쓴다 (10-06 추가, 라이브 데모).
+
+    서버는 재생 모드에서 이 파일을 DB 이력 대신 읽어 anchor_wait의 정지 시간을 잰다 (clients/replay.position_history).
+    worker_positions는 두 모양이다. 리스트면 shipfinder.position의 배 한 척 것(평가셋 모양), 딕셔너리면 {MMSI: 리스트}(배 여러 척, 라이브 데모).
+    이력이 비어 있으면 파일을 만들지 않는다. 파일이 없는 배는 서버가 DB 길로 가서 지금까지와 같다."""
+    history = fixtures.get("worker_positions") or []
+    if isinstance(history, list):
+        mmsi = ((fixtures.get("shipfinder") or {}).get("position") or {}).get("mmsi")
+        history = {str(mmsi): history} if mmsi and history else {}
+    for mmsi, rows in history.items():
+        if rows:
+            _write(out_dir / "positions" / f"{mmsi}.json", json.dumps(rows, ensure_ascii=False))
 
 
 # ── UNI-PASS ────────────────────────────────────────────────
 
 def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
     """요약값을 UNI-PASS XML로. tCnt 0(없는 B/L)이면 파일을 만들지 않는다.
-    파일이 없으면 replay가 "없는 B/L"로 답한다 (replay.py _UNIPASS_NOT_FOUND)."""
+    파일이 없으면 replay가 "없는 B/L"로 답한다 (replay.py _UNIPASS_NOT_FOUND).
+
+    10-06 추가 (라이브 데모 10건, evals/fixtures/demo_live.jsonl): 요약 칸 말고도 실제 API001 응답처럼 상단 칸(UNIPASS_EXTRA)과
+    컨테이너 번호(cntrNo 리스트), 처리 이력 줄(history 리스트, 최신이 위)을 쓸 수 있다. 평가셋 문항에는 이 칸들이 없어 재생 파일이 전과 같다."""
     if not u or u.get("tCnt") == 0:
         return
     stage = (u.get("prgsStts") or "").replace(SUMMARY_MARK, "").strip()
     fields = {
         # 이력 줄이 없으면 서버는 csclPrgsStts를 단계 이름으로 쓴다 (services/customs.py FIELD_CANDIDATES)
-        "csclPrgsStts": stage,
+        "csclPrgsStts": u.get("csclPrgsStts") or stage,
         "prgsStts": stage,
         "cargMtNo": u.get("cargMtNo"),
         "shipNm": u.get("shipNm"),
@@ -94,12 +114,28 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
         "ldprNm": u.get("ldprNm"),
     }
     body = "".join(f"<{tag}>{escape(str(value))}</{tag}>" for tag, value in fields.items() if value)
+    # 라이브 데모 칸. 값이 ""여도 태그는 쓴다(실제 응답도 빈 칸을 빈 태그로 준다. 예: 포워더가 비어 오는 화물)
+    body += "".join(f"<{tag}>{escape(str(u[tag]))}</{tag}>" for tag in UNIPASS_EXTRA if u.get(tag) is not None)
+    body += "".join(f"<cntrNo>{escape(no)}</cntrNo>" for no in u.get("cntrNo") or [])  # 컨테이너 여러 개면 태그가 여러 개 (customs._join_all)
+    rows = "".join(_history_row(r) for r in u.get("history") or [])
     xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         f"<cargCsclPrgsInfoQryRtnVo><ntceInfo></ntceInfo><cargCsclPrgsInfoQryVo>{body}</cargCsclPrgsInfoQryVo>"
-        "<tCnt>1</tCnt></cargCsclPrgsInfoQryRtnVo>"
+        f"<tCnt>{len(u.get('history') or []) or 1}</tCnt>{rows}</cargCsclPrgsInfoQryRtnVo>"
     )
     _write(out_dir / "unipass" / f"{file_key(bl_no)}.xml", xml)
+
+
+# 라이브 데모가 쓰는 API001 상단 칸 (연계가이드 v4.1, evals/fixtures/unipass/progress_ok.xml 순서). 서버는 이 중 일부만 읽고 나머지는 실제 응답 모양을 맞추려고 둔다
+UNIPASS_EXTRA = ("prgsStCd", "mblNo", "hblNo", "shipNatNm", "vydf", "etprCstm", "lodCntyCd", "dsprNm", "prnm", "ttwg", "wghtUt",
+                 "cargTp", "rlseDtyPridPassTpcd", "dclrDelyAdtxYn", "cntrGcnt", "shcoFlcoSgn", "shcoFlco", "frwrSgn", "frwrEntsConm")
+# 이력 한 줄의 13칸 (services/customs.py DETAIL_FIELDS와 같은 이름). 실제 응답처럼 빈 칸도 빈 태그로 쓴다
+HISTORY_TAGS = ("cargTrcnRelaBsopTpcd", "prcsDttm", "dclrNo", "rlbrDttm", "rlbrBssNo", "rlbrCn", "bfhnGdncCn", "shedNm", "shedSgn",
+                "pckGcnt", "pckUt", "wght", "wghtUt")
+
+
+def _history_row(row: dict) -> str:
+    return "<cargCsclPrgsInfoDtlQryVo>" + "".join(f"<{t}>{escape(str(row.get(t) or ''))}</{t}>" for t in HISTORY_TAGS) + "</cargCsclPrgsInfoDtlQryVo>"
 
 
 # ── ShipFinder ──────────────────────────────────────────────
@@ -157,11 +193,21 @@ def _write_mof(m: dict, out_dir: Path) -> None:
     for api, items in (("VsslEtrynd5", plans), ("CntlVssl2", calls)):
         for call_sign, item in items.items():
             _write(out_dir / "mof" / api / f"{file_key(call_sign)}.xml", _mof_xml([item]))
-        _write(out_dir / "mof" / api / "_ALL.xml", _mof_xml(list(items.values())))
+        _write_all(out_dir / "mof" / api / "_ALL.xml", list(items.values()))
     # 해수부 오류 응답은 evals/fixtures/mof/invalid_parameter.xml 견본을 그대로 쓴다 (resultCode가 00이 아니면
     # clients/mof.py가 MofError를 낸다). _ALL.xml에는 넣지 않는다: 그 호출부호로 부를 때만 실패한다
     for call_sign in m.get("sailing_plan_errors") or []:
         _write(out_dir / "mof" / "VsslEtrynd5" / f"{file_key(call_sign)}.xml", MOF_ERROR_SAMPLE.read_text(encoding="utf-8"))
+
+
+def _write_all(path: Path, items: list[str]) -> None:
+    """호출부호 없이 부를 때 읽는 전체 목록(_ALL.xml)을 쓴다. 이미 있으면 그 안의 item 뒤에 이어 붙인다 (10-06).
+
+    전에는 문항마다 덮어써서 마지막에 쓴 문항 것만 남았다 (scripts/make_demo.py 머리 주석 "N01이 마지막이어야"). 한 폴더에
+    여러 문항을 쓰는 서버 데모(13건)에서는 MRN으로 훑는 조회(identify_mrn)가 앞에 쓴 문항의 배를 못 찾았다.
+    같은 item 글자는 한 번만 넣는다. 평가 실행기는 문항마다 새 폴더라 이어 붙일 것이 없어 결과가 전과 같다."""
+    old = re.findall(r"<item>.*?</item>", path.read_text(encoding="utf-8"), re.S) if path.is_file() else []
+    _write(path, _mof_xml(old + [i for i in items if i not in old]))
 
 
 def _group(rows: list[dict], item_keys: tuple[str, ...], detail) -> dict[str, str]:

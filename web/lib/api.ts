@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -41,13 +41,26 @@ const DOCUMENT_TIMEOUT_MS = 60_000;
 /** routers/document.py MAX_BYTES와 같다. 보내기 전에 막아 큰 파일을 올리느라 기다리지 않게 한다 */
 export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 
-/** 실제 모드의 예시 B/L. 백엔드 REPLAY_MODE 데모 3건과 같다 (README "키 없이 데모 3건", scripts/make_demo.py).
- * 판매 예정일은 make_demo를 돌린 날에 따라 달라지므로 넣지 않는다. 비워도 조회된다(09-29 선택 입력).
+/** 실제 모드의 예시 B/L. 백엔드 REPLAY_MODE 데모와 같다 (scripts/make_demo.py). 앞 10건은 라이브 시연용 모의 화물
+ * (scripts/demo_live.py, 10-06 정운 결정), 뒤 3건은 평가셋 데모 3건이다 (README "키 없이 데모").
+ * sale_in_days: 판매 예정일을 "오늘(한국) + N일"로 채운다 (10-06). 서버 데모는 해수부 입항 예정을 "오늘 + 일"로 못 박아 만들어서
+ * (scripts/demo_live.py finalize) 이 날짜를 넣으면 표의 등급과 여유 일수가 나온다. 값은 evals/fixtures/demo_live.jsonl의
+ * demo_sale_in_days와 같아야 하고 backend/tests/test_demo_live.py가 맞는지 본다. 없는 예시는 비운다(09-29 선택 입력, 비워도 같은 등급).
  */
 export const liveExamples = [
-  {id: 'TESTBL01', label: '정상 · 괜찮음', bl_no: 'TESTBL01', bl_type: 'HOUSE' as const},
-  {id: 'TESTBL04', label: '같은 이름 배 2척 · 되묻기', bl_no: 'TESTBL04', bl_type: 'HOUSE' as const},
-  {id: 'TESTBL26', label: '위치 권한 없음 · 판정 보류', bl_no: 'TESTBL26', bl_type: 'HOUSE' as const},
+  {id: 'DEMOQD2610001', label: '순항 · 황해 항해 중', bl_no: 'DEMOQD2610001', bl_type: 'HOUSE' as const, sale_in_days: 10},
+  {id: 'DEMOSH2610002', label: '주의 · AIS ETA와 입항 예정 어긋남', bl_no: 'DEMOSH2610002', bl_type: 'HOUSE' as const, sale_in_days: 8},
+  {id: 'DEMONB2610003', label: '긴급 · 도착이 판매 예정일보다 늦음', bl_no: 'DEMONB2610003', bl_type: 'HOUSE' as const, sale_in_days: 2},
+  {id: 'DEMOHC2610004', label: '긴급 · 세관 검사 지정', bl_no: 'DEMOHC2610004', bl_type: 'HOUSE' as const},
+  {id: 'DEMOTJ2610005', label: '긴급 · 부산 앞 30시간 대기', bl_no: 'DEMOTJ2610005', bl_type: 'HOUSE' as const},
+  {id: 'DEMODL2610006', label: '주의 · 위치 수신 10시간 전', bl_no: 'DEMODL2610006', bl_type: 'HOUSE' as const, sale_in_days: 9},
+  {id: 'DEMOKH2610007', label: '주의 · AIS 목적지 모지', bl_no: 'DEMOKH2610007', bl_type: 'HOUSE' as const, sale_in_days: 10},
+  {id: 'DEMOHP2610008', label: '되묻기 · 같은 이름 배 2척', bl_no: 'DEMOHP2610008', bl_type: 'HOUSE' as const, sale_in_days: 7},
+  {id: 'DEMOSH2610009', label: '순항 · 수입신고 수리', bl_no: 'DEMOSH2610009', bl_type: 'HOUSE' as const},
+  {id: 'DEMOQD2610010', label: '반출 완료 · 순항', bl_no: 'DEMOQD2610010', bl_type: 'HOUSE' as const},
+  {id: 'TESTBL01', label: '정상 · 순항 (평가셋)', bl_no: 'TESTBL01', bl_type: 'HOUSE' as const},
+  {id: 'TESTBL04', label: '같은 이름 배 2척 · 되묻기 (평가셋)', bl_no: 'TESTBL04', bl_type: 'HOUSE' as const},
+  {id: 'TESTBL26', label: '위치 권한 없음 · 판정 보류 (평가셋)', bl_no: 'TESTBL26', bl_type: 'HOUSE' as const},
 ];
 
 /* ---------- 세션 ID ---------- */
@@ -310,10 +323,10 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
 
 /** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다).
  * history는 지금 질문보다 앞선 대화다. 데모 모드는 저장된 예시만 돌려주므로 쓰지 않는다 */
-export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
+export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
-    body: chatBody(message, context, history)}, AGENT_TIMEOUT_MS);
+    body: chatBody(message, context, history, document)}, AGENT_TIMEOUT_MS);
   return res.json();
 }
 
@@ -335,10 +348,10 @@ function clip(text: string): string {
 
 /** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다.
  * history는 오래된 것부터 두고, role과 text만 남긴다(화면용 kind는 보내지 않는다). B/L 번호는 서버가 가린다 */
-function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = []): string {
+function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): string {
   const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
   const turns = history.slice(-HISTORY_MAX_TURNS).map(t => ({role: t.role, text: clip(t.text)}));
-  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns});
+  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns, document});
 }
 
 /** 스트림 통로를 못 쓰는 경우의 표시. 서버가 요청을 받지 않은 것이 확실할 때만 쓴다 (chat-progress.md EC-05) */
@@ -349,18 +362,18 @@ class StreamUnavailable extends Error {}
  * - 응답을 받기 시작한 뒤 끊기면 다시 보내지 않는다. 서버는 이미 유료 호출을 하고 있을 수 있다 (EC-06)
  * - 데모 모드는 서버가 없어 단계 소식도 없다. 단계를 지어내지 않는다 (EC-07) */
 export async function sendChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   try {
-    return await liveChatStream(message, context, onStage, history);
+    return await liveChatStream(message, context, onStage, history, document);
   } catch (e) {
-    if (e instanceof StreamUnavailable) return sendChat(message, context, history);
+    if (e instanceof StreamUnavailable) return sendChat(message, context, history, document);
     throw e;
   }
 }
 
 async function liveChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = []): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
   const controller = new AbortController();
   // 전체 시간 제한은 /api/chat과 같다. 판정 LLM 재시도까지 기다린다
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
@@ -371,7 +384,7 @@ async function liveChatStream(message: string, context: AgentRequest | null,
       const token = await accessToken();
       const headers = new Headers({'content-type': 'application/json', accept: 'text/event-stream'});
       if (token) headers.set('authorization', `Bearer ${token}`);
-      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history), signal: controller.signal});
+      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history, document), signal: controller.signal});
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
       if (e instanceof TypeError) throw new StreamUnavailable();  // 응답이 없었다. /api/chat이 재시도까지 맡는다
@@ -745,14 +758,21 @@ export function getGeography() { return geography; }
 export interface WatchItem {
   bl_masked: string; label: string | null; ship_name: string; status: 'active' | 'done';
   verdict: 'fine' | 'watch' | 'act' | null; stage: string | null; eta: string | null; days_margin: number | null;
-  lat: number; lng: number; cog: number | null; sog: number | null; position_at: string;
-  /** 6시간마다 저장한 위치 이력, 오래된 순. 마지막 점이 현재 위치(lat·lng)와 같다 */
+  /** 위치는 수집 전이면 null이다 (GET /api/watch, 10-06). 지도는 위치 있는 화물만 그린다 */
+  lat: number | null; lng: number | null; cog: number | null; sog: number | null; position_at: string | null;
+  /** 6시간마다(또는 조회할 때마다) 저장한 위치 이력, 오래된 순. 마지막 점이 현재 위치(lat·lng)와 같다 */
   track?: {lat: number; lng: number; at: string; sog: number | null}[];
+  /** 서버 목록에만 있는 칸 (10-06): 화물 지문, UNI-PASS 품명, 배 국적 */
+  cargo_key?: string; goods_name?: string | null; ship_flag?: string | null;
 }
 export interface WatchList { items: WatchItem[]; updated_at: string | null; sample: boolean }
-/** 내 감시 화물 목록. 위치 수집이 아직 꺼져 있어(ShipFinder 호출 한도, 10-02) 지금은 실제·데모 모두 예시 데이터를 돌려준다.
- * 서버 통로(GET /api/watch)가 생기면 isLive일 때 그쪽을 부르고 sample을 false로 바꾼다 */
+/** 내 감시 화물 목록. 서버(isLive)면 GET /api/watch (10-06), 데모 모드면 가공 예시를 돌려준다(sample).
+ * 서버는 선명을 모르면 null을 주므로 화면 글자가 비지 않게 가린 B/L로 채운다 */
 export async function getWatchList(): Promise<WatchList> {
-  const data = structuredClone(watchMap) as {items: WatchItem[]; updated_at: string};
-  return {items: data.items, updated_at: data.updated_at, sample: true};
+  if (!isLive) {
+    const data = structuredClone(watchMap) as {items: WatchItem[]; updated_at: string};
+    return {items: data.items, updated_at: data.updated_at, sample: true};
+  }
+  const data = (await (await call('/api/watch', {}, HISTORY_TIMEOUT_MS)).json()) as WatchList & {items: (WatchItem & {ship_name: string | null})[]};
+  return {...data, items: data.items.map(i => ({...i, ship_name: i.ship_name ?? i.bl_masked}))};
 }
