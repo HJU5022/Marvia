@@ -33,6 +33,7 @@ import httpx
 
 from backend.app.clients.replay import replay_enabled, unipass_transport
 from backend.app.clients.retry import with_retry
+from backend.app.observability.langfuse import tool_span
 from backend.app.schemas.customs import CustomsDetailRow, CustomsRecord, CustomsStage, mask_bl
 
 BASE_URL = "https://unipass.customs.go.kr:38010/ext/rest/cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo"
@@ -163,15 +164,26 @@ class UnipassClient:
             resp.raise_for_status()
             return resp
 
-        try:
-            # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
-            root = ElementTree.fromstring(with_retry(call, name="unipass:cargCsclPrgsInfo").text)
-        except httpx.TimeoutException as e:
-            raise CustomsError("timeout", "UNI-PASS 응답 시간 초과") from e
-        except httpx.HTTPError as e:
-            raise CustomsError("error", f"UNI-PASS 호출 실패: {type(e).__name__}") from e
-        except ElementTree.ParseError as e:
-            raise CustomsError("error", "UNI-PASS 응답이 XML이 아닙니다") from e
+        # UNI-PASS 구간을 Langfuse에 남긴다 (10-07). 15초 x 3회까지 갈 수 있는 판정 요청의 가장 큰 외부 대기다.
+        # input은 가린 B/L뿐이고, metadata에 시도 횟수(retries = 시도 - 1)와 결과를 적는다
+        stats: dict = {}
+        with tool_span("unipass:fetch", {"bl": mask_bl(number), "bl_type": bl_type.upper()}) as span:
+            try:
+                # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
+                root = ElementTree.fromstring(with_retry(call, name="unipass:cargCsclPrgsInfo", stats=stats).text)
+            except httpx.TimeoutException as e:
+                span.error = "timeout"
+                raise CustomsError("timeout", "UNI-PASS 응답 시간 초과") from e
+            except httpx.HTTPError as e:
+                span.error = f"error {type(e).__name__}"
+                raise CustomsError("error", f"UNI-PASS 호출 실패: {type(e).__name__}") from e
+            except ElementTree.ParseError as e:
+                span.error = "error parse"
+                raise CustomsError("error", "UNI-PASS 응답이 XML이 아닙니다") from e
+            finally:
+                span.metadata["attempts"] = stats.get("attempts", 0)
+                span.metadata["retries"] = max(stats.get("attempts", 1) - 1, 0)
+            span.metadata["found"] = root.findtext("tCnt") not in (None, "0", "-1")
 
         count = root.findtext("tCnt")
         notice = (root.findtext("ntceInfo") or "").strip()

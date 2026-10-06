@@ -18,7 +18,9 @@ LLM 호출과 MCP 도구 호출 트레이스도 여기서 남긴다 (SDD 5.11). 
 from __future__ import annotations
 
 import os
+import time
 from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -116,10 +118,19 @@ def start_generation(name: str, input: Any, prompt: Any = None) -> Any:
     return _start_observation(name, "generation", input, **extra)
 
 
-def _start_observation(name: str, as_type: str, input: Any, **extra: Any) -> Any:
-    """generation·tool 기록을 여는 공통 부분. 요청 ID로 trace_id를 만들어 같은 요청의 기록을 한 트레이스로 묶는다.
+# 지금 요청의 루트 span (request_span이 채운다). 관측을 새로 열 때 이것을 부모로 삼는다 (10-07).
+# ContextVar라 라우터가 부른 스레드풀·chat_stream의 복사 문맥으로도 따라간다. 요청 밖(스크립트·워커)은 None
+_root_var: ContextVar[Any] = ContextVar("langfuse_root_span", default=None)
 
-    start_generation()과 start_tool()이 같이 쓴다. 키가 없거나 실패하면 None (트레이스만 빠진다).
+
+def _start_observation(name: str, as_type: str, input: Any, **extra: Any) -> Any:
+    """generation·tool·span 기록을 여는 공통 부분. 같은 요청의 기록을 한 트레이스로 묶는다.
+
+    start_generation()·start_tool()·request_span()이 같이 쓴다. 키가 없거나 실패하면 None (트레이스만 빠진다).
+    부모를 정하는 순서 (10-07):
+      1. 요청 루트 span이 열려 있으면 그 트레이스에 그 span의 자식으로 붙인다
+      2. 없고 요청 ID가 있으면 요청 ID를 씨앗으로 한 trace_id (루트 없이 같은 트레이스로만 묶인다. 옛 동작)
+      3. 둘 다 없으면 SDK의 현재 문맥을 따른다. 평가 실행기에서는 SDK가 만든 experiment-item-run 아래로 간다
     """
     if not _keys_set():
         return None
@@ -128,14 +139,91 @@ def _start_observation(name: str, as_type: str, input: Any, **extra: Any) -> Any
 
         client = get_client()
         request_id = current_request_id()
-        trace_context = {"trace_id": client.create_trace_id(seed=request_id)} if request_id else None
+        root = _root_var.get()
+        if root is not None:
+            trace_context = {"trace_id": root.trace_id, "parent_span_id": root.id}
+        else:
+            trace_context = {"trace_id": client.create_trace_id(seed=request_id)} if request_id else None
+        metadata = {"request_id": request_id or None, **(extra.pop("metadata", None) or {})}
         return client.start_observation(
             name=name, as_type=as_type, input=input,
-            trace_context=trace_context, metadata={"request_id": request_id or None}, **extra,
+            trace_context=trace_context, metadata=metadata, **extra,
         )
     except Exception as e:  # 미설치·설정 오류 모두 같은 처리: 트레이스 없이 진행
         log_failure("langfuse_trace_start", f"{type(e).__name__} no_trace")
         return None
+
+
+class _SpanHandle:
+    """request_span·tool_span이 with 안에 넘겨 주는 칸. 안에서 status, 결과, 오류를 적으면 끝날 때 span에 실린다."""
+
+    def __init__(self) -> None:
+        self.metadata: dict[str, Any] = {}
+        self.output: Any = None
+        self.error: str | None = None
+        self.status: int = 200
+
+
+@contextmanager
+def request_span(path: str, method: str = "POST"):
+    """요청 하나 전체를 span 하나로 감싼다 (10-07, 작업 메모 "요청 루트 span").
+
+    이 안에서 여는 generation·tool·외부 호출 span은 전부 이 span의 자식이라 Langfuse 타임라인에서
+    관측 사이 빈 시간이 루트 막대 안의 틈으로 보인다. 이름은 "request:<경로>".
+    metadata: request_id, method, path, status, latency_ms. input·output은 비운다 (B/L·개인정보를 올리지 않는다, SDD 3.5).
+    with 안에서 예외가 나가면 status를 HTTPException이면 그 코드, 아니면 500으로 적고 예외는 그대로 올린다.
+    스트리밍은 응답을 돌려준 뒤에도 처리가 이어지므로 라우터가 처리 스레드 안에서 이걸 쓴다 (chat_stream의 work).
+    키가 없거나 Langfuse가 실패하면 span 없이 그대로 지나간다. 요청은 막히지 않는다.
+    """
+    handle = _SpanHandle()
+    started = time.perf_counter()
+    span = _start_observation(f"request:{path}", "span", None)
+    token = _root_var.set(span) if span is not None else None
+    try:
+        yield handle
+    except BaseException as e:
+        handle.status = getattr(e, "status_code", None) or 500
+        handle.error = handle.error or type(e).__name__
+        raise
+    finally:
+        if token is not None:
+            _root_var.reset(token)
+        if span is not None:
+            try:
+                fields: dict[str, Any] = {"metadata": {
+                    "request_id": current_request_id() or None, "method": method, "path": path,
+                    "status": handle.status, "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+                    **handle.metadata,
+                }}
+                if handle.status >= 500:
+                    fields["level"] = "ERROR"
+                    fields["status_message"] = handle.error or f"status {handle.status}"
+                span.update(**fields)
+                span.end()
+            except Exception as e:
+                log_failure("langfuse_trace_end", type(e).__name__)
+
+
+@contextmanager
+def tool_span(name: str, input: Any = None):
+    """외부 호출(UNI-PASS·해수부·OCR) 한 구간을 tool 관측 하나로 남긴다 (10-07). mcp_client.call_tool과 같은 방식.
+
+    with 안에서 handle.metadata에 재시도 횟수·건수 같은 것을, handle.error에 오류 코드를 적는다.
+    예외가 나가면 error에 예외 종류를 적고(이미 적었으면 그대로) 예외는 그대로 올린다. latency_ms는 자동으로 붙는다.
+    input에는 가린 값만 넣는다 (B/L은 mask_bl, SDD 3.5). 키가 없으면 start_tool이 None이라 아무것도 안 한다.
+    """
+    handle = _SpanHandle()
+    started = time.perf_counter()
+    tool = start_tool(name, input)
+    try:
+        yield handle
+    except BaseException as e:
+        handle.error = handle.error or type(e).__name__
+        raise
+    finally:
+        if tool is not None:
+            handle.metadata["latency_ms"] = round((time.perf_counter() - started) * 1000, 1)
+            end_tool(tool, handle.output, handle.metadata, error=handle.error)
 
 
 def start_tool(name: str, input: Any) -> Any:

@@ -29,7 +29,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.app.auth import current_user_id
-from backend.app.observability.langfuse import session_scope
+from backend.app.observability.langfuse import request_span, session_scope
 from backend.app.clients.kakao import KakaoError
 from backend.app.observability.logging import log_failure
 from backend.app.routers.agent import _follow_up_tool, quota_guard, run_agent
@@ -285,20 +285,21 @@ def _save_conversation(body: ChatRequest, user_id: str | None, response: ChatRes
 @router.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_id)] = None) -> ChatResponse:
     """문장 하나를 받아 화물 조회·후속 질문·입항 선박 검색·안내 중 하나로 답한다."""
-    quota_guard(body.session_id, user_id)  # 하루 토큰 한도 (docs/specs/token-quota.md)
-    context = _context(body)
-    with session_scope(body.session_id, user_id):
-        try:
-            result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id), user_id,
-                                history=_history(body), run_tool=_follow_up_tool,
-                                watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
-        except svc.ChatError as e:
-            raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
-        response = ChatResponse(**result.__dict__)
-        # session_scope 안에서 맡긴다. 뒤에서 도는 제목 LLM이 이 문맥(사용량 주인·Langfuse user_id)을 복사해 가야
-        # 하루 토큰 한도에 잡힌다. 밖에서 부르면 주인이 이미 비어 토큰이 버려진다 (10-06 점검)
-        _save_conversation(body, user_id, response)
-    return response
+    with request_span("/api/chat"):  # 요청 전체를 루트 span 하나로 (10-07). 안의 관측이 전부 자식이 된다
+        quota_guard(body.session_id, user_id)  # 하루 토큰 한도 (docs/specs/token-quota.md)
+        context = _context(body)
+        with session_scope(body.session_id, user_id):
+            try:
+                result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id), user_id,
+                                    history=_history(body), run_tool=_follow_up_tool,
+                                    watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
+            except svc.ChatError as e:
+                raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
+            response = ChatResponse(**result.__dict__)
+            # session_scope 안에서 맡긴다. 뒤에서 도는 제목 LLM이 이 문맥(사용량 주인·Langfuse user_id)을 복사해 가야
+            # 하루 토큰 한도에 잡힌다. 밖에서 부르면 주인이 이미 비어 토큰이 버려진다 (10-06 점검)
+            _save_conversation(body, user_id, response)
+        return response
 
 
 def _sse(event: str, data: dict) -> str:
@@ -322,23 +323,29 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
     events: queue.Queue[tuple[str, dict] | None] = queue.Queue()
 
     def work() -> None:
+        # 루트 span은 이 처리 스레드 안에서 열고 닫는다 (10-07). 스트림 제너레이터는 클라이언트가 끊으면 중간에 닫혀 span이 안 끝날 수 있고,
+        # 처리는 끊겨도 끝까지 도므로 처리가 끝나는 이 자리가 span이 끝나는 자리다. 오류 이벤트로 알린 상태는 span status에 적는다
         try:
-            with progress.listening(lambda stage: events.put(("progress", {"stage": stage}))):
-                with session_scope(body.session_id, user_id):
-                    result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id),
-                                        user_id, history=_history(body), run_tool=_follow_up_tool,
-                                        watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
-                    response = ChatResponse(**result.__dict__)
-                    # 맡기기만 한다. 저장·제목은 뒤에서 돈다. session_scope 안이라 제목 LLM 토큰도 이 사용자 몫으로 쌓인다 (10-06 점검)
-                    _save_conversation(body, user_id, response)
-            events.put(("result", response.model_dump(mode="json")))
-        except svc.ChatError:
-            events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))
-        except Exception as e:  # noqa: BLE001 - 응답이 이미 열려 있어 HTTP 500을 줄 수 없다. 오류 이벤트로 알린다
-            log_failure("chat_stream", type(e).__name__)  # 예외 메시지는 남기지 않는다 (B/L·주소가 섞일 수 있다, SDD 3.5)
-            events.put(("error", {"status": 500, "detail": STREAM_FAILED}))
+            with request_span("/api/chat/stream") as root:
+                try:
+                    with progress.listening(lambda stage: events.put(("progress", {"stage": stage}))):
+                        with session_scope(body.session_id, user_id):
+                            result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id),
+                                                user_id, history=_history(body), run_tool=_follow_up_tool,
+                                                watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
+                            response = ChatResponse(**result.__dict__)
+                            # 맡기기만 한다. 저장·제목은 뒤에서 돈다. session_scope 안이라 제목 LLM 토큰도 이 사용자 몫으로 쌓인다 (10-06 점검)
+                            _save_conversation(body, user_id, response)
+                    events.put(("result", response.model_dump(mode="json")))
+                except svc.ChatError:
+                    root.status = 400
+                    events.put(("error", {"status": 400, "detail": BAD_MESSAGE}))
+                except Exception as e:  # noqa: BLE001 - 응답이 이미 열려 있어 HTTP 500을 줄 수 없다. 오류 이벤트로 알린다
+                    log_failure("chat_stream", type(e).__name__)  # 예외 메시지는 남기지 않는다 (B/L·주소가 섞일 수 있다, SDD 3.5)
+                    root.status, root.error = 500, type(e).__name__
+                    events.put(("error", {"status": 500, "detail": STREAM_FAILED}))
         finally:
-            events.put(None)
+            events.put(None)  # 스트림 끝 표시는 루트 span이 닫힌 뒤에 보낸다. 응답이 끝난 시점에 span도 이미 끝나 있다
 
     threading.Thread(target=contextvars.copy_context().run, args=(work,), daemon=True).start()
 

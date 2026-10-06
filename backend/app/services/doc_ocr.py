@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import datetime
+import functools
 import logging
 import re
 import threading
@@ -22,6 +23,7 @@ from io import BytesIO
 import numpy as np
 from PIL import Image
 
+from backend.app.observability.langfuse import tool_span
 from backend.app.schemas.agent import _BL_PATTERN  # B/L 형식은 계약 C2 한 곳에만 둔다 (SDD 3.1)
 from backend.app.services import guard  # 지시문 줄 판별 (_only_in_instruction, 10-01)
 # 전화·이메일 모양, 역할 목록, 회사 이름 상한은 메모장 검사와 한 곳 (docs/specs/memory.md). 메모장 모듈 전체는 불러오지 않는다
@@ -85,6 +87,7 @@ class OcrResult:
     rotation: int      # 고른 방향 (0, 180, 270)
     runs: int          # OCR을 몇 번 돌렸나. 보통 1, 누운·뒤집힌 사진은 3
     ocr_ms: int
+    pages: int = 1     # 읽은 쪽 수. 사진은 1, PDF는 읽은 쪽 (Langfuse ocr:read span의 metadata용, 10-07)
 
 
 def _get_engine():
@@ -118,6 +121,25 @@ def remove_red(img: Image.Image) -> Image.Image:
     return Image.fromarray(a.astype(np.uint8))
 
 
+def _ocr_span(kind: str):
+    """read_lines·read_pdf를 Langfuse tool 관측 "ocr:read" 하나로 감싼다 (10-07, 작업 메모 3번 구간).
+
+    CPU를 1~2초 쓰고 첫 호출은 모델 로딩이 붙는 구간이라 따로 보이게 한다. ocr_ms는 응답에만 있었다.
+    input·output에는 서류 글자를 넣지 않는다 (B/L·개인정보). 종류와 크기, 건수만 남긴다. 키가 없으면 아무것도 안 한다.
+    """
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(data: bytes, *args, **kwargs) -> OcrResult:
+            with tool_span("ocr:read", {"kind": kind, "bytes": len(data)}) as span:
+                result = fn(data, *args, **kwargs)
+                span.metadata.update({"kind": kind, "pages": result.pages, "runs": result.runs,
+                                      "ocr_ms": result.ocr_ms, "lines": len(result.lines)})
+                return result
+        return inner
+    return wrap
+
+
+@_ocr_span("image")
 def read_lines(image_bytes: bytes, engine=None) -> OcrResult:
     """사진 바이트를 OCR 글자 줄로 바꾼다. 0°를 먼저 읽고, 확신이 낮으면 180°·270°도 읽어 가장 나은 방향을 쓴다.
 
@@ -167,6 +189,7 @@ def is_pdf(data: bytes) -> bool:
     return data.startswith(PDF_MAGIC)
 
 
+@_ocr_span("pdf")
 def read_pdf(data: bytes, engine=None) -> OcrResult:
     """PDF 앞 PDF_MAX_PAGES쪽을 글자 줄로 바꾼다. 글자층이 충분하면 그것을 쓰고(OCR 없음), 아니면 쪽마다 그림으로 그려 OCR한다.
 
@@ -190,7 +213,7 @@ def read_pdf(data: bytes, engine=None) -> OcrResult:
                 textpage = page.get_textpage()
                 text_lines += [ln.strip() for ln in textpage.get_text_bounded().splitlines() if ln.strip()]
             if sum(len(re.sub(r"\s", "", ln)) for ln in text_lines) >= PDF_MIN_TEXT_CHARS:
-                return OcrResult(lines=text_lines, rotation=0, runs=0, ocr_ms=int((time.monotonic() - start) * 1000))
+                return OcrResult(lines=text_lines, rotation=0, runs=0, ocr_ms=int((time.monotonic() - start) * 1000), pages=count)
             # 스캔 PDF: 쪽마다 그림으로 그려 사진과 같은 OCR을 돌린다. 줄은 쪽 순서로 잇는다
             lines: list[str] = []
             runs = ocr_ms = 0
@@ -204,7 +227,7 @@ def read_pdf(data: bytes, engine=None) -> OcrResult:
                 ocr_ms += one.ocr_ms
                 if n == 0:
                     rotation = one.rotation  # 응답에는 한 값만 담는다. 첫 쪽의 방향을 대표로 쓴다
-            return OcrResult(lines=lines, rotation=rotation, runs=runs, ocr_ms=ocr_ms)
+            return OcrResult(lines=lines, rotation=rotation, runs=runs, ocr_ms=ocr_ms, pages=count)
         finally:
             pdf.close()
     except pdfium.PdfiumError as e:

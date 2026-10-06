@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 
 from backend.app.clients.mof import MofClient, MofError
+from backend.app.observability.langfuse import tool_span
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.services.evidence import KST  # 근거 카드·판정 입력과 같은 한국 시각
@@ -34,7 +35,10 @@ def call_sign_from_mrn(customs: CustomsRecord, mof: MofClient | None = None) -> 
 
     day = customs.entry_date.date()
     try:
-        plan = (mof or MofClient()).find_plan_by_mrn(customs.mrn, day - timedelta(days=SEARCH_DAYS), day + timedelta(days=SEARCH_DAYS))
+        # 해수부 구간을 Langfuse에 남긴다 (10-07). input은 조회 날짜 범위뿐이다. MRN·B/L은 올리지 않는다 (SDD 3.5)
+        with tool_span("mof:find_plan_by_mrn", {"days": 2 * SEARCH_DAYS + 1}) as span:
+            plan = (mof or MofClient()).find_plan_by_mrn(customs.mrn, day - timedelta(days=SEARCH_DAYS), day + timedelta(days=SEARCH_DAYS))
+            span.metadata["found"] = plan is not None
     except MofError as e:
         # 해수부 실패는 식별을 막지 않는다. 라우터가 이름 검색으로 간다. 다만 이름 검색은 느리고 동명선에 약해서
         # 왜 MRN 길을 못 탔는지는 남긴다
@@ -117,8 +121,11 @@ def match_by_papers(customs: CustomsRecord, candidates: list[dict], *, mrn_call_
     start, end = day - timedelta(days=SEARCH_DAYS), day + timedelta(days=SEARCH_DAYS)
     try:
         client = mof or MofClient()  # 키가 없으면 여기서 MofError가 난다. 되묻기로 끝내야 해서 try 안에서 만든다
-        with ThreadPoolExecutor(max_workers=min(PAPERS_WORKERS, len(by_sign))) as pool:
-            plans = dict(zip(by_sign, pool.map(lambda sign: client.sailing_plans(start, end, call_sign=sign), by_sign)))
+        # 후보별 조회를 동시에 도는 구간 전체를 span 하나로 남긴다 (10-07). 풀 스레드는 문맥이 없어 그 안에서는 못 연다.
+        # 호출부호는 올리지 않고 개수만 적는다
+        with tool_span("mof:sailing_plans", {"candidates": len(by_sign)}):
+            with ThreadPoolExecutor(max_workers=min(PAPERS_WORKERS, len(by_sign))) as pool:
+                plans = dict(zip(by_sign, pool.map(lambda sign: client.sailing_plans(start, end, call_sign=sign), by_sign)))
     except MofError as e:
         log_failure("identify_papers", e.code)
         return None

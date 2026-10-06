@@ -34,6 +34,7 @@ from backend.app import crypto
 from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.replay import replay_enabled
 from backend.app.db import connect
+from backend.app.observability.langfuse import tool_span
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import VOYAGE_PATTERN, AgentRequest, AgentResponse
 from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, referrals, validate
@@ -419,7 +420,10 @@ def _arrivals(days: int) -> list:
     live = replay_enabled() and os.environ.get("DATA_GO_KR_KEY")
     client = MofClient(transport=httpx.HTTPTransport()) if live else MofClient()
     try:
-        plans = client.sailing_plans_all(today, today + timedelta(days=days))  # 쪽을 동시에 받는다
+        # 캐시 미스일 때만 도는 해수부 구간을 Langfuse에 남긴다 (10-07)
+        with tool_span("mof:sailing_plans_all", {"days": days}) as span:
+            plans = client.sailing_plans_all(today, today + timedelta(days=days))  # 쪽을 동시에 받는다
+            span.metadata["count"] = len(plans)
     finally:
         client.close()
     _plans_cache[key] = (time.monotonic(), plans)
