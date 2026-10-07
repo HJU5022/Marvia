@@ -2095,7 +2095,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
 
     def with_evidence(name: str, result: dict) -> dict:
         """도구 결과에서 근거를 모으고, LLM이 문장을 쓰는 도구면 결과에 evidence 글(줄마다 [E#])을 붙여 돌려준다. 실패한 결과는 그대로."""
-        if not isinstance(result, dict) or "error" in result:
+        if not isinstance(result, dict) or "error" in result or result.get("rerouted_to"):  # 돌려 보낸 호출은 ask_cargo가 이미 근거를 모았다 (A4)
             return result
         now = datetime.now(timezone.utc)
         block = None
@@ -2120,6 +2120,21 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         elif name in mcp_names:
             block = register(mcp_cards(name, result), None, True)
         return {**result, "evidence": block} if block else result
+
+    rerouted: dict = {}  # 10-08 실험 A4: 화면 화물의 배를 묻는 위치 호출을 ask_cargo로 돌렸는가 {"own": True}
+
+    def is_cargo_vessel_call(name: str, args: dict) -> bool:
+        """위치·거리 도구 호출이 화면 화물의 배를 가리키는가 (A4). 화면 배(on_screen.vessel)와 MMSI나 이름이 같으면 참.
+        거리 도구는 배 이름 칸이 없어서, 앞에서 화물 배의 위치 호출을 돌려 보냈거나 화면 배의 좌표를 그대로 넘겼을 때 참이다."""
+        vessel = (screen or {}).get("vessel") or {}
+        if not vessel:
+            return False
+        if name == "get_live_position":
+            return args.get("mmsi") is not None and args.get("mmsi") == vessel.get("mmsi")
+        if rerouted.get("own"):
+            return True
+        near = lambda a, b: isinstance(a, (int, float)) and isinstance(b, (int, float)) and abs(a - b) < 0.05  # noqa: E731
+        return near(args.get("lat"), vessel.get("lat")) and near(args.get("lng", args.get("lon")), vessel.get("lng"))
 
     def run(name: str, args: dict) -> dict:
         """LLM이 고른 도구 하나를 실행한다. 같은 호출은 한 번만, 화물 도구는 한 문장에 한 번만, 예외는 도구 실패로 돌려준다.
@@ -2225,6 +2240,12 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if name == "web_search" and web_search_enabled():
             return run_web(args)
         if name in mcp_names:
+            if context is not None and name in ("get_live_position", "estimate_distance") and is_cargo_vessel_call(name, args):
+                # 10-08 실험 A4 (항상 켜짐): 화면 화물의 배("이 배")를 위치·거리 도구로 따로 찾지 않는다. 그 배의 위치는 화물 조회 결과(ask_cargo)가 이미 알고 있고
+                # 코드가 검증한 문장으로 답한다. 도구를 부른 호출은 ask_cargo로 돌려 보낸다 (결과 이름 rerouted_to로 모델도 안다)
+                rerouted["own"] = True
+                answered = run("ask_cargo", {"question": masked[:300]})
+                return {"rerouted_to": "ask_cargo", **answered} if "error" not in answered else answered
             progress.step(MCP_STAGES.get(name, ""))  # 모르는 도구 이름이면 단계를 보내지 않는다 (progress.step)
             return run_tool(name, args)
         log_failure("chat_agent_tool", f"unknown_tool {name}")
