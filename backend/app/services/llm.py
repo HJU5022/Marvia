@@ -279,7 +279,11 @@ def _call_once(kwargs: dict) -> LLMResult:
     # 빈 답으로 받으면 _ask_json이 finish_reason을 보고 truncated로 올리고, 라우터가 재시도·failed로 처리한다
     msg = resp.choices[0].message or SimpleNamespace(content=None, tool_calls=None)
     # id: 도구 결과를 돌려줄 때 어느 호출의 결과인지 짝짓는 값 (role=tool 메시지의 tool_call_id, 10-02 후속 질문 도구)
-    calls = [{"id": c.id, "name": c.function.name, "arguments": c.function.arguments} for c in (msg.tool_calls or [])]
+    # extra_content: Vertex의 Gemini 3.x가 도구 호출마다 붙여 주는 thought_signature({"google": {"thought_signature": ...}}).
+    # 도구 결과를 돌려줄 때 그대로 되돌려 보내야 한다. 없으면 HTTP 400 "missing a thought_signature" (10-08 실험 첫 실행에서 확인).
+    # SDK 타입에는 없는 칸이라 model_extra에서 읽는다. 없는 제공사(OpenRouter 등)는 None이고 요청에 넣지 않는다
+    calls = [{"id": c.id, "name": c.function.name, "arguments": c.function.arguments,
+              "extra_content": (getattr(c, "model_extra", None) or {}).get("extra_content")} for c in (msg.tool_calls or [])]
     usage = resp.usage
     completion_tokens = usage.completion_tokens if usage else None
     # Vertex는 생각(reasoning) 토큰을 completion_tokens에 넣지 않고 completion_tokens_details에 따로 준다
@@ -649,7 +653,8 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
             if not (tools and run_tool and result.tool_calls) or last_round:
                 break
             messages.append({"role": "assistant", "content": result.content, "tool_calls": [
-                {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
+                {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]},
+                 **({"extra_content": c["extra_content"]} if c.get("extra_content") else {})}  # Gemini 3.x thought_signature 되돌리기 (_call_once)
                 for c in result.tool_calls]})
             for c in result.tool_calls:
                 try:

@@ -148,3 +148,22 @@ def test_single_round_usage_is_unchanged(monkeypatch):
     monkeypatch.setattr(llm, "end_generation", lambda gen, result, version, **kw: recorded.append(result))
     _ask()
     assert recorded[0].prompt_tokens == 7 and recorded[0].cost is None
+
+
+def test_tool_call_extra_content_is_sent_back(monkeypatch):
+    """10-08 Vertex 실험: Gemini 3.x는 도구 호출마다 thought_signature(extra_content)를 주고, 결과를 돌려줄 때 그대로 되돌려 받는다.
+    없으면 HTTP 400. 값이 없는 제공사(OpenRouter 등)는 칸 자체를 넣지 않는다."""
+    sent = []
+    extra = {"google": {"thought_signature": "SIG"}}
+    first = llm.LLMResult(content=None, tool_calls=[{"id": "c1", "name": "get_live_position", "arguments": "{}", "extra_content": extra},
+                                                    {"id": "c2", "name": "get_live_position", "arguments": "{}"}], model="m")
+    replies = [first, _text(json.dumps(ANSWER, ensure_ascii=False))]
+
+    def fake_chat(messages, **kwargs):
+        sent.append([dict(m) for m in messages])
+        return replies[len(sent) - 1]
+
+    monkeypatch.setattr(llm, "chat", fake_chat)
+    _ask()
+    calls = sent[1][-3]["tool_calls"]  # 두 번째 요청의 assistant 메시지
+    assert calls[0]["extra_content"] == extra and "extra_content" not in calls[1]
