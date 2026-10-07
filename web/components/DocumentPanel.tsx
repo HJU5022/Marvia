@@ -182,7 +182,12 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
     ...FIELD_LABELS.map(([k, l]) => [k, l] as const),
     ...CONDITION_CHOICES.map(([k, l]) => [k, l] as const),
     ...CONTACT_LABELS.map(([k, l]) => [k, l] as const),
-  ].filter(([k]) => (result.fields[k]?.checks.length ?? 0) > 0).map(([, l]) => l) : [];
+  ].filter(([k]) => {
+    const checks = result.fields[k]?.checks ?? [];
+    // B/L에는 원래 입항 예정일이 없다. 비어서 missing만 걸린 eta는 경고가 아니라 안내라서 배너 목록에서도 뺀다 (10-08 정운 실사용 72번)
+    if (k === 'eta' && !result.fields[k]?.value && checks.every(c => c === 'missing')) return false;
+    return checks.length > 0;
+  }).map(([, l]) => l) : [];
 
   const emptyField = {value: null, checks: [] as DocumentCheck[]};  // etd·조건 칸은 옛 서버 응답에 없을 수 있다
 
@@ -275,15 +280,19 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
         {FIELD_LABELS.map(([key, label, use]) => {
           const f = result.fields[key] ?? emptyField;
           const id = `${inputId}-${key}`;
-          return <div key={key} className={`doc-field ${f.checks.length ? 'flagged' : ''} ${CARD_STRONG.has(key) ? 'strong' : ''}`}>
+          // 10-08 정운 실사용 72번: B/L에는 입항 예정일이 보통 없다. 비었을 때 "읽지 못함" 경고는 오류처럼 읽히므로 안내로 바꾼다
+          const etaAbsent = key === 'eta' && !f.value && f.checks.length > 0 && f.checks.every(c => c === 'missing');
+          const checks = etaAbsent ? [] : f.checks;
+          return <div key={key} className={`doc-field ${checks.length ? 'flagged' : ''} ${CARD_STRONG.has(key) ? 'strong' : ''}`}>
             <div className="doc-field-top">
               <label htmlFor={id}>{label}<small> · {use}</small></label>
-              <span className="doc-badges"><CheckBadges checks={f.checks} emptyText={key === 'etd' && !f.value && !f.checks.length ? '서류에 없음' : undefined}/></span>
+              <span className="doc-badges"><CheckBadges checks={checks} emptyText={(key === 'etd' || etaAbsent) && !f.value && !checks.length ? '서류에 없음' : undefined}/></span>
             </div>
             {editing
               ? <div className="doc-value"><input id={id} value={values[key] ?? ''} type={key === 'eta' || key === 'etd' ? 'date' : 'text'} spellCheck={false}
                   onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0 || (key === 'bl_no' && !blValid) || (key === 'eta' && !etaValid) || (key === 'etd' && !etdValid)}/></div>
-              : <output id={id} className="doc-value">{values[key] || '읽지 못함'}</output>}
+              : <output id={id} className="doc-value">{values[key] || (etaAbsent ? '서류에 없음' : '읽지 못함')}</output>}
+            {etaAbsent && <small>B/L에는 보통 없는 값이에요. 도착 통지서(A/N)나 포워더 안내를 보고 넣어 주세요.</small>}
           </div>;
         })}
         <div className={`doc-field ${values.mrn && !mrnValid ? 'flagged' : ''}`}>

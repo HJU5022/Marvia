@@ -257,7 +257,27 @@ def take_bl(lines: list[str]) -> str | None:
             c = _clean(cand)
             if _BL_PATTERN.fullmatch(c):
                 return c
-    return None
+    return _take_carrier_bl(lines)
+
+
+# 이름표 없는 B/L 후보: 선사 코드 영문 4자 + 숫자 8~12자 (10-08 정운 실사용 72번).
+# 팩스 사진은 "B/L No." 이름표가 작고 흐려 OCR 줄에 아예 없는데, 값은 오른쪽 위 칸에서 한 덩어리로 정확히 읽혔다.
+# 컨테이너 번호(영문 3자 + U + 숫자 7자)는 같은 일반 B/L 모양이라 제외한다. 숫자 없는 낱말도 제외한다.
+# 트레이드오프: 이름표 없이 모양만 보므로 다른 선사형 번호가 서류에 있으면 틀린 번호를 고를 수 있다.
+# 그래서 서로 다른 후보가 정확히 하나일 때만 받고, 둘 이상이면 None으로 두어 사용자가 직접 넣게 한다 (추측하지 않는다).
+_CARRIER_BL = re.compile(r"[A-Z]{4}\d{8,12}")
+_CONTAINER_NO = re.compile(r"[A-Z]{3}U\d{7}")
+
+
+def _take_carrier_bl(lines: list[str]) -> str | None:
+    """이름표가 없을 때의 대안. 후보가 정확히 하나일 때만 돌려준다."""
+    found: set[str] = set()
+    for line in lines:
+        for tok in re.findall(r"[A-Za-z0-9]+", line):
+            t = tok.upper()
+            if _CARRIER_BL.fullmatch(t) and not _CONTAINER_NO.fullmatch(t) and _BL_PATTERN.fullmatch(t):
+                found.add(t)
+    return found.pop() if len(found) == 1 else None
 
 
 # 서류 속 B/L 모양 번호: 영문·숫자 8~20자, 숫자를 하나 이상 포함 (schemas/agent.py _BL_PATTERN + 일반 영어 낱말 제외,
@@ -346,6 +366,11 @@ def dates_in(text: str) -> set[datetime.date]:
         found.append((int(y), int(mo), int(d)))
     # 달 이름 자리에서만 숫자 0을 알파벳 O로 본다. OCR이 OCT를 "0CT"로 읽었다 (09-29)
     for d, mon, y in re.findall(r"(\d{1,2})[- ]?([A-Z0]{3})[- ]?(\d{4})", text.upper()):
+        mon = mon.replace("0", "O")
+        if mon in MONTHS:
+            found.append((int(y), MONTHS[mon], int(d)))
+    # 달 이름이 앞에 오는 미국식: "SEP.25.2026", "SEP 25, 2026" (10-08 정운 실사용 72번, B/L의 laden on board 날짜 표기)
+    for mon, d, y in re.findall(r"([A-Z0]{3})[ .\-]*(\d{1,2})[ .,\-]+(\d{4})", text.upper()):
         mon = mon.replace("0", "O")
         if mon in MONTHS:
             found.append((int(y), MONTHS[mon], int(d)))
