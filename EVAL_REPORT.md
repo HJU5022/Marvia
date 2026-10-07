@@ -22,17 +22,22 @@ Langfuse Cloud에 실제로 도착한 기록은 `docs/evidence/langfuse_summary.
 | 재시도가 트레이스에서 보이는가 | 보인다. 네트워크 재시도 횟수는 generation metadata의 `retry_count`, 프롬프트 버전은 `prompt_version`에 남는다. 판정 재시도는 같은 요청 ID로 trace_id를 만들어 한 트레이스 안에 generation이 여러 개 생기는 것으로 보인다. JSON 모양 오류(`bad_format`)·토큰 한도 잘림(`truncated`)·호출 실패는 그 generation이 level ERROR와 이유(`status_message`)로 남는다. 내용 규칙(V1~V15) 위반은 generation에 표시하지 않아서, 어느 규칙에 걸렸는지는 트레이스가 아니라 구조화 로그와 평가 결과 파일 `failures`(예: `validate=V1 attempt 1`)에서 본다. 이 점은 관측의 빈틈이다 |
 | 느림의 원인을 트레이스로 가려낸 사례 | (c) qwen3-235b 10-02 실행은 Langfuse 실험 기록상 02:58~03:41(UTC) 43분이 걸렸다. 문항별 호출 기록(`evals/results/c_20261002_1241.json` N07 `llm_calls`)을 보니 N07 판정 두 번째 시도 하나가 출력 113,165토큰을 내며 2,237,838ms(약 37분) 동안 돌다 토큰 한도에서 잘렸다(`finish_reason=length`). 문항 하나가 실행 시간의 대부분이었다. 그래서 (c)의 p95(30.4초)는 이 문항을 빼고도 높고, 이 문항은 최대값으로 따로 본다(5절). MCP 도구 쪽은 tool 관측 p95가 `get_port_schedule` 1,521ms, `estimate_distance` 51ms라 해수부 조회가 가장 느린 도구다(`docs/evidence/langfuse_summary.md`) |
 
-대시보드 스크린샷은 Langfuse 로그인이 필요해 이 리포트를 쓰는 과정에서 찍지 못했다. 소유자가 손으로 찍어 `docs/evidence/`에 넣을 목록이다(파일 이름을 미리 정해 두었다). 넣기 전까지 저장소의 도착 근거는 위 집계 파일뿐이다.
+대시보드 스크린샷은 10-07(KST 21시 전후) Langfuse Cloud 화면을 찍어 `docs/evidence/`에 넣었다. 10장 모두 B/L 원문이 보이지 않는다(채팅 입력은 `[BL1]` 같은 가린 토큰으로 남는다).
 
-| 파일 이름 (docs/evidence/) | 화면 | 보여야 하는 것 |
+| 파일 이름 (docs/evidence/) | 화면 | 보이는 것 |
 |---|---|---|
-| `langfuse-01-dashboard.png` | Home 대시보드 (기간 Last 7 days) | 트레이스 수, 모델별 비용, 지연 그래프 |
-| `langfuse-02-trace-detail.png` | Tracing에서 `/api/agent` 요청 트레이스 하나를 연 상세 | 한 트레이스 안의 `mcp:*` tool 관측과 `marvia-judge` generation, 오른쪽의 model·usage·cost·latency·prompt 버전·session_id |
-| `langfuse-03-retry-trace.png` | 판정 재시도가 있었던 트레이스 (예: (c) qwen 10-02 실행의 N07, `truncated` 뒤 재시도) | 같은 트레이스 안의 `marvia-judge` generation 여러 개, ERROR level 시도와 이유 |
-| `langfuse-04-prompts.png` | Prompts 목록과 `marvia-judge` 버전 화면 | 버전 1~10, production 라벨이 10에 있는 것 |
-| `langfuse-05-experiments.png` | Datasets > marvia-golden-30 > Experiments | (a)(b)(c) 실행 이름과 exact_match·customs_explanation 점수 열 |
-| `langfuse-06-demo-env-trace.png` | Tracing에서 Environment를 `demo`로 거른 트레이스 하나(배포 주소로 질문한 요청이면 가장 좋다) | 요청 트레이스(`request:/api/chat/stream` 등)와 그 안의 generation, environment 이름 |
-| `mcp-02-deployed-tools.png` | 배포 주소 `/mcp`에 `python -m scripts.mcp_check <주소> --token <MCP_TOKEN>`을 돌린 터미널 | 도구 4종 이름 목록. 토큰 값이 화면에 나오지 않아야 한다 |
+| `langfuse-01-dashboard.jpg` | Home 대시보드 (최근 30일) | 트레이스 4.19K, 관측 12.86K, 비용 $6.90, 모델별 비용(gemini-3.5-flash-lite $2.68 등), 이름별 트레이스 수 |
+| `langfuse-02-trace-detail.jpg` | 채팅 요청 트레이스 상세 (`request:/api/chat/stream` 안의 `marvia-chat-agent`) | 입력·출력, 모델 `google/gemini-3.5-flash-lite`, 프롬프트 `marvia-chat-agent` v14, 지연 6.72초, 토큰 45,346, 비용 $0.010178. 같은 요청의 `marvia-memory-write`가 병렬로 보인다 |
+| `langfuse-03-retry-trace.jpg` | 판정 재시도 트레이스 (평가 문항 F08) | 같은 트레이스 안 `marvia-judge` generation 3개가 모두 Error(`bad_format`), 그 뒤 판정 표 폴백으로 exact_match 1.0 |
+| `langfuse-04-prompts.jpg` | Prompts > `marvia-chat-agent` 버전 화면 | 버전 14에 production·latest·v5 라벨, 10~13에 v1~v4 릴리스 라벨 |
+| `langfuse-05-experiments.jpg` | Datasets > marvia-golden-30 > Experiments | 실행별 exact_match 추이, 평균 지연, 총 비용 |
+| `langfuse-06-demo-trace-tools.jpg` | 시연 녹화 중 B/L 조회 요청 트레이스 | 하우스 조회(없음) 뒤 마스터 재조회, `unipass:fetch`·`mof:find_plan_by_mrn`·`mcp:*`·`shipfinder.VesselSearch` 호출 순서 |
+| `langfuse-07-prompts-list.jpg` | Prompts 목록 | 프롬프트 10개와 버전 수, 최근 7일 사용량 |
+| `langfuse-08-dataset-items.jpg` | Datasets > marvia-golden-30 > Items | 문항별 입력(가공 B/L `TESTBL..`)·정답·메타데이터(라벨러, 분류) |
+| `langfuse-09-observations-cost.jpg` | Home 아래쪽 | 일자별 관측량(DEFAULT·ERROR), 모델별 비용 추이 |
+| `langfuse-10-latency-percentiles.jpg` | Home 지연 분위수 | 트레이스·generation·관측 단위 p50/p90/p95/p99. `ocr:read` p95가 큰 것은 10-07 서버 OCR 스레드 수정(실사용 74) 전 기록이 섞인 값이다 |
+
+배포 주소 `/mcp` 연결 캡처(`mcp-02-deployed-tools.png`)는 아직 없다. 로컬 연결 캡처는 `B10-mcp-연결-도구목록-호출.png`다.
 
 화면에 B/L 원문이 보이지 않는지 찍기 전에 확인한다. 최소 3장은 01(대시보드), 02(트레이스 상세), 03(재시도 트레이스)이고, 06(demo 환경 트레이스)이 "배포 주소 트레이스" 근거다. 서비스는 가린 값만 남기지만(SDD 3.5) 사람이 한 번 더 본다.
 
