@@ -174,7 +174,8 @@ export function VesselList({data}: {data: ChatResponse}) {
               <td className="c-name"><div className="vl-name">
                 <button type="button" className="ship-link" onClick={e => { e.stopPropagation(); pick(v); }} aria-pressed={open} aria-expanded={open}>{v.ship_name}</button>
                 {/* 해수부 신고에는 MMSI가 없어 호출부호로 올린다(서버가 찾는다). 호출부호가 없는 배는 지켜볼 수 없어 버튼을 그리지 않는다 (10-08 정운 실사용 57번) */}
-                {v.call_sign ? <span className="vl-watch" onClick={e => e.stopPropagation()}><WatchVesselButton callSign={v.call_sign} name={v.ship_name} flag={v.nationality} eta={v.expected_arrival}/></span> : null}
+                {/* 상세를 이미 열었으면 그때 찾은 MMSI를 같이 보낸다. 서버가 호출부호로 다시 찾다가 실패하지 않게 (10-07 승욱: 상세에는 배가 나오는데 "선박 번호를 확인하지 못했다"로 막혔다) */}
+                {v.call_sign ? <span className="vl-watch" onClick={e => e.stopPropagation()}><WatchVesselButton mmsi={(() => { const e = entries[k]; return e?.status === 'done' ? e.data.vessel?.mmsi ?? undefined : undefined; })()} callSign={v.call_sign} name={v.ship_name} flag={v.nationality} eta={v.expected_arrival}/></span> : null}
               </div></td>
               <td className="c-flag">{cell(v.nationality)}</td>
               <td className="c-prev">{cell(v.previous_port)}</td>
