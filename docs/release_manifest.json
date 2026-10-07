@@ -19,6 +19,14 @@
       "url": "https://marvia.up.railway.app",
       "deployment": "5ec00d64-8fc2-40e9-8a7f-4f83b96a64fb"
     },
+    "mof_relay": {
+      "service": "mof-relay",
+      "platform": "Google Cloud Run",
+      "region": "asia-northeast3",
+      "project": "소유자 개인 GCP 프로젝트 (팀 계정 아님, 무료 체험 크레딧)",
+      "status": "배포 중, 확인 전",
+      "note": "10-07 해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). Railway 환경변수 MOF_BASE_URL·MOF_RELAY_TOKEN은 아직 설정 전이다. 주소와 deployment ID는 배포가 끝난 뒤 적는다"
+    },
     "replay_mode": false,
     "replay_mode_note": "10-07 소유자 결정: 배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 채점자·키 없는 로컬 데모·평가용. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다"
   },

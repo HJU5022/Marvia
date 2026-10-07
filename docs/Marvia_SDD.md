@@ -185,18 +185,19 @@ flowchart LR
 
 ### 2.2 배포 뷰
 
-무엇이 어디에서 실행되는지 정리한 표다. 계획은 Vercel + GCP Cloud Run이었으나 10-05에 Railway로 정했고, Vercel과 Cloud Run은 쓰지 않는다(README, `Dockerfile.railway`).
+무엇이 어디에서 실행되는지 정리한 표다. 계획은 Vercel + GCP Cloud Run이었으나 10-05에 Railway로 정했고, Vercel과 api·web용 Cloud Run은 쓰지 않는다(README, `Dockerfile.railway`). 10-07에 해수부 호출 우회용 릴레이 하나만 서울 Cloud Run에 추가했다.
 
 | 실행 위치 | 구성 요소 | 포트/주기 | 통신 대상 |
 | --- | --- | --- | --- |
 | Railway 서비스 `marvia-web` | web (Next.js) | HTTPS | api |
-| Railway 서비스 `marvia-api` | api (FastAPI + `/mcp`), `Dockerfile.railway`로 빌드 | `PORT` 환경변수(없으면 8000). `/mcp`는 같은 서비스의 경로, 토큰 인증 | UNI-PASS, ShipFinder, 해수부, OpenRouter, Langfuse, Supabase, 카카오, DB |
+| Railway 서비스 `marvia-api` | api (FastAPI + `/mcp`), `Dockerfile.railway`로 빌드 | `PORT` 환경변수(없으면 8000). `/mcp`는 같은 서비스의 경로, 토큰 인증 | UNI-PASS, ShipFinder, 해수부(`MOF_BASE_URL`이 있으면 `mof-relay` 경유), OpenRouter, Langfuse, Supabase, 카카오, DB |
+| Google Cloud Run 서비스 `mof-relay` (서울 asia-northeast3, 소유자 개인 GCP 프로젝트) | `relay/` (FastAPI). 해수부 GET 두 경로만 `apis.data.go.kr`로 전달 | HTTPS, `X-Relay-Token` 헤더 필요 | 해수부 (배포·실서버 확인 전) |
 | 로컬 compose `worker` | worker (collector, watch) | 기본 꺼짐(`WORKER_SCHEDULE=off`). 켜면 `WORKER_INTERVAL_HOURS`(기본 6시간)마다 | ShipFinder, 해수부, DB, api의 `/mcp` |
 | Supabase | Postgres(마이그레이션 자동 적용), Auth(구글 로그인) | 5432, HTTPS | api, worker |
 | 외부 SaaS | OpenRouter, Langfuse Cloud, 카카오 | HTTPS | api |
 | 외부 API | ShipFinder, 해수부 공공데이터, UNI-PASS | HTTPS | api(MCP 도구 경유), worker |
 
-`docs/release_manifest.json`에는 `marvia-api`와 `marvia-web` 배포만 적혀 있고 worker 배포는 없다. 배포된 api는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드는 채점자·키 없는 로컬 데모·평가용이다. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다.
+`docs/release_manifest.json`에는 `marvia-api`와 `marvia-web` 배포만 적혀 있고 worker 배포는 없다. 배포된 api는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드는 채점자·키 없는 로컬 데모·평가용이다. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다. 같은 증상을 미국 GitHub Actions에서도 겪었다는 보고가 있어(github.com/SFByomi/blueboard/pull/19) 해외 접속 차단으로 짐작하지만 공식 확인은 아니다. UNI-PASS는 싱가포르에서 된다. 우회로는 아래 6.7절의 서울 릴레이이고, 배포·실서버 확인 전이다.
 
 ```mermaid
 flowchart TB
@@ -221,7 +222,9 @@ flowchart TB
   A --> OR
   A --> LF
   A --> SF
-  A --> MOF
+  A -->|"MOF_BASE_URL 있으면"| R["mof-relay (Cloud Run 서울)"]
+  R --> MOF
+  A -.->|"비우면 직접"| MOF
   A --> KK
   A --> DB
   A --> AU
@@ -624,6 +627,8 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
 - 관제정보 `CntlVssl2/Info`(실적)와 선박운항정보 `VsslEtrynd5/Info5`(입출항 신고, 앞으로 올 배도 줌). `prtAgCd` 부산 020, `sde/ede` 필수. 입항 신고 이력이 아니라 현재 단계(최초/변경/최종) 값 하나만 준다. 입항 "예정"으로 믿는 값은 최초·변경 단계뿐이다(`SailingPlan.expected_arrival`).
 - `find_plan_by_mrn(mrn, start, end)`: 입항 detail의 `mrNum`이 UNI-PASS `cargMtNo` 앞 11자리와 같아 B/L에서 배를 특정하는 열쇠가 된다(09-23 확인).
 - 반환: planned_arrival, actual_arrival, facility(fcltyNm), control_events. 타임아웃 `MOF_TIMEOUT_SEC`(기본 15).
+- 호출 경로(10-07): `MOF_BASE_URL`이 있으면 그 주소(서울 릴레이, 6.7절)로, 비어 있거나 없으면 `https://apis.data.go.kr`로 직접 부른다. `MOF_RELAY_TOKEN`이 있으면 모든 요청에 `X-Relay-Token`으로 보낸다.
+- 빠른 실패: 연결 실패(ConnectError·ConnectTimeout)는 재시도하지 않고 연결 대기는 3초다. 연결 실패가 나면 60초 동안(프로세스 안 회로 차단기) 해수부 호출을 기다리지 않고 바로 실패시킨다. Railway 싱가포르에서 15초 x 3회씩 기다리던 것을 줄이려는 것이다. 이 동작은 로컬 테스트 기준이며 실서버 확인 전이다.
 - 완료 기준: 부산 입항 목록 수신, 호출부호·선명 매칭 1척(`test_mof.py`).
 
 ### 5.4 services/signals.py
@@ -857,6 +862,14 @@ open http://localhost:8000/docs
 ### 6.6 완료 기준
 
 다른 팀원 노트북(가능하면 Apple Silicon 1대 포함)에서 위 4줄로 10분 내 `/health` 200, `/docs` 표시, REPLAY_MODE 데모 B/L 1건 응답. Dockerfile·compose 파일 경로가 README에 적혀 있고 제출물 표의 "Dockerfile, docker compose up 실행 방법" 항목을 충족. (이 절의 재현은 실제 다른 노트북에서 확인한 기록이 레포에 없으면 "미확인"으로 둔다.)
+
+### 6.7 해수부 릴레이 (Cloud Run, 서울)
+
+- 배포 서버(Railway 싱가포르)에서 `apis.data.go.kr`가 ConnectTimeout이라(원인은 해외 차단으로 짐작, 공식 확인 아님) `relay/`의 작은 FastAPI를 Google Cloud Run 서울(asia-northeast3)에 `mof-relay`로 둔다. 소유자 개인 GCP 프로젝트(팀 계정 아님)이고 무료 체험 크레딧으로 낸다.
+- 하는 일은 `GET /1192000/VsslEtrynd5/*`, `/1192000/CntlVssl2/*`를 `apis.data.go.kr`로 넘기는 것뿐이다. `X-Relay-Token`이 환경변수 `RELAY_TOKEN`과 같아야 하고, 쿼리스트링(serviceKey)은 로그에 남기지 않으며 httpx INFO 로그도 끈다. 자세한 것은 `relay/README.md`.
+- 백엔드는 Railway 환경변수 `MOF_BASE_URL`(릴레이 주소)과 `MOF_RELAY_TOKEN`(릴레이의 `RELAY_TOKEN`과 같은 값)으로 연결한다. 5.3절의 빠른 실패 동작이 같이 들어갔다.
+- 확인한 것(10-07, 로컬 릴레이 경유): 실제 해수부에서 입항 예정 206건을 약 2초에 받았고 전체 pytest 2101건이 통과했다.
+- 상태: 배포·실서버 확인 전. Cloud Run 배포가 진행 중이고 Railway 환경변수는 아직 설정하지 않았다. 확인하면 이 절과 `docs/release_manifest.json`의 `mof-relay`를 고친다.
 
 ## 7. 비기능 요구사항과 보안
 
