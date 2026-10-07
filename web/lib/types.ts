@@ -9,6 +9,13 @@ export type VesselMatch = 'confirmed' | 'uncertain' | 'none';
 export type Freshness = 'fresh' | 'stale' | 'unknown';
 /** 서류 사진에서 확인한 출항일을 /api/chat에 실어 보내는 칸 (10-06). 서버가 같은 B/L 조회에만 departed_on으로 싣는다 */
 export interface ChatDocument { bl_no: string; departed_on: string }
+/** 화면에 지금 떠 있는 배들. /api/chat 요청의 선택 칸 on_screen (백엔드 routers/chat.py ChatScreen, 10-08 정운 실사용 36번).
+ * 서버는 이 값을 자료로만 LLM에 준다. B/L·컨테이너 번호 칸은 없다. 글자는 80자(시각 40자), 목록은 10줄까지 */
+export interface ChatOnScreen {
+  vessel?: {ship_name: string; flag?: string | null; mmsi?: number | null; lat?: number | null; lng?: number | null;
+    position_time?: string | null; destination?: string | null} | null;
+  arrivals?: {ship_name: string; flag?: string | null; eta?: string | null; previous_port?: string | null}[];
+}
 export interface AgentRequest {
   bl_no: string;
   bl_type: 'MASTER' | 'HOUSE';

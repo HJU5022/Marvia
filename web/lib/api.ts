@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, ChatOnScreen, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -324,10 +324,10 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
 
 /** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다).
  * history는 지금 질문보다 앞선 대화다. 데모 모드는 저장된 예시만 돌려주므로 쓰지 않는다 */
-export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
+export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
-    body: chatBody(message, context, history, document)}, AGENT_TIMEOUT_MS);
+    body: chatBody(message, context, history, document, onScreen)}, AGENT_TIMEOUT_MS);
   return res.json();
 }
 
@@ -349,10 +349,10 @@ function clip(text: string): string {
 
 /** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다.
  * history는 오래된 것부터 두고, role과 text만 남긴다(화면용 kind는 보내지 않는다). B/L 번호는 서버가 가린다 */
-function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): string {
+function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): string {
   const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
   const turns = history.slice(-HISTORY_MAX_TURNS).map(t => ({role: t.role, text: clip(t.text)}));
-  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns, document});
+  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns, document, on_screen: onScreen});
 }
 
 /** 스트림 통로를 못 쓰는 경우의 표시. 서버가 요청을 받지 않은 것이 확실할 때만 쓴다 (chat-progress.md EC-05) */
@@ -363,18 +363,18 @@ class StreamUnavailable extends Error {}
  * - 응답을 받기 시작한 뒤 끊기면 다시 보내지 않는다. 서버는 이미 유료 호출을 하고 있을 수 있다 (EC-06)
  * - 데모 모드는 서버가 없어 단계 소식도 없다. 단계를 지어내지 않는다 (EC-07) */
 export async function sendChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   try {
-    return await liveChatStream(message, context, onStage, history, document);
+    return await liveChatStream(message, context, onStage, history, document, onScreen);
   } catch (e) {
-    if (e instanceof StreamUnavailable) return sendChat(message, context, history, document);
+    if (e instanceof StreamUnavailable) return sendChat(message, context, history, document, onScreen);
     throw e;
   }
 }
 
 async function liveChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): Promise<ChatResponse> {
   const controller = new AbortController();
   // 전체 시간 제한은 /api/chat과 같다. 판정 LLM 재시도까지 기다린다
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
@@ -385,7 +385,7 @@ async function liveChatStream(message: string, context: AgentRequest | null,
       const token = await accessToken();
       const headers = new Headers({'content-type': 'application/json', accept: 'text/event-stream'});
       if (token) headers.set('authorization', `Bearer ${token}`);
-      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history, document), signal: controller.signal});
+      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history, document, onScreen), signal: controller.signal});
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
       if (e instanceof TypeError) throw new StreamUnavailable();  // 응답이 없었다. /api/chat이 재시도까지 맡는다

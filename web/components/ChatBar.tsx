@@ -15,6 +15,7 @@ import {DocumentPanel, type DocumentHandle, type DocumentPhase, type DocumentVal
 import {ChatMiniMap} from './ChatMiniMap';
 import {ChatCargoTable} from './ChatCargoTable';
 import {WatchOfferAction} from './WatchOfferAction';
+import {ChatCandidateChips} from './ChatCandidateChips';
 import {isLive, QUOTA_MESSAGE} from '@/lib/api';
 import {onComposerRequest} from '@/lib/composer';
 import {stageLabels, type ProgressStage} from '@/lib/progress';
@@ -74,6 +75,9 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   // 판정 배지·할 일 한 줄은 "가장 최근 화물 답" 말풍선에만 붙인다. ChatTurn에는 판정이 없어 지금 보는 result(가장 최근 화물 답)에서 읽는다. 지어내지 않는다.
   // B/L 여러 개를 비교한 답은 표가 줄마다 배지를 가지고 있어 붙이지 않는다
   const verdictTurn = view === 'cargo' && result?.verdict ? thread.map((t, i) => t.role === 'assistant' && t.kind === 'cargo' && !(t.cargos && t.cargos.length > 1) ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
+  // 선박 후보 칩은 "가장 최근 되묻기 답"에만 붙이고, 그 되묻기가 아직 풀리지 않았을 때만 보인다 (결과 칸이 같은 되묻기 그대로일 때).
+  // 후보를 골라 판정이 나오면 결과가 바뀌어 칩이 사라진다 (10-08 정운 실사용 37번)
+  const chipTurn = result?.status === 'insufficient' ? thread.map((t, i) => t.role === 'assistant' && t.agent?.vessel_candidates.length ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
   // 화물 카드가 실제로 보일 때만 "이 화물"로 안내한다. AppProvider.ask도 같은 조건으로 화물을 함께 보낸다 (10-02 UI 점검 F5)
   const cargoShown = view === 'cargo' && !!result && !!request.bl_no;
   // 하루 토큰 한도를 다 쓰면 입력·서류 사진을 막는다. 서버도 429로 막는다 (docs/specs/token-quota.md)
@@ -230,7 +234,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
+          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}{i === chipTurn && t.agent && t.request && t.agent.trace_id === result?.trace_id && <ChatCandidateChips agent={t.agent} request={t.request} disabled={loading || blocked}/>}</div></li>)}
         {seedAnswer && <li className="chat-seed"><div className="chat-body"><div className="chat-bubble"><p>{seedAnswer.answer}</p>{verdictBlock}</div></div></li>}
       </ol>}
       {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}

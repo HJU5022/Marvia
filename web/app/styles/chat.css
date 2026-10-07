@@ -239,3 +239,11 @@ body[data-split] .conv-section{display:none}
 .steps-toggle{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0;background:none;color:var(--muted);font-size:var(--fs-xs,12px);letter-spacing:.04em}
 .steps-toggle:hover{color:var(--text)}
 .pending-steps.settled{margin:8px 0 8px}
+
+/* 선박 후보 칩 (10-08 정운 실사용 37번): 되묻는 답 말풍선 아래에서 눌러 고른다. 모양은 입력창 예시 버튼과 같은 직선 테두리 */
+.chat-cand-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;max-width:520px}
+.chat-cand-chip{appearance:none;-webkit-appearance:none;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;font-size:14px;color:var(--body);background:var(--surface);border:1px solid var(--border);border-radius:0;padding:8px 12px;cursor:pointer;min-height:44px}
+.chat-cand-chip strong{font-weight:500;color:var(--ink,var(--body))}
+.chat-cand-chip span{color:var(--muted)}
+.chat-cand-chip:hover:not(:disabled){background:var(--soft)}
+.chat-cand-chip:disabled{opacity:.5;cursor:not-allowed}

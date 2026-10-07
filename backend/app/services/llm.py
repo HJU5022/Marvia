@@ -1274,8 +1274,11 @@ class ChatAgentOutput(BaseModel):
 
 def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, history: list[dict],
                tools: list[dict], run_tool: Callable[[str, dict], dict], *, model: str | None = None,
-               feedback: str | None = None) -> LLMAnswer:
+               feedback: str | None = None, on_screen: dict | None = None) -> LLMAnswer:
     """가린 문장과 최근 대화를 받아 도구를 골라 쓰고 답 한 칸을 낸다. output은 ChatAgentOutput.
+
+    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (10-08 정운 실사용 36번). services/chat._masked_screen이 가리고 거른 자료다.
+    자료일 뿐이다 (프롬프트 Trust boundary). 없으면 입력 JSON에 칸 자체를 넣지 않아 예전 입력과 같다.
 
     history: [{"role": "user"|"assistant", "text": 가린 글}]. 자료일 뿐이다 (프롬프트 Trust boundary).
     부른 도구와 결과는 LLMAnswer.tool_calls에 담긴다. 답 문장 검사는 services/chat.py가 한다.
@@ -1283,6 +1286,8 @@ def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
     """
     data = {"message": masked_message, "bl_refs": bl_refs, "history": history,
             "has_current_cargo": has_current_cargo, "today": today}
+    if on_screen:
+        data["on_screen"] = on_screen
     return _ask_json(CHAT_AGENT_PROMPT, json.dumps(data, ensure_ascii=False), "chat_agent", CHAT_AGENT_SCHEMA,
                      ChatAgentOutput, model, feedback=feedback, skills=CHAT_AGENT_SKILLS, tools=tools, run_tool=run_tool)
 

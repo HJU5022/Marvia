@@ -106,10 +106,10 @@ try {
       await page.screenshot({path: `screenshots/${String(i + 8).padStart(2, '0')}-${route}-${width}.png`, fullPage: true}); check(`${route} ${width}px`);
     }
 
-    // 설정은 화면 안 탭 5개, 관리는 탭 2개: 탭마다 접근성 검사 (탭을 바꿔도 가로 넘침이 없어야 한다)
+    // 설정은 화면 안 탭 4개 (10-08 정운 실사용 48번: 조회 이력 탭을 뺐다), 관리는 탭 2개: 탭마다 접근성 검사 (탭을 바꿔도 가로 넘침이 없어야 한다)
     await page.goto(`${base}/settings`); await ready(page);
-    const settingsTabs = page.locator('.st-tabs .st-tab'); assert.equal(await settingsTabs.count(), 5, 'settings has 5 in-page tabs');
-    for (let t = 0; t < 5; t++) { await settingsTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `settings-tab${t}-${width}`); }
+    const settingsTabs = page.locator('.st-tabs .st-tab'); assert.equal(await settingsTabs.count(), 4, 'settings has 4 in-page tabs');
+    for (let t = 0; t < 4; t++) { await settingsTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `settings-tab${t}-${width}`); }
     await page.goto(`${base}/admin`); await ready(page);
     const adminTabs = page.getByRole('tab'); assert.equal(await adminTabs.count(), 2, 'admin has 2 in-page tabs');
     for (let t = 0; t < 2; t++) { await adminTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `admin-tab${t}-${width}`); }
@@ -159,6 +159,15 @@ try {
     await cargo(page, 'insufficient'); await page.getByRole('button', {name: '확인하고 판정하기'}).click(); assert(await page.locator('.candidate-section [role=alert]').isVisible());
     await page.locator('.cand-row').first().click(); assert(await page.getByRole('radio').first().isChecked(), 'clicking a candidate row selects its radio'); await page.getByRole('button', {name: '확인하고 판정하기'}).click(); await page.locator('[data-status="ok"][aria-busy="false"]').waitFor();
     check(`candidate validation + resolution ${width}`);
+
+    // 10-08 정운 실사용 37번: 채팅으로 조회해 되묻는 답이 오면 말풍선 아래에 후보 칩이 보이고, 칩을 누르면 같은 요청으로 판정이 나온 뒤 칩은 사라진다
+    await home(page); await input(page).fill('MRVDEMO1102'); await input(page).press('Enter');
+    await page.locator('.chat-cand-chips').waitFor();
+    assert(await page.locator('.chat-cand-chip').count() > 0, 'candidate chips appear under the asking bubble');
+    await page.locator('.chat-cand-chip').first().click();
+    await page.locator('[data-status="ok"][aria-busy="false"]').waitFor();
+    assert.equal(await page.locator('.chat-cand-chips').count(), 0, 'chips disappear once resolved');
+    check(`chat candidate chips resolve ${width}`);
 
     // 부분 결과: 해수부 근거만 보기는 화면 필터이고 새 판정이 아니다. 원본 값 펼침
     await cargo(page, 'partial'); await page.getByRole('button', {name: '해수부 근거만 보기'}).click(); await page.locator('.more-fold[open] .filter-notice').waitFor({state: 'visible', timeout: 3000}); // 근거는 접힌 "펼쳐 보기" 안에 있어, 필터가 펼치고 안내를 보인다

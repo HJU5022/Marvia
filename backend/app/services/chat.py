@@ -592,13 +592,14 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
 def handle(message: str, session_id: str, context: AgentRequest | None, run_agent,
            user_id: str | None = None, history: list[dict] | None = None,
            run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None,
-           kakao: KakaoHooks | None = None) -> ChatResult:
+           kakao: KakaoHooks | None = None, on_screen: dict | None = None) -> ChatResult:
     """문장 하나를 처리한다. run_agent는 routers/agent.run_agent(사용자 묶음 포함)를 부르는 함수다.
     user_id: 로그인 사용자. 있으면 화물 조회 답에 지난 조회 한 줄을 붙인다 (docs/specs/memory.md). 없으면(EC-08) 그대로.
     history: 화면이 보낸 최근 대화 [{"role", "text"}]. 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다 (10-05).
     run_tool: 읽기 전용 MCP 도구를 실제로 부르는 함수 (routers/agent._follow_up_tool). 없으면 에이전트는 MCP 도구 없이 돈다.
     watch: 지켜보기를 읽고 쓰는 함수 묶음 (WatchHooks). 없으면 로그인하지 않았거나 DB가 없는 것과 같다: 아무것도 바꾸지 않고 안내만 한다.
-    kakao: 지금 상태를 카카오톡으로 보내는 함수 묶음 (KakaoHooks). 없으면 보내지 않고 안내만 한다."""
+    kakao: 지금 상태를 카카오톡으로 보내는 함수 묶음 (KakaoHooks). 없으면 보내지 않고 안내만 한다.
+    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (routers/chat.ChatScreen, 10-08 정운 실사용 36번). 에이전트가 "옆에 떠 있는 배"를 알아듣는 데만 쓴다."""
     message = (message or "").strip()
     if not message:
         raise ChatError("empty")
@@ -618,7 +619,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     types_token = _STORED_TYPES.set(stored_types)
     try:
         with memory.user_text(masked) as turn:
-            result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao)
+            result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao, on_screen)
     finally:
         _STORED_TYPES.reset(types_token)
     # 로그인 사용자의 평범한 대화 턴도 기억 뽑기에 보낸다 (10-06 정운 결정). 기억 뽑기는 화물 조회·후속 질문 뒤에만 돌아
@@ -634,7 +635,7 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
 def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict] | None = None,
            run_tool: Callable[[str, dict], dict] | None = None, watch: WatchHooks | None = None,
-           kakao: KakaoHooks | None = None) -> ChatResult:
+           kakao: KakaoHooks | None = None, on_screen: dict | None = None) -> ChatResult:
     """가린 문장을 처리한다 (handle의 뒷부분). 에이전트가 먼저 맡고, 안 되면 의도 분류 방식(_classic)으로 간다."""
     today = datetime.now(KST).date().isoformat()
 
@@ -654,7 +655,7 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     progress.step("understand")  # 화면에 실제 단계를 알린다 (docs/specs/chat-progress.md)
     if agent_enabled():
         try:
-            return _agent(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, today, watch, kakao)
+            return _agent(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, today, watch, kakao, on_screen)
         except llm.LLMError as e:
             # 에이전트가 첫 도구를 쓰기도 전에 실패했다 (키 없음, 도구를 붙이면 거절하는 모델·제공사 등).
             # 전 방식은 도구 없이 한 번 묻는 호출이라 이런 경우에도 된다 (10-02 실측: 도구를 붙이면 404인 제공사가 있었다)
@@ -935,6 +936,61 @@ def _masked_history(history: list[dict], refs: dict[str, str]) -> list[dict]:
             continue
         turns.append({"role": role, "text": text})
     return turns
+
+
+SCREEN_ARRIVALS_MAX = 10  # 화면 선박 목록에서 LLM에 주는 최대 줄 수. 입력 길이를 작게 두려는 상한이다 (10-08 정운 실사용 36번)
+
+
+def _screen_text(value, limit: int) -> str | None:
+    """화면이 보낸 글자 하나를 LLM에 줄 수 있게 다듬는다. 번호(B/L·MRN·컨테이너)를 가리고 줄바꿈·제어 글자를 공백으로 바꾼다.
+    주입 모양이면 None으로 돌려 호출한 쪽이 그 줄 전체를 뺀다. 비었으면 빈 글자 대신 None."""
+    if value is None:
+        return None
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value)).strip()
+    text, _ = mask_bls(_MRN.sub("[MRN]", mask_containers(text)[0]), {})  # 가리기 순서는 _masked_history와 같다
+    text = text[:limit]
+    if guard.looks_like_injection(text):
+        raise _ScreenInjection
+    return text or None
+
+
+class _ScreenInjection(Exception):
+    """화면 자료의 글자가 주입 모양이다. 그 배 줄 전체를 LLM에 주지 않는다."""
+
+
+def _masked_screen(on_screen: dict | None) -> dict | None:
+    """화면이 보낸 "지금 떠 있는 배들"을 LLM에 넘길 모양으로 (10-08 정운 실사용 36번). 화면이 보낸 값이라 믿지 않는다 (SDD 7절):
+    글자는 _screen_text로 가리고 주입 모양 배는 줄째 뺀다. 목록은 SCREEN_ARRIVALS_MAX줄까지. LLM에는 자료로만 간다
+    (프롬프트 Trust boundary). B/L·컨테이너 번호 칸은 요청 모양에 없다. 남은 것이 없으면 None."""
+    if not on_screen:
+        return None
+    out: dict = {}
+    vessel = on_screen.get("vessel")
+    if vessel:
+        try:
+            item = {"ship_name": _screen_text(vessel.get("ship_name"), 80), "flag": _screen_text(vessel.get("flag"), 80),
+                    "destination": _screen_text(vessel.get("destination"), 80),
+                    "position_time": _screen_text(vessel.get("position_time"), 40)}
+            for key in ("mmsi", "lat", "lng"):
+                if isinstance(vessel.get(key), (int, float)):
+                    item[key] = vessel[key]
+            if item["ship_name"]:
+                out["vessel"] = {k: v for k, v in item.items() if v is not None}
+        except _ScreenInjection:
+            log_failure("chat", "blocked prompt injection pattern in on_screen vessel")
+    arrivals = []
+    for row in (on_screen.get("arrivals") or [])[:SCREEN_ARRIVALS_MAX]:
+        try:
+            item = {"ship_name": _screen_text(row.get("ship_name"), 80), "flag": _screen_text(row.get("flag"), 80),
+                    "eta": _screen_text(row.get("eta"), 40), "previous_port": _screen_text(row.get("previous_port"), 80)}
+        except _ScreenInjection:
+            log_failure("chat", "blocked prompt injection pattern in on_screen arrival")
+            continue
+        if item["ship_name"]:
+            arrivals.append({k: v for k, v in item.items() if v is not None})
+    if arrivals:
+        out["arrivals"] = arrivals
+    return out or None
 
 
 def _cargo_summary(resp: AgentResponse) -> dict:
@@ -1247,11 +1303,12 @@ def watch_offer_text(response: AgentResponse, logged_in: bool, worry: str | None
 
 def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
-           today: str, watch: WatchHooks | None = None, kakao: KakaoHooks | None = None) -> ChatResult:
+           today: str, watch: WatchHooks | None = None, kakao: KakaoHooks | None = None,
+           on_screen: dict | None = None) -> ChatResult:
     """에이전트 한 턴 + 지켜보기 마무리. 본 처리는 _agent_turn이 하고, 여기서 코드가 쓴 지켜보기 문장·제안을 붙인다 (10-06 결정).
     본 처리가 문장 끝 여러 곳에서 돌아 나가서, 한 곳에서 붙이려고 감쌌다."""
     signals: dict = {}
-    result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals, kakao)
+    result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals, kakao, on_screen)
     done_kakao = signals.get("kakao") or {}
     if done_kakao.get("msg") and done_kakao["msg"] not in result.reply:
         result = replace(result, reply=f"{result.reply}\n\n{done_kakao['msg']}")  # 화물 답과 같이 말한 경우: 답 뒤에 코드 문장
@@ -1307,7 +1364,8 @@ def _with_offer(result: ChatResult, signals: dict, context: AgentRequest | None,
 
 def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
                 run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
-                today: str, watch: WatchHooks | None, signals: dict, kakao: KakaoHooks | None = None) -> ChatResult:
+                today: str, watch: WatchHooks | None, signals: dict, kakao: KakaoHooks | None = None,
+                on_screen: dict | None = None) -> ChatResult:
     """에이전트 한 턴 (_agent가 감싼다). signals에 watch(지켜보기 도구 결과)와 watch_cue(LLM의 걱정 신호)를 적어 돌려준다.
 
     에이전트 한 턴. LLM이 고른 도구를 실행하고, 끝나면 화면에 보낼 결과 하나로 묶는다.
@@ -1330,6 +1388,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     # 이번 문장의 B/L로 착각해 엉뚱한 화물을 조회한다 (10-05 검토)
     refs = dict(refs)
     turns = _masked_history(history, refs)
+    screen = _masked_screen(on_screen)  # 화면에 떠 있는 배들 (10-08 정운 실사용 36번). 비었으면 None이고 LLM 입력에 칸이 안 생긴다
     offered_prev = bool(turns) and turns[-1]["role"] == "assistant" and _offered(turns[-1]["text"])  # 바로 앞 답이 우리 제안이었나
     # 답 검사에서 "사용자가 쓴 글"로 칠 것: 이번 문장과 앞에서 사용자가 쓴 줄. 사용자가 앞 턴에 말한 날짜를 되짚는 답이
     # V7에 걸리지 않게 한다. assistant 줄은 넣지 않는다 (V10이 우리 답의 낱말을 사용자 글로 오해하지 않게)
@@ -1807,7 +1866,9 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     out, text, violations, feedback = None, "", [], None
     while True:
         try:
-            answer = llm.chat_agent(masked, list(refs), context is not None, today, turns, tools, run, feedback=feedback)
+            # 화면 자료가 있을 때만 인자를 더한다: 없는 요청은 호출이 예전과 똑같다 (옛 화면·평가 스크립트)
+            extra = {"on_screen": screen} if screen else {}
+            answer = llm.chat_agent(masked, list(refs), context is not None, today, turns, tools, run, feedback=feedback, **extra)
             out, text = answer.output, (answer.output.reply or "").strip()
         except llm.LLMError as e:
             if first and not ran:  # 아무 도구도 안 돌았다: 전 방식이 같은 일을 처음부터 한다
