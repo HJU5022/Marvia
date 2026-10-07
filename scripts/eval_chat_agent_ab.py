@@ -139,6 +139,14 @@ _web_count = [0]
 WEB_CAP = [150]
 
 
+def fake_load_memo(user_id: str):
+    """로그인 사용자의 메모 대신 하는 가공 값 (DB 없음): 서류(A/N)에서 저장된 포워더와 채팅에서 저장된 수출자. 회사·번호는 모의값이다."""
+    def contact(cid, company, role, phone, source):
+        return {"id": cid, "section": "about", "kind": "contact", "noted_at": "2026-10-07",
+                "fields": {"company": company, "role": role, "phone": phone, "source": source}}
+    return [contact("c1", "테스트로지스", "포워더", "051-000-0001", "A/N"), contact("c2", "테스트수출", "수출자", "051-000-0002", "사용자")], {}
+
+
 def install() -> None:
     """한 번만 부른다. 프로세스 전체에 가공 함수를 끼운다 (실행마다 바꾸지 않는다: 동시에 도는 실행들이 서로 영향을 주지 않게)."""
     orig_get_prompt = llm.get_prompt
@@ -152,6 +160,7 @@ def install() -> None:
     llm.get_prompt = get_prompt
     bl_parse.exists_in_customs = lambda bl: bl.upper().startswith("TESTBL")
     svc._arrivals = fake_arrivals
+    svc._load_memo = fake_load_memo
     svc._match_ports_cached = fake_match_ports
     svc.mcp_client.read_only_tools = _tools_once()
     # 기억 뽑기는 DB·LLM을 쓰는 부가 기능이라 끈다 (지시문 평가와 상관없다)
