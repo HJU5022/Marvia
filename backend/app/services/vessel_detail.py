@@ -6,7 +6,7 @@
 - searoute: 부산까지 남은 바닷길과 지금 속력으로 걸리는 시간 (estimate_distance)
 판정은 하지 않는다. 도구 하나가 실패해도 나머지는 보여 주고, 실패는 errors에 출처별로 남긴다 (SDD 8절 partial 원칙).
 위치가 오래됐는지는 rules.md position_stale_hours로 코드가 정한다 (화면이 정하지 않는다).
-ShipFinder는 하루 호출 한도가 있어 같은 배는 10분 동안 다시 부르지 않는다.
+ShipFinder는 하루 호출 한도가 있어 같은 배는 10분 동안 다시 부르지 않는다. 10분이 지나면 지우고, 다시 누르면 API를 부른다.
 """
 from __future__ import annotations
 
@@ -55,8 +55,13 @@ def _cache_get(key: tuple[str, str]) -> dict | None:
 
 
 def _cache_put(key: tuple[str, str], value: dict) -> None:
+    """한 척을 담는다. 담을 때 10분(CACHE_SEC)이 지난 배를 먼저 지운다 (10-07 승욱: 다른 배를 누르면 앞 배는 캐시에 남았다가
+    10분 뒤 지워지고, 그 뒤 다시 누르면 API를 부른다). 꺼낼 때(_cache_get)도 지난 값은 지우므로 둘 다에서 정리된다."""
+    now = time.monotonic()
     with _cache_lock:
-        _cache[key] = (time.monotonic(), value)
+        for old in [k for k, (at, _v) in _cache.items() if now - at >= CACHE_SEC]:
+            del _cache[old]
+        _cache[key] = (now, value)
         _cache.move_to_end(key)
         while len(_cache) > CACHE_MAX:
             _cache.popitem(last=False)
@@ -131,5 +136,8 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
               "distance": distance, "schedule": schedule, "errors": errors,
               # 이 결과를 만든 시각. 10분 캐시에서 다시 나가도 그대로라 화면이 "몇 시 기준"인지 보여 줄 수 있다 (10-06)
               "cached_at": datetime.now(timezone.utc).isoformat()}
-    _cache_put(key, result)
+    # 위치를 못 받은 결과는 담지 않는다 (10-07 승욱). 담으면 ShipFinder가 잠깐 실패했을 때 10분 동안 그 실패를 보여 준다.
+    # 다음에 누르면 다시 부른다. 해수부만 실패한 경우는 위치가 있으니 담는다
+    if not any(e["source"] == "shipfinder" for e in errors):
+        _cache_put(key, result)
     return result
