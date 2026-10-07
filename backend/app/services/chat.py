@@ -560,7 +560,7 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
         plans = _arrivals(days)
     except MofError as e:
         log_failure("chat_vessels", e.code)
-        return ChatResult(kind="message", reply="해수부 입항 정보를 지금 가져오지 못했어요. 잠시 뒤 다시 물어봐 주세요.")
+        return ChatResult(kind="message", reply="해수부 서버에 지금 연결되지 않아 입항 정보를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.")  # 10-08 정운 33번
     available = sorted({p.previous_port for p in plans if p.previous_port})
     ports: list[str] = []
     if place:

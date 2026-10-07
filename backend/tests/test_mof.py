@@ -194,13 +194,27 @@ def test_relay_token_header_only_when_set(monkeypatch):
     assert calls[1].headers["x-relay-token"] == "tok"
 
 
-def test_connect_failure_is_not_retried():
+def test_connect_failure_is_retried_once():
+    """연결 실패는 한 번만 바로 다시 부르고, 그래도 안 되면 timeout (10-08 실사용 33번)."""
     calls = []
     client = MofClient(key="k", transport=_transport(_refuse, calls))
     with pytest.raises(MofError) as e:
         client.control_records(date(2026, 9, 22), date(2026, 9, 22))
     assert e.value.code == "timeout"
-    assert len(calls) == 1  # 3번 부르지 않는다
+    assert len(calls) == 2  # 처음 + 한 번 더. 읽기 재시도(3번)는 타지 않는다
+
+
+def test_connect_blip_recovers_on_second_try():
+    """첫 연결만 끊기고 두 번째에 붙으면 정상 결과 (10-08 실사용 33번)."""
+    calls = []
+    state = {"n": 0}
+
+    def flaky(request):
+        state["n"] += 1
+        return _refuse(request) if state["n"] == 1 else _ok(request)
+
+    MofClient(key="k", transport=_transport(flaky, calls)).control_records(date(2026, 9, 22), date(2026, 9, 22))
+    assert len(calls) == 2
 
 
 def test_circuit_skips_network_then_resets(monkeypatch):
@@ -212,14 +226,14 @@ def test_circuit_skips_network_then_resets(monkeypatch):
     client = MofClient(key="k", transport=_transport(_refuse, calls))
     with pytest.raises(MofError):
         client.control_records(date(2026, 9, 22), date(2026, 9, 22))
-    assert len(calls) == 1
+    assert len(calls) == 2
 
-    now[0] += 30  # 60초 안: 네트워크 없이 같은 오류
+    now[0] += mof.CIRCUIT_OPEN_SEC / 2  # 차단 시간 안: 네트워크 없이 같은 오류
     with pytest.raises(MofError) as e:
         client.sailing_plans(date(2026, 9, 22), date(2026, 9, 22))
-    assert e.value.code == "timeout" and len(calls) == 1
+    assert e.value.code == "timeout" and len(calls) == 2
 
-    now[0] += 31  # 60초 뒤: 다시 시도한다
+    now[0] += mof.CIRCUIT_OPEN_SEC  # 차단 시간 뒤: 다시 시도한다
     with pytest.raises(MofError):
         client.control_records(date(2026, 9, 22), date(2026, 9, 22))
-    assert len(calls) == 2
+    assert len(calls) == 4
