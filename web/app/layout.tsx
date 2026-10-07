@@ -18,6 +18,7 @@ import './styles/watch.css';
 import './styles/settings.css';
 import './styles/admin.css';
 import './styles/entry.css';
+import './styles/landing.css';
 import './styles/sidebar.css';
 import './styles/metrics.css';
 import {AppProvider} from '@/components/AppProvider';

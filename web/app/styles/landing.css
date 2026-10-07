@@ -1,0 +1,167 @@
+/* 담당 영역: 소개 랜딩 (로그인 전 첫 화면 LoginScreen, 소개 /about). components/IntroContent.tsx 의 lp-* 와 LoginScreen 의 intro-btn 등.
+ * (10-07 개편) 아임웹 GLOBAL LOGISTICS 템플릿의 짜임: 사진 꽉 찬 첫 화면, 굵은 큰 제목, 강조색 하나(우리 브랜드 파랑),
+ * 단락마다 바탕을 흰색·연회색·짙은 남색으로 바꿔 리듬을 만든다. 숨겼다가 나타나는 효과는 쓰지 않는다 (글은 처음부터 보인다).
+ * 모서리는 기업 사이트처럼 작게 (4~8px, --lp-r-*), 그림자는 옅게 한 겹. 둥근 알약·큰 그림자·엇갈린 카드는 쓰지 않는다 (10-07 승욱: 너무 둥글고 귀여움).
+ * 토큰은 globals.css :root (--brand 등). */
+
+.lp{--lp-r-sm:4px;--lp-r:6px;--lp-r-lg:8px;--lp-shadow:0 1px 2px rgba(15,27,45,.06),0 4px 12px rgba(15,27,45,.05);--lp-ink:#111827;--lp-ink-2:#4b5563;--lp-line:#e5e7eb;--lp-soft:#f5f7fa;--lp-dark:#0f1b2d;--lp-max:1180px;
+  background:#fff;color:var(--lp-ink);overflow-x:clip;font-weight:400;
+  word-break:keep-all;overflow-wrap:anywhere}  /* 한글이 단어 중간에서 끊기지 않게 (10-07 점검: "근거/까지", "드리/고") */
+.lp h1,.lp h2,.lp h3,.lp p{text-wrap:pretty}  /* 마지막 줄에 한 글자만 남지 않게 */
+.lp [id]{scroll-margin-top:84px}  /* 메뉴로 이동하면 따라오는 윗줄(68px)에 제목이 가리지 않게 (10-07 점검) */
+.lp h1,.lp h2,.lp h3{margin:0;color:inherit;letter-spacing:-.02em}
+.lp p{margin:0}
+.lp-wrap{max-width:var(--lp-max);margin:0 auto;padding:0 32px}
+
+/* 윗줄: 흰 바탕, 스크롤해도 따라온다. 오른쪽 끝에 로그인 */
+.lp-nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.96);backdrop-filter:saturate(1.4) blur(8px);border-bottom:1px solid var(--lp-line)}
+.lp-nav-in{display:flex;align-items:center;gap:40px;max-width:var(--lp-max);margin:0 auto;padding:0 32px;height:68px}
+.lp-logo{font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--lp-ink)}
+.lp-menu{display:flex;gap:28px}
+.lp-menu a{font-size:15px;font-weight:500;color:var(--lp-ink-2)}
+.lp-menu a:hover{color:var(--lp-ink)}
+.lp-nav-right{margin-left:auto}
+.intro-nav-login{min-height:40px;padding:0 18px;border:0;border-radius:var(--lp-r-sm);background:var(--brand);color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+.intro-nav-login:hover{background:var(--brand-hover)}
+
+/* 첫 화면: 사진 한 장을 꽉 채우고 왼쪽을 어둡게 덮어 글이 읽히게 한다 */
+.lp-hero{position:relative;min-height:clamp(560px,82vh,760px);display:flex;align-items:center;overflow:hidden;background:var(--lp-dark)}
+.lp-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:70% 55%}
+.lp-hero-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,16,30,.82) 0%,rgba(8,16,30,.55) 45%,rgba(8,16,30,.1) 100%)}
+.lp-hero-in{position:relative;width:100%;max-width:var(--lp-max);margin:0 auto;padding:0 32px;color:#fff}
+.lp-hero h1{max-width:640px;font-size:clamp(38px,5.2vw,62px);font-weight:700;line-height:1.15}
+.lp-hero-sub{max-width:520px;margin-top:22px!important;font-size:18px;line-height:1.7;color:rgba(255,255,255,.88)}
+.lp-hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 28px;margin-top:36px}
+
+/* 눈썹글: 짧은 파란 글 (흰 바탕) 또는 밝은 파란 글 (어두운 바탕) */
+.lp-eyebrow{margin-bottom:14px!important;font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--brand)}
+.lp-eyebrow.light{color:#8fb0ff}
+.lp-eyebrow.center{text-align:center}
+
+/* 버튼: 채운 파랑 하나 (LoginScreen 과 /about 의 시작 버튼이 같은 class 를 쓴다) */
+.intro-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:50px;padding:0 24px;border:0;border-radius:var(--lp-r-sm);background:var(--brand);color:#fff;font-size:16px;font-weight:700;cursor:pointer;transition:background 150ms}
+.intro-btn:hover{background:var(--brand-hover)}
+.intro-btn:disabled{opacity:.7;cursor:default}
+.intro-btn .g-mark{background:#fff;border-radius:50%;padding:2px;width:22px;height:22px}
+.intro-error{margin-top:10px!important;font-size:14px;color:#fecaca}
+.lp-link{font-size:16px;font-weight:600;color:var(--lp-ink)}
+.lp-link.light{color:#fff}
+.lp-link:hover{text-decoration:underline;text-underline-offset:4px}
+
+/* 가운데 제목 (숫자 줄, 판정, 화면) */
+.lp-center-title{text-align:center;font-size:clamp(28px,3.2vw,38px);font-weight:700;line-height:1.25}
+.lp-center-title.light{color:#fff}
+.lp-center-sub{max-width:560px;margin:14px auto 0!important;text-align:center;font-size:16px;line-height:1.7;color:var(--lp-ink-2)}
+
+/* 숫자 줄: 얇은 선 칸 네 개에 큰 숫자 */
+.lp-stats-sec{padding-top:96px;padding-bottom:24px}
+.lp-stats{display:grid;grid-template-columns:repeat(4,1fr);margin:44px 0 0;border:1px solid var(--lp-line);border-radius:var(--lp-r);overflow:hidden}
+.lp-stats > div{padding:30px 20px;text-align:center}
+.lp-stats > div + div{border-left:1px solid var(--lp-line)}
+.lp-stats dt{font-size:15px;font-weight:500;color:var(--lp-ink-2)}
+.lp-stats dd{margin:8px 0 0;font-size:clamp(34px,3.8vw,48px);font-weight:700;line-height:1.1;color:var(--lp-ink)}
+.lp-stats dd small{margin-left:4px;font-size:.42em;font-weight:700;color:var(--brand)}
+
+/* 글·그림 두 칸 (어떻게 판단하나요) */
+.lp-split{display:grid;grid-template-columns:1fr 1.05fr;gap:64px;align-items:center;padding-top:112px;padding-bottom:112px}
+.lp-split h2,.lp-feat h2,.lp-band h2{font-size:clamp(28px,3.2vw,40px);font-weight:700;line-height:1.25}
+.lp-steps{list-style:none;margin:36px 0 0;padding:0;display:grid;gap:0;border-top:1px solid var(--lp-line)}
+.lp-steps li{display:grid;grid-template-columns:44px 1fr;gap:16px;align-items:baseline;padding:18px 0;border-bottom:1px solid var(--lp-line)}
+.lp-step-no{font-size:15px;font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums}
+.lp-steps h3{font-size:18px;font-weight:700}
+.lp-steps p{margin-top:4px!important;font-size:15px;line-height:1.7;color:var(--lp-ink-2)}
+.lp-split-media{margin:0}
+.lp-split-media img{display:block;width:100%;height:auto;border-radius:var(--lp-r-lg);border:1px solid var(--lp-line);box-shadow:var(--lp-shadow)}
+.lp-split-media figcaption{margin-top:12px;text-align:center;font-size:13px;color:var(--lp-ink-2)}
+
+/* 넓은 사진 띠 (데이터 출처) */
+.lp-band{position:relative;overflow:hidden;background:var(--lp-dark);color:#fff}
+.lp-band-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.lp-band-shade{position:absolute;inset:0;background:rgba(8,16,30,.66)}
+.lp-band-in{position:relative;padding-top:104px;padding-bottom:104px}
+.lp-sources{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin:40px 0 0;padding:0}
+.lp-sources li{display:grid;gap:6px;padding:26px 24px;border-radius:var(--lp-r);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(6px)}
+.lp-sources svg{color:#8fb0ff;margin-bottom:6px}
+.lp-sources b{font-size:18px;font-weight:700}
+.lp-sources span{font-size:15px;color:rgba(255,255,255,.8)}
+
+/* 기능: 연회색 바탕, 왼쪽 글·사진, 오른쪽 엇갈린 흰 카드 */
+.lp-soft{background:var(--lp-soft)}
+.lp-feat{display:grid;grid-template-columns:1fr 1.15fr;gap:56px;align-items:center;padding-top:112px;padding-bottom:112px}
+.lp-body{margin-top:18px!important;font-size:16px;line-height:1.75;color:var(--lp-ink-2)}
+.lp-feat-photo{display:block;width:100%;height:auto;margin-top:32px;border-radius:var(--lp-r-lg);aspect-ratio:3/2;object-fit:cover}
+.lp-cards{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:0;padding:0}
+.lp-cards li{padding:28px 24px;border-radius:var(--lp-r);background:#fff;border:1px solid var(--lp-line)}
+.lp-card-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:var(--lp-r-sm);background:var(--brand-soft,#ebf1ff);color:var(--brand)}
+.lp-cards h3{margin-top:20px!important;font-size:19px;font-weight:700}
+.lp-cards p{margin-top:8px!important;font-size:15px;line-height:1.7;color:var(--lp-ink-2)}
+
+/* 판정: 짙은 남색 바탕에 등급 카드 셋 */
+.lp-dark{background:var(--lp-dark);padding:112px 0}
+.lp-verdicts{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin:48px 0 0;padding:0}
+.lp-verdicts li{padding:28px 24px;border-radius:var(--lp-r);background:#fff;border-top:3px solid var(--fine,#10b981)}
+.lp-verdicts li.watch{border-top-color:var(--watch,#f59e0b)}
+.lp-verdicts li.act{border-top-color:var(--act,#ef4444)}
+.lp-verdict-name{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700}
+.lp-verdict-mean{margin-top:12px!important;font-size:16px;line-height:1.65;color:var(--lp-ink)}
+.lp-verdict-todo{margin-top:18px!important;padding-top:16px;border-top:1px solid var(--lp-line);font-size:14px;line-height:1.65;color:var(--lp-ink-2)}
+.lp-verdict-todo b{display:block;margin-bottom:4px;font-size:13px;font-weight:700;color:var(--lp-ink)}
+.lp-dot{width:10px;height:10px;border-radius:50%;background:var(--fine,#10b981)}
+.lp-dot.watch{background:var(--watch,#f59e0b)}
+.lp-dot.act{background:var(--act,#ef4444)}
+.lp-dark-note{margin-top:28px!important;text-align:center;font-size:15px;color:rgba(255,255,255,.75)}
+
+/* 화면 미리보기 */
+.lp-screens{padding-top:112px;padding-bottom:40px}
+.lp-shots{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:28px;margin:48px 0 0;padding:0}
+.lp-shots a{display:block;border-radius:var(--lp-r);overflow:hidden;border:1px solid var(--lp-line);box-shadow:var(--lp-shadow)}
+.lp-shots img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;object-position:top;transition:transform 300ms var(--ease,ease)}
+.lp-shots a:hover img{transform:scale(1.02)}
+.lp-shots h3{margin-top:18px!important;font-size:19px;font-weight:700}
+.lp-shots p{margin-top:6px!important;font-size:15px;color:var(--lp-ink-2)}
+
+/* 마지막 권유: 브랜드 파랑 상자 + 오른쪽 사진 */
+#start{padding-top:72px;padding-bottom:40px}
+.lp-cta{display:grid;grid-template-columns:1.2fr .8fr;align-items:center;gap:32px;padding:56px;border-radius:var(--lp-r-lg);background:var(--brand);color:#fff;overflow:hidden}
+.lp-cta h2{font-size:clamp(28px,3.2vw,40px);font-weight:700;line-height:1.25}
+.lp-cta-text p{margin-top:14px!important;font-size:17px;color:rgba(255,255,255,.88)}
+.lp-cta-action{margin-top:30px}
+.lp-cta .intro-btn{background:#fff;color:var(--brand)}
+.lp-cta .intro-btn:hover{background:#eef3ff}
+.lp-cta .intro-error{color:#fff}
+.lp-cta :focus-visible{outline-color:#fff}  /* 파란 바탕에서 파란 포커스 테두리가 묻혀서 흰색으로 (10-07 점검) */
+.lp-cta-img{width:100%;height:320px;object-fit:cover;border-radius:var(--lp-r)}
+.lp-scope{display:flex;align-items:flex-start;justify-content:center;gap:8px;margin-top:22px!important;text-align:center;font-size:14px;line-height:1.6;color:var(--lp-ink-2)}
+.lp-scope svg{flex:none;margin-top:3px}
+
+/* 하단 줄 (LoginScreen 이 넘기는 footer). 약관 링크는 두지 않는다 */
+.intro-foot{margin-top:56px;padding:28px 0 40px;border-top:1px solid var(--lp-line);text-align:center;font-size:13px;color:var(--lp-ink-2)}
+
+/* 태블릿 */
+@media(max-width:1000px){
+  .lp-split,.lp-feat{grid-template-columns:1fr;gap:44px}
+  .lp-stats{grid-template-columns:repeat(2,1fr)}
+  .lp-stats > div:nth-child(3){border-left:0}
+  .lp-stats > div:nth-child(n+3){border-top:1px solid var(--lp-line)}
+  .lp-cta{grid-template-columns:1fr;padding:40px}
+  .lp-cta-img{height:220px}
+}
+/* 휴대폰 */
+@media(max-width:700px){
+  .lp-wrap,.lp-hero-in,.lp-nav-in{padding-left:16px;padding-right:16px}
+  .lp-nav-in{height:60px;gap:16px}
+  .lp-menu{display:none}
+  .lp-hero{min-height:560px}
+  .lp-hero-shade{background:linear-gradient(180deg,rgba(8,16,30,.55) 0%,rgba(8,16,30,.82) 100%)}
+  .lp-hero-sub{font-size:16px}
+  .lp-stats-sec{padding-top:72px}
+  .lp-split,.lp-feat,.lp-band-in{padding-top:80px;padding-bottom:80px}
+  .lp-dark{padding:80px 0}
+  .lp-screens{padding-top:80px}
+  .lp-sources,.lp-cards,.lp-verdicts,.lp-shots{grid-template-columns:1fr}
+  .lp-cta{padding:32px 24px}
+  .intro-btn{width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+  .lp-shots img{transition:none}
+}
