@@ -17,6 +17,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
 from backend.app.services.rules import rule
+from backend.app.services.vessel_pick import rank
 # MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py).
 # route_points는 지도에 그릴 항로 좌표를 만드는 도우미라 MCP 도구가 아니다. 그래서 직접 부른다
 from backend.app.services.mcp_client import (
@@ -110,7 +111,10 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
     if (e := _err("shipfinder", found)):
         errors.append(e)
     else:
-        cands = found.get("candidates") or []
+        # 같은 호출부호의 여러 배 중 지켜보기(services/vessel_watch.resolve_mmsi)와 같은 규칙으로 고른다:
+        # 이름이 같은 배 먼저, 그다음 마지막 신호가 가장 최근인 배 (10-08 정운 실사용 64번, services/vessel_pick.py).
+        # 그래야 자세히 보기에 보이는 배와 지켜보기에 올라가는 배가 같다
+        cands = rank(found.get("candidates") or [], ship_name, lambda c: c.get("name"), lambda c: c.get("last_time"))
         vessel = cands[0] if cands else None
         if vessel is None:
             errors.append({"source": "shipfinder", "code": "not_found", "message": "AIS에서 이 배를 찾지 못했습니다"})
@@ -141,3 +145,35 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
     if not any(e["source"] == "shipfinder" for e in errors):
         _cache_put(key, result)
     return result
+
+
+def cached_result(call_sign: str | None, ship_name: str | None) -> dict | None:
+    """10분 캐시 안에 이 배의 자세히 보기 결과가 있으면 그것을, 없으면 None. 외부 호출을 하지 않는다.
+    지켜보기를 켤 때 이미 받은 위치를 다시 받지 않고 쓰려고 부른다 (10-08 정운 실사용 66번, services/vessel_watch.py)."""
+    return _cache_get(_key(call_sign, ship_name))
+
+
+def live_position(mmsi: int, call_sign: str | None = None, ship_name: str | None = None) -> dict | None:
+    """MMSI 한 척의 현재 위치(get_live_position 응답 모양)를 돌려준다. 못 받으면 None (예외를 던지지 않는다).
+
+    지켜보기 목록이 오래된 위치를 새로 채울 때 쓴다 (10-08 정운 실사용 66번). ShipFinder 하루 한도를 아끼려고 순서대로:
+      1. 자세히 보기 10분 캐시에 같은 MMSI의 위치가 있으면 그것
+      2. MMSI별 10분 캐시
+      3. get_live_position 한 번 (성공하고 캐시 대체값이 아닐 때만 2번에 담는다)
+    """
+    hit = cached_result(call_sign, ship_name)
+    if hit and (hit.get("vessel") or {}).get("mmsi") == mmsi and hit.get("position"):
+        return hit["position"]
+    mkey = ("#MMSI", str(mmsi))
+    hit = _cache_get(mkey)
+    if hit is not None:
+        return hit["position"]
+    try:
+        pos = get_live_position(mmsi)
+    except Exception:  # MCP 호출 자체의 실패도 목록을 막지 않는다
+        return None
+    if _err("shipfinder", pos) or not isinstance(pos, dict) or pos.get("lat") is None:
+        return None
+    if not pos.get("cached_at"):  # 한도에 걸려 옛 값을 받은 것은 새 값처럼 담지 않는다
+        _cache_put(mkey, {"position": pos})
+    return pos
