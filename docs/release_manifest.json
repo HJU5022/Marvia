@@ -3,8 +3,8 @@
   "release": "2026-10-08-r5",
   "fixed_at": "2026-10-08",
   "code": {
-    "branch": "jeongun (PR #83 https://github.com/aihuman-7th/proj2-5/pull/83, 열림, 아직 병합 안 함, 리뷰어 seungwook-kim)",
-    "commits_note": "git log --oneline origin/main..HEAD 기준 22개, 최신이 앞. r4 이후 실사용 59~79와 chat-agent 14 프롬프트",
+    "branch": "jeongun (PR #83 https://github.com/aihuman-7th/proj2-5/pull/83, 병합 완료 9bed960, 리뷰어 seungwook-kim)",
+    "commits_note": "병합 전 git log --oneline origin/main..HEAD 기준 22개, 최신이 앞(이력 기록, 병합 완료 9bed960). r4 이후 실사용 59~79와 chat-agent 14 프롬프트",
     "commits": [
       "00cb06a",
       "d715999",
@@ -32,7 +32,7 @@
     "migration": "추가 없음 (r4의 023_vessel_watch.sql 그대로)",
     "api": "새 /api/document/bl (서류 사진에서 B/L만 코드로 읽음, LLM 없음). 채팅에 watch_vessel 도구 추가 (계약은 더하기만)",
     "verification": "10-07 실행: pytest backend/tests mcp_server/tests 2242 passed, web tsc 오류 0, verify-contract PASS, e2e 데모 PASS (라이브는 SKIP)",
-    "note": "PR #83은 병합 전이다. 배포 서버에는 jeongun 브랜치 코드가 10-07 ~17:25 KST에 올라가 있다 (Railway는 GitHub에서 자동 배포되지 않음)"
+    "note": "PR #83은 병합됐다(9bed960). 배포 서버에는 jeongun 브랜치 코드가 10-07 ~17:25 KST에 올라가 있다 (Railway는 GitHub에서 자동 배포되지 않음)"
   },
   "deploy": {
     "platform": "Railway",
@@ -60,11 +60,11 @@
       "platform": "Google Cloud Run",
       "region": "asia-northeast3",
       "project": "소유자 개인 GCP 프로젝트 (팀 계정 아님, 무료 체험 크레딧)",
-      "status": "배포 중, 확인 전",
-      "note": "10-07 해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). Railway 환경변수 MOF_BASE_URL·MOF_RELAY_TOKEN은 아직 설정 전이다. 주소와 deployment ID는 배포가 끝난 뒤 적는다"
+      "status": "사용 중 (10-07 소유자 확인)",
+      "note": "10-07 해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). 운영 marvia-api에 MOF_BASE_URL·MOF_RELAY_TOKEN이 설정돼 있고 같은 날 운영 채팅 입항 검색이 실제 선박 목록을 돌려줬다(예: 일본에서 1주 안에 부산 오는 수입 화물선 43척). 연결 실패는 한 번 바로 다시 시도하고 그래도 안 되면 15초 동안 바로 실패시킨다(clients/mof.py CIRCUIT_OPEN_SEC). 릴레이 주소와 deployment ID는 이 파일에 적지 않았다"
     },
     "replay_mode": false,
-    "replay_mode_note": "10-07 소유자 결정: 배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 채점자·키 없는 로컬 데모·평가용. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다"
+    "replay_mode_note": "10-07 소유자 결정: 배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 채점자·키 없는 로컬 데모·평가용. 원인은 확인하지 못했다: Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다. 우회: 서울 릴레이(mof_relay)를 쓰는 중"
   },
   "models": {
     "service": "google/gemini-3.5-flash-lite (OpenRouter)",
@@ -86,7 +86,7 @@
     "marvia-doc-extract": 6,
     "marvia-chat-title": 1,
     "marvia-memory-write": 1,
-    "_registered": "10-07 17:23 KST 하정운이 Langfuse 화면에서 등록. chat-agent 14 라벨 production, latest, v5. 레포 파일 backend/app/prompts/marvia-chat-agent.md가 같은 글 (커밋 00cb06a). 나머지 프롬프트는 r4와 같다. judge·follow-up 정리본은 A/B에서 이득이 없어 쓰지 않았다 (follow-up 단어 -3%, judge -0.4%, 통관 해설 채점 OLD 1.0x4 vs NEW 0.867~1.0)"
+    "_registered": "10-07 17:23 KST 하정운이 Langfuse 화면에서 등록. chat-agent 14 라벨 production, latest, v5. 레포 파일 backend/app/prompts/marvia-chat-agent.md가 같은 글 (커밋 00cb06a). 나머지 프롬프트는 r4와 같다. (10-08 로컬, 미병합: 레포 파일에는 recall_memo 2줄이 더해져 15 후보이고 Langfuse 등록 대기, 운영 production은 14) judge·follow-up 정리본은 A/B에서 이득이 없어 쓰지 않았다 (follow-up 단어 -3%, judge -0.4%, 통관 해설 채점 OLD 1.0x4 vs NEW 0.867~1.0)"
   },
   "knowledge": {
     "skills": "skills/*/*.md",
@@ -117,6 +117,17 @@
       "cost": "금액 미기록(Vertex라 토큰만 남음)",
       "note": "F08은 judge가 bad_format 3번 뒤 포기했다. 등급은 코드 판정 표에서 나와 문항은 맞았다"
     },
+    "remeasure_20261007": {
+      "files": "evals/results/b_20261007_2102.json, 2105, 2107, 2110, 2113, 2116 (같은 폴더, b_20261007_*)",
+      "model": "google/gemini-3.5-flash-lite (OpenRouter 서비스 경로)",
+      "git_commit": "bd6585c-dirty (프롬프트만 라벨 고정본으로 바꿔 돌림. 래퍼는 레포 밖)",
+      "runs": "프롬프트 라벨 v1(judge 9 · follow-up 5), v2(judge 10 · follow-up 7), v5 production(judge 10 · follow-up 9) 각 2회",
+      "exact_match": "6회 모두 30/30, 게이트 4개 모두 통과",
+      "p50_ms": "1875 ~ 2078",
+      "p95_ms": "3579 ~ 6288",
+      "cost_usd_per_request": "0.002406 ~ 0.002808",
+      "note": "정답 지표는 버전 사이에 같고, 지연·비용은 회차 간 흔들림이 버전 간 차이보다 크다. 채점기 호출 비용은 위 금액에 없다(미측정)"
+    },
     "chat_agent_ab": {
       "script": "scripts/eval_chat_agent_ab.py",
       "cases": "scripts/eval_chat_agent_cases.jsonl (162건 x2)",
@@ -142,7 +153,7 @@
     "release": "2026-10-08-r4",
     "fixed_at": "2026-10-08",
     "code": {
-      "branch": "jeongun (PR #79 https://github.com/aihuman-7th/proj2-5/pull/79, 열림, 아직 병합 안 함)",
+      "branch": "jeongun (PR #79 https://github.com/aihuman-7th/proj2-5/pull/79, 병합 완료 26ba901)",
       "commits": [
         "480ac64",
         "47d7c76",

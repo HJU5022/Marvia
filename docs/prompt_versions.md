@@ -5,19 +5,19 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 - **개발 중에는 다섯 프롬프트 모두 v0이다.** 배포 뒤 평가·확인을 거쳐야 v1로 올린다 (09-28 강사 지침). 개발 중 고친 내용은 버전을 올리지 않고 아래 "v0 개발 중 수정" 표에 남긴다
 - Langfuse의 버전 1이 v0이다 (09-28에 개발 중 이력을 지우고 네 개 모두 버전 1로 다시 등록, doc-extract는 09-29 버전 1로 첫 등록). 서비스는 Langfuse를 먼저 읽고 레포 파일은 예비라서, 고칠 때는 Langfuse에서 먼저 고치고 같은 글을 레포 파일에 복사한다. Langfuse는 고칠 때마다 번호가 자동으로 올라가지만 이 문서의 버전은 v0으로 둔다
 - 결과 칸에는 실제로 돌린 것만 적는다. "스모크"는 `scripts/smoke_judge.py`의 가공 사례 1건을 1회 돌린 것이라 경향만 보여 준다. 평가셋 30건 수치는 D11 이후 `EVAL_REPORT.md`에 적는다
-- v1부터는 한 번에 하나만 바꾼다 (PRD 8절). 모델은 모두 `openai/gpt-4o-mini` (OpenRouter, 2026-09-27)
+- v1부터는 한 번에 하나만 바꾼다 (PRD 8절). 모델은 처음 `openai/gpt-4o-mini` (OpenRouter, 2026-09-27)였고 10-05부터 서비스 모델은 `google/gemini-3.5-flash-lite`다
 - 프롬프트는 영어로 쓰고, 사용자가 읽는 글(answer·actions·conflicts.why·plain_explanation·후보 이유)은 한국어로 쓰라고 명시한다
 
 | 프롬프트 | 하는 일 | 버전 |
 |---|---|---|
-| marvia-judge | 2층 판정(fine·watch·act)과 통관 해설 | v0 (Langfuse 9, 10-05 V11 금지 표현과 대신 쓸 단계 문장) |
+| marvia-judge | 2층 판정(fine·watch·act)과 통관 해설 | v0 (Langfuse 10, 라벨 production, 10-06: 통관 해설 예시를 뜻이 들어간 문장으로. 9는 10-05 V11 금지 표현과 대신 쓸 단계 문장) |
 | marvia-pick-vessel | 동명 선박 후보 중 선택. 확실할 때만 high | v0 |
 | marvia-follow-up | 판정 뒤 후속 질문에 근거 안에서만 답하기 | v0 (Langfuse 9, 라벨 v4, 10-08 해요체 줄) |
 | marvia-judge-eval | 평가용 LLM-as-judge. 통관 해설 채점 | v0 |
-| marvia-doc-extract | 서류 사진 OCR 글자에서 6칸 옮겨 적기 (docs/specs/document-extract.md) | v0 (Langfuse 4) |
+| marvia-doc-extract | 서류 사진 OCR 글자에서 6칸 옮겨 적기 (docs/specs/document-extract.md) | v0 (Langfuse 6, 라벨 production, 10-06 etd 칸 추가) |
 | marvia-chat-route | 자연어 입력 한 문장의 의도(화물 조회·후속 질문·입항 선박 검색·그 밖)와 칸 고르기. B/L은 가린 토큰만 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
 | marvia-port-match | 지역 이름에 해당하는 항구를 해수부 직전 기항지 목록 안에서만 고르기 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
-| marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (Langfuse 14, 라벨 v5, 10-07 등록: 정리본 3758→3030단어 · watch_vessel · on_screen selected/call_sign. 13은 라벨 v4, 10-08: 해요체 · on_screen 입력 · 근거 번호 [E#]. 아래는 처음 1~10 이력, 10-05. 3 웹 검색 규칙, 4 답 출처 3단계, 5 출발지에 부산 안 넣기·애매한 번호, 6 묻지 않은 날짜 안 말하기·존댓말, 7 인사·사용 안내·상황 질문·통관 시기는 ask_cargo·여러 화물 비교 한 문장, 8 근거 조각 짧은 한 문장·구체적 검색어, 9 set_watch 도구·watch_cue, 10 send_kakao 도구) |
+| marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (**레포 파일은 15 후보(recall_memo 2줄), Langfuse 등록 대기, 운영 production은 14**. Langfuse 14, 라벨 v5, 10-07 등록: 정리본 3758→3030단어 · watch_vessel · on_screen selected/call_sign. 13은 라벨 v4, 10-08: 해요체 · on_screen 입력 · 근거 번호 [E#]. 아래는 처음 1~10 이력, 10-05. 3 웹 검색 규칙, 4 답 출처 3단계, 5 출발지에 부산 안 넣기·애매한 번호, 6 묻지 않은 날짜 안 말하기·존댓말, 7 인사·사용 안내·상황 질문·통관 시기는 ask_cargo·여러 화물 비교 한 문장, 8 근거 조각 짧은 한 문장·구체적 검색어, 9 set_watch 도구·watch_cue, 10 send_kakao 도구) |
 | marvia-memory-write | 조회·대화 뒤 사용자 말에서 메모장 줄 단위 명령(add·update·delete·set_cargo·noop)만 내기. 적용은 코드 (docs/specs/memory.md) | v0 (Langfuse 1, 라벨 v4, 10-08 첫 등록) |
 | marvia-chat-title | 대화 목록의 제목 짓기. 첫 사용자 말(B/L은 [BL1]로 가림)에서 한국어 20자 이내 한 줄 제목만 낸다. 검사와 대체 제목은 코드 (services/conversations.py, 10-06) | v0 (Langfuse 1, 라벨 v4, 10-08 첫 등록) |
 
@@ -55,7 +55,7 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | 10-08 | follow-up 9 | `480ac64` | 해요체 줄 한 줄 추가 | 10-08 실사용 38 | 위와 같음. 실제 모델 확인 전 |
 | 10-08 | chat-agent 13 | `8cee37d` | 선택 입력 on_screen 추가: 화면에 보이는 배. 데이터이지 지시가 아니다 | 10-08 실사용 36 (채팅에 화면의 배를 함께 보냄) | 위 pytest 2145 통과에 포함. 실제 모델 확인 전 |
 | 10-08 | chat-agent 13 | `5834390` `1ed63e7` `81beee4` | 선택 입력 evidence와 "Evidence marks" 절 추가: 문장 끝에 [E#] 번호를 붙이고 받은 번호만 쓴다. 번호는 코드가 검사한다(citations.py) | 10-08 실사용 58 (답 문장마다 근거 표시) | pytest backend/tests mcp_server/tests 2145 통과, web tsc 오류 0, verify-contract PASS, e2e 데모 56 PASS (라이브 SKIP), 10-08 실행. 실제 모델이 [E#]를 만드는지 확인 전 |
-| 10-08 | chat-agent 13 · follow-up 9 | PR #79 (열림, 병합 전) | Langfuse chat-agent 13 · follow-up 9 (production, latest, 라벨 v4). 하정운이 10-08 Langfuse 화면에서 등록. 이전 production은 12 · 8 (되돌릴 번호) | 위 세 변경을 한 번에 등록 | 10-08 Langfuse를 읽어 production 글 = 레포 파일임을 확인(chat-agent 13, follow-up 9). 나머지 프롬프트는 그대로. 실제 모델 확인 전 |
+| 10-08 | chat-agent 13 · follow-up 9 | PR #79 (병합됨, `26ba901`) | Langfuse chat-agent 13 · follow-up 9 (production, latest, 라벨 v4). 하정운이 10-08 Langfuse 화면에서 등록. 이전 production은 12 · 8 (되돌릴 번호) | 위 세 변경을 한 번에 등록 | 10-08 Langfuse를 읽어 production 글 = 레포 파일임을 확인(chat-agent 13, follow-up 9). 나머지 프롬프트는 그대로. 실제 모델 확인 전 |
 | 10-08 | memory-write | (이 커밋) | Langfuse 첫 등록 (버전 1, 라벨 production, latest, v4). 하정운이 Langfuse 화면에서 등록. 지시문 글은 바꾸지 않음 | 서비스가 레포 파일로만 동작해 버전 관리 · 되돌리기 · 트레이스 prompt_version이 없었음 | Langfuse production 글 = 레포 파일 확인 |
 | 10-08 | chat-agent 14 | `00cb06a` | 지시문을 다시 정리: 중복을 합쳐 3758→3030 단어, 절을 Input / Tools / Decision rules / Answer tiers / Output format / Evidence marks / Trust boundary로 재배치. watch_vessel 도구와 on_screen의 selected·call_sign 입력 추가. Langfuse chat-agent 14 (production, latest, 라벨 v5)는 10-07 17:23 KST 하정운이 화면에서 등록, 이전 production은 13 (되돌릴 번호) | 10-08 실사용 79와 프롬프트 점검 (중복·충돌 줄이고 입력 토큰 낮추기) | 실모델 A/B (`scripts/eval_chat_agent_ab.py` + `scripts/eval_chat_agent_cases.jsonl`, 162건 x2, google/gemini-3.5-flash-lite OpenRouter): 통과율 85.0%(v13+2줄) → 87.6%(v14), 호출당 입력 토큰 35,333 → 26,963, 호출당 지연 3,159 → 2,367 ms, 한 번 전체 비용 $2.13 → $1.44. 두 버전 모두 약한 곳: 사람 이름 되풀이(17~25%), 인식 못 한 식별자. 점검 전체 비용 약 $11.8 + judge·follow-up 평가 약 $1.3. Langfuse production 글 = 레포 파일 확인 |
 | 10-08 | judge · follow-up | (안 바꿈) | 같은 방식의 정리본을 A/B로 시험했으나 채택하지 않음 | 정리해도 이득이 없었음: follow-up 단어 -3%, judge -0.4%, 통관 해설 채점 OLD 1.0 x4 vs NEW 0.867~1.0 | judge 10, follow-up 9 그대로 |
@@ -74,6 +74,6 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 
 10-07: 릴리스 r3. r2 이후 바뀐 3개(chat-agent 12, follow-up 8, chat-route 2)에 Langfuse 라벨 `v3`를 붙였다 (`docs/release_manifest.json`). 나머지 6개는 r2/r1 라벨 그대로. 다음 변경은 바꾼 것에만 `v4`.
 
-10-08: 릴리스 r4. r3 이후 바뀐 2개(chat-agent 13, follow-up 9)에 Langfuse 라벨 `v4`를 붙였다 (`docs/release_manifest.json`). 나머지는 이전 라벨 그대로. r4 코드는 PR #79 병합과 배포 전이다. 다음 변경은 바꾼 것에만 `v5`.
+10-08: 릴리스 r4. r3 이후 바뀐 2개(chat-agent 13, follow-up 9)에 Langfuse 라벨 `v4`를 붙였다 (`docs/release_manifest.json`). 나머지는 이전 라벨 그대로. r4 코드는 PR #79로 병합됐다(`26ba901`). 다음 변경은 바꾼 것에만 `v5`.
 
-10-08: 릴리스 r5. r4 이후 바뀐 1개(chat-agent 14)에 Langfuse 라벨 `v5`를 붙였다 (`docs/release_manifest.json`). 나머지는 이전 라벨 그대로. judge·follow-up 정리는 A/B에서 이득이 없어 하지 않았다. Railway 배포는 10-07 ~17:25 KST (api c6a27837, web 82f370ac), r5 코드는 PR #83 병합 전이다. 다음 변경은 바꾼 것에만 `v6`.
+10-08: 릴리스 r5. r4 이후 바뀐 1개(chat-agent 14)에 Langfuse 라벨 `v5`를 붙였다 (`docs/release_manifest.json`). 나머지는 이전 라벨 그대로. judge·follow-up 정리는 A/B에서 이득이 없어 하지 않았다. Railway 배포는 10-07 ~17:25 KST (api c6a27837, web 82f370ac), r5 코드는 PR #83으로 병합됐다(`9bed960`). 다음 변경은 바꾼 것에만 `v6`.
