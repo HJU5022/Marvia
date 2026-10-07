@@ -64,8 +64,8 @@
     "marvia-port-match": 1,
     "marvia-doc-extract": 6,
     "marvia-chat-title": 1,
-    "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작",
-    "_registered": "10-08 하정운이 Langfuse 화면에서 등록. 같은 날 Langfuse를 읽어 production 글이 레포 파일과 같음을 확인. chat-agent 13 · follow-up 9 모두 라벨 production, latest, v4"
+    "marvia-memory-write": 1,
+    "_registered": "10-08 하정운이 Langfuse 화면에서 등록. 같은 날 Langfuse를 읽어 production 글이 레포 파일과 같음을 확인. chat-agent 13 · follow-up 9 모두 라벨 production, latest, v4. memory-write 1도 10-08 첫 등록, 라벨 production, latest, v4 (production 글 = 레포 파일 확인)"
   },
   "knowledge": {
     "skills": "skills/*/*.md",

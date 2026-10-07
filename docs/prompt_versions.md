@@ -18,8 +18,8 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | marvia-chat-route | 자연어 입력 한 문장의 의도(화물 조회·후속 질문·입항 선박 검색·그 밖)와 칸 고르기. B/L은 가린 토큰만 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
 | marvia-port-match | 지역 이름에 해당하는 항구를 해수부 직전 기항지 목록 안에서만 고르기 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
 | marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (Langfuse 13, 라벨 v4, 10-08: 해요체 · on_screen 입력 · 근거 번호 [E#]. 아래는 처음 1~10 이력, 10-05. 3 웹 검색 규칙, 4 답 출처 3단계, 5 출발지에 부산 안 넣기·애매한 번호, 6 묻지 않은 날짜 안 말하기·존댓말, 7 인사·사용 안내·상황 질문·통관 시기는 ask_cargo·여러 화물 비교 한 문장, 8 근거 조각 짧은 한 문장·구체적 검색어, 9 set_watch 도구·watch_cue, 10 send_kakao 도구) |
-| marvia-memory-write | 조회·대화 뒤 사용자 말에서 메모장 줄 단위 명령(add·update·delete·set_cargo·noop)만 내기. 적용은 코드 (docs/specs/memory.md) | v0 (Langfuse 1, 10-06) |
-| marvia-chat-title | 대화 목록의 제목 짓기. 첫 사용자 말(B/L은 [BL1]로 가림)에서 한국어 20자 이내 한 줄 제목만 낸다. 검사와 대체 제목은 코드 (services/conversations.py, 10-06) | v0 (Langfuse 1, 10-06) |
+| marvia-memory-write | 조회·대화 뒤 사용자 말에서 메모장 줄 단위 명령(add·update·delete·set_cargo·noop)만 내기. 적용은 코드 (docs/specs/memory.md) | v0 (Langfuse 1, 라벨 v4, 10-08 첫 등록) |
+| marvia-chat-title | 대화 목록의 제목 짓기. 첫 사용자 말(B/L은 [BL1]로 가림)에서 한국어 20자 이내 한 줄 제목만 낸다. 검사와 대체 제목은 코드 (services/conversations.py, 10-06) | v0 (Langfuse 1, 라벨 v4, 10-08 첫 등록) |
 
 ## v0 개발 중 수정
 
@@ -56,6 +56,7 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | 10-08 | chat-agent 13 | `8cee37d` | 선택 입력 on_screen 추가: 화면에 보이는 배. 데이터이지 지시가 아니다 | 10-08 실사용 36 (채팅에 화면의 배를 함께 보냄) | 위 pytest 2145 통과에 포함. 실제 모델 확인 전 |
 | 10-08 | chat-agent 13 | `5834390` `1ed63e7` `81beee4` | 선택 입력 evidence와 "Evidence marks" 절 추가: 문장 끝에 [E#] 번호를 붙이고 받은 번호만 쓴다. 번호는 코드가 검사한다(citations.py) | 10-08 실사용 58 (답 문장마다 근거 표시) | pytest backend/tests mcp_server/tests 2145 통과, web tsc 오류 0, verify-contract PASS, e2e 데모 56 PASS (라이브 SKIP), 10-08 실행. 실제 모델이 [E#]를 만드는지 확인 전 |
 | 10-08 | chat-agent 13 · follow-up 9 | PR #79 (열림, 병합 전) | Langfuse chat-agent 13 · follow-up 9 (production, latest, 라벨 v4). 하정운이 10-08 Langfuse 화면에서 등록. 이전 production은 12 · 8 (되돌릴 번호) | 위 세 변경을 한 번에 등록 | 10-08 Langfuse를 읽어 production 글 = 레포 파일임을 확인(chat-agent 13, follow-up 9). 나머지 프롬프트는 그대로. 실제 모델 확인 전 |
+| 10-08 | memory-write | (이 커밋) | Langfuse 첫 등록 (버전 1, 라벨 production, latest, v4). 하정운이 Langfuse 화면에서 등록. 지시문 글은 바꾸지 않음 | 서비스가 레포 파일로만 동작해 버전 관리 · 되돌리기 · 트레이스 prompt_version이 없었음 | Langfuse production 글 = 레포 파일 확인 |
 
 ## 계속 다시 확인할 것
 
