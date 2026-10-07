@@ -2,7 +2,7 @@
 /** 입항 예정 선박 검색 결과 (docs/specs/chat-search.md vessel_search). 오른쪽 칸 구성 (10-06 개편, 정운 요청):
  * 맨 위에 큰 지도(VesselMap, 화물 상세 지도와 같은 모양과 지도 펼치기), 그 아래에 5칸짜리 가벼운 목록.
  * 줄을 누르면 지도가 그 배로 날아가고, 줄이 그 자리에서 펼쳐져 자세히(VesselDetail)가 나온다. 줄과 점은 서로 강조한다.
- * 위치는 배마다 ShipFinder를 한 번씩 불러야 알 수 있고 하루 50건 한도가 있다. 그래서 첫 줄(처음 고른 배)만 자동으로 받고 나머지는 누를 때 받는다.
+ * 위치는 배마다 ShipFinder를 한 번씩 불러야 알 수 있고 하루 50건 한도가 있다. 그래서 자동으로 받지 않고 선명을 누를 때만 받는다 (10-07).
  * 받은 결과는 서버가 10분 캐시하므로 여기서도 같은 시간 동안 들고 있다(cache, 모듈 변수). 지도에는 지금 고른 배 하나만 찍는다.
  * 다른 배를 고르면 앞 배는 캐시에만 남고(점은 지운다), 10분이 지나면 캐시에서도 지운다. 그 뒤 다시 누르면 API를 부른다 (10-07 승욱).
  * 해수부 입항 신고 기준이라 "직전 기항지"를 그대로 보여 준다. 출발지가 아니라는 점은 줄 펼침의 출처 안내에 있다 (EC-04). 판정은 하지 않는다.
@@ -85,10 +85,10 @@ export function VesselList({data}: {data: ChatResponse}) {
       .finally(() => inflight.current.delete(k));
   }, []);
 
-  const selected = sel && sorted.includes(sel) ? sel : sorted[0] ?? null;
+  // 처음에는 아무 배도 고르지 않는다. 선명을 눌렀을 때만 위치를 받는다 (10-07 승욱: 전에는 첫 줄을 자동으로 골라
+  // 묻지도 않은 배의 상세가 열리고 ShipFinder 하루 한도를 썼다)
+  const selected = sel && sorted.includes(sel) ? sel : null;
   const selKey = selected ? keyOf(selected) : null;
-  // 지도에 보이는 배(처음엔 첫 줄)만 자동으로 받는다. 나머지는 눌러야 받는다 (위치 조회 하루 50건 한도)
-  useEffect(() => { if (selected) load(selected); }, [selected, load]);
 
   function pick(v: VesselItem) {
     if (selected === v && expanded) { setExpanded(false); return; }
