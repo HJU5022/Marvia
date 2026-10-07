@@ -2,7 +2,8 @@
 /** AI 입력창 (docs/specs/chat-search.md). 홈 화면의 주 기능이라 가운데 넓은 자리에 둔다 (강사 피드백 10-02, 구현작업서 4절).
  * 문장은 POST /api/chat/stream으로 가고, 서버가 B/L을 가린 뒤 LLM이 의도(화물 조회·후속 질문·입항 선박 검색)를 고른다.
  * 기다리는 동안은 서버가 알린 실제 처리 단계만 보인다 (docs/specs/chat-progress.md). 타이머로 단계를 만들지 않는다.
- * 서류 첨부 (10-08 정운 49·51·53번): 입력창의 클립 버튼이나 채팅 영역에 파일을 끌어 놓으면 입력창 위에 파일 칩이 생기고 바로 읽기 시작한다.
+ * 서류 첨부 (10-08 정운 49·51·53번): 입력창의 클립 버튼이나 채팅 영역에 파일을 끌어 놓으면 입력창 위에 파일 칩이 생기고 읽기만 바로 시작한다.
+ * 10-08 정운 실사용 71번: 읽기가 끝나도 스스로 조회하지 않는다. 입력창은 서류 때문에 막히지 않고(설명을 언제든 쓴다), 보내기(버튼·Enter)를 눌러야만 서류 값과 설명이 함께 간다.
  * 읽은 값은 입력창 위 작은 확인 카드에서 고치고, 입력창에 설명을 쓰면 서류 값과 함께 한 번에 보낸다. 큰 옆 패널(드로어)은 쓰지 않는다.
  * 화면을 내려 입력창이 안 보이면 "AI에게 이어서 물어보기" 버튼이 나타나 입력창으로 돌려보낸다.
  */
@@ -23,6 +24,7 @@ import {onComposerRequest} from '@/lib/composer';
 import {stageLabels, type ProgressStage} from '@/lib/progress';
 
 const MAX = 500;  // routers/chat.py ChatRequest.message max_length
+const DOC_BUSY_NOTE = '서류를 읽는 중이에요. 다 읽으면 보내기를 다시 눌러 주세요.';
 const DOC_MAX_BYTES = 10 * 1024 * 1024;  // routers/document.py MAX_BYTES. 서버가 최종 판단하고, 여기서는 올리기 전에 빨리 알려 주는 용도다
 
 /** 처음 보는 사람을 위한 예시 문장. 누르면 입력창에 채우기만 한다(보내기는 사용자가). 실제 모드는 누구나 바로 결과를 볼 수 있는
@@ -156,8 +158,15 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
 
   async function send(message: string) {
     // 서류 확인 카드가 떠 있으면 보내기는 "서류 값 + 입력창 설명"을 함께 보내는 일이다 (applyDocument가 이어 받는다)
-    if (file && docState.phase === 'ready' && !loading && !blocked) { setDocNote(''); docHandle.current?.confirm(); return; }
-    if (file && docState.phase === 'busy') return;  // 읽는 중에는 보내지 않는다. 값이 오기 전에 문장만 가면 서류가 버려진다
+    if (file && docState.phase === 'ready' && !loading && !blocked) {
+      setDocNote('');
+      // 형식이 틀린 칸이 있으면 confirm이 false를 돌려준다. 카드가 수정 상태로 열려 있으니 이유를 알려 준다
+      if (!docHandle.current?.confirm()) setDocNote('서류 값에 고칠 칸이 있어요. 카드에서 확인해 주세요.');
+      return;
+    }
+    // 10-08 정운 실사용 71번: 읽는 중에 보내기를 누르면 보내지 않고 안내만 한다(대기열은 만들지 않는다: 값이 오기 전에 문장만 가면 서류가 버려지고,
+    // 자동으로 보내는 길을 하나 더 두면 "누르지 않았는데 조회됐다"는 불만이 다시 생길 수 있어서다). 읽기가 끝나면 사용자가 한 번 더 누른다
+    if (file && docState.phase === 'busy') { setDocNote(DOC_BUSY_NOTE); return; }
     const m = message.trim();
     if (!m || loading || blocked || m.length > MAX) return;  // 보내는 중이거나 한도를 다 썼으면 보내지 않는다
     setText('');
@@ -254,7 +263,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
       {docNote && <p role="alert" className="request-error doc-note">{docNote}</p>}
       {/* 파일 칩 + 확인 카드. 보내는 동안은 숨기기만 하고 상태는 지킨다(실패하면 그대로 다시 보인다) */}
       {file && <div hidden={loading}><DocumentPanel key={fileKey} inline file={file} onApply={v => void applyDocument(v)} onClose={removeDoc}
-        disabled={loading || blocked} handleRef={docHandle} onPhase={setDocState}/></div>}
+        disabled={loading || blocked} handleRef={docHandle} onPhase={s => { setDocState(s); if (s.phase !== 'busy') setDocNote(n => n === DOC_BUSY_NOTE ? '' : n); }}/></div>}
       <div className="composer-wrap" ref={wrapRef}>
         <form className="composer" onSubmit={submit}>
           <label htmlFor="chat-input" className="sr-only">Marvia에게 질문하기</label>
@@ -269,7 +278,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
             <div className="composer-send">
               {/* 글자 수는 쓰기 시작한 뒤에만 보인다. 빈 입력창에 숫자를 늘 두면 어수선하다 */}
               {text.length > 0 && <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>}
-              <button type="submit" className="send" disabled={loading || blocked || (file ? (docState.phase === 'busy' || (docState.phase === 'ready' ? !docState.canApply : !text.trim())) : !text.trim())} aria-label="AI에게 질문 보내기">
+              <button type="submit" className="send" disabled={loading || blocked || (file ? (docState.phase === 'busy' ? false : docState.phase === 'ready' ? !docState.canApply : !text.trim()) : !text.trim())} aria-label="AI에게 질문 보내기">
                 {loading ? <LoaderCircle size={20} strokeWidth={1.5} className="spin"/> : <ArrowRight size={20} strokeWidth={1.5}/>}</button>
             </div>
           </div>

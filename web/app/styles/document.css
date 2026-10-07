@@ -148,3 +148,11 @@ output.doc-value{color:var(--text)}
 @media(max-width:700px){
   .document-panel.inline .doc-actions{flex-direction:column;align-items:stretch;gap:8px}
 }
+
+/* 10-08 정운 실사용 71번: 카드 하나에 수정 버튼 하나. 읽기 전용 값(output)은 입력칸과 높이를 맞춰 눌러도 카드가 출렁이지 않게 한다 */
+.doc-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+.doc-section-head .doc-section-title{margin:0}
+.doc-edit{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 8px;font-size:var(--text-sm)}
+.document-panel.inline .doc-section-head{margin-bottom:12px}
+.document-panel.inline .doc-actions-hint{font-size:var(--text-sm);color:var(--muted);margin:0}
+.doc-field .field-error,.doc-group .field-error{margin-top:8px}

@@ -233,11 +233,32 @@ try {
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
     await page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
     await page.locator('.doc-chip').waitFor();
-    await page.getByRole('button', {name: '확인한 값으로 조회'}).waitFor();
+    // 10-08 정운 실사용 71번: 첨부는 칩만 만든다. 입력창은 막히지 않고, 읽기가 끝나도 보내기 전에는 턴이 늘지 않는다
+    assert.equal(await page.locator('#chat-input').isDisabled(), false, 'composer stays enabled with a document attached');
+    await page.waitForTimeout(1500);
+    assert.equal(await turns(page), turnCount, 'attaching a document adds no turn');
+    await page.locator('#chat-input').fill('이 서류 확인해 줘');
+    assert.equal(await turns(page), turnCount, 'typing an explanation adds no turn');
+    if (await page.getByRole('button', {name: '확인한 값으로 조회'}).count()) assert.fail('no separate lookup button inside the card');
     if (width === 1440 && !interactionsOnly) await audit(page, `document-attach-${width}`);
-    assert.equal(await turns(page), turnCount, 'document never sends by itself');
+    // 확인 카드: 읽은 값은 읽기 전용, 수정 버튼 하나가 모든 칸을 연다
+    await page.locator('.document-result').waitFor();
+    assert.equal(await page.locator('.document-result input, .document-result select').count(), 0, 'card values are read-only by default');
+    await page.getByRole('button', {name: '수정', exact: true}).click();
+    assert(await page.locator('.document-result input').count() >= 5, 'one edit button opens every field');
+    await page.getByRole('button', {name: '수정 끝'}).click();
+    assert.equal(await page.locator('.document-result input, .document-result select').count(), 0, 'edit button toggles back to read-only');
+    // 첨부한 서류를 한 번 떼고 다시 붙여 X 동작도 확인한 뒤, 보내기를 눌러야 사용자 말풍선이 한 개 생긴다
     await page.getByRole('button', {name: '첨부한 서류 빼기'}).click(); await page.locator('.doc-chip').waitFor({state: 'detached'});
-    check(`document attach chip + confirm card without sending ${width}`);
+    await page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
+    await page.locator('.document-result').waitFor();
+    const userTurns = () => page.locator('.chat-turn.user').count();
+    const usersBefore = await userTurns();
+    await page.locator('#chat-input').fill('이 서류 확인해 줘');
+    await page.getByRole('button', {name: 'AI에게 질문 보내기'}).click();
+    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, usersBefore + 1, {timeout: 15000});
+    assert.equal(await userTurns(), usersBefore + 1, 'send adds exactly one user turn');
+    check(`document attach chip, no auto send, one edit button, send adds one turn ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
     // 사이드바 개편(10-07): 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다
