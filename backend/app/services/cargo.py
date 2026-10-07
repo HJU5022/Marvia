@@ -119,7 +119,8 @@ def found_cargo(response: AgentResponse) -> bool:
     """화물 표에 줄을 만들 만한 조회인가. 세관에 없는 번호(오타일 수 있다), 통관 조회 실패, 부산 밖 화물은 만들지 않는다."""
     if response.status in ("failed", "unsupported"):
         return False
-    return not (response.status == "insufficient" and "bl_type" in response.missing_inputs)
+    # bl_not_found: 구분을 말하지 않아 하우스·마스터를 둘 다 본 조회가 둘 다 없음 (services/chat.NOT_FOUND_BOTH, 10-08 정운 실사용 75)
+    return not (response.status == "insufficient" and ("bl_type" in response.missing_inputs or "bl_not_found" in response.missing_inputs))
 
 
 def clean_stage(name: str | None) -> str | None:

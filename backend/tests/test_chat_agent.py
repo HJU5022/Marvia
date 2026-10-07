@@ -100,8 +100,8 @@ def test_check_cargo_uses_real_bl_and_llm_sees_only_token(monkeypatch):
     assert calls[0]["masked"] == "[BL1] 괜찮아?" and calls[0]["refs"] == ["[BL1]"] and calls[0]["has_cargo"] is False
     assert calls[0]["tool_calls"][0]["result"]["answer"] == "괜찮습니다"  # LLM에는 요약만 돌아간다 (_cargo_summary)
     assert r.kind == "cargo" and r.request.bl_no == "TESTBL01" and r.agent.answer == "괜찮습니다"
-    # 답은 판정 흐름의 문장 + 구분 안내. 에이전트가 쓴 문장은 붙지 않는다 (읽기 전용 도구를 같이 쓰지 않았다)
-    assert r.reply.startswith("괜찮습니다\n(B/L 구분을 말하지 않아 하우스 B/L")
+    # 답은 판정 흐름의 문장 그대로 (구분 안내는 10-08 정운 실사용 75로 없앴다). 에이전트가 쓴 문장은 붙지 않는다 (읽기 전용 도구를 같이 쓰지 않았다)
+    assert r.reply == "괜찮습니다"
     assert "에이전트가 덧붙인 말" not in r.reply
 
 
