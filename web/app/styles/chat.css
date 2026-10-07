@@ -253,3 +253,6 @@ body[data-split] .conv-section{display:none}
 .chat-cand-item .watch-vessel-btn{align-self:center}
 .chat-cand-item .watch-vessel-btn .icon-button,.cmp-watch .watch-vessel-btn .icon-button{min-width:44px;min-height:44px}
 .cmp-watch{display:inline-block;margin-top:2px}
+
+/* 10-08 정운 실사용 58번: 대화 맨 위 근거 모음 버튼 줄. 대화 칸을 내려도 위에 붙어 있다 */
+.chat-evidence-bar{position:sticky;top:0;z-index:5;display:flex;justify-content:flex-end;padding:4px 0 6px;background:var(--bg,transparent)}

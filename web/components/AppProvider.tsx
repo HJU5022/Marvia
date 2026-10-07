@@ -8,6 +8,7 @@ import {deleteConversation, errorStatus, getAgentResponse, getConversation, getM
 import {verdictLabels} from '@/lib/format';
 import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
+import type {EvidenceItem, Citation} from '@/lib/evidenceTypes';
 import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatOnScreen, ChatResponse, ConversationMessage, ConversationSummary, ChatDocument, WatchChange, WatchOffer} from '@/lib/types';
 
 /** 입력창 대화 한 줄. 화면에만 두고 저장하지 않는다 (docs/specs/chat-search.md Out of Scope: 대화 기억) */
@@ -21,7 +22,9 @@ export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: Cha
   /** 이 답의 판정 응답과 요청. 되묻기(insufficient)의 선박 후보를 말풍선 아래 칩으로 그리고, 칩을 누르면 같은 요청에 resolved_mmsi만 더해 조회한다 (ChatCandidateChips, 10-08 정운 실사용 37번). 서버로 되돌려 보내지 않는다 */
   agent?: AgentResponse | null; request?: AgentRequest | null;
   /** 답이 오기까지 서버가 알린 단계와 브라우저가 처음 본 시각(ms). 답 아래 "N단계 · M초" 접힌 요약에 쓴다. 이 화면에서 받은 답에만 있고 서버에서 불러온 대화·체험 모드에는 없다 (10-07 정운 엘레강스) */
-  steps?: {stage: ProgressStage; at: number}[]; tookMs?: number }
+  steps?: {stage: ProgressStage; at: number}[]; tookMs?: number;
+  /** 답 문장 속 [E1] 표시와 그 근거 (10-08 정운 실사용 58번). 글(text)에는 표시가 그대로 있고, 화면(EvidencePopover)이 칩으로 그린다. 서버로 되돌려 보낼 때는 표시를 뗀다 */
+  evidence?: EvidenceItem[]; citations?: Citation[] }
 
 /** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 (10-06 결정) */
 function changesText(changes: WatchChange[]): string {
@@ -54,7 +57,9 @@ const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: 
 /** 서버에 저장된 대화 한 줄을 말풍선으로. extra에는 그 턴이 처음 왔을 때의 화면용 값이 있어 지도·표·지켜보기 버튼이 같게 다시 그려진다 (10-06 결정) */
 function toTurn(m: ConversationMessage): ChatTurn {
   const x = m.extra;
-  return {role: m.role, text: m.text, kind: x?.kind, map: x?.map ?? null, cargos: x?.cargos ?? [], watchOffer: x?.watch_offer ?? null, ...pickable(x?.agent, x?.request)};
+  return {role: m.role, text: m.text, kind: x?.kind, map: x?.map ?? null, cargos: x?.cargos ?? [], watchOffer: x?.watch_offer ?? null, ...pickable(x?.agent, x?.request),
+    // 저장된 턴에 근거가 실려 있으면 되살린다. 없으면(옛 대화) 아무것도 붙이지 않는다 (10-08 정운 실사용 58번)
+    ...(x?.evidence_items?.length ? {evidence: x.evidence_items, citations: x.citations ?? []} : {})};
 }
 
 /** 되묻기 답(insufficient)만 판정 응답과 요청을 턴에 둔다. 다른 답의 큰 응답까지 대화 상태·탭 저장소에 쌓지 않으려는 것이다 (10-08 정운 실사용 37번) */
@@ -303,7 +308,8 @@ export function AppProvider({children}:{children:ReactNode}) {
     if (inflight.current || opening) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 서버에 보낼 앞선 대화. 지금 질문을 더하기 전의 thread(이번 렌더의 값)를 잡아 둔다. 자르기는 chatBody가 한다 (최근 6줄, 500자)
-    const history = thread;
+    // 답 글 속 [E1] 표시는 화면용이라 서버로 되돌려 보내는 대화에서는 뗀다 (10-08 정운 실사용 58번)
+    const history = thread.map(t => t.role === 'assistant' ? {...t, text: t.text.replace(/\s?\[E\d+\]/gi, '')} : t);
     // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
     setThread(t => [...t.slice(-49), {role: 'user', text: message}]);
     try {
@@ -319,7 +325,8 @@ export function AppProvider({children}:{children:ReactNode}) {
       const document = opts && 'document' in opts ? opts.document ?? null : docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
       const res = await sendChatStream(message, context,
         s => { seen.push(s); if (!stepLog.some(x => x.stage === s)) stepLog.push({stage: s, at: Date.now()}); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document, onScreenOf(view, result, vessels));
-      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null, ...pickable(res.agent, res.request), ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);
+      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null, ...pickable(res.agent, res.request),
+        ...(res.evidence_items?.length ? {evidence: res.evidence_items, citations: res.citations ?? []} : {}), ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);
       // 대화로 지켜보기를 켜고 껐으면 결과 칸의 버튼·말풍선 버튼이 같은 상태를 보게 한다
       if (res.watch_set) setWatching(res.watch_set.bl_no, res.watch_set.on);
       if (res.kind === 'cargo' && res.agent && res.request) {

@@ -7,6 +7,7 @@
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
 import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, ChatOnScreen, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
+import type {Citation, EvidenceItem} from './evidenceTypes';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -287,6 +288,21 @@ async function demoDocument(): Promise<DocumentResponse> {
   return structuredClone(documentFixture) as DocumentResponse;
 }
 
+/** 데모 전용 모의 근거. 첫 문장 끝(마침표 앞)에 [E1][E2]를 붙여(한 칩으로 합쳐지는 모습) 모의 근거 두 개를 돌려준다.
+ * 값은 모두 가공한 모의값이다(CLAUDE.md: 가공 fixture). 정상(ok) 답이고 문장이 둘 이상일 때만 붙인다 */
+function demoEvidence(answer: string, status: string): {reply: string; evidence_items?: EvidenceItem[]; citations?: Citation[]} {
+  const sentences = answer.match(/[^.]+\./g);
+  if (status !== 'ok' || !sentences || sentences.length < 2) return {reply: answer};
+  const marked = sentences.map((s, i) => i === 0 ? `${s.slice(0, -1)} [E1][E2].` : s);
+  const reply = marked.join('') + answer.slice(sentences.join('').length);
+  const citations: Citation[] = []; const re = /\[(E\d+)\]/g; let m: RegExpExecArray | null;
+  while ((m = re.exec(reply))) citations.push({id: `c${citations.length + 1}`, start: m.index, end: m.index + m[0].length, evidence_ref: m[1]});
+  const at = '2026-10-20T09:30:00+09:00';
+  return {reply, citations, evidence_items: [
+    {id: 'E1', source: 'mof', fetched_at: at, values: [{field: 'mof_planned', value: '2026-10-21 (모의값)'}]},
+    {id: 'E2', source: 'rule', fetched_at: at, values: [{field: 'days_margin', value: '4 (모의값)'}]}]};
+}
+
 /** 데모: LLM 없이 문장 속 예시 B/L만 알아본다. 배 검색은 가공 예시 표 (실제 모드에서는 서버가 LLM으로 처리) */
 async function demoChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
   const empty = {agent: null, request: null, vessels: [], place: null, ports: [], days: null};
@@ -298,7 +314,8 @@ async function demoChat(message: string, context: AgentRequest | null): Promise<
     // 데모에서도 작은 지도가 보이게, 위치가 있는 예시 화물은 그 위치를 map으로 함께 돌려준다 (실제 모드는 서버가 채운다)
     const pos = agent.position;
     const map = pos ? {lat: pos.lat, lng: pos.lng, ship_name: agent.vessel?.name ?? null, distance_nm: agent.eta?.distance_nm ?? null, received_at: pos.last_time, source: 'shipfinder'} : null;
-    return {...empty, kind: 'cargo', reply: agent.answer, agent, request, map};
+    // 10-08 정운 실사용 58번: 데모에서도 답 속 근거 표시가 보이게 정상 답에는 모의 근거를 붙인다 (모의값. 실제 모드는 서버가 채운다)
+    return {...empty, kind: 'cargo', ...demoEvidence(agent.answer, agent.status), agent, request, map};
   }
   // 화물을 보고 있을 때 "배 지금 어디쯤이야?"처럼 그 화물의 배를 묻는 문장은 후속 질문이다. 선박 검색은 지역·목록을 찾는
   // 문장 모양일 때만 고른다 (10-02 UI 점검 F6). 실제 모드는 서버 LLM이 의도를 고르므로 이 규칙은 데모에만 있다

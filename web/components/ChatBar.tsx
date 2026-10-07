@@ -12,6 +12,8 @@ import {ArrowRight, LoaderCircle, Paperclip, Sparkles} from 'lucide-react';
 import {verdictLabels} from '@/lib/format';
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentHandle, type DocumentPhase, type DocumentValues} from './DocumentPanel';
+import {EvidencePopover} from './EvidencePopover';
+import {ConversationEvidence} from './ConversationEvidence';
 import {ChatMiniMap} from './ChatMiniMap';
 import {ChatCargoTable} from './ChatCargoTable';
 import {WatchOfferAction} from './WatchOfferAction';
@@ -219,11 +221,14 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   // 대화가 없고 답할 글만 있는 첫 화면(.chat-seed는 .chat-turn이 아니다: 실제 주고받은 말만 .chat-turn으로 센다): 결과 칸의 answer를 그대로 답 말풍선으로 보인다 (지어내지 않는다, 서버 값)
   const seedAnswer = thread.length === 0 && view === 'cargo' && result && result.status !== 'insufficient' && result.answer ? result : null;
   const empty = idle && !loading && thread.length === 0;
+  // 이 대화의 근거 모음 (10-08 정운 실사용 58번): 답 턴마다 붙은 근거를 순번(turn)과 함께 모은다. 0개면 버튼이 숨는다
+  const convEvidence = thread.flatMap((t, i) => t.role === 'assistant' && t.evidence ? t.evidence.map(e => ({...e, turn: i})) : []);
 
   return <section className="ask" aria-label="AI에게 묻기" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDropFile}>
     {dragOver && <div className="doc-drop-overlay" aria-hidden="true"><Paperclip size={28} strokeWidth={1.5}/><strong>여기에 놓으세요</strong><span>JPG·PNG·PDF, 10MB 이하</span></div>}
     {/* 대화는 이 칸 안에서만 스크롤하고, 입력창은 아래에 고정한다 (시안 2-1·2-2). 페이지 전체는 움직이지 않는다 */}
     <div className="chat-scroll" ref={threadRef} onScroll={onScroll} role="log" aria-label="대화" tabIndex={0}>
+      {convEvidence.length > 0 && <div className="chat-evidence-bar"><ConversationEvidence evidence={convEvidence}/></div>}
       {empty ? <div className="chat-empty">
         <span className="chat-eyebrow">Marvia</span>
         <h2>어떤 화물을 확인할까요?</h2>
@@ -234,7 +239,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}{i === chipTurn && t.agent && t.request && t.agent.trace_id === result?.trace_id && <ChatCandidateChips agent={t.agent} request={t.request} disabled={loading || blocked}/>}</div></li>)}
+          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? <EvidencePopover text={t.text} citations={t.citations ?? []} evidence={t.evidence ?? []} renderText={linkify}/> : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}{i === chipTurn && t.agent && t.request && t.agent.trace_id === result?.trace_id && <ChatCandidateChips agent={t.agent} request={t.request} disabled={loading || blocked}/>}</div></li>)}
         {seedAnswer && <li className="chat-seed"><div className="chat-body"><div className="chat-bubble"><p>{seedAnswer.answer}</p>{verdictBlock}</div></div></li>}
       </ol>}
       {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}

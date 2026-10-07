@@ -1,12 +1,12 @@
 /* 답 문장 속 근거 칩, 말풍선, 대화 근거 모음 (10-08 정운 실사용 58번). 색은 globals.css 토큰을 쓴다 */
 .ev-text{white-space:pre-wrap}
 .ev-wrap{position:relative;display:inline-block;margin:0 2px;vertical-align:baseline}
-.ev-chip{appearance:none;-webkit-appearance:none;font:inherit;font-size:11px;line-height:1.4;color:var(--brand);background:var(--brand-soft);border:1px solid transparent;border-radius:4px;padding:0 6px;cursor:pointer;vertical-align:1px}
+.ev-chip{appearance:none;-webkit-appearance:none;font:inherit;font-size:11px;line-height:1.4;color:var(--brand);background:var(--brand-soft);border:1px solid transparent;border-radius:0;padding:0 6px;cursor:pointer;vertical-align:1px}
 .ev-chip:hover,.ev-chip.open{border-color:var(--brand)}
 .ev-chip:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .ev-fallback{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .ev-fallback .ev-wrap{margin:0}
-.ev-pop{position:absolute;z-index:40;left:0;top:calc(100% + 6px);width:min(280px,72vw);padding:12px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 4px 16px #191f2826;font-size:13px;line-height:1.5;color:var(--body);white-space:normal;text-align:left}
+.ev-pop{position:absolute;z-index:40;left:0;top:calc(100% + 6px);width:min(300px,72vw);max-height:60vh;overflow:auto;padding:12px;background:var(--surface);border:1px solid var(--border-strong);border-radius:0;box-shadow:0 2px 8px #191f2814;font-size:13px;line-height:1.5;color:var(--body);white-space:normal;text-align:left}
 .ev-pop-head{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}
 .ev-pop-head strong{font-weight:600;color:var(--ink)}
 .ev-pop-head time{font-size:12px;color:var(--muted)}
@@ -28,3 +28,4 @@
 .ev-collect-group li time{grid-column:1/-1;font-size:12px;color:var(--muted)}
 .ev-collect-group li a{grid-column:1/-1;color:var(--brand);font-size:12px}
 @media (prefers-reduced-motion:no-preference){.ev-pop{animation:ocean-fade .12s ease both}}
+.ev-pop-item+.ev-pop-item{margin-top:10px;padding-top:10px;border-top:1px solid var(--hairline)}

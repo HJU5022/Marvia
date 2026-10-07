@@ -3,6 +3,7 @@
  * 왜: 오른쪽 패널로 시선을 옮기지 않고 "이 말이 어디서 왔나"를 바로 본다. 표시 검증은 서버가 끝냈다(services/citations.py).
  * 화면은 서버가 준 citations 위치를 믿되, 위치가 글자와 어긋나면 [E#]를 다시 찾는다.
  * 표시가 하나도 없으면(fallback) 글은 그대로 두고 끝에 근거 칩 줄을 모은다.
+ * 한 문장에 표시가 여럿이면 하나의 칩으로 합친다("해수부 외 2"). 누르면 말풍선 꼬리 없는 네모 상자가 열리고 출처마다 한 칸씩 보인다 (10-08 제품 담당 결정).
  * 접근성: 칩은 button(aria-expanded/haspopup), Esc와 바깥 클릭으로 닫고 닫으면 칩으로 포커스가 돌아간다. 글은 React 텍스트로만 그려 HTML로 해석되지 않는다. */
 import {useCallback, useEffect, useId, useRef, useState, type ReactNode} from 'react';
 import {fieldLabel, evidenceValue, dateTime} from '@/lib/format';
@@ -35,16 +36,49 @@ function EvidenceBody({item}: {item: EvidenceItem}) {
   </>;
 }
 
-function Chip({item, label, open, onToggle, popId}: {item: EvidenceItem; label: ReactNode; open: boolean; onToggle: (el: HTMLButtonElement | null) => void; popId: string}) {
+/** 칩 이름: 첫 근거의 출처 이름, 근거가 둘 이상이면 "외 N" (제품 담당 결정 10-08) */
+function groupLabel(items: EvidenceItem[]) {
+  const first = citationSourceLabel(items[0].source);
+  return items.length > 1 ? `${first} 외 ${items.length - 1}` : first;
+}
+
+/** 한 문장의 근거 묶음 하나를 칩 한 개와 네모 상자로 그린다 */
+function Mention({items, label, open, onToggle, popId}: {items: EvidenceItem[]; label: string; open: boolean; onToggle: (el: HTMLButtonElement | null) => void; popId: string}) {
   const ref = useRef<HTMLButtonElement>(null);
   return <span className="ev-wrap">
     <button type="button" ref={ref} className={`ev-chip${open ? ' open' : ''}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? popId : undefined}
-      aria-label={`근거 보기: ${citationSourceLabel(item.source)}`} onClick={() => onToggle(ref.current)}>{label}</button>
-    {open && <span id={popId} role="dialog" aria-label={`${citationSourceLabel(item.source)} 근거`} className="ev-pop"><EvidenceBody item={item}/></span>}
+      aria-label={`근거 보기: ${label}`} onClick={() => onToggle(ref.current)}>{label}</button>
+    {open && <span id={popId} role="dialog" aria-label="근거" className="ev-pop">{items.map(item => <section key={item.id} className="ev-pop-item"><EvidenceBody item={item}/></section>)}</span>}
   </span>;
 }
 
-export function EvidencePopover({text, citations, evidence}: {text: string; citations: Citation[]; evidence: EvidenceItem[]}) {
+type Part = {t: string} | {g: EvidenceItem[]};
+
+/** 글 조각과 표시를 한 줄로 늘어놓고, 붙어 있는(공백만 사이에 둔) 표시는 한 묶음으로 합친다. 목록에 없는 표시는 버린다 */
+function build(text: string, citations: Citation[], byId: Map<string, EvidenceItem>): Part[] {
+  const out: Part[] = [];
+  let pendingSpace = '';
+  for (const p of split(text, citations)) {
+    if ('t' in p) {
+      const last = out[out.length - 1];
+      if (last && 'g' in last && /^\s*$/.test(p.t)) { pendingSpace += p.t; continue; }  // 표시 사이 공백은 합칠 때 버린다
+      if (pendingSpace) out.push({t: pendingSpace}), pendingSpace = '';
+      out.push(p);
+      continue;
+    }
+    const item = byId.get(p.c.evidence_ref.toUpperCase());
+    if (!item) continue;
+    const last = out[out.length - 1];
+    if (last && 'g' in last) { if (!last.g.includes(item)) last.g.push(item); pendingSpace = ''; }
+    else { if (pendingSpace) out.push({t: pendingSpace}), pendingSpace = ''; out.push({g: [item]}); }
+  }
+  if (pendingSpace) out.push({t: pendingSpace});
+  return out;
+}
+
+/** renderText: 글자 조각을 그리는 함수. 채팅 말풍선이 웹 링크 바꾸기(linkify)를 넘겨 쓴다. 없으면 글자 그대로 */
+export function EvidencePopover({text, citations, evidence, renderText}: {text: string; citations: Citation[]; evidence: EvidenceItem[]; renderText?: (s: string) => ReactNode}) {
+  const plain = (s: string): ReactNode => renderText ? renderText(s) : s;
   const base = useId();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
@@ -64,23 +98,19 @@ export function EvidencePopover({text, citations, evidence}: {text: string; cita
     return () => { document.removeEventListener('keydown', onKey, true); document.removeEventListener('mousedown', onDown); };
   }, [openKey, close]);
 
-  const parts = split(text, citations);
-  const used = parts.filter((p): p is {c: Citation} => 'c' in p && byId.has(p.c.evidence_ref.toUpperCase()));
+  const parts = build(text, citations, byId);
   const toggle = (key: string) => (el: HTMLButtonElement | null) => { opener.current = el; setOpenKey(k => k === key ? null : key); };
 
-  // 서버가 남긴 유효한 표시가 없으면 글 끝에 근거 칩을 모은다 (결정 2)
-  if (!used.length) {
+  // 서버가 남긴 유효한 표시가 없으면 답 끝에 "근거 N" 칩 하나를 둔다. 누르면 모든 근거가 한 상자에 열린다 (제품 담당 결정)
+  if (!parts.some(p => 'g' in p)) {
     const cleaned = text.replace(MARK, '').replace(/\s+([.,!?])/g, '$1');
-    return <span ref={root} className="ev-text">{cleaned}
-      {evidence.length > 0 && <span className="ev-fallback" aria-label="이 답의 근거">{evidence.map(e =>
-        <Chip key={e.id} item={e} label={citationSourceLabel(e.source)} open={openKey === e.id} onToggle={toggle(e.id)} popId={`${base}-${e.id}`}/>)}</span>}
+    return <span ref={root} className="ev-text">{plain(cleaned)}
+      {evidence.length > 0 && <Mention items={evidence} label={`근거 ${evidence.length}`} open={openKey === 'all'} onToggle={toggle('all')} popId={`${base}-all`}/>}
     </span>;
   }
   return <span ref={root} className="ev-text">{parts.map((p, i) => {
-    if ('t' in p) return <span key={i}>{p.t}</span>;
-    const item = byId.get(p.c.evidence_ref.toUpperCase());
-    if (!item) return null;  // 목록에 없는 표시는 글자로 내지 않는다
-    const key = `${p.c.id}-${i}`;
-    return <Chip key={key} item={item} label={citationSourceLabel(item.source)} open={openKey === key} onToggle={toggle(key)} popId={`${base}-${i}`}/>;
+    if ('t' in p) return <span key={i}>{plain(p.t)}</span>;
+    const key = `g${i}`;
+    return <Mention key={key} items={p.g} label={groupLabel(p.g)} open={openKey === key} onToggle={toggle(key)} popId={`${base}-${i}`}/>;
   })}</span>;
 }

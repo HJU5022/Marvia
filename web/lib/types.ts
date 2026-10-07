@@ -3,6 +3,7 @@
  * Python defaulted fields are optional on request, populated on serialized response.
  * History contracts come from backend/app/routers/history.py, not the mockup.
  */
+import type {Citation, EvidenceItem} from './evidenceTypes';  // 답 속 근거 표시 (10-08 정운 실사용 58번)
 export type Verdict = 'fine' | 'watch' | 'act';
 export type Status = 'ok' | 'partial' | 'insufficient' | 'failed' | 'unsupported';
 export type VesselMatch = 'confirmed' | 'uncertain' | 'none';
@@ -192,6 +193,9 @@ export interface ChatResponse {
   watch_offer?: WatchOffer | null;
   /** 대화로 지켜보기를 방금 켰거나 껐을 때만 값이 있다 ("응", "그만 지켜봐"). 없거나 null이면 바뀐 게 없다 (10-06 결정) */
   watch_set?: WatchSet | null;
+  /** 답 문장 속 [E1] 표시가 가리키는 근거 묶음과 표시 위치 (10-08 정운 실사용 58번). 서버가 검증을 끝낸 값이다. 옛 응답·데모에는 없거나 빈 목록이다 (EvidencePopover) */
+  evidence_items?: EvidenceItem[];
+  citations?: Citation[];
 }
 /** ChatResponse.watch_offer. logged_in은 서버가 본 로그인 여부 */
 export interface WatchOffer { bl_no: string; reason: string; logged_in: boolean }

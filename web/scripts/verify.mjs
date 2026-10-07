@@ -169,6 +169,27 @@ try {
     assert.equal(await page.locator('.chat-cand-chips').count(), 0, 'chips disappear once resolved');
     check(`chat candidate chips resolve ${width}`);
 
+    // 10-08 정운 실사용 58번: 데모의 정상 답에는 모의 근거 표시가 붙는다. 칩을 누르면 그 자리에 출처가 뜨고, Esc로 닫으면 칩으로 포커스가 돌아온다. "근거 N개"는 모음 패널을 연다
+    await home(page); await input(page).fill('MRVDEMO1101'); await input(page).press('Enter');
+    const chip = page.locator('.chat-turn.assistant .ev-chip').first();
+    await chip.waitFor();
+    await chip.click();
+    const pop = page.locator('.ev-pop');
+    await pop.waitFor();
+    assert((await pop.innerText()).includes('해수부'), 'popover shows the source label');
+    assert.equal(await page.locator('.chat-turn.assistant .ev-chip').count(), 1, 'two marks in one sentence merge into one chip');
+    assert.match(await chip.innerText(), /해수부 외 1/, 'merged label is first source plus count');
+    assert.equal(await pop.locator('.ev-pop-item').count(), 2, 'one section per source');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.ev-pop')).borderRadius), '0px', 'popover is a plain square box');
+    await page.keyboard.press('Escape');
+    assert.equal(await pop.count(), 0, 'Esc closes the popover');
+    assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('ev-chip')), true, 'focus returns to the chip');
+    await page.getByRole('button', {name: /근거 \d+개/}).click();
+    await page.getByRole('dialog', {name: '이 대화의 근거 모음'}).waitFor();
+    assert((await page.locator('.ev-collect').innerText()).includes('해수부'), 'collection panel lists the source');
+    await page.keyboard.press('Escape');
+    check(`evidence chip popover + collection panel ${width}`);
+
     // 부분 결과: 해수부 근거만 보기는 화면 필터이고 새 판정이 아니다. 원본 값 펼침
     await cargo(page, 'partial'); await page.getByRole('button', {name: '해수부 근거만 보기'}).click(); await page.locator('.more-fold[open] .filter-notice').waitFor({state: 'visible', timeout: 3000}); // 근거는 접힌 "펼쳐 보기" 안에 있어, 필터가 펼치고 안내를 보인다
     assert(await page.locator('.filter-notice').isVisible());
