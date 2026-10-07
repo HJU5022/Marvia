@@ -58,7 +58,8 @@ export default function CargoPage(){
   <section className="chat-pane" ref={paneRef} aria-label="대화">
    <header className="pane-head">
     {conversationsOn&&<button type="button" className="pane-icon" aria-label="대화 목록 열기" onClick={openConversations}><PanelLeftOpen size={18}/></button>}
-    <h1>대화 내용</h1>
+    {/* 10-08 정운 43번: 보이는 "대화 내용" 제목을 없앴다. 화면 읽기 프로그램용 제목만 남긴다 */}
+    <h1 className="sr-only">대화</h1>
    </header>
    {/* 지켜보던 화물의 판정이 바뀐 알림은 이제 대화의 첫 말풍선으로 온다 (AppProvider, 10-06 결정) */}
    {/* 데모 첫 조회처럼 대화 없이 실패한 경우만 여기 알린다. 문장 질문의 실패는 대화 칸에 이미 있다 */}
@@ -81,7 +82,8 @@ export default function CargoPage(){
    {/* 머리 한 줄: B/L과 기준 시각만. 조회 상태는 아래 안내·판정이 이미 말하고, "체험 · 예시 데이터"는 상단바에 한 번만 둔다 */}
    <div className="result-head">
     <div className="result-id"><strong className="mono">B/L {maskBl(request.bl_no)}</strong>{replaying&&<span className="status-chip replay history">저장된 이력</span>}</div>
-    <span className="last-updated">{r.evidence[0]?`${dateTime(r.evidence[0].fetched_at,true)} 기준`:'조회 시각을 알 수 없어요'}</span>
+    {/* 근거가 없으면 시각을 비운다. "조회 시각을 알 수 없어요"는 결과 없음 화면에서 고장처럼 보였다 (10-08 정운 55번) */}
+    {r.evidence[0]&&<span className="last-updated">{dateTime(r.evidence[0].fetched_at,true)} 기준</span>}
    </div>
    <FailureBanner response={r} onRetry={()=>void lookup({...request,follow_up_question:null})} busy={loading||blocked} onMof={showMof}/>
    {r.status==='insufficient'?<CandidatePicker key={r.trace_id} response={r} request={request} onResolve={req=>void lookup(req)} busy={loading||blocked}/>

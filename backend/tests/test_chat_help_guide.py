@@ -152,4 +152,4 @@ def test_glued_not_found_without_split_keeps_normal_answer(monkeypatch):
     _exists(monkeypatch, set())
     _agent(monkeypatch, [("check_cargo", {"bl_ref": "[BL1]"})])
     r = svc.handle("TESTBL01TESTBL26 조회", "s1", None, lambda req: _response(status="insufficient", answer=NO_CARGO))
-    assert NO_CARGO in r.reply and not r.cargos
+    assert svc.NO_RESULT_REPLY in r.reply and not r.cargos  # 판정 흐름 문구(~습니다)는 채팅에서 ~요로 나간다 (10-07)

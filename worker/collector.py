@@ -139,9 +139,12 @@ def collect_positions(conn, sf: ShipFinderClient, budget: Budget, now: datetime 
 # 위치를 가장 오래 못 받은 배부터. 진행 중 화물 전체로 잡으면 로그인 사용자의 조회마다 대상이 늘어
 # (services/memory.py가 user_cargo를 채운다) 실행 예산을 다 써서 연구용 수집이 굶는다 (10-06 점검).
 # 지켜보기는 사용자당 최대 5건이다 (services/watch.py MAX_WATCH)
+# 10-08 정운 실사용 57번: B/L 없이 배만 지켜보는 배(vessel_watch, 023)도 같은 길로 위치를 받는다. UNION이 같은 배를 한 번만 센다.
+# 판정·재판정은 하지 않는다 (run_watch는 user_cargo만 본다)
 SELECT_WATCHED = """
-SELECT c.mmsi FROM (SELECT DISTINCT vessel_mmsi AS mmsi FROM user_cargo
-                    WHERE status = 'active' AND watch AND vessel_mmsi IS NOT NULL) c
+SELECT c.mmsi FROM (SELECT vessel_mmsi AS mmsi FROM user_cargo
+                    WHERE status = 'active' AND watch AND vessel_mmsi IS NOT NULL
+                    UNION SELECT mmsi FROM vessel_watch) c
 LEFT JOIN (SELECT mmsi, max(fetched_at) AS last FROM watch_positions GROUP BY mmsi) w ON w.mmsi = c.mmsi
 ORDER BY w.last NULLS FIRST
 """

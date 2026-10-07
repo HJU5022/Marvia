@@ -8,7 +8,8 @@ import {deleteConversation, errorStatus, getAgentResponse, getConversation, getM
 import {verdictLabels} from '@/lib/format';
 import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
-import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatResponse, ConversationMessage, ConversationSummary, WatchChange, WatchOffer} from '@/lib/types';
+import type {EvidenceItem, Citation} from '@/lib/evidenceTypes';
+import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatOnScreen, ChatResponse, ConversationMessage, ConversationSummary, ChatDocument, WatchChange, WatchOffer} from '@/lib/types';
 
 /** 입력창 대화 한 줄. 화면에만 두고 저장하지 않는다 (docs/specs/chat-search.md Out of Scope: 대화 기억) */
 export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: ChatResponse['kind'];
@@ -18,8 +19,12 @@ export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: Cha
   cargos?: ChatCargo[];
   /** 에이전트가 이 화물을 지켜보자고 제안한 답이면 말풍선 아래에 버튼을 그린다 (WatchOfferAction, 10-06 결정). 서버로 되돌려 보내지 않는다 */
   watchOffer?: WatchOffer | null;
+  /** 이 답의 판정 응답과 요청. 되묻기(insufficient)의 선박 후보를 말풍선 아래 칩으로 그리고, 칩을 누르면 같은 요청에 resolved_mmsi만 더해 조회한다 (ChatCandidateChips, 10-08 정운 실사용 37번). 서버로 되돌려 보내지 않는다 */
+  agent?: AgentResponse | null; request?: AgentRequest | null;
   /** 답이 오기까지 서버가 알린 단계와 브라우저가 처음 본 시각(ms). 답 아래 "N단계 · M초" 접힌 요약에 쓴다. 이 화면에서 받은 답에만 있고 서버에서 불러온 대화·체험 모드에는 없다 (10-07 정운 엘레강스) */
-  steps?: {stage: ProgressStage; at: number}[]; tookMs?: number }
+  steps?: {stage: ProgressStage; at: number}[]; tookMs?: number;
+  /** 답 문장 속 [E1] 표시와 그 근거 (10-08 정운 실사용 58번). 글(text)에는 표시가 그대로 있고, 화면(EvidencePopover)이 칩으로 그린다. 서버로 되돌려 보낼 때는 표시를 뗀다 */
+  evidence?: EvidenceItem[]; citations?: Citation[] }
 
 /** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 (10-06 결정) */
 function changesText(changes: WatchChange[]): string {
@@ -29,6 +34,22 @@ function changesText(changes: WatchChange[]): string {
   });
   return `${lines.join('\n')}\nB/L로 다시 조회하면 이유를 자세히 볼 수 있어요.`;
 }
+/** 화면에 지금 보이는 배들을 서버가 알아들을 모양으로 (10-08 정운 실사용 36번). 화물 카드가 보이면 그 화물의 배와 마지막 위치, 선박 표가 보이면 표의 앞 10척(기본 화면처럼 수입 화물선만).
+ * B/L·컨테이너 번호는 담지 않는다. 글자는 서버 상한(routers/chat.py SCREEN_TEXT_MAX 80자, 시각 40자)에 맞춰 자른다. 없으면 null */
+const SCREEN_TEXT = 80, SCREEN_TIME = 40, SCREEN_ROWS = 10;
+function onScreenOf(view: 'cargo' | 'vessels' | 'none', result: AgentResponse | null, vessels: ChatResponse | null): ChatOnScreen | null {
+  const cut = (v: string | null | undefined, n = SCREEN_TEXT) => v ? v.slice(0, n) : null;
+  if (view === 'cargo' && result?.vessel) {
+    const v = result.vessel, p = result.position;
+    return {vessel: {ship_name: v.name.slice(0, SCREEN_TEXT), flag: cut(v.flag), mmsi: v.mmsi, lat: p?.lat ?? null, lng: p?.lng ?? null,
+      position_time: cut(p?.last_time, SCREEN_TIME), destination: cut(result.customs?.discharge_port_name)}};
+  }
+  if (view === 'vessels' && vessels?.vessels.length) {
+    return {arrivals: vessels.vessels.filter(v => v.is_cargo !== false).slice(0, SCREEN_ROWS).map(v => ({
+      ship_name: v.ship_name.slice(0, SCREEN_TEXT), flag: cut(v.nationality), eta: cut(v.expected_arrival, SCREEN_TIME), previous_port: cut(v.previous_port)}))};
+  }
+  return null;
+}
 const presentation = getPresentationData();
 // 실제 모드는 빈 폼으로 시작한다. 세션 ID는 lib/api.ts가 요청 때 브라우저 값으로 채운다
 const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: null, session_id: ''};
@@ -36,7 +57,14 @@ const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: 
 /** 서버에 저장된 대화 한 줄을 말풍선으로. extra에는 그 턴이 처음 왔을 때의 화면용 값이 있어 지도·표·지켜보기 버튼이 같게 다시 그려진다 (10-06 결정) */
 function toTurn(m: ConversationMessage): ChatTurn {
   const x = m.extra;
-  return {role: m.role, text: m.text, kind: x?.kind, map: x?.map ?? null, cargos: x?.cargos ?? [], watchOffer: x?.watch_offer ?? null};
+  return {role: m.role, text: m.text, kind: x?.kind, map: x?.map ?? null, cargos: x?.cargos ?? [], watchOffer: x?.watch_offer ?? null, ...pickable(x?.agent, x?.request),
+    // 저장된 턴에 근거가 실려 있으면 되살린다. 없으면(옛 대화) 아무것도 붙이지 않는다 (10-08 정운 실사용 58번)
+    ...(x?.evidence_items?.length ? {evidence: x.evidence_items, citations: x.citations ?? []} : {})};
+}
+
+/** 되묻기 답(insufficient)만 판정 응답과 요청을 턴에 둔다. 다른 답의 큰 응답까지 대화 상태·탭 저장소에 쌓지 않으려는 것이다 (10-08 정운 실사용 37번) */
+function pickable(agent?: AgentResponse | null, request?: AgentRequest | null): {agent?: AgentResponse; request?: AgentRequest} {
+  return agent && request && agent.status === 'insufficient' && agent.vessel_candidates.length ? {agent, request} : {};
 }
 
 /** 로그인하지 않은(또는 대화 목록을 못 쓰는) 탭이 새로고침해도 대화를 이어 가려고 sessionStorage에 두는 값.
@@ -57,8 +85,9 @@ interface AppState {
   /** 지금 요청을 보낸 시각(Date.now()). 화면이 실제 경과 시간을 센다. 기다리지 않으면 null */
   pendingSince: number | null;
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
-  /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다 */
-  ask: (message: string) => Promise<boolean>;
+  /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다.
+   * opts.document(10-08 정운 51번): 서류 확인 직후 같은 렌더에서 setDocHints한 값은 아직 이 함수의 docHints에 없으므로 출항일을 직접 넘긴다. 주면 docHints보다 앞선다 */
+  ask: (message: string, opts?: {document?: ChatDocument | null}) => Promise<boolean>;
   /** 채팅 표에서 고른 화물로 아래 결과 칸을 바꾼다. 단일 화물 답을 받았을 때와 같은 상태 바꿈이다 (다음 질문의 문맥도 이 화물) */
   showCargo: (agent: AgentResponse, request: AgentRequest) => void;
   thread: ChatTurn[]; vessels: ChatResponse | null;
@@ -275,11 +304,12 @@ export function AppProvider({children}:{children:ReactNode}) {
     catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했어요. 다시 시도해 주세요.'); return false; }
     finally {setLoading(false);setPendingSince(null);inflight.current=false;refreshUsage();}
   }
-  async function ask(message: string) {
+  async function ask(message: string, opts?: {document?: ChatDocument | null}) {
     if (inflight.current || opening) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 서버에 보낼 앞선 대화. 지금 질문을 더하기 전의 thread(이번 렌더의 값)를 잡아 둔다. 자르기는 chatBody가 한다 (최근 6줄, 500자)
-    const history = thread;
+    // 답 글 속 [E1] 표시는 화면용이라 서버로 되돌려 보내는 대화에서는 뗀다 (10-08 정운 실사용 58번)
+    const history = thread.map(t => t.role === 'assistant' ? {...t, text: t.text.replace(/\s?\[E\d+\]/gi, '')} : t);
     // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
     setThread(t => [...t.slice(-49), {role: 'user', text: message}]);
     try {
@@ -291,10 +321,12 @@ export function AppProvider({children}:{children:ReactNode}) {
       const startedAt = Date.now();
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
       // 서류에서 확인한 출항일이 있으면 그 B/L과 함께 보낸다. 서버가 그 B/L 조회에만 실어 화물 표에 적는다 (10-06)
-      const document = docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
+      // 10-08 정운 51번: 서류 확인 화면에서 바로 보낼 때는 opts.document가 이 값을 대신한다 (setDocHints가 아직 반영되기 전이라서)
+      const document = opts && 'document' in opts ? opts.document ?? null : docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
       const res = await sendChatStream(message, context,
-        s => { seen.push(s); if (!stepLog.some(x => x.stage === s)) stepLog.push({stage: s, at: Date.now()}); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document);
-      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null, ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);
+        s => { seen.push(s); if (!stepLog.some(x => x.stage === s)) stepLog.push({stage: s, at: Date.now()}); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document, onScreenOf(view, result, vessels));
+      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null, ...pickable(res.agent, res.request),
+        ...(res.evidence_items?.length ? {evidence: res.evidence_items, citations: res.citations ?? []} : {}), ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);
       // 대화로 지켜보기를 켜고 껐으면 결과 칸의 버튼·말풍선 버튼이 같은 상태를 보게 한다
       if (res.watch_set) setWatching(res.watch_set.bl_no, res.watch_set.on);
       if (res.kind === 'cargo' && res.agent && res.request) {

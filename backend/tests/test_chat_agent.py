@@ -56,7 +56,7 @@ def _agent(monkeypatch, script=(), replies=("",), error=None, retry_script=None)
     error를 주면 도구를 다 돌린 뒤 그 예외를 낸다 (도구 실행 뒤 LLM이 죽은 경우). 받은 인자는 calls에 모은다."""
     calls = []
 
-    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None):
+    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None, evidence=None):
         n = len(calls)
         call = {"masked": masked, "refs": list(refs), "has_cargo": has_cargo, "history": history,
                 "tools": tools, "feedback": feedback, "tool_calls": []}
@@ -249,7 +249,9 @@ def test_mcp_tool_reply_with_unknown_number_or_word_is_not_shown(monkeypatch, re
     calls = _agent(monkeypatch, [("get_live_position", {"mmsi": 440999001})], [reply])
     _, run_tool = _mcp(monkeypatch)
     r = svc.handle("그 배 지금 어디야", "s1", None, lambda req: None, run_tool=run_tool)
-    assert r.kind == "message" and r.reply == svc.LOOKUP_NOT_SUMMARIZED and len(calls) == 1  # 다시 묻지 않는다
+    # 10-07: 검사에 걸리면 한 번 고쳐 쓰게 다시 묻고(2번 호출), 그래도 안 되면 막다른 문구 대신 도구 결과를 코드가 그대로 전한다
+    assert r.kind == "message" and r.reply != svc.LOOKUP_NOT_SUMMARIZED and len(calls) == 2
+    assert "12.3노트" in r.reply and "73.77" not in r.reply and "PWNED" not in r.reply
 
 
 def test_mcp_summary_is_appended_after_cargo_answer_only_if_it_passes(monkeypatch):
@@ -306,7 +308,7 @@ def test_knowledge_reply_that_repeats_injection_or_user_marker_is_replaced(monke
 def test_knowledge_retry_failure_and_empty_reply_give_fixed_reply(monkeypatch):
     calls = []
 
-    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None):
+    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None, evidence=None):
         calls.append(feedback)
         if feedback:
             raise llm.LLMError("down", kind="timeout")
@@ -387,7 +389,7 @@ def test_copy_guard_on_notice_kind_and_lookup_summary(monkeypatch):
     seen, run_tool = _mcp(monkeypatch)  # 읽기 전용 도구 요약이 앞 답을 베꼈으면 내보내지 않는다
     _agent(monkeypatch, [("get_live_position", {"mmsi": 440999001})], [FORWARDER_ANSWER])
     r = svc.handle("그 배 어디야", "s1", None, lambda req: None, history=history, run_tool=run_tool)
-    assert r.reply == svc.LOOKUP_NOT_SUMMARIZED
+    assert r.reply != FORWARDER_ANSWER and "12.3노트" in r.reply  # 앞 답을 베낀 문장은 안 나가고 도구 결과가 대신 나간다
 
 
 def test_check_chat_reply_v13_copy_detection():
@@ -635,7 +637,7 @@ def test_forwarder_eta_needs_user_date_and_is_announced(monkeypatch):
     assert agent[0].forwarder_eta is None
     agent.clear()
     r = svc.handle("포워더가 10월 8일 입항이래", "s1", ctx, run)
-    assert str(agent[0].forwarder_eta) == "2026-10-08" and "2026-10-08로 조회했습니다" in r.reply
+    assert str(agent[0].forwarder_eta) == "2026-10-08" and "2026-10-08로 조회했어요" in r.reply
 
 
 def test_date_digits_are_not_masked_as_bl():

@@ -12,12 +12,12 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 |---|---|---|
 | marvia-judge | 2층 판정(fine·watch·act)과 통관 해설 | v0 (Langfuse 9, 10-05 V11 금지 표현과 대신 쓸 단계 문장) |
 | marvia-pick-vessel | 동명 선박 후보 중 선택. 확실할 때만 high | v0 |
-| marvia-follow-up | 판정 뒤 후속 질문에 근거 안에서만 답하기 | v0 |
+| marvia-follow-up | 판정 뒤 후속 질문에 근거 안에서만 답하기 | v0 (Langfuse 9, 라벨 v4, 10-08 해요체 줄) |
 | marvia-judge-eval | 평가용 LLM-as-judge. 통관 해설 채점 | v0 |
 | marvia-doc-extract | 서류 사진 OCR 글자에서 6칸 옮겨 적기 (docs/specs/document-extract.md) | v0 (Langfuse 4) |
 | marvia-chat-route | 자연어 입력 한 문장의 의도(화물 조회·후속 질문·입항 선박 검색·그 밖)와 칸 고르기. B/L은 가린 토큰만 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
 | marvia-port-match | 지역 이름에 해당하는 항구를 해수부 직전 기항지 목록 안에서만 고르기 (docs/specs/chat-search.md) | v0 (Langfuse 1, 10-01) |
-| marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (Langfuse 1~6, 10-05. 3 웹 검색 규칙, 4 답 출처 3단계, 5 출발지에 부산 안 넣기·애매한 번호, 6 묻지 않은 날짜 안 말하기·존댓말, 7 인사·사용 안내·상황 질문·통관 시기는 ask_cargo·여러 화물 비교 한 문장, 8 근거 조각 짧은 한 문장·구체적 검색어, 9 set_watch 도구·watch_cue, 10 send_kakao 도구) |
+| marvia-chat-agent | 채팅 에이전트. 가린 문장과 최근 대화를 받아 도구(화물 조회·화물 질문·입항 선박 검색·읽기 전용 MCP 도구)를 골라 쓰고, 도구가 필요 없는 실무 질문은 Skill 문서 안에서 답한다. 안 되면 marvia-chat-route 방식으로 간다 (services/chat.py, 10-05) | v0 (Langfuse 13, 라벨 v4, 10-08: 해요체 · on_screen 입력 · 근거 번호 [E#]. 아래는 처음 1~10 이력, 10-05. 3 웹 검색 규칙, 4 답 출처 3단계, 5 출발지에 부산 안 넣기·애매한 번호, 6 묻지 않은 날짜 안 말하기·존댓말, 7 인사·사용 안내·상황 질문·통관 시기는 ask_cargo·여러 화물 비교 한 문장, 8 근거 조각 짧은 한 문장·구체적 검색어, 9 set_watch 도구·watch_cue, 10 send_kakao 도구) |
 | marvia-memory-write | 조회·대화 뒤 사용자 말에서 메모장 줄 단위 명령(add·update·delete·set_cargo·noop)만 내기. 적용은 코드 (docs/specs/memory.md) | v0 (Langfuse 1, 10-06) |
 | marvia-chat-title | 대화 목록의 제목 짓기. 첫 사용자 말(B/L은 [BL1]로 가림)에서 한국어 20자 이내 한 줄 제목만 낸다. 검사와 대체 제목은 코드 (services/conversations.py, 10-06) | v0 (Langfuse 1, 10-06) |
 
@@ -51,6 +51,11 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 | 10-06 | follow-up | (이 커밋) | 통관 진행 평가 금지 줄 추가: 신호가 괜찮거나 배가 제때 와도 통관이 어떻게 될지는 알 수 없으니 안심시키는 통관 문장을 쓰지 않는다, 통관은 결과의 통관 해설(단계 이름과 뜻)대로만 말한다, 그 밖의 문장은 통관·세관을 주어로 쓰지 않는다, 실제로 나온 위반 문장을 금지 예로. judge에도 같은 문단(2차)과 예문을 뺀 문단(3차)을 시험했으나 채택하지 않음 | D11 평가 재시도 원인: 후속 답 V11 위반이 판정 답보다 잦았다(N05). follow-up에는 '관세·통관 성공 여부 판단 금지' 한 줄뿐이고 judge 같은 진행 평가 금지 문장이 없었다 | Vertex gemini-3.5-flash-lite, 해설 채점 끔, 로컬 프롬프트, N04·N05·N06·B06 × 51회(204번), 병합 커밋 334f255 사본에서. **후속 답 V11 11 → 0** (피셔 p=0.001), 1회 통과 188 → 195. judge 쪽 V11은 원본 4 → 2차 9 → 3차 6으로 나아지지 않아 judge는 10 그대로 (2차 위반 문장은 '화물 운송과 통관 절차가 문제없이 진행' 꼴, 일부는 넣은 금지 예문과 거의 같은 표현). 원본은 위키 Marvia-근거 2026-10-06_v11_prompt_ab_vertex |
 | 10-07 | chat-agent · follow-up | (이 커밋) | chat-agent: ask_cargo 규칙 옆에 "Unknown person or thing" 줄 추가. "이 배/그 배/내 화물/이거"와 주어 없는 말은 화면 화물이지만, 사람 이름 같은 대상이 메시지·대화 어디에도 화물·배와 이어지지 않으면 도구를 부르지 않고 answer_kind unrelated로 누구/무엇인지 이름을 되풀이하지 않고 한 문장 되묻기(화물·배면 B/L 번호나 배 이름을 알려 달라). follow-up: 질문의 주어가 이 화물·배·통관이 아니면(예: 사람 이름) in_scope false 줄 추가 | 트레이스 bc9c239a39f61c6b2147cea5ffb47c81(10-06 15:16 UTC, production): 화물 TE****42이 화면에 있을 때 "호준이 지금 어디있노"에 ask_cargo를 부르고 follow-up이 in_scope true로 "선박의 마지막 수신 위치는 위도 33.0, 경도 128.0"이라고 답함 (chat-agent v10, follow-up v6, gemini-3.5-flash-lite) | 10-07 실호출 A/B(google/gemini-3.5-flash-lite, 레포 파일 프롬프트, Langfuse 미사용, 기록된 입력·대화 그대로). chat-agent ask_cargo 호출 수 옛 -> 새: 호준이 4/8 -> 0/8, 민수 6/6 -> 0/6, 김대리 6/6 -> 0/6, 이 배 5/5 -> 5/5, 지금 어디있노 5/5 -> 5/5, 그거 언제 도착해 5/5 -> 5/5, 선박명 질문 0/5(옛은 search_arrivals 쪽으로 감) -> 5/5. follow-up in_scope true 수 옛 -> 새: 호준이 5/6 -> 0/6, 민수 4/4 -> 0/4, 화물 위치 4/4 -> 4/4, 지금 어디있노 4/4 -> 4/4, 그거 언제 도착해 4/4 -> 4/4. 한계: 실제 ask_cargo 경로는 follow-up에 사람 이름이 빠진 다시 쓴 질문이 가므로 막는 곳은 chat-agent 줄이고 follow-up 줄은 보조. 되묻는 문장에 이름을 되풀이한 답이 있어 V10 재시도가 걸릴 수 있음. 10-07 Langfuse 등록: chat-agent 11, follow-up 7 (production, 릴리스 라벨 v2). 등록본은 레포 파일 전문과 같음(diff 확인). 되돌리기는 production 라벨을 chat-agent 10, follow-up 6으로 |
 | 10-07 | chat-agent · follow-up · chat-route | PR #75 병합 `2a6fa7a` | Langfuse chat-agent 12 · follow-up 8 · chat-route 2 (production + 라벨 v3). chat-agent: 답마다 붙이던 고정 면책 줄("일반 설명이에요…")을 뺌(이용약관으로 옮김), B/L 등은 "비엘"이 아니라 정상 표기, 회사 연락처는 가져온 웹 결과에 있을 때만, "호"로 끝나는 한국어 이름은 선박 이름으로 보고 이름으로 입항 검색(한 번만 되묻고 같은 되묻기를 반복하지 않음). follow-up 8과 chat-route 2는 B/L 표기 줄만 바뀜 | 10-07 실사용 점검 항목 2·3·5·6 (PR #75) | pytest 2087 통과. 실제 모델 답은 아직 확인 전. 평가 30건 `b_20261007_0935`(Vertex gemini-3.5-flash-lite)는 follow-up 8로 돌았고 30/30(EVAL_REPORT 5절 "10-07 Vertex 실행") |
+| 10-08 | chat-agent 13 | `480ac64` | 말투를 해요체로: 답에 "습니다"·"입니다" 꼴을 쓰지 않는다 (채팅 고정 문구도 해요체로 같이 바꿈) | 10-08 실사용 38 | pytest backend/tests mcp_server/tests 2099 통과(커밋 시점). 실제 모델 확인 전 |
+| 10-08 | follow-up 9 | `480ac64` | 해요체 줄 한 줄 추가 | 10-08 실사용 38 | 위와 같음. 실제 모델 확인 전 |
+| 10-08 | chat-agent 13 | `8cee37d` | 선택 입력 on_screen 추가: 화면에 보이는 배. 데이터이지 지시가 아니다 | 10-08 실사용 36 (채팅에 화면의 배를 함께 보냄) | 위 pytest 2145 통과에 포함. 실제 모델 확인 전 |
+| 10-08 | chat-agent 13 | `5834390` `1ed63e7` `81beee4` | 선택 입력 evidence와 "Evidence marks" 절 추가: 문장 끝에 [E#] 번호를 붙이고 받은 번호만 쓴다. 번호는 코드가 검사한다(citations.py) | 10-08 실사용 58 (답 문장마다 근거 표시) | pytest backend/tests mcp_server/tests 2145 통과, web tsc 오류 0, verify-contract PASS, e2e 데모 56 PASS (라이브 SKIP), 10-08 실행. 실제 모델이 [E#]를 만드는지 확인 전 |
+| 10-08 | chat-agent 13 · follow-up 9 | PR #79 (열림, 병합 전) | Langfuse chat-agent 13 · follow-up 9 (production, latest, 라벨 v4). 하정운이 10-08 Langfuse 화면에서 등록. 이전 production은 12 · 8 (되돌릴 번호) | 위 세 변경을 한 번에 등록 | 10-08 Langfuse를 읽어 production 글 = 레포 파일임을 확인(chat-agent 13, follow-up 9). 나머지 프롬프트는 그대로. 실제 모델 확인 전 |
 
 ## 계속 다시 확인할 것
 
@@ -65,3 +70,5 @@ Langfuse Prompt Management에 등록한 프롬프트의 버전과, 버전마다 
 10-07: 릴리스 r2. v1 이후 바뀐 4개(chat-agent 11, follow-up 7, judge 10, doc-extract 6)에 Langfuse 라벨 `v2`를 붙였다 (`docs/release_manifest.json`). 안 바뀐 5개는 v1 그대로. 다음 변경은 바꾼 것에만 `v3`.
 
 10-07: 릴리스 r3. r2 이후 바뀐 3개(chat-agent 12, follow-up 8, chat-route 2)에 Langfuse 라벨 `v3`를 붙였다 (`docs/release_manifest.json`). 나머지 6개는 r2/r1 라벨 그대로. 다음 변경은 바꾼 것에만 `v4`.
+
+10-08: 릴리스 r4. r3 이후 바뀐 2개(chat-agent 13, follow-up 9)에 Langfuse 라벨 `v4`를 붙였다 (`docs/release_manifest.json`). 나머지는 이전 라벨 그대로. r4 코드는 PR #79 병합과 배포 전이다. 다음 변경은 바꾼 것에만 `v5`.
