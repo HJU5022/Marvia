@@ -5,6 +5,7 @@
  * 로그인했을 때만 Shell이 그린다. 넓은 화면은 사이드바 안에, 좁은 화면(900px 이하)은 상단바의 "대화" 버튼이 여는 패널 안에 같은 컴포넌트를 쓴다.
  */
 import {useState} from 'react';
+import {usePathname, useRouter} from 'next/navigation';
 import {Plus, Trash2} from 'lucide-react';
 import {useApp} from './AppProvider';
 import type {ConversationSummary} from '@/lib/types';
@@ -21,6 +22,7 @@ function groupOf(iso: string, now: Date): typeof GROUPS[number] {
 
 export function ConversationList({onPick, withNew = false}: {onPick?: () => void; withNew?: boolean}) {
   const {conversations, activeId, loading, opening, newConversation, openConversation, removeConversation} = useApp();
+  const router = useRouter(), path = usePathname();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -32,7 +34,8 @@ export function ConversationList({onPick, withNew = false}: {onPick?: () => void
   function start() { setConfirmId(null); setError(''); newConversation(); onPick?.(); }
   async function open(c: ConversationSummary) {
     setConfirmId(null); setError('');
-    if (c.id === activeId) { onPick?.(); return; }
+    // 10-08 정운 45번: 이미 보던 대화여도 다른 화면(소개 등)에 있으면 채팅 화면으로 돌아간다. 예전에는 여기서 그냥 끝나 눌러도 아무 일이 없었다
+    if (c.id === activeId) { onPick?.(); if (path !== '/') router.push(`/?c=${encodeURIComponent(c.id)}`); return; }
     onPick?.();
     await openConversation(c.id);
   }

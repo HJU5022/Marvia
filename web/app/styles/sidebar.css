@@ -108,14 +108,12 @@
 /* 접은 줄의 말풍선 이름표 (자체 속성 data-sbtip) */
 .rail-collapsed [data-sbtip]{position:relative}
 .rail-collapsed [data-sbtip]:hover::after,.rail-collapsed [data-sbtip]:focus-visible::after{content:attr(data-sbtip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);z-index:90;padding:4px 8px;border-radius:0;background:var(--text,#191f28);color:#fff;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);white-space:nowrap;pointer-events:none}
-.rail-collapsed .conv-toggle{display:inline-flex}
 
 /* ---- 상단 줄 ---- */
 .app-shell .workspace-bar{height:48px;padding:0 24px;gap:12px;justify-content:flex-start;background:var(--surface,#fff);border-bottom:1px solid var(--hairline,#E5E8EB);font-size:var(--fs-sm,13px)}
 .app-shell .workspace-bar>span.sb-crumb{flex:1;min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2,#4e5968);font-weight:var(--fw-regular,400)}
 .app-shell .workspace-meta{flex:none;gap:12px;margin-left:auto}
 .app-shell .workspace-bar .port-label,.app-shell .workspace-bar .replay-chip{font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
-.app-shell .workspace-bar .conv-toggle{min-height:28px;padding:0 10px;font-size:var(--fs-xs,12px);font-weight:var(--fw-medium,500)}
 
 /* ---- 하단: 개인정보처리방침 · 이용약관 (LegalLinks). 접속 시각 안내 문구는 뺐다 (10-07 정운 23번) ---- */
 .app-shell .app-footer{justify-content:center;padding:20px 24px 24px;border-top:0;font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
@@ -137,8 +135,6 @@
   .sb-backdrop{display:block;position:fixed;inset:0;z-index:70;border:0;background:#191f2859;cursor:pointer}
   /* 서랍 안에는 대화 목록이 들어간다. 옛 규칙(900px 이하 숨김)을 덮는다. 40:60 화면에서는 chat.css가 계속 숨긴다 */
   body:not([data-split]) .app-shell .sb .conv-section.sb-conv{display:block}
-  .app-shell .workspace-bar .conv-toggle{display:none}
-  body[data-split] .app-shell .workspace-bar .conv-toggle{display:inline-flex}
   .sb-cl-del{opacity:.7}
   .app-shell .workspace-bar{padding:0 12px}
   .app-shell .workspace-bar .port-label{display:none}
@@ -203,7 +199,6 @@
 .app-shell .workspace-bar{height:44px;padding:0 32px}
 .app-shell .workspace-bar>span.sb-crumb{font-size:var(--fs-xs,12px);letter-spacing:.08em;color:var(--muted,#6b6b6b)}
 .app-shell .workspace-bar .port-label,.app-shell .workspace-bar .replay-chip{letter-spacing:.06em;border:0;background:transparent;padding:0;border-radius:0}
-.app-shell .workspace-bar .conv-toggle{border-color:var(--border-strong,#cfcfcf);background:transparent;letter-spacing:.06em;font-weight:var(--fw-regular,400)}
 
 /* 하단 링크 */
 .app-shell .app-footer{font-size:11px;letter-spacing:.1em}

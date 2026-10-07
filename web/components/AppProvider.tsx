@@ -8,7 +8,7 @@ import {deleteConversation, errorStatus, getAgentResponse, getConversation, getM
 import {verdictLabels} from '@/lib/format';
 import type {ProgressStage} from '@/lib/progress';
 import {authEnabled, currentUser, onAuthChange, type AuthUser} from '@/lib/auth';
-import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatResponse, ConversationMessage, ConversationSummary, WatchChange, WatchOffer} from '@/lib/types';
+import type {AgentRequest, AgentResponse, ChatCargo, ChatMap, ChatResponse, ConversationMessage, ConversationSummary, ChatDocument, WatchChange, WatchOffer} from '@/lib/types';
 
 /** 입력창 대화 한 줄. 화면에만 두고 저장하지 않는다 (docs/specs/chat-search.md Out of Scope: 대화 기억) */
 export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: ChatResponse['kind'];
@@ -57,8 +57,9 @@ interface AppState {
   /** 지금 요청을 보낸 시각(Date.now()). 화면이 실제 경과 시간을 센다. 기다리지 않으면 null */
   pendingSince: number | null;
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
-  /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다 */
-  ask: (message: string) => Promise<boolean>;
+  /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다.
+   * opts.document(10-08 정운 51번): 서류 확인 직후 같은 렌더에서 setDocHints한 값은 아직 이 함수의 docHints에 없으므로 출항일을 직접 넘긴다. 주면 docHints보다 앞선다 */
+  ask: (message: string, opts?: {document?: ChatDocument | null}) => Promise<boolean>;
   /** 채팅 표에서 고른 화물로 아래 결과 칸을 바꾼다. 단일 화물 답을 받았을 때와 같은 상태 바꿈이다 (다음 질문의 문맥도 이 화물) */
   showCargo: (agent: AgentResponse, request: AgentRequest) => void;
   thread: ChatTurn[]; vessels: ChatResponse | null;
@@ -275,7 +276,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했어요. 다시 시도해 주세요.'); return false; }
     finally {setLoading(false);setPendingSince(null);inflight.current=false;refreshUsage();}
   }
-  async function ask(message: string) {
+  async function ask(message: string, opts?: {document?: ChatDocument | null}) {
     if (inflight.current || opening) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 서버에 보낼 앞선 대화. 지금 질문을 더하기 전의 thread(이번 렌더의 값)를 잡아 둔다. 자르기는 chatBody가 한다 (최근 6줄, 500자)
@@ -291,7 +292,8 @@ export function AppProvider({children}:{children:ReactNode}) {
       const startedAt = Date.now();
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
       // 서류에서 확인한 출항일이 있으면 그 B/L과 함께 보낸다. 서버가 그 B/L 조회에만 실어 화물 표에 적는다 (10-06)
-      const document = docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
+      // 10-08 정운 51번: 서류 확인 화면에서 바로 보낼 때는 opts.document가 이 값을 대신한다 (setDocHints가 아직 반영되기 전이라서)
+      const document = opts && 'document' in opts ? opts.document ?? null : docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
       const res = await sendChatStream(message, context,
         s => { seen.push(s); if (!stepLog.some(x => x.stage === s)) stepLog.push({stage: s, at: Date.now()}); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document);
       setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null, ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);

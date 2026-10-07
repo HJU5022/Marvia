@@ -2,16 +2,16 @@
 /** AI 입력창 (docs/specs/chat-search.md). 홈 화면의 주 기능이라 가운데 넓은 자리에 둔다 (강사 피드백 10-02, 구현작업서 4절).
  * 문장은 POST /api/chat/stream으로 가고, 서버가 B/L을 가린 뒤 LLM이 의도(화물 조회·후속 질문·입항 선박 검색)를 고른다.
  * 기다리는 동안은 서버가 알린 실제 처리 단계만 보인다 (docs/specs/chat-progress.md). 타이머로 단계를 만들지 않는다.
- * 서류 사진은 입력을 돕는 보조 동작이라 드로어에서 확인한 뒤 문장에 넣는다. 읽은 값으로 바로 조회하지 않는다.
+ * 서류 첨부 (10-08 정운 49·51·53번): 입력창의 클립 버튼이나 채팅 영역에 파일을 끌어 놓으면 입력창 위에 파일 칩이 생기고 바로 읽기 시작한다.
+ * 읽은 값은 입력창 위 작은 확인 카드에서 고치고, 입력창에 설명을 쓰면 서류 값과 함께 한 번에 보낸다. 큰 옆 패널(드로어)은 쓰지 않는다.
  * 화면을 내려 입력창이 안 보이면 "AI에게 이어서 물어보기" 버튼이 나타나 입력창으로 돌려보낸다.
  */
-import {useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
+import {useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {ArrowRight, Camera, LoaderCircle, Sparkles} from 'lucide-react';
+import {ArrowRight, LoaderCircle, Paperclip, Sparkles} from 'lucide-react';
 import {verdictLabels} from '@/lib/format';
 import {useApp} from './AppProvider';
-import {DocumentPanel, type DocumentValues} from './DocumentPanel';
-import {Drawer} from './Drawer';
+import {DocumentPanel, type DocumentHandle, type DocumentPhase, type DocumentValues} from './DocumentPanel';
 import {ChatMiniMap} from './ChatMiniMap';
 import {ChatCargoTable} from './ChatCargoTable';
 import {WatchOfferAction} from './WatchOfferAction';
@@ -20,6 +20,7 @@ import {onComposerRequest} from '@/lib/composer';
 import {stageLabels, type ProgressStage} from '@/lib/progress';
 
 const MAX = 500;  // routers/chat.py ChatRequest.message max_length
+const DOC_MAX_BYTES = 10 * 1024 * 1024;  // routers/document.py MAX_BYTES. 서버가 최종 판단하고, 여기서는 올리기 전에 빨리 알려 주는 용도다
 
 /** 처음 보는 사람을 위한 예시 문장. 누르면 입력창에 채우기만 한다(보내기는 사용자가). 실제 모드는 누구나 바로 결과를 볼 수 있는
  * 입항 선박 검색만 둔다 (데모 B/L을 실제 사용자에게 보여 주지 않는다, 10-01). 데모 모드는 가공 B/L */
@@ -78,7 +79,15 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   // 하루 토큰 한도를 다 쓰면 입력·서류 사진을 막는다. 서버도 429로 막는다 (docs/specs/token-quota.md)
   const blocked = !!usage?.exhausted;
   const [text, setText] = useState('');
-  const [docOpen, setDocOpen] = useState(false);
+  // 10-08 정운 49번: 첨부한 서류. file이 있으면 DocumentPanel(inline)이 읽는다. fileKey가 바뀌면 새 파일로 새로 마운트한다
+  const [file, setFile] = useState<File | null>(null);
+  const [fileKey, setFileKey] = useState(0);
+  const [docState, setDocState] = useState<DocumentPhase>({phase: 'idle', canApply: false});
+  const [docNote, setDocNote] = useState('');  // 형식·크기 안내, 설명이 너무 길 때 안내
+  const docHandle = useRef<DocumentHandle | null>(null);
+  const pickRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);  // 안쪽 요소를 넘나들 때 dragleave가 먼저 와서 안내가 깜빡이지 않게 센다
   const [away, setAway] = useState(false);  // 입력창이 화면 밖이면 true
   // 다른 입력칸에 글을 쓰는 중이면 true. 휴대폰에서 떠 있는 "이어서 물어보기" 버튼이 입력칸을 덮지 않게 그동안 숨긴다 (F18)
   const [typing, setTyping] = useState(false);
@@ -140,6 +149,9 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   }
 
   async function send(message: string) {
+    // 서류 확인 카드가 떠 있으면 보내기는 "서류 값 + 입력창 설명"을 함께 보내는 일이다 (applyDocument가 이어 받는다)
+    if (file && docState.phase === 'ready' && !loading && !blocked) { setDocNote(''); docHandle.current?.confirm(); return; }
+    if (file && docState.phase === 'busy') return;  // 읽는 중에는 보내지 않는다. 값이 오기 전에 문장만 가면 서류가 버려진다
     const m = message.trim();
     if (!m || loading || blocked || m.length > MAX) return;  // 보내는 중이거나 한도를 다 썼으면 보내지 않는다
     setText('');
@@ -154,12 +166,45 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text); }
   }
   function fill(example: string) { if (blocked) return; offerText(example); inputRef.current?.focus(); }
-  function applyDocument(v: DocumentValues) {
-    setDocOpen(false);
-    // MRN이 있으면 문장에 같이 넣는다. 서버가 코드로 뽑아 세관 미등록 때 배를 찾는다 (LLM에는 안 감)
-    setText(t => `${v.bl_no}${v.mrn ? ` MRN ${v.mrn}` : ''} ${t}`.trim());
+  /** 서류 값 확인을 마쳤을 때 (10-08 정운 51번): 입력창에 붙여 넣기만 하지 않고 바로 보낸다.
+   * 문장 = "B/L [MRN 값] 입력창 설명". MRN은 서버가 문장에서 코드로 뽑아 세관 미등록 때 배를 찾는다(LLM에는 안 감).
+   * 출항일은 ask의 document 인자로 보낸다(서버가 같은 B/L 조회에만 싣는다). 항차·입항 예정일은 /api/chat에 실을 칸이 없어
+   * 되묻기 화면(CandidatePicker)에 미리 채울 값(docHints)으로만 둔다. 이전과 같다 */
+  async function applyDocument(v: DocumentValues) {
+    const typed = text.trim();
+    const message = [v.bl_no, v.mrn ? `MRN ${v.mrn}` : '', typed].filter(Boolean).join(' ');
+    if (message.length > MAX) { setDocNote(`설명이 너무 길어요. 서류 값과 합쳐 ${MAX}자 이하로 줄여 주세요.`); return; }
     setDocHints(v.voyage_no || v.forwarder_eta || v.departed_on ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta, bl_no: v.bl_no, departed_on: v.departed_on} : null);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    setText('');
+    stick.current = true;
+    const ok = await ask(message, {document: v.departed_on ? {bl_no: v.bl_no, departed_on: v.departed_on} : null});
+    // 성공하면 서류를 뗀다. 실패하면 서류 카드와 쓴 설명을 그대로 돌려 다시 보낼 수 있게 한다 (send와 같은 방식)
+    if (ok) removeDoc(); else setText(t => t || typed);
+  }
+  function removeDoc() { setFile(null); setDocState({phase: 'idle', canApply: false}); setDocNote(''); }
+
+  /** 파일을 첨부한다 (클립 버튼, 끌어 놓기 공통). 종류·크기는 올리기 전에 한 번 걸러 주고, 최종 검사는 서버(POST /api/document)가 한다 */
+  function attach(f: File | undefined) {
+    if (!f || loading || blocked) return;
+    if (file && docState.phase === 'busy') { setDocNote('지금 읽는 중이에요. 끝나면 다시 올려 주세요.'); return; }
+    if (!(f.type.startsWith('image/') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) { setDocNote('JPG, PNG, PDF 파일만 올릴 수 있어요.'); return; }
+    if (f.size > DOC_MAX_BYTES) { setDocNote('파일은 10MB 이하만 올릴 수 있어요.'); return; }
+    setDocNote(''); setDocState({phase: 'busy', canApply: false}); setFile(f); setFileKey(k => k + 1);
+    requestAnimationFrame(() => inputRef.current?.focus());  // 바로 설명을 쓸 수 있게
+  }
+  function openPicker() { if (!loading && !blocked) pickRef.current?.click(); }
+
+  // 끌어 놓기 (10-08 정운 49번): 채팅 영역 어디든 놓을 수 있다. 파일이 아닌 끌기(글자 등)는 건드리지 않는다.
+  // 막힌 상태에서도 놓은 파일을 브라우저가 열어 버리지 않게 preventDefault는 늘 한다. 안내 화면만 막는다
+  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+  const canDrop = !loading && !blocked;
+  function onDragEnter(e: DragEvent) { if (!hasFiles(e)) return; e.preventDefault(); dragDepth.current += 1; if (canDrop) setDragOver(true); }
+  function onDragOver(e: DragEvent) { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = canDrop ? 'copy' : 'none'; }
+  function onDragLeave(e: DragEvent) { if (!hasFiles(e)) return; dragDepth.current = Math.max(0, dragDepth.current - 1); if (dragDepth.current === 0) setDragOver(false); }
+  function onDropFile(e: DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth.current = 0; setDragOver(false);
+    if (canDrop) attach(e.dataTransfer.files[0]);
   }
 
   // 판정 답 말풍선 안의 배지·할 일 한 줄. 대화가 비어 있는데 결과만 있는 경우(데모 첫 화면, 저장된 판정 열기)도 같은 모양으로 그린다 (시안 2-2)
@@ -171,7 +216,8 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   const seedAnswer = thread.length === 0 && view === 'cargo' && result && result.status !== 'insufficient' && result.answer ? result : null;
   const empty = idle && !loading && thread.length === 0;
 
-  return <section className="ask" aria-label="AI에게 묻기">
+  return <section className="ask" aria-label="AI에게 묻기" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDropFile}>
+    {dragOver && <div className="doc-drop-overlay" aria-hidden="true"><Paperclip size={28} strokeWidth={1.5}/><strong>여기에 놓으세요</strong><span>JPG·PNG·PDF, 10MB 이하</span></div>}
     {/* 대화는 이 칸 안에서만 스크롤하고, 입력창은 아래에 고정한다 (시안 2-1·2-2). 페이지 전체는 움직이지 않는다 */}
     <div className="chat-scroll" ref={threadRef} onScroll={onScroll} role="log" aria-label="대화" tabIndex={0}>
       {empty ? <div className="chat-empty">
@@ -180,7 +226,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
         <div className="feature-tiles">
           <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><span className="tile-no">01</span>B/L 번호로 조회하기</button>
           <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><span className="tile-no">02</span>입항 예정 선박 찾기</button>
-          <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><span className="tile-no">03</span>서류 사진 올리기</button>
+          <button type="button" onClick={openPicker} disabled={blocked}><span className="tile-no">03</span>서류 사진 올리기</button>
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
@@ -196,18 +242,25 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
       {offer !== null && <div className="fill-offer" role="status"><span>입력 중인 글이 있어요. 이 문장으로 바꿀까요? <strong>{offer}</strong></span>
         <button type="button" className="button secondary" onClick={() => { setText(offer); setOffer(null); inputRef.current?.focus(); }}>바꾸기</button>
         <button type="button" className="button text-button" onClick={() => { setOffer(null); inputRef.current?.focus(); }}>쓰던 글 유지하기</button></div>}
+      {docNote && <p role="alert" className="request-error doc-note">{docNote}</p>}
+      {/* 파일 칩 + 확인 카드. 보내는 동안은 숨기기만 하고 상태는 지킨다(실패하면 그대로 다시 보인다) */}
+      {file && <div hidden={loading}><DocumentPanel key={fileKey} inline file={file} onApply={v => void applyDocument(v)} onClose={removeDoc}
+        disabled={loading || blocked} handleRef={docHandle} onPhase={setDocState}/></div>}
       <div className="composer-wrap" ref={wrapRef}>
         <form className="composer" onSubmit={submit}>
           <label htmlFor="chat-input" className="sr-only">Marvia에게 질문하기</label>
           <textarea id="chat-input" ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={1} maxLength={MAX} disabled={blocked}
-            placeholder={cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호를 입력해 주세요'}
+            placeholder={file ? '서류와 함께 보낼 설명을 적어 주세요 (선택)' : cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호나 궁금한 점을 입력해 주세요'}
             aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
           <div className="composer-foot">
-            <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={16} strokeWidth={1.5}/>서류 사진으로 채우기</button>
+            {/* 10-08 정운 49번: 서류 첨부는 클립 아이콘 하나. 옆 패널을 열지 않고 파일 선택창만 연다 */}
+            <button type="button" className="doc-trigger attach-btn" onClick={openPicker} disabled={loading || blocked} aria-label="서류 사진·PDF 첨부" title="서류 사진·PDF 첨부"><Paperclip size={18} strokeWidth={1.5}/></button>
+            <input ref={pickRef} type="file" accept="image/*,application/pdf" className="sr-only" tabIndex={-1} aria-hidden="true"
+              onChange={e => { attach(e.target.files?.[0]); e.target.value = ''; }}/>
             <div className="composer-send">
               {/* 글자 수는 쓰기 시작한 뒤에만 보인다. 빈 입력창에 숫자를 늘 두면 어수선하다 */}
               {text.length > 0 && <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>}
-              <button type="submit" className="send" disabled={loading || blocked || !text.trim()} aria-label="AI에게 질문 보내기">
+              <button type="submit" className="send" disabled={loading || blocked || (file ? (docState.phase === 'busy' || (docState.phase === 'ready' ? !docState.canApply : !text.trim())) : !text.trim())} aria-label="AI에게 질문 보내기">
                 {loading ? <LoaderCircle size={20} strokeWidth={1.5} className="spin"/> : <ArrowRight size={20} strokeWidth={1.5}/>}</button>
             </div>
           </div>
@@ -219,12 +272,8 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
       <p id="chat-help" className="sr-only">Enter로 보내고 Shift + Enter로 줄을 바꿔요</p>
     </div>
 
-    {docOpen && <Drawer title="서류 사진으로 질문하기" description="읽은 값을 확인한 뒤 입력창에 넣어요." onClose={() => setDocOpen(false)}>
-      <DocumentPanel heading={false} onApply={applyDocument} onClose={() => setDocOpen(false)} disabled={loading || blocked}/>
-    </Drawer>}
-
     {/* body로 뺀다. 입력창이 화면 밖으로 밀렸을 때(휴대폰 상세 시트가 올라온 경우 등) 돌아가는 길 */}
-    {away && !docOpen && !typing && createPortal(<button type="button" className="back-to-composer" onClick={goToComposer}><Sparkles size={15}/>AI에게 이어서 물어보기<span aria-hidden="true">↑</span></button>, document.body)}
+    {away && !typing && createPortal(<button type="button" className="back-to-composer" onClick={goToComposer}><Sparkles size={15}/>AI에게 이어서 물어보기<span aria-hidden="true">↑</span></button>, document.body)}
   </section>;
 }
 

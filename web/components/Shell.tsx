@@ -9,7 +9,7 @@
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {useEffect, useRef, useState} from 'react';
-import {Boxes, ChartNoAxesCombined, ChevronDown, ChevronsUpDown, CircleUserRound, History, Info, LogOut, Menu, MessagesSquare, PanelLeftClose, PanelLeftOpen, Plus, Radar, Search, Settings2, ShieldUser, Table2, UserCog, X} from 'lucide-react';
+import {Boxes, ChartNoAxesCombined, ChevronDown, ChevronsUpDown, CircleUserRound, History, Info, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Radar, Search, Settings2, ShieldUser, Table2, UserCog, X} from 'lucide-react';
 import {LoginScreen} from './LoginScreen';
 import {ProfileForm} from './ProfileForm';
 import {ConversationList} from './ConversationList';
@@ -41,7 +41,9 @@ const accountMenu = [
 const cargoPaths = cargoMenu.map(m => m.href);
 
 /** 상단 경로 표시. 메뉴에 안 보이는 화면(운영자가 아닌 사람이 주소로 연 /metrics·/admin)도 제 이름을 보인다 (10-02 UI 점검 F16) */
-function crumb(path: string) {
+function crumb(path: string, chatTitle?: string) {
+  // 10-08 정운 42번: "/"는 내 화물 메뉴와 같은 주소지만 실제로는 대화 화면이다. "내 화물"로 적으면 화물 목록으로 오해해서 대화 제목(없으면 "대화")을 보인다
+  if (path === '/') return chatTitle || '대화';
   if (path === '/settings') return '내 정보와 설정';
   const hit = [...cargoMenu, ...operatorMenu, aboutItem].find(l => l.href === path);
   if (!hit) return 'Marvia';
@@ -50,8 +52,8 @@ function crumb(path: string) {
 
 export function Shell({children}: {children: React.ReactNode}) {
   const path = usePathname();
-  const {data, authEnabled, authReady, user, reset, isOperator, profileComplete, meReady, suspended, conversationsOn, savedId, newConversation, loading, opening} = useApp();
-  const [convOpen, setConvOpen] = useState(false);  // 접힌 사이드바·40:60 화면에서 대화 목록을 여는 패널
+  const {data, authEnabled, authReady, user, reset, isOperator, profileComplete, meReady, suspended, conversationsOn, savedId, newConversation, loading, opening, conversations, activeId} = useApp();
+  const [convOpen, setConvOpen] = useState(false);  // 접힌 사이드바·40:60 화면에서 대화 목록을 여는 패널. 여는 단추는 채팅 칸 왼쪽 위(page.tsx). 상단바 "대화" 버튼은 사이드바와 겹쳐 뺐다 (10-08 정운 32번)
   const [collapsed, setCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(false);  // 900px 이하: 사이드바가 서랍
   const [drawer, setDrawer] = useState(false);
@@ -159,9 +161,8 @@ export function Shell({children}: {children: React.ReactNode}) {
     <div className="workspace">
       <header className="workspace-bar">
         <button type="button" className="sb-burger" onClick={() => setDrawer(true)} aria-label="메뉴 열기" aria-expanded={drawer}><Menu size={20} strokeWidth={1.75}/></button>
-        <span className="sb-crumb">{crumb(path)}</span>
+        <span className="sb-crumb">{crumb(path, conversations.find(c => c.id === activeId)?.title)}</span>
         <div className="workspace-meta">
-          {conversationsOn && <button type="button" className="conv-toggle" aria-expanded={convOpen} onClick={() => setConvOpen(true)}><MessagesSquare size={14}/>대화</button>}
           <span className="port-label">{data.demo.port.name}</span>
           <span className="replay-chip"><span/>{isLive ? '실시간 조회' : '체험 · 예시 데이터'}</span>
         </div>

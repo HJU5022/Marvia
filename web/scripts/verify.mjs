@@ -194,25 +194,20 @@ try {
     assert(await page.locator('.vessel-results .leaflet-container').count() <= 1, 'only the selected vessel keeps a map');
     check(`vessel search + inline detail switch/cleanup ${width}`);
 
-    // 서류 사진: 드로어에서 확인한 값만 입력창에 넣고 자동으로 조회하지 않는다
+    // 서류 사진 (10-08 정운 49·51·53번): 옆 서랍 대신 입력칸 클립 버튼으로 붙인다. 읽기가 끝나도 스스로 보내지 않고,
+    // 입력칸 위 칩 아래에 확인 카드가 뜬다. "첨부한 서류 빼기"로 떼면 카드도 사라진다
     const turnCount = await turns(page);
     // 휴대폰: 펼친 상세 시트가 입력창을 덮으므로 손잡이로 접는다 (넓은 화면에는 손잡이가 없다)
     if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'true') await handle.click();
-    const docTrigger = page.getByRole('button', {name: '서류 사진으로 채우기'});
-    await docTrigger.click(); await page.getByRole('dialog').waitFor();
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '패널 닫기', 'drawer focus starts on close');
-    assert(await page.evaluate(() => document.querySelector('.app-shell').hasAttribute('inert')), 'page behind the drawer is inert');
-    for (let t = 0; t < 25; t++) await page.keyboard.press('Tab');
-    assert(await page.evaluate(() => !!document.activeElement?.closest('.drawer')), 'focus stays inside the drawer');
-    if (width === 1440 && !interactionsOnly) await audit(page, `document-drawer-${width}`);
-    await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({state: 'detached'});
-    assert(await page.evaluate(() => !!document.activeElement?.classList.contains('doc-trigger')), 'Esc returns focus to the trigger');
-    await docTrigger.click(); await page.getByRole('dialog').waitFor();
+    assert(await page.getByRole('button', {name: '서류 사진·PDF 첨부'}).isVisible(), 'attach button in composer');
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    await page.locator('.drawer input[type=file]').setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
-    await page.getByRole('button', {name: '확인한 값으로 채우기'}).click(); await page.getByRole('dialog').waitFor({state: 'detached'});
-    assert.match(await input(page).inputValue(), /MRVDEMO1101/); assert.equal(await turns(page), turnCount, 'document never sends by itself');
-    check(`document drawer focus/inert/Esc + fills composer without sending ${width}`);
+    await page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
+    await page.locator('.doc-chip').waitFor();
+    await page.getByRole('button', {name: '확인한 값으로 조회'}).waitFor();
+    if (width === 1440 && !interactionsOnly) await audit(page, `document-attach-${width}`);
+    assert.equal(await turns(page), turnCount, 'document never sends by itself');
+    await page.getByRole('button', {name: '첨부한 서류 빼기'}).click(); await page.locator('.doc-chip').waitFor({state: 'detached'});
+    check(`document attach chip + confirm card without sending ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
     // 사이드바 개편(10-07): 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다
