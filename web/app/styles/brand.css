@@ -1,48 +1,44 @@
 /* 담당 영역: 로그인한 뒤 화면 전체를 소개 랜딩(styles/landing.css)과 같은 톤으로 맞추는 마지막 덮개 (10-07 승욱).
- * layout.tsx가 맨 마지막에 불러와 같은 무게의 옛 규칙(10-07 엘레강스: 모서리 0, 얇은 글씨, 검은 외곽선 버튼)을 덮는다.
- * 기준은 랜딩과 같다 (ui-ux-pro-max "Trust & Authority" B2B 톤):
- *   - 모서리: 버튼·입력 4px, 카드·패널·배지 6px, 큰 틀(지도·창) 8px. 화면 끝까지 가는 줄(사이드바·윗줄·표 칸)은 각진 그대로 둔다
- *   - 그림자: 떠 있는 것(팝오버·창·토스트)에만 옅게 한 겹. 평평한 카드는 테두리만
- *   - 글씨: 제목은 굵게(700/600), 본문은 400. 300(가는 글씨)은 쓰지 않는다 (각 파일의 300은 400으로 바꿨다)
- *   - 버튼: 주 버튼은 브랜드 파랑을 채운다(랜딩 시작 버튼과 같다), 보조 버튼은 회색 외곽선
- * 소개 랜딩(.lp)은 자기 규칙이 있어 여기서 건드리지 않는다. */
+ * layout.tsx가 맨 마지막에 불러온다. 10-07 엘레강스 규칙(모든 글씨 400에 넓은 자간 0.7~1.7px, 모서리 0, 검은 외곽선 버튼)을 덮는다.
+ * 실제 로그인 화면(대화, 현황표, 감시, 이력, 설정, 지표, 관리)을 열어 계산된 스타일로 확인한 이름만 고친다.
+ * 랜딩과 같은 기준 (ui-ux-pro-max "Trust & Authority" B2B 톤):
+ *   - 글씨: 제목은 굵게(h1 700, h2·h3 600), 자간은 기본. 넓은 자간은 작은 눈썹글에만 조금
+ *   - 모서리: 버튼·입력 4px, 빈 상태·카드 6px, 입력창 틀 8px. 화면 끝까지 가는 줄(사이드바·윗줄·표 칸)은 각진 그대로
+ *   - 버튼: 주 버튼은 브랜드 파랑 채움(랜딩 시작 버튼과 같다), 보조 버튼은 회색 외곽선
+ * 선택자에 .app-shell(로그인한 뒤 틀)과 :not(.lp *)(소개 랜딩 제외)를 붙여, 화면별 CSS의 한 단계 선택자보다 우선한다. */
 
-:root{
-  --r-sm:4px;--r:6px;--r-lg:8px;
-  --radius:var(--r);--small-radius:var(--r-sm);--card-radius:var(--r);
-  --shadow-float:0 4px 16px rgba(15,27,45,.12),0 1px 3px rgba(15,27,45,.08);
-}
+:root{--r-sm:4px;--r:6px;--r-lg:8px;--radius:var(--r);--small-radius:var(--r-sm);--card-radius:var(--r)}
 
-/* 제목 굵기: 랜딩 제목(700)과 같은 위계. 화면 제목 700, 구역 제목 600 */
-:where(.app-shell,.entry-shell) h1{font-weight:700;letter-spacing:-.02em}
-:where(.app-shell,.entry-shell) h2{font-weight:600;letter-spacing:-.01em}
-:where(.app-shell,.entry-shell) h3{font-weight:600}
+/* 자간: 넓은 자간을 모두 기본으로 (랜딩 본문과 같다) */
+.app-shell *:not(.lp *){letter-spacing:normal}
+/* 작은 눈썹글·표 머리만 살짝 */
+.app-shell :is(.eyebrow,.chat-eyebrow,.sb-caption,.sb-cl-group h3):not(.lp *){letter-spacing:.04em}
 
-/* 버튼: 랜딩 시작 버튼과 같은 모양. 넓은 자간(엘레강스)은 뺀다 */
-.button{border-radius:var(--r-sm);letter-spacing:0;font-weight:600}
+/* 제목 굵기: 랜딩 제목과 같은 위계 */
+.app-shell :is(h1):not(.lp *){font-weight:700;letter-spacing:-.02em}
+.app-shell :is(h2,h3):not(.lp *){font-weight:600;letter-spacing:-.01em}
+.app-shell .sb-cl-group h3:not(.lp *){font-weight:600;letter-spacing:.04em}
+.app-shell .chat-empty h2:not(.lp *){font-size:26px;font-weight:700;letter-spacing:-.02em}
+.app-shell .sb-brand strong:not(.lp *){font-weight:700}
+.app-shell th:not(.lp *){font-weight:600}
+
+/* 탭: 고른 탭은 굵게 (설정, 관리) */
+.app-shell :is(.st-tab.on,.adm-tabs button.active):not(.lp *){font-weight:600}
+
+/* 버튼: 랜딩 시작 버튼과 같은 모양 */
+.button{border-radius:var(--r-sm);letter-spacing:normal;font-weight:600}
 .button.primary{background:var(--brand);color:#fff;border:1px solid var(--brand)}
 .button.primary:hover:not(:disabled){background:var(--brand-hover);border-color:var(--brand-hover);color:#fff}
-.button.secondary{border-radius:var(--r-sm);border-color:var(--border-strong);color:var(--text)}
+.button.secondary{border-color:var(--border-strong);color:var(--text)}
 .button.secondary:hover:not(:disabled){border-color:var(--text);background:var(--hover)}
-.button.danger{border-radius:var(--r-sm)}
 
-/* 누르는 작은 것들과 입력: 4px */
-.query-button,.icon-button,.icon-btn,.cs-btn,.cs-btn-outline,.cs-btn-fill,.pager-buttons button,.doc-trigger,
-.app-shell input:not([type=checkbox]):not([type=radio]),.app-shell select,.app-shell textarea,
-.entry-shell input:not([type=checkbox]):not([type=radio]),.entry-shell select,.entry-shell textarea,
-.question-input,.form-field input,.cs-field input,.doc-field input,.confirm-field input{border-radius:var(--r-sm)}
+/* 모서리: 화면에서 테두리가 보이는 것들 (실측한 이름) */
+.app-shell :is(.sb-new,.send,.cargo-edit,.hist-search,.adm-search,.cs-btn,.query-button,.icon-button,.icon-btn):not(.lp *){border-radius:var(--r-sm)}
+.app-shell :is(.watch-empty,.empty-state,.failure-banner,.ask-banner,.doc-hint,.cand-card,.st-card,.admin-card,.adm-box,.cs-card,.profile-card,.pending-card):not(.lp *){border-radius:var(--r)}
+.app-shell :is(.composer-wrap,.map-frame,.vessel-map-frame):not(.lp *){border-radius:var(--r-lg)}
+.app-shell :is(.map-frame,.vessel-map-frame):not(.lp *){overflow:hidden}
+/* 판정 카드(조회 결과)와 근거 영역: 랜딩 판정 카드와 같은 6px */
+.app-shell :is(.verdict-hero,.next-action,.conflicts,.cargo-body>section,.bottom-grid>section):not(.lp *){border-radius:var(--r)}
 
-/* 칩·배지: 4px (알약 모양은 쓰지 않는다) */
-.status-chip,.role-chip,.fresh-chip,.replay-chip,.map-chips>*,.adm-chip,.watch-chip,
-.verdict-badge,.subtle-badge,.as-badge,.doc-badge,.cargo-badge{border-radius:var(--r-sm)}
-
-/* 카드·패널·배너: 6px */
-.cand-card,.wm-map-card,.st-card,.admin-card,.adm-dcard,.adm-box,.cmp-card,.cs-card,.profile-card,.pending-card,.login-card,
-.document-panel,.cluster-panel,.notification-panel,.resolution-panel,.memory-panel,.kakao-panel,.account-panel,.history-panel,
-.failure-banner,.ask-banner,.evaluation-banner,.doc-hint,.feature-tiles>*,.settings-rules,.settings-side>section{border-radius:var(--r)}
-
-/* 큰 틀: 지도, 창 8px */
-.map-frame,.vessel-map-frame,.consent-modal,.legal-modal{border-radius:var(--r-lg);overflow:hidden}
-
-/* 떠 있는 것만 그림자 */
-.user-popover,.cluster-panel,.consent-modal,.legal-modal,.notification-panel{box-shadow:var(--shadow-float)}
+/* 요약 숫자: 랜딩 숫자 줄처럼 굵게 (현황표 전체·운송 중·입항·완료, 지표 KPI) */
+.app-shell :is(.cs-summary dd,.history-stat strong,.mt-kpi strong,.metric-kpis strong):not(.lp *){font-weight:700;font-variant-numeric:tabular-nums}
