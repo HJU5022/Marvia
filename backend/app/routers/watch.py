@@ -9,6 +9,10 @@
   GET  /api/watch/changes                           → {"changes": [...]}   안 본 판정 변화 (다음 접속 때 띠)
   POST /api/watch/changes/seen                      → {"cleared": 건수}    띠를 보여 줬으니 "봤음"으로
 
+  GET    /api/watch/vessels             → {"items"}            B/L 없이 배만 지켜보는 목록 (10-08 정운 실사용 57번)
+  POST   /api/watch/vessels  {mmsi, name, flag?, dest?, eta?} → {"mmsi", "watch": true}   배 지켜보기 켜기
+  DELETE /api/watch/vessels/{mmsi}      → {"mmsi", "watch": false}  배 지켜보기 끄기
+
 B/L 번호는 주소에 넣지 않고 요청 본문(JSON)으로만 받는다. 주소는 접속 로그·브라우저 기록에 남기 때문이다 (SDD 3.5).
 그래서 상태 조회도 GET이 아니라 POST다. 응답에는 B/L을 되돌려 주지 않는다. 변화 목록은 가린 번호(bl_masked)만 담는다.
 모두 로그인한 사용자 것만 다룬다 (user_id는 출입증에서만 꺼낸다).
@@ -24,6 +28,7 @@ from pydantic import BaseModel
 from backend.app.auth import CurrentUser, current_user
 from backend.app.observability.logging import log_failure
 from backend.app.services import operators as ops
+from backend.app.services import vessel_watch as vsvc
 from backend.app.services import watch as svc
 
 router = APIRouter(prefix="/api", tags=["watch"])
@@ -40,6 +45,15 @@ _ERRORS = {
 
 class StateBody(BaseModel):
     bl_no: str
+
+
+class VesselBody(BaseModel):
+    """채팅에서 본 배. name 이하는 사용자가 본 글 그대로의 표시용 값이다 (services/vessel_watch.py)."""
+    mmsi: int
+    name: str
+    flag: str | None = None
+    dest: str | None = None
+    eta: str | None = None
 
 
 class WatchBody(BaseModel):
@@ -118,4 +132,52 @@ def post_seen(user: Annotated[CurrentUser | None, Depends(current_user)] = None)
             return {"cleared": svc.mark_seen(conn, user.id)}
     except Exception as e:
         log_failure("watch_seen", type(e).__name__)
+        raise HTTPException(status_code=503, detail=DB_DOWN)
+
+
+# ── B/L 없이 배만 지켜보기 (10-08 정운 실사용 57번). 기존 B/L 지켜보기와 표·규칙을 섞지 않는다 ──
+
+_VESSEL_ERRORS = {
+    "limit": (409, "배 지켜보기는 최대 5척까지입니다. 다른 배를 먼저 끄세요"),
+    "invalid": (422, "배 번호(MMSI)와 이름이 필요합니다"),
+}
+
+
+@router.get("/watch/vessels")
+def get_vessel_watches(user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> dict:
+    """배만 지켜보는 목록과 마지막 위치·지나온 길. 판정은 없다."""
+    user = _login_required(user)
+    try:
+        with ops.open_conn() as conn:
+            return vsvc.list_vessels(conn, user.id)
+    except Exception as e:
+        log_failure("vessel_watch_list", type(e).__name__)
+        raise HTTPException(status_code=503, detail=DB_DOWN)
+
+
+@router.post("/watch/vessels")
+def add_vessel_watch(body: VesselBody, user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> dict:
+    """채팅에서 본 배를 지켜보기에 올린다. 같은 배를 다시 올리면 보인 값만 갱신한다."""
+    user = _login_required(user)
+    try:
+        with ops.open_conn() as conn:
+            return vsvc.add_vessel(conn, user.id, body.mmsi, body.name, body.flag, body.dest, body.eta)
+    except vsvc.VesselWatchError as e:
+        log_failure("vessel_watch_add", e.kind)
+        status, detail = _VESSEL_ERRORS[e.kind]
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        log_failure("vessel_watch_add", type(e).__name__)
+        raise HTTPException(status_code=503, detail=DB_DOWN)
+
+
+@router.delete("/watch/vessels/{mmsi}")
+def remove_vessel_watch(mmsi: int, user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> dict:
+    """배 지켜보기를 푼다. 켜져 있지 않아도 오류가 아니다."""
+    user = _login_required(user)
+    try:
+        with ops.open_conn() as conn:
+            return vsvc.remove_vessel(conn, user.id, mmsi)
+    except Exception as e:
+        log_failure("vessel_watch_remove", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN)

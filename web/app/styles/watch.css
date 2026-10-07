@@ -206,3 +206,14 @@
 .cluster-go{border-radius:0;width:30px;height:30px;border:1px solid var(--border-strong,#cfcfcf);background:transparent}
 .cluster-go:hover{background:var(--text);color:#fff;border-color:var(--text)}
 .watch-pin .pin-body{box-shadow:none;border-width:2px}
+
+/* ===== 10-08 정운 실사용 57번: B/L 없이 배만 지켜보는 줄 (components/WatchedVessels.tsx, WatchVesselButton.tsx) ===== */
+.watched-vessels{margin-top:24px}
+.watched-vessels h3{font-size:var(--fs-lg,18px);font-weight:500;margin:0 0 8px}
+.watched-vessels ul{list-style:none;margin:0;padding:0}
+.watched-vessels li{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
+.watched-vessels .wv-main{display:flex;flex-direction:column;gap:4px;min-width:0}
+.watched-vessels .wv-line{font-size:var(--text-sm,13px);color:var(--muted)}
+.watched-vessels .subtle-badge{align-self:flex-start}
+.watch-vessel-btn{display:inline-flex;align-items:center;gap:6px}
+.watch-vessel-btn .request-error:empty{display:none}
