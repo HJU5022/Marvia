@@ -1,7 +1,7 @@
 # Marvia DB ERD
 
-기준: `backend/app/db/migrations/001~022` (10-06 현행화, 파일 26개). 서버(`backend/app/main.py`)와 worker가 뜰 때 `db.apply_migrations`가 이름 순서대로 한 번씩 적용한다 (SDD 3.9, `backend/app/db/__init__.py`). 전체를 pg advisory lock으로 감싸고 파일 하나를 한 트랜잭션으로 묶어, 두 프로세스가 동시에 떠도 같은 파일을 두 번 적용하지 않는다 (10-06).
-번호가 겹치는 파일이 있다: 016(kakao_links, token_usage), 017(cargo_watch, watch_positions), 018(conversations, db_cleanup), 021(cargo_vessel_name, watch_positions_purge). 이름 순으로 적용하므로 문제 없다.
+기준: `backend/app/db/migrations/001~023` (10-06 현행화에 023 추가, 파일 27개). 서버(`backend/app/main.py`)와 worker가 뜰 때 `db.apply_migrations`가 이름 순서대로 한 번씩 적용한다 (SDD 3.9, `backend/app/db/__init__.py`). 전체를 pg advisory lock으로 감싸고 파일 하나를 한 트랜잭션으로 묶어, 두 프로세스가 동시에 떠도 같은 파일을 두 번 적용하지 않는다 (10-06).
+접두 번호가 같은 파일이 있다: 016(kakao_links, token_usage), 017(cargo_watch, watch_positions), 018(conversations, db_cleanup), 021(cargo_vessel_name, watch_positions_purge). 전체 파일 이름 순으로 적용하므로 문제 없다.
 DB는 Supabase Postgres(운영·개발)와 compose의 로컬 postgres다. 모든 표에 RLS를 켜고 규칙은 두지 않는다. 공개 키(Data API)로는 못 읽고, 백엔드만 표 주인 계정으로 읽고 쓴다 (005, 이후 새 표도 모두 같은 줄을 넣었다). pg_cron이 없는 DB(compose의 로컬 postgres)에서는 각 마이그레이션이 cron 등록만 건너뛰고 지우기 함수는 만든다.
 
 외래 키(FOREIGN KEY)는 두 곳뿐이다: `conversation_messages`→`conversations`(018, 대화를 지우면 말풍선도 함께), `user_cargo.lc_id`→`user_lc`(019, 신용장을 지워도 화물 줄은 남기려고 SET NULL). 나머지 선은 같은 값으로 이어 읽는 논리 연결이다.
@@ -24,6 +24,8 @@ erDiagram
     AUTH_USERS ||--o{ admin_actions : "target_user_id"
     user_lc ||--o{ user_cargo : "lc_id (FK)"
     user_cargo }o--o{ watch_positions : "vessel_mmsi = mmsi"
+    AUTH_USERS ||--o{ vessel_watch : "user_id"
+    vessel_watch }o--o{ watch_positions : "mmsi"
     conversations ||--o{ conversation_messages : "(user_id, id) (FK)"
     operators ||--o{ operator_audit : "email_hash"
 
@@ -45,6 +47,14 @@ erDiagram
                 text destcode
                 timestamptz ais_eta
                 jsonb raw }
+    vessel_watch { text user_id PK
+                   bigint mmsi PK
+                   text name
+                   text flag
+                   text dest
+                   text eta
+                   timestamptz created_at
+                   timestamptz updated_at }
     watch_positions { bigserial id PK
                       bigint mmsi
                       timestamptz ts
@@ -194,6 +204,7 @@ erDiagram
 | kakao_links | services/kakao.py | services/kakao.py, routers/kakao.py | 사용 중 |
 | token_usage | services/quota.py | services/quota.py | 사용 중 |
 | watch_positions | worker/collector.py | services/watch.py, cargo.py | 사용 중 (지도 표시) |
+| vessel_watch | services/vessel_watch.py (routers/watch.py `/api/watch/vessels`와 채팅이 부른다) | 같은 서비스, worker/collector.py (SELECT_WATCHED) | 사용 중 (B/L 없이 배만 지켜보기, 023) |
 | conversations, conversation_messages | services/conversations.py | 같은 서비스 (routers/conversations.py가 부른다), 탈퇴 삭제 | 사용 중 |
 
 ### 10-06 정리로 처리된 것
@@ -259,6 +270,20 @@ erDiagram
 
 인덱스: `watch_positions_mmsi_ts (mmsi, ts DESC)`. `positions`와 달리 dest·ais_eta·raw는 저장하지 않는다.
 30일이 지난 줄은 `purge_old_watch_positions()`가 지운다. 지금 지켜보는 진행 중 화물의 배 줄은 남긴다 (021, pg_cron `marvia-purge-watch-positions`, 매일 18:40 UTC).
+
+### vessel_watch: B/L 없이 배만 지켜보기 (023_vessel_watch)
+채팅의 도착 검색 목록이나 후보 배에서 "이 배 지켜볼래"를 누르면 사용자별로 한 줄이 생긴다. 화물 표(`user_cargo`)에 넣지 않은 이유는 `user_cargo`가 B/L 지문(cargo_key)이 열쇠이고 재판정·카카오톡 알림이 그 줄을 읽어서, B/L 없는 줄이 섞이면 재판정이 실패하기 때문이다. 판정도 통관도 없다. 위치는 worker가 `watch_positions`에 받아 두는 값을 같은 배 번호(mmsi)로 읽는다.
+| 칸 | 타입 | 설명 |
+|---|---|---|
+| user_id | TEXT NOT NULL | 로그인 사용자 ID. (user_id, mmsi)가 PK라 같은 배를 두 번 켜도 한 줄 |
+| mmsi | BIGINT NOT NULL | 배 번호 |
+| name | TEXT NOT NULL | 선명. 사용자가 채팅에서 본 값 |
+| flag | TEXT | 국적 |
+| dest | TEXT | 채팅에 보인 목적지 글 그대로 (자유 문장, 데이터로만 쓴다) |
+| eta | TEXT | 채팅에 보인 도착 예정 글 그대로 (자유 문장) |
+| created_at, updated_at | TIMESTAMPTZ NOT NULL | 만든 시각, 고친 시각 |
+
+RLS를 켜고 규칙은 두지 않는다. 같은 파일에서 `purge_old_watch_positions()`를 다시 정의해, 지켜보는 동안은 30일이 지나도 지도 경로를 남기고 끄면 30일 뒤 지운다.
 
 ### arrival_reports: 해수부 입항 신고 (001)
 | 칸 | 타입 | 설명 |

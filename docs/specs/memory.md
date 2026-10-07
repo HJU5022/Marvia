@@ -424,3 +424,7 @@ POST   /api/memory/document-facts      서류 확인 화면에서 확인한 B/L 
 - Langfuse 프롬프트 등록: `marvia-memory-write`(새로), `marvia-judge`·`marvia-follow-up`(기억 블록 설명), `marvia-doc-extract`(B/L 조건·연락처 칸). 등록 전에는 production이 옛 지시문이다 (docs/prompt_versions.md)
 - 판정·후속 지시문이 바뀌었으니 평가 30건 재측정, 서류 지시문이 바뀌었으니 서류 평가셋 재측정. 로그인 사용자가 없는 평가에는 기억 블록이 없다
 - 실제 LLM으로 기억 뽑기 예시 대화 확인, 기억 오염 평가 문항(EC-01·EC-02) 추가 (위 검증 체크리스트)
+
+## 10-08 변경
+
+- 기억 뽑기는 답과 동시에 돌린다. 한 번의 시간 상한 `MEMORY_TIMEOUT_SEC` 10초(예전에는 60초까지 매달림), 실패하면 `MEMORY_RETRIES` 2번 더 시도해 모두 3번까지, 답이 다 만들어진 뒤 `MEMORY_JOIN_GRACE_SEC` 2초만 더 기다리고 넘으면 답을 먼저 보낸다. 저장에 실패하거나 검사에 걸려 버린 칸은 사용자에게 알린다. 거래처는 역할 없이도 저장한 뒤 역할·전화를 되묻는다 (10-08 실사용 76번, 커밋 `5da58bf`, `services/memory.py`)

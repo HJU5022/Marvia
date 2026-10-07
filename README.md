@@ -6,35 +6,37 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 
 | | |
 |---|---|
-| 서비스 | https://marvia.up.railway.app (Railway `marvia-web`, 재생 모드 데모) |
+| 서비스 | https://marvia.up.railway.app (Railway `marvia-web`) |
 | Agent API | https://marvia-api-production.up.railway.app (Railway `marvia-api`) · `GET /health` · `POST /api/agent` |
 | MCP | 위 API 주소의 `/mcp` (Bearer 토큰) |
 | 기획 | [docs/Marvia_PRD.md](./docs/Marvia_PRD.md) |
 | 설계 | [docs/Marvia_SDD.md](./docs/Marvia_SDD.md) |
 | 작업 분담 | [docs/Marvia_개발_작업_리스트.md](./docs/Marvia_개발_작업_리스트.md) |
 | 지표 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
+| 데모 영상 | (10/11 드라이브 업로드 후 링크) |
+| 발표 자료 PDF | (10/11 드라이브 업로드 후 링크) |
 
-배포 주소는 `docs/release_manifest.json`에 적힌 값이다. 배포는 Railway이고 Vercel은 쓰지 않는다(10-05 결정, `Dockerfile.railway`). Cloud Run은 api·web이 아니라 아래 해수부 릴레이 하나에만 쓴다. 배포 서버는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드(`REPLAY_MODE=true`)는 채점자와 키 없는 로컬 데모, 평가용으로 남긴다. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다.
+배포 주소는 `docs/release_manifest.json`에 적힌 값이다. 배포는 Railway이고 Vercel은 쓰지 않는다(10-05 결정, `Dockerfile.railway`). Cloud Run은 api·web이 아니라 아래 해수부 릴레이 하나에만 쓴다. 배포 서버는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드(`REPLAY_MODE=true`)는 채점자와 키 없는 로컬 데모, 평가용으로 남긴다. Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패하는 원인은 확인하지 못했다. 한국에서는 0.1초에 응답한다. 그래서 10-07부터 아래 서울 릴레이를 거쳐 부른다.
 
 #### 해수부 릴레이 (`relay/`)
 
 - **왜**: 위 ConnectTimeout 때문이다. 같은 증상을 미국 GitHub Actions에서도 겪었다는 보고가 있어(github.com/SFByomi/blueboard/pull/19) 해외 접속 차단으로 짐작하지만 공식 확인은 아니다. UNI-PASS는 싱가포르에서도 된다.
 - **무엇**: 서울(asia-northeast3) Google Cloud Run의 작은 FastAPI 서비스 `mof-relay`다. `GET /1192000/VsslEtrynd5/*`, `/1192000/CntlVssl2/*`만 `apis.data.go.kr`로 그대로 넘기고, `X-Relay-Token` 헤더가 맞아야 받는다. 쿼리스트링(serviceKey)은 로그에 남기지 않는다. 소유자 개인 GCP 프로젝트에 두고 무료 체험 크레딧으로 낸다(팀 계정 아님).
-- **백엔드 쪽**: 연결 실패는 재시도하지 않고(연결 대기 3초), 한 번 실패하면 60초 동안 해수부 호출을 바로 실패시킨다(`backend/app/clients/mof.py`).
+- **백엔드 쪽**: 연결 실패는 한 번만 바로 다시 시도하고(연결 대기 3초, 최악 6초), 그래도 안 되면 15초 동안 해수부 호출을 바로 실패시킨다(`backend/app/clients/mof.py`의 `CIRCUIT_OPEN_SEC`).
 - **환경변수**: 백엔드의 `MOF_BASE_URL`(릴레이 주소. 비우면 직접 호출)과 `MOF_RELAY_TOKEN`(릴레이의 `RELAY_TOKEN`과 같은 값).
-- **상태**: 로컬 릴레이로 실제 해수부 입항 예정 206건을 약 2초에 받았고 전체 pytest 2101건이 통과했다. Cloud Run 배포·Railway 환경변수 설정·실서버 확인 전이다(10-07).
+- **상태(10-07)**: 운영 `marvia-api`에 `MOF_BASE_URL`·`MOF_RELAY_TOKEN`이 설정돼 릴레이를 쓰고 있다. 같은 날 운영 채팅의 입항 선박 검색이 실제 선박 목록을 돌려줬다("일본에서 1주 안에 부산 오는 수입 화물선" 질문에 43척, 소유자 확인). 로컬 릴레이로는 실제 해수부 입항 예정 206건을 약 2초에 받았다. 지속 가동률은 재지 않았다.
 - 자세한 내용: [relay/README.md](./relay/README.md)
 
 ---
 
 ## 1. 팀 (5조)
 
-| 이름 | GitHub | 역할 | 담당 묶음 | 한마디 |
-|---|---|---|---|---|
-| 하정운 | @HJU5022 | 조장 · 풀스택  | (팀 회의에서 확정) | 눈 감아도 코딩하기. |
-| 김승욱 | @seungwook-kim | 풀스택 | (팀 회의에서 확정) | 눈 뜨면 코딩하기. |
+| 이름 | GitHub | 역할 | 한마디 |
+|---|---|---|---|
+| 하정운 | @HJU5022 | 조장 · 풀스택  | 눈 감아도 코딩하기. |
+| 김승욱 | @seungwook-kim | 풀스택 | 눈 뜨면 코딩하기. |
 
-- 작업 묶음은 A 백엔드·배포 / B MCP·데이터 소스 / C 판정·LLM·Skill / D 관측·수집·평가 / E 프론트엔드입니다.
+- 작업 묶음은 A 백엔드·배포 / B MCP·데이터 소스 / C 판정·LLM·Skill / D 관측·수집·평가 / E 프론트엔드입니다. 묶음별 담당은 정해 두지 않고 열린 작업을 누구든 가져갑니다([작업 리스트](./docs/Marvia_개발_작업_리스트.md)).
 - 하정운은 함정 경험을 바탕으로 Skill 판정 기준(`skills/ais-reliability/`)과 평가셋 라벨 검수를 맡습니다.
 - 묶음 사이는 계약(C1~C8)으로만 이어집니다. 계약은 [작업 리스트 0장](./docs/Marvia_개발_작업_리스트.md)과 [SDD 3절](./docs/Marvia_SDD.md)을 따릅니다.
 
@@ -106,6 +108,18 @@ B/L 번호와 판매 예정일을 넣으면, 선박을 식별하고 신호를 �
 - **숫자는 코드가 계산합니다.** 여유 일수, 거리, freshness는 코드가 계산하고 LLM은 덮어쓰지 못합니다. 임계값은 `skills/` 문서 프론트매터가 원본입니다.
 - **코드가 LLM을 막는 울타리가 있습니다.** 위치가 오래됐으면 "현재 위치" 표현 금지, 식별 불확정이면 판정 금지, 근거에 없는 숫자 거부 등 출력 검증 규칙(V1~V15)을 두고, 위반하면 재시도 3단계 후 폴백합니다. 등급(순항·주의·긴급)은 코드의 판정 표가 정하고 LLM은 설명을 씁니다.
 - **지식은 RAG가 아니라 Skill 문서로, 데이터는 MCP 도구로 가져옵니다.** LangGraph와 RAG는 쓰지 않습니다.
+
+#### Skill 5종 (`skills/`)
+
+각 폴더의 `SKILL.md`(도메인 지식·설명법)와 `rules.md`(코드가 읽는 재료)를 통째로 호출에 넣는다(RAG 아님). 어느 호출이 어느 Skill을 받는지는 `backend/app/services/llm.py`의 `JUDGE_SKILLS` 등 상수가 정한다.
+
+| Skill | 역할 | 주입 위치 |
+|---|---|---|
+| `ais-reliability` | AIS 값이 틀리는 경우와 해수부·AIS 출처가 어긋날 때 무엇을 믿는지 읽는 법 | 판정(judge), 선박 고르기(pick), 후속 답(follow-up), 채팅 에이전트 |
+| `customs-stages` | UNI-PASS 통관 단계의 뜻·다음 단계·할 일 설명법과 관세사 안내 | 판정, 후속 답, 채팅 에이전트, 통관 해설 채점(평가) |
+| `cargo-verdict` | 코드가 낸 등급과 되묻기·보류·실패 결과를 설명하는 법 | 판정, 후속 답, 채팅 에이전트 |
+| `port-busan` | 부두·정박지 이름의 뜻과 하역 장소를 한 문장으로 말하는 법 | 후속 답, 채팅 에이전트 (판정에는 넣지 않음) |
+| `referrals` | 마르비아가 답하지 않는 부분을 누구에게 어느 공식 창구에서 확인하게 하는지 | LLM에 넣지 않고 채팅 코드(`services/referrals.py`)가 `rules.md`를 읽어 고정 문구 뒤에 붙임 |
 - **B/L은 LLM에 넘기지 않습니다.** UNI-PASS는 코드가 직접 조회하고, 중량 등 판정에 필요 없는 필드는 LLM과 DB에 넣지 않습니다. 컨테이너 번호는 `[CNTR1]` 같은 가린 표시로만 LLM에 줍니다. 품명(goods_name)은 10-06부터 저장하고 채팅 에이전트 LLM에는 주지만 판정 LLM에는 주지 않습니다. 트레이스에서도 B/L을 마스킹합니다.
 
 ### 처리 흐름
@@ -121,7 +135,7 @@ backend/app/   FastAPI (Railway marvia-api) · POST /api/agent
   │    3 identify    선박 후보 1척이면 확정               [코드]
   │                  여럿이면 판단, 확정 불가면 되묻기     [LLM]
   │    4 collect     위치·입항예정·남은 거리              [MCP 도구]
-  │    5 signals     1층 신호 6종                         [코드]
+  │    5 signals     1층 신호 7종 (7번째는 판매 예정일이 있을 때) [코드]
   │    6 margin      판매 예정일까지 여유 일수             [코드]
   │    7 judge       2층 판정·할 일·통관 해설             [LLM]
   │    8 validate    출력 검증 규칙, 위반 시 재시도 3회    [코드]
@@ -165,13 +179,13 @@ AgentResponse (ok | partial | insufficient | failed)
 │   │   │                  memory, watch, kakao, quota, referrals, operators 등 (파일 목록은 폴더 참고)
 │   │   ├── clients/       shipfinder, mof, kakao, supabase_admin, replay, cache, retry
 │   │   ├── observability/ Langfuse 트레이스, 구조화 로그
-│   │   ├── db/migrations/ 001~022 SQL. 서버가 켜질 때 DATABASE_URL이 있으면 순서대로 자동 적용
+│   │   ├── db/migrations/ 001~023 SQL. 서버가 켜질 때 DATABASE_URL이 있으면 순서대로 자동 적용
 │   │   └── prompts/       Langfuse에서 못 가져올 때 쓰는 프롬프트 사본 10개
 │   └── tests/             pytest (키 없이 돈다)
 │
 ├── relay/                해수부 API 릴레이 (서울 Cloud Run, FastAPI). Railway 싱가포르가 해수부에 못 닿아서 둔다
 ├── mcp_server/           FastMCP. 선박 후보·실시간 위치·입항 일정·남은 거리 도구 4개 (tools/)
-├── skills/               ais-reliability, customs-stages, port-busan, cargo-verdict, referrals
+├── skills/               ais-reliability, customs-stages, port-busan, cargo-verdict, referrals (표는 2절 "Skill 5종")
 ├── worker/               collector.py(위치·입항 실적 수집), watch.py(지켜보는 화물 재판정), run.py
 ├── evals/                평가셋 30건(dataset.jsonl)·서류 12건, fixtures/(재생 파일), results/, 실행기·채점
 ├── scripts/              손으로 돌리는 스크립트 (make_demo, demo_live, mcp_check, langfuse_evidence 등)
@@ -183,7 +197,6 @@ AgentResponse (ok | partial | insufficient | failed)
     ├── Marvia_PRD.md     기획서
     ├── Marvia_SDD.md     설계 기준 문서
     ├── Marvia_개발_작업_리스트.md  작업 묶음 A~G, 상태
-    ├── SCAFFOLD.md       처음 받은 스캐폴드 설명(보존용)
     ├── ERD.md · release_manifest.json · prompt_versions.md
     ├── evidence/         Langfuse 집계, MCP 연결 캡처
     └── specs/            기능 Spec
@@ -201,7 +214,9 @@ cp .env.example .env     # 키를 채운다 (아래 표 참고)
 docker compose up        # api :8000 (/api/agent, /mcp), worker, postgres
 ```
 
-DB 표(마이그레이션 001~022)는 서버가 켜질 때 `DATABASE_URL`이 있으면 자동으로 만들어진다(`backend/app/main.py` → `db.apply_migrations`). 따로 손으로 돌릴 SQL은 없다. 배포 DB는 Supabase(운영·개발), 로컬 compose는 postgres 16이다.
+**API 키가 없으면 이 블록 대신 아래 '키 없이 데모 13건'부터 따라 한다(REPLAY_MODE=true로 바꿔야 키 없이 돈다).**
+
+DB 표(마이그레이션 001~023)는 서버가 켜질 때 `DATABASE_URL`이 있으면 자동으로 만들어진다(`backend/app/main.py` → `db.apply_migrations`). 따로 손으로 돌릴 SQL은 없다. 배포 DB는 Supabase(운영·개발), 로컬 compose는 postgres 16이다.
 
 worker는 `WORKER_SCHEDULE=off`(기본)이면 안내 한 줄을 남기고 바로 끝난다(`Exited (0)`). 고장이 아니다. 주기 수집은 `on`으로 켠다.
 
@@ -210,6 +225,12 @@ worker는 `WORKER_SCHEDULE=off`(기본)이면 안내 한 줄을 남기고 바로
 ```bash
 curl http://localhost:8000/health        # {"status":"ok","db":"ok"}. DB가 끊기면 503
 open http://localhost:8000/docs          # API 문서
+```
+
+서버 로그는 요청 1건이 JSON 한 줄로 남는다(`backend/app/observability/logging.py`). 값이 있는 칸만 실리며 칸은 `level`, `message`와 `request_id`, `path`, `method`, `model`, `tokens_in`, `tokens_out`, `latency_ms`, `status`, `stage`, `error`가 실린다. 요청 ID는 응답 헤더 `x-request-id`로도 돌려주고, 요청이 들어올 때 같은 헤더를 보내면 그 값을 쓴다. 아래는 형식 예시이고 값은 가공값이다.
+
+```json
+{"level": "INFO", "message": "request", "request_id": "req-0001", "path": "/health", "method": "GET", "latency_ms": 3.2, "status": 200}
 ```
 
 한글 경로에서는 Docker BuildKit이 죽는다. 그때는 `DOCKER_BUILDKIT=0 docker compose build` 후에 올린다.
@@ -275,7 +296,7 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 | `DATA_GO_KR_KEY` | 공공데이터포털. 해수부 관제정보·선박운항정보 활용신청 | 입항 예정·실적 조회 불가 |
 | `UNIPASS_KEY` | 관세청 UNI-PASS 오픈API | B/L 조회 불가 |
 | `OPENROUTER_API_KEY` | openrouter.ai | 판정 불가 |
-| `LLM_MODEL` | 서비스 모델 이름 (예: `openai/gpt-4o-mini`). 전 이름 `MODEL_A` | `partial`: 판정 표 등급만 나오고 설명 문장 없음 (데모는 녹화 답) |
+| `LLM_MODEL` | 서비스 모델 이름 (현재 `google/gemini-3.5-flash-lite`, 이전 `openai/gpt-4o-mini`). 전 이름 `MODEL_A` | `partial`: 판정 표 등급만 나오고 설명 문장 없음 (데모는 녹화 답) |
 | `MEMORY_MODEL` | 화물 비서 기억 뽑기 모델 | 기억 뽑기를 건너뛴다 |
 | `DAILY_TOKENS_PER_USER` | 1명당 하루 LLM 토큰 한도 (예시 기본 100000, 비우거나 0이면 막지 않음) | 한도 없음 |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse 프로젝트 설정 | 트레이스 없음 |
@@ -287,6 +308,9 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 | `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` / `KAKAO_REDIRECT_URI` | 카카오 디벨로퍼스 | 카카오톡 알림 연결 불가 |
 | `MOF_BASE_URL` / `MOF_RELAY_TOKEN` | 해수부 릴레이 주소와 공유 비밀 (위 "해수부 릴레이"). 로컬은 비워 둔다 | 비우면 `apis.data.go.kr`를 직접 부른다. 해외 서버에서는 막힐 수 있다 |
 | `REPLAY_MODE` | `true`면 외부 API 대신 `evals/fixtures/replay/`를 읽는다 (기본 `false`) | |
+| `REPLAY_FIXTURE_DIR` | `REPLAY_MODE=true`일 때 기본 재생 폴더 대신 읽을 폴더. 비워 둔다 | 기본 폴더를 읽는다 |
+| `OCR_THREADS` | 서류 OCR 스레드 수(1 이상 정수). 비워 둔다 | CPU 수를 1~4로 자른 값 |
+| `VERTEX_THINKING_BUDGET` | `LLM_MODEL`이 `vertex/`로 시작할 때만. Gemini 생각 토큰 상한(0이면 끔). 비워 둔다 | 모델 기본값 |
 
 **`SUPABASE_URL`을 채우면 로그인이 필수가 된다.** `/api/agent` 요청에 `Authorization: Bearer <Supabase 로그인 토큰>`이 없으면 401 `{"detail":"로그인이 필요합니다"}`이다. 키 없이 돌려 볼 때는 비워 둔다.
 
@@ -332,12 +356,12 @@ python -m scripts.mcp_auth_check                        # 토큰 없으면 401
 
 우리 서비스(`/api/agent`)도 도구를 `/mcp`를 거쳐 MCP 프로토콜로 부른다(`backend/app/services/mcp_client.py`). Docker 이미지는 `MCP_URL=http://127.0.0.1:8000/mcp`로 같은 서버의 `/mcp`에 HTTP로 붙어 외부 클라이언트와 같은 토큰 인증을 거친다. `MCP_URL`이 없으면(테스트·평가 실행기) 같은 프로세스의 MCP 서버에 메모리로 붙는다. 후속 질문에서는 LLM이 `tools/list`로 받은 읽기 전용 도구를 직접 골라 부른다. 호출마다 Langfuse에 `mcp:<도구>` 관측이 남는다.
 
-도구 4종의 정의는 `mcp_server/tools/*.py`의 함수이고, 등록은 `mcp_server/server.py`의 `create_mcp()`가 루프로 한다(`@mcp.tool` 데코레이터를 쓰지 않는다). 읽기 전용 표시와 스레드 실행을 4종에 똑같이 붙이기 위해서다.
+도구 4종(`estimate_distance`, `get_live_position`, `get_vessel_candidates`, `get_port_schedule`)의 본체는 `mcp_server/tools/*.py`이고, `mcp_server/server.py`의 `create_mcp()`가 각각 `@mcp.tool(annotations=readOnly)`로 등록한다. 읽기 전용 표시와 스레드 실행은 4종에 똑같이 붙는다.
 
 ### 테스트
 
 ```bash
-pytest          # 외부 API 키 없이 돈다 (가공 응답으로 대체). 10-06 `pytest --collect-only`로 2063건 수집 확인
+pytest          # 외부 API 키 없이 돈다 (가공 응답으로 대체). 10-07 `pytest backend/tests mcp_server/tests`로 2309건 통과
 ```
 
 PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `mcp_server/tests`를 돌린다. 실제 API·LLM을 부르는 평가(`python -m evals.run_eval --config a|b|c`)는 돈이 들어 따로 돌린다.
@@ -346,7 +370,7 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 
 | 항목 | 상태 |
 |---|---|
-| 실사용 기록 | 배포 서버는 10-07부터 실제 모드지만 실제 사용자 B/L 판정 기록은 이 리포트에 없다. 같은 날 Railway에서 해수부 API 연결 시간 초과가 나는 것도 원인 미확인 상태다. 서울 릴레이로 우회하는 코드는 들어갔고 배포·실서버 확인 전이다 (EVAL_REPORT 8절) |
+| 실사용 기록 | 배포 서버는 10-07부터 실제 모드지만 실제 사용자 B/L 판정을 사람이 대조한 기록은 이 리포트에 없다. Railway에서 해수부 API 연결 시간 초과가 나는 원인은 확인하지 못했고, 서울 릴레이로 우회해 10-07에 운영 채팅의 입항 검색이 실제 선박 목록을 돌려줬다 (EVAL_REPORT 8절) |
 | 감시 재판정 주기 가동 | 워커 스케줄(`WORKER_SCHEDULE`)과 감시 재판정(`WATCH_ENABLED`)은 기본 꺼짐이다 |
 | 부산 외 항만, 이메일·푸시 알림 | 만들지 않았다 |
 
@@ -369,7 +393,7 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 
 평가셋 30건(정상 8 · 경계 14 · 실패 유도 8)은 사람이 정답을 적었고, 입력(B/L, 선박, 위치, 통관 단계, 판매 예정일)은 모두 실제 응답과 형식만 같은 가공값입니다. 외부 API는 재생 파일로 대신해 키 없이 돕니다. 신호 상충 5건은 PRD 상충 사례를 옮긴 B03~B07입니다.
 
-| 항목 | (a) 규칙만 | (b) openai/gpt-4o-mini (서비스) | (c) qwen/qwen3-235b-a22b-2507 |
+| 항목 | (a) 규칙만 | (b) openai/gpt-4o-mini (10-05까지 서비스) | (c) qwen/qwen3-235b-a22b-2507 |
 |---|---|---|---|
 | 측정 | 1회, 10-01 16:31 | 5회, 10-02 11:41~11:56 | 1회, 10-02 11:58 |
 | 판정 정확도 (verdict_accuracy) | 1.0 | 1.0 (5회 모두) | 1.0 |
@@ -381,9 +405,9 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 | p50 / p95 지연 | 0.05초 / 0.65초 | 3.5초 / 5.5초 (150건) | 8.4초 / 30.4초 |
 | 요청당 비용 | $0 (LLM 없음) | $0.000365 (5회 평균) | $0.003791 |
 
-등급은 코드 판정 표가 정해서 (a)도 등급은 다 맞힙니다. (b)와 (c)는 판정 칸이 같고, (b)를 고른 이유는 출력 계약 준수율과 비용·지연입니다 (EVAL_REPORT 5절). 지연은 재생 파일 기준이라 실제 외부 호출 시간이 빠져 있습니다. Langfuse 도착 기록 집계는 [docs/evidence/langfuse_summary.md](./docs/evidence/langfuse_summary.md).
+위 표는 서비스 모델을 gpt-4o-mini로 고르던 10-02 측정이다. 등급은 코드 판정 표가 정해서 (a)도 등급은 다 맞힙니다. (b)와 (c)는 판정 칸이 같고, 당시 (b)를 고른 이유는 출력 계약 준수율과 비용·지연이었습니다 (EVAL_REPORT 5절). 10-05부터 서비스 모델은 `google/gemini-3.5-flash-lite`이고 아래 표가 그 측정이다. 지연은 재생 파일 기준이라 실제 외부 호출 시간이 빠져 있습니다. Langfuse 도착 기록 집계는 [docs/evidence/langfuse_summary.md](./docs/evidence/langfuse_summary.md).
 
-**10-06 갱신:** 위 표는 EVAL_REPORT 5절의 10-02 측정이다. 10-06에는 판정 프롬프트(judge) 9 → 10으로 바꿔 같은 코드·모델(gpt-4o-mini)로 다시 쟀고, 통관 해설이 4/20(0.20)에서 20/20(1.0)이 됐다(1회씩, EVAL_REPORT 4절 5·6번). 배포 서비스 모델은 `docs/release_manifest.json` 기준 `google/gemini-3.5-flash-lite`이며, 아래는 EVAL_REPORT에 아직 없고 결과 파일에서 그대로 읽은 10-06 값이다.
+**10-06 갱신:** 10-06에는 판정 프롬프트(judge) 9 → 10으로 바꿔 같은 코드·모델(gpt-4o-mini)로 다시 쟀고, 통관 해설이 4/20(0.20)에서 20/20(1.0)이 됐다(1회씩, EVAL_REPORT 4절 5·6번). 배포 서비스 모델은 `docs/release_manifest.json` 기준 `google/gemini-3.5-flash-lite`이며, 아래는 결과 파일에서 그대로 읽은 10-06 값이다(EVAL_REPORT 4-0절, 5절).
 
 | 결과 파일 (`evals/results/`) | 구성 | exact | 판정 정확도 | act 재현율 | 선박 오확정 | 통관 해설 | p50 / p95 | 요청당 비용 |
 |---|---|---|---|---|---|---|---|---|
@@ -398,6 +422,16 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 | `b_20261007_0935.json` | 30/30 | 1.0 | 1.0 | 0 | 1.0 (20건) | 1.8초 / 4.8초 | 29 / 231,184 (16,146) / 5,380 | 금액 미기록 (Vertex라 토큰만) |
 
 게이트 4개 통과. 한계: F08에서 judge가 `bad_format`을 3번 내고 포기했다. 등급이 코드 판정 표에서 나와 문항은 맞았다 (EVAL_REPORT 5절).
+
+**10-07 재측정 (서비스 모델 flash-lite, 프롬프트 라벨별 2회):** 모델은 `google/gemini-3.5-flash-lite`(OpenRouter), 코드는 같은 작업 트리(`bd6585c-dirty`), 프롬프트만 라벨 고정본으로 바꿔 돌렸다. 6회 모두 exact 30/30, 최종 응답 schema_pass 1.0, 게이트 4개 통과다. 지연·비용은 회차 사이 흔들림이 버전 사이 차이보다 커서 버전 효과를 확정하지 못한다 (EVAL_REPORT 4-0절).
+
+| 프롬프트 (라벨) | 결과 파일 (`evals/results/`) | p50 / p95 | 요청당 비용 | 통관 해설 |
+|---|---|---|---|---|
+| v1: judge 9, follow-up 5 | `b_20261007_2102.json`, `b_20261007_2110.json` | 2.1초 / 6.3초, 1.9초 / 5.9초 | $0.002540, $0.002734 | 20/20, 20/20 |
+| v2: judge 10, follow-up 7 | `b_20261007_2105.json`, `b_20261007_2113.json` | 1.9초 / 5.5초, 2.0초 / 3.6초 | $0.002808, $0.002406 | 20/20, 20/20 |
+| v5 production: judge 10, follow-up 9 | `b_20261007_2107.json`, `b_20261007_2116.json` | 1.9초 / 5.0초, 1.9초 / 4.9초 | $0.002593, $0.002437 | 20/20, 19/20 |
+
+비용은 서비스 호출만 센 값이고 채점기 호출은 없다(미측정). 평가는 재생 파일 기준이라 실서버 지연은 포함하지 않는다.
 
 위 10-06 세 파일은 게이트 4개(act 누락, 선박 오확정, 스키마 95%, 주입 오작동) 통과이고 1회씩 쟀습니다. `a_...2158`과 `b_...2306`의 `git_commit`에는 `-dirty`가 붙어 커밋 전 작업 트리에서 돌렸고, `b_...1739`는 `git_commit`이 비어 있습니다.
 

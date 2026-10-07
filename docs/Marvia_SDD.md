@@ -97,7 +97,7 @@ proj2-5/
       prompts/              Langfuse 프롬프트의 로컬 사본 10개: marvia-judge, -judge-eval, -pick-vessel, -follow-up,
                             -doc-extract, -memory-write, -chat-agent, -chat-route, -chat-title, -port-match
       db/__init__.py        연결, 마이그레이션 적용기, 조회 이력·위치 읽기 함수
-      db/migrations/        001~022 *.sql (3.9)
+      db/migrations/        001~023 *.sql (3.9)
     tests/                  pytest, 키·DB 없이 fixture로. conftest.py가 실제 DB 접속을 막는다
   mcp_server/
     server.py               FastMCP 앱, MountedMCP, 도구 4개 등록(읽기 전용 표시)
@@ -137,8 +137,8 @@ proj2-5/
                             make_demo(재생 데모 파일 생성), demo_live, failure_drill, injection_redteam, doc_injection_check,
                             langfuse_evidence, smoke_judge, smoke_llm, seed_test_users, grant_operator,
                             encrypt_operator_emails, rekey_personal_data
-  docs/                     PRD, SDD, 작업 리스트, ERD.md, SCAFFOLD.md, prompt_versions.md, release_manifest.json,
-                            specs/(Spec 18개), evidence/(Langfuse 요약)
+  docs/                     PRD, SDD, 작업 리스트, ERD.md, prompt_versions.md, release_manifest.json,
+                            specs/(Spec 12개), evidence/(Langfuse 요약)
   .github/workflows/        tests.yml (pytest), secret-scan.yml (gitleaks)
   Dockerfile  Dockerfile.railway  docker-compose.yml  docker-compose.override.yml  .dockerignore  .env.example
   EVAL_REPORT.md  README.md  CLAUDE.md  AGENTS.md  conftest.py
@@ -191,13 +191,13 @@ flowchart LR
 | --- | --- | --- | --- |
 | Railway 서비스 `marvia-web` | web (Next.js) | HTTPS | api |
 | Railway 서비스 `marvia-api` | api (FastAPI + `/mcp`), `Dockerfile.railway`로 빌드 | `PORT` 환경변수(없으면 8000). `/mcp`는 같은 서비스의 경로, 토큰 인증 | UNI-PASS, ShipFinder, 해수부(`MOF_BASE_URL`이 있으면 `mof-relay` 경유), OpenRouter, Langfuse, Supabase, 카카오, DB |
-| Google Cloud Run 서비스 `mof-relay` (서울 asia-northeast3, 소유자 개인 GCP 프로젝트) | `relay/` (FastAPI). 해수부 GET 두 경로만 `apis.data.go.kr`로 전달 | HTTPS, `X-Relay-Token` 헤더 필요 | 해수부 (배포·실서버 확인 전) |
+| Google Cloud Run 서비스 `mof-relay` (서울 asia-northeast3, 소유자 개인 GCP 프로젝트) | `relay/` (FastAPI). 해수부 GET 두 경로만 `apis.data.go.kr`로 전달 | HTTPS, `X-Relay-Token` 헤더 필요 | 해수부 (10-07 사용 중) |
 | 로컬 compose `worker` | worker (collector, watch) | 기본 꺼짐(`WORKER_SCHEDULE=off`). 켜면 `WORKER_INTERVAL_HOURS`(기본 6시간)마다 | ShipFinder, 해수부, DB, api의 `/mcp` |
 | Supabase | Postgres(마이그레이션 자동 적용), Auth(구글 로그인) | 5432, HTTPS | api, worker |
 | 외부 SaaS | OpenRouter, Langfuse Cloud, 카카오 | HTTPS | api |
 | 외부 API | ShipFinder, 해수부 공공데이터, UNI-PASS | HTTPS | api(MCP 도구 경유), worker |
 
-`docs/release_manifest.json`에는 `marvia-api`와 `marvia-web` 배포만 적혀 있고 worker 배포는 없다. 배포된 api는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드는 채점자·키 없는 로컬 데모·평가용이다. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다. 같은 증상을 미국 GitHub Actions에서도 겪었다는 보고가 있어(github.com/SFByomi/blueboard/pull/19) 해외 접속 차단으로 짐작하지만 공식 확인은 아니다. UNI-PASS는 싱가포르에서 된다. 우회로는 아래 6.7절의 서울 릴레이이고, 배포·실서버 확인 전이다.
+`docs/release_manifest.json`에는 `marvia-api`와 `marvia-web` 배포만 적혀 있고 worker 배포는 없다. 배포된 api는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드는 채점자·키 없는 로컬 데모·평가용이다. Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패하는 원인은 확인하지 못했다. 한국에서는 0.1초에 응답한다. 같은 증상을 미국 GitHub Actions에서도 겪었다는 보고가 있어(github.com/SFByomi/blueboard/pull/19) 해외 접속 차단으로 짐작하지만 공식 확인은 아니다. UNI-PASS는 싱가포르에서 된다. 우회로는 아래 6.7절의 서울 릴레이이고 10-07부터 운영 `marvia-api`가 이 릴레이를 거쳐 부른다.
 
 ```mermaid
 flowchart TB
@@ -439,11 +439,11 @@ class EvalRecord(BaseModel):
 
 | 묶음 | 변수 |
 | --- | --- |
-| LLM | `OPENROUTER_API_KEY`, `LLM_MODEL`, `EVAL_COMPARE_MODEL`, `EVAL_GRADER_MODEL`, `MEMORY_MODEL`, `DAILY_TOKENS_PER_USER`, `CHAT_AGENT`, `WEB_SEARCH` |
+| LLM | `OPENROUTER_API_KEY`, `LLM_MODEL`, `VERTEX_THINKING_BUDGET`, `EVAL_COMPARE_MODEL`, `EVAL_GRADER_MODEL`, `MEMORY_MODEL`, `DAILY_TOKENS_PER_USER`, `CHAT_AGENT`, `WEB_SEARCH` |
 | 관측 | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` |
 | DB·로그인 | `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `PII_ENCRYPTION_KEY`, `BL_ENCRYPTION_KEY` |
 | 외부 API | `SHIPFINDER_KEY`, `UNIPASS_KEY`, `DATA_GO_KR_KEY`, `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `KAKAO_REDIRECT_URI` |
-| 서비스 | `ALLOWED_ORIGINS`, `MCP_TOKEN`, `NEXT_PUBLIC_API_BASE`, `REPLAY_MODE`, `DEMO_REFRESH` |
+| 서비스 | `ALLOWED_ORIGINS`, `MCP_TOKEN`, `NEXT_PUBLIC_API_BASE`, `REPLAY_MODE`, `REPLAY_FIXTURE_DIR`, `DEMO_REFRESH`, `OCR_THREADS` |
 | 호출 조정 | `SHIPFINDER_TIMEOUT_SEC`, `MOF_TIMEOUT_SEC`, `MOF_BASE_URL`, `MOF_RELAY_TOKEN`, `HTTP_MAX_ATTEMPTS`, `HTTP_BACKOFF_SEC` |
 | 워커 | `WORKER_SCHEDULE`, `WORKER_INTERVAL_HOURS`, `WORKER_SHIPFINDER_CALLS_PER_RUN`, `WATCH_ENABLED` |
 
@@ -451,7 +451,7 @@ class EvalRecord(BaseModel):
 
 ### 3.9 DB 스키마
 
-마이그레이션은 `backend/app/db/migrations/001~022 *.sql`이고 서버가 켜질 때 `DATABASE_URL`이 있으면 `main._migrate` → `db.apply_migrations`가 이름 순서로 한 번씩 적용한다(`schema_migrations` 표에 기록). 전체를 `pg_advisory_lock`으로 감싸 api와 worker가 동시에 떠도 두 번 적용하지 않고, 파일 하나를 한 트랜잭션으로 묶는다(10-06 점검). DB가 없거나 붙지 않으면 경고만 남기고 서버는 뜬다. 모든 표에 RLS를 켠다(005 이후 새 표는 각 파일에서).
+마이그레이션은 `backend/app/db/migrations/001~023 *.sql`이고 서버가 켜질 때 `DATABASE_URL`이 있으면 `main._migrate` → `db.apply_migrations`가 이름 순서로 한 번씩 적용한다(`schema_migrations` 표에 기록). 전체를 `pg_advisory_lock`으로 감싸 api와 worker가 동시에 떠도 두 번 적용하지 않고, 파일 하나를 한 트랜잭션으로 묶는다(10-06 점검). DB가 없거나 붙지 않으면 경고만 남기고 서버는 뜬다. 모든 표에 RLS를 켠다(005 이후 새 표는 각 파일에서).
 
 계획과 달라진 점: 처음 계획의 `arrivals`와 `api_cache` 표는 만들지 않았다. 해수부 수집은 `arrival_reports`·`control_events`·`targets` 세 표로 나뉘었고, API 응답 캐시는 DB가 아니라 프로세스 메모리(`clients/cache.py`)다.
 
@@ -477,6 +477,7 @@ class EvalRecord(BaseModel):
 | 021 | cargo_vessel_name | `user_cargo.vessel_name`, `vessel_flag` |
 | 021 | watch_positions_purge | `purge_old_watch_positions()` 30일 (지켜보는 중인 배는 남김) |
 | 022 | kakao_last_sent_at | `kakao_links.last_sent_at` |
+| 023 | vessel_watch | `vessel_watch`(사용자별 배 번호만 지켜보기, B/L 없음), `purge_old_watch_positions()`에 배만 지켜보는 배는 남기는 조건 추가 (10-08) |
 
 - 개인정보 저장 원칙: B/L 원본·회원 정보·카카오 토큰·대화 글은 서버에서 잠근 글자(`crypto.encrypt`, `encrypt_pii`)만 DB에 둔다. 열쇠가 없으면 원문을 저장하지 않는다. 화주 정보·중량·세관명은 저장하지 않는다. 조회 이력은 `bl_masked`만 화면에 나간다.
 - 보관 기간은 SQL 함수로 정한다(`purge_old_*`, `purge_done_cargo`). Supabase의 pg_cron이 있으면 마이그레이션이 일정을 등록하고, worker가 켜질 때도 같은 함수를 부른다(`worker/run.py`).
@@ -606,6 +607,8 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
 
 서류 속 지시문 줄에서만 나온 칸 값은 ambiguous로 사용자 확인으로 돌린다(8절). 로그인 필수, 토큰 한도 적용.
 
+채팅 첨부는 `POST /api/document/bl`로 B/L(과 MRN)만 코드로 읽고(OCR 1~3초, LLM 없음) 바로 조회로 보낸다. 전체 7칸 판독은 `POST /api/document`가 맡는다. OCR 스레드 수는 환경변수 `OCR_THREADS`(1 이상 정수)로 정하고 비우면 쓸 수 있는 CPU 수를 1~4로 자른 값을 쓴다(`services/doc_ocr.py`, 10-08 실사용 74번).
+
 ## 5. 컴포넌트 명세
 
 ### 5.1 services/customs.py
@@ -628,7 +631,7 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
 - `find_plan_by_mrn(mrn, start, end)`: 입항 detail의 `mrNum`이 UNI-PASS `cargMtNo` 앞 11자리와 같아 B/L에서 배를 특정하는 열쇠가 된다(09-23 확인).
 - 반환: planned_arrival, actual_arrival, facility(fcltyNm), control_events. 타임아웃 `MOF_TIMEOUT_SEC`(기본 15).
 - 호출 경로(10-07): `MOF_BASE_URL`이 있으면 그 주소(서울 릴레이, 6.7절)로, 비어 있거나 없으면 `https://apis.data.go.kr`로 직접 부른다. `MOF_RELAY_TOKEN`이 있으면 모든 요청에 `X-Relay-Token`으로 보낸다.
-- 빠른 실패: 연결 실패(ConnectError·ConnectTimeout)는 재시도하지 않고 연결 대기는 3초다. 연결 실패가 나면 60초 동안(프로세스 안 회로 차단기) 해수부 호출을 기다리지 않고 바로 실패시킨다. Railway 싱가포르에서 15초 x 3회씩 기다리던 것을 줄이려는 것이다. 이 동작은 로컬 테스트 기준이며 실서버 확인 전이다.
+- 빠른 실패: 연결 실패(ConnectError·ConnectTimeout)는 한 번만 바로 다시 시도하고(연결 대기 3초, 최악 6초), 그래도 안 되면 15초 동안 해수부 호출을 바로 실패시킨다(`backend/app/clients/mof.py`의 `CIRCUIT_OPEN_SEC`, 프로세스 안 회로 차단기). Railway 싱가포르에서 15초 x 3회씩 기다리던 것을 줄이려는 것이다. 차단 시간은 처음 60초였으나 첫 질문 실패 뒤 1분 동안 모든 질문이 실패해 15초로 줄였다(10-08 실사용 33번).
 - 완료 기준: 부산 입항 목록 수신, 호출부호·선명 매칭 1척(`test_mof.py`).
 
 ### 5.4 services/signals.py
@@ -868,8 +871,8 @@ open http://localhost:8000/docs
 - 배포 서버(Railway 싱가포르)에서 `apis.data.go.kr`가 ConnectTimeout이라(원인은 해외 차단으로 짐작, 공식 확인 아님) `relay/`의 작은 FastAPI를 Google Cloud Run 서울(asia-northeast3)에 `mof-relay`로 둔다. 소유자 개인 GCP 프로젝트(팀 계정 아님)이고 무료 체험 크레딧으로 낸다.
 - 하는 일은 `GET /1192000/VsslEtrynd5/*`, `/1192000/CntlVssl2/*`를 `apis.data.go.kr`로 넘기는 것뿐이다. `X-Relay-Token`이 환경변수 `RELAY_TOKEN`과 같아야 하고, 쿼리스트링(serviceKey)은 로그에 남기지 않으며 httpx INFO 로그도 끈다. 자세한 것은 `relay/README.md`.
 - 백엔드는 Railway 환경변수 `MOF_BASE_URL`(릴레이 주소)과 `MOF_RELAY_TOKEN`(릴레이의 `RELAY_TOKEN`과 같은 값)으로 연결한다. 5.3절의 빠른 실패 동작이 같이 들어갔다.
-- 확인한 것(10-07, 로컬 릴레이 경유): 실제 해수부에서 입항 예정 206건을 약 2초에 받았고 전체 pytest 2101건이 통과했다.
-- 상태: 배포·실서버 확인 전. Cloud Run 배포가 진행 중이고 Railway 환경변수는 아직 설정하지 않았다. 확인하면 이 절과 `docs/release_manifest.json`의 `mof-relay`를 고친다.
+- 확인한 것(10-07, 로컬 릴레이 경유): 실제 해수부에서 입항 예정 206건을 약 2초에 받았다.
+- 상태(10-07): 배포 서버 `marvia-api`에 `MOF_BASE_URL`·`MOF_RELAY_TOKEN`이 설정돼 서울 Cloud Run 릴레이를 거쳐 부르고 있다. 같은 날 운영 채팅의 입항 선박 검색이 실제 선박 목록을 돌려줬다("일본에서 1주 안에 부산 오는 수입 화물선" 질문에 43척, 소유자 확인). 이 절의 숫자는 그날 한 번의 확인이고 지속 가동률은 재지 않았다.
 
 ## 7. 비기능 요구사항과 보안
 

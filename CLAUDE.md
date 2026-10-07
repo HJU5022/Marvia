@@ -90,10 +90,10 @@ proj2-5/
                         chat, conversations, memory, watch, kakao, quota, referrals, operators, cargo_sheet 같은 화면 기능 쪽
       clients/          shipfinder.py, mof.py, kakao.py, supabase_admin.py, replay.py, cache.py, retry.py
       observability/    langfuse.py, logging.py
-      db/migrations/    001~022 *.sql. 서버가 켜질 때 DATABASE_URL이 있으면 순서대로 자동 적용 (SDD 3.9)
+      db/migrations/    001~023 *.sql. 서버가 켜질 때 DATABASE_URL이 있으면 순서대로 자동 적용 (SDD 3.9)
       prompts/          Langfuse에서 못 가져올 때 쓰는 프롬프트 사본 (marvia-*.md)
     tests/              pytest. 키 없이 돈다
-  relay/                해수부 API 릴레이 (서울 Cloud Run, FastAPI). Railway 싱가포르에서 해수부가 막혀서 둔다. 배포 확인 전 (10-07)
+  relay/                해수부 API 릴레이 (서울 Cloud Run, FastAPI). Railway 싱가포르에서 해수부가 막혀서 둔다. 10-07부터 운영 marvia-api가 이 릴레이를 거쳐 부른다
   mcp_server/           server.py(FastMCP, /mcp, Bearer 토큰), auth.py, tools/(도구 4종), schemas.py(C4), tests/
   worker/               collector.py(위치·입항 실적 수집), watch.py(지켜보는 화물 재판정), run.py
   skills/               폴더마다 SKILL.md + rules.md. ais-reliability/, customs-stages/, port-busan/, cargo-verdict/, referrals/

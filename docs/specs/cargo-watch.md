@@ -34,3 +34,9 @@ B/L마다 서로 다른 마커(색 + 글자 A, B, C…)를 쓰고, 마우스를 
 
 ## 지도 바탕
 지도 바탕은 `web/lib/basemap.ts`가 세 단계로 고른다: OpenFreeMap 벡터 타일(WebGL) → 미리 구워 둔 타일(`web/public/basemap`, `web/scripts/bake-basemap.mjs`) → Natural Earth 해안선(`drawLocalGeography`). 자세한 것은 web/README.md.
+
+## 10-08 변경
+
+- B/L 없이 배(MMSI)만 지켜보는 표 `vessel_watch`(마이그레이션 023)와 `GET·POST·DELETE /api/watch/vessels`를 더했다. 화물 표(`user_cargo`)에 넣지 않아 B/L 재판정·카카오톡 알림 경로에는 닿지 않고, 판정과 알림은 만들지 않았다. 워커는 같은 배 번호로 위치를 받는다 (10-08 실사용 57번, 커밋 `28e5dc5` `e3f37ba` `07a4441`)
+- 채팅 에이전트에 `watch_vessel` 도구를 더했다. 후보 배를 채팅에서 바로 지켜보게 한다 (10-08 실사용 79번, 커밋 `d715999`, `00cb06a`)
+- 같은 호출부호가 여러 척이면 선명이 같은 배, 그다음 최근 신호 배를 고르고(`vessel_pick.py`), 한도 소진은 503으로 알린다 (실사용 64·66번, 커밋 `5f24e99`)

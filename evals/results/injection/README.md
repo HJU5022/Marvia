@@ -15,7 +15,7 @@ PR 본문, SDD 7절, docs/prompt_versions.md, docs/specs/injection-redteam.md에
 | 2 | 공격 8종 x 채널 5개 x 3회 | gpt-4o-mini | 프롬프트만. 넣기 전 → 고정 문장 후보 2개 → 레포에 넣은 최종 문장 | 1/120 → 0/120, 0/120 → 1/120 | m_base, m_lock, m_lock2, m_after |
 | 3 | 공격 16종 x 채널 5개 x 3회 | gpt-4o-mini | 실서비스 경로(guard, V9·V10, 재시도 포함) | 0/240 | m_final2 |
 | 4 | 공격 16종 x 자연어 창구 채널 4개 x 3회 | gpt-4o-mini | 코드 방어 넣기 전 → 뒤 | 0/192 → 0/192 | chat_base, chat_after |
-| 5 | 정상 문장을 잘못 막았나 | gpt-4o-mini | 후속 질문 32회 + 자연어 창구 28회 | 0/60 | benign2.log, chat_benign.log |
+| 5 | 정상 문장을 잘못 막았나 | gpt-4o-mini | 후속 질문 32회 + 자연어 창구 28회 | 0/60 | benign2.log, chat_benign.log (로컬 로그, 레포에 없음) |
 | 6 | 화이트박스 8종(프롬프트를 본 공격자가 만든 문장) x 채널 2개 x 3회 | gpt-5-mini | 프롬프트만. 수정 전 → 후 | 3/48 → 1/48. 거절하며 표식을 인용한 1건씩 빼면 2/48 → 0/48 | whitebox_result, whitebox_attacks |
 | 7 | Sonnet 5.5가 새로 만든 공격 20개 x 채널 5개 | Haiku 4.5 (Claude Code 구독) | 실서비스 경로 | 0/100, 0/100 (막은 방어: guard 14, 모델 85, V9·V10 1) | redteam/redteam_20261001_1449, redteam/redteam_20261001_1523 |
 
@@ -47,7 +47,7 @@ PR 본문, SDD 7절, docs/prompt_versions.md, docs/specs/injection-redteam.md에
 - services/chat.py: 자연어 창구 후속 질문은 route_chat이 다시 쓴 질문만 판정 흐름의 V10에 간다. 답이 사용자 원문의
   낱말을 옮기면 원문 기준으로 한 번 더 보고 고정 문구로 바꾼다
 
-측정 (키 없이, LLM 호출 없음. guard는 정규식이라 결과가 매번 같다. 원본 userinput_guard_20261002.log,
+측정 (키 없이, LLM 호출 없음. guard는 정규식이라 결과가 매번 같다. 원본 userinput_guard_20261002.log (로컬 로그, 레포에 없음),
 스크립트 scripts/userinput_guard_check.py, 수정 전 = 커밋 26f5ea5의 guard.py)
 
 | 무엇을 쟀나 | 수정 전 LLM 전에 막음 | 수정 후 |
