@@ -177,7 +177,7 @@ proj2-5/
 | 안내처(referrals) | `skills/referrals/`, `services/referrals.py` | 10-06 |
 | 서버 마이그레이션 자동 적용 | `backend/app/main.py` → `db.apply_migrations` | 001 ~ 022 |
 
-## I. 10-08 실사용 점검 (항목 32~58)
+## I. 10-08 실사용 점검 (항목 32~68)
 
 작업 ID 없이 실사용 점검 번호로 받은 일이다. 브랜치 jeongun, PR #79(열림, 병합 전). 프롬프트는 Langfuse chat-agent 13 · follow-up 9(라벨 v4)로 10-08 등록했고 production 글이 레포 파일과 같음을 Langfuse를 읽어 확인했다 (`docs/release_manifest.json` r4, `docs/prompt_versions.md`). 완료 기준 열의 숫자는 10-08에 실행한 값이다: pytest backend/tests mcp_server/tests 2145 passed, web tsc 오류 0, verify-contract PASS, e2e 데모 56 PASS (라이브는 SKIP). 병합, Railway 배포, 실제 모델에서 [E#] 근거 번호가 만들어지는지 확인, Railway의 MOF_BASE_URL · MOF_RELAY_TOKEN 설정은 아직 안 했다.
 
@@ -190,6 +190,11 @@ proj2-5/
 | 36·37 | 채팅에 화면의 배(on_screen)를 함께 보내기, 되묻기 후보를 채팅 칩으로 고르기 | `8cee37d` | 위 pytest · tsc · e2e 통과에 포함 | ✅ 완료 | on_screen 입력은 chat-agent 13. 실제 모델 확인 전 |
 | 57 | B/L 없이 배만 지켜보기: 마이그레이션 023_vessel_watch, `/api/watch/vessels` (GET/POST/DELETE), 워커 위치 수집 포함(판정 · 알림 없음). 채팅 후보 칩과 여러 화물 비교표의 배 옆 지켜보기 버튼. 입항 목록의 배도 호출부호로 선박 번호를 찾아 정확히 1척일 때만 | `28e5dc5` `e3f37ba` `07a4441` | 위 pytest · tsc · e2e 통과에 포함 | 🔶 일부 | 감시한 배의 판정과 알림은 만들지 않았다. 023 마이그레이션을 서버 DB에 적용했는지는 확인하지 않았다 |
 | 58 | 답 문장 끝 근거 번호 [E#]: 번호 검사(`citations.py`), 응답의 evidence_items · citations, 대화 저장 포함, 답 속 근거 팝업과 대화별 근거 모음, 체험용 모의 근거 | `1ed63e7` `5834390` `81beee4` | 위 pytest · tsc · verify-contract · e2e 통과에 포함. 채팅 계약은 더하기만 (ChatRequest.on_screen, ChatResponse.evidence_items · citations) | 🔶 일부 | 실제 모델이 [E#]를 만드는지 확인 전 |
+| 64·66 | 지켜보기 배 고르기: 같은 호출부호가 여러 척이면 선명 같은 배, 그다음 최근 신호 배(`vessel_pick.py`, 상세와 같은 규칙). 한도 소진은 503 "오늘 선박 조회 한도를 다 썼어요". 지켜볼 때 상세 캐시의 위치 저장, 목록을 열 때 6시간(rules.md position_stale_hours) 넘은 위치만 새로 받기(최대 5척). ShipFinder 호출 Langfuse span(키·주소 없음) | `5f24e99` | pytest 2163 통과 | 🔶 일부 | 10-07 운영 로그에서 many_match로 대부분 실패하던 것. 배포 뒤 실서버 확인 전 |
+| 64·66·67·68 | 지켜보기 화면: 상세에서 찾은 MMSI를 눈 버튼이 그대로 사용, 오류는 작은 글 5초, 도착 예정 "10월 8일 08:00", 빈 상자 문구 사실대로, 배만 지켜보기도 지도 표시 | `3fc1120` | web tsc 오류 0, e2e 통과에 포함 | ✅ 완료 | |
+| 59·61·62·65 | 나뉜 화면에서도 사이드바 대화 목록, 입항 검색 답을 결론·배 한 줄씩·출처로, 답 끝 근거 표시를 출처 이름으로, 예시 질문 2열 격자 | `19386c2` | pytest · tsc · e2e 통과에 포함 | ✅ 완료 | |
+| 접근성 | 소개 페이지 하단 띠 글자 흰색(대비 4.26 → 4.5 이상) | `92989e0` | e2e 56 PASS exit 0 (axe 위반 0) | ✅ 완료 | #78·#81에서 생긴 대비 |
+| 60·63 | | | | 나중에 | 60 소개 페이지 화면 사진 교체(프론트 확정 뒤). 63 배 이름 한글·영문 섞임은 해수부 원본 선명 그대로라 보류 |
 | 50 | | | | 보류 | |
 | 51 | | | | 일부 | 서류 확인 뒤 입력칸에 붙여 넣던 것을 바로 조회(채팅 전송)로 바꿈 (`47d7c76`). 서류에서 읽은 항차·포워더 입항일을 채팅 요청에 싣는 것은 건너뜀: 되묻기 화면 미리 채움으로 충분 (10-08 정운 결정) |
 
