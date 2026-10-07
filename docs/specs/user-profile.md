@@ -12,14 +12,14 @@
 - 로그인 뒤 회원 정보가 없으면 조회 화면 대신 입력 화면이 나온다. 입력하고 동의해야 쓸 수 있다
 - DB에는 세 값을 잠근 글자만 둔다. 운영자 고객 관리에는 가린 값만 나간다. 원문은 본인에게만 보인다
 - 탈퇴하면 회원 정보도 지운다
-- **Out of Scope**: 전화번호 인증(SMS), 주소 검색 API, 운영자가 고객 정보 원문 보기, 이름으로 검색
+- **Out of Scope**: 전화번호 인증(SMS), 주소 검색 API, 이름으로 검색. (운영자가 고객 정보 원문 보기는 처음엔 범위 밖이었으나 같은 날 operator-admin.md "마스킹 해제"로 사유를 남기는 조건으로 구현됐다)
 
 ## What
 
 **Happy Path**
 1. 로그인 → GET /api/me의 profile_complete가 false → 회원 정보 입력 화면(필수 3칸 + 수집·이용 동의)
 2. PUT /api/profile → 서버가 형식 검사, 잠가서 저장 → 화면이 원래 화면으로
-3. 설정 > 계정과 기록에서 본인 정보 확인·수정 (본인에게는 원문)
+3. 설정 > 회원 정보 탭(`web/components/SettingsPage.tsx`, `ProfileForm`)에서 본인 정보 확인·수정 (본인에게는 원문)
 4. 관리 > 고객 관리: 이름 김**, 전화 010-****-5678, 주소 앞 두 마디 + *** (서울특별시 강남구 ***)
 
 **Edge Cases**
@@ -42,4 +42,5 @@
 - **API**: GET /api/profile(본인 원문), PUT /api/profile(저장), GET /api/me에 profile_complete 추가, GET /api/admin/customers에 마스킹한 phone·address·이름(입력값 우선, 없으면 구글 이름)
 - **마스킹 (services/profile.py)**: 이름 첫 글자 + *, 전화 앞 3자리와 뒤 4자리, 주소 앞 두 마디 + ***
 - **동의 문구**: 수집 항목(이름, 전화번호, 주소), 목적(화물 관련 연락과 본인 확인), 보유 기간(탈퇴 시까지), 거부 시 서비스 이용 불가. consent_at에 동의 시각을 남긴다
+- **구현 상태 (10-06 확인)**: 위 동작은 모두 코드에 있다. `routers/profile.py`(GET·PUT /api/profile), `services/profile.py`(검사·마스킹·암호화, 검사값 NAME_MAX 30, ADDRESS 5~200, 전화 `^01[016789]\d{7,8}$`), `routers/admin.py`(GET /api/me의 profile_complete), 화면 `web/components/ProfileForm.tsx`(`mode="required"`면 입력 화면, Shell이 `needProfile`일 때 띄움). 운영자가 고객 정보를 고치는 길도 같은 검사를 쓴다(`save(..., by_operator=True)`).
 - **테스트**: backend/tests/test_profile.py. 형식 검사, 동의 없음 400, 잠근 값만 DB에 가는지, 마스킹, 관리 목록에 원문 없음, 탈퇴 순서

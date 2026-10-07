@@ -6,7 +6,7 @@
 - RequestLogMiddleware: 요청마다 JSON 로그 한 줄 (A5, SDD 5.11)
 - CORS: ALLOWED_ORIGINS에 적힌 출처만 (A10, SDD 7절)
 
-MCP 서버(/mcp)도 이 앱의 경로로 붙인다 (09-29 결정, SDD 5.9). 서버·Cloud Run 서비스가 하나로 끝난다.
+MCP 서버(/mcp)도 이 앱의 경로로 붙인다 (09-29 결정, SDD 5.9). 배포 서비스(Railway marvia-api)가 하나로 끝난다.
 외부 MCP 클라이언트(Claude Desktop 등)용 창구이고, 서비스 자신은 도구 함수를 직접 부른다.
 
 기동할 때 DB 마이그레이션을 적용한다. 워커는 기본이 꺼짐이라 워커만 믿으면 query_log 같은 표가 안 생긴다.
@@ -85,7 +85,7 @@ app = FastAPI(title="Marvia API", lifespan=lifespan)
 app.add_middleware(RequestLogMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    # 기본값은 로컬 프론트만. 배포에서는 .env의 ALLOWED_ORIGINS에 Vercel 도메인을 넣는다
+    # 기본값은 로컬 프론트만. 배포에서는 ALLOWED_ORIGINS에 화면 주소(Railway marvia-web)를 넣는다
     allow_origins=[o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
     # DELETE: 내 기록 삭제·회원 탈퇴 (09-30), PUT: 회원 정보 저장 (10-01, user-profile). 빠지면 브라우저가 사전 요청에서 막는다
     allow_methods=["GET", "POST", "PUT", "DELETE"],

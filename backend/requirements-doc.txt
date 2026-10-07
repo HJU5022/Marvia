@@ -4,3 +4,4 @@
 rapidocr==3.9.2      # 서류 사진 OCR (docs/specs/document-extract.md). Apache-2.0. PaddleOCR 모델을 ONNX로 돌린다. 09-29 실험과 같은 버전
 onnxruntime==1.30.0  # rapidocr의 실행 엔진. MIT. Paddle 엔진 그대로보다 B/L 한 장 약 10배 빨랐다 (09-29 Mac M2 실측)
 python-multipart>=0.0.20  # FastAPI 파일 업로드(POST /api/document)에 필요. 09-29 설치본 0.0.32
+pypdfium2>=4.30,<5  # 서류 PDF 읽기: 글자층 추출과 스캔 PDF를 그림으로 그리기. Apache-2.0/BSD-3. PyMuPDF는 AGPL이라 뺐다 (10-06 결정). 설치본 4.30.0

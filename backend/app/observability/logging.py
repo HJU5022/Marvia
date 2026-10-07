@@ -1,6 +1,6 @@
 """구조화 로그 (작업 A5).
 
-요청 1건이 로그 한 줄이 된다. JSON으로 남겨야 Cloud Run 로그에서 필드로 검색된다.
+요청 1건이 로그 한 줄이 된다. JSON으로 남겨야 배포 로그(Railway)에서 필드로 검색된다.
 형식은 SDD 5.11: {request_id, path, model, tokens_in, tokens_out, latency_ms, status}.
 
 model·tokens는 LLM을 부른 요청에만 붙는다. services/llm.py가 set_llm_usage()로 채우고,

@@ -2,6 +2,21 @@
 
 작업 리스트 G4의 최소 범위("지난 조회로 '이 B/L 다시 볼까요?' 제안")를 넓혀, 소규모 수입 화주의 **화물 비서**로 만든다. 한 번 들은 날짜·할 일·거래처를 기억하고, 다음에 조회하거나 말로 물을 때 먼저 짚는다. SDD와 작업 리스트에 없는 동작이라 여기 먼저 적는다 (CLAUDE.md "SDD 5절과 작업 리스트에 없는 기능은 docs/specs/에 Spec을 먼저 쓴다"). 코드 동결 전 SDD를 고칠 때 SDD로 옮긴다.
 
+## 10-06 현행화 (코드와 대조한 결과)
+
+아래 본문은 10-02 설계·결정 기록이다. 그 뒤 달라진 곳은 이 절이 맞다. 본문의 설계 이유는 그대로 둔다.
+
+| 본문 | 지금 코드 |
+|---|---|
+| 화물 표 컬럼 (014) | 014 이후 칸이 더 생겼다: 015(`original_bl`, `to_order_bank`, `freight_term`, `incoterm`, `pending`), 017_cargo_watch(`watch`, `changed_from`, `changed_at`, `change_seen`), 019(`lc_id`, `departed_on`, `departed_source`, `arrived_on`, `warehoused_on`, `forwarder_name`, `carrier_name`, `container_no`), 020(`goods_name`), 021(`vessel_name`, `vessel_flag`). 전체 표는 docs/ERD.md |
+| "UNI-PASS 품명·중량·화주는 쓰지 않는다" | 품명(`goods_name`)은 10-06 오후부터 저장하고 채팅 에이전트 LLM에는 준다. 판정 LLM에는 주지 않는다(`llm.JUDGE_CUSTOMS_EXCLUDE`). 인젝션 의심 문구는 버린다. 중량·세관명·화주는 여전히 저장하지 않는다. 컨테이너 번호(`container_no`)는 저장하되 LLM에는 [CNTR1] 번호표만 간다 |
+| 채팅 입구 (의도 4개, `marvia-chat-route`) | 기본 경로가 도구를 고르는 채팅 에이전트로 바뀌었다 (10-05, docs/specs/chat-search.md "구현 상태"). 의도 4개 방식은 대비 경로다. 기억은 화물 조회·후속 질문 외에 **화물 조회 없이 끝난 채팅 턴**에도 쓴다: `memory.remember_chat_later` (10-06 정운 결정). 문장이 있을 때만 기억 뽑기를 부른다 |
+| 마이그레이션 015 "적용은 수동" | 서버와 worker가 켜질 때 `migrations/*.sql`을 자동 적용한다 (`db.apply_migrations`). 운영 DB에 적용됐는지는 이 문서로는 확인되지 않는다. 끝난 화물 3년 정리는 `worker/run.py`가 실행마다 `purge_done_cargo`를 부르고, pg_cron이 있으면 매일 18:20 UTC에도 돈다 |
+| "확정된 배는 다시 조회 때 배 찾기를 건너뛰는 데 아직 쓰지 않는다" | 일반 조회에서는 여전히 안 쓴다. 지켜보기 재판정(`services/watch.py run_watch`)은 저장된 `vessel_mmsi`를 후보 검색 없이 쓴다 (`routers/agent.py trusted_vessel`) |
+| 화면 "설정 > 내 기억" | 설정의 "기억한 화물" 탭(`web/components/SettingsPage.tsx`, `MemoryPanel.tsx`). 화물 표는 `/cargo` 화물 현황(엑셀 내려받기 포함, `services/cargo_sheet.py`)과 `/watch` 지켜보는 화물에도 쓰인다 |
+| 모델 표 (`LLM_MODEL` Gemini 2.5 Flash) | `.env.example` 기준 10-05 결정은 OpenRouter `google/gemini-3.5-flash-lite`다. `MEMORY_MODEL`은 코드는 있고 `.env.example` 값이 비어 있다 (비면 기억 뽑기만 건너뜀). 실제 운영 값은 레포에서 확인되지 않는다 |
+| 체크리스트의 수동 작업 | Langfuse 프롬프트 등록·실제 DB 검증·평가 문항·처리방침 문구는 레포에서 확인되지 않아 열린 채로 둔다. 아래 체크 표시는 10-02 기준이다 |
+
 이 문서는 개발 체크리스트로도 쓴다. 맨 아래 "체크리스트"를 작업하면서 채운다. 결정은 09-30 논의에서 정했고, 10-02 결정(아래 "10-02 결정" 절)이 그 위에 덮는다. 둘이 다르면 10-02가 맞다.
 
 ## Why
@@ -187,7 +202,7 @@
 
 - **LLM이 만드는 것**: CLAUDE.md의 셋(선박 선택, 판정 설명, 후속 답)과 서류 칸 옮겨 적기에 더해, 메모장 명령과 채팅의 `cargo_ref`가 늘어난다. 둘 다 정해진 칸에만 쓰고 적용은 코드가 한다.
 - **B/L은 LLM에 안 넘긴다**: 채팅 문장도 코드가 먼저 가린다. 메모장과 화물 표 블록에는 가린 번호만.
-- **UNI-PASS 품명·중량·화주는 쓰지 않는다** (SDD 7절). 이름표와 거래처는 사용자가 준 것만.
+- **UNI-PASS 중량·세관명·화주는 쓰지 않는다** (SDD 7절). 품명은 10-06부터 예외로 저장한다(위 "10-06 현행화"). 이름표와 거래처는 사용자가 준 것만.
 - **개인정보**: 탈퇴(`DELETE /api/account`)와 내 기록 삭제 때 화물 표와 메모장도 지운다. 사용자는 메모장을 보고 지울 수 있다 (개인정보보호법 제36조). 처음 로그인할 때 무엇을 기억하고, 얼마나 보관하고, 어느 AI 회사로 보내는지 알린다 (제15조 ②). 국외 이전 안내가 필요하다 `[해설]` (09-30 조사: 쓰는 LLM·Langfuse 모두 한국 리전 기본 없음).
 - **Langfuse 트레이스**: 프롬프트가 그대로 저장되고, 보관 기간을 설정하지 않으면 자동 삭제되지 않는다 `[해설]`. **10-02 결정: 트레이스의 `<user_cargo>`·`<user_memory>`는 가리지 않고 그대로 둔다.** 운영자가 판정을 다시 볼 때 필요하고, Langfuse는 바꾸지 않는 관리 기록으로 쓴다. 대신 DB의 화물 표·메모장 줄은 탈퇴와 "내 기록 삭제" 때 지운다. 처리방침·동의 문구에 "AI 처리 기록(트레이스)에는 남는다"를 적어야 한다 (문서·안내 체크리스트).
 

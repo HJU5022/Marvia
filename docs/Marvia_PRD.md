@@ -2,9 +2,11 @@
 
 작성일: 2026-09-22 · 기준 문서: 2차 팀 프로젝트 가이드 v4 · 유형: [유형 1] 도메인 특화 LLM 서비스
 
+> **10-06 현황 동기화:** 이 문서는 9/22에 쓴 기획이다. 동기부여·문제 정의·비교는 그대로 두고, 실제로 달라진 곳(범위, 등급 이름, 배포 위치, 검증 규칙 수 등)에만 "(10-06 변경)"으로 표시했다. 구현 기준은 SDD, 작업별 상태는 작업 리스트를 본다.
+
 ## 1. 한 줄 정의
 
-B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 하나?"에 **괜찮음 / 지켜볼 것 / 지금 조치**로 답하는 에이전트. 그 배가 내 화물 배가 맞는지 확정하고, 서로 안 맞는 신호 중 무엇을 믿을지 근거로 가르고, 확정 못 하면 판정 대신 되묻는다. 모든 판정에 출처와 조회 시각이 붙는다.
+B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 하나?"에 **순항 / 주의 / 긴급**(코드 값 fine / watch / act)으로 답하는 에이전트 (10-06 변경: 화면 이름을 괜찮음·지켜볼 것·지금 조치에서 순항·주의·긴급으로 바꿨다, 10-06 정운 결정). 그 배가 내 화물 배가 맞는지 확정하고, 서로 안 맞는 신호 중 무엇을 믿을지 근거로 가르고, 확정 못 하면 판정 대신 되묻는다. 모든 판정에 출처와 조회 시각이 붙는다.
 
 ## 2. 문제와 사용자
 
@@ -48,8 +50,23 @@ B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 �
 
 **P0:** B/L → 선박 식별(불확실하면 되묻기) · 위치·ETA · 2층 판정과 할 일 · 통관 단계 해설 · 하역 장소 · 근거 카드 · 후속 질문(근거 안에서만) · 출력 계약·재시도·폴백 · 평가셋 30건 + 규칙만 버전과 비교
 **P1(P0 완료 후):** 서류 사진·PDF(입항 통지서, B/L 사본)에서 B/L·선명·ETA 추출(멀티모달)
+(10-06 변경: P1 구현됨. 서류 사진은 OCR 뒤 LLM이 칸을 채우고(`POST /api/document`), PDF도 받는다(첫 2쪽, 글자층을 먼저 읽고 없으면 OCR, 열 수 없는 PDF는 400 `invalid_pdf`). 서류에서 읽은 B/L은 가려서 LLM에 준다.)
 **안 만드는 것:** 항공·육상 · 창고 수령일 예측 · 세액·통관 가부 판단(틀리면 사용자가 돈으로 다치는 영역, 통관은 단계 해설까지만) · 결제·다중 조직 · 군함 데이터
 **확장 가능성(이번 범위 밖, 막힌 건 아님):** 등록·감시·알림(입항 안 끝난 B/L을 등록해 두면 즐겨찾기처럼 보이고, 입항·이상 신호 시 알림. 수집 워커가 같은 뼈대) · 부산 외 국내 항만(해수부 청 코드·기준 좌표·부두 Skill 교체) · 해외 항만(입항 실적 출처가 없어 별도 설계) · 대형 화주(다중 조직·ERP 연동은 범위 밖)
+
+**10-06 변경: 처음 범위 밖이던 것 가운데 만든 것.** 아래는 원래 계획에 없거나 "확장 가능성"이던 것이고, 코드와 라우터가 있는 것만 적었다. 내용은 `docs/specs/`의 각 Spec과 SDD를 본다.
+
+| 기능 | 만든 것 | 근거 |
+|---|---|---|
+| 로그인·회원 | Supabase 로그인 토큰 확인(`SUPABASE_URL`을 채우면 로그인 필수), 조회를 사용자에 묶기, B/L 암호화 저장, 회원 정보, 탈퇴(삭제 3단계) | `backend/app/auth.py`, `crypto.py`, `routers/account.py`, `profile.py` |
+| 채팅·대화 목록 | 자연어 창구 `/api/chat`(스트림 포함), 에이전트가 읽기 전용 도구를 골라 쓰는 방식, 지난 대화 목록·삭제 | `routers/chat.py`, `conversations.py` |
+| 기억 | 지난 조회·말에서 뽑은 기억 보기·지우기 | `routers/memory.py`, `docs/specs/memory.md` |
+| 지켜보기·알림 | 화물 지켜보기와 바뀐 판정 보기(`/api/watch`), 카카오톡 "나에게 보내기" 연결·시험 발송, 워커의 재판정(`WATCH_ENABLED`, 기본 꺼짐) | `routers/watch.py`, `kakao.py`, `worker/watch.py`. 이메일·푸시는 만들지 않았다 |
+| 내 화물 현황표 | 신용장별 묶음 표와 엑셀 받기(`/api/cargo/sheet`, `sheet.xlsx`) | `routers/cargo_sheet.py` |
+| 운영자 | 고객 목록·정지·삭제, 운영자 권한, 운영 지표(`/api/admin/*`, `/api/metrics`) | `routers/admin.py`, `docs/specs/operator-admin.md` |
+| 토큰 한도 | 1명당 하루 LLM 토큰 한도, 넘으면 다음 요청부터 429 | `services/quota.py`, `docs/specs/token-quota.md` |
+| 안내처 | 답하지 않는 부분은 누구에게 어디서 확인하는지 붙이기 | `skills/referrals/`, `services/referrals.py` |
+| 화면 | 채팅 화면, 지도, 내 화물, 이력, 설정, 운영자, 지표, 소개 (Next.js 16) | `web/app/` |
 **금지:** LangGraph, RAG. 도메인 지식은 Skill 문서 통째 주입, 실시간 데이터는 MCP 도구.
 
 ## 5. 사용자 흐름
@@ -81,17 +98,19 @@ B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 �
 
 | 판정 | 대표 상황 |
 | --- | --- |
-| 지금 조치 | 정박 24시간+, 목적지가 부산 아님, 통관 검사 지정, 신뢰 ETA가 판매 예정일을 넘김 |
-| 지켜볼 것 | 신호 하나 triggered인데 여유 일수 남음 |
-| 괜찮음 | 모든 신호 clear, ETA 근거 2개 이상 일치 |
+| 지금 조치 (긴급) | 정박 24시간+, 목적지가 부산 아님, 통관 검사 지정, 신뢰 ETA가 판매 예정일을 넘김 |
+| 지켜볼 것 (주의) | 신호 하나 triggered인데 여유 일수 남음 |
+| 괜찮음 (순항) | 모든 신호 clear, ETA 근거 2개 이상 일치 |
 | 판정 보류 | 선박 식별 불확정 또는 위치 없음 → 물을 것 1개 이상 |
+
+(10-06 변경: 등급은 LLM이 아니라 코드 판정 표가 정한다(09-30 D7, `services/verdict.py`, 재료는 `skills/cargo-verdict/rules.md`). LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다. 판매 예정일은 09-29부터 선택 입력이다.)
 
 **울타리(코드가 LLM을 막는 것):** stale이면 "현재 위치" 표현 금지 / act·watch면 1층 규칙 이름 필수 / 식별 uncertain이면 판정 금지 / 근거에 없는 숫자 거부.
 
 ### 6.3 아키텍처
 
 ```
-사용자 → Vercel(Next.js) → Cloud Run(FastAPI) POST /api/agent · GET /health · /mcp(토큰 인증)
+사용자 → Next.js(10-06 변경: 계획은 Vercel, 실제는 Railway marvia-web) → FastAPI(계획 Cloud Run, 실제 Railway marvia-api) POST /api/agent · GET /health · /mcp(토큰 인증)
    FastAPI ─ UNI-PASS 직접 조회(코드)
           └ services/llm.py (LLM 호출 단일 지점, Skill 통째 주입) ─ OpenRouter 모델 A/B
                  └ tool call → FastMCP 서버 → ShipFinder · 해수부 공공데이터 · searoute
@@ -99,7 +118,7 @@ B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 �
    수집 워커 → Postgres(Docker): 평가셋 라벨용 선박 위치 저장
 ```
 
-B/L은 LLM에 넘기지 않는다(숫자 오기·주입 방지). 판정에 필요 없는 필드(품명·중량)도 넘기지 않고, 트레이스에서 B/L을 마스킹한다. 라우터·UI는 LLM SDK를 직접 import하지 않는다.
+B/L은 LLM에 넘기지 않는다(숫자 오기·주입 방지). 판정에 필요 없는 필드(중량)도 넘기지 않고, 트레이스에서 B/L을 마스킹한다. (10-06 변경: 품명(goods_name)은 저장하고 채팅 에이전트 LLM에는 주지만 판정 LLM에는 주지 않는다. 컨테이너 번호는 `[CNTR1]` 같은 가린 표시로만 LLM에 준다.) 라우터·UI는 LLM SDK를 직접 import하지 않는다.
 
 ### 6.4 Skill (시스템 프롬프트에 통째로, RAG 아님)
 
@@ -108,6 +127,8 @@ B/L은 LLM에 넘기지 않는다(숫자 오기·주입 방지). 판정에 필�
 | `skills/ais-reliability/SKILL.md` | AIS 신뢰도 규칙, 1층 신호 정의, 상충 시 우선순위, 2층 판정 원칙 | 하정운(함정 경험) |
 | `skills/customs-stages/SKILL.md` | 유니패스 단계 용어·순서·단계별 할 일·관세사 확인 기준 | 공개 자료, 팀 |
 | `skills/port-busan/SKILL.md` | 부산항 부두·정박지, 하역 장소 안내 문장 규칙 | 하정운 |
+| `skills/cargo-verdict/` (10-06 변경: 추가) | 판정 표(등급 결정 재료, 코드가 읽는다) | 팀 |
+| `skills/referrals/` (10-06 변경: 추가) | 안내처. LLM 프롬프트에 넣지 않고 코드가 문장에 붙인다 | 팀 |
 
 AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(IMO 하나에 MMSI 2개 → 최신 선택) · 동명 선박(한 선명에 국적·선종이 다른 배가 섞임 → 선명만으로 확정 금지) · 53일 전 위치를 정상으로 반환 → 6시간 초과면 "마지막 수신 위치" · 깨진 목적지 문자열 → 해수부로 교차검증 · 항해상태 "항해 중"인데 속도 0 → 속도·위치로 판단.
 **상충 우선순위:** 해수부 관제 실적 > 해수부 입항 예정 > AIS ETA > AIS 목적지 문자열. AIS 목적지·ETA는 사람이 손으로 넣는 값이라 가장 자주 틀린다. 수집 데이터로 검증해 틀리면 고친다.
@@ -142,9 +163,9 @@ AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(IM
 
 ## 7. 출력 계약과 실패 경로
 
-**스키마(Pydantic):** `status`(ok/partial/insufficient/failed) · `verdict`(fine/watch/act/null) · `vessel_match`(confirmed/uncertain/none) · `vessel_candidates` · `missing_inputs` · `reasons`(1층 규칙 이름+값) · `conflicts`(상충 쌍과 선택 이유) · `actions` · `days_margin`(코드 계산, LLM 덮어쓰기 금지) · `vessel` · `position`(freshness 포함) · `eta` · `customs` · `berth` · `evidence`(출처·원본·조회 시각) · `answer`
+**스키마(Pydantic):** `status`(ok/partial/insufficient/failed, 09-23에 unsupported 추가) · `verdict`(fine/watch/act/null) · `vessel_match`(confirmed/uncertain/none) · `vessel_candidates` · `missing_inputs` · `reasons`(1층 규칙 이름+값) · `conflicts`(상충 쌍과 선택 이유) · `actions` · `days_margin`(코드 계산, LLM 덮어쓰기 금지) · `vessel` · `position`(freshness 포함) · `eta` · `customs` · `berth` · `evidence`(출처·원본·조회 시각) · `answer`
 
-**검증 7종(LLM 출력 검사, 위반 시 재시도):** stale이면 "현재 위치" 금지 / act·watch면 reasons 필수 / eta 있으면 evidence 필수 / uncertain이면 verdict 금지 / insufficient면 missing_inputs 필수 / conflicts 출처는 evidence에 있어야 / answer 숫자는 evidence에 있어야. 모델을 바꾸면 위반율이 달라지므로 모델 비교가 의미를 가진다.
+**검증 7종(LLM 출력 검사, 위반 시 재시도. 10-06 변경: 지금은 V1~V15까지 늘었다. V8 등급 검사, V9·V10 주입 방어, V11 통관 진행 평가 금지 등이 추가됐고 목록은 SDD 5.7과 EVAL_REPORT 9-1):** stale이면 "현재 위치" 금지 / act·watch면 reasons 필수 / eta 있으면 evidence 필수 / uncertain이면 verdict 금지 / insufficient면 missing_inputs 필수 / conflicts 출처는 evidence에 있어야 / answer 숫자는 evidence에 있어야. 모델을 바꾸면 위반율이 달라지므로 모델 비교가 의미를 가진다.
 
 **재시도 3단계:** 오류 붙여 재요청 → 엄격 프롬프트로 재요청 → 폴백(status partial, 판정 표 등급 + 고정 문구. 09-30 결정, 전에는 failed). 재시도는 트레이스에 남긴다.
 
@@ -205,7 +226,7 @@ verdict 정답 17건, act 정답 최소 6건(act_recall용). 판정형은 상충
 
 팀원 2명 모두 풀스택으로 A~E 모든 묶음을 맡는다. 묶음별 담당은 두지 않고, 열린 작업은 누구든 가져간다. 함정 경험이 필요한 Skill 판정 기준 검수와 라벨 확정만 하정운이 맡는다.
 
-**제출물:** GitHub 레포(KDT 7기 org, .env.example) · Vercel URL(정상·되묻기·실패 흐름) · Cloud Run API(/health, /api/agent) · README(한 줄 정의, 지표 표, compose up, 10분 재현) · skills/ · MCP 서버(연결법·tool 목록·호출 결과·접근 제어) · EVAL_REPORT.md(평가셋, 베이스라인, 전후 지표, 실패 사례, 검증 과정) · Langfuse 스크린샷 3장+ · 데모 영상(정상 1, 실패 1, 되묻기 1) · 발표 PDF
+**제출물:** GitHub 레포(KDT 7기 org, .env.example) · 화면 URL(정상·되묻기·실패 흐름. 10-06 변경: Vercel 대신 Railway `marvia-web`) · API(/health, /api/agent. Cloud Run 대신 Railway `marvia-api`, 주소는 `docs/release_manifest.json`) · README(한 줄 정의, 지표 표, compose up, 10분 재현) · skills/ · MCP 서버(연결법·tool 목록·호출 결과·접근 제어) · EVAL_REPORT.md(평가셋, 베이스라인, 전후 지표, 실패 사례, 검증 과정) · Langfuse 스크린샷 3장+ · 데모 영상(정상 1, 실패 1, 되묻기 1) · 발표 PDF
 
 ## 10. 발표 질문과 약점
 

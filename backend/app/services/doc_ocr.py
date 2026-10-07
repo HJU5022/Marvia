@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import datetime
+import functools
 import logging
 import re
 import threading
@@ -22,6 +23,7 @@ from io import BytesIO
 import numpy as np
 from PIL import Image
 
+from backend.app.observability.langfuse import tool_span
 from backend.app.schemas.agent import _BL_PATTERN  # B/L 형식은 계약 C2 한 곳에만 둔다 (SDD 3.1)
 from backend.app.services import guard  # 지시문 줄 판별 (_only_in_instruction, 10-01)
 # 전화·이메일 모양, 역할 목록, 회사 이름 상한은 메모장 검사와 한 곳 (docs/specs/memory.md). 메모장 모듈 전체는 불러오지 않는다
@@ -85,6 +87,7 @@ class OcrResult:
     rotation: int      # 고른 방향 (0, 180, 270)
     runs: int          # OCR을 몇 번 돌렸나. 보통 1, 누운·뒤집힌 사진은 3
     ocr_ms: int
+    pages: int = 1     # 읽은 쪽 수. 사진은 1, PDF는 읽은 쪽 (Langfuse ocr:read span의 metadata용, 10-07)
 
 
 def _get_engine():
@@ -118,6 +121,25 @@ def remove_red(img: Image.Image) -> Image.Image:
     return Image.fromarray(a.astype(np.uint8))
 
 
+def _ocr_span(kind: str):
+    """read_lines·read_pdf를 Langfuse tool 관측 "ocr:read" 하나로 감싼다 (10-07, 작업 메모 3번 구간).
+
+    CPU를 1~2초 쓰고 첫 호출은 모델 로딩이 붙는 구간이라 따로 보이게 한다. ocr_ms는 응답에만 있었다.
+    input·output에는 서류 글자를 넣지 않는다 (B/L·개인정보). 종류와 크기, 건수만 남긴다. 키가 없으면 아무것도 안 한다.
+    """
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(data: bytes, *args, **kwargs) -> OcrResult:
+            with tool_span("ocr:read", {"kind": kind, "bytes": len(data)}) as span:
+                result = fn(data, *args, **kwargs)
+                span.metadata.update({"kind": kind, "pages": result.pages, "runs": result.runs,
+                                      "ocr_ms": result.ocr_ms, "lines": len(result.lines)})
+                return result
+        return inner
+    return wrap
+
+
+@_ocr_span("image")
 def read_lines(image_bytes: bytes, engine=None) -> OcrResult:
     """사진 바이트를 OCR 글자 줄로 바꾼다. 0°를 먼저 읽고, 확신이 낮으면 180°·270°도 읽어 가장 나은 방향을 쓴다.
 
@@ -126,8 +148,13 @@ def read_lines(image_bytes: bytes, engine=None) -> OcrResult:
     Raises:
         PIL.UnidentifiedImageError: 이미지가 아닐 때. 라우터가 400으로 바꾼다
     """
+    return _ocr_image(Image.open(BytesIO(image_bytes)), engine)
+
+
+def _ocr_image(image: Image.Image, engine=None) -> OcrResult:
+    """PIL 이미지 한 장을 읽는다. 사진 바이트(read_lines)와 PDF 페이지 그림(read_pdf)이 같은 길을 쓰게 한 곳으로 뺐다 (10-06)."""
     engine = engine or _get_engine()
-    img = remove_red(Image.open(BytesIO(image_bytes)))
+    img = remove_red(image)
     start = time.monotonic()
     best: tuple[float, int, list[str]] | None = None
     runs = 0
@@ -141,6 +168,70 @@ def read_lines(image_bytes: bytes, engine=None) -> OcrResult:
         if deg == 0 and len(scores) >= CONFIDENT_LINES and total / len(scores) >= CONFIDENT_MEAN:
             break  # 보통 서류: 한 번이면 된다
     return OcrResult(lines=best[2], rotation=best[1], runs=runs, ocr_ms=int((time.monotonic() - start) * 1000))
+
+
+# ── PDF 입력 (docs/specs/document-extract.md "PDF", 10-06 결정) ─────────────
+
+PDF_MAGIC = b"%PDF"  # 파일 이름·content-type은 사용자가 바꿀 수 있어 앞 4바이트로 가른다
+PDF_MAX_PAGES = 2    # B/L·도착 통지서의 값은 앞 두 장에 있다. 페이지 수만큼 OCR이 늘어 응답이 느려지는 것을 막는다
+# 글자층에 이만큼(공백 뺀 글자 수) 있으면 글자층을 믿는다. 7칸이 든 서류는 한 장에 수백 자가 넘고,
+# 스캔 PDF에 붙는 쪽 번호·스캐너 워터마크 같은 글자층은 수십 자 이하라 40자로 가른다 [추정, 실제 서류로 재지 않았다]
+PDF_MIN_TEXT_CHARS = 40
+PDF_RENDER_SCALE = 2          # 72dpi x 2 = 144dpi. 사진 OCR이 읽던 글자 크기에 가깝다
+PDF_MAX_PIXELS = 12_000_000   # 큰 도면 용지가 와도 그림 한 장이 이 이하가 되게 배율을 낮춘다. 3000x4000 사진과 같은 크기다
+
+
+class InvalidPdf(Exception):
+    """PDF를 열 수 없음(깨짐, 암호, 0쪽). 라우터가 400 invalid_pdf로 바꾼다."""
+
+
+def is_pdf(data: bytes) -> bool:
+    return data.startswith(PDF_MAGIC)
+
+
+@_ocr_span("pdf")
+def read_pdf(data: bytes, engine=None) -> OcrResult:
+    """PDF 앞 PDF_MAX_PAGES쪽을 글자 줄로 바꾼다. 글자층이 충분하면 그것을 쓰고(OCR 없음), 아니면 쪽마다 그림으로 그려 OCR한다.
+
+    글자층을 먼저 보는 이유: 전자 PDF는 글자가 정확히 들어 있어 OCR보다 빠르고 틀리지 않는다.
+    라이브러리: pypdfium2 (Apache-2.0/BSD-3). PyMuPDF는 AGPL이라 쓰지 않는다 (10-06 결정).
+    Raises:
+        InvalidPdf: 열 수 없거나 암호가 걸렸거나 쪽이 없을 때
+    """
+    import pypdfium2 as pdfium  # 이 기능을 안 쓰는 테스트·워커가 불러오지 않게 여기서 import (_get_engine과 같은 이유)
+
+    start = time.monotonic()
+    try:
+        pdf = pdfium.PdfDocument(data)  # 암호 PDF는 비밀번호 없이 열면 PdfiumError
+        try:
+            count = min(len(pdf), PDF_MAX_PAGES)
+            if count == 0:
+                raise InvalidPdf("no_pages")
+            pages = [pdf[i] for i in range(count)]
+            text_lines: list[str] = []
+            for page in pages:
+                textpage = page.get_textpage()
+                text_lines += [ln.strip() for ln in textpage.get_text_bounded().splitlines() if ln.strip()]
+            if sum(len(re.sub(r"\s", "", ln)) for ln in text_lines) >= PDF_MIN_TEXT_CHARS:
+                return OcrResult(lines=text_lines, rotation=0, runs=0, ocr_ms=int((time.monotonic() - start) * 1000), pages=count)
+            # 스캔 PDF: 쪽마다 그림으로 그려 사진과 같은 OCR을 돌린다. 줄은 쪽 순서로 잇는다
+            lines: list[str] = []
+            runs = ocr_ms = 0
+            rotation = 0
+            for n, page in enumerate(pages):
+                w, h = page.get_size()
+                scale = min(PDF_RENDER_SCALE, (PDF_MAX_PIXELS / max(w * h, 1)) ** 0.5)
+                one = _ocr_image(page.render(scale=scale).to_pil().convert("RGB"), engine)
+                lines += one.lines
+                runs += one.runs
+                ocr_ms += one.ocr_ms
+                if n == 0:
+                    rotation = one.rotation  # 응답에는 한 값만 담는다. 첫 쪽의 방향을 대표로 쓴다
+            return OcrResult(lines=lines, rotation=rotation, runs=runs, ocr_ms=ocr_ms, pages=count)
+        finally:
+            pdf.close()
+    except pdfium.PdfiumError as e:
+        raise InvalidPdf(str(e)) from e
 
 
 def take_bl(lines: list[str]) -> str | None:

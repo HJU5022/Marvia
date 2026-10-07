@@ -6,13 +6,15 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 
 | | |
 |---|---|
-| 서비스 | (Vercel URL) |
-| Agent API | (Cloud Run URL) · `GET /health` · `POST /api/agent` |
-| MCP | (Cloud Run URL) · `/mcp` (Bearer 토큰) |
+| 서비스 | https://marvia.up.railway.app (Railway `marvia-web`, 재생 모드 데모) |
+| Agent API | https://marvia-api-production.up.railway.app (Railway `marvia-api`) · `GET /health` · `POST /api/agent` |
+| MCP | 위 API 주소의 `/mcp` (Bearer 토큰) |
 | 기획 | [docs/Marvia_PRD.md](./docs/Marvia_PRD.md) |
 | 설계 | [docs/Marvia_SDD.md](./docs/Marvia_SDD.md) |
 | 작업 분담 | [docs/Marvia_개발_작업_리스트.md](./docs/Marvia_개발_작업_리스트.md) |
 | 지표 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
+
+배포 주소는 `docs/release_manifest.json`(2026-10-06-r1 기록)에 적힌 값이다. 배포는 Railway이고 Vercel과 Cloud Run은 쓰지 않는다(10-05 결정, `Dockerfile.railway`). 실제 B/L이 없어 배포 서버는 `REPLAY_MODE=true`로 가공 데모를 보여 준다.
 
 ---
 
@@ -33,7 +35,7 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 |---|---|
 | 9/22 | 키 발급 4종, 수집 워커 가동, 골격(FastAPI 빈 서버·Dockerfile·/health) |
 | 9/23 | 계약(C1~C8) 고정, 평가셋 구성안 |
-| 9/24~27 | (추석) 워커 가동 유지, MCP 뼈대, Langfuse 연결, Cloud Run 빈 배포, Skill 초안 |
+| 9/24~27 | (추석) 워커 가동 유지, MCP 뼈대, Langfuse 연결, Skill 초안 (Cloud Run 배포는 계획이었고 하지 않았다) |
 | 9/28~10/2 | 본 구현, 10/1까지 베이스라인 (a) |
 | 9/30 | 중간 점검 |
 | 10/6~8 | 라벨 확정, 평가 (a)(b)(c), EVAL_REPORT, UI, 데모 영상. **10/8 자정 코드 동결** |
@@ -87,25 +89,25 @@ B/L 번호와 판매 예정일을 넣으면, 선박을 식별하고 신호를 �
 
 유사 서비스(트레드링스)와 다른 점은 **선박 식별 되묻기**와 **신호 상충 해석** 둘입니다. 조회한 배가 내 배라고 전제하지 않고, ETA 확률 범위 대신 왜 못 믿는지 근거를 보여줍니다. 비교 전체는 [PRD 3장](./docs/Marvia_PRD.md)에 있습니다.
 
-**만들지 않는 것:** 항공·육상·부산 외 항만, 창고 수령일 예측, 세액·통관 가부 판단, 알림톡·결제.
+**만들지 않는 것:** 항공·육상·부산 외 항만, 창고 수령일 예측, 세액·통관 가부 판단, 결제. (10-06 변경: 알림은 카카오톡 "나에게 보내기"로, 서류는 사진에 더해 PDF로도 만들었다. 이메일·푸시 알림과 알림톡은 만들지 않는다.)
 
 ### 설계 원칙
 
-- **판정은 2층입니다.** 1층은 코드가 신호 6종(위치 6시간 끊김, AIS ETA와 해수부 예정 12시간 차이, 부산 인근 24시간 정박, 목적지 변경·깨짐, 항해상태·속도 불일치, 통관 검사·보류)을 triggered / clear / unknown으로 판정합니다. 2층은 LLM이 신호가 서로 어긋날 때 어느 출처를 왜 믿는지 정하고 판정합니다.
+- **판정은 2층입니다.** 1층은 코드가 신호 7종(위치 6시간 끊김, AIS ETA와 해수부 예정 12시간 차이, 부산 인근 24시간 정박, 목적지 변경·깨짐, 항해상태·속도 불일치, 통관 검사·보류, 신뢰 ETA가 판매 예정일을 넘김)을 triggered / clear / unknown으로 판정합니다. 2층은 LLM이 신호가 서로 어긋날 때 어느 출처를 왜 믿는지 정하고 판정합니다.
 - **숫자는 코드가 계산합니다.** 여유 일수, 거리, freshness는 코드가 계산하고 LLM은 덮어쓰지 못합니다. 임계값은 `skills/` 문서 프론트매터가 원본입니다.
-- **코드가 LLM을 막는 울타리가 있습니다.** 위치가 오래됐으면 "현재 위치" 표현 금지, 식별 불확정이면 판정 금지, 근거에 없는 숫자 거부 등 출력 검증 7규칙을 두고, 위반하면 재시도 3단계 후 폴백합니다.
+- **코드가 LLM을 막는 울타리가 있습니다.** 위치가 오래됐으면 "현재 위치" 표현 금지, 식별 불확정이면 판정 금지, 근거에 없는 숫자 거부 등 출력 검증 규칙(V1~V15)을 두고, 위반하면 재시도 3단계 후 폴백합니다. 등급(순항·주의·긴급)은 코드의 판정 표가 정하고 LLM은 설명을 씁니다.
 - **지식은 RAG가 아니라 Skill 문서로, 데이터는 MCP 도구로 가져옵니다.** LangGraph와 RAG는 쓰지 않습니다.
-- **B/L은 LLM에 넘기지 않습니다.** UNI-PASS는 코드가 직접 조회하고, 품명·중량 등 판정에 필요 없는 필드는 LLM과 DB에 넣지 않습니다. 트레이스에서도 B/L을 마스킹합니다.
+- **B/L은 LLM에 넘기지 않습니다.** UNI-PASS는 코드가 직접 조회하고, 중량 등 판정에 필요 없는 필드는 LLM과 DB에 넣지 않습니다. 컨테이너 번호는 `[CNTR1]` 같은 가린 표시로만 LLM에 줍니다. 품명(goods_name)은 10-06부터 저장하고 채팅 에이전트 LLM에는 주지만 판정 LLM에는 주지 않습니다. 트레이스에서도 B/L을 마스킹합니다.
 
 ### 처리 흐름
 
 ```
 브라우저 (B/L + 판매 예정일)
   ▼
-web/   Next.js (Vercel) · 키 없음
+web/   Next.js 16 (Railway marvia-web) · 서버 비밀 키 없음
   ▼
-app/   FastAPI (Cloud Run) · POST /api/agent
-  │    1 validate    B/L 형식, 판매 예정일 검증          [코드]
+backend/app/   FastAPI (Railway marvia-api) · POST /api/agent
+  │    1 validate    B/L 형식, 판매 예정일(선택) 검증     [코드]
   │    2 customs     UNI-PASS 조회 → 선명·국적·통관 단계  [코드]
   │    3 identify    선박 후보 1척이면 확정               [코드]
   │                  여럿이면 판단, 확정 불가면 되묻기     [LLM]
@@ -113,7 +115,7 @@ app/   FastAPI (Cloud Run) · POST /api/agent
   │    5 signals     1층 신호 6종                         [코드]
   │    6 margin      판매 예정일까지 여유 일수             [코드]
   │    7 judge       2층 판정·할 일·통관 해설             [LLM]
-  │    8 validate    출력 검증 7규칙, 위반 시 재시도 3회   [코드]
+  │    8 validate    출력 검증 규칙, 위반 시 재시도 3회    [코드]
   │  모든 단계 → Langfuse 트레이스
   ▼
 mcp_server/  FastMCP /mcp → ShipFinder · 해수부 공공데이터 · searoute
@@ -123,42 +125,58 @@ AgentResponse (ok | partial | insufficient | failed)
 화면: 판정 · 할 일 · 위치 · 통관 해설 · 하역 장소 · 근거 카드
 ```
 
+채팅(`POST /api/chat`)은 위 흐름의 앞에 붙은 자연어 창구입니다. B/L이 담긴 문장이면 같은 판정 흐름을 부르고, 대화 목록·기억·지켜보기·카카오톡 알림도 이 창구와 `/api/*` 라우터가 맡습니다.
 단계별 입출력과 실패 처리는 [docs/Marvia_SDD.md](./docs/Marvia_SDD.md) 4절과 8절에 있습니다.
 
 ---
 
 ## 3. 디렉토리 구조
 
-SDD 1.1절 기준 목표 구조입니다. 현재 레포는 스캐폴드(`backend/`, `evals/`) 단계이고 이 구조로 옮기는 중입니다.
+10-06 기준 실제 레포 구조입니다. 처음 계획(SDD 1.1)의 `app/`, `eval/`은 각각 `backend/app/`, `evals/`로 옮겨 만들었습니다.
 
 ```
 .
 ├── README.md             프로젝트 소개, 실행법 (이 파일)
 ├── CLAUDE.md · AGENTS.md AI 코딩 도구 작업 지침
 ├── EVAL_REPORT.md        베이스라인 대비 지표 (제출물)
-├── Dockerfile            멀티스테이지 하나 (app / worker)
-├── docker-compose.yml    api(/mcp 포함) + worker + postgres
+├── Dockerfile            멀티스테이지 (base / app / worker). 로컬 compose용
+├── Dockerfile.railway    Railway 배포용 API 이미지 (app 단계만)
+├── docker-compose.yml    api(/mcp 포함) + worker + postgres 16
 ├── .env.example          필요한 키 목록 (값 없음)
 │
-├── app/                  FastAPI (Cloud Run)
-│   ├── main.py           앱 생성, 라우터 등록
-│   ├── routers/          /api/agent, /health
-│   ├── schemas/          요청·응답·신호·통관 스키마 (계약 C1~C5)
-│   ├── services/         customs, signals, identify, llm, validate, evidence
-│   ├── clients/          ShipFinder, 해수부, searoute
-│   └── observability/    Langfuse 트레이스, 구조화 로그
+├── backend/
+│   ├── requirements.txt · requirements-doc.txt (서류 사진 OCR, app 이미지에만)
+│   ├── app/
+│   │   ├── main.py        앱 생성, 라우터 등록, /health, 기동 때 마이그레이션 자동 적용
+│   │   ├── auth.py · crypto.py   Supabase 로그인 토큰 확인, B/L·개인정보 암호화
+│   │   ├── routers/       agent, chat, conversations, document, history, memory, profile,
+│   │   │                  account, admin, kakao, watch, cargo_sheet
+│   │   ├── schemas/       agent, signals, customs, document, memory (계약 C1~C5)
+│   │   ├── services/      customs, identify, signals, verdict, llm, validate, evidence, chat,
+│   │   │                  memory, watch, kakao, quota, referrals, operators 등 (파일 목록은 폴더 참고)
+│   │   ├── clients/       shipfinder, mof, kakao, supabase_admin, replay, cache, retry
+│   │   ├── observability/ Langfuse 트레이스, 구조화 로그
+│   │   ├── db/migrations/ 001~022 SQL. 서버가 켜질 때 DATABASE_URL이 있으면 순서대로 자동 적용
+│   │   └── prompts/       Langfuse에서 못 가져올 때 쓰는 프롬프트 사본 10개
+│   └── tests/             pytest (키 없이 돈다)
 │
-├── mcp_server/           FastMCP. 선박 후보·실시간 위치·입항 일정·남은 거리 도구 4개
-├── skills/               AIS 신뢰도, 통관 단계, 부산항 판단 기준
-├── worker/               평가셋 라벨용 선박 위치·입항 실적 수집
-├── eval/                 평가셋 30건, 베이스라인, 채점
-├── web/                  Next.js (Vercel)
+├── mcp_server/           FastMCP. 선박 후보·실시간 위치·입항 일정·남은 거리 도구 4개 (tools/)
+├── skills/               ais-reliability, customs-stages, port-busan, cargo-verdict, referrals
+├── worker/               collector.py(위치·입항 실적 수집), watch.py(지켜보는 화물 재판정), run.py
+├── evals/                평가셋 30건(dataset.jsonl)·서류 12건, fixtures/(재생 파일), results/, 실행기·채점
+├── scripts/              손으로 돌리는 스크립트 (make_demo, demo_live, mcp_check, langfuse_evidence 등)
+├── web/                  Next.js 16 (Railway marvia-web)
+│   ├── app/              화면 경로 /, /watch, /cargo, /history, /settings(+kakao), /admin, /metrics, /about
+│   ├── components/       화면 부품 · lib/ api·auth·basemap · styles는 app/styles/*.css
+│   └── public/basemap/   미리 구워 둔 지도 타일 (외부 타일 서버 없이 지도가 뜬다)
 └── docs/
     ├── Marvia_PRD.md     기획서
     ├── Marvia_SDD.md     설계 기준 문서
-    ├── Marvia_개발_작업_리스트.md  작업 묶음 A~E, 기한
-    ├── SCAFFOLD.md       폴더별 채울 내용
-    └── specs/            기능 Spec (AGENTS.md 참고)
+    ├── Marvia_개발_작업_리스트.md  작업 묶음 A~G, 상태
+    ├── SCAFFOLD.md       처음 받은 스캐폴드 설명(보존용)
+    ├── ERD.md · release_manifest.json · prompt_versions.md
+    ├── evidence/         Langfuse 집계, MCP 연결 캡처
+    └── specs/            기능 Spec
 ```
 
 ---
@@ -172,6 +190,8 @@ git clone https://github.com/aihuman-7th/proj2-5.git && cd proj2-5
 cp .env.example .env     # 키를 채운다 (아래 표 참고)
 docker compose up        # api :8000 (/api/agent, /mcp), worker, postgres
 ```
+
+DB 표(마이그레이션 001~022)는 서버가 켜질 때 `DATABASE_URL`이 있으면 자동으로 만들어진다(`backend/app/main.py` → `db.apply_migrations`). 따로 손으로 돌릴 SQL은 없다. 배포 DB는 Supabase(운영·개발), 로컬 compose는 postgres 16이다.
 
 worker는 `WORKER_SCHEDULE=off`(기본)이면 안내 한 줄을 남기고 바로 끝난다(`Exited (0)`). 고장이 아니다. 주기 수집은 `on`으로 켠다.
 
@@ -246,11 +266,16 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 | `UNIPASS_KEY` | 관세청 UNI-PASS 오픈API | B/L 조회 불가 |
 | `OPENROUTER_API_KEY` | openrouter.ai | 판정 불가 |
 | `LLM_MODEL` | 서비스 모델 이름 (예: `openai/gpt-4o-mini`). 전 이름 `MODEL_A` | `partial`: 판정 표 등급만 나오고 설명 문장 없음 (데모는 녹화 답) |
+| `MEMORY_MODEL` | 화물 비서 기억 뽑기 모델 | 기억 뽑기를 건너뛴다 |
+| `DAILY_TOKENS_PER_USER` | 1명당 하루 LLM 토큰 한도 (예시 기본 100000, 비우거나 0이면 막지 않음) | 한도 없음 |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse 프로젝트 설정 | 트레이스 없음 |
 | `MCP_TOKEN` | 아무 랜덤 문자열 | /mcp가 인증 없이 열린다 |
 | `SUPABASE_URL` | Supabase 프로젝트 주소 (비밀값 아님) | 로그인이 꺼진다. 데모·채점은 비워 둔다 |
 | `SUPABASE_SECRET_KEY` | Supabase 대시보드 API Keys | 회원 탈퇴 불가 |
 | `BL_ENCRYPTION_KEY` | 아래 명령으로 한 번 만들고, 모든 환경에 같은 값 | B/L 원본을 저장하지 않는다 |
+| `PII_ENCRYPTION_KEY` | 회원 정보·운영자 이메일 열쇠 (B/L 열쇠와 별도). 팀이 같은 값을 공유 | 회원 정보를 다시 열 수 없다 |
+| `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` / `KAKAO_REDIRECT_URI` | 카카오 디벨로퍼스 | 카카오톡 알림 연결 불가 |
+| `REPLAY_MODE` | `true`면 외부 API 대신 `evals/fixtures/replay/`를 읽는다 (기본 `false`) | |
 
 **`SUPABASE_URL`을 채우면 로그인이 필수가 된다.** `/api/agent` 요청에 `Authorization: Bearer <Supabase 로그인 토큰>`이 없으면 401 `{"detail":"로그인이 필요합니다"}`이다. 키 없이 돌려 볼 때는 비워 둔다.
 
@@ -275,6 +300,14 @@ python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.
 
 윈도우는 `.venv/bin/python` 대신 `.venv\Scripts\python`이다.
 
+### 화면(web/) 로컬 실행
+
+```bash
+cd web && npm install && npm run dev     # :3000. Node 20.9 이상
+```
+
+`web/.env`의 `NEXT_PUBLIC_API_BASE`를 비우면 백엔드 없이 `web/lib/fixtures` 가공 데이터로 뜨고, `http://localhost:8000`을 넣으면 위 API 서버에 붙는다. 키 목록은 `web/.env.example`, 화면 설명은 `web/README.md`다.
+
 ### MCP 서버 확인
 
 MCP 서버는 API 서버 안의 `/mcp` 경로다. 서버 하나, 배포 주소 하나로 `/api/agent`(화면용)와 `/mcp`(MCP 클라이언트용)가 같이 열린다.
@@ -293,24 +326,28 @@ python -m scripts.mcp_auth_check                        # 토큰 없으면 401
 ### 테스트
 
 ```bash
-pytest          # 464건 (10-01). 외부 API 키 없이 돈다 (가공 응답으로 대체)
+pytest          # 외부 API 키 없이 돈다 (가공 응답으로 대체). 10-06 `pytest --collect-only`로 2063건 수집 확인
 ```
+
+PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `mcp_server/tests`를 돌린다. 실제 API·LLM을 부르는 평가(`python -m evals.run_eval --config a|b|c`)는 돈이 들어 따로 돌린다.
 
 ### 아직 안 되는 것
 
 | 항목 | 상태 |
 |---|---|
-| 웹 화면 | `web/` 미착수 |
+| 실사용 기록 | 배포 서버는 재생 모드 데모라 실제 사용자 B/L 판정 기록이 없다 (EVAL_REPORT 8절) |
+| 감시 재판정 주기 가동 | 워커 스케줄(`WORKER_SCHEDULE`)과 감시 재판정(`WATCH_ENABLED`)은 기본 꺼짐이다 |
+| 부산 외 항만, 이메일·푸시 알림 | 만들지 않았다 |
 
 ### 기술 스택
 
 | 영역 | 사용 |
 |---|---|
-| Backend | FastAPI, Pydantic v2, Docker, Cloud Run |
-| Frontend | Next.js 14, Vercel |
-| LLM | OpenRouter (모델 2개 비교, 구조화 출력) |
+| Backend | FastAPI, Pydantic v2, Docker, Railway (`marvia-api`) |
+| Frontend | Next.js 16, React 19, Railway (`marvia-web`), MapLibre 지도 |
+| LLM | OpenRouter (모델 2개 비교, 구조화 출력). `llm.py`에 Vertex(`vertex/` 접두) 경로도 있다 |
 | 도구 | FastMCP (Streamable HTTP), ShipFinder, 해수부 공공데이터, searoute |
-| 데이터 | PostgreSQL 16 |
+| 데이터 | Supabase(배포 DB·로그인), 로컬은 PostgreSQL 16 |
 | 관측·평가 | Langfuse (트레이스, Prompt, Dataset) |
 
 ---
@@ -334,6 +371,16 @@ pytest          # 464건 (10-01). 외부 API 키 없이 돈다 (가공 응답으
 | 요청당 비용 | $0 (LLM 없음) | $0.000365 (5회 평균) | $0.003791 |
 
 등급은 코드 판정 표가 정해서 (a)도 등급은 다 맞힙니다. (b)와 (c)는 판정 칸이 같고, (b)를 고른 이유는 출력 계약 준수율과 비용·지연입니다 (EVAL_REPORT 5절). 지연은 재생 파일 기준이라 실제 외부 호출 시간이 빠져 있습니다. Langfuse 도착 기록 집계는 [docs/evidence/langfuse_summary.md](./docs/evidence/langfuse_summary.md).
+
+**10-06 갱신:** 위 표는 EVAL_REPORT 5절의 10-02 측정이다. 10-06에는 판정 프롬프트(judge) 9 → 10으로 바꿔 같은 코드·모델(gpt-4o-mini)로 다시 쟀고, 통관 해설이 4/20(0.20)에서 20/20(1.0)이 됐다(1회씩, EVAL_REPORT 4절 5·6번). 배포 서비스 모델은 `docs/release_manifest.json` 기준 `google/gemini-3.5-flash-lite`이며, 아래는 EVAL_REPORT에 아직 없고 결과 파일에서 그대로 읽은 10-06 값이다.
+
+| 결과 파일 (`evals/results/`) | 구성 | exact | 판정 정확도 | act 재현율 | 선박 오확정 | 통관 해설 | p50 / p95 | 요청당 비용 |
+|---|---|---|---|---|---|---|---|---|
+| `a_20261006_2158.json` | (a) 규칙만 | 29/30 | 1.0 | 1.0 | 0 | 해당 없음 | 0.03초 / 0.08초 | $0 |
+| `b_20261006_1739.json` | (b) openai/gpt-4o-mini | 30/30 | 1.0 | 1.0 | 0 | 0.95 (20건) | 4.0초 / 7.1초 | $0.000696 |
+| `b_20261006_2306.json` | (b) google/gemini-3.5-flash-lite | 30/30 | 1.0 | 1.0 | 0 | 1.0 (20건) | 2.0초 / 7.4초 | $0.0022 |
+
+세 파일 모두 게이트 4개(act 누락, 선박 오확정, 스키마 95%, 주입 오작동) 통과이고 1회씩 쟀습니다. `a_...2158`과 `b_...2306`의 `git_commit`에는 `-dirty`가 붙어 커밋 전 작업 트리에서 돌렸고, `b_...1739`는 `git_commit`이 비어 있습니다.
 
 **배포 게이트:** act 누락 1건 이상 · 선박 오확정 1건 이상 · 스키마 통과 95% 미만 · 주입 오작동 1건 이상 중 하나라도 걸리면 배포하지 않습니다.
 

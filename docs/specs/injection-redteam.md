@@ -42,6 +42,13 @@
 
 ## Done
 
-- [ ] 키 없이(OPENROUTER_API_KEY 없이) 끝까지 돈다
-- [ ] 채널별·유형별 뚫림 수와 사용자에게 간 문장을 요약한다
-- [ ] 뚫린 공격이 있으면 문장을 남겨 사람이 보고 방어를 정한다 (자동으로 방어를 고치지 않는다)
+- [x] 키 없이(OPENROUTER_API_KEY 없이) 끝까지 돈다 (10-01 실행)
+- [x] 채널별·유형별 뚫림 수와 사용자에게 간 문장을 요약한다 (수치는 evals/results/injection/README.md 표 7번에만 있다. 이 문서에는 옮기지 않는다)
+- [x] 뚫린 공격이 있으면 문장을 남겨 사람이 보고 방어를 정한다 (자동으로 방어를 고치지 않는다). 스크립트는 뚫림 문장을 결과 JSON에 남기고 방어는 고치지 않는다
+
+## 구현 상태 (10-06 확인)
+
+- 스크립트: `scripts/injection_redteam.py` (`python -m scripts.injection_redteam [--limit N] [--channels ...]`). 채널은 follow_up, chat, pick_dest, judge_customs, doc_ocr 다섯 가지이고 `services/chat`을 불러오지 못하면 chat은 뺀다
+- 결과 원본은 `evals/results/injection/redteam/` (현재 `redteam_20261001_1449.json` 한 개). `evals/results/injection/README.md`는 같은 폴더의 `redteam_20261001_1523`도 가리키는데 파일은 없다. 확인이 필요하다
+- 손으로 잰 측정의 스크립트·원본은 `evals/results/injection/` 아래에 있고 요약은 `summarize.py`로 다시 센다
+- 코드 방어 테스트: `backend/tests/test_guard.py`, `test_guard_1006.py`, `test_guard_userinput.py`

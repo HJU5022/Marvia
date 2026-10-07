@@ -6,7 +6,7 @@
 왜 이렇게 했나:
 - 대칭키 방식이다. 잠그는 열쇠와 여는 열쇠가 같다 (로그인 출입증의 공개키 방식과 반대, auth.py)
 - 서버(파이썬)에서 잠그고 DB에는 잠긴 글자만 보낸다. DB의 pgcrypto를 쓰면 열쇠가 SQL에 실려 DB 로그에 남을 수 있다.
-  열쇠는 .env의 BL_ENCRYPTION_KEY(배포는 Cloud Run Secret Manager)에만 둔다. DB가 새도 열쇠는 따로 있다
+  열쇠는 .env의 BL_ENCRYPTION_KEY(배포는 Railway 서비스 환경변수)에만 둔다. DB가 새도 열쇠는 따로 있다
 - Fernet(cryptography 라이브러리)은 AES 암호화와 위조 검사를 묶은 표준 레시피다. 암호 조합을 직접 짜지 않는다
 - 같은 값을 두 번 잠가도 결과가 매번 다르다. 그래서 잠긴 글자로는 검색할 수 없고, 찾기는 bl_masked로 한다
 

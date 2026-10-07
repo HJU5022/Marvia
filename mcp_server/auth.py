@@ -1,7 +1,7 @@
 """MCP 서버 토큰 인증 (작업 A10).
 
 /mcp는 Authorization: Bearer <MCP_TOKEN> 없이 부를 수 없다 (SDD 5.9, 7절).
-공개된 Cloud Run 주소로 아무나 우리 ShipFinder·해수부 키를 태우지 못하게 막는 것이 목적이다.
+공개된 배포 주소로 아무나 우리 ShipFinder·해수부 키를 태우지 못하게 막는 것이 목적이다.
 
 FastMCP에는 OAuth 기반 인증이 있지만 발급 서버와 메타데이터 경로가 필요하다.
 우리는 서버 사이(FastAPI에서 MCP)만 부르므로 고정 토큰 하나로 충분하다.

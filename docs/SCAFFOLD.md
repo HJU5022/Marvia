@@ -1,5 +1,7 @@
 # 이 저장소에 미리 들어 있는 것
 
+> **10-06 갱신 안내:** 이 문서는 강사가 처음 준 스캐폴드(빈 뼈대)의 설명이다. 아래 본문은 그대로 두고, 각 항목 끝에 "10-06 현재"로 지금 실제 모습을 덧붙였다. 한눈에 보는 현재 구조는 [README 3절](../README.md), 폴더별 책임은 [CLAUDE.md](../CLAUDE.md) "폴더"에 있다. 처음 뼈대의 `backend/main.py`, `backend/services/`, `skills/SKILL.md`, `evals/dataset.jsonl`(3건) 같은 경로는 지금 아래처럼 바뀌었다.
+
 처음 열면 낯선 폴더가 여럿 보일 겁니다. **전부 비어 있는 뼈대**이고, 여러분이 채우는 자리입니다.
 "어디에 둬야 하나"를 고민하는 데 시간을 쓰지 말라고 미리 잡아 두었습니다.
 
@@ -7,7 +9,7 @@
 
 ---
 
-## 한눈에
+## 한눈에 (처음 스캐폴드)
 
 ```
 backend/              FastAPI 서버              ← 필수 2
@@ -24,6 +26,17 @@ Dockerfile            컨테이너 이미지            ← 필수 2
 docker-compose.yml    `docker compose up` 한 줄  ← 필수 2
 .env.example          필요한 키 목록
 ```
+
+10-06 현재 위치 (새로 생긴 폴더 포함):
+
+| 처음 뼈대 | 지금 |
+|---|---|
+| `backend/main.py` | `backend/app/main.py` |
+| `backend/services/llm.py` | `backend/app/services/llm.py` (서비스 파일 30여 개, routers·schemas·clients·observability·db/migrations·prompts 폴더가 생겼다) |
+| `skills/SKILL.md` | `skills/<이름>/SKILL.md` + `rules.md` (ais-reliability, customs-stages, port-busan, cargo-verdict, referrals) |
+| `mcp_server/server.py` | `mcp_server/server.py` + `tools/` 도구 4종 + `schemas.py` + `auth.py`. `/mcp`는 API 서버 안의 경로 |
+| `evals/dataset.jsonl` (예시 3건) | `evals/dataset.jsonl` 30건, `doc_dataset.jsonl` 서류 12건, `fixtures/`, `results/`, 실행기·채점기 |
+| (없음) | `worker/`(수집·감시), `web/`(Next.js 16), `scripts/`, `Dockerfile.railway`, `docs/ERD.md`·`release_manifest.json`·`evidence/` |
 
 ---
 
@@ -59,6 +72,8 @@ routers/extract.py
 
 이 파일이 책임지는 것: 출력 계약 검증(Pydantic) · 실패 시 재시도와 폴백 · Langfuse 트레이스.
 
+10-06 현재: 모아 두는 원칙은 지켰다. `backend/app/services/llm.py`만 LLM SDK를 import하고 라우터·MCP 도구·워커·프론트는 부르지 않는다. 검증 규칙(V1~V15)은 `validate.py`와 `routers/agent.py`에 있고 재시도 3단계 뒤 판정 표 등급으로 폴백한다. 이 프로젝트는 RAG를 쓰지 않는다(PRD 4절).
+
 ### `skills/SKILL.md`
 
 필수 조건 5의 절반입니다. **도메인 지식과 판단 기준을 적어 모델에 넘기는 문서**예요.
@@ -75,6 +90,8 @@ routers/extract.py
 
 검색해서 그때그때 넣는 방식(RAG)은 3차에서 다룹니다. 2차에서는 **적어 넣습니다.**
 
+10-06 현재: 한 파일이 아니라 도메인별 폴더 5개이고, 각각 `SKILL.md`(도메인 지식·설명법)와 `rules.md`(코드가 읽는 임계값·표·목록)로 나뉜다. `referrals`는 LLM에 넣지 않고 코드가 안내 문장에 붙인다.
+
 ### `mcp_server/server.py`
 
 필수 조건 5의 나머지 절반. 2주차 17강에서 만든 `FastMCP` 그대로입니다.
@@ -89,6 +106,8 @@ def example_tool(query: str) -> str:
 
 확인 방법은 자유입니다 — Claude Desktop이나 Cursor에 연결해도 되고, 18강처럼 `langchain-mcp-adapters`로 붙여도 됩니다. **연결해서 도구가 불린다는 것만 화면으로 보이면 됩니다.**
 
+10-06 현재: 도구 4종(`get_vessel_candidates`, `get_live_position`, `get_port_schedule`, `estimate_distance`)을 `create_mcp()`가 루프로 등록한다(`@mcp.tool` 데코레이터는 쓰지 않는다). 확인은 `scripts/mcp_check.py`, `mcp_demo.py`, `mcp_auth_check.py`로 하고 연결 캡처는 `docs/evidence/`에 있다.
+
 ### `evals/`
 
 필수 조건 4. **최소 30건**이고 정상·경계·실패 유도를 섞습니다.
@@ -101,11 +120,13 @@ def example_tool(query: str) -> str:
 
 `why` 칸이 있는 이유: **정답을 정한 기준을 적어야** 나중에 팀원끼리 판단이 갈릴 때 돌아볼 수 있습니다.
 
+10-06 현재: 30건으로 채웠다(정상 8 · 경계 14 · 실패 유도 8, `evals/dataset.jsonl`). 문항마다 `labeler`·`label_reason`이 있다. 결과는 `evals/results/`.
+
 **착수 후 9/23(수)까지 채우세요.** 9/24~27이 추석 연휴라, 이게 없으면 연휴가 통째로 빕니다. 반대로 문제 정의와 평가셋만 있으면 각자 비동기로 진행할 수 있습니다.
 
 ### `EVAL_REPORT.md`
 
-제출물이자 축 ④(25점)의 근거 문서입니다. 표 다섯 개가 비어 있습니다.
+제출물이자 축 ④(25점)의 근거 문서입니다. 표 다섯 개가 비어 있습니다. (10-06 현재: 채워져 있다. 루트 `EVAL_REPORT.md`.)
 
 평가셋 구성 · **개선 전후 지표** · 무엇을 바꿨나(KEEP/DISCARD) · 실패 사례 분석 · 출시 게이트.
 
@@ -122,6 +143,8 @@ docker compose up      # 한 줄
 ```
 
 기본으로 `api`(FastAPI)와 `db`(Postgres) 두 서비스가 들어 있습니다. Postgres가 필요 없으면 지우고, Redis 같은 게 필요하면 추가하세요.
+
+10-06 현재: `api`, `worker`, `db`(postgres 16) 세 서비스다. `Dockerfile`은 base / app / worker 멀티스테이지이고, 배포용으로 `Dockerfile.railway`(app 단계만)를 따로 둔다. 배포는 Railway다.
 
 > Apple Silicon(M1~M4)에서 이미지가 안 뜨면 `docker-compose.yml`의 `platform: linux/amd64` 주석을 해제해 보세요.
 
