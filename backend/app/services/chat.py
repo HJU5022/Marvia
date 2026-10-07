@@ -226,6 +226,45 @@ def search_ship_name(name: str, last: str | None = None) -> ChatResult | None:
                       vessels=_vessel_rows(chosen), place=None, ports=[], days=DAYS_MAX)
 
 
+# ── 사람 이름 되풀이 막기 (A1, 항상 켜짐) ──
+# 10-08 실험 A1/A3/A4, Vertex 3회 486턴 기준 person 66.7→100%, broker 62.5→100%, this_ship 90.5→100% (보고서: 브랜치 vertex-exp-1008의
+# experiments/vertex_1008/REPORT.md). "호준이", "민수 어디야?", "김대리한테 전달해야 돼"처럼 화물·배와 상관없는 사람 이름에
+# 모델이 "호준이는 ~"처럼 이름을 따라 쓰면(프롬프트의 "이름을 쓰지 말라"는 규칙을 어김) 코드가 그 답을 버리고 고정 문장으로 되묻는다.
+# 사람 이름은 목록으로 알 수 없어서 말 모양으로 가린다: (a) 이름 뒤에 붙는 말(이·아·야·씨·님·한테 등)이 붙은 2~3글자 낱말,
+# (b) 직함이 끝에 붙은 낱말(김대리), (c) 문장 맨 앞의 2~3글자 낱말(서술어 끝이 아닐 때). 단 Skill 문서·고정 안내에 있는 낱말(화물, 통관 등)은 이름이 아니다.
+PERSON_ASK = "누구를 말씀하시는지 잘 모르겠어요. 화물이나 배라면 B/L 번호나 배 이름으로 알려 주세요."
+_PERSON_SUFFIXES = sorted(["이한테", "한테", "이는", "이가", "이랑", "이도", "이야", "씨", "님", "이", "아", "야"], key=len, reverse=True)
+_PERSON_TITLES = ("대리", "과장", "차장", "부장", "팀장", "사장", "대표", "이사", "선배")
+_PREDICATE_END = re.compile(r"(?:다|요|네|죠|어|해|나|라|까|자)$")  # 서술어 끝: 맨 앞 낱말이 이것이면 이름이 아니라 말(망했다, 힘들다)로 본다
+_NOT_A_NAME = {"뭐야", "이거", "저거", "그거", "어디", "언제", "누구", "얼마", "어떻게", "왜", "그럼", "근데", "그리고", "아니"}  # 맨 앞에 자주 오는 물음·이음 낱말
+
+
+def person_names(masked: str, known_words: str) -> list[str]:
+    """가린 문장에서 사람 이름처럼 생긴 낱말(조사를 뗀 뿌리)을 뽑는다. known_words(Skill 문서·고정 안내)에 있는 낱말은 이름이 아니다."""
+    flat_known = re.sub(r"\s+", "", known_words)
+    names: list[str] = []
+    first_word = (masked.split() or [""])[0].strip("?!.,~")  # (c)는 문장 맨 앞 낱말만 본다
+    for token in re.findall(r"[가-힣]{2,8}", masked):
+        stem = None
+        for suffix in _PERSON_SUFFIXES:
+            if token.endswith(suffix) and 2 <= len(token) - len(suffix) <= 4:
+                stem = token[: -len(suffix)]
+                break
+        if stem is None and token.endswith(_PERSON_TITLES):
+            stem = token
+        if stem is None and token == first_word and 2 <= len(token) <= 3 and not _PREDICATE_END.search(token) and token not in _NOT_A_NAME:
+            stem = token
+        if stem and stem not in flat_known and not _PREDICATE_END.search(stem) and stem not in names:
+            names.append(stem)
+    return names
+
+
+def echoes_person_name(masked: str, reply: str, known_words: str) -> bool:
+    """답이 사용자 문장 속 사람 이름을 그대로 옮겨 썼는가 (이름 글자가 답에 들어 있으면 참)."""
+    flat_reply = re.sub(r"\s+", "", reply or "")
+    return any(name in flat_reply for name in person_names(masked, known_words))
+
+
 class ChatError(Exception):
     """kind: too_long / empty."""
 
@@ -2524,6 +2563,12 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return ChatResult(kind="message", reply=checked or fixed(NOT_IN_SKILLS))
     if BROKER_TOPIC.search(masked):  # 세액·관세율·통관 가능 여부: 마르비아는 답하지 않고 관세사에게 묻게 한다 (PRD 4절, 10-05)
         return ChatResult(kind="message", reply=fixed(BROKER_ONLY))
+    if out.answer_kind in ("unrelated", "clarify") and not is_memo_question(masked) \
+            and echoes_person_name(masked, text, skills_only + OTHER_REPLY + validate.GENERAL_TERMS):
+        # 10-08 실험 A1: 사람 이름을 답에 따라 썼다. 모델 문장을 버리고 고정 문장으로 누구를 말하는지 되묻는다.
+        # 저장한 메모를 묻는 문장(거래처 이름 등)은 사람 이름이 아니라서 건드리지 않는다 (recall_memo 답 보호)
+        log_failure("chat_agent_reply", "person_name_echo")
+        return ChatResult(kind="message", reply=PERSON_ASK)
     general = general_reply(out, text)
     if general:
         return ChatResult(kind="message", reply=general)
