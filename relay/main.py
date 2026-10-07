@@ -32,7 +32,8 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _client = httpx.Client(timeout=UPSTREAM_TIMEOUT_SEC)
 
 
-@app.get("/healthz")
+# Cloud Run은 /healthz 경로를 자기 쪽에서 가로채 404를 낸다 (10-07 실측). 그래서 /health로 둔다
+@app.get("/health")
 def healthz() -> Response:
     return Response("ok", media_type="text/plain")
 

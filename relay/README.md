@@ -8,7 +8,7 @@
 - `X-Relay-Token` 헤더가 환경변수 `RELAY_TOKEN`과 같아야 한다(상수 시간 비교). `RELAY_TOKEN`이 없으면 전부 503
 - 허용 경로는 `/1192000/VsslEtrynd5/*`, `/1192000/CntlVssl2/*`뿐. 나머지는 404
 - 쿼리스트링(serviceKey 포함)은 로그에 남기지 않는다. 경로·상태·소요 ms만 기록
-- `/healthz`는 인증 없이 200 `ok`
+- `/health`는 인증 없이 200 `ok` (Cloud Run이 `/healthz`를 가로채서 이 이름을 쓴다)
 
 ## 환경변수
 | 이름 | 어디 | 설명 |

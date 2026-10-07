@@ -28,7 +28,7 @@ GOOD = {"X-Relay-Token": "secret"}
 
 def test_healthz_needs_no_token(monkeypatch):
     monkeypatch.delenv("RELAY_TOKEN", raising=False)
-    r = client.get("/healthz")
+    r = client.get("/health")
     assert (r.status_code, r.text) == (200, "ok")
 
 
