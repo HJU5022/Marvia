@@ -236,7 +236,11 @@
 .vl-watch .wv-err{flex-basis:100%;max-width:none}
 /* 68: 화물 없이 배만 지켜볼 때는 지도 한 칸만 */
 .wm-body:not(:has(.wm-side)){grid-template-columns:minmax(0,1fr)}
-.vessel-pin span{display:block;width:16px;height:16px;box-sizing:border-box;border:2px dashed var(--text,#111);background:var(--bg,#fff)}
-.vessel-pin-tip{box-shadow:none;border:1px solid var(--border-strong,#cfcfcf);border-radius:0;padding:4px 8px}
-.vessel-pin-tip strong{display:block;font-size:var(--text-sm,13px)}
-.vessel-pin-tip small{color:var(--muted)}
+/* 69: 배만 지켜보는 배는 다른 지도와 같은 화살표·작은 이름 알약. 옅은 색과 "배만" 꼬리표로만 구분한다 */
+.heading-marker.vessel-only span{color:var(--text-2,#6b7280);opacity:.85}
+.leaflet-tooltip.vessel-only-tip{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2,#6b7280)}
+.vessel-only-tag{font-style:normal;font-size:var(--fs-xs,11px);margin-left:5px;padding:0 4px;border:1px solid var(--border-strong,#cfcfcf);color:var(--muted)}
+.vessel-only-popup .leaflet-popup-content-wrapper{border-radius:0;box-shadow:none;border:1px solid var(--border-strong,#cfcfcf)}
+.vessel-only-popup .leaflet-popup-content{margin:0}
+.vessel-only-popup .watch-tip{width:auto;min-width:180px}
+.vessel-only-popup .watch-tip span{display:block;color:var(--muted)}

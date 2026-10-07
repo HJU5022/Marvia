@@ -85,7 +85,16 @@ export function WatchMap() {
   const done = list?.items.filter(i => i.status === 'done').length ?? 0;
   const total = active.length + waiting.length;
   // 위치가 있는 배만 지도에 찍는다. 위치 없는 배는 아래 "지켜보는 배" 목록에 글로 나온다
-  const vesselPins = (vessels ?? []).filter(v => v.lat != null && v.lng != null);
+  // 10-08 정운 실사용 69번: 같은 배(MMSI)가 두 번 오면 마커가 겹쳐 글상자가 두 겹으로 보였다. MMSI마다 가장 늦게 받은 위치 하나만 남긴다.
+  // 화물(B/L) 쪽 항목에는 MMSI가 없어, 화물의 진짜 선명이 같은 배는 화물 마커 하나만 보이도록 이름(대소문자·공백 무시)으로 뺀다
+  const normName = (n: string) => n.trim().toUpperCase().replace(/\s+/g, ' ');
+  const cargoShips = new Set(active.map(i => realShip(i)).filter((n): n is string => !!n).map(normName));
+  const latestByMmsi = new Map<number, WatchedVessel>();
+  (vessels ?? []).filter(v => v.lat != null && v.lng != null).forEach(v => {
+    const prev = latestByMmsi.get(v.mmsi);
+    if (!prev || (v.position_at ?? '') > (prev.position_at ?? '')) latestByMmsi.set(v.mmsi, v);
+  });
+  const vesselPins = [...latestByMmsi.values()].filter(v => !cargoShips.has(normName(v.name)));
 
   useEffect(() => {
     if (!list || !(total || vesselPins.length)) return;  // 위치 있는 화물이 없어도 부산항 기준 빈 지도는 그린다 (10-07 17번)
@@ -111,12 +120,38 @@ export function WatchMap() {
       L.marker(port, {icon: L.divIcon({className: 'port-marker', html: '<span>⚑</span>', iconSize: [28, 28], iconAnchor: [14, 14]}), interactive: false, zIndexOffset: -1000})
         .addTo(map).bindTooltip('부산항', {permanent: true, direction: 'bottom', offset: [0, 12], className: 'port-tooltip'});
 
-      // 10-08 정운 실사용 68번: 배만 지켜보는 배는 네모 점선 표지와 이름표로 화물 핀(둥근 글자 핀)과 다르게 그린다. 묶지 않고 판정도 없다
-      vesselPins.forEach(v => {
-        const when = v.position_at ? ` · ${esc(dateTime(v.position_at, true))} 수신` : '';
-        L.marker([v.lat as number, v.lng as number], {icon: L.divIcon({className: 'vessel-pin', html: '<span></span>', iconSize: [18, 18], iconAnchor: [9, 9]}), title: `${v.name} (배만 지켜보는 중)`, alt: `${v.name} (배만 지켜보는 중)`})
-          .addTo(map).bindTooltip(`<strong>${esc(v.name)}</strong><small>배만 지켜보는 중${when}</small>`, {permanent: true, direction: 'right', offset: [12, 0], className: 'vessel-pin-tip', opacity: 1});
+      // 10-08 정운 실사용 69번: 배만 지켜보는 배도 앱의 다른 지도(VesselMap)와 같은 방향 화살표(heading-marker)와 작은 이름 알약(ship-tooltip)으로 그린다.
+      // 네모 점선 표지와 늘 열린 큰 글상자는 글상자끼리 겹쳐 읽을 수 없었고 다른 지도와 모양이 달랐다. 구분은 옅은 색과 "배만" 꼬리표 정도로만 한다.
+      // 긴 설명("배만 지켜보는 중 · 수신 시각")은 마우스를 올리거나 누르거나 키보드로 열 때만 말풍선으로 보인다 (화물 핀과 같은 방식)
+      const vesselLayers: {m: L.Marker; at: L.LatLng}[] = vesselPins.map(v => {
+        const at = L.latLng(v.lat as number, v.lng as number);
+        const when = v.position_at ? dateTime(v.position_at, true) : null;
+        const detail = `<div class="watch-tip"><header><strong>${esc(v.name)}</strong></header><span>배만 지켜보는 중${when ? ` · ${esc(when)} 수신` : ''}</span>`
+          + `${v.sog != null ? `<span>${esc(`${v.sog}노트${v.cog != null ? ` · ${Math.round(v.cog)}°` : ''}`)}</span>` : ''}</div>`;
+        // 방향은 VesselMap과 같은 식(화살표 글자가 오른쪽을 보므로 cog - 90). 침로를 모르면 0도로 둔다
+        const icon = L.divIcon({className: 'heading-marker vessel-only', iconSize: [34, 34], iconAnchor: [17, 17],
+          html: `<span style="transform:rotate(${(v.cog ?? 0) - 90}deg)">➤</span>`});
+        const label = `${v.name} (배만 지켜보는 중)`;
+        const m = L.marker(at, {icon, title: label, alt: label, riseOnHover: true})
+          .addTo(map)
+          .bindTooltip(`${esc(v.name)}<em class="vessel-only-tag">배만</em>`, {permanent: true, direction: 'top', offset: [0, -16], className: 'ship-tooltip vessel-only-tip', opacity: 1})
+          .bindPopup(detail, {className: 'vessel-only-popup', closeButton: false, offset: [0, -14]});
+        // 누르기·키보드(Enter)는 Leaflet이 팝업을 열어 준다. 마우스를 올릴 때도 같이 연다
+        m.on('mouseover', () => m.openPopup()).on('mouseout', () => m.closePopup());
+        return {m, at};
       });
+      // 가까운 배끼리 이름 알약이 겹치면 먼저 놓인 하나만 두고 나머지 알약은 감춘다(마커와 말풍선은 그대로). 화물 핀 가까이의 배도 감춘다.
+      // 화물 핀의 CLUSTER_PX 거리 기준을 그대로 쓰고 새 충돌 체계는 만들지 않는다. 확대하면 거리가 벌어져 다시 보인다
+      const declutterVessels = () => {
+        const taken = active.map(it => map.latLngToLayerPoint([it.lat, it.lng]));
+        vesselLayers.forEach(({m, at}) => {
+          const pt = map.latLngToLayerPoint(at);
+          if (taken.some(q => q.distanceTo(pt) < CLUSTER_PX)) m.closeTooltip();
+          else { m.openTooltip(); taken.push(pt); }
+        });
+      };
+      map.on('zoomend', declutterVessels);
+      declutterVessels();
 
       // 경로 동그라미는 배 핀·클러스터보다 아래 층에 둔다. 같은 층이면 위도 순으로 겹쳐 클러스터를 가려 누를 수 없었다 (10-02 확인)
       map.createPane('watch-track').style.zIndex = '550';  // overlay(선) 400 < 경로 점 550 < 마커 600
