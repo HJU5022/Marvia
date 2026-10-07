@@ -725,6 +725,15 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     """가린 문장을 처리한다 (handle의 뒷부분). 에이전트가 먼저 맡고, 안 되면 의도 분류 방식(_classic)으로 간다."""
     today = datetime.now(KST).date().isoformat()
 
+    # 10-08 실험 A3 (항상 켜짐; 10-08 실험 A1/A3/A4, Vertex 3회 486턴 기준 person 66.7→100%, broker 62.5→100%, this_ship 90.5→100%):
+    # 관세·세금·세율·"통관 될까" 말이 있고 B/L이 없으면 모델을 거치지 않고 관세사 고정 안내로 답한다 (BROKER_TOPIC 낱말 그대로).
+    # 전에는 이 안내가 모델이 도구를 안 고른 길에서만 나와서, 화면에 화물이 있으면 ask_cargo로 샜다. 안내 글은 사용자 글을 옮기지 않아
+    # 주입 검사보다 먼저 내도 안전하다. 바로 앞 답이 같은 안내면 fixed()처럼 짧은 말로 바꾼다. B/L이 든 문장은 그 화물 조회가 먼저라 건드리지 않는다
+    if not refs and BROKER_TOPIC.search(masked):
+        last_assistant = next((t.get("text") or "" for t in reversed(history or []) if t.get("role") == "assistant"), "")
+        same = re.sub(r"\s+", "", last_assistant) == re.sub(r"\s+", "", BROKER_ONLY)
+        return ChatResult(kind="message", reply=BROKER_SHORT if same else BROKER_ONLY)
+
     # 주입 모양 문장은 LLM에 보내지 않는다 (services/guard.py, SDD 7절 10-01). 후속 질문 경로는 route_chat이 질문을
     # 다시 쓴 뒤에야 routers/agent의 guard를 지나서, 다시 쓰는 과정에서 공격문 모양이 바뀌면 빠져나갈 수 있다. 원문에서 먼저 본다
     if guard.looks_like_injection(masked):

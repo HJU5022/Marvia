@@ -98,7 +98,7 @@ def test_general_answer_may_use_common_shipping_terms(monkeypatch, web_off):
 def test_broker_topic_stays_broker_only_even_if_model_answers_general(monkeypatch, web_off):
     calls = _agent(monkeypatch, [], [_general("관세율은 품목마다 달라요.")])
     r = _ask("이 품목 관세율 몇 %야?")
-    assert r.reply == svc.BROKER_ONLY and len(calls) == 1  # 다시 묻지도 않는다
+    assert r.reply == svc.BROKER_ONLY and len(calls) == 0  # 모델을 아예 부르지 않는다 (A3, 10-08 실험)
     # 질문은 평범한데 답이 세액을 말하면 막는다
     _agent(monkeypatch, [], [_general("수입 서류는 세율에 따라 달라요."), _general("수입 서류는 세율에 따라 달라요.")])
     assert _ask("수입 서류가 뭐야?").reply == svc.NOT_IN_SKILLS
@@ -153,7 +153,7 @@ def test_no_web_attempt_when_web_already_searched_this_message(monkeypatch, web)
 
 def test_no_web_attempt_for_broker_topic(monkeypatch, web):
     calls = _agent(monkeypatch, [], [("", "not_in_skills", "")])
-    assert _ask("이 품목 관세율 몇 %야?").reply == svc.BROKER_ONLY and len(calls) == 1 and web == []
+    assert _ask("이 품목 관세율 몇 %야?").reply == svc.BROKER_ONLY and len(calls) == 0 and web == []  # A3: 모델도 웹도 안 부른다
 
 
 def test_web_attempt_happens_only_once_per_message(monkeypatch, web):
