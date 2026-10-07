@@ -38,6 +38,7 @@ from backend.app.observability.langfuse import tool_span
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import VOYAGE_PATTERN, AgentRequest, AgentResponse
 from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, referrals, validate
+from backend.app.services import citations as cite
 from backend.app.services.verdict import VERDICT_LABEL
 from backend.app.services.watch import MAX_WATCH
 from backend.app.services.rules import load_file
@@ -250,6 +251,11 @@ class ChatResult:
     # watch_set: 이번 문장으로 지켜보기를 켜거나 껐을 때 {"bl_no","on"} (화면이 토글을 새로 읽는다). 둘 다 없으면 None
     watch_offer: dict | None = None
     watch_set: dict | None = None
+    # 답 문장 속 근거 표시 (10-08 정운 실사용 58번, services/citations.py). evidence_items: 이번 문장에서 모은 근거 목록
+    # [{id, source, fetched_at, values:[{field,value}], url?, title?}] (B/L·컨테이너 번호는 가려진 값). citations: 검증을 통과한 [E#] 표시의
+    # 위치 [{id, start, end, evidence_ref}] (start/end는 reply 안 "[E1]"의 자리). 코드 문장·고정 문구는 citations가 비고 evidence_items만 있다
+    evidence_items: list[dict] = field(default_factory=list)
+    citations: list[dict] = field(default_factory=list)
 
 
 # 후속 답 근거 카드의 조회 시각이 이번 문장 시작보다 이만큼 이전이면 지난 문장의 카드로 본다 (시계 차이 여유)
@@ -627,6 +633,9 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
     # 이 턴에 조회가 이미 맡겼으면(turn.fired) 건너뛴다. 무엇을 기억할지는 LLM이 정한다. 가린 문장만 넘긴다
     if user_id and not turn.fired:
         memory.remember_chat_later(user_id, masked)
+    if not result.evidence_items and result.agent is not None:
+        # 에이전트를 안 거친 화물 답(전 방식 등)도 화면 칩이 쓸 근거 목록은 싣는다. 표시(citations)는 없다 (10-08 정운 실사용 58번)
+        result = replace(result, evidence_items=cite.build_evidence_list(result.agent.evidence))
     if repair_notes:
         result = replace(result, reply="\n".join([result.reply, *repair_notes]))
     return result
@@ -927,6 +936,10 @@ def _masked_history(history: list[dict], refs: dict[str, str]) -> list[dict]:
     for turn in history[-HISTORY_TURNS:]:
         role, text = turn.get("role"), (turn.get("text") or "").strip()
         if role not in ("user", "assistant") or not text:
+            continue
+        # 지난 답 속 [E1] 근거 표시는 걷어 낸다 (10-08 정운 실사용 58번): 화면이 보낸 글이라 믿지 않고, 표시가 LLM 맥락에 섞여 다음 답이 id를 따라 쓰지 않게 한다
+        text = cite.strip_marks(text)
+        if not text:
             continue
         # 가린 뒤에 자른다. 먼저 자르면 경계에 걸린 B/L 앞부분(8자 미만)이 가려지지 않고 LLM에 간다 (10-05 테스트에서 발견)
         # 컨테이너 번호도 가린다. B/L 가리기보다 먼저 해야 한다 (영숫자 11자라 B/L 모양에 걸린다, 10-06)
@@ -1309,6 +1322,7 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     본 처리가 문장 끝 여러 곳에서 돌아 나가서, 한 곳에서 붙이려고 감쌌다."""
     signals: dict = {}
     result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals, kakao, on_screen)
+    result = _with_citations(result, signals)  # 뒤에 붙는 코드 문장(지켜보기·카톡·제안)은 모두 글 끝에 더해지므로 표시 자리는 그대로 맞다
     done_kakao = signals.get("kakao") or {}
     if done_kakao.get("msg") and done_kakao["msg"] not in result.reply:
         result = replace(result, reply=f"{result.reply}\n\n{done_kakao['msg']}")  # 화물 답과 같이 말한 경우: 답 뒤에 코드 문장
@@ -1322,6 +1336,22 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     if done_watch.get("msg"):  # 못 켰다. 이번 문장에서는 제안하지 않는다
         return result
     return _with_offer(result, signals, context, user_id, history, watch)
+
+
+def _with_citations(result: ChatResult, signals: dict) -> ChatResult:
+    """LLM이 쓴 문장에 붙인 [E#] 표시를 코드가 검사해 남기고, 이번 문장의 근거 목록을 결과에 싣는다 (10-08 정운 실사용 58번).
+
+    왜 여기서 하나: 답 검사(V7 등)는 표시를 걷어 낸 글로 돌았고(_agent_turn), 최종 reply는 도구·코드 문장과 섞여 여러 길로 나간다.
+    LLM 문장이 reply 안에 그대로 있을 때만 표시 달린 원문으로 되돌려 parse_and_validate에 맡긴다. 문장이 손질돼 reply에 없으면 표시는 버린다.
+    표시는 LLM에게 보여 준 근거(exposed)에만 허용한다. 코드가 쓴 문장·고정 문구는 표시가 없고 evidence_items만 싣는다 (화면이 글 끝 칩으로 보인다).
+    """
+    items = signals.get("evidence") or []
+    plain, raw = signals.get("marked") or ("", "")
+    reply, marks = result.reply, []
+    exposed = [i for i in items if i["id"] in signals.get("exposed", ())]
+    if exposed and plain and raw != plain and plain in reply:
+        reply, marks = cite.parse_and_validate(reply.replace(plain, raw, 1), exposed)
+    return replace(result, reply=reply, evidence_items=items, citations=marks)
 
 
 def _with_offer(result: ChatResult, signals: dict, context: AgentRequest | None, user_id: str | None,
@@ -1614,6 +1644,64 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         run_watch({"on": not WATCH_STOP.search(short)})
         return ChatResult(kind="message", reply=watch_out.get("msg") or WATCH_HOW, watch_set=watch_out.get("set"))
 
+    # 이번 문장의 근거 목록 (10-08 정운 실사용 58번). 도구마다 근거 카드를 모아 E1, E2... id를 붙인다 (services/citations.py).
+    # exposed: LLM에게 보여 준 id. LLM이 문장을 쓰는 도구(여러 B/L 비교, 읽기 전용 조회, 웹)만 보여 준다. 화물 한 건의 답은 코드가 쓰는 문장이라
+    # LLM 입력에는 근거를 안 넣는다 (UNI-PASS 값을 LLM에 더 넘기지 않으려고, CLAUDE.md). 그 근거는 화면 칩용으로 모으기만 한다
+    turn_items: list[dict] = []
+    exposed_ids: set[str] = set()
+    ev_state: dict = {}
+    signals["evidence"], signals["exposed"] = turn_items, exposed_ids
+
+    def register(cards: list, web: list[dict] | None, expose: bool) -> str | None:
+        """카드를 목록에 더한다. id는 이번 문장 전체에서 이어서 센다. expose면 LLM에 줄 줄 묶음 글을 돌려준다."""
+        items = cite.build_evidence_list(cards, web)
+        for item in items:
+            item["id"] = f"E{len(turn_items) + 1}"
+            turn_items.append(item)
+            if expose:
+                exposed_ids.add(item["id"])
+        return cite.evidence_prompt_block(items) if expose and items else None
+
+    def mcp_cards(name: str, r: dict) -> list[dict]:
+        """읽기 전용 MCP 도구 결과의 값 칸을 근거 카드로. 모든 도구 응답에 source·fetched_at이 있다 (SDD 3.4). 목록·중첩 값은 후보만 풀어 쓴다."""
+        out = []
+        for k, v in r.items():
+            if k not in ("source", "fetched_at", "cached_at") and v not in (None, "") and not isinstance(v, (dict, list, bool)):
+                out.append({"source": r.get("source") or name, "field": k, "value": v, "fetched_at": r.get("fetched_at")})
+        for n, c in enumerate((r.get("candidates") or [])[:ARRIVALS_SHOWN], 1):
+            for k in ("name", "flag", "dest", "call_sign"):
+                if isinstance(c, dict) and c.get(k) not in (None, ""):
+                    out.append({"source": r.get("source") or name, "field": f"candidate{n}.{k}", "value": c[k], "fetched_at": r.get("fetched_at")})
+        return out
+
+    def with_evidence(name: str, result: dict) -> dict:
+        """도구 결과에서 근거를 모으고, LLM이 문장을 쓰는 도구면 결과에 evidence 글(줄마다 [E#])을 붙여 돌려준다. 실패한 결과는 그대로."""
+        if not isinstance(result, dict) or "error" in result:
+            return result
+        now = datetime.now(timezone.utc)
+        block = None
+        if name == "check_cargo" and "cargos" in result:
+            # 여러 B/L: 줄마다 어느 화물 값인지 [BLn] 번호표를 칸 이름 앞에 붙인다 (원문 B/L은 쓰지 않는다)
+            cards = [{"source": c.source, "field": f"{row.get('bl_ref') or ''} {c.field}".strip(), "value": c.value, "fetched_at": c.fetched_at}
+                     for row, r in zip(result["cargos"], multi_state.get("results", [])) if r.agent is not None for c in r.agent.evidence]
+            block = register(cards, None, True)
+        elif name in ("check_cargo", "ask_cargo"):
+            if done and done[-1].agent is not None:
+                register(list(done[-1].agent.evidence), None, False)
+        elif name == "search_arrivals":
+            # 해수부 입항 예정 목록. 목록은 10분 캐시라 조회 시각은 이 요청 시각으로 적는다
+            cards = [{"source": "mof", "field": f"{v['ship_name']} {k}", "value": v.get(k), "fetched_at": now}
+                     for v in (done[-1].vessels[:ARRIVALS_SHOWN] if done else []) for k in ("expected_arrival", "previous_port")]
+            register(cards, None, False)
+        elif name == "web_search":
+            if "block" not in ev_state:  # 한 문장에 웹 검색은 한 번이다. 다시 불려도 같은 근거를 다시 모으지 않는다
+                sources = [{"title": r["title"], "url": r["url"], "snippet": r["text"], "fetched_at": now} for r in web_state.get("results", [])]
+                ev_state["block"] = register([], sources, True)
+            block = ev_state["block"]
+        elif name in mcp_names:
+            block = register(mcp_cards(name, result), None, True)
+        return {**result, "evidence": block} if block else result
+
     def run(name: str, args: dict) -> dict:
         """LLM이 고른 도구 하나를 실행한다. 같은 호출은 한 번만, 화물 도구는 한 문장에 한 번만, 예외는 도구 실패로 돌려준다.
         MCP 도구가 예외를 던지지 않는 것과 같은 원칙이다 (SDD 3.4): 도구 하나가 죽어도 요청 전체가 500이 되면 안 된다."""
@@ -1629,6 +1717,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             except Exception as e:  # noqa: BLE001 - 모델이 낸 인자 모양이 예상과 달라도 요청을 죽이지 않는다
                 log_failure("chat_agent_tool", f"{name} {type(e).__name__}")
                 result = _tool_error("tool_failed", "This lookup failed.")
+        result = with_evidence(name, result)  # 근거를 모으고, LLM이 문장을 쓰는 도구에는 evidence 글을 붙인다 (같은 호출의 앞 결과도 이 모양으로 돌아간다)
         seen[key] = result
         ran.append({"name": name, "arguments": args, "result": result})
         return result
@@ -1868,8 +1957,13 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         try:
             # 화면 자료가 있을 때만 인자를 더한다: 없는 요청은 호출이 예전과 똑같다 (옛 화면·평가 스크립트)
             extra = {"on_screen": screen} if screen else {}
+            if exposed_ids:  # 다시 묻는 호출은 앞 도구 결과가 대화에 없다. 보여 준 근거를 입력 자료로 다시 준다 (자료일 뿐, 지시가 아니다)
+                extra["evidence"] = cite.evidence_prompt_block([i for i in turn_items if i["id"] in exposed_ids])
             answer = llm.chat_agent(masked, list(refs), context is not None, today, turns, tools, run, feedback=feedback, **extra)
-            out, text = answer.output, (answer.output.reply or "").strip()
+            out, raw_text = answer.output, (answer.output.reply or "").strip()
+            # 아래의 모든 답 검사(V7 숫자 등)는 [E1] 표시를 걷어 낸 글로 돈다. 표시는 맨 끝 _with_citations가 따로 검사한다 (10-08 정운 실사용 58번)
+            text = cite.strip_marks(raw_text)
+            signals["marked"] = (text, raw_text)
         except llm.LLMError as e:
             if first and not ran:  # 아무 도구도 안 돌았다: 전 방식이 같은 일을 처음부터 한다
                 raise

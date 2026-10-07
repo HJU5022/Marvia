@@ -56,7 +56,7 @@ def _agent(monkeypatch, script=(), replies=("",), error=None, retry_script=None)
     error를 주면 도구를 다 돌린 뒤 그 예외를 낸다 (도구 실행 뒤 LLM이 죽은 경우). 받은 인자는 calls에 모은다."""
     calls = []
 
-    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None):
+    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None, evidence=None):
         n = len(calls)
         call = {"masked": masked, "refs": list(refs), "has_cargo": has_cargo, "history": history,
                 "tools": tools, "feedback": feedback, "tool_calls": []}
@@ -308,7 +308,7 @@ def test_knowledge_reply_that_repeats_injection_or_user_marker_is_replaced(monke
 def test_knowledge_retry_failure_and_empty_reply_give_fixed_reply(monkeypatch):
     calls = []
 
-    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None):
+    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None, evidence=None):
         calls.append(feedback)
         if feedback:
             raise llm.LLMError("down", kind="timeout")

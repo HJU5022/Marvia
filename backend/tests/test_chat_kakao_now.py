@@ -187,7 +187,7 @@ def test_two_bls_one_at_a_time(monkeypatch):
 def test_no_raw_bl_to_llm(monkeypatch):
     seen = []
 
-    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None):
+    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None, evidence=None):
         seen.append((masked, refs, [t["function"]["name"] for t in tools]))
         run("send_kakao", {})
         out = llm.ChatAgentOutput(reply="", answer_kind="tool", skill_quote="", watch_cue=False)

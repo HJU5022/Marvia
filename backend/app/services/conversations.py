@@ -34,7 +34,8 @@ NO_TITLE = "새 대화"      # 첫 말이 비어 있을 때만
 # 답 말풍선을 다시 그리는 데 필요한 화면 자료 칸. reply는 말풍선 글이라 text로 따로 저장하고,
 # agent·request(큰 판정 덩어리)는 대화의 마지막 값만 conversations.context·result에 둔다.
 # 단, cargos 줄은 눌렀을 때 오른쪽 칸을 바꾸려고 줄마다 agent·request를 들고 있어 그대로 둔다
-EXTRA_FIELDS = ("kind", "vessels", "place", "ports", "days", "map", "cargos", "watch_offer", "watch_set")
+# evidence_items·citations (10-08 정운 실사용 58번): 다시 연 대화에서도 근거 표시·칩이 그대로 나오게 extra_enc(잠긴 JSON)에 같이 둔다. 마이그레이션 없음
+EXTRA_FIELDS = ("kind", "vessels", "place", "ports", "days", "map", "cargos", "watch_offer", "watch_set", "evidence_items", "citations")
 
 
 def ready() -> bool:
