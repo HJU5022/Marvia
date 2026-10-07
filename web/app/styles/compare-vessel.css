@@ -246,7 +246,7 @@
 .cmp-table tbody th button:hover .cmp-bl{color:var(--text)}
 .cmp-ship{font-weight:400}
 .cmp-margin b{font-weight:400;font-variant-numeric:tabular-nums}
-.vl-head h2{font-size:var(--fs-lg,18px);font-weight:300;letter-spacing:.04em}
+.vl-head h2{font-size:var(--fs-lg,18px);font-weight:400;letter-spacing:.04em}
 .vl-head p{letter-spacing:.02em}
 .vl-kinds-toggle{min-height:32px;padding:0 14px;border:1px solid var(--border-strong,#cfcfcf);color:var(--text);font-weight:400;letter-spacing:.06em}
 .vl-kinds-toggle:hover{background:none;border-color:var(--text)}
@@ -271,11 +271,11 @@
 .vessel-detail-info dd,.vd-fact,.vd-row{font-variant-numeric:tabular-nums}
 .vessel-detail-info dt{font-size:var(--fs-sm,13px)}
 .vessel-detail-info dd{font-size:var(--fs-sm,13px)}
-.vd-top strong,.vd-head strong{font-weight:300}
+.vd-top strong,.vd-head strong{font-weight:400}
 .vessel-map-caption small{font-size:var(--fs-xs,12px)}
 .vessel-map-tools .map-tool{width:30px;height:30px}
 /* 되묻기 후보: 상자 대신 가는 선 행, "선택"은 얇은 네모 단추, 고른 줄은 글자색 테두리 */
-.cand-title{font-size:var(--fs-lg,18px);font-weight:300;letter-spacing:.04em}
+.cand-title{font-size:var(--fs-lg,18px);font-weight:400;letter-spacing:.04em}
 .cand-sub{font-size:var(--fs-sm,13px);color:var(--muted)}
 .cand-list{gap:0;border-top:1px solid var(--hairline,#e5e8eb)}
 .cand-card .candidate.cand-row{padding:16px 0;box-shadow:none;border-bottom:1px solid var(--hairline,#e5e8eb);background:none}

@@ -22,6 +22,7 @@ import './styles/landing.css';
 import './styles/sidebar.css';
 import './styles/metrics.css';
 import './styles/evidence.css';
+import './styles/brand.css';  // 로그인한 뒤 화면을 랜딩 톤에 맞추는 마지막 덮개 (10-07). 다른 화면 CSS보다 뒤에 둔다
 import {AppProvider} from '@/components/AppProvider';
 import {Shell} from '@/components/Shell';
 export const metadata:Metadata={title:'Marvia',description:'B/L 하나로 내 화물이 제때 오는지 판정하고, 왜 그런지 근거까지 보여 드려요. 예시 데이터로 체험해 볼 수 있어요.'};
