@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime
 import functools
 import logging
+import os
 import re
 import threading
 import time
@@ -79,6 +80,30 @@ LABEL_MAX_CHARS = 20
 
 _engine = None
 _engine_lock = threading.Lock()
+CGROUP_CPU_MAX = "/sys/fs/cgroup/cpu.max"  # 컨테이너의 CPU 한도 (cgroup v2). 테스트에서 경로를 바꿔 끼운다
+OCR_THREADS_MAX = 4  # 사진 한 장 OCR은 4개를 넘겨도 빨라지지 않고, 코어가 많은 호스트에서 낭비만 는다
+
+
+def _ocr_threads() -> int:
+    """ONNX Runtime이 쓸 스레드 수. 환경변수 OCR_THREADS(1 이상 정수)가 있으면 그 값, 없으면 쓸 수 있는 CPU 수를 1~4로 자른다.
+
+    왜: ONNX Runtime 기본값(-1)은 호스트 코어 수만큼 스레드를 만든다. Railway 컨테이너는 CPU 한도(cgroup)가 작은데
+    os.cpu_count()는 호스트 코어를 돌려줘서, 스레드가 한도보다 훨씬 많아져 서로 기다리다 느려졌다.
+    같은 사진 한 장이 Railway에서 126초, 로컬에서 4~6초였다 (10-07 실사용 74).
+    cgroup v2 cpu.max는 "max 100000"(제한 없음) 또는 "200000 100000"(쿼터 주기 → 2개) 모양이다.
+    """
+    raw = os.environ.get("OCR_THREADS", "").strip()
+    if raw.isdigit() and int(raw) >= 1:
+        return int(raw)
+    cpus = os.cpu_count() or 1
+    try:
+        with open(CGROUP_CPU_MAX) as f:
+            quota, period = f.read().split()[:2]
+        if quota != "max":
+            cpus = max(1, int(quota) // int(period))  # 0.5 코어 쿼터는 1로 올린다
+    except (OSError, ValueError):  # 파일이 없거나(맥·cgroup v1) 모양이 다르면 os.cpu_count()를 쓴다
+        pass
+    return max(1, min(cpus, OCR_THREADS_MAX))
 
 
 @dataclass
@@ -105,6 +130,9 @@ def _get_engine():
             _engine = RapidOCR(params={
                 "Global.use_cls": False,  # 줄 단위 180° 판별은 끈다. 방향은 read_lines()가 페이지 단위로 맞춘다
                 "Global.log_level": "warning",
+                # 스레드를 컨테이너 CPU 한도에 맞춘다. 기본값(-1)은 호스트 코어 수라 Railway에서 126초 걸렸다 (_ocr_threads, 10-07)
+                "EngineConfig.onnxruntime.intra_op_num_threads": _ocr_threads(),
+                "EngineConfig.onnxruntime.inter_op_num_threads": 1,
                 "Det.ocr_version": OCRVersion.PPOCRV5, "Det.model_type": ModelType.MOBILE,
                 "Rec.lang_type": LangRec.KOREAN, "Rec.ocr_version": OCRVersion.PPOCRV5,
                 "Rec.model_type": ModelType.MOBILE,
@@ -133,7 +161,8 @@ def _ocr_span(kind: str):
             with tool_span("ocr:read", {"kind": kind, "bytes": len(data)}) as span:
                 result = fn(data, *args, **kwargs)
                 span.metadata.update({"kind": kind, "pages": result.pages, "runs": result.runs,
-                                      "ocr_ms": result.ocr_ms, "lines": len(result.lines)})
+                                      "ocr_ms": result.ocr_ms, "lines": len(result.lines),
+                                      "threads": _ocr_threads()})
                 return result
         return inner
     return wrap

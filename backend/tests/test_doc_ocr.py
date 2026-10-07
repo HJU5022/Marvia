@@ -99,6 +99,54 @@ def test_check_fields_compares_dates_by_value():
     assert doc_ocr.check_fields(_fields(eta="10월 2일"), LINES)["eta"] == ["format"]
 
 
+# ── OCR 스레드 수 (10-07 실사용 74: Railway 126초) ────────────────
+
+def _cgroup(tmp_path, monkeypatch, text):
+    f = tmp_path / "cpu.max"
+    if text is not None:
+        f.write_text(text)
+    monkeypatch.setattr(doc_ocr, "CGROUP_CPU_MAX", str(f))
+
+
+def test_ocr_threads_env_override(monkeypatch, tmp_path):
+    _cgroup(tmp_path, monkeypatch, "200000 100000")
+    monkeypatch.setenv("OCR_THREADS", "3")
+    assert doc_ocr._ocr_threads() == 3
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "abc", ""])
+def test_ocr_threads_ignores_bad_env(monkeypatch, tmp_path, bad):
+    _cgroup(tmp_path, monkeypatch, "200000 100000")
+    monkeypatch.setenv("OCR_THREADS", bad)
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 16)
+    assert doc_ocr._ocr_threads() == 2  # 환경변수가 잘못되면 cgroup 쿼터로
+
+
+def test_ocr_threads_from_cgroup_quota(monkeypatch, tmp_path):
+    monkeypatch.delenv("OCR_THREADS", raising=False)
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 32)
+    _cgroup(tmp_path, monkeypatch, "200000 100000\n")
+    assert doc_ocr._ocr_threads() == 2
+    _cgroup(tmp_path, monkeypatch, "50000 100000")
+    assert doc_ocr._ocr_threads() == 1  # 0.5 코어도 1개
+
+
+def test_ocr_threads_max_means_cpu_count_clamped(monkeypatch, tmp_path):
+    monkeypatch.delenv("OCR_THREADS", raising=False)
+    _cgroup(tmp_path, monkeypatch, "max 100000")
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 32)
+    assert doc_ocr._ocr_threads() == 4  # 상한 4
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 2)
+    assert doc_ocr._ocr_threads() == 2
+
+
+def test_ocr_threads_without_cgroup_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("OCR_THREADS", raising=False)
+    _cgroup(tmp_path, monkeypatch, None)  # 파일 없음 (맥)
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: None)
+    assert doc_ocr._ocr_threads() == 1
+
+
 # ── 실제 OCR (가공 사진) ────────────────────────────────────────
 
 @pytest.fixture(scope="module")
