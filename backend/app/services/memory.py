@@ -23,8 +23,10 @@ import json
 import os
 import re
 import threading
+import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -32,7 +34,7 @@ from datetime import date, datetime, timezone
 from backend.app.db import atomic, connect
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import AgentRequest, AgentResponse
-from backend.app.services import cargo, guard, llm
+from backend.app.services import cargo, guard, llm, progress
 from backend.app.services.evidence import KST
 from backend.app.services.pii_patterns import COMPANY_MAX, MOBILE, PHONE, ROLES, has_personal_or_money
 from backend.app.services.verdict import VERDICT_LABEL
@@ -50,7 +52,9 @@ TEXT_LIMITS = {
     "todo": {"text": 60},
 }
 BOOL_FIELDS = {"todo": {"done"}}
-REQUIRED = {"preference": {"text"}, "schedule": {"cycle", "task"}, "contact": {"company", "role", "source"},
+# 거래처는 회사 이름과 출처만 있으면 저장한다 (10-08 정운 실사용 76: "회사이름은 (주)농수고 사무실전화번호는 ..."가 role이 없어 통째로 버려졌다).
+# 종류(role)와 전화는 비워 둘 수 있고, 값이 있으면 목록·모양 검사는 그대로 한다. 빈 칸은 답 끝에서 되묻는다 (follow_up_text)
+REQUIRED = {"preference": {"text"}, "schedule": {"cycle", "task"}, "contact": {"company", "source"},
             "worry": {"text"}, "todo": {"text"}}
 SOURCES = ("B/L", "A/N", "사용자")  # 역할 목록 ROLES와 전화·금액 모양은 services/pii_patterns.py
 # 대화에서 기억 뽑기가 낸 거래처는 출처가 "사용자"뿐이다. B/L·A/N 출처는 서류 확인 저장(document-facts)만 쓴다 (Spec "넣지 않는 것")
@@ -187,6 +191,7 @@ class Checked:
     ops: list[dict] = field(default_factory=list)
     pending: list[dict] = field(default_factory=list)
     rejected: list[str] = field(default_factory=list)
+    dropped: list[str] = field(default_factory=list)  # 거래처는 저장하고 전화 칸만 버린 이유 (mobile_phone / bad_phone). 사용자에게 알린다
 
 
 def _normalize_fields(kind: str, fields: dict | None) -> dict:
@@ -269,6 +274,37 @@ def _check_set_cargo(op: dict, user_text: str) -> str | None:
     return None if (day.month, day.day) in _month_days(user_text) else "date_not_in_text"
 
 
+def _drop_bad_phone(kind: str, fields: dict, result: "Checked") -> None:
+    """거래처 전화 칸이 휴대폰이거나 모양·길이가 틀리면 그 칸만 버리고 나머지(회사, 종류)는 저장한다 (10-08 정운 실사용 76: "무조건 안된다고 하지 말고").
+    휴대폰 번호를 저장하지 않는 규칙 자체는 그대로다. 버린 이유는 result.dropped에 남겨 코드 문장으로 알린다."""
+    phone = fields.get("phone")
+    if kind != "contact" or phone is None:
+        return
+    if isinstance(phone, str) and PHONE.fullmatch(phone) and not MOBILE.match(phone) and len(phone) <= TEXT_LIMITS["contact"]["phone"]:
+        return
+    fields.pop("phone")
+    result.dropped.append("mobile_phone" if isinstance(phone, str) and (MOBILE.match(phone) or has_personal_or_money(phone)) else "bad_phone")
+
+
+def _redirect_duplicate_contact(op: dict, items: list[dict], cargo_key: str | None) -> dict:
+    """이미 있는 거래처(같은 회사 이름, 같은 칸)를 또 add하면 그 줄의 update로 바꾼다 (10-08 정운 실사용 76).
+    같은 문장이 두 번 뽑혀도, 또는 "포워더야" 같은 답을 모델이 add로 내도 거래처 줄이 둘이 되지 않게 한다.
+    apply_ops에는 중복을 막는 곳이 없어 검사 쪽에서 막는다. 회사 이름은 공백을 지우고 비교한다."""
+    if op.get("op") != "add" or op.get("kind") != "contact":
+        return op
+    company = _flat(((op.get("fields") or {}).get("company")) or "")
+    if not company:
+        return op
+    section = op.get("section")
+    if section == CARGO and not cargo_key:
+        section = ABOUT
+    for item in items:
+        if (item["kind"] == "contact" and _flat(item["fields"].get("company")) == company and item["section"] == section
+                and (section == ABOUT or item.get("cargo_key") == cargo_key)):
+            return {"op": "update", "id": item["id"], "fields": op.get("fields")}
+    return op
+
+
 def check_ops(raw_ops: list, items: list[dict], user_text: str, cargo_key: str | None) -> Checked:
     """기억 뽑기가 낸 명령을 하나씩 검사한다 (Spec 쓰기 흐름 5). 걸린 명령은 버린다.
 
@@ -285,6 +321,8 @@ def check_ops(raw_ops: list, items: list[dict], user_text: str, cargo_key: str |
         kind_of = op.get("op")
         if kind_of == "noop":
             continue
+        op = _redirect_duplicate_contact(op, items, cargo_key)
+        kind_of = op.get("op")
         reason = None
         if kind_of == "add":
             kind, section = op.get("kind"), op.get("section")
@@ -296,6 +334,7 @@ def check_ops(raw_ops: list, items: list[dict], user_text: str, cargo_key: str |
                 if section == CARGO and not cargo_key:
                     section = ABOUT  # 거래처는 이 사람에 대해에도 둘 수 있어, 화물 없는 대화에서는 거기로 둔다 (10-06 정운 결정)
                 fields = _normalize_fields(kind, op.get("fields"))
+                _drop_bad_phone(kind, fields, result)
                 if kind == "todo":
                     fields.setdefault("done", False)
                 reason = _check_fields(kind, fields, user_text, adding=True, chat=True)
@@ -309,7 +348,11 @@ def check_ops(raw_ops: list, items: list[dict], user_text: str, cargo_key: str |
                 result.ops.append({"op": "delete", "id": target["id"]})
             else:
                 fields = _normalize_fields(target["kind"], op.get("fields"))
+                had = bool(fields)
+                _drop_bad_phone(target["kind"], fields, result)
                 merged = {**target["fields"], **fields}
+                if not fields and had:
+                    continue  # 바꿀 칸이 나쁜 전화뿐이었다: 버리고 알리기만 한다 (거절이 아니다)
                 if not fields:
                     reason = "empty_update"
                 else:
@@ -630,6 +673,7 @@ class Turn:
     스레드 안에서 켠 fired를 handle이 읽을 수 있다 (contextvar 값을 스레드에서 set하면 밖에서는 안 보인다)."""
 
     fired: bool = False
+    early: bool = False  # 이 턴 시작 때 문장만으로 기억 뽑기를 먼저 맡겼다 (start_early). 화물 조회 뒤 기억 뽑기는 거래처 명령을 건너뛴다
 
 
 _TURN: contextvars.ContextVar[Turn | None] = contextvars.ContextVar("memory_turn", default=None)
@@ -684,35 +728,127 @@ def _writer_ready(conn, user_id: str, text: str) -> tuple[dict, list[dict]] | No
     return _cargo_rows(conn, user_id), load(conn, user_id)[0]
 
 
+# ── 기억 뽑기 호출 정책 (10-08 정운 실사용 76) ──
+MEMORY_TIMEOUT_SEC = 10.0   # 기억 뽑기 한 번의 시간 상한. 예전에는 60초까지 매달렸다 (3/136번이 60초)
+MEMORY_RETRIES = 2          # 실패(시간 초과·LLM·연결 오류)하면 더 시도하는 횟수. 처음 1번 + 2번 = 모두 3번까지
+MEMORY_RETRY_WAIT_SEC = 0.5
+MEMORY_JOIN_GRACE_SEC = 2.0  # 답이 다 만들어진 뒤 먼저 맡긴 기억 뽑기를 더 기다려 주는 시간. 넘으면 답을 먼저 보낸다 (일은 뒤에서 끝난다)
+SAVE_FAIL_NOTICE = "말씀하신 내용을 메모에 저장하지 못했어요. 잠시 뒤 다시 말씀해 주세요."
+# 검사에 걸려 사용자가 알려 준 내용이 저장되지 않은 이유 → 한 문장 (코드가 쓴 문장). 여기 없는 이유(모델의 헛짚음: 없는 번호·화물 없음 등)는 로그만 남긴다
+REJECT_NOTICE = {
+    # 거래처는 저장하고 전화만 뺀 경우 (Checked.dropped)
+    "mobile_phone": "휴대폰 번호는 개인정보라 저장하지 않았어요. 회사·사무실 번호를 알려 주세요.",
+    "bad_phone": "전화번호 모양이 맞지 않아 번호는 저장하지 않았어요. 회사·사무실 번호를 다시 알려 주세요.",
+    "personal_or_money": "개인정보나 금액이 든 내용은 메모에 저장하지 않아요.",
+    "too_long": "글이 너무 길어 일부는 메모에 저장하지 못했어요.",
+}
+CONTACT_ROLES_TEXT = "·".join(ROLES)
+
+
+@dataclass
+class WriteOutcome:
+    """기억 뽑기 한 번의 결과. 채팅 답 끝에 붙일 글을 만드는 재료다."""
+
+    gaps: list[dict] = field(default_factory=list)      # 이번에 저장된 거래처 중 종류·전화가 비어 되물을 것들 (칸 값)
+    notices: list[str] = field(default_factory=list)    # 저장하지 못한 것을 알리는 문장들 (코드가 쓴 글)
+
+
+def follow_up_text(gap: dict) -> str:
+    """거래처 칸이 비었을 때 되묻는 문장 (코드가 쓴 글, LLM이 아니다). 회사 이름은 「」로 싸서 다음 턴이 알아볼 수 있게 한다 (followup_hint)."""
+    head = f"「{gap['company']}」을(를) 거래처로 저장했어요."
+    if not gap.get("role"):
+        return f"{head} 이 회사는 {CONTACT_ROLES_TEXT} 중 어디인가요? 전화번호도 알려 주시면 같이 저장할게요."
+    return f"{head} 전화번호도 알려 주시면 같이 저장할게요."
+
+
+def _contact_gaps(current: list[dict], ops: list[dict]) -> list[dict]:
+    """검사를 통과한 명령 중 거래처의 빈 칸을 찾는다. 새 거래처는 종류나 전화가 비면, 고친 거래처는 종류가 비면 되묻는다
+    (이미 있는 거래처를 고칠 때마다 전화를 또 묻지 않으려는 것이다)."""
+    by_id = {i["id"]: i for i in current}
+    gaps = []
+    for op in ops:
+        if op["op"] == "add" and op["kind"] == "contact":
+            fields = op["fields"]
+            if not fields.get("role") or not fields.get("phone"):
+                gaps.append(fields)
+        elif op["op"] == "update" and by_id.get(op["id"], {}).get("kind") == "contact":
+            fields = {**by_id[op["id"]]["fields"], **op["fields"]}
+            if not fields.get("role"):
+                gaps.append(fields)
+    return gaps
+
+
+ABOUT_KINDS = ("contact", "preference", "schedule")  # 이 사람에 대해 칸에 둘 수 있는 종류. 화물이 없어도 저장된다
+
+
+def _is_about_op(op: dict, items: list[dict]) -> bool:
+    """이 사람에 대해 종류(거래처·선호·반복 일정)를 다루는 명령인가 (add는 kind, update·delete는 가리키는 줄의 kind)."""
+    if op.get("op") == "add":
+        return op.get("kind") in ABOUT_KINDS
+    target = next((i for i in items if i["id"] == op.get("id")), None)
+    return op.get("op") in ("update", "delete") and bool(target) and target["kind"] in ABOUT_KINDS
+
+
+def _call_writer(content: str) -> list[dict]:
+    """기억 뽑기 LLM을 부른다. 실패(시간 초과·LLM·연결 오류)하면 MEMORY_RETRIES번 더 시도한다. 마지막 실패는 그대로 올린다.
+    재시도하는 것은 호출 실패뿐이다. 검사에서 걸리는 거절이나 정상적인 noop은 호출이 성공한 것이라 여기 오지 않는다.
+    설정이 없는 것(not_configured)은 다시 해도 같아 바로 올린다."""
+    for attempt in range(MEMORY_RETRIES + 1):
+        try:
+            return [op.model_dump() for op in llm.write_memory(content, timeout=MEMORY_TIMEOUT_SEC).output.ops]
+        except llm.LLMError as e:
+            if e.kind == "not_configured" or attempt == MEMORY_RETRIES:
+                raise
+            log_failure("memory_write_retry", f"{e.kind} {e.code}" if e.code else e.kind)
+            time.sleep(MEMORY_RETRY_WAIT_SEC)
+    raise AssertionError("unreachable")
+
+
 def _write_from_text(user_id: str, text: str, *, key: str | None, row: dict | None, bl_masked: str | None,
                      raw_bl: str | None, verdict: str | None, every: dict, items: list[dict], today: date,
-                     started: datetime) -> None:
+                     started: datetime, hint: str = "", skip_about: bool = False) -> WriteOutcome:
     """기억 뽑기 LLM 호출 → 검사 → 적용 → 저장. 조회 뒤와 대화 턴 뒤가 함께 쓴다 (같은 검사·저장 경로).
     key가 None이면 화물이 없는 턴이라 set_cargo와 화물별에만 둘 수 있는 종류(걱정·할 일)의 add는 check_ops가 no_cargo로 거절하고,
     거래처 add는 이 사람에 대해로 옮겨 둔다 (10-06 정운 결정).
-    raw_bl: 조회한 화물의 원본 B/L. LLM 입력에 섞이면 부르지 않는다 (CLAUDE.md). 대화 턴은 없다(None)."""
+    raw_bl: 조회한 화물의 원본 B/L. LLM 입력에 섞이면 부르지 않는다 (CLAUDE.md). 대화 턴은 없다(None).
+    hint: 코드가 쓴 앞 문맥 (followup_hint). LLM 입력의 user_text 앞에 붙고, 회사 이름 대조에도 쓴다.
+    skip_about: 이 문장의 이 사람에 대해 종류(거래처·선호·반복 일정)는 턴 시작 때 먼저 맡긴 기억 뽑기가 이미 다뤘다 (두 번 저장되지 않게).
+    화물에 묶인 것(걱정·할 일·set_cargo)만 이 호출이 맡는다.
+    돌려주는 WriteOutcome이 답 끝에 붙일 되묻기·알림의 재료다. 저장하지 못한 것은 조용히 넘기지 않는다 (10-08 정운 결정)."""
     from backend.app.services.chat import mask_bls
 
+    outcome = WriteOutcome()
     masked_text = mask_bls(text)[0]
-    content = writer_input(today, row, bl_masked, verdict, masked_text, render(items, every, with_ids=True))
+    seen_text = f"{hint}\n{masked_text}" if hint else masked_text  # LLM이 보는 문장과 회사·전화 대조에 쓰는 문장
+    content = writer_input(today, row, bl_masked, verdict, seen_text, render(items, every, with_ids=True))
     if raw_bl and raw_bl.upper() in content.upper():
         log_failure("memory_write", "bl_not_masked")
-        return
+        return outcome
     try:
-        raw = [op.model_dump() for op in llm.write_memory(content).output.ops]
+        raw = _call_writer(content)
     except llm.LLMError as e:
         log_failure("memory_write", f"{e.kind} {e.code}" if e.code else e.kind)
-        return
+        if e.kind != "not_configured":
+            outcome.notices.append(SAVE_FAIL_NOTICE)
+        return outcome
+    if skip_about:
+        raw = [op for op in raw if not (isinstance(op, dict) and _is_about_op(op, items))]
+
+    # 저장할 것이 있을 때만 화면에 "메모 저장 중"을 알린다 (noop이면 알리지 않는다). 지금 메모장 기준 미리 검사한 결과다
+    if check_ops(raw, items, seen_text, key).ops or any(isinstance(o, dict) and o.get("op") == "set_cargo" for o in raw):
+        progress.step("memory")
 
     try:
         with connect() as conn:
             pending: list[dict] = []
+            final: dict = {"checked": None, "current": None}
 
             def change(current):
                 """LLM 명령을 지금(새로 읽은) 메모장 기준으로 다시 검사·적용한다. 버전 충돌로 다시 불려도 같은 기준 (EC-03·04)."""
-                checked = check_ops(raw, current, masked_text, key)
+                checked = check_ops(raw, current, seen_text, key)
                 for reason in checked.rejected:
                     log_failure("memory_op", f"rejected {reason}")  # 걸린 명령의 종류만 남긴다. 내용은 남기지 않는다
+                final["checked"], final["current"] = checked, current
                 pending[:] = checked.pending
                 if not checked.ops:
                     return current
@@ -721,21 +857,36 @@ def _write_from_text(user_id: str, text: str, *, key: str | None, row: dict | No
             status = save(conn, user_id, change, since=started)
             if status in ("full", "conflict", "deleted"):
                 log_failure("memory_write", status)
+            checked, current = final["checked"], final["current"]
+            if status == "conflict":
+                outcome.notices.append(SAVE_FAIL_NOTICE)
+            if checked is not None:
+                # 사용자가 알려 준 것이 검사에서 걸려 저장되지 않았으면 이유를 한 문장으로 알린다 (같은 이유는 한 번만)
+                for reason in dict.fromkeys([*checked.dropped, *checked.rejected]):
+                    if reason in REJECT_NOTICE:
+                        outcome.notices.append(REJECT_NOTICE[reason])
+                if status == "saved":
+                    outcome.gaps = _contact_gaps(current, checked.ops)
             if pending and key and not forgotten_since(conn, user_id, CARGO_SCOPE, started):
                 cargo.add_pending(conn, user_id, key,
                                   [{**p, "noted_at": today.isoformat()} for p in pending])
     except Exception as e:  # noqa: BLE001
         log_failure("memory_write", f"db {type(e).__name__}")
+        outcome.gaps = []
+        outcome.notices.append(SAVE_FAIL_NOTICE)
+    return outcome
 
 
 def remember(user_id: str, request: AgentRequest, response: AgentResponse, *, released: bool,
-             text: str | None, now: datetime | None = None, started: datetime | None = None) -> None:
+             text: str | None, now: datetime | None = None, started: datetime | None = None,
+             skip_about: bool = False) -> None:
     """응답 뒤에 도는 일: 화물 표 쓰기 → 기억 뽑기 → 검사 → 적용. 실패는 로그만 남긴다 (EC-07).
 
     - 화물 표는 조회(판정) 때만 쓴다. 후속 질문은 판정이 새로 나온 것이 아니라 쓰지 않는다
     - 기억 뽑기는 사용자 문장이 있을 때만, MEMORY_MODEL이 있을 때만 부른다. 없으면 조용히 건너뛴다 (10-02 결정 10)
     - 주입 모양 문장은 기억 뽑기 LLM에도 보내지 않는다 (SDD 7절 10-01: 후속 질문에서 guard가 막은 문장, 10-02 검증 지적 2)
     - B/L 원본이 LLM 입력에 섞이면 부르지 않는다 (CLAUDE.md). 문장은 한 번 더 가린다
+    - skip_about: 턴 시작 때 먼저 맡긴 기억 뽑기가 같은 문장의 거래처를 이미 다뤘으면 이 사람에 대해 종류 명령은 건너뛴다 (start_early)
     - started(뒤 작업을 맡긴 시각) 뒤에 사용자가 지웠으면 화물 표·메모장·확인 대기를 쓰지 않는다 (삭제 표시, 검증 지적 1)
     now는 기록할 날짜(테스트가 고정), started는 실제 시계 기준이다.
     """
@@ -761,18 +912,22 @@ def remember(user_id: str, request: AgentRequest, response: AgentResponse, *, re
 
     from backend.app.schemas.customs import mask_bl
 
-    _write_from_text(user_id, text, key=key, row=every.get(key), bl_masked=mask_bl(request.bl_no), raw_bl=request.bl_no,
-                     verdict=_verdict_line(response), every=every, items=items, today=today, started=started)
+    outcome = _write_from_text(user_id, text, key=key, row=every.get(key), bl_masked=mask_bl(request.bl_no),
+                               raw_bl=request.bl_no, verdict=_verdict_line(response), every=every, items=items,
+                               today=today, started=started, skip_about=skip_about)
+    add_notices(user_id, outcome.notices)  # 화물 조회 답은 이미 나갔다. 알림은 다음 답에 붙는다
 
 
-def remember_chat(user_id: str, text: str, *, now: datetime | None = None, started: datetime | None = None) -> None:
+def remember_chat(user_id: str, text: str, *, now: datetime | None = None, started: datetime | None = None,
+                  hint: str = "") -> WriteOutcome:
     """화물 조회 없이 끝난 채팅 턴 뒤에 도는 일: 기억 뽑기 → 검사 → 적용 (10-06 정운 결정).
     "우리 포워더는 가온 김과장이야" 같은 말은 B/L 없는 평범한 대화에서 나오는데, 기억 뽑기가 조회·후속 질문 뒤에만 돌아
     5일간 67번 돌고 0건을 저장했다. 무엇을 기억할지는 LLM이 정하고(없으면 noop), 새 규칙·인사말 거름망은 두지 않는다.
     화물이 없어 화물 표는 쓰지 않고, set_cargo와 걱정·할 일 add는 check_ops가 no_cargo로 거절한다(거래처는 이 사람에 대해로 둔다). 검사·저장은 remember와 같은 길이다.
-    text는 채팅 창구가 B/L·컨테이너를 가린 문장이다. 실패는 로그만 남긴다 (EC-07)."""
+    text는 채팅 창구가 B/L·컨테이너를 가린 문장이다. 실패는 로그만 남긴다 (EC-07).
+    10-08부터 이 함수는 턴 시작 때 답과 함께 돈다 (start_early). 돌려주는 결과로 답 끝에 되묻기·알림을 붙이는 것은 부르는 쪽(join_early)이다."""
     if not user_id or not text or not _db_ready():
-        return
+        return WriteOutcome()
     started = started or datetime.now(timezone.utc)
     today = (now or datetime.now(timezone.utc)).astimezone(KST).date()
     try:
@@ -780,12 +935,113 @@ def remember_chat(user_id: str, text: str, *, now: datetime | None = None, start
             ready = _writer_ready(conn, user_id, text)
     except Exception as e:  # noqa: BLE001
         log_failure("memory_write", f"db {type(e).__name__}")
-        return
+        return WriteOutcome(notices=[SAVE_FAIL_NOTICE])
     if ready is None:
-        return
+        return WriteOutcome()
     every, items = ready
-    _write_from_text(user_id, text, key=None, row=None, bl_masked=None, raw_bl=None, verdict=None,
-                     every=every, items=items, today=today, started=started)
+    return _write_from_text(user_id, text, key=None, row=None, bl_masked=None, raw_bl=None, verdict=None,
+                            every=every, items=items, today=today, started=started, hint=hint)
+
+
+def _remember_chat_and_notify(user_id: str, text: str, *, started: datetime) -> None:
+    """먼저 맡기지 못한 대화 턴의 뒤 작업 (turn.early가 아닐 때). 답은 이미 나갔으니 알림은 다음 답에 붙는다."""
+    add_notices(user_id, remember_chat(user_id, text, started=started).notices)
+
+
+# ── 먼저 맡긴 기억 뽑기와 답 끝 글 (10-08 정운 실사용 76) ──
+# 기억 뽑기는 턴 시작에 답 만들기와 같이 출발하고, 답이 다 되면 짧게(MEMORY_JOIN_GRACE_SEC) 기다려 결과를 본다.
+# 되묻기는 이번 답에 붙일 수 있을 때만 붙는다. 늦으면 답을 먼저 보내고 일은 뒤에서 끝난다.
+# 알림(저장 실패·거절)은 늦게 끝나도 다음 답 끝에 붙는다: 사용자별 대기 알림을 이 프로세스 메모리에 둔다.
+# DB에 두지 않은 이유: 서버를 다시 켜면 사라져도 되는 짧은 안내이고, 뒤 일꾼과 요청이 같은 프로세스에서 돈다. 서버가 여러 대면 다른 서버의 답에는 안 붙는다.
+_NOTICE_KEEP_SEC = 3600
+_NOTICE_MAX = 3
+_notices: dict[str, list[tuple[float, str]]] = {}
+_notices_lock = threading.Lock()
+
+
+def add_notices(user_id: str | None, notices: list[str]) -> None:
+    """다음 답에 붙일 알림을 쌓는다. 같은 문장은 한 번만, 사용자마다 최대 _NOTICE_MAX개."""
+    if not user_id or not notices:
+        return
+    now = time.monotonic()
+    with _notices_lock:
+        kept = [(t, n) for t, n in _notices.get(user_id, []) if now - t < _NOTICE_KEEP_SEC]
+        for notice in notices:
+            if notice not in [n for _, n in kept]:
+                kept.append((now, notice))
+        _notices[user_id] = kept[-_NOTICE_MAX:]
+
+
+def take_notices(user_id: str | None) -> list[str]:
+    """쌓인 알림을 꺼내고 비운다 (한 번만 보인다)."""
+    if not user_id:
+        return []
+    now = time.monotonic()
+    with _notices_lock:
+        pending = _notices.pop(user_id, [])
+    return [n for t, n in pending if now - t < _NOTICE_KEEP_SEC]
+
+
+_FOLLOW_UP_COMPANY = re.compile(r"「([^「」\n]{1,%d})」을\(를\) 거래처로 저장했어요" % COMPANY_MAX)
+
+
+def followup_hint(history: list[dict] | None) -> str:
+    """직전 어시스턴트 답이 우리가 붙인 되묻기(follow_up_text)였으면, 기억 뽑기에 줄 앞 문맥을 만든다.
+    "포워더야" 같은 짧은 답만으로는 기억 뽑기가 어느 거래처 이야기인지 알 수 없다 (메모장 목록에는 회사 이름만 있다).
+    화면이 보낸 글은 믿지 않는다: 직전 답에서 회사 이름만 뽑아(모양 검사·지시문 검사 통과해야 함) 코드가 쓴 영어 문장에 끼운다.
+    프롬프트 파일은 바꾸지 않고 user_text 앞에 붙인다. 거절("필요 없어")이면 아무것도 바꾸지 말라고 적어 둔다."""
+    last = next((t for t in reversed(history or []) if t.get("role") == "assistant"), None)
+    found = _FOLLOW_UP_COMPANY.search((last or {}).get("text") or "")
+    if not found:
+        return ""
+    company = found.group(1).strip()
+    if not company or BAD_CHARS.search(company) or _looks_like_instruction(company) or has_personal_or_money(company):
+        return ""
+    return (f"[Context from the app: the assistant just asked which kind of company the saved contact '{company}' is "
+            f"({', '.join(ROLES)}) and for its phone number. The user's reply below answers that. "
+            f"Update that contact's existing line; do not add a new contact. If the user declines, return noop and keep the contact.]")
+
+
+def start_early(user_id: str | None, masked_text: str | None, hint: str = "") -> Future | None:
+    """턴 시작에 기억 뽑기를 맡기고 결과를 받을 Future를 돌려준다. 못 맡기면(로그인 없음·DB 없음·대기 가득) None.
+    이 문장의 거래처는 여기서 다루므로 Turn.early를 켜서, 화물 조회 뒤 기억 뽑기(remember)가 거래처를 또 만들지 않게 한다."""
+    if not user_id or not masked_text or not _db_ready():
+        return None
+    future = submit_later(remember_chat, user_id, masked_text, started=datetime.now(timezone.utc), hint=hint)
+    turn = _TURN.get()
+    if future is not None and turn is not None:
+        turn.early = True
+    return future
+
+
+def join_early(user_id: str | None, future: Future | None) -> str:
+    """답이 다 된 뒤 부른다. 먼저 맡긴 기억 뽑기를 MEMORY_JOIN_GRACE_SEC까지 기다려 답 끝에 붙일 글을 돌려준다 (없으면 "").
+    - 제때 끝남: 알림 + 거래처 되묻기를 붙인다
+    - 늦음: 붙이지 않고 답을 먼저 보낸다. 일은 계속되고, 끝났을 때 알림만 다음 답에 붙도록 쌓는다 (되묻기는 버린다)
+    기억 뽑기의 어떤 실패도 답을 막지 않는다."""
+    if future is None:
+        return ""
+    try:
+        outcome = future.result(timeout=MEMORY_JOIN_GRACE_SEC)
+    except FutureTimeout:
+        future.add_done_callback(lambda f: _late(user_id, f))
+        return ""
+    except Exception as e:  # noqa: BLE001
+        log_failure("memory_join", type(e).__name__)
+        return SAVE_FAIL_NOTICE
+    lines = list(outcome.notices)
+    if outcome.gaps:
+        lines.append(follow_up_text(outcome.gaps[0]))
+    return "\n".join(lines)
+
+
+def _late(user_id: str | None, future: Future) -> None:
+    """답을 보낸 뒤에 끝난 기억 뽑기: 알림만 다음 답으로 넘긴다."""
+    try:
+        add_notices(user_id, future.result().notices)
+    except Exception as e:  # noqa: BLE001
+        log_failure("memory_join", type(e).__name__)
+        add_notices(user_id, [SAVE_FAIL_NOTICE])
 
 
 # ── 뒤 작업 일꾼 (Spec 쓰기 흐름 1) ──
@@ -816,18 +1072,36 @@ def _guarded(fn: Callable, *args, **kwargs) -> None:
         _slots.release()
 
 
-def run_later(fn: Callable, *args, **kwargs) -> None:
+def run_later(fn: Callable, *args, **kwargs) -> bool:
     """fn을 뒤에서 돌린다. 지금 요청의 문맥(요청 ID → 같은 Langfuse 트레이스)을 복사해 넘긴다. 테스트는 이 함수를 바꿔 끼운다.
     대기가 가득 찼으면 맡기지 않고 로그만 남긴다 (기억 쓰기는 부가 기능이다)."""
     if not _slots.acquire(blocking=False):
         log_failure("memory_queue", "full")
-        return
+        return False
     ctx = contextvars.copy_context()
     try:
         _get_executor().submit(ctx.run, _guarded, fn, *args, **kwargs)
     except RuntimeError:  # 꺼지는 중인 일꾼
         _slots.release()
         log_failure("memory_queue", "shutdown")
+        return False
+    return True
+
+
+def submit_later(fn: Callable, *args, **kwargs) -> Future | None:
+    """run_later와 같은 일꾼에서 돌리되 결과를 받을 Future를 돌려준다 (맡기지 못했으면 None).
+    run_later를 거치므로 대기 상한·요청 문맥 복사(Langfuse 트레이스, 사용량 주인, 화면 단계 알림)가 같고, 테스트가 run_later를 바꿔 끼우면 같이 바뀐다.
+    fn이 예외를 내면 Future에 담긴다 (join_early가 받아 로그를 남긴다)."""
+    future: Future = Future()
+
+    def job() -> bool:
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as e:  # noqa: BLE001 - 호출한 쪽이 Future로 받는다
+            future.set_exception(e)
+        return True  # run_later가 바꿔 끼워져 직접 돌 때도 "맡겼다"는 뜻으로 읽힌다
+
+    return future if run_later(job) else None
 
 
 def shutdown() -> None:
@@ -850,7 +1124,7 @@ def remember_later(user_id: str | None, request: AgentRequest, response: AgentRe
     if turn is not None and _USER_TEXT.get():
         turn.fired = True  # 이 턴의 문장은 여기서 기억 뽑기에 맡겼다. 대화용(remember_chat_later)이 다시 맡지 않게 표시
     run_later(remember, user_id, request, response, released=released, text=text,
-              started=datetime.now(timezone.utc))
+              started=datetime.now(timezone.utc), skip_about=bool(turn and turn.early and _USER_TEXT.get()))
 
 
 def remember_chat_later(user_id: str | None, masked_text: str | None) -> None:
@@ -858,4 +1132,4 @@ def remember_chat_later(user_id: str | None, masked_text: str | None) -> None:
     사용자가 없으면(로그인 꺼짐·평가 실행기·데모) 아무것도 하지 않는다 (EC-08). DB가 없어도 같다."""
     if not user_id or not masked_text or not _db_ready():
         return
-    run_later(remember_chat, user_id, masked_text, started=datetime.now(timezone.utc))
+    run_later(_remember_chat_and_notify, user_id, masked_text, started=datetime.now(timezone.utc))

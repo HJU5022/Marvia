@@ -207,7 +207,7 @@ class _DeadlineExceeded(Exception):
     """_create_with_deadline이 TIMEOUT_SEC 안에 답을 못 받았을 때. _call_once가 LLMError(kind=timeout)로 바꾼다."""
 
 
-def _create_with_deadline(client: OpenAI, kwargs: dict, extra_body: dict | None):
+def _create_with_deadline(client: OpenAI, kwargs: dict, extra_body: dict | None, timeout: float | None = None):
     """요청 하나를 별도 스레드에서 보내고, 최대 TIMEOUT_SEC초만 기다린다 (10-05).
 
     왜 SDK timeout만으로 안 되나: httpx timeout은 연결·읽기 구간별 상한이라 "한 번에 이만큼 조용하면" 끊는다.
@@ -226,7 +226,7 @@ def _create_with_deadline(client: OpenAI, kwargs: dict, extra_body: dict | None)
 
     worker = threading.Thread(target=run, daemon=True)
     worker.start()
-    worker.join(TIMEOUT_SEC)
+    worker.join(timeout or TIMEOUT_SEC)  # timeout: 호출마다 정하는 짧은 상한 (기억 뽑기 10초). 없으면 TIMEOUT_SEC
     if worker.is_alive():
         raise _DeadlineExceeded()
     if "error" in box:
@@ -236,6 +236,8 @@ def _create_with_deadline(client: OpenAI, kwargs: dict, extra_body: dict | None)
 
 def _call_once(kwargs: dict) -> LLMResult:
     """OpenRouter 또는 Vertex AI를 딱 한 번 부른다. 실패는 전부 LLMError로 바꿔서 올린다."""
+    kwargs = dict(kwargs)
+    timeout = kwargs.pop("_timeout", None)  # chat(timeout=)이 실어 둔 호출별 시간 상한. API에는 보내지 않는다
     model = kwargs["model"]
     is_vertex = model.startswith(VERTEX_PREFIX)
     if is_vertex:
@@ -251,10 +253,11 @@ def _call_once(kwargs: dict) -> LLMResult:
 
     start = time.monotonic()
     try:
-        resp = _create_with_deadline(client, kwargs, extra_body)
+        # 호출별 상한이 없으면 예전 모양 그대로 부른다 (테스트가 세 인자 가짜로 바꿔 끼운다)
+        resp = _create_with_deadline(client, kwargs, extra_body, **({"timeout": timeout} if timeout else {}))
     except _DeadlineExceeded:
         # 시간 상한에 닿았다. 다시 부르지 않는다 (RETRYABLE_CODES 주석). code가 없어 retryable도 False다
-        raise LLMError(f"{model}: {TIMEOUT_SEC:g}초 안에 답이 없음",
+        raise LLMError(f"{model}: {(timeout or TIMEOUT_SEC):g}초 안에 답이 없음",
                        latency_ms=int((time.monotonic() - start) * 1000), kind="timeout") from None
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
@@ -321,6 +324,7 @@ def chat(
     tools: list[dict] | None = None,
     tool_choice: str | None = None,
     max_tokens: int | None = None,
+    timeout: float | None = None,
 ) -> LLMResult:
     """OpenRouter에 묻고 답을 돌려준다. 429·502·503이면 잠깐 쉬고 한 번 더 묻는다. 출력 검증은 아직 안 한다.
 
@@ -331,6 +335,7 @@ def chat(
         tools: tool 정의 목록 (OpenAI 형식)
         tool_choice: "none"이면 도구를 주되 부르지 말고 답하라는 뜻. 도구 호출 상한에 닿았을 때 쓴다 (_ask_json)
         max_tokens: 출력 상한
+        timeout: 이 호출만의 전체 시간 상한(초). 없으면 TIMEOUT_SEC (기억 뽑기가 10초로 줄여 쓴다, 10-08 정운 실사용 76)
 
     Raises:
         LLMError: 재시도해도 안 되거나, 다시 불러도 소용없는 실패(400·401 등)
@@ -347,6 +352,8 @@ def chat(
         kwargs["tool_choice"] = tool_choice
     if max_tokens:
         kwargs["max_tokens"] = max_tokens
+    if timeout:
+        kwargs["_timeout"] = timeout  # _call_once가 꺼낸다
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
@@ -579,7 +586,8 @@ def _loose_json(content: str | None, output_model: type[BaseModel]) -> str | Non
 def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dict,
               output_model: type[BaseModel], model: str | None, feedback: str | None = None,
               skills: tuple[str, ...] = ALL_SKILLS, tools: list[dict] | None = None,
-              run_tool: Callable[[str, dict], dict] | None = None, context: str | None = None) -> LLMAnswer:
+              run_tool: Callable[[str, dict], dict] | None = None, context: str | None = None,
+              timeout: float | None = None) -> LLMAnswer:
     """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
     skills는 넣을 Skill 폴더다 (JUDGE_SKILLS 등). 빈 튜플이면 넣지 않는다: 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용.
@@ -622,7 +630,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         for round_no in range(MAX_TOOL_ROUNDS + 1):
             last_round = round_no == MAX_TOOL_ROUNDS
             if tools and not last_round:
-                result = chat(messages, model=model, tools=tools, tool_choice=None)
+                result = chat(messages, model=model, tools=tools, tool_choice=None, timeout=timeout)
                 rounds.append(result)
                 if not (run_tool and result.tool_calls):
                     parsed = _loose_json(result.content, output_model)
@@ -631,12 +639,12 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
                     else:
                         # 도구 목록은 그대로 둔다: 기록에 role=tool 메시지가 있으면 제공사가 tools 없는 요청을 거부할 수 있다
                         result = chat(messages, model=model, response_format=response_format, tools=tools,
-                                      tool_choice="none")
+                                      tool_choice="none", timeout=timeout)
                         rounds.append(result)
                     break
             else:
                 result = chat(messages, model=model, response_format=response_format, tools=tools or None,
-                              tool_choice="none" if (tools and last_round) else None)
+                              tool_choice="none" if (tools and last_round) else None, timeout=timeout)
                 rounds.append(result)
             if not (tools and run_tool and result.tool_calls) or last_round:
                 break
@@ -680,7 +688,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
                 previous = result
                 try:
                     again = chat(messages, model=model, response_format=response_format, tools=tools or None,
-                                 tool_choice="none" if tools else None)
+                                 tool_choice="none" if tools else None, timeout=timeout)
                 except LLMError as call_error:
                     end_generation(generation, previous, prompt.version, output=previous.content, error=str(call_error))
                     raise
@@ -1097,7 +1105,7 @@ class MemoryOpsOutput(BaseModel):
     ops: list[MemoryOp]
 
 
-def write_memory(content: str, *, model: str | None = None) -> LLMAnswer:
+def write_memory(content: str, *, model: str | None = None, timeout: float | None = None) -> LLMAnswer:
     """기억 뽑기. output은 MemoryOpsOutput. content는 services/memory.writer_input이 만든 JSON 글자.
 
     모델은 MEMORY_MODEL(.env). 없으면 LLMError(not_configured)이고 부르는 쪽이 조용히 건너뛴다 (10-02 결정 10).
@@ -1106,7 +1114,8 @@ def write_memory(content: str, *, model: str | None = None) -> LLMAnswer:
     model = model or os.environ.get("MEMORY_MODEL")
     if not model:
         raise LLMError("MEMORY_MODEL이 없습니다", kind="not_configured")
-    return _ask_json(MEMORY_PROMPT, content, "memory_write", MEMORY_SCHEMA, MemoryOpsOutput, model, skills=())
+    return _ask_json(MEMORY_PROMPT, content, "memory_write", MEMORY_SCHEMA, MemoryOpsOutput, model, skills=(),
+                     timeout=timeout)
 
 
 # ── 대화 제목 make_chat_title() ─────────────────────────────

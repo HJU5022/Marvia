@@ -113,13 +113,13 @@ def _ask(monkeypatch, message, store, kakao):
 
 def test_already_watching_with_kakao_linked(monkeypatch):
     r = _ask(monkeypatch, "이거 카톡으로 알림 설정 좀 해줄래?", Hooks(watching=True), _kakao(True))
-    assert r.reply == "이미 이 화물을 지켜보고 있어요. 판정이 바뀌면 카카오톡으로도 보내 드려요."
+    assert r.reply == "이미 이 화물을 지켜보고 있어요. 판정이 바뀌면 카카오톡으로도 보내 드려요." + "\n" + svc.WATCH_PAGE_LINE
 
 
 def test_already_watching_with_kakao_not_linked(monkeypatch):
     r = _ask(monkeypatch, "이거 카톡으로 알림 설정 좀 해줄래?", Hooks(watching=True), _kakao(False))
     assert r.reply == ("이미 이 화물을 지켜보고 있어요. 카카오톡은 아직 연결되지 않았어요. "
-                       "설정에서 연결하면 판정이 바뀔 때 카톡으로도 받을 수 있어요.")
+                       "설정에서 연결하면 판정이 바뀔 때 카톡으로도 받을 수 있어요." + "\n" + svc.WATCH_PAGE_LINE)
 
 
 def test_just_turned_on_with_kakao_words(monkeypatch):
@@ -128,19 +128,19 @@ def test_just_turned_on_with_kakao_words(monkeypatch):
     assert store.tool_calls and r.watch_set == {"bl_no": CONTEXT.bl_no, "on": True}
     assert r.reply.startswith(svc.WATCH_ON_PLAIN) and "아직 연결되지 않았어요" in r.reply
     r = _ask(monkeypatch, "카카오톡으로 알림 걸어줘", Hooks(), _kakao(True))
-    assert r.reply.endswith("판정이 바뀌면 카카오톡으로도 보내 드려요.") and "연결되지" not in r.reply
+    assert r.reply.endswith("판정이 바뀌면 카카오톡으로도 보내 드려요.\n" + svc.WATCH_PAGE_LINE) and "연결되지" not in r.reply
 
 
 def test_no_kakao_word_or_unknown_state_keeps_old_sentences(monkeypatch):
     r = _ask(monkeypatch, "이거 지켜봐 줘", Hooks(watching=True), _kakao(True))
-    assert r.reply == svc.WATCH_ALREADY_ON  # 카톡 말이 없으면 그대로
+    assert r.reply == svc.WATCH_ALREADY_ON + "\n" + svc.WATCH_PAGE_LINE  # 카톡 말이 없으면 그대로
     r = _ask(monkeypatch, "카톡으로 알림 설정", Hooks(watching=True), None)
-    assert r.reply == svc.WATCH_ALREADY_ON  # 카카오 저장소가 없어 상태를 모른다: 지어내지 않는다
+    assert r.reply == svc.WATCH_ALREADY_ON + "\n" + svc.WATCH_PAGE_LINE  # 카카오 저장소가 없어 상태를 모른다: 지어내지 않는다
 
     def boom():
         raise RuntimeError("db")
     r = _ask(monkeypatch, "카톡으로 알림 설정", Hooks(watching=True), svc.KakaoHooks(row=lambda b: None, send=lambda t: {}, linked=boom))
-    assert r.reply == svc.WATCH_ALREADY_ON
+    assert r.reply == svc.WATCH_ALREADY_ON + "\n" + svc.WATCH_PAGE_LINE
 
 
 def test_router_kakao_hooks_expose_linked(monkeypatch):

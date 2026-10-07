@@ -24,7 +24,7 @@
 | 첫 진입 | `ChatBar.tsx` feature-tiles | 실제로 할 수 있는 세 작업만. API 없는 KPI는 만들지 않는다 |
 | 입력으로 돌아가기 | `ChatBar.tsx` back-to-composer, `lib/composer.ts` | 입력창이 화면 밖이면 나타난다 |
 | 상세 드로어 | `Drawer.tsx` | 서류 사진, 선박 자세히 보기. 포커스 트랩, Esc, 뒤 화면 inert, 닫으면 포커스 복귀 |
-| 레일 | `Shell.tsx` | 일반 사용자: 내 화물(화물 조회 `/`, 지켜보는 화물 `/watch` 하위 메뉴), 화물 현황, 조회 이력, 설정. 운영자는 평가 지표와 관리가 더해진다(GET /api/me). 레일은 접을 수 있고 아이콘만 남을 때는 aria-label로 이름 유지. 로그인 사용자에게는 대화 목록 구역 |
+| 레일 | `Shell.tsx` | 일반 사용자: 새 대화와 대화 목록(대화 화면 `/`), 화물 묶음(감시 화물 `/watch`, 화물 현황, 조회 이력), Marvia 소개, 계정 메뉴(10-08 "내 화물" 메뉴는 대화 화면과 겹쳐 뺐다). 운영자는 평가 지표와 관리가 더해진다(GET /api/me). 레일은 접을 수 있고 아이콘만 남을 때는 aria-label로 이름 유지. 로그인 사용자에게는 대화 목록 구역 |
 | 지도 | `lib/basemap.ts`, `MapPanel`, `ChatMiniMap`, `VesselMap`, `WatchMap` | 바탕 세 단계: WebGL OpenFreeMap → 미리 구운 타일(`public/basemap`) → Natural Earth 해안선. 바다·땅 색은 `--sea`, `--land` 토큰 |
 
 ## 움직임

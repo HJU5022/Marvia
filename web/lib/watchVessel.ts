@@ -33,7 +33,8 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
     if (!res.ok) {
       let detail = '';
       try { const b = await res.json(); if (typeof b?.detail === 'string') detail = b.detail; } catch { /* JSON이 아니면 기본 문장 */ }
-      throw new Error(res.status === 401 ? '로그인이 필요해요. 로그인한 뒤 다시 시도해 주세요.' : detail || '배 지켜보기를 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+      // 10-08 정운 실사용 64번: 하루 조회 한도(503)는 서버 안내 문장을 그대로, 문장이 없으면 같은 뜻의 기본 문장
+      throw new Error(res.status === 401 ? '로그인이 필요해요. 로그인한 뒤 다시 시도해 주세요.' : detail || (res.status === 503 ? '오늘 선박 조회 한도를 다 썼어요. 내일 다시 시도해 주세요.' : '') || '배 지켜보기를 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
     }
     return res;
   } catch (e) {
@@ -47,6 +48,8 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 export const onVesselWatchChange = (fn: Listener) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 const notify = () => listeners.forEach(fn => fn());
+/** 채팅이 서버에서 배를 넣거나 뺀 뒤, 같은 화면의 지켜보기 버튼·목록이 새로 읽게 알린다 (10-08 정운 실사용 79) */
+export const notifyVesselWatchChange = notify;
 
 /** GET /api/watch/vessels. 체험 모드면 빈 목록 */
 export async function listWatchedVessels(): Promise<WatchedVessel[]> {

@@ -30,9 +30,30 @@ def test_take_bl_same_line_in_sentence():
     assert doc_ocr.take_bl([f"귀사의 수입 화물(B/L 번호 {BL}, 품명 건고추 120포)이"]) == BL
 
 
-def test_take_bl_needs_label():
-    """이름표가 없으면 형식이 맞아도 고르지 않는다. 컨테이너 번호와 구분이 안 되기 때문이다."""
-    assert doc_ocr.take_bl(["CONTAINER", "TEMU1235474", BL]) is None
+def test_take_bl_container_only_is_none():
+    """컨테이너 번호만 있으면 B/L로 고르지 않는다 (10-08: 이름표 없는 후보에서 컨테이너 번호 제외)."""
+    assert doc_ocr.take_bl(["CONTAINER", "TEMU1235474"]) is None
+
+
+def test_take_bl_unlabeled_carrier_style_is_picked():
+    """10-08 정운 실사용 72번: 이름표가 OCR에 없어도 선사 코드 4자 + 숫자 12자 한 덩어리를 B/L로 본다 (가공 번호)."""
+    assert doc_ocr.take_bl(["SHIPPER", "TEMU1235474", "ABCD123456789012", "SEA STAR"]) == "ABCD123456789012"
+
+
+def test_take_bl_unlabeled_two_candidates_is_none():
+    assert doc_ocr.take_bl(["ABCD123456789012", "WXYZ210987654321"]) is None
+
+
+def test_take_bl_unlabeled_same_candidate_twice_is_picked():
+    assert doc_ocr.take_bl(["ABCD123456789012", "COPY", "ABCD123456789012"]) == "ABCD123456789012"
+
+
+def test_take_bl_unlabeled_ignores_hs_code_like_and_words():
+    assert doc_ocr.take_bl(["9988776655", "99O8776655", "HEUNGAJANICE"]) is None
+
+
+def test_take_bl_labeled_value_wins_over_unlabeled_candidate():
+    assert doc_ocr.take_bl(["ABCD123456789012", "B/L NO.", BL]) == BL
 
 
 def test_mask_bl_hides_number_from_llm_input():
@@ -76,6 +97,54 @@ def test_check_fields_flags_invented_and_missing_values():
 def test_check_fields_compares_dates_by_value():
     assert doc_ocr.check_fields(_fields(eta="2026-10-03"), LINES)["eta"] == ["not_in_text"]
     assert doc_ocr.check_fields(_fields(eta="10월 2일"), LINES)["eta"] == ["format"]
+
+
+# ── OCR 스레드 수 (10-07 실사용 74: Railway 126초) ────────────────
+
+def _cgroup(tmp_path, monkeypatch, text):
+    f = tmp_path / "cpu.max"
+    if text is not None:
+        f.write_text(text)
+    monkeypatch.setattr(doc_ocr, "CGROUP_CPU_MAX", str(f))
+
+
+def test_ocr_threads_env_override(monkeypatch, tmp_path):
+    _cgroup(tmp_path, monkeypatch, "200000 100000")
+    monkeypatch.setenv("OCR_THREADS", "3")
+    assert doc_ocr._ocr_threads() == 3
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "abc", ""])
+def test_ocr_threads_ignores_bad_env(monkeypatch, tmp_path, bad):
+    _cgroup(tmp_path, monkeypatch, "200000 100000")
+    monkeypatch.setenv("OCR_THREADS", bad)
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 16)
+    assert doc_ocr._ocr_threads() == 2  # 환경변수가 잘못되면 cgroup 쿼터로
+
+
+def test_ocr_threads_from_cgroup_quota(monkeypatch, tmp_path):
+    monkeypatch.delenv("OCR_THREADS", raising=False)
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 32)
+    _cgroup(tmp_path, monkeypatch, "200000 100000\n")
+    assert doc_ocr._ocr_threads() == 2
+    _cgroup(tmp_path, monkeypatch, "50000 100000")
+    assert doc_ocr._ocr_threads() == 1  # 0.5 코어도 1개
+
+
+def test_ocr_threads_max_means_cpu_count_clamped(monkeypatch, tmp_path):
+    monkeypatch.delenv("OCR_THREADS", raising=False)
+    _cgroup(tmp_path, monkeypatch, "max 100000")
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 32)
+    assert doc_ocr._ocr_threads() == 4  # 상한 4
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: 2)
+    assert doc_ocr._ocr_threads() == 2
+
+
+def test_ocr_threads_without_cgroup_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("OCR_THREADS", raising=False)
+    _cgroup(tmp_path, monkeypatch, None)  # 파일 없음 (맥)
+    monkeypatch.setattr(doc_ocr.os, "cpu_count", lambda: None)
+    assert doc_ocr._ocr_threads() == 1
 
 
 # ── 실제 OCR (가공 사진) ────────────────────────────────────────
@@ -122,7 +191,7 @@ def test_label_word_inside_a_sentence_is_not_counted():
 def test_take_bl_reads_ocr_confused_label_and_dotted_value():
     """10-01 실제 팩스 사진: "H.B/L No."를 "H.B/1.N1."로, 번호의 L을 "I."로 읽었다. 가공 번호로 같은 모양을 재현"""
     assert doc_ocr.take_bl(["Consignee", "H.B/1.N1.", ":MRVI.A2026090001", "TEL"]) == "MRVIA2026090001"
-    assert doc_ocr.take_bl(["B1 TOWER", "MRVA2026090001"]) is None  # 빗금 없는 B1은 이름표가 아니다
+    assert not doc_ocr.BL_LABEL.search("B1 TOWER")  # 빗금 없는 B1은 이름표가 아니다 (10-08: 값은 이름표 없는 후보로 잡힐 수 있다)
 
 
 def test_mask_bl_hides_dotted_ocr_form():
@@ -271,3 +340,15 @@ def test_mask_bl_hides_second_bl_and_personal_contacts_but_keeps_company_phone_a
 def test_mask_without_bl_still_hides_mobile_and_email():
     text = doc_ocr.mask_bl(["담당 82-10-1234-5678", "mail: kim@example.com", "TEL 051-000-0000"], None)
     assert "1234-5678" not in text and "kim@example.com" not in text and "051-000-0000" in text
+
+
+# ── 출항일 날짜 표기 (10-08 정운 실사용 72번) ──
+@pytest.mark.parametrize("written", ["SEP.25.2026", "SEP 25, 2026", "25 SEP 2026", "2026.09.25", "2026-09-25"])
+def test_etd_date_in_common_bl_formats_is_found(written):
+    checks = doc_ocr.check_fields(_fields(etd="2026-09-25"), ["SHIPPED ON BOARD", written, *LINES])
+    assert "not_in_text" not in checks["etd"]
+
+
+def test_etd_other_date_is_still_not_in_text():
+    checks = doc_ocr.check_fields(_fields(etd="2026-09-26"), ["SHIPPED ON BOARD", "SEP.25.2026", *LINES])
+    assert "not_in_text" in checks["etd"]

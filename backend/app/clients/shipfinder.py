@@ -24,6 +24,7 @@ import httpx
 from backend.app.clients.cache import ResponseCache
 from backend.app.clients.replay import replay_enabled, shipfinder_transport
 from backend.app.clients.retry import with_retry
+from backend.app.observability.langfuse import tool_span
 from backend.app.observability.logging import log_failure
 
 BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
@@ -207,6 +208,28 @@ class ShipFinderClient:
         self._http.close()
 
     def _get(self, endpoint: str, params: dict) -> dict:
+        """ShipFinder HTTP 호출 한 번을 Langfuse span으로 감싼다 (10-08 정운 실사용 64번).
+
+        전에는 성공한 호출이 어디에도 안 보여서 하루 한도를 누가 썼는지 알 수 없었다. httpx 로거는 키가 URL에 실려 새므로
+        일부러 WARNING으로 막아 뒀다. 그래서 키·URL·검색어·응답 원본은 빼고 endpoint, 캐시 여부, 건수, 오류 코드,
+        replay 여부만 남긴다. served_from_cache는 이 층에서는 항상 False다(캐시 대체는 _cached가 이 호출이 실패한 뒤에 한다).
+        캐시 대체는 resolve_mmsi 등 부른 쪽 span과 log_failure("... served_from_cache")가 남긴다.
+        """
+        with tool_span(f"shipfinder.{endpoint}", {"endpoint": endpoint}) as span:
+            span.metadata.update(endpoint=endpoint, served_from_cache=False, replay_mode=replay_enabled(),
+                                 result_count=None)
+            # 오늘 한도 소진을 이미 받아 실제로는 부르지 않은 경우를 구분한다 (불렀다가 38을 받은 것과 다르다)
+            span.metadata["not_called_quota_blocked"] = quota_blocked()
+            try:
+                body = self._get_raw(endpoint, params)
+            except ShipFinderError as e:
+                span.error = e.code
+                raise
+            data = body.get("data")
+            span.metadata["result_count"] = len(data) if isinstance(data, list) else (1 if data else 0)
+            return body
+
+    def _get_raw(self, endpoint: str, params: dict) -> dict:
         # 오늘 이미 한도 소진을 받았으면 부르지 않는다. 불러도 38만 돌아오고 호출 수만 쌓인다 (10-06 점검)
         if quota_blocked():
             raise ShipFinderError("quota_exhausted", f"{endpoint} 오늘 호출 한도 소진 (호출하지 않음)", status=38)

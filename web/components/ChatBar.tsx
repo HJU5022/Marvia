@@ -2,27 +2,32 @@
 /** AI 입력창 (docs/specs/chat-search.md). 홈 화면의 주 기능이라 가운데 넓은 자리에 둔다 (강사 피드백 10-02, 구현작업서 4절).
  * 문장은 POST /api/chat/stream으로 가고, 서버가 B/L을 가린 뒤 LLM이 의도(화물 조회·후속 질문·입항 선박 검색)를 고른다.
  * 기다리는 동안은 서버가 알린 실제 처리 단계만 보인다 (docs/specs/chat-progress.md). 타이머로 단계를 만들지 않는다.
- * 서류 첨부 (10-08 정운 49·51·53번): 입력창의 클립 버튼이나 채팅 영역에 파일을 끌어 놓으면 입력창 위에 파일 칩이 생기고 바로 읽기 시작한다.
- * 읽은 값은 입력창 위 작은 확인 카드에서 고치고, 입력창에 설명을 쓰면 서류 값과 함께 한 번에 보낸다. 큰 옆 패널(드로어)은 쓰지 않는다.
+ * 서류 첨부 (10-08 정운 49·51·53·73번): 클립 버튼이나 끌어 놓기로 파일을 붙이면 입력창 위에 파일 칩만 생긴다. 붙이는 순간에는 아무 일도 없다(읽기도 조회도 안 한다).
+ * 보내기(버튼·Enter)를 누르면 그때 서류에서 B/L(과 MRN)만 코드로 읽고(POST /api/document/bl, LLM 없음) 곧바로 채팅 조회를 보낸다.
+ * 입력창은 셋 다 된다: 사진만(글 없이), 사진 + 글, 글만(전과 같음). 말풍선에는 쓴 글과 파일 이름만 보이고 B/L은 보이지 않는다.
+ * 번호를 못 찾으면 조회하지 않고 안내만 한다. 칩과 쓴 글은 그대로 두어 번호를 적어 다시 보낼 수 있다.
+ * 읽은 값을 확인하는 카드·수정 화면은 없다(조회가 UNI-PASS 등에서 정확한 값을 가져오므로 선박·항차·날짜는 필요 없다).
  * 화면을 내려 입력창이 안 보이면 "AI에게 이어서 물어보기" 버튼이 나타나 입력창으로 돌려보낸다.
  */
+import Link from 'next/link';
 import {useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {ArrowRight, LoaderCircle, Paperclip, Sparkles} from 'lucide-react';
+import {ArrowRight, FileText, LoaderCircle, Paperclip, Sparkles, X} from 'lucide-react';
 import {verdictLabels} from '@/lib/format';
 import {useApp} from './AppProvider';
-import {DocumentPanel, type DocumentHandle, type DocumentPhase, type DocumentValues} from './DocumentPanel';
 import {EvidencePopover} from './EvidencePopover';
 import {ConversationEvidence} from './ConversationEvidence';
 import {ChatMiniMap} from './ChatMiniMap';
+import {ChatVesselTable} from './ChatVesselTable';
 import {ChatCargoTable} from './ChatCargoTable';
 import {WatchOfferAction} from './WatchOfferAction';
 import {ChatCandidateChips} from './ChatCandidateChips';
-import {isLive, QUOTA_MESSAGE} from '@/lib/api';
+import {isLive, QUOTA_MESSAGE, readDocumentBl} from '@/lib/api';
 import {onComposerRequest} from '@/lib/composer';
 import {stageLabels, type ProgressStage} from '@/lib/progress';
 
 const MAX = 500;  // routers/chat.py ChatRequest.message max_length
+const DOC_NO_BL_NOTE = '서류에서 B/L 번호를 찾지 못했어요. 번호를 직접 입력해 주세요.';
 const DOC_MAX_BYTES = 10 * 1024 * 1024;  // routers/document.py MAX_BYTES. 서버가 최종 판단하고, 여기서는 올리기 전에 빨리 알려 주는 용도다
 
 /** 처음 보는 사람을 위한 예시 문장. 누르면 입력창에 채우기만 한다(보내기는 사용자가). 실제 모드는 누구나 바로 결과를 볼 수 있는
@@ -44,8 +49,8 @@ function scrollBehavior(): ScrollBehavior {
  * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
 const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
 // [제목](주소) 마크다운 링크: 제목만 보이고 주소는 숨긴다 (10-07 정운 실사용 4번). 제목 속 대괄호·주소 속 공백·괄호는 받지 않는다
-const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
-const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: '];
+const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/[a-z][a-z0-9\-/]*)\)/g;  // 사이트 안 경로(/watch)도 받는다: 감시 화물 링크 (10-08 정운 실사용 79)
+const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: ', '감시 화물에서 보기: '];
 function linkifyLine(line: string, key: number) {
   if (!LINK_LINE_PREFIXES.some(prefix => line.trimStart().startsWith(prefix))) return line;
   const out: ReactNode[] = [];
@@ -53,7 +58,9 @@ function linkifyLine(line: string, key: number) {
   for (const m of line.matchAll(MD_LINK_PATTERN)) {
     const at = m.index ?? 0;
     if (at > last) out.push(...bareUrls(line.slice(last, at), `${key}-${at}`));
-    out.push(<a key={`${key}-md-${at}`} href={m[2]} target="_blank" rel="noopener noreferrer" className="chat-link">{m[1]}</a>);
+    // 사이트 안 경로는 같은 탭에서 앱 안 이동(상태 유지), 바깥 주소는 새 탭. 배포 기본 경로는 next.config에 없어 경로 그대로 쓴다 (Shell의 메뉴 링크와 같다)
+    out.push(m[2].startsWith('/') ? <Link key={`${key}-md-${at}`} href={m[2]} className="chat-link">{m[1]}</Link>
+      : <a key={`${key}-md-${at}`} href={m[2]} target="_blank" rel="noopener noreferrer" className="chat-link">{m[1]}</a>);
     last = at + m[0].length;
   }
   if (last < line.length) out.push(...bareUrls(line.slice(last), `${key}-end`));
@@ -73,24 +80,25 @@ function linkify(text: string): ReactNode[] {
 }
 
 export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDetail?: () => void}) {
-  const {ask, loading, stages, pendingSince, thread, result, request, setDocHints, usage, view} = useApp();
+  const {ask, loading, stages, pendingSince, thread, result, request, usage, view} = useApp();
   // 판정 배지·할 일 한 줄은 "가장 최근 화물 답" 말풍선에만 붙인다. ChatTurn에는 판정이 없어 지금 보는 result(가장 최근 화물 답)에서 읽는다. 지어내지 않는다.
   // B/L 여러 개를 비교한 답은 표가 줄마다 배지를 가지고 있어 붙이지 않는다
   const verdictTurn = view === 'cargo' && result?.verdict ? thread.map((t, i) => t.role === 'assistant' && t.kind === 'cargo' && !(t.cargos && t.cargos.length > 1) ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
   // 선박 후보 칩은 "가장 최근 되묻기 답"에만 붙이고, 그 되묻기가 아직 풀리지 않았을 때만 보인다 (결과 칸이 같은 되묻기 그대로일 때).
   // 후보를 골라 판정이 나오면 결과가 바뀌어 칩이 사라진다 (10-08 정운 실사용 37번)
+  // 선박 검색 답 중 가장 최근 것만 "나머지 N척 전체 보기"가 열린다 (ChatVesselTable)
+  const lastVesselTurn = thread.reduce((a, t, i) => t.role === 'assistant' && t.kind === 'vessels' ? i : a, -1);
   const chipTurn = result?.status === 'insufficient' ? thread.map((t, i) => t.role === 'assistant' && t.agent?.vessel_candidates.length ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
   // 화물 카드가 실제로 보일 때만 "이 화물"로 안내한다. AppProvider.ask도 같은 조건으로 화물을 함께 보낸다 (10-02 UI 점검 F5)
   const cargoShown = view === 'cargo' && !!result && !!request.bl_no;
   // 하루 토큰 한도를 다 쓰면 입력·서류 사진을 막는다. 서버도 429로 막는다 (docs/specs/token-quota.md)
   const blocked = !!usage?.exhausted;
   const [text, setText] = useState('');
-  // 10-08 정운 49번: 첨부한 서류. file이 있으면 DocumentPanel(inline)이 읽는다. fileKey가 바뀌면 새 파일로 새로 마운트한다
+  // 첨부한 서류. 칩만 만들고 보내기 전에는 읽지 않는다 (10-08 정운 실사용 73번)
   const [file, setFile] = useState<File | null>(null);
-  const [fileKey, setFileKey] = useState(0);
-  const [docState, setDocState] = useState<DocumentPhase>({phase: 'idle', canApply: false});
-  const [docNote, setDocNote] = useState('');  // 형식·크기 안내, 설명이 너무 길 때 안내
-  const docHandle = useRef<DocumentHandle | null>(null);
+  const [docBusy, setDocBusy] = useState(false);  // 보낸 뒤 서류에서 B/L을 찾는 동안
+  const [docSeconds, setDocSeconds] = useState(0);
+  const [docNote, setDocNote] = useState('');  // 형식·크기 안내, B/L 못 찾음 안내
   const pickRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);  // 안쪽 요소를 넘나들 때 dragleave가 먼저 와서 안내가 깜빡이지 않게 센다
@@ -103,6 +111,14 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);  // 맨 아래를 보고 있으면 true. 위로 올려 읽는 중에는 새 메시지가 와도 끌어내리지 않는다
+
+  // B/L 찾는 동안 브라우저가 실제로 잰 경과 초만 칩에 보인다
+  useEffect(() => {
+    if (!docBusy) { setDocSeconds(0); return; }
+    const start = Date.now();
+    const id = setInterval(() => setDocSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [docBusy]);
 
   // 새 메시지·답 대기 표시가 생기면 대화 칸만 맨 아래로 (위 대화를 읽는 중이면 그대로). 페이지 전체는 움직이지 않는다
   useEffect(() => {
@@ -155,16 +171,34 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   }
 
   async function send(message: string) {
-    // 서류 확인 카드가 떠 있으면 보내기는 "서류 값 + 입력창 설명"을 함께 보내는 일이다 (applyDocument가 이어 받는다)
-    if (file && docState.phase === 'ready' && !loading && !blocked) { setDocNote(''); docHandle.current?.confirm(); return; }
-    if (file && docState.phase === 'busy') return;  // 읽는 중에는 보내지 않는다. 값이 오기 전에 문장만 가면 서류가 버려진다
+    if (loading || blocked || docBusy) return;  // 보내는 중(서류 읽는 중 포함)이거나 한도를 다 썼으면 보내지 않는다
     const m = message.trim();
-    if (!m || loading || blocked || m.length > MAX) return;  // 보내는 중이거나 한도를 다 썼으면 보내지 않는다
+    if (file) { await sendWithDocument(file, m); return; }
+    if (!m || m.length > MAX) return;
     setText('');
     stick.current = true;  // 내가 보낸 것은 항상 보이게
     const ok = await ask(m);
     // 실패하면 쓴 문장을 돌려준다. 그 사이 새로 쓴 글자가 있으면 덮지 않는다
     if (!ok) setText(t => t || m);
+  }
+  /** 서류를 붙여 보낼 때 (10-08 정운 실사용 73번): 서류에서 B/L(과 MRN)만 코드로 읽고, 쓴 글과 함께 채팅 조회로 보낸다.
+   * 사진만(글 없음)도 된다. 문장 = "B/L [MRN 값] 쓴 글": MRN은 서버가 문장에서 코드로 뽑아 세관 미등록 때 배를 찾는다(LLM에는 안 감).
+   * 말풍선에는 B/L 대신 쓴 글과 파일 이름만 둔다. 서류 확인·수정 단계는 없고, 선박·항차·날짜는 조회가 가져온다 */
+  async function sendWithDocument(f: File, typed: string) {
+    setDocNote(''); setDocBusy(true);
+    let found;
+    try { found = await readDocumentBl(f); }
+    catch (e) { setDocNote(e instanceof Error ? e.message : '서류를 읽지 못했어요. 다시 시도해 주세요.'); return; }
+    finally { setDocBusy(false); }
+    if (!found.bl_no) { setDocNote(DOC_NO_BL_NOTE); return; }  // 조회를 보내지 않는다. 칩과 쓴 글은 그대로 둔다
+    const message = [found.bl_no, found.mrn ? `MRN ${found.mrn}` : '', typed].filter(Boolean).join(' ');
+    if (message.length > MAX) { setDocNote(`설명이 너무 길어요. 서류 번호와 합쳐 ${MAX}자 이하로 줄여 주세요.`); return; }
+    const display = [typed, `첨부: ${f.name}`].filter(Boolean).join('\n');
+    setText('');
+    stick.current = true;
+    const ok = await ask(message, {document: null, display});
+    // 성공하면 서류를 뗀다. 실패하면 칩과 쓴 글을 돌려 다시 보낼 수 있게 한다
+    if (ok) removeDoc(); else setText(t => t || typed);
   }
   function submit(e: FormEvent) { e.preventDefault(); void send(text); }
   // Enter로 보내고, Shift+Enter는 줄바꿈 (한글 조합 중 Enter는 무시)
@@ -172,30 +206,15 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text); }
   }
   function fill(example: string) { if (blocked) return; offerText(example); inputRef.current?.focus(); }
-  /** 서류 값 확인을 마쳤을 때 (10-08 정운 51번): 입력창에 붙여 넣기만 하지 않고 바로 보낸다.
-   * 문장 = "B/L [MRN 값] 입력창 설명". MRN은 서버가 문장에서 코드로 뽑아 세관 미등록 때 배를 찾는다(LLM에는 안 감).
-   * 출항일은 ask의 document 인자로 보낸다(서버가 같은 B/L 조회에만 싣는다). 항차·입항 예정일은 /api/chat에 실을 칸이 없어
-   * 되묻기 화면(CandidatePicker)에 미리 채울 값(docHints)으로만 둔다. 이전과 같다 */
-  async function applyDocument(v: DocumentValues) {
-    const typed = text.trim();
-    const message = [v.bl_no, v.mrn ? `MRN ${v.mrn}` : '', typed].filter(Boolean).join(' ');
-    if (message.length > MAX) { setDocNote(`설명이 너무 길어요. 서류 값과 합쳐 ${MAX}자 이하로 줄여 주세요.`); return; }
-    setDocHints(v.voyage_no || v.forwarder_eta || v.departed_on ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta, bl_no: v.bl_no, departed_on: v.departed_on} : null);
-    setText('');
-    stick.current = true;
-    const ok = await ask(message, {document: v.departed_on ? {bl_no: v.bl_no, departed_on: v.departed_on} : null});
-    // 성공하면 서류를 뗀다. 실패하면 서류 카드와 쓴 설명을 그대로 돌려 다시 보낼 수 있게 한다 (send와 같은 방식)
-    if (ok) removeDoc(); else setText(t => t || typed);
-  }
-  function removeDoc() { setFile(null); setDocState({phase: 'idle', canApply: false}); setDocNote(''); }
+  function removeDoc() { setFile(null); setDocNote(''); }
 
   /** 파일을 첨부한다 (클립 버튼, 끌어 놓기 공통). 종류·크기는 올리기 전에 한 번 걸러 주고, 최종 검사는 서버(POST /api/document)가 한다 */
   function attach(f: File | undefined) {
     if (!f || loading || blocked) return;
-    if (file && docState.phase === 'busy') { setDocNote('지금 읽는 중이에요. 끝나면 다시 올려 주세요.'); return; }
+    if (docBusy) return;
     if (!(f.type.startsWith('image/') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) { setDocNote('JPG, PNG, PDF 파일만 올릴 수 있어요.'); return; }
     if (f.size > DOC_MAX_BYTES) { setDocNote('파일은 10MB 이하만 올릴 수 있어요.'); return; }
-    setDocNote(''); setDocState({phase: 'busy', canApply: false}); setFile(f); setFileKey(k => k + 1);
+    setDocNote(''); setFile(f);
     requestAnimationFrame(() => inputRef.current?.focus());  // 바로 설명을 쓸 수 있게
   }
   function openPicker() { if (!loading && !blocked) pickRef.current?.click(); }
@@ -239,7 +258,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? <EvidencePopover text={t.text} citations={t.citations ?? []} evidence={t.evidence ?? []} renderText={linkify}/> : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}{i === chipTurn && t.agent && t.request && t.agent.trace_id === result?.trace_id && <ChatCandidateChips agent={t.agent} request={t.request} disabled={loading || blocked}/>}</div></li>)}
+          <div className="chat-body"><div className="chat-bubble">{t.role === 'assistant' && t.kind === 'vessels' && t.shipList ? <ChatVesselTable text={t.text} list={t.shipList} evidence={t.evidence ?? []} citations={t.citations ?? []} renderText={linkify} latest={i === lastVesselTurn}/> : <p>{t.role === 'assistant' ? <EvidencePopover text={t.text} citations={t.citations ?? []} evidence={t.evidence ?? []} renderText={linkify}/> : t.text}</p>}{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}{i === chipTurn && t.agent && t.request && t.agent.trace_id === result?.trace_id && <ChatCandidateChips agent={t.agent} request={t.request} disabled={loading || blocked}/>}</div></li>)}
         {seedAnswer && <li className="chat-seed"><div className="chat-body"><div className="chat-bubble"><p>{seedAnswer.answer}</p>{verdictBlock}</div></div></li>}
       </ol>}
       {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}
@@ -252,14 +271,18 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
         <button type="button" className="button secondary" onClick={() => { setText(offer); setOffer(null); inputRef.current?.focus(); }}>바꾸기</button>
         <button type="button" className="button text-button" onClick={() => { setOffer(null); inputRef.current?.focus(); }}>쓰던 글 유지하기</button></div>}
       {docNote && <p role="alert" className="request-error doc-note">{docNote}</p>}
-      {/* 파일 칩 + 확인 카드. 보내는 동안은 숨기기만 하고 상태는 지킨다(실패하면 그대로 다시 보인다) */}
-      {file && <div hidden={loading}><DocumentPanel key={fileKey} inline file={file} onApply={v => void applyDocument(v)} onClose={removeDoc}
-        disabled={loading || blocked} handleRef={docHandle} onPhase={setDocState}/></div>}
+      {/* 파일 칩. 보내는 동안(채팅 진행 표시가 대신 보인다)은 숨기기만 하고 상태는 지킨다(실패하면 그대로 다시 보인다) */}
+      {file && <div className="doc-attach" hidden={loading && !docBusy}><div className="doc-chip" role="status">
+        {docBusy ? <LoaderCircle size={16} className="spin" aria-hidden="true"/> : <FileText size={16} strokeWidth={1.75} aria-hidden="true"/>}
+        <span className="doc-chip-name">{file.name}</span>
+        <span className="doc-chip-state">{docBusy ? <>서류에서 B/L 찾는 중 · <span className="mono">{docSeconds}초</span></> : '보내기를 누르면 서류에서 B/L을 찾아 조회해요'}</span>
+        <button type="button" className="icon-button doc-chip-x" onClick={removeDoc} disabled={docBusy} aria-label="첨부한 서류 빼기"><X size={16}/></button>
+      </div></div>}
       <div className="composer-wrap" ref={wrapRef}>
         <form className="composer" onSubmit={submit}>
           <label htmlFor="chat-input" className="sr-only">Marvia에게 질문하기</label>
           <textarea id="chat-input" ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={1} maxLength={MAX} disabled={blocked}
-            placeholder={file ? '서류와 함께 보낼 설명을 적어 주세요 (선택)' : cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호나 궁금한 점을 입력해 주세요'}
+            placeholder={file ? '서류와 함께 보낼 설명을 적어 주세요 (선택, 사진만 보내도 돼요)' : cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호나 궁금한 점을 입력해 주세요'}
             aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
           <div className="composer-foot">
             {/* 10-08 정운 49번: 서류 첨부는 클립 아이콘 하나. 옆 패널을 열지 않고 파일 선택창만 연다 */}
@@ -269,8 +292,8 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
             <div className="composer-send">
               {/* 글자 수는 쓰기 시작한 뒤에만 보인다. 빈 입력창에 숫자를 늘 두면 어수선하다 */}
               {text.length > 0 && <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>}
-              <button type="submit" className="send" disabled={loading || blocked || (file ? (docState.phase === 'busy' || (docState.phase === 'ready' ? !docState.canApply : !text.trim())) : !text.trim())} aria-label="AI에게 질문 보내기">
-                {loading ? <LoaderCircle size={20} strokeWidth={1.5} className="spin"/> : <ArrowRight size={20} strokeWidth={1.5}/>}</button>
+              <button type="submit" className="send" disabled={loading || blocked || docBusy || (!file && !text.trim())} aria-label="AI에게 질문 보내기">
+                {loading || docBusy ? <LoaderCircle size={20} strokeWidth={1.5} className="spin"/> : <ArrowRight size={20} strokeWidth={1.5}/>}</button>
             </div>
           </div>
         </form>

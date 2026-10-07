@@ -43,6 +43,7 @@ from backend.app.services import memory as memory_service
 from backend.app.services import operators as ops
 from backend.app.services import progress
 from backend.app.services import vessel_detail
+from backend.app.services import vessel_watch as vessel_watch_service
 from backend.app.services import watch as watch_service
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -96,6 +97,9 @@ class ChatScreenArrival(BaseModel):
     flag: str | None = Field(default=None, max_length=SCREEN_TEXT_MAX)
     eta: str | None = Field(default=None, max_length=SCREEN_TIME_MAX)
     previous_port: str | None = Field(default=None, max_length=SCREEN_TEXT_MAX)
+    # 10-08 정운 실사용 79: 배를 지켜볼 때 MMSI를 찾는 열쇠와, 사용자가 목록에서 고른 줄(지도에 보이는 배) 표시. 옛 화면은 보내지 않는다
+    call_sign: str | None = Field(default=None, max_length=20)
+    selected: bool = False
 
 
 class ChatScreen(BaseModel):
@@ -179,6 +183,14 @@ class WatchSet(BaseModel):
     on: bool
 
 
+class WatchVesselSet(BaseModel):
+    """이번 문장으로 배 한 척을 감시 목록에 넣거나 뺐다 (10-08 정운 실사용 79). 화면이 그 배의 버튼을 새로 읽는다."""
+
+    mmsi: int
+    name: str
+    on: bool
+
+
 class ChatResponse(BaseModel):
     kind: Literal["cargo", "vessels", "message"]
     reply: str
@@ -192,6 +204,7 @@ class ChatResponse(BaseModel):
     cargos: list[ChatCargo] = []  # B/L이 2~3개인 문장에서만 채워진다. 한 개짜리 답은 빈 목록이라 옛 화면도 그대로 쓴다
     watch_offer: WatchOffer | None = None  # 지켜보기를 먼저 제안한 답에만 채워진다 (10-06)
     watch_set: WatchSet | None = None  # 대화로 지켜보기를 켜거나 껐을 때만 채워진다 (10-06)
+    watch_vessel_set: WatchVesselSet | None = None  # 대화로 배 한 척을 감시 목록에 넣거나 뺐을 때만 채워진다 (10-08 정운 실사용 79)
     # 답 문장 속 근거 표시 (10-08 정운 실사용 58번). 둘 다 더하기만 한 칸이라 옛 화면은 무시해도 된다.
     # evidence_items: 이번 문장에서 모은 근거 [{id, source, fetched_at, values:[{field,value}], url?, title?}]. 코드 문장·고정 문구에도 실린다(화면이 글 끝 칩으로 보인다)
     # citations: 검증을 통과한 [E#] 표시 [{id, start, end, evidence_ref}]. start/end는 reply 글 안 "[E1]"의 자리, evidence_ref는 evidence_items[].id
@@ -247,6 +260,29 @@ def _history(body: ChatRequest) -> list[dict]:
 SAVE_WAIT_TRIES, SAVE_WAIT_SEC = 3, 1.0
 
 
+def _vessel_hooks(user_id: str) -> svc.VesselHooks:
+    """로그인 사용자의 배 한 척 지켜보기 함수 셋 (10-08 정운 실사용 79). 오류는 종류만 서비스에 돌려주고 문장은 서비스가 정한다."""
+
+    def resolve(call_sign: str, name: str | None) -> dict:
+        try:
+            return {"mmsi": vessel_watch_service.resolve_mmsi(call_sign, name)}
+        except vessel_watch_service.VesselWatchError as e:
+            return {"error": e.kind}
+
+    def add(mmsi: int, name: str, flag: str | None, dest: str | None, eta: str | None, call_sign: str | None) -> dict:
+        try:
+            with ops.open_conn() as conn:
+                return {"mmsi": vessel_watch_service.add_vessel(conn, user_id, mmsi, name, flag, dest, eta, call_sign)["mmsi"]}
+        except vessel_watch_service.VesselWatchError as e:
+            return {"error": e.kind}
+
+    def remove(mmsi: int) -> dict:
+        with ops.open_conn() as conn:
+            return {"mmsi": vessel_watch_service.remove_vessel(conn, user_id, mmsi).get("mmsi", mmsi)}
+
+    return svc.VesselHooks(resolve=resolve, add=add, remove=remove)
+
+
 def _watch_hooks(user_id: str | None) -> svc.WatchHooks | None:
     """로그인 사용자의 지켜보기를 읽고 쓰는 함수 셋. 로그인하지 않았거나 DB가 없으면 None (서비스는 "바꾸지 않고 안내만"으로 안다).
     함수마다 연결을 따로 연다: 켜기·상태·걱정 읽기가 한 요청에서 각각 한두 번뿐이라 단순함이 낫다 (routers/watch.py와 같은 방식)."""
@@ -280,7 +316,7 @@ def _watch_hooks(user_id: str | None) -> svc.WatchHooks | None:
         texts = [(i.get("fields") or {}).get("text") for i in items if i.get("kind") == "worry" and i.get("cargo_key") == key]
         return next((t for t in reversed(texts) if t), None)
 
-    return svc.WatchHooks(tool=tool, state=state, worry=worry)
+    return svc.WatchHooks(tool=tool, state=state, worry=worry, vessel=_vessel_hooks(user_id))
 
 
 def _kakao_hooks(user_id: str | None) -> svc.KakaoHooks | None:

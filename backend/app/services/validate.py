@@ -288,6 +288,20 @@ def _key_words(text: str) -> set[str]:
     return words
 
 
+# 10-08 정운 실사용 79: 웹 글은 거의 영어인데 quote_supports는 한글 낱말이 원문에 있는지 본다. 영어 원문에는 한글 낱말이 없어
+# 맞는 웹 답도 늘 걸려 NOT_IN_SKILLS로 끝났다. 근거 원문에서 한글이 이 비율보다 적으면 낱말 겹침 검사는 건너뛴다
+# (quote_found: 근거 조각이 가져온 글에 그대로 있어야 한다는 검사는 그대로 한다). Skill 원문은 한글이라 이 검사를 그대로 받는다.
+FOREIGN_SOURCE_HANGUL_RATIO = 0.2  # (한글 글자 수) / (한글 + 영문 글자 수) 가 이보다 작으면 "대부분 외국어 글"
+
+
+def is_mostly_foreign(text: str) -> bool:
+    """글에서 한글이 거의 없는가 (한글 비율 < FOREIGN_SOURCE_HANGUL_RATIO). 글자가 하나도 없으면 False."""
+    hangul = len(re.findall(r"[가-힣]", text or ""))
+    latin = len(re.findall(r"[A-Za-z]", text or ""))
+    total = hangul + latin
+    return total > 0 and hangul / total < FOREIGN_SOURCE_HANGUL_RATIO
+
+
 def quote_supports(reply: str, quote: str, source: str, user_text: str = "") -> bool:
     """V14 받침: 근거 조각(과 원문에서 그 앞뒤)이 답의 핵심 낱말을 하나라도 담고 있는가. 질문에 나온 낱말은 세지 않는다
     (질문 말만 겹치는 조각은 답을 받친 것이 아니다). 판단할 낱말이 적으면(SUPPORT_MIN_KEYS) 통과시킨다."""
@@ -401,7 +415,8 @@ GENERAL_TERMS = ("마스터 하우스 포워더 선사 화주 수하인 선하�
 
 def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[str] | None = None,
                      quote: str | None = None, skills_text: str | None = None,
-                     extra_words: set[str] | None = None, copy_allowed: str = "") -> list[Violation]:
+                     extra_words: set[str] | None = None, copy_allowed: str = "",
+                     skip_support_if_foreign: bool = False) -> list[Violation]:
     """채팅 에이전트가 직접 쓴 답 문장 검사 (10-05, services/chat.py). 후속 답의 V7·V9·V10과 같은 기준이다.
 
     이 문장은 판정 흐름을 거치지 않고 화면에 간다 (실무 질문 답, 읽기 전용 도구 결과 요약). 그래서 근거 글(grounded)에
@@ -414,6 +429,7 @@ def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[st
       숫자 검사(V7)는 그대로 엄격하다: grounded에 고정 문구뿐이면 사용자가 쓰지 않은 숫자는 모두 걸린다
     - V14: skills_text를 주면(도구 없이 Skill 문서로 답한 경우) quote가 그 원문에 그대로 있어야 한다 (10-05 실측, quote_found).
       Skill 문서에 없는 조언을 LLM이 지어내는 것을 막는 장치다. 지시문은 근거로 치지 않는다: 지시문은 도메인 지식의 출처가 아니다
+    - skip_support_if_foreign: 웹 답만 true (10-08 정운 실사용 79). 근거 원문이 대부분 외국어면 한글 낱말 겹침(quote_supports)은 못 보므로 건너뛴다
     """
     found = []
     allowed_numbers = set(_numbers(grounded)) | set(_numbers(user_text))
@@ -439,7 +455,8 @@ def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[st
                                       "Copy one sentence or table cell from the Skill documents that supports your reply, "
                                       "and say only what that text says. If the Skill documents do not cover the question, "
                                       "set answer_kind to not_in_skills."))
-    elif skills_text is not None and not quote_supports(reply, quote or "", skills_text, user_text):
+    elif skills_text is not None and not (skip_support_if_foreign and is_mostly_foreign(skills_text)) \
+            and not quote_supports(reply, quote or "", skills_text, user_text):
         found.append(Violation("V14", "skill_quote does not support the reply: none of the reply's key words appear in or next to "
                                       "that text. Copy the sentence that your reply is based on, or answer only what it says."))
     return found

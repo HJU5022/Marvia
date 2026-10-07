@@ -35,7 +35,7 @@ NO_TITLE = "새 대화"      # 첫 말이 비어 있을 때만
 # agent·request(큰 판정 덩어리)는 대화의 마지막 값만 conversations.context·result에 둔다.
 # 단, cargos 줄은 눌렀을 때 오른쪽 칸을 바꾸려고 줄마다 agent·request를 들고 있어 그대로 둔다
 # evidence_items·citations (10-08 정운 실사용 58번): 다시 연 대화에서도 근거 표시·칩이 그대로 나오게 extra_enc(잠긴 JSON)에 같이 둔다. 마이그레이션 없음
-EXTRA_FIELDS = ("kind", "vessels", "place", "ports", "days", "map", "cargos", "watch_offer", "watch_set", "evidence_items", "citations")
+EXTRA_FIELDS = ("kind", "vessels", "place", "ports", "days", "map", "cargos", "watch_offer", "watch_set", "watch_vessel_set", "evidence_items", "citations")
 
 
 def ready() -> bool:

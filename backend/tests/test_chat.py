@@ -64,7 +64,7 @@ def test_llm_never_sees_bl(monkeypatch):
     agent, run = _agent_calls()
     r = svc.handle("TESTBL01 괜찮아?", "s1", None, run)
     assert "TESTBL01" not in calls[0]["masked"] and agent[0].bl_no == "TESTBL01"
-    assert agent[0].bl_type == "HOUSE" and "하우스 B/L(포워더가 발행한 B/L)로 조회" in r.reply  # 구분을 말하지 않으면 HOUSE로 알림
+    assert agent[0].bl_type == "HOUSE" and "하우스 B/L" not in r.reply  # 구분을 말하지 않으면 HOUSE로 먼저 조회하고, 안내는 붙이지 않는다 (10-08 정운 실사용 75)
 
 
 def test_cargo_uses_stated_type_and_valid_date_only(monkeypatch):

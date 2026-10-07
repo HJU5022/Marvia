@@ -84,7 +84,7 @@ def test_explicit_words_turn_watch_on_with_code_sentence(monkeypatch):
     store = Hooks()
     r = _handle("이거 지켜봐 줘", hooks=store)
     assert store.tool_calls == [(BL, True)]
-    assert r.reply == svc.WATCH_ON_REPLY and r.watch_set == {"bl_no": BL, "on": True} and r.watch_offer is None
+    assert r.reply == svc.WATCH_ON_REPLY + "\n" + svc.WATCH_PAGE_LINE and r.watch_set == {"bl_no": BL, "on": True} and r.watch_offer is None
     assert "카카오톡을 연결해 두셨다면" in r.reply  # 연결한 사람에게만 간다고 사실대로 쓴다
 
 

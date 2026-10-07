@@ -14,6 +14,7 @@ import http from 'node:http';
 import {chromium} from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
+const SHOTS77 = process.env.MARVIA_SHOT_DIR ?? 'screenshots';  // 10-08 정운 실사용 77번 스크린샷 자리
 const base = process.env.MARVIA_TEST_URL ?? 'http://127.0.0.1:3100';
 const live = process.env.MARVIA_LIVE_TEST_URL ?? '';
 const MOCK_PORT = Number(process.env.MARVIA_MOCK_API_PORT ?? 3199);
@@ -53,6 +54,14 @@ const activeId = page => page.evaluate(() => document.activeElement?.id ?? '');
 const mockCalls = [];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chatReply = reply => ({kind: 'message', reply, agent: null, request: null, vessels: [], place: null, ports: [], days: null});
+/** 10-08 정운 실사용 77번: 선박 검색 답. 서버 _ship_list_lines와 같은 모양의 글 + 43척(항구 40곳)의 구조 데이터 */
+function vesselReply() {
+  const vessels = Array.from({length: 43}, (_, i) => ({ship_name: `TEST VESSEL ${i + 1}`, call_sign: `T${i}`, nationality: 'PANAMA', ship_kind: '컨테이너선', previous_port: `PORT ${i % 40}`, next_port: null, purpose: '양하',
+    expected_arrival: new Date(Date.UTC(2026, 9, 6, 15 + i, 0)).toISOString(), facility: null, planned_departure: null, is_cargo: true}));
+  const lines = vessels.slice(0, 5).map(v => `· ${v.ship_name} · 10월 ${7 + Math.floor(Number(v.ship_name.split(' ')[2]) / 24)}일 00:00 도착 예정 · ${v.previous_port}`);
+  return {kind: 'vessels', reply: ['일본에서 1주 안에 부산 오는 수입 화물선 43척이에요.', ...lines, '외 38척', '해수부 입항 신고의 직전 기항지 기준이에요.'].join('\n'),
+    agent: null, request: null, vessels, place: 'JP', ports: Array.from({length: 40}, (_, i) => `PORT ${i}`), days: 7};
+}
 function startMock() {
   const server = http.createServer(async (req, res) => {
     const cors = {'access-control-allow-origin': req.headers.origin ?? '*', 'access-control-allow-headers': 'content-type, authorization, accept', 'access-control-allow-methods': 'GET, POST, PUT, DELETE'};
@@ -76,7 +85,7 @@ function startMock() {
       res.write(': ping\n\n');
       send('progress', {stage: 'customs'}); await sleep(300);
       send('progress', {stage: 'identify'}); await sleep(2500);  // 화면이 진행 중 단계를 보여 주는 동안 기다린다
-      send('result', chatReply('스트림 결과입니다.'));
+      send('result', message.includes('VESSELS') ? vesselReply() : chatReply('스트림 결과입니다.'));
       return res.end();
     }
     json(404, {detail: 'Not Found'});
@@ -205,6 +214,12 @@ try {
     await home(page); await input(page).fill('중국에서 부산 들어오는 배 보여줘'); await input(page).press('Enter');
     await page.locator('.vessel-results').waitFor();
     assert.equal(await page.locator('.vessel-results thead th').count(), 5);
+    // 10-08 정운 실사용 77번: 체험 모드 답도 3칸 표로 (배 이름 | 도착 예정 | 직전 기항지), 직전 기항지 2곳은 접지 않고 바로 보인다
+    assert((await page.locator('.cvt-list li').count()) >= 1, 'one-line list rows'); assert.equal(await page.locator('.cvt-table').count(), 0, 'no boxed table');
+    assert.equal(await page.locator('.vl-ports details, details.vl-ports').count(), 0, 'few ports are shown inline, no disclosure');
+    assert.equal(await page.locator('.vl-ports-line .vl-chips li').count(), 2);
+    await overflow(page, width);
+    await page.screenshot({path: `${SHOTS77}/demo-vessel-${width}.png`});
     // 휴대폰: 상세는 아래 시트다. 입력창에 포커스가 있으면 접혀 있어서 손잡이로 편다
     const handle = page.locator('.sheet-handle');
     if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'false') await handle.click();
@@ -224,20 +239,62 @@ try {
     assert(await page.locator('.vessel-results .leaflet-container').count() <= 1, 'only the selected vessel keeps a map');
     check(`vessel search + inline detail switch/cleanup ${width}`);
 
-    // 서류 사진 (10-08 정운 49·51·53번): 옆 서랍 대신 입력칸 클립 버튼으로 붙인다. 읽기가 끝나도 스스로 보내지 않고,
-    // 입력칸 위 칩 아래에 확인 카드가 뜬다. "첨부한 서류 빼기"로 떼면 카드도 사라진다
+    // 서류 첨부 (10-08 정운 49·51·53·73번): 붙이면 칩만 생기고 아무 일도 없다(읽기·조회 없음). 보내기를 눌러야 서류에서 B/L만 읽어 조회한다.
+    // 입력창은 셋 다 된다: 글만, 사진만, 사진 + 글. 보낼 때마다 사용자 말풍선은 정확히 한 개이고 조회 결과가 온다. 확인 카드·수정 화면은 없다
     const turnCount = await turns(page);
     // 휴대폰: 펼친 상세 시트가 입력창을 덮으므로 손잡이로 접는다 (넓은 화면에는 손잡이가 없다)
     if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'true') await handle.click();
     assert(await page.getByRole('button', {name: '서류 사진·PDF 첨부'}).isVisible(), 'attach button in composer');
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    await page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
+    const sendBtn = page.getByRole('button', {name: 'AI에게 질문 보내기'});
+    const userTurns = () => page.locator('.chat-turn.user').count();
+    const attachPng = () => page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
+    const settle = () => page.waitForFunction(() => !document.querySelector('.pending-card'), null, {timeout: 20000});
+    // (1) 사진만: 칩만 생기고 턴은 늘지 않는다. 보내기 버튼은 글이 없어도 켜진다
+    await input(page).fill('');
+    assert(await sendBtn.isDisabled(), 'send is disabled with nothing to send');
+    await attachPng();
     await page.locator('.doc-chip').waitFor();
-    await page.getByRole('button', {name: '확인한 값으로 조회'}).waitFor();
+    assert.equal(await page.locator('#chat-input').isDisabled(), false, 'composer stays enabled with a document attached');
+    await page.waitForTimeout(1200);
+    assert.equal(await turns(page), turnCount, 'attaching a document adds no turn (no background reading)');
+    assert.equal(await page.locator('.document-result, .document-status').count(), 0, 'no confirmation card');
+    assert(await sendBtn.isEnabled(), 'send is enabled for a photo with no text');
     if (width === 1440 && !interactionsOnly) await audit(page, `document-attach-${width}`);
-    assert.equal(await turns(page), turnCount, 'document never sends by itself');
+    // 칩의 X는 서류를 뗀다
     await page.getByRole('button', {name: '첨부한 서류 빼기'}).click(); await page.locator('.doc-chip').waitFor({state: 'detached'});
-    check(`document attach chip + confirm card without sending ${width}`);
+    await attachPng(); await page.locator('.doc-chip').waitFor();
+    let sentFrom = await userTurns();
+    await sendBtn.click();
+    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, sentFrom + 1, {timeout: 15000});
+    await settle();
+    assert.equal(await userTurns(), sentFrom + 1, 'photo only: exactly one user turn');
+    const photoBubble = await page.locator('.chat-turn.user').last().textContent();
+    assert(photoBubble.includes('notice.png'), 'photo-only bubble shows the file name');
+    assert(!/MRVDEMO\d{4}/.test(photoBubble), 'bubble does not show the raw B/L');
+    assert.equal(await page.locator('.doc-chip').count(), 0, 'chip is removed after a successful send');
+    assert((await page.locator('.chat-turn.assistant').count()) >= 1, 'a lookup answer arrives');
+    check(`document photo only: chip, no auto send, one user turn ${width}`);
+    // (2) 사진 + 글
+    await attachPng(); await page.locator('.doc-chip').waitFor();
+    await input(page).fill('이 서류 확인해 줘');
+    sentFrom = await userTurns();
+    await sendBtn.click();
+    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, sentFrom + 1, {timeout: 15000});
+    await settle();
+    assert.equal(await userTurns(), sentFrom + 1, 'photo + text: exactly one user turn');
+    const bothBubble = await page.locator('.chat-turn.user').last().textContent();
+    assert(bothBubble.includes('이 서류 확인해 줘') && bothBubble.includes('notice.png'), 'bubble shows the typed text and the file name');
+    check(`document photo + text: one user turn ${width}`);
+    // (3) 글만: 전과 같다
+    sentFrom = await userTurns();
+    await input(page).fill('중국에서 부산 들어오는 배 보여줘');
+    assert(await sendBtn.isEnabled(), 'send is enabled for text only');
+    await sendBtn.click();
+    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, sentFrom + 1, {timeout: 15000});
+    await settle();
+    assert.equal(await userTurns(), sentFrom + 1, 'text only: exactly one user turn');
+    check(`text only send: one user turn ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
     // 사이드바 개편(10-07): 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다
@@ -303,6 +360,40 @@ try {
       await page.locator('.chat-turn.assistant', {hasText: '대체 경로 답입니다.'}).waitFor();
       assert.equal(mockCalls.filter(c => c === 'POST /api/chat').length, calls + 1, 'falls back to /api/chat once');
       check(`live: missing stream endpoint falls back to /api/chat ${width}`);
+
+
+      // 10-08 정운 실사용 77번: 선박 검색 답은 표로 (3칸 머리글, 줄 나눔, 가로 넘침 없음), "나머지 N척 전체 보기"가 표를 연다, 직전 기항지 40곳은 접어 둔다
+      await input(page).fill('VESSELS 일본에서 오는 배'); await input(page).press('Enter');
+      await page.locator('.cvt-list').waitFor();
+      assert.equal(await page.locator('.cvt-list li').count(), 5);
+      assert.equal(await page.locator('.cvt-list th, .cvt-list thead').count(), 0, 'no visible column headers');
+      assert.equal(await page.locator('.cvt-lead').textContent(), '일본에서 1주 안에 부산 오는 수입 화물선 43척이에요.');
+      assert.equal(await page.locator('.cvt').getByText('· TEST VESSEL').count(), 0, 'raw dot lines are hidden when the table is drawn');
+      assert.match(await page.locator('.cvt-eta').first().innerText(), /10\/7 \([일월화수목금토]\) \d\d:\d\d$/);
+      assert(await page.evaluate(() => [...document.querySelectorAll('.cvt-eta')].every(e => e.getBoundingClientRect().height < 30)), 'time never wraps');
+      assert.equal(await page.locator('.cvt-note').textContent(), '해수부 입항 신고의 직전 기항지 기준이에요.');
+      await overflow(page, width);
+      assert(await page.evaluate(() => { const w = document.querySelector('.cvt-list'); return w.scrollWidth <= w.clientWidth + 1; }), 'vessel table does not overflow its bubble');
+      await page.screenshot({path: `${SHOTS77}/chat-vessel-table-${width}.png`});
+      await page.locator('.vessel-results').waitFor();
+      // 휴대폰: 입력창에 포커스가 있으면 시트가 접혀 있어 손잡이로 편다
+      const sheet = page.locator('.sheet-handle');
+      if (await sheet.isVisible() && (await sheet.getAttribute('aria-expanded')) === 'false') await sheet.click();
+      const hdr = page.locator('.vl-head');
+      assert.equal(await hdr.locator('.vl-meta').textContent(), '43척 · 7일 · 모든 시각 한국 시간');
+      assert.equal(await page.locator('.vl-ports summary').textContent(), '직전 기항지 40곳항구 보기');
+      assert.equal(await page.locator('.vl-ports .vl-chips').isVisible(), false, 'ports are collapsed at first');
+      await page.locator('.vl-ports summary').click();
+      assert.equal(await page.locator('.vl-ports .vl-chips li').count(), 40);
+      await page.screenshot({path: `${SHOTS77}/vessel-list-header-${width}.png`});
+      await overflow(page, width);
+      // 휴대폰: 시트를 접어 둔 뒤 누르면 표가 다시 펼쳐진다
+      if (await sheet.isVisible() && (await sheet.getAttribute('aria-expanded')) === 'true') await sheet.click();
+      await page.locator('.cvt-more').click();
+      await page.locator('.vessel-results').waitFor();
+      if (await sheet.isVisible()) assert.equal(await sheet.getAttribute('aria-expanded'), 'true', 'more-button reopens the sheet');
+      assert.equal(await page.locator('.cvt-more').textContent(), '나머지 38척 전체 보기');
+      check(`live: vessel answer renders table, 3 headers, no overflow, more-button, port disclosure ${width}`);
 
       await input(page).fill('BROKEN 질문'); await input(page).press('Enter');
       await page.locator('.chat-turn.assistant', {hasText: '답을 만드는 중 문제가 생겼습니다.'}).waitFor();

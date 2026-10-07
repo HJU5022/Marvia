@@ -825,7 +825,7 @@ section.watch{display:flex;flex-direction:column;gap:14px}
 .watch-tip dd{margin:0;color:var(--ink);white-space:normal}
 @media(max-width:900px){.watch-body{grid-template-columns:1fr}.watch-map{height:380px}.watch-list{max-height:none}}
 
-/* 왼쪽 메뉴 "내 화물" 하위 메뉴: 화물 조회 / 감시·지도 (docs/specs/cargo-watch.md, 10-02).
+/* 왼쪽 메뉴 "화물" 묶음의 하위 메뉴 (docs/specs/cargo-watch.md, 10-02. 10-08 "내 화물" 항목은 뺐다).
    넓은 메뉴: 내 화물 바로 밑에 들여 써서 펼친다(▾로 접고 펼침). 접은 메뉴: 아이콘에 마우스를 올리면 옆으로 뜬다 */
 .nav-group{position:relative}
 .nav-group-head{display:flex;align-items:center}
@@ -1110,7 +1110,7 @@ tbody tr:hover{background:var(--hover)}
  .nav-link:hover{background:var(--hover);color:var(--text)}
  .nav-link.active{background:var(--brand-soft);color:var(--brand);font-weight:500}
  .nav-dot{display:none}
- /* 내 화물은 아래 하위 항목이 선택을 보인다. 부모까지 파랗게 칠하면 두 군데가 눌린 것처럼 보인다 (접힌 메뉴는 부모만 보이니 예외) */
+ /* 화물 묶음은 아래 하위 항목이 선택을 보인다. 부모까지 파랗게 칠하면 두 군데가 눌린 것처럼 보인다 (접힌 메뉴는 부모만 보이니 예외) */
  .nav-group-head .nav-link.active{background:transparent;color:var(--text)}
  .rail-collapsed .nav-group-head .nav-link.active{background:var(--brand-soft);color:var(--brand)}
  .nav-sub{margin:2px 0 8px;padding-left:18px;gap:2px}

@@ -124,7 +124,8 @@
 #start{padding-top:72px;padding-bottom:40px}
 .lp-cta{display:grid;grid-template-columns:1.2fr .8fr;align-items:center;gap:32px;padding:56px;border-radius:var(--lp-r-lg);background:var(--brand);color:#fff;overflow:hidden}
 .lp-cta h2{font-size:clamp(28px,3.2vw,40px);font-weight:700;line-height:1.25}
-.lp-cta-text p{margin-top:14px!important;font-size:17px;color:rgba(255,255,255,.88)}
+/* 글자를 흰색 그대로. 88% 흰색은 파란 띠(#2962f5) 위에서 대비 4.26으로 WCAG AA 4.5에 못 미쳤다 (10-08 e2e 접근성 검사) */
+.lp-cta-text p{margin-top:14px!important;font-size:17px;color:#fff}
 .lp-cta-action{margin-top:30px}
 .lp-cta .intro-btn{background:#fff;color:var(--brand)}
 .lp-cta .intro-btn:hover{background:#eef3ff}

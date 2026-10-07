@@ -44,6 +44,8 @@ export function WatchVesselButton({mmsi: mmsiProp, callSign, name, flag, dest, e
   const [error, setError] = useState('');
   const buttonRef = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
+  // 10-08 정운 실사용 64번: 오류는 이름 아래 작은 글로만 보이고 5초 뒤 사라진다 (전에는 큰 분홍 상자가 줄 모양을 깨뜨렸다)
+  useEffect(() => { if (!error) return; const t = window.setTimeout(() => setError(''), 5000); return () => window.clearTimeout(t); }, [error]);
   useEffect(() => { if (!busy && refocus.current) { refocus.current = false; buttonRef.current?.focus(); } }, [busy]);
 
   useEffect(() => {
@@ -72,6 +74,6 @@ export function WatchVesselButton({mmsi: mmsiProp, callSign, name, flag, dest, e
       onClick={() => void toggle()} disabled={busy}>
       {busy ? <LoaderCircle size={16} className="spin"/> : watching ? <EyeOff size={16}/> : <Eye size={16}/>}
     </button>
-    <span role="alert" className="request-error">{error}</span>
+    <span role="alert" className="wv-err">{error}</span>
   </span>;
 }
