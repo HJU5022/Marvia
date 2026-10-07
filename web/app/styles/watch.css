@@ -217,3 +217,11 @@
 .watched-vessels .subtle-badge{align-self:flex-start}
 .watch-vessel-btn{display:inline-flex;align-items:center;gap:6px}
 .watch-vessel-btn .request-error:empty{display:none}
+/* 입항 예정 목록 줄의 지켜보기 버튼 (components/VesselList.tsx). 이름 칸이 좁아서(375px) 이름이 줄바꿈되고 버튼은 이름 옆에 붙는다 */
+.vl-name{display:flex;align-items:flex-start;gap:4px;min-width:0}
+.vl-name .ship-link{min-width:0;text-align:left;overflow-wrap:anywhere}
+.vl-watch{flex:none;margin:-6px 0}
+.vl-watch .watch-vessel-btn{flex-wrap:wrap}
+.vl-watch .icon-button{min-width:32px;min-height:32px;width:32px;height:32px;padding:0}
+.vl-watch .request-error{max-width:140px;font-size:var(--text-sm,13px)}
+@media (max-width:480px){.vl-name{flex-direction:column;gap:2px}.vl-watch{margin:0}}

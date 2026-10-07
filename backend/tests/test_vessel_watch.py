@@ -184,6 +184,75 @@ def test_other_users_vessels_are_not_listed(db, me):
     assert _call("get", "/api/watch/vessels", None, me).json() == {"items": []}
 
 
+# ── 호출부호로 올리기 (입항 예정 목록, MMSI 없음) ──
+
+class _FakeClient:
+    """ShipFinderClient 자리. hits는 (mmsi, call_sign) 목록, error를 주면 검색이 그 오류로 실패한다."""
+
+    def __init__(self, hits=(), error=None):
+        self.hits, self.error, self.closed, self.queries = hits, error, False, []
+
+    def search(self, keywords, max=10):
+        from types import SimpleNamespace
+        self.queries.append(keywords)
+        if self.error:
+            raise self.error
+        return SimpleNamespace(hits=[SimpleNamespace(mmsi=m, call_sign=c, ship_name="X") for m, c in self.hits])
+
+    def close(self):
+        self.closed = True
+
+
+def _use(monkeypatch, client):
+    monkeypatch.setattr(vsvc, "make_client", lambda: client)
+    return client
+
+
+SIGN_BODY = {"call_sign": "tst01", "name": "TEST STAR", "flag": "KR"}
+
+
+def test_call_sign_add_resolves_mmsi(db, me, monkeypatch):
+    # 예전에 같은 호출부호를 쓴 다른 호출부호 배·같은 배의 중복 줄은 걸러진다
+    client = _use(monkeypatch, _FakeClient([(440999901, "TST01"), (440999901, " tst01 "), (111, "OTHER1")]))
+    r = _call("post", "/api/watch/vessels", SIGN_BODY, me)
+    assert r.status_code == 200 and r.json() == {"mmsi": 440999901, "watch": True}
+    assert (USER, 440999901) in db.rows and client.queries == ["TST01"] and client.closed
+
+
+def test_call_sign_without_exact_match_is_422(db, me, monkeypatch):
+    _use(monkeypatch, _FakeClient([(111, "TST011"), (222, None)]))  # 비슷하지만 같지 않은 호출부호
+    r = _call("post", "/api/watch/vessels", SIGN_BODY, me)
+    assert r.status_code == 422 and "선박 번호를 확인하지 못해" in r.json()["detail"] and db.rows == {}
+    _use(monkeypatch, _FakeClient([]))
+    assert _call("post", "/api/watch/vessels", SIGN_BODY, me).status_code == 422
+
+
+def test_call_sign_with_several_mmsi_is_422(db, me, monkeypatch):
+    _use(monkeypatch, _FakeClient([(1, "TST01"), (2, "TST01")]))
+    r = _call("post", "/api/watch/vessels", SIGN_BODY, me)
+    assert r.status_code == 422 and db.rows == {}
+
+
+def test_call_sign_lookup_failure_is_503_without_leaking(db, me, monkeypatch):
+    from backend.app.clients.shipfinder import ShipFinderError
+    _use(monkeypatch, _FakeClient(error=ShipFinderError("timeout", "secret-url 응답 시간 초과")))
+    r = _call("post", "/api/watch/vessels", SIGN_BODY, me)
+    assert r.status_code == 503 and "secret-url" not in r.text and db.rows == {}
+    _use(monkeypatch, _FakeClient(error=RuntimeError("boom secret-host")))
+    r = _call("post", "/api/watch/vessels", SIGN_BODY, me)
+    assert r.status_code == 503 and "secret-host" not in r.text
+    monkeypatch.setattr(vsvc, "make_client", lambda: (_ for _ in ()).throw(ShipFinderError("bad_key", "키 없음")))  # 키 없음
+    assert _call("post", "/api/watch/vessels", SIGN_BODY, me).status_code == 503
+
+
+def test_mmsi_wins_and_neither_is_422(db, me, monkeypatch):
+    client = _use(monkeypatch, _FakeClient([(5, "TST01")]))
+    r = _call("post", "/api/watch/vessels", {**VESSEL, "call_sign": "TST01"}, me)
+    assert r.json()["mmsi"] == 440999901 and client.queries == []  # mmsi가 있으면 검색하지 않는다
+    for body in ({"name": "TEST STAR"}, {"name": "TEST STAR", "call_sign": "  "}):
+        assert _call("post", "/api/watch/vessels", body, me).status_code == 422
+
+
 # ── 워커·마이그레이션 ──
 
 def test_worker_collects_positions_for_vessel_watch_too():

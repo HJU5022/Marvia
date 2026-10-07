@@ -11,8 +11,8 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').trim().replace(/\/+$/,
 export const vesselWatchEnabled = API_BASE !== '';
 const TIMEOUT_MS = 15_000;
 
-/** 채팅에서 본 배. dest·eta는 보인 글 그대로(없으면 생략) */
-export interface VesselRef { mmsi: number; name: string; flag?: string | null; dest?: string | null; eta?: string | null }
+/** 채팅에서 본 배. dest·eta는 보인 글 그대로(없으면 생략). 입항 예정 목록처럼 MMSI가 없는 곳은 mmsi 대신 callSign을 준다 (서버가 찾는다) */
+export interface VesselRef { mmsi?: number | null; callSign?: string | null; name: string; flag?: string | null; dest?: string | null; eta?: string | null }
 
 /** 지켜보는 배 한 척. 위치는 수집 전이면 null이다. 판정 칸은 일부러 없다 */
 export interface WatchedVessel {
@@ -54,11 +54,15 @@ export async function listWatchedVessels(): Promise<WatchedVessel[]> {
   return ((await (await request('/api/watch/vessels')).json()) as {items: WatchedVessel[]}).items;
 }
 
-/** POST /api/watch/vessels. 같은 배를 다시 올리면 보인 값만 갱신된다. 5척 한도면 서버 안내 문장으로 실패한다 */
-export async function watchVessel(v: VesselRef): Promise<void> {
+/** POST /api/watch/vessels. 같은 배를 다시 올리면 보인 값만 갱신된다. 5척 한도면 서버 안내 문장으로 실패한다.
+ * 호출부호로 올렸을 때 서버가 정한 MMSI를 돌려준다 (해제할 때 쓴다). 서버가 번호를 못 정하면 안내 문장으로 실패한다 */
+export async function watchVessel(v: VesselRef): Promise<number> {
   if (!vesselWatchEnabled) throw new Error('체험 모드에서는 배를 지켜볼 수 없어요.');
-  await request('/api/watch/vessels', {method: 'POST', body: JSON.stringify({mmsi: v.mmsi, name: v.name, flag: v.flag ?? null, dest: v.dest ?? null, eta: v.eta ?? null})});
+  const body = v.mmsi ? {mmsi: v.mmsi} : {call_sign: v.callSign ?? null};
+  const res = await request('/api/watch/vessels', {method: 'POST', body: JSON.stringify({...body, name: v.name, flag: v.flag ?? null, dest: v.dest ?? null, eta: v.eta ?? null})});
+  const mmsi = ((await res.json()) as {mmsi: number}).mmsi;
   notify();
+  return mmsi;
 }
 
 /** DELETE /api/watch/vessels/{mmsi}. 켜져 있지 않아도 오류가 아니다 */

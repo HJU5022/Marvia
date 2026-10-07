@@ -17,13 +17,18 @@ B/L은 이 경로에 아예 없다. DB 연결은 부르는 쪽이 연다.
 """
 from __future__ import annotations
 
+from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
+from backend.app.observability.logging import log_failure
 from backend.app.services.watch import MAX_WATCH, _track
+
+make_client = ShipFinderClient  # 테스트가 가짜 클라이언트로 바꿔 끼우는 자리 (mcp_server/tools/vessel_candidates.py와 같은 방식)
 
 TEXT_MAX = 120  # 표시용 글(이름·국적·목적지·도착 예정) 길이 상한. 화면 말풍선이 깨지지 않게 자르는 값이다
 
 
 class VesselWatchError(Exception):
-    """kind: limit(이미 MAX_WATCH척) / invalid(MMSI나 이름이 비었다)."""
+    """kind: limit(이미 MAX_WATCH척) / invalid(MMSI나 이름이 비었다) /
+    unknown_vessel(호출부호로 배 번호를 하나로 못 정했다) / lookup_failed(ShipFinder 검색이 실패했다)."""
 
     def __init__(self, kind: str):
         super().__init__(kind)
@@ -34,6 +39,37 @@ def _clean(value: str | None) -> str | None:
     """앞뒤 공백을 떼고 TEXT_MAX로 자른다. 비면 None."""
     text = (value or "").strip()[:TEXT_MAX]
     return text or None
+
+
+def resolve_mmsi(call_sign: str) -> int:
+    """입항 예정 목록(해수부 신고)의 호출부호로 MMSI를 찾는다 (10-08 정운 실사용 57번).
+
+    왜 호출부호인가: 해수부 신고에는 MMSI가 없고, 선명은 같은 이름의 다른 배가 많다. 호출부호가 정확히 같은 배만 받아들인다.
+    ShipFinder 검색은 예전에 같은 호출부호를 쓴 배도 돌려주므로 MMSI가 정확히 하나일 때만 정한다.
+    0건이나 여러 건이면 추측하지 않고 unknown_vessel (엉뚱한 배를 지켜보게 하면 안 된다).
+    검색 실패(시간 초과·한도 소진 등)는 lookup_failed. 클라이언트가 이미 시간 제한·재시도를 한 뒤의 결과다.
+    """
+    sign = (call_sign or "").strip().upper()
+    if not sign:
+        raise VesselWatchError("invalid")
+    client = None
+    try:
+        client = make_client()
+        hits = client.search(sign, max=10).hits
+    except ShipFinderError as e:
+        log_failure("vessel_watch_resolve", e.code)
+        raise VesselWatchError("lookup_failed")
+    except Exception as e:  # 클라이언트 밖 예상 못 한 실패도 사용자에게 원문을 보이지 않는다
+        log_failure("vessel_watch_resolve", type(e).__name__)
+        raise VesselWatchError("lookup_failed")
+    finally:
+        if client is not None:
+            client.close()
+    mmsis = {h.mmsi for h in hits if (h.call_sign or "").strip().upper() == sign}
+    if len(mmsis) != 1:
+        log_failure("vessel_watch_resolve", "no_match" if not mmsis else "many_match")
+        raise VesselWatchError("unknown_vessel")
+    return mmsis.pop()
 
 
 def add_vessel(conn, user_id: str, mmsi: int, name: str, flag: str | None = None,
