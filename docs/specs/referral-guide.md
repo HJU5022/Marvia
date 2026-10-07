@@ -12,7 +12,7 @@
 | 범위 밖 질문 | 5개 주제를 고정 문장으로 | 5개 구현: air_land, warehouse_date, schedule_change(`require`가 있어야 걸림), weather, import_requirement. B/L이 있는 문장은 건너뛴다 (`services/chat._route`). 주제는 LLM 분류가 아니라 정규식(rules.md `out_of_scope`)이다 |
 | 세액·통관 가부 | `BROKER_ONLY`에 확인처 | 구현. `broker_referral`을 `BROKER_ONLY` 끝에 붙인다 (`referrals.broker_tail`) |
 | 품목별 요건 답의 한국관세사회 링크 | 붙임 | 안 붙였다. 현재 답은 관세사에게 확인하라는 문장만 있다. 아래 "공식 창구" 표의 `broker_search`는 코드에 쓰이지 않는다 |
-| `CLEARANCE_TAG`, `NOT_IN_SKILLS`, `BROKER_SHORT`에 확인처 | 붙이거나 맞춤 | 바뀌지 않았다 (`services/chat.py`). 아래 "기존 고정 문구와의 관계" 표의 이 줄들은 아직 안 했다 |
+| `NOT_IN_SKILLS`, `BROKER_SHORT`에 확인처 | 붙이거나 맞춤 | 바뀌지 않았다 (`services/chat.py`). 아래 "기존 고정 문구와의 관계" 표의 이 줄들은 아직 안 했다. `CLEARANCE_TAG`는 10-07에 없앴다 (아래 표) |
 | 링크 확인 스크립트 | `scripts/`에 둠 | 만들지 않았다 (scripts/에 없음) |
 | 범위 밖 질문 평가 5~10건 | 사람이 따로 | evals/에서 확인하지 못했다 |
 
@@ -154,8 +154,7 @@ out_of_scope:
 | 지금 문구 (services/chat.py) | 바뀌는 것 |
 |---|---|
 | BROKER_ONLY, BROKER_SHORT | 위 "세액·통관 가부" 답으로 맞추고 확인처 줄을 붙인다 |
-| CLEARANCE_TAG | 뒤에 "확인처: 관세청 고객지원센터 125"를 붙인다 |
-| GENERAL_TAG | 그대로 (포워더 안내가 이미 있다) |
+| CLEARANCE_TAG, GENERAL_TAG | 없앴다 (10-07 정운 실사용: 답마다 같은 꼬리표가 붙어 기계 같다). "안내용 정보, 실제 처리는 포워더·관세사 확인" 고지는 사이트 이용약관(web/components/LegalLinks.tsx)으로 옮겼다 |
 | NOT_IN_SKILLS, SHORT_NOTICE | 위 "자료에 없는 실무 질문" 답으로 맞춘다 |
 | follow-up in_scope=false | 그대로 (이 화물 결과 안에서만 답한다는 안내) |
 

@@ -97,7 +97,8 @@ export default function CargoPage(){
     const names=[hasSignals||hasEvidence?'판정 근거':null,!failedLike&&r.status!=='insufficient'?'출처별 원본 자료':null,hasHistory?(r.customs_detail?.length?'통관 이력 · 관세청 처리 내역':'통관 이력'):null].filter(Boolean);
     if(!names.length)return null;
     return <details className="more-fold" open={forceOpen||moreOpen} onToggle={e=>{if(!forceOpen)setMoreOpen(e.currentTarget.open);}}>
-     <summary><strong>{forceOpen||moreOpen?'접기':'근거와 원본 자료 펼쳐 보기'}</strong><span>{names.join(' · ')}</span><ChevronDown size={18} className="more-chevron" aria-hidden="true"/></summary>
+     {/* 상세 정보: 구역 제목 + 근거 개수 + 펼치기 버튼 모양. 지나가는 한 줄로 보여 상세인 줄 모른다는 지적 (10-07 정운 실사용 13번) */}
+     <summary><strong>상세 정보</strong>{r.evidence.length>0&&<em className="more-count">근거 {r.evidence.length}개</em>}<span className="more-action">{forceOpen||moreOpen?'접기':'펼쳐 보기'}<ChevronDown size={16} className="more-chevron" aria-hidden="true"/></span><span className="more-names">{names.join(' · ')}</span></summary>
      <div className="more-body">
       {(hasSignals||hasEvidence)&&<section className="more-block" aria-label="판정 근거">
        {r.answer&&!failedLike&&r.verdict&&<p className="answer-summary">{r.answer}</p>}

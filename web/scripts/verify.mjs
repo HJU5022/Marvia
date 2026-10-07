@@ -215,6 +215,9 @@ try {
     check(`document drawer focus/inert/Esc + fills composer without sending ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
+    // 사이드바 개편(10-07): 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다
+    if (await page.getByRole('button', {name: '메뉴 열기'}).isVisible()) await page.getByRole('button', {name: '메뉴 열기'}).click();
+    const cargoGroup = page.locator('.sb-group-head'); if (await cargoGroup.getAttribute('aria-expanded') === 'false') await cargoGroup.click();
     await page.getByRole('link', {name: '조회 이력'}).first().click(); await page.locator('.hist-list > li').first().waitFor();
     await page.getByLabel('B/L 뒤 네 자리 검색').fill('ZZZZ'); assert.equal(await page.locator('.hist-list > li').count(), 0);
     await page.getByRole('button', {name: '조건 초기화'}).click(); await page.getByLabel('상태별로 거르기').selectOption('failed');

@@ -1,7 +1,7 @@
 'use client';
 /** 조회 이력 (A12 요약 필드). 맨 위에 판정 분포 막대 하나와 그 범례(누르면 그 판정만 거른다), 아래에 한 줄이 한 건인 조용한 목록.
  * 한 건 = B/L과 한 줄 메모(시각·처리 상태·배 일치·판정 방식)와 오른쪽 판정 배지. 서버가 보내는 것은 요약뿐이라(판정·상태·배 일치·판정 방식)
- * 근거 문장은 지어내지 않고, 맨 아래 한 줄로 "다시 조회하면 확인" 안내만 붙인다.
+ * 근거 문장은 지어내지 않는다 (맨 아래 안내 줄은 10-07 정운 21번으로 뺐다).
  * 오프라인(데모) 스냅샷은 GET /history 응답과 달라서 행 끝의 열기 아이콘 버튼으로만 다시 불러온다. */
 import {useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
@@ -56,7 +56,6 @@ export function HistoryTable(){
      {!isLive&&<button type="button" className="icon-btn open-record" title="저장된 판정 열기" onClick={()=>open(r.request_id)} disabled={loading} aria-label={`${r.bl_masked??'화물'} 저장된 판정 열기`}><ArrowUpRight size={18}/></button>}
     </li>;})}</ul>
    {!rows.length&&<div className="hist-empty"><Search size={28}/><h2>조건에 맞는 이력이 없어요.</h2><button className="button secondary" onClick={()=>{setQuery('');setStatus('');setVerdict('');setPeriod('all');}}>조건 초기화</button></div>}
-   <p className="hist-foot">이력에는 판정 요약만 있어요. 이전 결과의 근거와 자세한 내용은 다시 조회해서 확인해 주세요.</p>
   </>}
  </div>;
 }

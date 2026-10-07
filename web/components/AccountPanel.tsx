@@ -1,5 +1,5 @@
 'use client';
-/** 설정 화면의 "계정과 기록" 구역. 내 기록 삭제(DELETE /api/history)와 회원 탈퇴(DELETE /api/account)를 부른다.
+/** 설정 화면의 "계정 관리" 구역. 내 기록 삭제(DELETE /api/history)와 회원 탈퇴(DELETE /api/account)를 부른다.
  *
  * 둘 다 되돌릴 수 없어서 한 번 더 확인한다. 브라우저 confirm 창 대신 화면 안에서 확인한다(접근성, 목업 톤).
  * 탈퇴는 "탈퇴"를 직접 입력해야 버튼이 켜진다. 실패(503)는 숨기지 않고, 다시 누르면 백엔드가 이어서 끝낸다 (services/account.py).
@@ -14,7 +14,7 @@ import {signOut} from '@/lib/auth';
 type Step = 'idle' | 'confirm' | 'busy' | 'done';
 
 export function AccountPanel() {
-  const {authEnabled, user, reset} = useApp();
+  const {authEnabled, user, reset, refreshConversations} = useApp();
   const [historyStep, setHistoryStep] = useState<Step>('idle');
   const [accountStep, setAccountStep] = useState<Step>('idle');
   const [typed, setTyped] = useState('');
@@ -28,6 +28,7 @@ export function AccountPanel() {
     try {
       const r = await deleteMyHistory();
       setMessage(`조회 이력 ${r.deleted}건과 기억한 화물·메모장·대화 목록을 지웠어요.`); setHistoryStep('done'); reset();
+      void refreshConversations();  // 서버는 대화 목록도 지웠다. 사이드바 목록도 다시 읽는다 (10-07 정운: 지웠는데 목록이 남아 보임)
     } catch (e) { setError(e instanceof Error ? e.message : '이력을 지우지 못했어요.'); setHistoryStep('confirm'); }
   }
 
@@ -49,7 +50,7 @@ export function AccountPanel() {
     : <>
       <section className="st-card st-danger-card" aria-labelledby="account-title">
         <h2 id="account-title">내 조회 이력 지우기</h2>
-        <p className="st-sub">조회 이력, 기억한 화물, 메모, 대화 목록을 모두 지워요. 계정과 카카오톡 연결은 그대로 남아요. 되돌릴 수 없어서 지우기 전에 한 번 더 확인해요.</p>
+        <p className="st-sub">조회 이력, 기억한 화물, 메모, 대화 목록이 모두 지워져요. 되돌릴 수 없어요.</p>
         {historyStep === 'confirm' || historyStep === 'busy'
           ? <div className="st-confirm"><div><strong>정말 내 이력을 지울까요?</strong><span>되돌릴 수 없어요.</span></div>
               <div className="danger-actions"><button type="button" className="button secondary" onClick={() => setHistoryStep('idle')} disabled={historyStep === 'busy'}>취소</button><button type="button" className="button danger" onClick={() => void removeHistory()} disabled={historyStep === 'busy'}>{historyStep === 'busy' ? <LoaderCircle size={16} className="spin"/> : <Trash2 size={16}/>}모두 지우기</button></div></div>

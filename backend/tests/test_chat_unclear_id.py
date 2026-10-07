@@ -99,3 +99,53 @@ def test_check_cargo_need_bl_with_id_like_text_asks_back_with_that_id(monkeypatc
     assert r.reply.startswith("'TESTBL4'가 B/L 번호인지")
     _agent(monkeypatch, [("check_cargo", {"bl_ref": None})], [("", "tool", "")])
     assert svc.handle("조회해줘", "s1", None, lambda req: None).reply == svc.NEED_BL  # 식별자 글자가 없으면 그대로
+
+
+# ── 한글 배 이름 찾기, 같은 되묻기 연속 금지, 웹 참고 링크 (10-07 정운 실사용 4·6) ──
+
+def test_web_note_line_is_one_line_markdown_links_with_short_titles():
+    src = [{"title": "가" * 50, "url": "https://a.example.test/%EB%B6%80/x(1)"},
+           {"title": "", "url": "https://www.b.example.test/p"}]
+    line = svc.web_note_line(src)
+    assert "\n" not in line and line.startswith("웹 참고: [")
+    assert " · [b.example.test](https://www.b.example.test/p)" in line  # 제목이 없으면 사이트 이름
+    assert "가" * 30 not in line and "…" in line and "x%281%29" in line  # 제목 30자 이하, 괄호 이스케이프
+
+
+def test_ship_name_guess_from_message_and_history():
+    assert svc.ship_name_guess("B/L은 없는데 내 배가 고추 실은 애플호 라고하던데 그런 배있어?", []) == "애플호"
+    assert svc.ship_name_guess("아니 배 이름이 애플호야 못 찾아줘?", []) == "애플호"
+    assert svc.ship_name_guess("배이름이야", ["내 배가 애플호 라고하던데", "앞 답"]) == "애플호"  # 이름은 앞 사용자 말에서
+
+
+@pytest.mark.parametrize("text", ["전화번호 알려줘", "B/L 번호가 뭐야", "신호가 약해요", "암호가 뭐야"])
+def test_ship_name_guess_ignores_words_that_are_not_ship_names(text):
+    assert svc.ship_name_guess(text, []) is None
+
+
+def test_korean_ship_name_not_found_is_plain_and_never_repeats(monkeypatch):
+    searched = []
+    monkeypatch.setattr(svc, "_arrivals", lambda days: searched.append(days) or PLANS)
+    _agent(monkeypatch, [], [("", "clarify", "")])
+    r1 = svc.handle("내 배가 애플호 라고하던데 그런 배있어?", "s1", None, lambda req: None)
+    assert searched and r1.kind == "message" and "'애플호'" in r1.reply and "찾지 못했어요" in r1.reply and "영문 배 이름" in r1.reply
+    _agent(monkeypatch, [], [("", "clarify", "")])
+    r2 = svc.handle("배이름이야", "s1", None, lambda req: None,
+                    history=[{"role": "user", "text": "내 배가 애플호 라고하던데 그런 배있어?"}, {"role": "assistant", "text": r1.reply}])
+    assert "'애플호'" in r2.reply and r2.reply != r1.reply
+
+
+def test_ship_name_found_in_arrivals_returns_vessel_table(monkeypatch):
+    monkeypatch.setattr(svc, "_arrivals", lambda days: PLANS)
+    _agent(monkeypatch, [], [("", "clarify", "")])
+    r = svc.handle("배 이름이 ship 야", "s1", None, lambda req: None)
+    assert r.kind == "vessels" and [v["ship_name"] for v in r.vessels] == ["SHIP B", "SHIP A", "SHIP C"]  # 이름 글자가 들어간 배 전부 (입항 예정 순)
+
+
+def test_clarify_never_sends_same_sentence_twice(monkeypatch):
+    first = svc.clarify_reply("이거 뭐야")
+    again = svc.clarify_reply("이거 뭐야", first)
+    assert again != first and svc.clarify_reply("이거 뭐야", again) != again
+    _agent(monkeypatch, [], [("", "clarify", "")])
+    r = svc.handle("이거 뭐야", "s1", None, lambda req: None, history=[{"role": "user", "text": "x"}, {"role": "assistant", "text": first}])
+    assert r.reply != first

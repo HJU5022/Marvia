@@ -24,10 +24,17 @@ const CLUSTER_PX = 44;
 /** 위치가 있어 지도에 올릴 수 있는 화물 */
 type Located = WatchItem & {lat: number; lng: number};
 
+/** 진짜 선명만. 서버가 선명을 모르면 api.ts가 가린 B/L로 채워 오므로(ship_name ?? bl_masked) 같은 값이면 선명이 아니다 (10-07 정운 실사용 17번) */
+const realShip = (item: WatchItem) => item.ship_name && item.ship_name !== item.bl_masked ? item.ship_name : null;
+/** 화물 이름: 이름표 > 품명 > 진짜 선명 > "B/L 가린번호" 한 번 */
+const nameOf = (item: WatchItem) => item.label ?? item.goods_name ?? realShip(item) ?? `B/L ${item.bl_masked}`;
+/** 지도 핀·말풍선·목록 둘째 줄에 쓰는 배 표시. 선명이 없으면 화물 이름으로 대신한다 */
+const shipOf = (item: WatchItem) => realShip(item) ?? nameOf(item);
+
 /** 말풍선과 클러스터 상세 창이 같이 쓰는 항목 */
 function rowsOf(item: WatchItem): [string, string][] {
   return [
-    ['화물 이름', item.label ?? item.goods_name ?? '이름 없음'],  // 이름표가 없으면 UNI-PASS 품명 (10-06)
+    ['화물 이름', nameOf(item)],  // 이름표가 없으면 UNI-PASS 품명 (10-06)
     ['B/L', item.bl_masked],
     ['국적', item.ship_flag ?? '-'],  // 시안에 국적 칸이 있다. 값이 없으면 대시
     ['통관 단계', item.stage ?? '확인 안 됨'],
@@ -44,7 +51,7 @@ function tip(item: WatchItem, letter: string) {
   const move = motion(item);
   // 시안: 말풍선 머리에 배 이름과 판정 배지. 판정이 없으면 배지를 그리지 않는다
   const badge = item.verdict ? `<span class="verdict-badge ${item.verdict}">${esc(verdictLabels[item.verdict])}</span>` : '';
-  return `<div class="watch-tip"><header><strong>${esc(letter)} · ${esc(item.ship_name)}</strong>${badge}</header>${move ? `<span>${esc(move)}</span>` : ''}`
+  return `<div class="watch-tip"><header><strong>${esc(letter)} · ${esc(shipOf(item))}</strong>${badge}</header>${move ? `<span>${esc(move)}</span>` : ''}`
     + `<dl>${rowsOf(item).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></div>`;
 }
 
@@ -65,9 +72,10 @@ export function WatchMap() {
   const active = list?.items.filter((i): i is Located => i.status === 'active' && i.lat != null && i.lng != null) ?? [];
   const waiting = list?.items.filter(i => i.status === 'active' && (i.lat == null || i.lng == null)) ?? [];
   const done = list?.items.filter(i => i.status === 'done').length ?? 0;
+  const total = active.length + waiting.length;
 
   useEffect(() => {
-    if (!active.length) return;
+    if (!list || !total) return;  // 위치 있는 화물이 없어도 부산항 기준 빈 지도는 그린다 (10-07 17번)
     let disposed = false;
     setSelected(null);
     let cleanup: (() => void) | undefined;
@@ -80,7 +88,8 @@ export function WatchMap() {
       const points = active.flatMap(i => [L.latLng(i.lat, i.lng), ...(showTrack ? (i.track ?? []).map(t => L.latLng(t.lat, t.lng)) : [])]);
       const port = L.latLng(demo.port.lat, demo.port.lng);
       // 중심을 먼저 정한 뒤 선을 올린다 (VesselMap과 같은 이유: 범위를 모르면 Leaflet이 멈춘다)
-      map.fitBounds(L.latLngBounds([...points, port]).pad(.25), {maxZoom: 8, animate: false});
+      if (active.length) map.fitBounds(L.latLngBounds([...points, port]).pad(.25), {maxZoom: 8, animate: false});
+      else map.setView(port, 6, {animate: false});
       // 바탕은 세계 지도, 못 쓰면 해안선 (lib/basemap.ts, 10-06)
       const base = addBasemap(L, map, () => { drawLocalGeography(L, map); });
       map.attributionControl.setPrefix(false);
@@ -143,7 +152,7 @@ export function WatchMap() {
         const letter = markerLetter(i);
         const icon = L.divIcon({className: 'watch-pin', iconSize: [34, 34], iconAnchor: [17, 17],
           html: `<span style="--pin:${colorOf(i)}" class="pin-body ${item.verdict ?? ''}"><b>${letter}</b></span>`});
-        return L.marker([item.lat, item.lng], {icon, title: `${letter} ${item.ship_name}`, alt: `${letter} ${item.ship_name}`, riseOnHover: true})
+        return L.marker([item.lat, item.lng], {icon, title: `${letter} ${shipOf(item)}`, alt: `${letter} ${shipOf(item)}`, riseOnHover: true})
           .bindTooltip(tip(item, letter), {direction: 'auto', offset: [18, 0], className: 'watch-tooltip', opacity: 1})
           .on('click', e => { L.DomEvent.stopPropagation(e); highlight(i); })
           .on('mouseover', () => hover.current(i, true)).on('mouseout', () => hover.current(null, true));
@@ -176,7 +185,7 @@ export function WatchMap() {
           // 테두리는 안에서 가장 급한 판정 색. 아래 점은 안에 든 배들의 색(최대 4개)
           const urgent = g.some(k => active[k].verdict === 'act') ? 'act' : g.some(k => active[k].verdict === 'watch') ? 'watch' : '';
           const dots = g.slice(0, 4).map(k => `<em style="background:${colorOf(k)}"></em>`).join('');
-          const names = g.map(k => `${markerLetter(k)} ${active[k].ship_name}`).join(', ');
+          const names = g.map(k => `${markerLetter(k)} ${shipOf(active[k])}`).join(', ');
           L.marker(center, {icon: L.divIcon({className: 'watch-cluster', iconSize: [46, 46], iconAnchor: [23, 23],
             html: `<span class="cluster-body ${urgent}"><b>${g.length}</b><i>${dots}</i></span>`}), title: `배 ${g.length}척: ${names}`, alt: `배 ${g.length}척`, riseOnHover: true, zIndexOffset: 1000})
             .on('click', e => { L.DomEvent.stopPropagation(e); closeOpened(); setCluster(g); })
@@ -217,7 +226,7 @@ export function WatchMap() {
         if (trackBounds && trackZoom >= apart) map.fitBounds(trackBounds, {maxZoom: 9, animate: true});
         else map.setView(here, Math.max(apart, 8), {animate: true});
       };
-      fitAll.current = () => { setCluster(null); map.fitBounds(L.latLngBounds([...points, port]).pad(.25), {maxZoom: 8, animate: true}); };
+      fitAll.current = () => { setCluster(null); if (active.length) map.fitBounds(L.latLngBounds([...points, port]).pad(.25), {maxZoom: 8, animate: true}); else map.setView(port, 6, {animate: true}); };
 
       const ro = new ResizeObserver(() => map.invalidateSize());
       ro.observe(host.current);
@@ -226,18 +235,17 @@ export function WatchMap() {
     return () => { disposed = true; cleanup?.(); };
   }, [list, showTrack]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const total = active.length + waiting.length;
   // 시안 3-3(PC)·3-6(휴대폰): 왼쪽 지도 카드(위에 기준 시각·모든 배 보기·경로 체크), 오른쪽 "내 화물" 목록 카드. 휴대폰은 지도 → 목록 순으로 쌓는다
   return <section className="watch wm" aria-labelledby="watch-title">
     <div className="wm-head"><h2 id="watch-title">지켜보는 화물 지도</h2></div>
     {!list ? <div className="wm-skeleton" role="status" aria-label="지켜보는 화물을 불러오고 있어요."><div className="wm-sk-map"/><div className="wm-sk-list"><i/><i/><i/><i/></div></div>
       : !total ? <div className="watch-empty">지켜보는 화물이 없어요. B/L 번호를 조회하면 여기에 자동으로 추가돼요.</div>
       : <div className="wm-body">
-        {active.length > 0 && <div className="wm-map-card">
+        {<div className="wm-map-card">
           <div className="wm-toolbar">
             <span className="watch-updated">{list.updated_at ? `${dateTime(list.updated_at, true)} 기준` : ''}</span>
-            <button type="button" className="watch-fit" onClick={() => fitAll.current()} title="모든 배 보기" aria-label="모든 배 보기"><Maximize2 size={16} strokeWidth={1.9}/>모든 배 보기</button>
-            <label className="watch-track-toggle"><input type="checkbox" checked={showTrack} onChange={e => setShowTrack(e.target.checked)}/>6시간 간격 경로 보기</label>
+            {active.length > 0 && <button type="button" className="watch-fit" onClick={() => fitAll.current()} title="모든 배 보기" aria-label="모든 배 보기"><Maximize2 size={16} strokeWidth={1.9}/>모든 배 보기</button>}
+            {active.length > 0 && <label className="watch-track-toggle"><input type="checkbox" checked={showTrack} onChange={e => setShowTrack(e.target.checked)}/>6시간 간격 경로 보기</label>}
           </div>
           <div className="watch-map">
             <div ref={host} className="leaflet-host"/>
@@ -246,8 +254,8 @@ export function WatchMap() {
                 <button type="button" className="icon-button" onClick={() => setCluster(null)} aria-label="닫기" autoFocus><X size={16}/></button></div>
               <ul>{cluster.map(k => { const item = active[k]; const move = motion(item); return <li key={item.bl_masked}>
                 <div className="cluster-item-head"><span className="watch-chip" style={{background: colorOf(k)}}>{markerLetter(k)}</span>
-                  <span className="watch-main"><strong>{item.ship_name}</strong>{move && <small>{move}</small>}</span>
-                  <button type="button" className="cluster-go" onClick={() => focus.current(k)} aria-label={`${item.ship_name} 위치로 지도 이동`} title="지도에서 보기"><LocateFixed size={18} strokeWidth={1.9} aria-hidden="true"/></button></div>
+                  <span className="watch-main"><strong>{shipOf(item)}</strong>{move && <small>{move}</small>}</span>
+                  <button type="button" className="cluster-go" onClick={() => focus.current(k)} aria-label={`${shipOf(item)} 위치로 지도 이동`} title="지도에서 보기"><LocateFixed size={18} strokeWidth={1.9} aria-hidden="true"/></button></div>
                 <dl>{rowsOf(item).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
               </li>; })}</ul>
             </div>}
@@ -259,21 +267,31 @@ export function WatchMap() {
           <ol ref={listEl} className="watch-list" aria-label="지켜보는 화물">
             {active.map((item, i) => <li key={item.bl_masked} style={{'--i': Math.min(i, 5)} as CSSProperties}>
               <button type="button" className={`${selected === i ? 'selected' : ''} ${hovered === i ? 'hovered' : ''}`.trim()}
-                onMouseEnter={() => hover.current(i)} onMouseLeave={() => hover.current(null)} onFocus={() => hover.current(i)} onBlur={() => hover.current(null)} aria-pressed={selected === i} onClick={() => focus.current(i)} aria-label={`${markerLetter(i)} ${item.ship_name} 지도에서 보기`}>
+                onMouseEnter={() => hover.current(i)} onMouseLeave={() => hover.current(null)} onFocus={() => hover.current(i)} onBlur={() => hover.current(null)} aria-pressed={selected === i} onClick={() => focus.current(i)} aria-label={`${markerLetter(i)} ${shipOf(item)} 지도에서 보기`}>
                 <span className="watch-chip" style={{background: colorOf(i)}}>{markerLetter(i)}</span>
                 <span className="watch-main">
-                  <strong className="watch-goods">{item.label ?? item.goods_name ?? '이름 없음'}</strong>
-                  <span className="watch-ship">{item.ship_name}{item.ship_flag ? ` · ${item.ship_flag}` : ''}</span>
+                  <strong className="watch-goods">{nameOf(item)}</strong>
+                  {realShip(item) && realShip(item) !== nameOf(item) && <span className="watch-ship">{item.ship_name}{item.ship_flag ? ` · ${item.ship_flag}` : ''}</span>}
                   <span className="watch-stage">통관 {item.stage ?? '확인 안 됨'}</span>
                   {selected === i && <span className="sr-only">지도에서 선택됨</span>}
                 </span>
-                <span className="watch-side"><VerdictBadge verdict={item.verdict}/><small className="watch-bl">{item.bl_masked}</small></span>
+                <span className="watch-side"><VerdictBadge verdict={item.verdict}/>{!nameOf(item).startsWith('B/L ') && <small className="watch-bl">{item.bl_masked}</small>}</span>
               </button>
             </li>)}
+            {/* 위치를 아직 못 받은 화물도 같은 행 모양으로. 지도에는 없어서 눌러도 갈 곳이 없으니 버튼이 아니다 (10-07 17번) */}
+            {waiting.map((item, i) => <li key={item.bl_masked} className="no-pos" style={{'--i': Math.min(active.length + i, 5)} as CSSProperties}>
+              <div className="watch-row-static">
+                <span className="watch-chip idle" aria-hidden="true">-</span>
+                <span className="watch-main">
+                  <strong className="watch-goods">{nameOf(item)}</strong>
+                  {realShip(item) && realShip(item) !== nameOf(item) && <span className="watch-ship">{item.ship_name}{item.ship_flag ? ` · ${item.ship_flag}` : ''}</span>}
+                  <span className="watch-stage">통관 {item.stage ?? '확인 안 됨'}</span>
+                </span>
+                <span className="watch-side"><VerdictBadge verdict={item.verdict}/>{!nameOf(item).startsWith('B/L ') && <small className="watch-bl">{item.bl_masked}</small>}</span>
+              </div>
+            </li>)}
           </ol>
-          {waiting.length > 0 && <div className="wm-waiting"><strong>아직 위치를 받지 못했어요</strong>
-            <ul>{waiting.map(i => <li key={i.bl_masked}><span>{i.label ?? i.goods_name ?? i.ship_name}</span><small>{i.ship_name} · {i.bl_masked}</small></li>)}</ul>
-            <p>다음 조회나 위치 확인 뒤 지도에 나와요.</p></div>}
+          {waiting.length > 0 && <p className="wm-waiting-note">{active.length ? '위치가 없는 화물은 지도에 나오지 않아요.' : '아직 위치를 받지 못했어요. 받는 대로 지도에 나와요.'}</p>}
           {done > 0 && <p className="watch-done">반출이 끝난 화물 {done}건은 지도에서 뺐어요.</p>}
         </aside>
       </div>}

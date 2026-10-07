@@ -17,7 +17,9 @@ export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: Cha
   /** B/L을 2~3개 물었을 때 조회한 화물 표 (ChatCargoTable). 서버로 되돌려 보내지 않는다 */
   cargos?: ChatCargo[];
   /** 에이전트가 이 화물을 지켜보자고 제안한 답이면 말풍선 아래에 버튼을 그린다 (WatchOfferAction, 10-06 결정). 서버로 되돌려 보내지 않는다 */
-  watchOffer?: WatchOffer | null }
+  watchOffer?: WatchOffer | null;
+  /** 답이 오기까지 서버가 알린 단계와 브라우저가 처음 본 시각(ms). 답 아래 "N단계 · M초" 접힌 요약에 쓴다. 이 화면에서 받은 답에만 있고 서버에서 불러온 대화·체험 모드에는 없다 (10-07 정운 엘레강스) */
+  steps?: {stage: ProgressStage; at: number}[]; tookMs?: number }
 
 /** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 (10-06 결정) */
 function changesText(changes: WatchChange[]): string {
@@ -80,7 +82,7 @@ interface AppState {
   /** 지켜보는 중인 화물(정규화한 B/L → 켜짐/꺼짐). WatchToggle과 말풍선 버튼이 같이 쓴다. 값이 없으면 아직 모른다 (10-06 결정) */
   watching: Record<string, boolean>; setWatching: (blNo: string, on: boolean) => void;
   /** 대화 목록 (10-06 결정). conversationsOn이 false(로그아웃·로그인 기능 꺼짐·서버가 401/503)면 목록을 그리지 않고 탭 sessionStorage로 대화를 이어 간다 */
-  conversationsOn: boolean; conversations: ConversationSummary[];
+  conversationsOn: boolean; conversations: ConversationSummary[]; refreshConversations: () => Promise<void>;
   /** 지금 대화의 chat session_id. 열린 대화는 이 값이 목록의 id와 같다 */
   activeId: string;
   /** 서버에 저장된 것을 확인한(첫 답을 받았거나 열어 본) 대화 id. 이 값이 있을 때만 주소에 ?c=가 붙는다. 없으면 null */
@@ -235,7 +237,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       const kind = last?.extra?.kind;
       if (kind === 'vessels' && last?.extra) {
         setVessels({kind: 'vessels', reply: last.text, agent: null, request: null, vessels: [], place: null, ports: [], days: null, ...last.extra} as ChatResponse); setView('vessels');
-      } else setView(kind === 'message' || !(c.context && c.result) ? 'none' : 'cargo');
+      } else setView(!(c.context && c.result) ? 'none' : 'cargo');  // 안내 문장이 마지막이어도 저장된 화물 결과가 있으면 보인다 (10-07 15번)
       syncUrl(id);
       return true;
     } catch (e) {
@@ -285,12 +287,14 @@ export function AppProvider({children}:{children:ReactNode}) {
       // 카드를 숨긴 상태(선박 표·안내 문장)에서 보낸 문장이 보이지 않는 화물의 후속 질문이 되지 않게 한다 (10-02 UI 점검 F5)
       const context = view === 'cargo' && result && request.bl_no ? request : null;
       const seen: ProgressStage[] = [];
+      const stepLog: {stage: ProgressStage; at: number}[] = [];  // 단계별 처음 본 시각 (접힌 요약용)
+      const startedAt = Date.now();
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
       // 서류에서 확인한 출항일이 있으면 그 B/L과 함께 보낸다. 서버가 그 B/L 조회에만 실어 화물 표에 적는다 (10-06)
       const document = docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
       const res = await sendChatStream(message, context,
-        s => { seen.push(s); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document);
-      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null}]);
+        s => { seen.push(s); if (!stepLog.some(x => x.stage === s)) stepLog.push({stage: s, at: Date.now()}); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document);
+      setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null, ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);
       // 대화로 지켜보기를 켜고 껐으면 결과 칸의 버튼·말풍선 버튼이 같은 상태를 보게 한다
       if (res.watch_set) setWatching(res.watch_set.bl_no, res.watch_set.on);
       if (res.kind === 'cargo' && res.agent && res.request) {
@@ -304,8 +308,7 @@ export function AppProvider({children}:{children:ReactNode}) {
         setView('cargo');
       }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
-      // 안내 문장(B/L 없음 등)이면 아래의 지난 결과를 숨긴다. 새 답과 지난 카드가 섞여 보이지 않게
-      if (res.kind === 'message') setView('none');
+      // 안내 문장(B/L 없음, 화물과 상관없는 질문 등)이 와도 보던 화물 결과는 그대로 둔다. 새 화물 조회가 올 때만 바뀐다 (10-07 정운 실사용 15번)
       // 서버가 이 턴을 저장했다. 주소에 대화 id를 붙이고 목록을 새로 읽는다. 제목은 조금 늦게 생길 수 있어 한 번 더 읽는다 (10-06 결정)
       if (conversationsOn) { syncUrl(currentSessionId()); void refreshConversations(); setTimeout(() => void refreshConversations(), 3000); }
       return true;
@@ -333,7 +336,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     try { window.sessionStorage.removeItem(CHAT_STATE_KEY); } catch { /* 괜찮다 */ }
   }
 
-  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,backToCargo,cargoKey,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,usage,refreshUsage,watching,setWatching,conversationsOn,conversations,activeId,savedId,opening,newConversation,openConversation,removeConversation}}>{children}</Context.Provider>;
+  return <Context.Provider value={{data:presentation,request,result,loading,stages,pendingSince,error,replaying,lookup,replay,ask,showCargo,backToCargo,cargoKey,thread,vessels,view,authEnabled,authReady,user,isOperator,profileComplete,meReady,setProfileComplete,suspended,docHints,setDocHints,reset,usage,refreshUsage,watching,setWatching,conversationsOn,conversations,refreshConversations,activeId,savedId,opening,newConversation,openConversation,removeConversation}}>{children}</Context.Provider>;
 }
 /** 화물 답이 후속 질문의 답인지 고른다. 응답 계약(C1, ChatResponse)에 표시 칸이 없어 화면이 확인할 수 있는 사실로만 본다.
  * - 같은 B/L이 아니면 새 조회다

@@ -5,10 +5,10 @@
  * 서류 사진은 입력을 돕는 보조 동작이라 드로어에서 확인한 뒤 문장에 넣는다. 읽은 값으로 바로 조회하지 않는다.
  * 화면을 내려 입력창이 안 보이면 "AI에게 이어서 물어보기" 버튼이 나타나 입력창으로 돌려보낸다.
  */
-import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
+import {useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {ArrowUp, Camera, Check, FileText, LoaderCircle, MessageCircle, PackageSearch, Ship, Sparkles} from 'lucide-react';
-import {VerdictBadge} from './Shared';
+import {ArrowRight, Camera, LoaderCircle, Sparkles} from 'lucide-react';
+import {verdictLabels} from '@/lib/format';
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentValues} from './DocumentPanel';
 import {Drawer} from './Drawer';
@@ -39,10 +39,25 @@ function scrollBehavior(): ScrollBehavior {
  * 그 밖의 줄의 주소는 글자 그대로 둔다. 링크도 http·https만 만들고 새 탭으로 연다(noopener: 열린 쪽이 이 창을 못 건드리게).
  * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
 const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
+// [제목](주소) 마크다운 링크: 제목만 보이고 주소는 숨긴다 (10-07 정운 실사용 4번). 제목 속 대괄호·주소 속 공백·괄호는 받지 않는다
+const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
 const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: '];
 function linkifyLine(line: string, key: number) {
   if (!LINK_LINE_PREFIXES.some(prefix => line.trimStart().startsWith(prefix))) return line;
-  return line.split(URL_PATTERN).map((part, i) =>
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of line.matchAll(MD_LINK_PATTERN)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(...bareUrls(line.slice(last, at), `${key}-${at}`));
+    out.push(<a key={`${key}-md-${at}`} href={m[2]} target="_blank" rel="noopener noreferrer" className="chat-link">{m[1]}</a>);
+    last = at + m[0].length;
+  }
+  if (last < line.length) out.push(...bareUrls(line.slice(last), `${key}-end`));
+  return out;
+}
+/** 마크다운이 아닌 맨 주소는 예전처럼 주소 글자 그대로 링크로 만든다 (대체 경로) */
+function bareUrls(text: string, key: string): ReactNode[] {
+  return text.split(URL_PATTERN).map((part, i) =>
     i % 2 === 1 ? <a key={`${key}-${i}`} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a> : part);
 }
 function linkify(text: string): ReactNode[] {
@@ -148,7 +163,10 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   }
 
   // 판정 답 말풍선 안의 배지·할 일 한 줄. 대화가 비어 있는데 결과만 있는 경우(데모 첫 화면, 저장된 판정 열기)도 같은 모양으로 그린다 (시안 2-2)
-  const verdictBlock = result?.verdict ? <div className="chat-verdict"><VerdictBadge verdict={result.verdict} size="lg"/>{result.actions[0] && <p className="chat-todo"><span>지금 할 일</span>{result.actions[0]}</p>}<button type="button" className="chat-show-detail" onClick={onShowDetail}>결과 보기</button></div> : null;
+  const verdictBlock = result?.verdict ? <div className="chat-verdict">
+    <p className={`chat-grade ${result.verdict}`}><i aria-hidden="true"/>{verdictLabels[result.verdict]}</p>
+    {result.actions[0] && <p className="chat-todo"><span>지금 할 일</span>{result.actions[0]}</p>}
+    <button type="button" className="chat-show-detail" onClick={onShowDetail}>결과 보기</button></div> : null;
   // 대화가 없고 답할 글만 있는 첫 화면(.chat-seed는 .chat-turn이 아니다: 실제 주고받은 말만 .chat-turn으로 센다): 결과 칸의 answer를 그대로 답 말풍선으로 보인다 (지어내지 않는다, 서버 값)
   const seedAnswer = thread.length === 0 && view === 'cargo' && result && result.status !== 'insufficient' && result.answer ? result : null;
   const empty = idle && !loading && thread.length === 0;
@@ -157,17 +175,16 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
     {/* 대화는 이 칸 안에서만 스크롤하고, 입력창은 아래에 고정한다 (시안 2-1·2-2). 페이지 전체는 움직이지 않는다 */}
     <div className="chat-scroll" ref={threadRef} onScroll={onScroll} role="log" aria-label="대화" tabIndex={0}>
       {empty ? <div className="chat-empty">
-        <span className="chat-empty-icon" aria-hidden="true"><MessageCircle size={22}/></span>
+        <span className="chat-eyebrow">Marvia</span>
         <h2>어떤 화물을 확인할까요?</h2>
-        <p>B/L 번호를 조회하면 배 위치와 통관 단계를 함께 보여드려요.</p>
         <div className="feature-tiles">
-          <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><PackageSearch size={20}/>B/L 번호로 조회하기</button>
-          <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><Ship size={20}/>입항 예정 선박 찾기</button>
-          <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><FileText size={20}/>서류 사진 올리기</button>
+          <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><span className="tile-no">01</span>B/L 번호로 조회하기</button>
+          <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><span className="tile-no">02</span>입항 예정 선박 찾기</button>
+          <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><span className="tile-no">03</span>서류 사진 올리기</button>
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
+          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
         {seedAnswer && <li className="chat-seed"><div className="chat-body"><div className="chat-bubble"><p>{seedAnswer.answer}</p>{verdictBlock}</div></div></li>}
       </ol>}
       {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}
@@ -186,12 +203,12 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
             placeholder={cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호를 입력해 주세요'}
             aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
           <div className="composer-foot">
-            <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={16}/>서류 사진으로 채우기</button>
+            <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={16} strokeWidth={1.5}/>서류 사진으로 채우기</button>
             <div className="composer-send">
               {/* 글자 수는 쓰기 시작한 뒤에만 보인다. 빈 입력창에 숫자를 늘 두면 어수선하다 */}
               {text.length > 0 && <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>}
               <button type="submit" className="send" disabled={loading || blocked || !text.trim()} aria-label="AI에게 질문 보내기">
-                {loading ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
+                {loading ? <LoaderCircle size={20} strokeWidth={1.5} className="spin"/> : <ArrowRight size={20} strokeWidth={1.5}/>}</button>
             </div>
           </div>
         </form>
@@ -216,21 +233,39 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
 function Pending({stages, since}: {stages: ProgressStage[]; since: number}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  // 단계별 경과 시간: 브라우저가 단계를 처음 본 시각만 잰다 (서버가 단계별 시간을 주지 않는다. 지어내지 않는다)
+  const seenAt = useRef(new Map<ProgressStage, number>());
+  for (const s of stages) if (!seenAt.current.has(s)) seenAt.current.set(s, Date.now());
   const seconds = Math.max(0, Math.floor((now - since) / 1000));
   return <div className="pending-card">
     <div className="pending-head">
-      <strong>답을 준비하고 있어요</strong><span className="pending-dots" aria-hidden="true"><i/><i/><i/></span>
+      <span>답을 준비하고 있어요</span><span className="pending-dots" aria-hidden="true"><i/><i/><i/></span>
       <span className="mono pending-time">{seconds}초</span>
     </div>
     {stages.length > 0
+      // 세로 타임라인 (10-07 정운 엘레강스). li 글자는 "단계 이름 + 완료/진행 중"만 둔다: 경과 시간은 CSS ::after로 그린다 (e2e가 글자 끝을 본다)
       ? <ol className="pending-steps" aria-live="polite" aria-label="답변 준비 단계">{stages.map((s, i) => {
           const done = i < stages.length - 1;
-          return <li key={s} className={done ? 'done' : 'current'}>
-            <span className="step-icon">{done ? <Check size={16}/> : <LoaderCircle size={16} className="spin"/>}</span>
+          const start = seenAt.current.get(s) ?? now;
+          return <li key={s} className={done ? 'done' : 'current'} data-elapsed={done ? undefined : `${Math.max(0, Math.floor((now - start) / 1000))}초`}>
+            <span className="step-icon" aria-hidden="true"/>
             <span className="step-name">{stageLabels[s]}</span><span className="step-state">{done ? '완료' : '진행 중'}</span></li>;
         })}</ol>
       : <p className="pending-note" role="status">{isLive ? '진행 단계를 불러오는 중이에요.' : '체험 모드에서는 진행 단계를 보여 드리지 않아요.'}</p>}
     {/* 답이 올 자리를 흐릿한 줄로 먼저 잡아 둔다. 실제로 기다리는 동안만 보인다 */}
     <div className="pending-skeleton" aria-hidden="true"><span/><span/><span/></div>
+  </div>;
+}
+
+/** 답이 온 뒤 접힌 한 줄 요약 "N단계 · M초". 누르면 같은 타임라인이 모두 완료로 펼쳐진다 (10-07 정운 엘레강스).
+ * 단계 시간은 브라우저가 처음 본 시각 차이다. 마지막 단계는 답이 온 시각까지로 잰다 */
+function StepsSummary({steps, tookMs}: {steps: {stage: ProgressStage; at: number}[]; tookMs: number}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return <div className="steps-summary">
+    <button type="button" className="steps-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(o => !o)}>
+      {steps.length}단계 · {Math.max(1, Math.round(tookMs / 1000))}초<span aria-hidden="true">{open ? '▾' : '▸'}</span></button>
+    {open && <ol id={id} className="pending-steps settled" aria-label="답변 준비 단계">{steps.map(s =>
+      <li key={s.stage} className="done"><span className="step-icon" aria-hidden="true"/><span className="step-name">{stageLabels[s.stage]}</span><span className="step-state">완료</span></li>)}</ol>}
   </div>;
 }

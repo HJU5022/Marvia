@@ -56,7 +56,7 @@ def test_web_answer_passes_and_appends_only_fetched_source(monkeypatch, web):
         r = _ask()
     assert r.kind == "message" and r.reply.startswith(ANSWER)
     # 근거 조각이 든 결과 하나만 출처로 붙는다. 제목·주소는 가져온 결과 그대로다
-    assert r.reply.endswith(f"웹 참고: 포워더 안내 ({URL_A})") and URL_B not in r.reply
+    assert r.reply.endswith(f"웹 참고: [포워더 안내]({URL_A})") and URL_B not in r.reply
     assert web == [WEB_ARGS["query"]] and "tool_web" in heard
 
 
@@ -86,7 +86,7 @@ def test_web_answer_without_quote_in_fetched_text_is_not_shown(monkeypatch, web,
 def test_web_answer_retry_can_fix_the_quote(monkeypatch, web):
     calls = _agent(monkeypatch, [("web_search", WEB_ARGS)], [_web(ANSWER, "지어낸 문장입니다 정말로요"), _web(ANSWER, QUOTE_A)])
     r = _ask()
-    assert len(calls) == 2 and r.reply.startswith(ANSWER) and "웹 참고: 포워더 안내" in r.reply and len(web) == 1
+    assert len(calls) == 2 and r.reply.startswith(ANSWER) and "웹 참고: [포워더 안내](" in r.reply and len(web) == 1
 
 
 def test_web_answer_with_number_or_word_outside_fetched_text_is_rejected(monkeypatch, web):
