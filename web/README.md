@@ -79,7 +79,7 @@ THIRD_PARTY.md         지도·폰트 출처와 라이선스
 값은 `web/.env`에 둡니다. `cp .env.example .env` 뒤 채우면 아래처럼 명령에 붙이지 않고 `npm run dev`만 해도 됩니다. `web/.env`는 커밋하지 않습니다.
 
 ```bash
-# 레포 루트: 키 없이 백엔드 데모 3건 (루트 README "키 없이 데모 3건")
+# 레포 루트: 키 없이 백엔드 데모 13건 (루트 README "키 없이 데모")
 docker compose up -d --build
 docker compose exec api python -m scripts.make_demo
 
@@ -87,7 +87,7 @@ docker compose exec api python -m scripts.make_demo
 NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
 ```
 
-- 예시 화물 메뉴는 백엔드 데모 B/L(TESTBL01 정상, TESTBL04 되묻기, TESTBL26 판정 보류)을 폼에 채웁니다. 판매 예정일은 비우거나 make_demo가 알려 준 날을 넣습니다.
+- 예시 화물 메뉴는 백엔드 데모 B/L(라이브 시연 10건 DEMOQD2610001~DEMOQD2610010, 평가셋 3건 TESTBL01 정상·TESTBL04 되묻기·TESTBL26 판정 보류)을 폼에 채웁니다. 판매 예정일은 비우거나 make_demo가 알려 준 날을 넣습니다.
 - 백엔드 CORS `ALLOWED_ORIGINS`에 화면 주소(기본 http://localhost:3000)가 있어야 합니다.
 - 세션 ID는 브라우저마다 만들어 localStorage에 둡니다. 이력이 이 값으로 묶입니다.
 - 로그인은 아래 "로그인 (G3)" 절을 봅니다.

@@ -31,7 +31,9 @@ export function TopBar() {
     setErrors(next);
     if (Object.keys(next).length) return;
     setBl(no); selectFixture(null); setChoice('');
-    void lookup({bl_no: no, bl_type: type, sale_due_date: date || null, session_id: request.session_id});
+    // 서류에서 확인한 출항일은 그 서류의 B/L을 조회할 때만 싣는다 (10-06). 서버가 화물 표 출항 칸에 적는다
+    const departed_on = docHints?.departed_on && docHints.bl_no === no ? docHints.departed_on : null;
+    void lookup({bl_no: no, bl_type: type, sale_due_date: date || null, session_id: request.session_id, departed_on});
   }
 
   /** 데모 모드: 저장된 예시를 바로 재생한다. */
@@ -42,24 +44,26 @@ export function TopBar() {
     void lookup(c.request as AgentRequest);
   }
 
-  /** 실제 모드: 백엔드 데모 B/L을 폼에 채우기만 한다. 판매 예정일은 make_demo가 알려 준 날을 넣거나 비운다. */
+  /** 실제 모드: 백엔드 데모 B/L을 폼에 채우기만 한다. 판매 예정일은 예시에 sale_in_days가 있으면 "오늘(한국) + N일"로 채우고, 없으면 비운다. */
   function chooseLive(id: string) {
     const c = liveExamples.find(c => c.id === id);
     if (!c) return;
-    setErrors({}); setBl(c.bl_no); setType(c.bl_type); setDate('');
+    // 한국 날짜 기준: UTC 시각에 9시간을 더해 날짜만 자른다 (브라우저 시간대와 상관없이 서버 데모의 "오늘"과 같게)
+    const sale = c.sale_in_days != null ? new Date(Date.now() + 9 * 3600_000 + c.sale_in_days * 86_400_000).toISOString().slice(0, 10) : '';
+    setErrors({}); setBl(c.bl_no); setType(c.bl_type); setDate(sale);
   }
 
   /** 서류 사진에서 확인한 값: B/L은 폼에, 항차·입항 예정일은 되묻기 화면용으로 둔다. 조회는 사용자가 누른다. */
   function applyDocument(v: DocumentValues) {
     setBl(v.bl_no); setErrors({}); setDocOpen(false);
-    setDocHints(v.voyage_no || v.forwarder_eta ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta} : null);
+    setDocHints(v.voyage_no || v.forwarder_eta || v.departed_on ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta, bl_no: v.bl_no, departed_on: v.departed_on} : null);
   }
 
   return <section className="query-section" aria-label="화물 조회">
     <form className="query-form" onSubmit={submit} noValidate>
       <div className="form-field bl-field">
         <label htmlFor="bl">B/L 번호</label>
-        <div className="input-icon"><Search size={16}/><input id="bl" value={bl} onChange={e => setBl(e.target.value)} autoComplete="off" spellCheck={false} aria-invalid={!!errors.bl} aria-describedby={errors.bl ? 'bl-error' : 'bl-help'} disabled={loading}/></div>
+        <div className="input-icon"><Search size={16}/><input id="bl" value={bl} onChange={e => setBl(e.target.value)} autoComplete="off" spellCheck={false} aria-invalid={!!errors.bl} aria-describedby={errors.bl ? 'bl-error' : undefined} disabled={loading}/></div>
         {errors.bl && <span id="bl-error" className="field-error">{errors.bl}</span>}
       </div>
       <div className="form-field">
@@ -74,7 +78,6 @@ export function TopBar() {
       <button type="submit" className="button primary query-button" disabled={loading}>{loading ? <LoaderCircle size={17} className="spin"/> : <Search size={17}/>}<span>{loading ? '조회 중' : '화물 조회'}</span>{!loading && <ArrowRight size={16}/>}</button>
     </form>
     <div className="query-foot">
-      <p id="bl-help">{isLive ? 'B/L을 입력하세요. 판매 예정일을 넣으면 여유 일수까지 봅니다.' : 'B/L과 필요한 입고일을 입력하세요. 지금은 저장된 예시 화물로 체험할 수 있습니다.'}</p>
       <div className="query-foot-actions">
       <button type="button" className="doc-trigger" onClick={() => setDocOpen(o => !o)} aria-expanded={docOpen} disabled={loading}><Camera size={13}/>서류 사진으로 채우기</button>
       <label className="example-select">예시 화물 {isLive
@@ -87,11 +90,11 @@ export function TopBar() {
     {docHints && !docOpen && <p className="doc-hint"><Camera size={13}/>서류에서 확인한 값
       {docHints.voyage_no && <> · 항차 <strong>{docHints.voyage_no}</strong></>}
       {docHints.forwarder_eta && <> · 입항 예정 <strong>{docHints.forwarder_eta}</strong></>}
-      <span>배를 되물을 때 자동으로 채웁니다.</span>
+      {docHints.departed_on && <> · 출항 <strong>{docHints.departed_on}</strong></>}
       <button type="button" onClick={() => setDocHints(null)} aria-label="서류 값 지우기"><X size={14}/></button></p>}
-    {!isLive && process.env.NODE_ENV === 'development' && <div className="dev-switch"><span className="mono">DEV</span><label htmlFor="fixture">상태 미리보기</label><select id="fixture" value={choice} onChange={e => chooseDemo(e.target.value)} disabled={loading}><option value="">B/L에 따른 fixture</option>{data.demo.choices.map(c => <option key={c.id} value={c.id}>{c.id} · {c.label}</option>)}</select></div>}
+    {!isLive && process.env.NODE_ENV === 'development' && <div className="dev-switch"><span className="mono">DEV</span><label htmlFor="fixture">상태 미리보기</label><select id="fixture" value={choice} onChange={e => chooseDemo(e.target.value)} disabled={loading}><option value="">B/L에 맞는 예시</option>{data.demo.choices.map(c => <option key={c.id} value={c.id}>{c.id} · {c.label}</option>)}</select></div>}
     {/* 진행 단계는 화면 타이머다. 백엔드는 진행 이벤트를 보내지 않는다 (REST 응답 하나) */}
     {/* 타이머 3단계 표시는 지웠다. 서버의 실제 단계 소식으로 바꿨다 (docs/specs/chat-progress.md). 이 폼은 지금 쓰이지 않는다 */}
-    {error && <p role="alert" className="request-error">{error} <span>아래에 결과가 있다면 이전 조회의 결과입니다.</span></p>}
+    {error && <p role="alert" className="request-error">{error} <span>아래에 결과가 있다면 이전 조회의 결과예요.</span></p>}
   </section>;
 }

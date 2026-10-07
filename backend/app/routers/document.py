@@ -51,6 +51,7 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
     evidence: dict[str, str | None] = {}
     doc_kind = None
     status = "ok"
+    llm_error: str | None = None  # LLM 단계가 실패한 종류(bad_format, timeout 등). 화면이 "AI가 못 읽었다"를 알리는 데 쓴다 (10-06)
     try:
         masked = doc_ocr.mask_bl(ocr.lines, bl)
     except ValueError:
@@ -73,6 +74,8 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
             except llm.LLMError as e:  # 키 없음·과부하·형식 깨짐 모두 (Spec EC-05)
                 log_failure("doc_extract", f"{e.kind} {e.code}" if e.code else e.kind)
                 status = "partial"
+                # 10-06: 빈 칸만 보이면 사용자가 서류 탓인지 AI 탓인지 모른다. 실패 종류를 응답에 실어 다시 시도하게 안내한다
+                llm_error = e.kind
 
     checks = doc_ocr.check_fields(values, ocr.lines)
     shown, extra_checks = doc_ocr.check_conditions(conditions, evidence, ocr.lines)
@@ -86,5 +89,6 @@ def read_document(file: UploadFile = File(...), session_id: str | None = Form(No
         trace_id=current_request_id(),
         mrn=doc_ocr.take_mrn(ocr.lines),  # 세관에 아직 없는 화물의 대체 조회용 (mrn-fallback)
         doc_kind=doc_kind,
+        llm_error=llm_error,
     )
 

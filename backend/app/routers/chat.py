@@ -17,6 +17,7 @@ import contextvars
 import json
 import os
 import queue
+import re
 import threading
 import time
 from collections.abc import Iterator
@@ -56,6 +57,14 @@ class ChatContext(BaseModel):
     mrn: str | None = None  # 세관에 아직 없는 화물의 대체 조회용 (docs/specs/mrn-fallback.md)
 
 
+class ChatDocument(BaseModel):
+    """서류 사진에서 사용자가 확인한 출항일 (10-06). 이 B/L의 조회 요청에만 departed_on으로 실어, 내 화물 현황 표 출항 칸에 적게 한다.
+    B/L은 서버 안에서 요청의 B/L과 맞춰 보는 데만 쓰고 LLM에는 가는 일이 없다. 판정에도 쓰지 않는다."""
+
+    bl_no: str
+    departed_on: date
+
+
 class ChatTurn(BaseModel):
     """화면에 보이는 대화 한 줄. 채팅 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다 (10-05).
     화면이 보낸 값이라 믿지 않는다: 서버가 B/L을 가리고 주입 모양 줄을 뺀 뒤 자료로만 LLM에 넘긴다 (services/chat._masked_history)."""
@@ -68,6 +77,8 @@ class ChatRequest(BaseModel):
     message: str = Field(max_length=svc.MESSAGE_MAX)
     session_id: str = Field(max_length=SESSION_ID_MAX)  # /api/agent와 같은 상한 (schemas/agent.py, 10-06 점검)
     context: ChatContext | None = None
+    # 서류 사진에서 확인한 출항일 (10-06). 없어도 된다(전 화면·평가 스크립트)
+    document: ChatDocument | None = None
     # 최근 대화. 서버는 마지막 몇 줄만 쓴다 (services/chat.HISTORY_TURNS). 보내지 않아도 된다 (전 화면·평가 스크립트)
     history: list[ChatTurn] = Field(default_factory=list, max_length=50)
 
@@ -164,6 +175,21 @@ def _context(body: ChatRequest) -> AgentRequest | None:
                             mrn=body.context.mrn)
     except ValueError:
         return None
+
+
+def _agent_runner(body: ChatRequest, user_id: str | None):
+    """services.chat.handle이 부르는 조회 함수. 서류에서 확인한 출항일이 있고 요청의 B/L이 그 서류의 B/L일 때만
+    요청에 departed_on을 실어 run_agent로 넘긴다 (10-06). 문장에 다른 B/L이 섞여 있어도 그 화물에는 이 날짜가 가지 않는다.
+    서비스(services/chat.py)는 이 값을 모른다. 채팅 에이전트·판정 LLM 입력에도 가지 않고, 화물 표 쓰기(upsert_assessment)만 읽는다."""
+    doc = body.document
+    want = re.sub(r"\s+", "", doc.bl_no).upper() if doc else None
+
+    def run(req: AgentRequest) -> AgentResponse:
+        if doc and req.bl_no == want and not req.follow_up_question:
+            req = req.model_copy(update={"departed_on": doc.departed_on})
+        return run_agent(req, user_id)
+
+    return run
 
 
 def _history(body: ChatRequest) -> list[dict]:
@@ -263,7 +289,7 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
     context = _context(body)
     with session_scope(body.session_id, user_id):
         try:
-            result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id), user_id,
+            result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id), user_id,
                                 history=_history(body), run_tool=_follow_up_tool,
                                 watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
         except svc.ChatError as e:
@@ -299,7 +325,7 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
         try:
             with progress.listening(lambda stage: events.put(("progress", {"stage": stage}))):
                 with session_scope(body.session_id, user_id):
-                    result = svc.handle(body.message, body.session_id, context, lambda req: run_agent(req, user_id),
+                    result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id),
                                         user_id, history=_history(body), run_tool=_follow_up_tool,
                                         watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
                     response = ChatResponse(**result.__dict__)

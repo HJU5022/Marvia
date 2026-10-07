@@ -1,0 +1,205 @@
+/* 담당 영역: 내 화물 화면의 틀(대화 + 상세 40:60), 대화 말풍선, 입력창, 대화 목록. 토큰은 globals.css :root, 이 파일은 globals.css 뒤에 불러와져 같은 선택자를 덮는다.
+ * 마누스 안A 화면1·2, 2-1·2-2·2-3·2-7이 기준이다. 대화가 왼쪽에서 스스로 스크롤하고 입력창은 아래에 고정, 상세는 오른쪽에서 스스로 스크롤한다. */
+
+/* ---- 움직임 토큰·키프레임 (3차 다듬기). 150ms 눌림·hover / 220ms 나타남 / 320ms 패널·지도. 움직임 줄이기를 켜면 globals.css가 animation·transition을 전부 끈다 ---- */
+:root{--t-fast:150ms;--t-enter:220ms;--t-panel:320ms}
+@keyframes m-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes m-fade{from{opacity:0}to{opacity:1}}
+@keyframes m-fade-out{from{opacity:1}to{opacity:0}}
+@keyframes m-pop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes m-slide-in{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes m-sheet-up{from{transform:translateY(100%)}}
+@keyframes m-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* ---- 화면 높이 맞추기: 이 화면에서만 페이지 전체가 아니라 안쪽 칸이 스크롤한다 (page.tsx가 body에 data-fit을 달고 떠날 때 걷는다) ---- */
+body[data-fit]{overflow:hidden}
+body[data-fit] .app-shell{height:100dvh;min-height:0}
+body[data-fit] .workspace{height:100dvh;min-height:0}
+body[data-fit] main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+body[data-fit] .route-fade{flex:1;min-height:0;display:flex;flex-direction:column;animation:none}
+body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이드바 아래와 결과 머리표에 이미 있다 */
+/* 40:60으로 나뉘면 사이드바의 대화 목록은 접고, 상단바 "대화"와 대화 칸 왼쪽 위 단추로 다시 연다 (Shell의 같은 패널) */
+body[data-split] .conv-section{display:none}
+body[data-split] .conv-toggle{display:inline-flex}
+
+.chat-app{flex:1;min-height:0;display:flex;background:var(--bg)}
+.chat-pane{flex:1 1 100%;min-width:0;min-height:0;display:flex;flex-direction:column}
+.chat-pane{transition:flex-basis var(--t-panel) var(--ease)}
+.chat-app.split .chat-pane{flex:0 0 clamp(380px,40%,720px);background:var(--surface);border-right:1px solid var(--border)}
+.chat-app.split.wide .chat-pane{flex-basis:clamp(360px,32%,560px)}
+.detail-pane{flex:1 1 0;min-width:0;min-height:0;display:flex;flex-direction:column;animation:m-slide-in var(--t-panel) var(--ease) backwards}  /* 40:60으로 나뉠 때 오른쪽에서 들어온다 */
+.detail-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:24px 24px 32px;display:flex;flex-direction:column;gap:0}
+.sheet-handle{display:none}
+
+.pane-head{flex:none;display:flex;align-items:center;gap:10px;padding:20px 28px 4px}
+.pane-head h1{font-size:var(--text-xl);font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.chat-app.split .pane-head{padding:14px 20px;border-bottom:1px solid var(--border)}
+.chat-app.split .pane-head h1{font-size:var(--text-lg);font-weight:700}
+.pane-icon{display:none;place-items:center;width:36px;height:36px;border-radius:var(--small-radius);background:transparent;color:var(--text-2)}
+.pane-icon{cursor:pointer;transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.pane-icon:hover{background:var(--hover);color:var(--brand)}
+.chat-app.split .pane-icon{display:grid}
+.pane-head~.request-error{margin:8px 28px 0}
+
+/* 오른쪽 칸 머리: 선박 표·안내 답일 때 제목과 "내 화물 결과로 돌아가기" (시안 2-3) */
+.detail-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 4px 16px}
+.detail-head h2{font-size:var(--text-lg);font-weight:700;color:var(--text)}
+.detail-head .button{min-height:40px;gap:8px;border-radius:var(--small-radius);background:transparent;color:var(--brand);border:0;font-weight:700}
+.detail-head .button:hover{background:var(--brand-soft)}
+.detail-head .mono{font-size:var(--text-sm);color:var(--muted);font-weight:500}
+.detail-empty{display:flex;flex-direction:column;align-items:center;gap:10px;margin:8px 0 0;padding:64px 24px;text-align:center;animation:m-rise var(--t-enter) var(--ease) backwards}
+.detail-empty>span{display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--surface);color:var(--muted)}
+.detail-empty strong{font-size:var(--text-base);font-weight:700;color:var(--text)}
+.detail-empty p{font-size:var(--text-sm);color:var(--muted)}
+.page-end{padding:0;display:flex;justify-content:center;flex-wrap:wrap;gap:6px 12px;margin-top:32px;font-size:var(--text-sm);color:var(--muted);text-align:center}
+.page-end a{color:var(--brand);font-weight:600}
+
+/* ---- 대화 칸: 위는 스크롤, 아래는 입력창 ---- */
+.ask{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:860px;margin:0 auto;padding:0 28px}
+.chat-app.split .ask{max-width:none;margin:0;padding:0}
+.chat-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;padding:12px 2px 16px;scroll-behavior:smooth}
+.chat-app.split .chat-scroll{padding:16px 20px}
+.chat-scroll:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:var(--small-radius)}
+.chat-dock{flex:none;padding:8px 0 20px}
+.chat-app.split .chat-dock{padding:12px 20px 18px;border-top:1px solid var(--border);background:var(--surface)}
+
+/* 처음 화면: 가운데 안내 + 할 일 세 가지 (안A 화면1). 대화가 생기면 사라진다 */
+.chat-empty{margin:auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:24px 0}
+.chat-empty-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:var(--surface);color:var(--text-2)}
+.chat-empty h2{margin-top:10px;font-size:var(--text-xl);font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.chat-empty p{max-width:420px;font-size:var(--text-base);color:var(--muted);word-break:keep-all}
+.feature-tiles{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:14px}
+.feature-tiles button{flex-direction:row;align-items:center;gap:8px;padding:12px 18px;border:0;border-radius:12px;background:var(--surface);color:var(--text);font-size:var(--text-base);font-weight:600;box-shadow:none;transform:none!important}
+.feature-tiles button{transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.feature-tiles button:hover:not(:disabled){background:var(--brand-soft);color:var(--brand);box-shadow:none}
+.feature-tiles button:active:not(:disabled){transform:scale(.98)!important}
+.feature-tiles svg{margin:0;color:var(--brand)}
+
+/* ---- 입력창: 아래에 고정, 크고 둥글게 ---- */
+.composer-wrap{padding:0;border-radius:16px;background:var(--surface);box-shadow:none;border:1px solid var(--border-strong);transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.composer-wrap:focus-within{transform:none;box-shadow:0 0 0 3px var(--brand-soft);border-color:var(--brand)}
+.composer{background:transparent;padding:14px 18px 10px;border-radius:16px}
+.composer textarea{field-sizing:content;min-height:32px;max-height:160px;padding:2px 0 8px;font-size:var(--text-base);line-height:1.6;color:var(--text);resize:none}
+.composer-foot{padding-top:4px;border-top:0}
+.composer .doc-trigger{color:var(--text-2);font-size:var(--text-sm);font-weight:600}
+.composer .doc-trigger:hover:not(:disabled){color:var(--brand)}
+.send{width:44px;height:44px;border-radius:12px;background:var(--brand);box-shadow:none;transform:none!important;transition:background var(--t-fast) var(--ease),transform var(--t-fast) var(--ease)}
+.send:active:not(:disabled){transform:scale(.96)!important}
+.send:hover:not(:disabled){background:var(--brand-hover)}
+.chat-count{font-size:var(--text-sm);color:var(--muted)}
+.chat-app.split .composer-send .chat-count{display:none}
+
+/* 사용량 안내: 신호등 색 없이 입력창 바로 위 한 줄 */
+.chat-dock .quota-note,.chat-dock .quota-note.blocked{margin:0 0 8px;padding:10px 14px;border-radius:12px;background:var(--neutral-bg);color:var(--text-2);font-size:var(--text-sm);font-weight:500}
+.chat-dock .quota-note.blocked{color:var(--text);font-weight:600}
+.chat-dock .fill-offer{margin:0 0 8px}
+
+/* 시작 문장: 눌러 보라는 옅은 칩 */
+.chat-examples{justify-content:flex-start;gap:8px;margin-top:12px}
+.chat-examples button{min-height:40px;padding:8px 14px;border:0;border-radius:20px;background:var(--surface);color:var(--text-2);font-size:var(--text-sm);transform:none!important}
+.chat-app.split .chat-examples button{background:var(--neutral-bg)}
+.chat-app.split .chat-examples{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.chat-app.split .chat-examples button{flex:none;white-space:nowrap}
+.chat-examples button{transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.chat-examples button:hover:not(:disabled){background:var(--brand-soft);color:var(--brand)}
+
+/* ---- 대화 말풍선: 내 말은 회색 말풍선, Marvia의 답은 상자 없이 글로 (Claude·ChatGPT처럼). 새 말은 아래에서 살짝 떠오른다 ---- */
+.chat-thread{list-style:none;margin:0;padding:0;gap:20px;max-height:none;overflow:visible}
+.chat-turn,.chat-seed{animation:m-rise var(--t-enter) var(--ease) backwards}
+.chat-thread>:nth-child(2){animation-delay:40ms}.chat-thread>:nth-child(3){animation-delay:80ms}.chat-thread>:nth-child(4){animation-delay:120ms}.chat-thread>:nth-child(5){animation-delay:160ms}.chat-thread>:nth-child(n+6){animation-delay:200ms}
+.chat-turn{max-width:92%;gap:0}
+.chat-turn.user{max-width:82%}
+.chat-bubble{border-radius:16px;padding:12px 16px}
+.chat-bubble p{margin:0;font-size:var(--text-base);line-height:1.7;white-space:pre-line}
+.chat-turn.user .chat-bubble{background:var(--surface);border-bottom-right-radius:4px}
+.chat-app.split .chat-turn.user .chat-bubble{background:var(--bg)}
+.chat-turn.assistant .chat-bubble,.chat-seed .chat-bubble{padding:0;background:none;border:0;border-radius:0}
+.chat-turn.assistant,.chat-seed{width:100%;max-width:100%;list-style:none}
+/* 예전 전역 규칙이 p에 입힌 말풍선 모양을 걷어낸다 */
+.chat-turn.assistant .chat-bubble p,.chat-seed .chat-bubble p,.chat-turn.user .chat-bubble p{background:none;border:0;padding:0;border-radius:0;color:var(--text)}
+.chat-body{gap:12px}
+.chat-link{color:var(--brand);text-decoration:underline;text-underline-offset:3px}
+.chat-link:hover{color:var(--brand-hover)}
+
+/* 판정 답: 등급 배지(크게) + 할 일 한 줄. 구분선 없이 여백으로만 나눈다 */
+.chat-verdict{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-top:20px;padding:0;border:0}
+.chat-bubble .chat-todo{display:flex;flex-direction:column;gap:2px;font-size:var(--text-lg);font-weight:700;line-height:1.45;color:var(--text)}
+.chat-todo span{font-size:var(--text-sm);font-weight:500;color:var(--muted)}
+.chat-show-detail{display:none;padding:4px 0;background:none;color:var(--brand);font-size:var(--text-sm);font-weight:700}
+
+/* ---- 진행 단계: 상자 없이 글과 점. 서버가 알린 단계만, 상태를 글자로 (시안 2-1). 답이 올 자리는 흐릿한 줄로 먼저 잡는다 ---- */
+.pending-card{margin-top:20px;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;animation:m-rise var(--t-enter) var(--ease) backwards}
+.pending-head{justify-content:flex-start;gap:10px;font-size:var(--text-base);font-weight:700}
+.pending-time{margin-left:auto;font-size:var(--text-sm);font-weight:500;color:var(--muted)}
+.pending-steps{flex-direction:column;flex-wrap:nowrap;gap:0;margin:12px 0 0}
+.pending-steps li{display:flex;align-items:center;gap:12px;padding:8px 0;border-radius:0;background:none;font-size:var(--text-base);color:var(--text);animation:m-rise var(--t-enter) var(--ease) backwards}
+.pending-steps li.done,.pending-steps li.current{background:none}
+.step-icon{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%}
+.pending-steps li.done .step-icon{background:var(--neutral-bg);color:var(--text-2)}
+.pending-steps li.current .step-icon{background:var(--brand-soft);color:var(--brand)}
+.pending-steps li.current .step-name{font-weight:700}
+.step-name{flex:1;min-width:0}
+.step-state{font-size:var(--text-sm);color:var(--muted)}
+.pending-steps li.current .step-state{color:var(--brand);font-weight:600}
+.pending-note{font-size:var(--text-sm);color:var(--muted);margin:8px 0 0}
+.pending-skeleton{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.pending-skeleton span{display:block;height:14px;border-radius:7px;background:linear-gradient(90deg,var(--hover) 30%,#e4e7eb 50%,var(--hover) 70%);background-size:200% 100%;animation:m-shimmer 1.6s linear infinite}
+.pending-skeleton span:nth-child(1){width:92%}.pending-skeleton span:nth-child(2){width:76%}.pending-skeleton span:nth-child(3){width:48%}
+
+/* 입력창이 화면 밖일 때 떠 있는 버튼 */
+.back-to-composer{font-size:var(--text-sm);font-weight:600;box-shadow:0 4px 16px #191f281f;animation:m-rise var(--t-enter) var(--ease) backwards}
+
+/* ---- 대화 목록(사이드바·좁은 화면 패널) ---- */
+.conv-new{min-height:44px;justify-content:space-between;border:0;background:transparent;color:var(--text);font-size:var(--text-base);font-weight:700}
+.conv-new svg{color:var(--brand)}
+.conv-new:hover:not(:disabled){background:var(--hover)}
+.conv-group h3{margin:16px 12px 4px;font-size:var(--text-sm);letter-spacing:0;font-weight:600;color:var(--muted)}
+.conv-row{border-radius:var(--small-radius);transition:background var(--t-fast) var(--ease)}
+.conv-row:hover{background:var(--hover)}
+.conv-new{transition:background var(--t-fast) var(--ease)}
+.conv-delete{transition:opacity var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.conv-delete:hover{color:var(--danger)}
+.conv-title{min-height:44px;font-size:var(--text-base);color:var(--text)}
+.conv-row.active .conv-title{color:var(--brand)}
+.conv-delete{width:44px;height:44px;opacity:.6}  /* 손가락 화면은 마우스를 올릴 수 없어 숨기지 않는다 */
+.conv-row:hover .conv-delete,.conv-row:focus-within .conv-delete,.conv-row.active .conv-delete{opacity:1}
+.conv-confirm{font-size:var(--text-base)}
+.conv-confirm span{font-weight:600}
+.conv-confirm button{min-height:40px;padding:0 16px;font-size:var(--text-sm);font-weight:600;color:var(--text)}
+.conv-confirm .conv-danger{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.conv-empty,.conv-error{font-size:var(--text-sm)}
+.conv-error{color:var(--danger)}
+
+
+/* ---- 좁은 화면(900px 이하): 대화가 화면 전체, 상세는 아래에서 올라오는 시트 (시안 2-7) ---- */
+@media (max-width:900px){
+  .chat-app.split .pane-head{padding:12px 16px}
+  .pane-icon{display:grid}
+  .chat-app.split .chat-pane{flex:1 1 100%;border-right:0;padding-bottom:56px}  /* 접힌 시트(손잡이 줄)가 입력창을 덮지 않게 */
+  .detail-pane{position:fixed;left:var(--rail-width);right:0;bottom:0;z-index:55;height:min(62dvh,560px);background:var(--bg);border-radius:20px 20px 0 0;box-shadow:0 -6px 24px #191f2822;transition:transform var(--t-panel) var(--ease);animation:m-sheet-up var(--t-panel) var(--ease) backwards}
+  .chat-app:not(.sheet-open) .detail-pane{transform:translateY(calc(100% - 56px))}
+  .sheet-handle{display:flex;flex:none;flex-direction:column;align-items:flex-start;gap:8px;width:100%;height:56px;padding:8px 16px 0;border-radius:20px 20px 0 0;background:var(--bg);color:var(--text)}
+  .sheet-handle span{align-self:center;width:44px;height:4px;border-radius:2px;background:var(--border-strong)}
+  .sheet-handle strong{font-size:var(--text-base);font-weight:700}
+  .detail-scroll{padding:4px 16px 24px}
+  .chat-show-detail{display:inline-block}
+  .chat-app.split .chat-dock{padding:10px 16px 12px}
+  .chat-app.split .chat-scroll{padding:14px 16px}
+}
+@media (max-width:700px){
+  /* 사이드바가 위 띠로 바뀌는 폭: 틀을 세로로 쌓고 남는 높이를 이 화면이 쓴다 */
+  body[data-fit] .app-shell{display:flex;flex-direction:column}
+  body[data-fit] .workspace{height:auto;flex:1;min-height:0}
+  body[data-fit] .sidebar{flex:none}
+  body[data-fit] .workspace-bar{height:48px;padding:0 16px;justify-content:flex-end}
+  body[data-fit] .workspace-bar>span:first-child{display:none}
+  .ask{padding:0 16px}
+  .pane-head{padding:14px 16px 2px}
+  .pane-head h1{font-size:var(--text-lg)}
+  .composer{padding:12px 14px 8px}
+  .chat-turn,.chat-turn.user,.chat-seed{max-width:100%}
+  .chat-turn.user{max-width:88%}
+  .chat-bubble{padding:12px 16px}
+  .feature-tiles button{flex:1 1 100%;justify-content:center}
+  .detail-pane{left:0}
+}

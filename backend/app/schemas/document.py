@@ -70,3 +70,7 @@ class DocumentResponse(BaseModel):
     mrn: str | None = None
     # 서류 종류 (LLM이 고름, 10-02). 거래처를 메모장에 저장할 때 출처(B/L·A/N)로 쓴다. 모르면 null이고 거래처는 저장하지 않는다
     doc_kind: Literal["B/L", "A/N"] | None = None
+    # 10-06 (additive, 선택): LLM 단계가 실패했을 때 실패 종류(LLMError.kind: bad_format, timeout, overloaded 등). 성공이면 null.
+    # status는 그대로 partial이고 코드가 뽑은 B/L도 그대로 준다. 화면이 "AI가 서류 글자를 정리하지 못했어요"를 보여 주고,
+    # 평가 스크립트가 제공사 실패와 틀린 답을 가르는 데 쓴다. 옛 모양의 응답도 읽히도록 기본값을 null로 둔다
+    llm_error: str | None = None

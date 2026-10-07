@@ -35,7 +35,9 @@ async function audit(page, name) {
 }
 async function newContext(width, allowed = [base]) {
   const context = await browser.newContext({viewport: {width, height: 1000}, deviceScaleFactor: 1, reducedMotion: 'reduce'});
-  const origins = allowed.map(u => new URL(u).origin);
+  // 지도 바탕(OpenFreeMap)이 쓰는 호스트 하나만 예외로 허용한다 (10-06 정운 승인). 스타일, 벡터 타일, 글꼴, 아이콘이 모두 이 호스트다.
+  // 못 불러와도 지도는 해안선으로 되돌아가야 하므로(lib/basemap.ts) 이 허용이 e2e를 네트워크에 묶지는 않는다. 다른 외부 주소는 그대로 실패시킨다.
+  const origins = [...allowed.map(u => new URL(u).origin), 'https://tiles.openfreemap.org'];
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
     if (url.protocol.startsWith('http') && !origins.includes(url.origin)) { external.push(url.origin); return route.abort(); }
@@ -100,9 +102,18 @@ try {
       await page.screenshot({path: `screenshots/${String(i + 1).padStart(2, '0')}-${id}-${width}.png`, fullPage: true}); check(`${id} ${width}px`);
     }
     for (const [i, route] of (interactionsOnly ? [] : ['history', 'metrics', 'settings', 'about', 'admin']).entries()) {
-      await page.goto(`${base}/${route}`); if (route === 'history') await page.locator('tbody tr').first().waitFor(); await ready(page); await overflow(page, width); await audit(page, `${route}-${width}`);
+      await page.goto(`${base}/${route}`); if (route === 'history') await page.locator('.hist-list > li').first().waitFor(); await ready(page); await overflow(page, width); await audit(page, `${route}-${width}`);
       await page.screenshot({path: `screenshots/${String(i + 8).padStart(2, '0')}-${route}-${width}.png`, fullPage: true}); check(`${route} ${width}px`);
     }
+
+    // 설정은 화면 안 탭 5개, 관리는 탭 2개: 탭마다 접근성 검사 (탭을 바꿔도 가로 넘침이 없어야 한다)
+    await page.goto(`${base}/settings`); await ready(page);
+    const settingsTabs = page.locator('.st-tabs .st-tab'); assert.equal(await settingsTabs.count(), 5, 'settings has 5 in-page tabs');
+    for (let t = 0; t < 5; t++) { await settingsTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `settings-tab${t}-${width}`); }
+    await page.goto(`${base}/admin`); await ready(page);
+    const adminTabs = page.getByRole('tab'); assert.equal(await adminTabs.count(), 2, 'admin has 2 in-page tabs');
+    for (let t = 0; t < 2; t++) { await adminTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `admin-tab${t}-${width}`); }
+    check(`settings 5 tabs + admin 2 tabs ${width}`);
 
     // AI 입력이 첫 화면의 중심이다: 입력창과 보내기 버튼이 스크롤 없이 보인다 (구현작업서 10절)
     await home(page);
@@ -111,16 +122,15 @@ try {
     assert.equal(await input(page).getAttribute('maxlength'), '500');
     check(`composer is the first-screen focus ${width}`);
 
-    // 예시는 채우기만 한다. 한글 조합 중 Enter와 Shift+Enter는 보내지 않는다
+    // 한글 조합 중 Enter와 Shift+Enter는 보내지 않는다. (예시 문장 채우기는 대화가 빈 첫 화면에만 있고, 데모는 첫 화면에 결과를 자동으로 열어 그 화면이 없다 → live 블록에서 확인)
     const before = await turns(page);
-    await page.getByRole('button', {name: /중국에서 부산 들어오는 배/}).click();
-    assert.equal(await input(page).inputValue(), '중국에서 부산 들어오는 배 보여줘'); assert.equal(await turns(page), before);
     await input(page).focus();
+    await input(page).fill('MRVDEMO1101');
     await page.evaluate(() => document.getElementById('chat-input').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', isComposing: true, bubbles: true, cancelable: true})));
     await input(page).press('Shift+Enter');
     await page.waitForTimeout(300);
     assert.equal(await turns(page), before, 'IME Enter / Shift+Enter must not send'); assert.match(await input(page).inputValue(), /\n/);
-    check(`example fills only, IME and Shift+Enter do not send ${width}`);
+    check(`IME Enter and Shift+Enter do not send ${width}`);
 
     // Enter 전송, 기다리는 동안 중복 전송 차단과 "이전 결과" 안내, 서버 판정 표시
     await input(page).fill('MRVDEMO1107 지금 조치해야 해?'); await input(page).press('Enter');
@@ -136,19 +146,23 @@ try {
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.result')).animationName), 'none');
     check(`reduced motion removes entrance animation ${width}`);
 
-    // 아래로 내리면 입력창으로 돌아가는 버튼
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.getByRole('button', {name: 'AI에게 이어서 물어보기'}).click();
-    assert.equal(await activeId(page), 'chat-input');
-    check(`back-to-composer returns focus ${width}`);
+    // 입력창은 항상 아래에 고정된다: 대화 칸을 맨 아래로 내려도, 페이지는 스크롤되지 않아도 입력창이 보이고 "이어서 물어보기" 버튼은 필요 없다
+    await page.evaluate(() => document.querySelector('.chat-scroll').scrollTo(0, document.querySelector('.chat-scroll').scrollHeight));
+    const pinned = await input(page).boundingBox(), vh = page.viewportSize().height;
+    assert(pinned && pinned.y >= 0 && pinned.y + pinned.height <= vh, 'composer stays visible while the conversation is scrolled');
+    assert.equal(await page.getByRole('button', {name: 'AI에게 이어서 물어보기'}).count(), 0, 'no back-to-composer button when composer is pinned');
+    if (width === 1440) assert(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1), 'page itself does not scroll at 1440x1000');
+    await input(page).focus(); assert.equal(await activeId(page), 'chat-input');
+    check(`composer stays pinned, no back-to-composer button ${width}`);
 
     // 되묻기: 아무것도 고르지 않으면 막고, 후보를 고르면 정상 결과
-    await cargo(page, 'insufficient'); await page.getByRole('button', {name: '확인하고 판정 진행'}).click(); assert(await page.locator('.candidate-section [role=alert]').isVisible());
-    await page.getByRole('radio').first().check(); await page.getByRole('button', {name: '확인하고 판정 진행'}).click(); await page.locator('[data-status="ok"][aria-busy="false"]').waitFor();
+    await cargo(page, 'insufficient'); await page.getByRole('button', {name: '확인하고 판정하기'}).click(); assert(await page.locator('.candidate-section [role=alert]').isVisible());
+    await page.locator('.cand-row').first().click(); assert(await page.getByRole('radio').first().isChecked(), 'clicking a candidate row selects its radio'); await page.getByRole('button', {name: '확인하고 판정하기'}).click(); await page.locator('[data-status="ok"][aria-busy="false"]').waitFor();
     check(`candidate validation + resolution ${width}`);
 
     // 부분 결과: 해수부 근거만 보기는 화면 필터이고 새 판정이 아니다. 원본 값 펼침
-    await cargo(page, 'partial'); await page.getByRole('button', {name: '해수부 근거만 보기'}).click(); assert(await page.locator('.filter-notice').isVisible());
+    await cargo(page, 'partial'); await page.getByRole('button', {name: '해수부 근거만 보기'}).click(); await page.locator('.more-fold[open] .filter-notice').waitFor({state: 'visible', timeout: 3000}); // 근거는 접힌 "펼쳐 보기" 안에 있어, 필터가 펼치고 안내를 보인다
+    assert(await page.locator('.filter-notice').isVisible());
     assert.equal(await page.locator('.evidence-source').filter({hasNotText: '해양수산부'}).count(), 0);
     await page.getByRole('button', {name: '전체 보기'}).click(); await page.locator('.evidence-item summary').first().click(); assert(await page.locator('.evidence-item .evidence-detail').first().isVisible());
     check(`MOF filter + raw evidence ${width}`);
@@ -157,43 +171,58 @@ try {
     await cargo(page, 'unsupported'); await page.getByRole('button', {name: '질문 고치기'}).click(); assert.equal(await activeId(page), 'chat-input');
     check(`unsupported returns to composer ${width}`);
 
-    // 입항 선박 검색 → 표 10열 → 선명 드로어 (포커스·inert·Esc·복귀, 여러 번 열고 닫아도 지도 정리)
+    // 입항 선박 검색 → 표 5열 → 선명을 누르면 표 아래 카드(드로어 아님)가 그 배로 바뀐다. 여러 번 바꿔도 지도는 하나만 남는다
     await home(page); await input(page).fill('중국에서 부산 들어오는 배 보여줘'); await input(page).press('Enter');
     await page.locator('.vessel-results').waitFor();
-    assert.equal(await page.locator('.vessel-results thead th').count(), 10);
-    for (let n = 0; n < 3; n++) {
-      const link = page.locator('.ship-link').first();
-      await link.click(); const dialog = page.getByRole('dialog'); await dialog.waitFor();
-      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '패널 닫기');
-      assert(await page.evaluate(() => document.querySelector('.app-shell').hasAttribute('inert')));
-      if (n === 0) {
-        await dialog.locator('.vessel-detail-info').waitFor();
-        for (let t = 0; t < 25; t++) await page.keyboard.press('Tab');
-        assert(await page.evaluate(() => !!document.activeElement?.closest('.drawer')), 'focus stays inside the drawer');
-        if (width === 1440 && !interactionsOnly) await audit(page, `vessel-drawer-${width}`);
-      }
-      await page.keyboard.press('Escape'); await dialog.waitFor({state: 'detached'});
-      assert.equal(await page.evaluate(() => document.activeElement?.className), 'ship-link');
+    assert.equal(await page.locator('.vessel-results thead th').count(), 5);
+    // 휴대폰: 상세는 아래 시트다. 입력창에 포커스가 있으면 접혀 있어서 손잡이로 편다
+    const handle = page.locator('.sheet-handle');
+    if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'false') await handle.click();
+    const links = page.locator('.ship-link'); assert((await links.count()) >= 2, 'at least two vessels to switch between');
+    for (let n = 0; n < 4; n++) {
+      const link = links.nth(n % 2), name = (await link.textContent()).trim();
+      await link.click();
+      await page.locator('.vessel-results .vd .vessel-detail-info').waitFor();
+      assert.equal(await page.locator('.vd-head h3').textContent(), name, 'inline detail follows the clicked vessel');
+      assert.equal(await link.getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.getByRole('dialog').count(), 0, 'vessel detail is inline, not a dialog');
+      assert(!(await page.evaluate(() => document.querySelector('.app-shell')?.hasAttribute('inert'))), 'page is not inert for an inline card');
+      if (n === 0 && width === 1440 && !interactionsOnly) await audit(page, `vessel-detail-${width}`);
     }
-    assert.equal(await page.locator('.leaflet-container').count(), 0, 'vessel maps are removed after closing');
-    check(`vessel search + drawer focus/inert/Esc/cleanup ${width}`);
+    await page.locator('.vd-more summary').click(); await page.locator('.vd-more dl').waitFor({state: 'visible', timeout: 3000}); // 펼침 애니메이션 때문에 즉시 확인하지 않고 기다린다
+    assert(await page.locator('.vd-more[open] dl').isVisible(), 'detail 펼쳐 보기 opens');
+    assert(await page.locator('.vessel-results .leaflet-container').count() <= 1, 'only the selected vessel keeps a map');
+    check(`vessel search + inline detail switch/cleanup ${width}`);
 
     // 서류 사진: 드로어에서 확인한 값만 입력창에 넣고 자동으로 조회하지 않는다
     const turnCount = await turns(page);
-    await page.getByRole('button', {name: '서류 사진에서 입력'}).click(); await page.getByRole('dialog').waitFor();
+    // 휴대폰: 펼친 상세 시트가 입력창을 덮으므로 손잡이로 접는다 (넓은 화면에는 손잡이가 없다)
+    if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'true') await handle.click();
+    const docTrigger = page.getByRole('button', {name: '서류 사진으로 채우기'});
+    await docTrigger.click(); await page.getByRole('dialog').waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '패널 닫기', 'drawer focus starts on close');
+    assert(await page.evaluate(() => document.querySelector('.app-shell').hasAttribute('inert')), 'page behind the drawer is inert');
+    for (let t = 0; t < 25; t++) await page.keyboard.press('Tab');
+    assert(await page.evaluate(() => !!document.activeElement?.closest('.drawer')), 'focus stays inside the drawer');
+    if (width === 1440 && !interactionsOnly) await audit(page, `document-drawer-${width}`);
+    await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({state: 'detached'});
+    assert(await page.evaluate(() => !!document.activeElement?.classList.contains('doc-trigger')), 'Esc returns focus to the trigger');
+    await docTrigger.click(); await page.getByRole('dialog').waitFor();
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
     await page.locator('.drawer input[type=file]').setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
     await page.getByRole('button', {name: '확인한 값으로 채우기'}).click(); await page.getByRole('dialog').waitFor({state: 'detached'});
     assert.match(await input(page).inputValue(), /MRVDEMO1101/); assert.equal(await turns(page), turnCount, 'document never sends by itself');
-    check(`document drawer fills composer without sending ${width}`);
+    check(`document drawer focus/inert/Esc + fills composer without sending ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
-    await page.getByRole('link', {name: '조회 이력'}).first().click(); await page.locator('tbody tr').first().waitFor();
-    await page.getByLabel('B/L 뒤 네 자리 검색').fill('ZZZZ'); assert.equal(await page.locator('tbody tr').count(), 0);
-    await page.getByRole('button', {name: '필터 초기화'}).click(); await page.getByLabel('상태 필터').selectOption('failed');
+    await page.getByRole('link', {name: '조회 이력'}).first().click(); await page.locator('.hist-list > li').first().waitFor();
+    await page.getByLabel('B/L 뒤 네 자리 검색').fill('ZZZZ'); assert.equal(await page.locator('.hist-list > li').count(), 0);
+    await page.getByRole('button', {name: '조건 초기화'}).click(); await page.getByLabel('상태별로 거르기').selectOption('failed');
     await page.getByRole('button', {name: /저장된 판정 열기/}).click(); await page.locator('[data-status="failed"]').waitFor();
-    assert(await page.getByText('이력 재생', {exact: true}).isVisible());
-    await page.getByRole('button', {name: '다시 조회', exact: true}).click(); await page.locator('[data-testid="result"][aria-busy="false"]').waitFor();
+    await page.getByText('저장된 이력', {exact: true}).waitFor({state: 'attached'});
+    if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'false') await handle.click();
+    assert(await page.getByText('저장된 이력', {exact: true}).isVisible(), 'replay chip is shown');
+    await page.getByRole('button', {name: '다시 조회하기', exact: true}).click(); await page.locator('[data-testid="result"][aria-busy="false"]').waitFor();
     assert.equal(await page.locator('[data-testid="result"]').getAttribute('data-status'), 'failed');
     check(`history filter + replay + retry isolation ${width}`);
     await context.close();
@@ -222,14 +251,20 @@ try {
       await page.screenshot({path: `screenshots/30-live-home-${width}.png`, fullPage: true});
       check(`live: user menu hides operator pages, idle first visit ${width}`);
 
-      await page.goto(`${live}/metrics`); await page.getByText('운영자만 볼 수 있는 화면입니다.').waitFor();
+      // 예시는 채우기만 하고 보내지 않는다 (대화가 빈 첫 화면)
+      await page.locator('.chat-examples button').first().click();
+      assert((await input(page).inputValue()).length > 0, 'example fills the composer'); assert.equal(await turns(page), 0, 'example does not send');
+      await input(page).fill('');
+      check(`live: example fills only ${width}`);
+
+      await page.goto(`${live}/metrics`); await page.getByText('운영자만 볼 수 있는 화면이에요.').waitFor();
       check(`live: direct /metrics is blocked for a normal user ${width}`);
 
       await page.goto(live); await input(page).waitFor();
       await input(page).fill('STREAM 테스트'); await input(page).press('Enter');
       await page.locator('.pending-steps li').nth(2).waitFor();
-      const steps = await page.locator('.pending-steps li').evaluateAll(els => els.map(e => `${e.className}:${e.textContent.replace(/ (끝남|진행 중)$/, '')}`));
-      assert.deepEqual(steps, ['done:질문 이해와 도구 고르기', 'done:통관 정보 조회', 'current:선박 식별'], 'only server stages, last one in progress');
+      const steps = await page.locator('.pending-steps li').evaluateAll(els => els.map(e => `${e.className}:${e.textContent.replace(/\s*(완료|진행 중)$/, '')}`));
+      assert.deepEqual(steps, ['done:질문 이해', 'done:통관 정보 조회', 'current:선박 식별'], 'only server stages, last one in progress');
       if (width === 1440) await page.screenshot({path: 'screenshots/31-live-stages-1440.png'});
       await page.locator('.chat-turn.assistant', {hasText: '스트림 결과입니다.'}).waitFor();
       assert.equal(await page.locator('.pending-card').count(), 0);
@@ -246,7 +281,7 @@ try {
       assert.equal(await input(page).inputValue(), 'BROKEN 질문', 'input restored after an error');
       check(`live: stream error is shown and input restored ${width}`);
 
-      await page.goto(`${live}/history`); await page.getByText('이력 저장소를 사용할 수 없습니다.').waitFor();
+      await page.goto(`${live}/history`); await page.getByText('이력을 불러올 수 없어요.').waitFor();
       check(`live: history available:false is not shown as empty ${width}`);
       await context.close();
     }

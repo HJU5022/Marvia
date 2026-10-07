@@ -43,6 +43,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app import crypto
 from backend.app.auth import current_user_id
+from backend.app.clients.replay import position_history as replay_position_history, replay_enabled
 from backend.app.db import connect, log_query, recent_positions, recent_responses
 from backend.app.observability.langfuse import session_scope
 from backend.app.observability.logging import current_request_id, log_failure
@@ -484,7 +485,7 @@ def _no_eta(signal_set, collected: dict) -> AgentResponse:
 def _released(customs: CustomsRecord) -> AgentResponse:
     """반출이 끝난 화물의 응답. 판정은 규칙으로 fine이고 LLM은 부르지 않는다 (09-28 결정).
 
-    반출 뒤에는 기다릴 입항도 통관도 없어서 "지금 신경 써야 하나?"의 답은 괜찮음이다.
+    반출 뒤에는 기다릴 입항도 통관도 없어서 "지금 신경 써야 하나?"의 답은 순항이다.
     반출 뒤 배송 일정은 PRD 4절 "창고 수령일 예측"이라 판정하지 않고 운송사로 안내한다.
     통관 이력·보관 장소·근거 카드는 UNI-PASS 값으로 채우고, 배를 찾지 않았으니 배·위치·ETA 칸은 비운다.
     판매 예정일이 지났어도 fine이다. 늦어졌는지는 배송 쪽 일이라 이 서비스가 볼 수 없다.
@@ -939,7 +940,13 @@ def _position_history(mmsi: int | None) -> list[dict]:
     """워커가 DB에 모은 이 배의 위치 이력. anchor_wait 정지 시간을 재는 데 쓴다 (09-29, 평가셋 B08).
 
     DB가 없거나 읽기가 실패해도 판정은 계속한다. 이력이 없으면 정지 시간 신호가 unknown이 될 뿐이다.
+    재생 모드(REPLAY_MODE)면 재생 폴더의 이력 파일을 먼저 본다 (10-06 정운 결정, clients/replay.position_history).
+    재생 서버에는 데모 배의 DB 이력이 없어서, 이 파일이 없으면 부산 앞 장기 정박 데모가 긴급으로 안 나온다. 파일이 없는 배는 아래 DB 길로 간다.
     """
+    if mmsi and replay_enabled():
+        rows = replay_position_history(mmsi)
+        if rows is not None:
+            return rows
     if not mmsi or not _db_configured("positions_read"):
         return []
     try:

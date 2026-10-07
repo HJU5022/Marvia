@@ -22,7 +22,7 @@ export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: Cha
 /** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 (10-06 결정) */
 function changesText(changes: WatchChange[]): string {
   const lines = changes.map(c => {
-    const base = `지켜보던 화물 ${c.label ?? c.bl_masked}의 판정이 '${verdictLabels[c.from_verdict]}'에서 '${verdictLabels[c.to_verdict]}'(으)로 바뀌었어요.`;
+    const base = `지켜보던 화물 ${c.label ?? c.bl_masked}의 판정이 ${verdictLabels[c.from_verdict]}에서 ${verdictLabels[c.to_verdict]} 등급으로 바뀌었어요.`;
     return c.reason ? `${base} ${c.reason}` : base;
   });
   return `${lines.join('\n')}\nB/L로 다시 조회하면 이유를 자세히 볼 수 있어요.`;
@@ -42,8 +42,9 @@ function toTurn(m: ConversationMessage): ChatTurn {
 const CHAT_STATE_KEY = 'marvia-chat-state';
 interface SavedChat { session: string; thread: ChatTurn[]; request: AgentRequest; result: AgentResponse | null; view: 'cargo' | 'vessels' | 'none'; vessels: ChatResponse | null }
 
-/** 서류 사진에서 사용자가 확인한 항차·입항 예정일. 되묻기 화면에 미리 채우는 데만 쓴다 (DocumentPanel). */
-export interface DocHints { voyage_no: string | null; forwarder_eta: string | null }
+/** 서류 사진에서 사용자가 확인한 항차·입항 예정일·출항일. 항차·입항일은 되묻기 화면에 미리 채우는 데만 쓴다 (DocumentPanel).
+ * departed_on(10-06)은 그 서류의 B/L(bl_no) 조회 때 서버로 보내 내 화물 현황 표 출항 칸에 적게 한다. 판정에는 안 쓰인다 */
+export interface DocHints { voyage_no: string | null; forwarder_eta: string | null; bl_no: string; departed_on: string | null }
 
 interface AppState {
   data: typeof presentation; request: AgentRequest; result: AgentResponse | null;
@@ -243,7 +244,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       if (status === 401 || status === 503) setConvAvail(false);
       // 못 찾거나 못 읽으면 빈 새 대화로 시작하고 이유를 알린다. 주소의 ?c=도 지운다
       startSession(newSessionId()); clearScreen(); syncUrl(null);
-      setError(status === 404 ? '찾는 대화가 없어요. 새 대화로 시작합니다.' : e instanceof Error ? e.message : '대화를 불러오지 못했어요.');
+      setError(status === 404 ? '찾는 대화가 없어요. 새 대화로 시작할게요.' : e instanceof Error ? e.message : '대화를 불러오지 못했어요.');
       return false;
     } finally { if (mine === epoch.current) setOpening(false); }
   }
@@ -269,7 +270,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 정해진 칸 조회(POST /api/agent: 되묻기 답·다시 조회)는 단계 소식이 없다. 화면은 기다림과 경과 시간만 보인다
     try { const response = await getAgentResponse(req); setResult(response); setRequest(req); setView('cargo'); setCargoKey(response.trace_id); return true; }
-    catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했습니다. 다시 시도해 주세요.'); return false; }
+    catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했어요. 다시 시도해 주세요.'); return false; }
     finally {setLoading(false);setPendingSince(null);inflight.current=false;refreshUsage();}
   }
   async function ask(message: string) {
@@ -285,8 +286,10 @@ export function AppProvider({children}:{children:ReactNode}) {
       const context = view === 'cargo' && result && request.bl_no ? request : null;
       const seen: ProgressStage[] = [];
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
+      // 서류에서 확인한 출항일이 있으면 그 B/L과 함께 보낸다. 서버가 그 B/L 조회에만 실어 화물 표에 적는다 (10-06)
+      const document = docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
       const res = await sendChatStream(message, context,
-        s => { seen.push(s); setStages(list => list.includes(s) ? list : [...list, s]); }, history);
+        s => { seen.push(s); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document);
       setThread(t => [...t, {role: 'assistant', text: res.reply, kind: res.kind, map: res.map ?? null, cargos: res.cargos ?? [], watchOffer: res.watch_offer ?? null}]);
       // 대화로 지켜보기를 켜고 껐으면 결과 칸의 버튼·말풍선 버튼이 같은 상태를 보게 한다
       if (res.watch_set) setWatching(res.watch_set.bl_no, res.watch_set.on);
@@ -308,7 +311,7 @@ export function AppProvider({children}:{children:ReactNode}) {
       return true;
     } catch (e) {
       // 실패는 대화 칸에만 알린다. 보고 있던 화물 결과는 그대로 둔다 (F3, 다시 조회 실패와 같은 방식)
-      const msg = e instanceof Error ? e.message : '답하지 못했습니다. 다시 시도해 주세요.';
+      const msg = e instanceof Error ? e.message : '답을 만들지 못했어요. 다시 시도해 주세요.';
       setThread(t => [...t, {role: 'assistant', text: msg, kind: 'message'}]); return false;
     } finally { setLoading(false); setPendingSince(null); inflight.current = false; refreshUsage(); }
   }

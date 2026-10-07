@@ -87,6 +87,9 @@ class FakeConn:
         if q.startswith("SELECT email_enc, email_masked, granted_by, granted_at"):
             return _Result([(r["email_enc"], r["email_masked"], r["granted_by"], r["granted_at"])
                             for r in self.operators.values() if r["revoked_at"] is None])
+        if q.startswith("SELECT target_email_enc, target_email_masked, actor_email_enc"):
+            return _Result([(a["target_email_enc"], a["target_email_masked"], a["actor_email_enc"], a["actor_email_masked"])
+                            for a in reversed(self.audit) if a["action"] == "grant"])
         if q.startswith("SELECT action, target_email_enc"):
             rows = [(a["action"], a["target_email_enc"], a["target_email_masked"], a["actor_user_id"], a["actor_email_enc"],
                      a["actor_email_masked"], a["created_at"]) for a in reversed(self.audit)]
@@ -162,6 +165,21 @@ def test_grant_revoke_and_audit_trail():
     assert [(a["action"], a["target_email"]) for a in ops.list_audit(conn)][::-1] == [
         ("grant", OPERATOR), ("grant", "new@marvia.test"), ("revoke", "new@marvia.test"), ("grant", "new@marvia.test")]
     assert conn.audit[0]["actor_user_id"] == "bootstrap"
+
+
+def test_list_operators_shows_who_granted(monkeypatch):
+    """A5: 등록자 이메일은 이력(grant 줄)에서 풀어 붙인다. 스크립트 등록(이메일 없음)은 null, 재등록은 최신 등록자"""
+    from cryptography.fernet import Fernet
+    monkeypatch.setenv("PII_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    conn = FakeConn()
+    ops.grant(conn, OPERATOR, ops.BOOTSTRAP_ACTOR, None)
+    ops.grant(conn, "new@marvia.test", "user-1", OPERATOR)
+    ops.revoke(conn, "new@marvia.test", "user-1", OPERATOR)
+    ops.grant(conn, "new@marvia.test", "user-2", "second@marvia.test")  # 다시 등록: 최신 등록자가 보인다
+    by_email = {o["email"]: o for o in ops.list_operators(conn)}
+    assert by_email[OPERATOR]["granted_by_email"] is None
+    assert by_email["new@marvia.test"]["granted_by_email"] == "second@marvia.test"
+    assert by_email["new@marvia.test"]["granted_by"] == "user-2"
 
 
 def test_operator_emails_are_never_stored_in_plain_text():

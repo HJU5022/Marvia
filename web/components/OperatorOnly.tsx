@@ -12,7 +12,7 @@ export function OperatorOnly({children}: {children: ReactNode}) {
     return <div className="page"><div className="initial-loading" role="status"><div className="loading-orbit"/><strong>권한을 확인하고 있어요.</strong></div></div>;
   }
   if (!isOperator) {
-    return <div className="page"><div className="empty-state admin-denied"><ShieldUser size={34} strokeWidth={1.2}/><h2>운영자만 볼 수 있는 화면입니다.</h2><p>권한이 필요하면 기존 운영자에게 등록을 요청하세요.</p></div></div>;
+    return <div className="page"><div className="empty-state admin-denied"><ShieldUser size={34} strokeWidth={1.2}/><h2>운영자만 볼 수 있는 화면이에요.</h2><p>권한이 필요하면 기존 운영자에게 등록을 요청해 주세요.</p></div></div>;
   }
   return <>{children}</>;
 }

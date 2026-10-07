@@ -126,6 +126,12 @@ def is_linked(conn, user_id: str) -> bool:
     return conn.execute("SELECT 1 FROM kakao_links WHERE user_id = %s", [user_id]).fetchone() is not None
 
 
+def link_times(conn, user_id: str) -> tuple[datetime, datetime | None] | None:
+    """(연결한 시각, 마지막 발송 시각). 연결이 없으면 None. 발송한 적 없으면 두 번째 값이 None."""
+    row = conn.execute("SELECT linked_at, last_sent_at FROM kakao_links WHERE user_id = %s", [user_id]).fetchone()
+    return (row[0], row[1]) if row else None
+
+
 def delete(conn, user_id: str) -> int:
     """줄을 지운다. 연결 해제와 탈퇴(services/account.py)가 쓴다. 지운 줄 수."""
     return conn.execute("DELETE FROM kakao_links WHERE user_id = %s", [user_id]).rowcount
@@ -166,6 +172,8 @@ def send_to_user(conn, user_id: str, text: str, link_url: str) -> None:
         if row[2] - _now() <= REFRESH_BEFORE:
             access = _refresh_access(conn, user_id, refresh_token)
         kakao.send_memo(access, text, link_url)
+        # 보냈다는 시각. 설정 화면이 "마지막 발송"으로 보여 준다 (022). 실패한 시도는 적지 않는다
+        conn.execute("UPDATE kakao_links SET last_sent_at = now() WHERE user_id = %s", [user_id])
     except KakaoError as e:
         if e.kind != "unauthorized":
             raise

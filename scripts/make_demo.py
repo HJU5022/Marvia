@@ -1,10 +1,10 @@
-"""키 없이 도는 데모 B/L 3건의 재생 파일을 만든다 (SDD 6.1, CLAUDE.md "REPLAY_MODE=true면 키 없이 데모 3건", 09-29).
+"""키 없이 도는 서버 데모 13건(라이브 모의 화물 10건 + 평가셋 3건)의 재생 파일을 만든다 (SDD 6.1, CLAUDE.md "REPLAY_MODE=true면 키 없이 데모", 09-29, 10-06 확장).
 
     python -m scripts.make_demo                              # 로컬: 만든 뒤 REPLAY_MODE=true로 서버를 켠다
     docker compose exec api python -m scripts.make_demo      # compose: 떠 있는 api 컨테이너 안에서 만든다
 
 데모 3건 (평가셋 evals/dataset.jsonl의 문항을 그대로 쓴다. 사람이 라벨링한 입력이다):
-  TESTBL01  정상    N01  괜찮음(fine)
+  TESTBL01  정상    N01  순항(fine)
   TESTBL04  되묻기  B01  같은 이름 배 2척 → 어느 배인지 되묻기(insufficient)
   TESTBL26  실패    F04  위치 조회 권한 없음 → 판정 보류(partial)
 
@@ -28,12 +28,18 @@ F04만 배를 바꾼다:
   LLM_MODEL이 비어 있으면 evals/fixtures/replay/llm/marvia-judge.json의 녹화 답을 쓴다 (services/llm.py _replay_answer).
   녹화 답은 이 데모 입력(판매 예정일을 안내한 날짜로 넣거나 비움)에만 맞다.
 
-서류 대조 데모 10건 (10-05 추가, 임시):
+라이브 데모 10건 (10-06 정운 결정, 발표 서버용):
+  DEMOQD2610001 ~ DEMOQD2610010. 순항·주의·긴급 세 등급과 되묻기, 반출 완료를 실제 API 응답처럼 필드를 다 채운 모의 화물로 보여 준다.
+  시나리오 목록은 scripts/demo_live.py의 SPECS이고, 그것을 펼친 문항이 evals/fixtures/demo_live.jsonl이다 (평가셋이 아니다).
+  평가셋 3건(TESTBL01·04·26)은 그대로 같이 쓴다. 10건과 3건은 한 폴더에 같이 써서 해수부 _ALL.xml이 모두의 배를 담는다
+  (evals/replay_fixtures._write_all. 전에는 마지막에 쓴 문항만 남아 N01이 마지막이어야 했다).
+  위치 이력(6시간 간격)은 positions/<MMSI>.json으로 써서 서버가 DB 대신 읽는다 (clients/replay.position_history).
+
+서류 대조 데모 10건 (10-05 추가, 10-06부터 서버 데모에는 안 쓴다):
   TESTBL41~50. 동명 선박 중 세관 입항일·적재항과 해수부 입항 신고가 맞는 배를 확정하는 기능
   (services/identify.match_by_papers)과 그 경계를 보여 준다. 문항은 evals/fixtures/demo_papers.jsonl
-  (평가셋이 아니다. 모양만 같아 같은 재생 파일 작성기를 쓴다. 기대 결과는 제품 책임자가 검토해 정한다).
-  3건보다 먼저 쓴다. 해수부 _ALL.xml은 마지막에 쓴 문항 것이 남으므로 N01이 마지막이어야 기존 3건 결과가 같다.
-  그래서 10건의 MRN 조회(identify_mrn)는 늘 못 찾고 이름 검색과 서류 대조로 간다. 데모가 보여 주려는 경로다.
+  (평가셋이 아니다). 기능 확인은 backend/tests/test_demo_papers.py가 build_with_papers로 계속 한다.
+  서버 데모에 안 넣는 이유: 라이브 시연은 위 10건으로 정했다 (10-06 정운 결정). 이 문항 파일과 테스트는 기능 근거로 남겨 둔다.
 """
 from __future__ import annotations
 
@@ -46,10 +52,12 @@ from pathlib import Path
 from backend.app.clients.replay import REPLAY_DIR
 from backend.app.services.evidence import KST
 from evals.replay_fixtures import write_replay_files
+from scripts import demo_live
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASET = ROOT / "evals" / "dataset.jsonl"
 PAPERS = ROOT / "evals" / "fixtures" / "demo_papers.jsonl"  # 서류 대조 데모 10건 (평가셋 아님, 모듈 설명)
+LIVE = ROOT / "evals" / "fixtures" / "demo_live.jsonl"  # 라이브 데모 10건 (평가셋 아님. scripts/demo_live.py가 만든다)
 
 # (평가셋 문항 id, 화면에 보일 이름, 기대 결과). 쓰는 순서도 이 순서다. N01을 마지막에 둬서
 # 해수부 _ALL.xml(호출부호 없이 부를 때 읽는 전체 목록)이 정상 건의 배로 남게 한다 (evals/replay_fixtures.py _write_mof)
@@ -57,7 +65,7 @@ PAPERS = ROOT / "evals" / "fixtures" / "demo_papers.jsonl"  # 서류 대조 데�
 DEMO_CASES = [
     ("F04", "실패", "partial: 위치 조회 권한 없음, 판정 보류"),
     ("B01", "되묻기", "insufficient: 같은 이름 배 2척, 어느 배인지 되묻기"),
-    ("N01", "정상", "ok: 괜찮음(fine)"),
+    ("N01", "정상", "ok: 순항(fine)"),
 ]
 
 # F04 데모 사본의 배 바꾸기 (위 "F04만 배를 바꾼다"). 전부 가공값이다
@@ -69,7 +77,7 @@ F04_RENAME = {
     "9900001": "9900004",
 }
 
-GENERATED = ("shipfinder", "mof", "unipass")  # 이 스크립트가 만드는 폴더. llm/(녹화 답)과 README는 건드리지 않는다
+GENERATED = ("shipfinder", "mof", "unipass", "positions")  # 이 스크립트가 만드는 폴더. llm/(녹화 답)과 README는 건드리지 않는다
 EPOCH_KEYS = {"last_time", "eta"}  # ShipFinder 응답의 epoch 초 칸
 ISO_DATETIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 
@@ -84,6 +92,8 @@ def shift_value(key: str, value, delta: timedelta, days: timedelta):
         return value + int(delta.total_seconds())
     if isinstance(value, str) and ISO_DATETIME.match(value):
         return (datetime.fromisoformat(value) + delta).isoformat()
+    if key in ("prcsDttm", "rlbrDttm") and isinstance(value, str) and len(value) == 14:  # UNI-PASS 처리일시 YYYYMMDDHHMMSS (한국 시각, 10-06)
+        return (datetime.strptime(value, "%Y%m%d%H%M%S") + delta).strftime("%Y%m%d%H%M%S")
     if key == "etprDt" and isinstance(value, str) and len(value) == 8:  # UNI-PASS 입항일 YYYYMMDD
         return (datetime.strptime(value, "%Y%m%d").date() + days).strftime("%Y%m%d")
     return value
@@ -124,10 +134,50 @@ def build(now: datetime, out_dir: Path = REPLAY_DIR) -> list[dict]:
 
 
 def build_all(now: datetime, out_dir: Path = REPLAY_DIR) -> tuple[list[dict], list[dict]]:
-    """서류 대조 10건을 먼저, 데모 3건을 나중에 쓴다 (순서 이유는 모듈 설명). (3건 안내, 10건 안내)를 돌려준다."""
+    """서버 데모 전부를 새로 쓴다: 라이브 10건을 먼저, 평가셋 3건을 나중에 (순서는 이제 결과에 영향이 없다. 해수부 _ALL.xml이 이어 붙는다).
+    (3건 안내, 라이브 10건 안내)를 돌려준다. 서류 대조 10건은 더 이상 쓰지 않는다 (build_with_papers)."""
+    _clear(out_dir)
+    live = _write_live(now, out_dir)
+    return _write_three(now, out_dir), live
+
+
+def build_with_papers(now: datetime, out_dir: Path = REPLAY_DIR) -> tuple[list[dict], list[dict]]:
+    """서류 대조 10건(TESTBL41~50)과 평가셋 3건을 쓴다. 서버 데모는 아니고, 서류 대조 기능 테스트(test_demo_papers.py)가 쓴다.
+    (3건 안내, 10건 안내)를 돌려준다. 10건의 MRN 조회는 늘 못 찾고 이름 검색과 서류 대조로 간다 (모듈 설명)."""
     _clear(out_dir)
     papers = _write_papers(now, out_dir)
     return _write_three(now, out_dir), papers
+
+
+def load_live() -> list[dict]:
+    """라이브 데모 문항을 읽는다. '#'로 시작하는 줄은 머리 설명이라 건너뛴다."""
+    lines = LIVE.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip() and not line.startswith("#")]
+
+
+def _write_live(now: datetime, out_dir: Path) -> list[dict]:
+    """라이브 데모 10건을 now 기준으로 옮겨 쓴다. 3건과 같은 shift_record·write_replay_files를 쓴다.
+
+    시각을 옮긴 뒤 demo_live.finalize로 세관 입항일과 판매 예정일을 다시 계산한다. 일 수만 옮기면 자정 전후에
+    여유 일수가 하루 어긋난다 (scripts/demo_live.py 머리 주석)."""
+    guide = []
+    for original in load_live():
+        record = demo_live.finalize(shift_record(original, now))
+        write_replay_files(record, out_dir)
+        guide.append({"bl_no": record["request"]["bl_no"], "label": record["demo_title"], "case_id": record["id"],
+                      "ship": record["fixtures"]["shipfinder"]["search"][0]["ship_name"],
+                      "sale_due_date": record["request"]["sale_due_date"], "expected": live_expected_text(record),
+                      "expected_verdict": record.get("demo_final_verdict") or record["expected_verdict"]})
+    return guide
+
+
+def live_expected_text(record: dict) -> str:
+    """표에 보일 기대 결과 한 줄 (라이브 10건). 같은 값을 두 곳에 적지 않으려고 문항의 expected_*에서 만든다."""
+    names = {"fine": "순항(fine)", "watch": "주의(watch)", "act": "긴급(act)"}
+    if record["expected_status"] == "insufficient":
+        final = names[record["then"]["expected_verdict"]]
+        return f"insufficient: 같은 이름 배 2척 되묻기 -> 배를 고르면 {final}"
+    return f"{record['expected_status']}: {names[record['expected_verdict']]}"
 
 
 def load_papers() -> list[dict]:
@@ -198,21 +248,23 @@ def refresh(out_dir: Path = REPLAY_DIR) -> datetime:
 
 def main() -> None:
     now = datetime.now(timezone.utc)
-    guide, papers = build_all(now)
+    guide, live = build_all(now)
     until = (now + timedelta(hours=5, minutes=30)).astimezone(KST)
     print(f"데모 재생 파일을 만들었습니다: {REPLAY_DIR.relative_to(ROOT)}")
     print(f"위치가 '오래된 위치'가 되기 전까지: {until:%m-%d %H:%M} (한국 시각). 넘으면 다시 실행하세요\n")
+    print("라이브 데모 10건 (모의 화물. scripts/demo_live.py, evals/fixtures/demo_live.jsonl)\n")
+    print("| B/L | 배 | 시나리오 | 판매 예정일 | 기대 결과 |")
+    print("|---|---|---|---|---|")
+    for g in live:
+        print(f"| {g['bl_no']} | {g['ship']} | {g['label']} | {g['sale_due_date']} | {g['expected']} |")
+    print("\n판매 예정일은 위 날짜를 넣어야 표의 등급이 나옵니다. 그 입력에는 판정 LLM 녹화 답이 없어 LLM_MODEL이 비어 있으면 partial로 끝납니다 (README).")
+
+    print("\n평가셋 데모 3건 (evals/dataset.jsonl 문항 그대로)\n")
     print("| B/L | 시나리오 | 판매 예정일(선택) | 기대 결과 |")
     print("|---|---|---|---|")
     for g in reversed(guide):  # 정상 → 되묻기 → 실패 순으로 보여 준다
         print(f"| {g['bl_no']} | {g['label']} ({g['case_id']}) | {g['sale_due_date'] or '-'} | {g['expected']} |")
     print("\n판매 예정일은 비워도 됩니다. 넣을 때는 위 날짜를 넣어야 키 없는 녹화 답과 맞습니다.")
-
-    print("\n서류 대조 데모 (임시 모의 문항, 평가셋 아님. evals/fixtures/demo_papers.jsonl)\n")
-    print("| B/L | 시나리오 | 판매 예정일 | 기대 결과 |")
-    print("|---|---|---|---|")
-    for g in papers:
-        print(f"| {g['bl_no']} | {g['label']} | {g['sale_due_date'] or '-'} | {g['expected']} |")
 
 
 if __name__ == "__main__":

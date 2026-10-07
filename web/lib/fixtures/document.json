@@ -14,9 +14,15 @@
       "value": "0042E",
       "checks": []
     },
+    "etd": {
+      "value": "2026-10-14",
+      "checks": []
+    },
     "eta": {
       "value": "2026-10-21",
-      "checks": []
+      "checks": [
+        "ambiguous"
+      ]
     },
     "pol": {
       "value": "SHANGHAI",

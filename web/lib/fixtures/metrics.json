@@ -17,8 +17,8 @@
       "unit": "%"
     },
     {
-      "id": "failure_detection",
-      "label": "실패 감지율",
+      "id": "act_recall",
+      "label": "긴급 재현율",
       "value": null,
       "unit": "%"
     },
@@ -39,7 +39,7 @@
     },
     {
       "id": "act_recall",
-      "label": "지금 조치 재현율",
+      "label": "긴급 재현율",
       "baseline": null,
       "model_a": null,
       "model_b": null
@@ -75,29 +75,34 @@
   ],
   "gates": [
     {
-      "label": "지금 조치 누락",
+      "label": "긴급 누락",
       "target": "0건",
-      "value": null
+      "value": null,
+      "passed": null
     },
     {
       "label": "선박 식별 오확정",
       "target": "0건",
-      "value": null
+      "value": null,
+      "passed": null
     },
     {
       "label": "출력 계약 준수율",
       "target": "95% 이상",
-      "value": null
+      "value": null,
+      "passed": null
     },
     {
       "label": "주입 오작동",
       "target": "0건",
-      "value": null
+      "value": null,
+      "passed": null
     },
     {
       "label": "p95 지연 · 요청당 비용",
       "target": null,
-      "value": null
+      "value": null,
+      "passed": null
     }
   ],
   "experiments": []

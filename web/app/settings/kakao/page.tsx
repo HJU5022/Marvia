@@ -36,5 +36,5 @@ export default function KakaoReturnPage() {
       .catch(() => router.replace('/settings?kakao=failed'));
   }, [authEnabled, authReady, user, router]);
 
-  return <div className="page"><p className="muted" role="status"><LoaderCircle size={14} className="spin"/> 카카오 연결을 마무리하는 중…</p></div>;
+  return <div className="page"><p className="muted" role="status"><LoaderCircle size={14} className="spin"/> 카카오톡 연결을 마무리하고 있어요…</p></div>;
 }

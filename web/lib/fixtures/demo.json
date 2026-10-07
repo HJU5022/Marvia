@@ -5,7 +5,7 @@
   "choices": [
     {
       "id": "ok",
-      "label": "정상 · 괜찮음",
+      "label": "정상 · 순항",
       "request": {
         "bl_no": "MRVDEMO1101",
         "bl_type": "MASTER",
@@ -55,7 +55,7 @@
     },
     {
       "id": "watch",
-      "label": "정상 응답 · 지켜볼 것",
+      "label": "정상 응답 · 주의",
       "request": {
         "bl_no": "MRVDEMO1106",
         "bl_type": "MASTER",
@@ -65,7 +65,7 @@
     },
     {
       "id": "act",
-      "label": "정상 응답 · 지금 조치",
+      "label": "정상 응답 · 긴급",
       "request": {
         "bl_no": "MRVDEMO1107",
         "bl_type": "MASTER",
@@ -99,7 +99,7 @@
   ],
   "follow_up_answer": "이 화면은 저장된 예시 답변을 재생합니다. 입항 예정은 상품 수령일을 보장하지 않습니다. 해수부 입항 예정과 UNI-PASS 통관 단계 근거를 확인하고, 실제 반출 일정은 포워더에게 문의하세요.",
   "vessel_search": {
-    "reply": "가공 예시: 앞으로 7일 동안 중국 항구(SHANGHAI, NINGBO PT)를 직전에 들른 부산 입항 예정 선박 2척입니다. 해수부 입항 신고의 직전 기항지 기준입니다.",
+    "reply": "예시 답변: 앞으로 7일 안에 중국 항구(SHANGHAI, NINGBO PT)에 들렀다가 부산에 들어오는 배는 2척이에요. 해수부 입항 신고에서 직전에 들른 항구를 기준으로 했어요.",
     "place": "China",
     "ports": [
       "SHANGHAI",

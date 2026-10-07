@@ -119,12 +119,12 @@ def test_previous_line_is_code_written():
     """10-02 결정 4: 덮기 전 줄로 한 줄. 날짜는 한국 날짜, 등급은 화면 이름. 받침에 맞춰 "이었/였"을 고른다 (10-02 검증)."""
     row = {"last_verdict": "watch", "last_checked_at": datetime(2026, 9, 30, 20, tzinfo=timezone.utc),
            "last_days_margin": 3}
-    assert cargo.previous_line(row) == (f"지난 조회(10.01)에서는 '{VERDICT_LABEL['watch']}'이었고, "
+    assert cargo.previous_line(row) == (f"지난 조회(10.01)에서는 '{VERDICT_LABEL['watch']}'였고, "
                                         "판매 예정일까지 여유가 3일이었어요.")
     row.update(last_verdict="act", last_days_margin=-2)
-    assert cargo.previous_line(row) == "지난 조회(10.01)에서는 '지금 조치'였고, 판매 예정일보다 2일 늦게 도착할 예정이었어요."
+    assert cargo.previous_line(row) == "지난 조회(10.01)에서는 '긴급'이었고, 판매 예정일보다 2일 늦게 도착할 예정이었어요."
     row.update(last_verdict="fine", last_days_margin=None)
-    assert cargo.previous_line(row) == "지난 조회(10.01)에서는 '괜찮음'이었어요."
+    assert cargo.previous_line(row) == "지난 조회(10.01)에서는 '순항'이었어요."
     assert cargo.previous_line({"last_verdict": None, "last_checked_at": NOW}) is None  # 판정 보류였으면 안 붙인다
     assert cargo.previous_line(None) is None
 
@@ -138,7 +138,7 @@ def test_block_line_has_masked_number_and_conditions_but_no_ids():
     line = cargo.cargo_line(row)
     assert line.startswith("- 고추 (MOC*******1002)")
     for text in ("받아야 하는 날 2026-10-05", "09.28에 들음", "원본 B/L 필요", "수하인 은행 지시식", "운임 착불 (FOB)",
-                 "지난 조회 10.02: 지켜볼 것, 여유 3일", "통관 반입신고"):
+                 "지난 조회 10.02: 주의, 여유 3일", "통관 반입신고"):
         assert text in line
     assert BL not in line and "[" not in line
 
@@ -227,3 +227,42 @@ def test_block_line_shows_goods_name():
     line = cargo.cargo_line({"bl_masked": "MOC*******1002", "bl_type": "MASTER", "goods_name": "TEST GOODS"})
     assert "품명 TEST GOODS" in line
     assert "품명" not in cargo.cargo_line({"bl_masked": "MOC*******1002", "bl_type": "MASTER"})  # 없으면 안 붙인다
+
+
+# ── 선명·국적과 위치 한 점 (021, 감시 목록 10-06) ──
+
+def _confirmed_response(**over):
+    from backend.app.schemas.agent import Position, VesselCandidate, VesselInfo
+
+    vessel = VesselInfo(mmsi=440999901, imo=None, name="TEST STAR", call_sign="TST01", flag="KR", ship_type=None, voyage_no=None)
+    # MRN으로 확정한 배라 화물 표에 배 번호가 적힌다 (cargo._vessel: 후보 이유에 "MRN")
+    cand = VesselCandidate(mmsi=440999901, imo=None, name="TEST STAR", flag="KR", dest="KRPUS", last_time=NOW, ship_type=None,
+                           match_reasons=["MRN 입항 신고 호출부호 일치"])
+    position = Position(lat=34.5, lng=128.5, sog=12.0, cog=60.0, navistat=0, last_time=NOW, freshness="fresh")
+    base = dict(status="ok", verdict="fine", vessel_match="confirmed", vessel=vessel, position=position, vessel_candidates=[cand])
+    return _response(**{**base, **over})
+
+
+def test_upsert_stores_vessel_name_and_flag_when_confirmed(bl_key):
+    conn = FakeConn()
+    cargo.upsert_assessment(conn, "u1", _request(), _confirmed_response(), released=False, now=NOW)
+    sql, params = conn.calls[0]
+    assert "vessel_name = COALESCE(EXCLUDED.vessel_name, user_cargo.vessel_name)" in sql
+    assert "TEST STAR" in params and "KR" in params
+
+
+def test_upsert_keeps_position_point_for_watch_map(bl_key):
+    """배가 확정돼 배 번호를 적은 조회면 그 위치를 watch_positions에 한 점 쌓는다 (같은 보고 시각은 한 줄)"""
+    conn = FakeConn()
+    cargo.upsert_assessment(conn, "u1", _request(), _confirmed_response(), released=False, now=NOW)
+    inserts = [(sql, params) for sql, params in conn.calls if "INSERT INTO watch_positions" in sql]
+    assert len(inserts) == 1 and "ON CONFLICT (mmsi, ts) DO NOTHING" in inserts[0][0]
+    assert inserts[0][1][:2] == [440999901, NOW] and 34.5 in inserts[0][1]
+
+
+def test_no_position_point_without_confirmed_vessel(bl_key):
+    """배를 확정하지 못했으면(되묻기·이름만 일치) 배 이름도 위치도 남기지 않는다"""
+    conn = FakeConn()
+    cargo.upsert_assessment(conn, "u1", _request(), _confirmed_response(vessel_match="uncertain"), released=False, now=NOW)
+    assert not any("watch_positions" in sql for sql, _ in conn.calls)
+    assert "TEST STAR" not in conn.calls[0][1]

@@ -62,6 +62,7 @@ def test_view_hides_raw_bl_and_key(monkeypatch, db):
     with TestClient(app) as client:
         body = client.get("/api/memory", headers=headers).json()
     assert body["available"] is True and body["full"] is True
+    assert body["used_chars"] == len(body["markdown"]) and body["max_chars"] == 3000  # 메모장 N/3000자 (M5)
     assert body["items"][0]["cargo_name"] == "고추 (MOC*******1002)" and "[c1]" not in body["markdown"]
     assert body["cargo"][0]["pending"][0]["value"] == "2026-10-03"
     text = str(body)

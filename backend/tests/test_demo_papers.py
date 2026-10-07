@@ -1,6 +1,7 @@
 """서류 대조 데모 10건 테스트 (임시, 10-05). evals/fixtures/demo_papers.jsonl을 키 없이 실제 요청 경로로 돌린다.
 
-scripts/make_demo.build_all이 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo.py와 같은 방식).
+scripts/make_demo.build_with_papers가 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo.py와 같은 방식).
+10-06부터 서버 데모(build_all)는 라이브 10건이라 이 10건을 안 쓴다. 서류 대조 기능 확인용으로 여기서만 쓴다.
 LLM 키가 없어 판정 문장은 녹화 답이나 폴백이 될 수 있다. 그래서 식별 단계 결과(status, vessel_match,
 확정한 MMSI와 근거 한 줄)만 본다. 판정 등급은 보지 않는다.
 재생 폴더는 tmp_path에 만든다. 레포의 evals/fixtures/replay/는 건드리지 않는다.
@@ -36,7 +37,7 @@ def demo(tmp_path_factory):
         ShipFinderClient.cache.clear()
         (out / "llm").mkdir()
         shutil.copy(RECORDING, out / "llm" / RECORDING.name)
-        three, papers = make_demo.build_all(datetime.now(timezone.utc), out)
+        three, papers = make_demo.build_with_papers(datetime.now(timezone.utc), out)
         yield {g["case_id"]: g for g in three}, {g["case_id"]: g for g in papers}
     ShipFinderClient.cache.clear()
 
@@ -91,7 +92,7 @@ def test_confirmed_response_fills_vessel(demo):
 
 
 def test_existing_three_unchanged(demo):
-    # 10건을 같이 써도 기존 데모 3건의 결과는 그대로다 (해수부 _ALL.xml을 N01이 마지막에 쓴다)
+    # 10건을 같이 써도 기존 데모 3건의 결과는 그대로다 (해수부 _ALL.xml은 이어 붙는다, evals/replay_fixtures._write_all)
     three, _ = demo
     normal = _ask(three["N01"])
     assert (normal.status, normal.verdict, normal.days_margin) == ("ok", "fine", 4)

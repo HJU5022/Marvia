@@ -7,7 +7,8 @@
  */
 import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {ArrowUp, Camera, Check, FileText, LoaderCircle, PackageSearch, Ship, Sparkles} from 'lucide-react';
+import {ArrowUp, Camera, Check, FileText, LoaderCircle, MessageCircle, PackageSearch, Ship, Sparkles} from 'lucide-react';
+import {VerdictBadge} from './Shared';
 import {useApp} from './AppProvider';
 import {DocumentPanel, type DocumentValues} from './DocumentPanel';
 import {Drawer} from './Drawer';
@@ -52,8 +53,11 @@ function linkify(text: string): ReactNode[] {
   });
 }
 
-export function ChatBar({idle = false}: {idle?: boolean}) {
+export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDetail?: () => void}) {
   const {ask, loading, stages, pendingSince, thread, result, request, setDocHints, usage, view} = useApp();
+  // 판정 배지·할 일 한 줄은 "가장 최근 화물 답" 말풍선에만 붙인다. ChatTurn에는 판정이 없어 지금 보는 result(가장 최근 화물 답)에서 읽는다. 지어내지 않는다.
+  // B/L 여러 개를 비교한 답은 표가 줄마다 배지를 가지고 있어 붙이지 않는다
+  const verdictTurn = view === 'cargo' && result?.verdict ? thread.map((t, i) => t.role === 'assistant' && t.kind === 'cargo' && !(t.cargos && t.cargos.length > 1) ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
   // 화물 카드가 실제로 보일 때만 "이 화물"로 안내한다. AppProvider.ask도 같은 조건으로 화물을 함께 보낸다 (10-02 UI 점검 F5)
   const cargoShown = view === 'cargo' && !!result && !!request.bl_no;
   // 하루 토큰 한도를 다 쓰면 입력·서류 사진을 막는다. 서버도 429로 막는다 (docs/specs/token-quota.md)
@@ -67,14 +71,14 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
   const [offer, setOffer] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const threadRef = useRef<HTMLOListElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);  // 맨 아래를 보고 있으면 true. 위로 올려 읽는 중에는 새 메시지가 와도 끌어내리지 않는다
 
   // 새 메시지·답 대기 표시가 생기면 대화 칸만 맨 아래로 (위 대화를 읽는 중이면 그대로). 페이지 전체는 움직이지 않는다
   useEffect(() => {
     const el = threadRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [thread, loading]);
+  }, [thread, loading, result]);
   function onScroll() {
     const el = threadRef.current;
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -139,56 +143,70 @@ export function ChatBar({idle = false}: {idle?: boolean}) {
     setDocOpen(false);
     // MRN이 있으면 문장에 같이 넣는다. 서버가 코드로 뽑아 세관 미등록 때 배를 찾는다 (LLM에는 안 감)
     setText(t => `${v.bl_no}${v.mrn ? ` MRN ${v.mrn}` : ''} ${t}`.trim());
-    setDocHints(v.voyage_no || v.forwarder_eta ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta} : null);
+    setDocHints(v.voyage_no || v.forwarder_eta || v.departed_on ? {voyage_no: v.voyage_no, forwarder_eta: v.forwarder_eta, bl_no: v.bl_no, departed_on: v.departed_on} : null);
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
+  // 판정 답 말풍선 안의 배지·할 일 한 줄. 대화가 비어 있는데 결과만 있는 경우(데모 첫 화면, 저장된 판정 열기)도 같은 모양으로 그린다 (시안 2-2)
+  const verdictBlock = result?.verdict ? <div className="chat-verdict"><VerdictBadge verdict={result.verdict} size="lg"/>{result.actions[0] && <p className="chat-todo"><span>지금 할 일</span>{result.actions[0]}</p>}<button type="button" className="chat-show-detail" onClick={onShowDetail}>결과 보기</button></div> : null;
+  // 대화가 없고 답할 글만 있는 첫 화면(.chat-seed는 .chat-turn이 아니다: 실제 주고받은 말만 .chat-turn으로 센다): 결과 칸의 answer를 그대로 답 말풍선으로 보인다 (지어내지 않는다, 서버 값)
+  const seedAnswer = thread.length === 0 && view === 'cargo' && result && result.status !== 'insufficient' && result.answer ? result : null;
+  const empty = idle && !loading && thread.length === 0;
+
   return <section className="ask" aria-label="AI에게 묻기">
-    <div className="composer-wrap" ref={wrapRef}>
-      <form className="composer" onSubmit={submit}>
-        <label htmlFor="chat-input" className="composer-label"><Sparkles size={15}/>MARVIA AI<span className="sr-only">에게 질문하기</span></label>
-        <textarea id="chat-input" ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={2} maxLength={MAX} disabled={blocked}
-          placeholder={cargoShown ? '이 화물에 대해 묻거나, 다른 B/L·입항 선박을 물어보세요' : 'B/L 번호와 함께 물어보세요. 예: 내 B/L 번호 + 화물 괜찮아? / 일본에서 부산 오는 배 보여줘'}
-          aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
-        <div className="composer-foot">
-          <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={15}/>서류 사진에서 입력</button>
-          <div className="composer-send">
-            <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>
-            <button type="submit" className="send" disabled={loading || blocked || !text.trim()} aria-label="AI에게 질문 보내기">
-              {loading ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
-          </div>
+    {/* 대화는 이 칸 안에서만 스크롤하고, 입력창은 아래에 고정한다 (시안 2-1·2-2). 페이지 전체는 움직이지 않는다 */}
+    <div className="chat-scroll" ref={threadRef} onScroll={onScroll} role="log" aria-label="대화" tabIndex={0}>
+      {empty ? <div className="chat-empty">
+        <span className="chat-empty-icon" aria-hidden="true"><MessageCircle size={22}/></span>
+        <h2>어떤 화물을 확인할까요?</h2>
+        <p>B/L 번호를 조회하면 배 위치와 통관 단계를 함께 보여드려요.</p>
+        <div className="feature-tiles">
+          <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><PackageSearch size={20}/>B/L 번호로 조회하기</button>
+          <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><Ship size={20}/>입항 예정 선박 찾기</button>
+          <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><FileText size={20}/>서류 사진 올리기</button>
         </div>
-      </form>
-      {blocked ? <p className="quota-note blocked" role="alert">{QUOTA_MESSAGE}</p>
-        : usage?.near_limit && usage.remaining !== null ? <p className="quota-note" role="status">오늘 AI 사용량이 얼마 남지 않았어요 (남은 양 {Math.round(usage.remaining / 1000)}천 토큰). 다 쓰면 내일 다시 이용할 수 있어요.</p> : null}
+      </div> : <ol className="chat-thread" aria-live="polite">
+        {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
+          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
+        {seedAnswer && <li className="chat-seed"><div className="chat-body"><div className="chat-bubble"><p>{seedAnswer.answer}</p>{verdictBlock}</div></div></li>}
+      </ol>}
+      {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}
     </div>
 
-    {offer !== null && <div className="fill-offer" role="status"><span>입력 중인 글이 있어요. 이 문장으로 바꿀까요? <strong>{offer}</strong></span>
-      <button type="button" className="button secondary" onClick={() => { setText(offer); setOffer(null); inputRef.current?.focus(); }}>바꾸기</button>
-      <button type="button" className="button text-button" onClick={() => { setOffer(null); inputRef.current?.focus(); }}>쓰던 글 두기</button></div>}
+    <div className="chat-dock">
+      {blocked ? <p className="quota-note blocked" role="alert">{QUOTA_MESSAGE}</p>
+        : usage?.near_limit && usage.remaining !== null ? <p className="quota-note" role="status">오늘 쓸 수 있는 AI 사용량이 얼마 남지 않았어요</p> : null}
+      {offer !== null && <div className="fill-offer" role="status"><span>입력 중인 글이 있어요. 이 문장으로 바꿀까요? <strong>{offer}</strong></span>
+        <button type="button" className="button secondary" onClick={() => { setText(offer); setOffer(null); inputRef.current?.focus(); }}>바꾸기</button>
+        <button type="button" className="button text-button" onClick={() => { setOffer(null); inputRef.current?.focus(); }}>쓰던 글 유지하기</button></div>}
+      <div className="composer-wrap" ref={wrapRef}>
+        <form className="composer" onSubmit={submit}>
+          <label htmlFor="chat-input" className="sr-only">Marvia에게 질문하기</label>
+          <textarea id="chat-input" ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} rows={1} maxLength={MAX} disabled={blocked}
+            placeholder={cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호를 입력해 주세요'}
+            aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
+          <div className="composer-foot">
+            <button type="button" className="doc-trigger" onClick={() => setDocOpen(true)} disabled={loading || blocked}><Camera size={16}/>서류 사진으로 채우기</button>
+            <div className="composer-send">
+              {/* 글자 수는 쓰기 시작한 뒤에만 보인다. 빈 입력창에 숫자를 늘 두면 어수선하다 */}
+              {text.length > 0 && <span className="mono chat-count" aria-label={`${text.length}자 입력, 최대 ${MAX}자`}>{text.length} / {MAX}</span>}
+              <button type="submit" className="send" disabled={loading || blocked || !text.trim()} aria-label="AI에게 질문 보내기">
+                {loading ? <LoaderCircle size={20} className="spin"/> : <ArrowUp size={21}/>}</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      {/* 시작 문장: 대화가 비어 있을 때만. 누르면 입력창에 채우기만 한다 */}
+      {empty && <div className="chat-examples" aria-label="질문 예시">{EXAMPLES.map(e =>
+        <button key={e} type="button" onClick={() => fill(e)} disabled={blocked}>{e}<span aria-hidden="true">↗</span></button>)}</div>}
+      <p id="chat-help" className="sr-only">Enter로 보내고 Shift + Enter로 줄을 바꿔요</p>
+    </div>
 
-    <div className="chat-examples" aria-label="질문 예시">{EXAMPLES.map(e =>
-      <button key={e} type="button" onClick={() => fill(e)} disabled={blocked}>{e}<span aria-hidden="true">↗</span></button>)}</div>
-    <p id="chat-help" className="composer-help">Enter로 보내기 · Shift + Enter로 줄바꿈 · 서류 사진은 확인한 뒤에만 입력에 넣어요</p>
-
-    {thread.length > 0 && <ol className="chat-thread" ref={threadRef} onScroll={onScroll} aria-live="polite" aria-label="대화" tabIndex={0}>
-      {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-        {t.role === 'assistant' && <span className="chat-avatar"><Sparkles size={12}/></span>}<div className="chat-body"><p>{t.role === 'assistant' ? linkify(t.text) : t.text}</p>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}</div></li>)}
-    </ol>}
-
-    {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}
-
-    {idle && !loading && <div className="feature-tiles">
-      <button type="button" onClick={() => isLive ? goToComposer() : fill(EXAMPLES[0])} disabled={blocked}><PackageSearch size={22}/><strong>내 화물, 괜찮을까요?</strong><span>B/L 번호로 상태와 지금 할 일을 확인해요.</span></button>
-      <button type="button" onClick={() => fill(isLive ? EXAMPLES[0] : EXAMPLES[2])} disabled={blocked}><Ship size={22}/><strong>어떤 배가 들어오나요?</strong><span>부산 입항 예정 선박과 직전 기항지를 찾아요.</span></button>
-      <button type="button" onClick={() => setDocOpen(true)} disabled={blocked}><FileText size={22}/><strong>서류로 시작할까요?</strong><span>사진에서 읽은 값을 확인하고 질문에 넣어요.</span></button>
-    </div>}
-
-    {docOpen && <Drawer title="서류에서 질문으로" description="사진 올리기 → 읽은 값 확인 → 입력창에 넣기. 자동으로 조회하지 않습니다." onClose={() => setDocOpen(false)}>
+    {docOpen && <Drawer title="서류 사진으로 질문하기" description="읽은 값을 확인한 뒤 입력창에 넣어요." onClose={() => setDocOpen(false)}>
       <DocumentPanel heading={false} onApply={applyDocument} onClose={() => setDocOpen(false)} disabled={loading || blocked}/>
     </Drawer>}
 
-    {/* body로 뺀다. 헤드라인 영역(.hero, isolation)에 두면 아래 결과 카드가 버튼을 덮는다 */}
+    {/* body로 뺀다. 입력창이 화면 밖으로 밀렸을 때(휴대폰 상세 시트가 올라온 경우 등) 돌아가는 길 */}
     {away && !docOpen && !typing && createPortal(<button type="button" className="back-to-composer" onClick={goToComposer}><Sparkles size={15}/>AI에게 이어서 물어보기<span aria-hidden="true">↑</span></button>, document.body)}
   </section>;
 }
@@ -201,17 +219,18 @@ function Pending({stages, since}: {stages: ProgressStage[]; since: number}) {
   const seconds = Math.max(0, Math.floor((now - since) / 1000));
   return <div className="pending-card">
     <div className="pending-head">
-      <span className="pending-dots" aria-hidden="true"><i/><i/><i/></span>
-      <strong>근거를 모아 답을 준비하고 있어요.</strong>
+      <strong>답을 준비하고 있어요</strong><span className="pending-dots" aria-hidden="true"><i/><i/><i/></span>
       <span className="mono pending-time">{seconds}초</span>
     </div>
     {stages.length > 0
-      ? <ol className="pending-steps" aria-live="polite" aria-label="서버 처리 단계">{stages.map((s, i) => {
+      ? <ol className="pending-steps" aria-live="polite" aria-label="답변 준비 단계">{stages.map((s, i) => {
           const done = i < stages.length - 1;
           return <li key={s} className={done ? 'done' : 'current'}>
-            {done ? <Check size={13}/> : <LoaderCircle size={13} className="spin"/>}{stageLabels[s]}<span className="sr-only">{done ? ' 끝남' : ' 진행 중'}</span></li>;
+            <span className="step-icon">{done ? <Check size={16}/> : <LoaderCircle size={16} className="spin"/>}</span>
+            <span className="step-name">{stageLabels[s]}</span><span className="step-state">{done ? '완료' : '진행 중'}</span></li>;
         })}</ol>
-      : <p className="pending-note" role="status">{isLive ? '서버의 처리 단계 소식을 기다리는 중입니다. 단계를 추정해서 보여 주지 않습니다.' : '데모는 저장된 가공 예시를 재생합니다. 서버 단계 소식은 실제 모드에서만 보입니다.'}</p>}
-    <div className="loading-line" aria-hidden="true"/>
+      : <p className="pending-note" role="status">{isLive ? '진행 단계를 불러오는 중이에요.' : '체험 모드에서는 진행 단계를 보여 드리지 않아요.'}</p>}
+    {/* 답이 올 자리를 흐릿한 줄로 먼저 잡아 둔다. 실제로 기다리는 동안만 보인다 */}
+    <div className="pending-skeleton" aria-hidden="true"><span/><span/><span/></div>
   </div>;
 }

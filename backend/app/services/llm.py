@@ -81,6 +81,10 @@ RETRY_WAIT_SEC = 2.0  # 과부하는 잠깐 뒤 풀리는 경우가 많다. 실�
 # 분류하는데 재시도만 안 해서 분류와 동작이 어긋나 있었다.
 # 타임아웃은 넣지 않는다. 60초를 한 번 더 기다리면 시간 예산을 넘는다.
 RETRYABLE_CODES = {429, 500, 502, 503}
+# 끝까지 못 쓰고 끊긴 답의 finish_reason. JSON이 깨졌고 이 값이면 _ask_json이 같은 대화로 한 번 더 묻는다.
+# None: 끝 신호 없이 스트림이 끊김 (10-06 서류 판독). "error": 제공사가 생성 중 오류로 멈춤 (10-06 판정 평가 3회, 74번 중 4번)
+# length(토큰 한도)와 stop(정상 종료)은 넣지 않는다. 다시 물어도 같은 한도에 닿거나, 형식 문제라 프롬프트로 고쳐야 한다
+CUT_FINISH_REASONS = {None, "error"}
 
 logger = logging.getLogger(__name__)
 
@@ -655,19 +659,46 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         # 앞 라운드에서 이미 쓴 토큰·비용은 남긴다. 한 번도 답을 못 받았으면 None (전과 같음)
         end_generation(generation, _summed(rounds) if rounds else None, prompt.version, error=str(e))
         raise
-    result = _summed(rounds)
-    try:
-        output = output_model.model_validate_json(result.content or "")
-    except ValidationError as e:
-        # 어느 칸이 왜 틀렸는지만 적는다. LLM이 쓴 본문은 다시 붙이지 않는다 (트레이스 output에는 남는다)
-        detail = "; ".join(f"{'.'.join(str(p) for p in err['loc']) or 'root'}: {err['msg']}" for err in e.errors()[:5])
-        # 토큰 한도에서 잘린 답(finish_reason=length)은 모양이 틀린 답과 해결책이 다르다. 잘림은 한도를 늘리거나
-        # 생각(reasoning)을 줄여야 하고, 모양 오류는 프롬프트를 고쳐야 한다. 그래서 kind를 나눈다
-        kind = "truncated" if result.finish_reason == "length" else "bad_format"
-        error = LLMFormatError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건, {kind})",
-                               f"Your answer did not match the JSON format. {detail}", kind=kind)
-        end_generation(generation, result, prompt.version, output=result.content, error=str(error))
-        raise error from e
+    result = _summed(rounds)  # 도구 라운드 합산 (main 10-06 점검)
+    cut_retried = False  # 끊긴 답을 다시 받은 적이 있나. 한 번만 다시 받는다 (10-06)
+    while True:
+        try:
+            output = output_model.model_validate_json(result.content or "")
+            break
+        except ValidationError as e:
+            if result.finish_reason in CUT_FINISH_REASONS and not cut_retried:
+                # 10-06 실측: 서류 판독에서 HTTP 200인데 스트림이 JSON 중간(`{"vessel":`)에서 끊기고 finish_reason도 None인 답이
+                # 두 번 왔다. 정상 종료(stop)나 토큰 한도(length) 신호가 없는 답은 모델이 끝까지 쓰지 못한 것이라, 같은 대화로
+                # 한 번 더 묻는다. chat()은 이 경우를 재시도하지 않으므로(RETRYABLE_CODES는 상태 코드만 본다) 여기서 한다.
+                # length는 다시 물어도 같은 한도에 닿으므로 건드리지 않고, 형식이 틀린 stop 답은 프롬프트 문제라 아래에서 올린다
+                # 10-06 평가 3회 실측: 판정 답 74번 중 4번이 finish_reason="error"·출력 토큰 0으로 JSON 중간에서 끊겼다(제공사 Google).
+                # None만 보던 때는 이것이 bad_format(프롬프트 문제)으로 잘못 세져 라우터가 형식 오류 안내를 붙여 다시 물었다
+                cut_retried = True
+                logger.warning("llm %s 답이 끊김(finish_reason %s), %.1f초 뒤 한 번 더 묻는다",
+                               result.model, result.finish_reason, RETRY_WAIT_SEC)
+                time.sleep(RETRY_WAIT_SEC)  # 같은 대기 시간을 쓴다
+                previous = result
+                try:
+                    again = chat(messages, model=model, response_format=response_format, tools=tools or None,
+                                 tool_choice="none" if tools else None)
+                except LLMError as call_error:
+                    end_generation(generation, previous, prompt.version, output=previous.content, error=str(call_error))
+                    raise
+                # 다시 물은 답도 한 라운드로 더한다. 토큰·비용은 _summed가 모든 라운드를 합친다 (main과 합칠 때 10-06)
+                rounds.append(again)
+                summed = _summed(rounds)
+                # 끊겨서 다시 물은 것은 Langfuse retry_count에도 센다 (end_generation: attempts - 1). _summed는 라운드 수를 재시도로 세지 않는다
+                result = replace(summed, attempts=summed.attempts + 1)
+                continue
+            # 어느 칸이 왜 틀렸는지만 적는다. LLM이 쓴 본문은 다시 붙이지 않는다 (트레이스 output에는 남는다)
+            detail = "; ".join(f"{'.'.join(str(p) for p in err['loc']) or 'root'}: {err['msg']}" for err in e.errors()[:5])
+            # 토큰 한도에서 잘린 답(finish_reason=length)은 모양이 틀린 답과 해결책이 다르다. 잘림은 한도를 늘리거나
+            # 생각(reasoning)을 줄여야 하고, 모양 오류는 프롬프트를 고쳐야 한다. 그래서 kind를 나눈다
+            kind = "truncated" if result.finish_reason == "length" else "bad_format"
+            error = LLMFormatError(f"{result.model}: {schema_name} JSON 모양이 다름 ({e.error_count()}건, {kind})",
+                                   f"Your answer did not match the JSON format. {detail}", kind=kind)
+            end_generation(generation, result, prompt.version, output=result.content, error=str(error))
+            raise error from e
     end_generation(generation, result, prompt.version, output=output.model_dump(mode="json"))
     return LLMAnswer(output=output, llm=result, prompt_version=prompt.version, tool_calls=called)
 

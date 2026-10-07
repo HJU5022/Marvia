@@ -16,12 +16,12 @@ RESULTS_DIR = Path(__file__).resolve().parents[3] / "evals" / "results"
 ROLE = {"a": "baseline", "b": "model_a", "c": "model_b"}
 EXPERIMENT_LIMIT = 20
 
-# 화면 표의 줄 (web/lib/fixtures/metrics.json의 id와 같다)
-COMPARE = [("verdict_accuracy", "판정 정확도"), ("act_recall", "지금 조치 재현율"),
+# 화면 표의 줄 (web/lib/fixtures/metrics.json의 id와 같다). act 등급의 한국어 이름이 긴급으로 바뀌어 지표 이름도 맞춘다 (10-06 정운 결정)
+COMPARE = [("verdict_accuracy", "판정 정확도"), ("act_recall", "긴급 재현율"),
            ("insufficient_precision", "되묻기 정확도"), ("vessel_match_accuracy", "선박 식별 정확도"),
            ("grounded", "근거 일치율"), ("customs_explanation", "통관 해설 품질")]
 KPIS = [("verdict_accuracy", "판정 정확도"), ("insufficient_precision", "되묻기 정확도"),
-        ("act_recall", "지금 조치 재현율"), ("schema_pass", "출력 계약 준수율")]
+        ("act_recall", "긴급 재현율"), ("schema_pass", "출력 계약 준수율")]
 
 
 def _pct(v) -> float | None:
@@ -53,6 +53,11 @@ def build(results_dir: Path = RESULTS_DIR) -> dict:
     gates = s.get("gates") or {}
     usage = s.get("usage") or {}
 
+    def passed(key):
+        """게이트 한 줄의 통과 여부. 측정 전이거나 키가 없으면 None (화면은 대기)."""
+        v = gates.get(key)
+        return None if v is None else bool(v)
+
     def count(key):
         v = s.get(key)
         return None if not service else (f"{len(v)}건" if isinstance(v, list) else ("0건" if v in (None, "-") else str(v)))
@@ -66,11 +71,11 @@ def build(results_dir: Path = RESULTS_DIR) -> dict:
         "comparison": [{"id": k, "label": label, **{ROLE[c]: _pct(latest[c]["summary"].get(k)) if c in latest else None
                                                     for c in ROLE}} for k, label in COMPARE],
         "gates": [
-            {"label": "지금 조치 누락", "target": "0건", "value": None if not gates else ("통과" if gates.get("act_recall_is_1") else "걸림")},
-            {"label": "선박 식별 오확정", "target": "0건", "value": count("vessel_wrong_confirm")},
-            {"label": "출력 계약 준수율", "target": "95% 이상", "value": None if s.get("schema_pass") is None else f"{_pct(s['schema_pass'])}%"},
-            {"label": "주입 오작동", "target": "0건", "value": count("injection_failures")},
-            {"label": "p95 지연 · 요청당 비용", "target": None,
+            {"label": "긴급 누락", "target": "0건", "value": None if not gates else ("통과" if gates.get("act_recall_is_1") else "걸림"), "passed": passed("act_recall_is_1")},
+            {"label": "선박 식별 오확정", "target": "0건", "value": count("vessel_wrong_confirm"), "passed": passed("no_wrong_confirm")},
+            {"label": "출력 계약 준수율", "target": "95% 이상", "value": None if s.get("schema_pass") is None else f"{_pct(s['schema_pass'])}%", "passed": passed("schema_pass_ge_95")},
+            {"label": "주입 오작동", "target": "0건", "value": count("injection_failures"), "passed": passed("no_injection_failure")},
+            {"label": "p95 지연 · 요청당 비용", "target": None, "passed": None,  # 목표값이 없어 통과 여부도 없다
              "value": None if not service else f"{s.get('latency_p95_ms')}ms · "
                       + (f"${usage['cost_usd_per_request']:.5f}" if usage.get("cost_usd_per_request") else "비용 미집계")},
         ],

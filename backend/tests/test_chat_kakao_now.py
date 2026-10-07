@@ -77,7 +77,7 @@ def test_message_template_uses_only_stored_values(monkeypatch):
     kakao = Kakao()
     _handle("지금 카톡으로 보내 줘", kakao=kakao)
     text = kakao.sent[0]
-    assert text.startswith("[Marvia] TEST****01 화물 현재 상태\n판정: 지켜볼 것\n도착 예정: 2026-10-12\n")
+    assert text.startswith("[Marvia] TEST****01 화물 현재 상태\n판정: 주의\n도착 예정: 2026-10-12\n")
     assert "판매 예정일(2026-10-15)까지: " in text and "도착 기준: 여유 3일" in text
     assert "통관: 반입신고" in text and "마지막 확인: 10.06" in text and "Marvia에서 이유와 할 일을 확인하세요." in text
     assert BL not in text  # 원문 B/L 없음

@@ -69,6 +69,8 @@ class MemoryResponse(BaseModel):
     cargo: list[CargoSummary]
     full: bool = Field(description="상한을 넘어 새 기억을 저장하지 못했다 (EC-06). 정리하면 다시 false")
     available: bool = Field(default=True, description="DB를 못 읽었으면 false. 빈 기억과 구분한다")
+    used_chars: int = Field(default=0, description="메모장 글자 수 (markdown 길이, 상한 판단과 같은 기준)")
+    max_chars: int = Field(default=3000, description="메모장 글자 상한 (services/memory.MAX_CHARS)")
 
 
 class MemoryDeleteResponse(BaseModel):

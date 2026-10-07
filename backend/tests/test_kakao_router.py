@@ -72,16 +72,22 @@ def test_no_database_is_503(monkeypatch, me):
 # ── status / connect ──
 
 def test_status(db, me, monkeypatch):
+    monkeypatch.setattr(client, "send_memo", lambda *a, **k: None)
     with TestClient(app) as c:
-        assert c.get("/api/kakao/status", headers=me).json() == {"configured": True, "linked": False}
+        assert c.get("/api/kakao/status", headers=me).json() == {"configured": True, "linked": False,
+                                                                 "linked_at": None, "last_sent_at": None}
         svc.save_link(db, "user-123", tokens())
-        assert c.get("/api/kakao/status", headers=me).json() == {"configured": True, "linked": True}
+        body = c.get("/api/kakao/status", headers=me).json()
+        assert body["linked"] is True and body["linked_at"] is not None and body["last_sent_at"] is None
+        svc.send_to_user(db, "user-123", "안녕", "http://web/settings")  # 가짜 카카오 (아래 monkeypatch)
+        assert c.get("/api/kakao/status", headers=me).json()["last_sent_at"] is not None
 
         def not_configured():
             raise KakaoError("not_configured")
 
         monkeypatch.setattr(client, "config", not_configured)
-        assert c.get("/api/kakao/status", headers=me).json() == {"configured": False, "linked": True}
+        body = c.get("/api/kakao/status", headers=me).json()
+        assert body["configured"] is False and body["linked"] is True
 
 
 def test_connect_returns_url_with_signed_state(db, me, monkeypatch):

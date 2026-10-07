@@ -31,8 +31,10 @@ def test_combines_tools_and_caches(monkeypatch):
     assert r["vessel"]["mmsi"] == 440999001 and r["position"]["freshness"] == "fresh"
     assert r["distance"]["distance_nm"] == 120.0 and r["distance"]["calc_eta"] and r["schedule"]["facility"] == "신선대"
     assert ("mof", {"call_sign": "TST01", "ship_name": None}) in calls  # 호출부호가 있으면 그것으로
-    svc.detail("tst01", "test ship")
+    again = svc.detail("tst01", "test ship")
     assert len([c for c in calls if c[0] == "pos"]) == 1  # 10분 캐시: ShipFinder를 다시 부르지 않는다
+    assert again["cached_at"] == r["cached_at"]  # 캐시에서 나가도 만든 시각 그대로
+    assert datetime.fromisoformat(r["cached_at"]).tzinfo is not None
 
 
 def test_stale_position_uses_rule(monkeypatch):

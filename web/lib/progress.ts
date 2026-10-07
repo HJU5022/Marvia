@@ -6,16 +6,16 @@ export type ProgressStage = 'understand' | 'customs' | 'identify' | 'position' |
   | 'tool_candidates' | 'tool_position' | 'tool_schedule' | 'tool_distance' | 'tool_web';
 
 export const stageLabels: Record<ProgressStage, string> = {
-  understand: '질문 이해와 도구 고르기',
+  understand: '질문 이해',
   customs: '통관 정보 조회',
   identify: '선박 식별',
   position: '위치·입항 일정 확인',
   judge: '판정 정리와 검증',
-  answer: '답 작성과 검증',
+  answer: '답변 작성과 검증',
   schedule: '부산 입항 예정 조회',
-  ports: '지역 항구 고르기',
+  ports: '지역 항구 찾기',
   // 에이전트가 읽기 전용 조회 도구를 부를 때 서버가 보내는 단계 (도구 하나에 이름 하나)
-  tool_candidates: '선박 후보 검색',
+  tool_candidates: '선박 후보 찾기',
   tool_position: '선박 실시간 위치 조회',
   tool_schedule: '부산 입항 기록 조회',
   tool_distance: '남은 항로 거리 계산',

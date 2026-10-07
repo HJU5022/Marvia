@@ -13,7 +13,7 @@ HTTP는 라우터(routers/watch.py)가, 주기 실행은 worker/watch.py·worker
 - 사용자가 직접 켠 화물만 본다: 조회한 화물을 전부 감시하면 ShipFinder 하루 한도(50회)와 LLM 비용이 사용자 모르게 나간다.
   그래서 최대 5건으로 제한한다
 - 다시 판정은 사용자가 조회할 때와 같은 길(routers/agent._assess, LLM 포함)로 한다: 감시가 따로 만든 판정 규칙이 있으면
-  "조회 화면에서는 괜찮음인데 알림은 지금 조치"처럼 두 답이 어긋난다. 저장된 값으로 같은 AgentRequest를 만들어 그대로 부른다
+  "조회 화면에서는 순항인데 알림은 긴급"처럼 두 답이 어긋난다. 저장된 값으로 같은 AgentRequest를 만들어 그대로 부른다
 - 한 번에 5건만: ShipFinder 호출을 아끼려는 상한이다. 마지막 확인이 가장 오래된 화물부터 돌려서 한 화물만 계속 도는 일이 없다
 - 조회 기록(query_log)은 남기지 않는다: 사용자가 한 조회가 아니라서 "내 조회 기록" 화면과 90일 보관 대상에 섞이면 안 된다.
   그 대신 화물 표의 마지막 판정(last_*)은 갱신한다. 다음 번 비교의 기준이 그 값이다
@@ -112,6 +112,52 @@ def watch_state(conn, user_id: str, bl_no: str) -> dict:
 
 
 # ── 바뀐 판정 띠 ──
+
+# 감시 목록 지도에 잇는 지나온 길 점 수 (10-06). worker 수집 간격 6시간이면 3일치다. 화면이 그리기 무겁지 않을 만큼만
+TRACK_POINTS = 12
+
+
+def watch_list(conn, user_id: str) -> dict:
+    """지켜보는 화물 목록과 배의 마지막 위치·지나온 길 (GET /api/watch, 10-06). 화면 web/lib/api.ts WatchItem 모양이다.
+
+    - 줄 재료는 화물 표(user_cargo)의 마지막 조회 값이다: 등급·통관 단계·도착 예정·여유 일수·품명·선명·국적
+    - 위치는 watch_positions(017)에서 그 배의 최근 TRACK_POINTS개를 오래된 순으로. 마지막 점이 현재 위치다
+      (worker 수집 또는 조회할 때 쌓인 점, services/cargo._keep_position). 점이 없으면 위치 칸은 null이고 화면은 지도에 안 그린다
+    - B/L은 가린 번호만, 화물을 가리키는 값은 지문(cargo_key)만 준다. 반출 끝난 화물(done)도 목록 뒤에 남는다(화면이 개수만 알린다)
+    - updated_at: 줄들 중 가장 최근 조회 시각. 없으면 null"""
+    rows = conn.execute(
+        """SELECT cargo_key, bl_masked, label, goods_name, vessel_name, vessel_flag, vessel_mmsi, status,
+                  last_verdict, last_stage, last_eta, last_days_margin, last_checked_at
+           FROM user_cargo WHERE user_id = %s AND watch
+           ORDER BY status = 'done', last_checked_at DESC NULLS LAST""",
+        [user_id],
+    ).fetchall()
+    items = []
+    for (key, masked, label, goods, ship, flag, mmsi, status,
+         verdict, stage, eta, margin, checked) in rows:
+        track = _track(conn, mmsi) if mmsi else []
+        last = track[-1] if track else None
+        items.append({
+            "cargo_key": key, "bl_masked": masked, "label": label, "goods_name": goods,
+            "ship_name": ship, "ship_flag": flag, "status": status, "verdict": verdict,
+            "stage": cargo.clean_stage(stage) if stage else None,
+            "eta": eta.isoformat() if eta else None, "days_margin": margin,
+            "lat": last["lat"] if last else None, "lng": last["lng"] if last else None,
+            "cog": last["cog"] if last else None, "sog": last["sog"] if last else None,
+            "position_at": last["at"] if last else None, "track": track,
+        })
+    checked_at = [r[12] for r in rows if r[12]]
+    return {"items": items, "updated_at": max(checked_at).isoformat() if checked_at else None, "sample": False}
+
+
+def _track(conn, mmsi: int) -> list[dict]:
+    """그 배의 최근 위치 TRACK_POINTS개를 오래된 순으로. 최신부터 잘라 온 뒤 뒤집는다."""
+    found = conn.execute(
+        "SELECT ts, lat, lng, sog, cog FROM watch_positions WHERE mmsi = %s ORDER BY ts DESC LIMIT %s",
+        [mmsi, TRACK_POINTS],
+    ).fetchall()
+    return [{"at": ts.isoformat(), "lat": lat, "lng": lng, "sog": sog, "cog": cog} for ts, lat, lng, sog, cog in reversed(found)]
+
 
 def pending_changes(conn, user_id: str) -> list[dict]:
     """사용자가 아직 못 본 판정 변화. 최근 것부터. 가린 번호만 담는다.

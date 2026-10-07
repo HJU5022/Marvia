@@ -36,7 +36,8 @@ GOOD_TEXT = "10/3까지는 받아야 돼. 통관 늦을까 봐 걱정이야. 가
 @pytest.mark.parametrize("op, reason", [
     (_op(kind="memo", section="about", fields={"text": "x"}), "bad_kind"),                       # 다섯 종류 밖
     (_op(kind="worry", section="about", fields={"text": "통관 지연"}), "bad_kind"),               # 걱정은 화물별
-    (_op(kind="worry", section="cargo", fields={"text": "통관 지연", "phone": "051-000-0000"}), "unknown_field"),
+    # 안 쓰는 칸(phone)은 이제 명령을 거절하지 않고 그 칸만 버린다 (10-06 정운 결정). 이 줄은 test_memory_ops_normalize.py가 맡는다
+    (_op(kind="worry", section="cargo", fields={"text": "가" * 61, "phone": "051-000-0000"}), "too_long"),
     (_op(kind="worry", section="cargo", fields={"text": "가" * 61}), "too_long"),                 # 60자 상한
     (_op(kind="contact", section="about", fields={"company": "가나다물류", "role": "은행", "source": "사용자"}), "bad_role"),
     (_op(kind="contact", section="about", fields={"company": "가나다물류", "role": "포워더", "source": "B/L"}), "bad_source"),
@@ -273,7 +274,7 @@ def test_writer_never_sees_raw_bl(env, monkeypatch):
 
     assert BL not in seen[0] and "[BL1]" in seen[0]
     data = json.loads(seen[0])
-    assert "[c1]" in data["memory"] and data["cargo"]["verdict"] == "지켜볼 것, 여유 3일"
+    assert "[c1]" in data["memory"] and data["cargo"]["verdict"] == "주의, 여유 3일"
     assert written[0] == "cargo"
     assert [i["fields"].get("text") for i in db.items] == ["은행 가기", "통관 지연"]           # 걱정은 저장
     assert written[1] == ("pending", [{"field": "sale_due_date", "value": "2026-10-03", "noted_at": "2026-10-02"}])

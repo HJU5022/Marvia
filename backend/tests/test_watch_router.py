@@ -13,7 +13,8 @@ from backend.tests.test_admin import _login
 from backend.tests.test_watch import BL, USER, FakeConn, env  # noqa: F401  (env는 autouse 열쇠 설정)
 
 ENDPOINTS = [("post", "/api/cargo/watch/state", {"bl_no": BL}), ("put", "/api/cargo/watch", {"bl_no": BL, "on": True}),
-             ("get", "/api/watch/changes", None), ("post", "/api/watch/changes/seen", None)]
+             ("get", "/api/watch/changes", None), ("post", "/api/watch/changes/seen", None),
+             ("get", "/api/watch", None)]  # 감시 목록 (10-06)
 
 
 @pytest.fixture

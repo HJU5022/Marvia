@@ -1,0 +1,124 @@
+/* 담당 영역: 진입 화면 (소개 /about, LoginScreen). 토큰은 globals.css :root, 이 파일은 globals.css 뒤에 불러와져 같은 선택자를 덮는다.
+ * 새 클래스(intro-*, entry-login-*)를 써서 옛 about-*, login-* 규칙과 겹치지 않게 했다. 그라데이션·그림자·영어 눈썹글 없음.
+ * 소개 페이지는 상자 대신 글자 크기·여백·그림으로 구조를 만든다. 움직임: 스크롤 등장(220ms+) 하나뿐이고 모션 줄이기면 모두 끈다. */
+
+/* ---------- 소개 페이지 ---------- */
+.intro-page{max-width:1240px;margin:0 auto;padding-top:40px;padding-bottom:96px}
+.intro-hero{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:56px;align-items:center;padding:24px 0 24px}
+.intro-logo{display:block;height:40px;width:auto}
+.intro-hero h1{margin-top:48px;font-size:clamp(34px,4.2vw,52px);font-weight:800;line-height:1.28;letter-spacing:-.03em;color:var(--text)}
+.intro-sub{margin-top:20px;font-size:var(--text-lg);line-height:1.6;color:var(--text-2);max-width:30em}
+.intro-cta{margin-top:36px;min-height:56px;padding:0 28px;border-radius:var(--radius);font-size:var(--text-base);font-weight:700;width:auto;transition:background-color 150ms var(--ease),transform 150ms var(--ease)}
+.intro-cta:active{transform:scale(.98)}
+.intro-hero-visual{margin:0}
+.intro-hero-visual img{display:block;width:100%;height:auto;border-radius:var(--radius);box-shadow:0 0 0 1px var(--border),0 12px 32px #191f2814}
+
+.intro-section{padding:112px 0 0}
+.intro-section h2,.intro-final h2{font-size:var(--text-xl);font-weight:800;line-height:1.4;letter-spacing:-.02em;color:var(--text)}
+.intro-lead{margin-top:12px;font-size:var(--text-base);line-height:1.7;color:var(--text-2);max-width:40em}
+
+/* 3단계: 상자 없이 아이콘, 번호, 글. 아이콘 사이를 가는 선이 이어 준다 */
+.intro-steps{list-style:none;margin:48px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:48px;position:relative}
+.intro-steps li{position:relative}
+.intro-step-icon{display:flex;width:56px;height:56px;align-items:center;justify-content:center;border-radius:50%;background:var(--brand-soft);color:var(--brand);position:relative;z-index:1}
+.intro-steps li:not(:last-child)::before{content:'';position:absolute;top:28px;left:72px;right:-32px;border-top:2px dotted var(--border-strong)}
+.intro-steps h3{margin-top:20px;font-size:var(--text-lg);font-weight:700;line-height:1.45;color:var(--text)}
+.intro-steps p{margin-top:8px;font-size:var(--text-base);line-height:1.7;color:var(--text-2)}
+
+/* 판정 눈금: 세 색 막대 아래 같은 순서로 세 줄 설명 */
+.intro-scale{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:36px;height:12px}
+.intro-scale span{border-radius:999px}
+.intro-scale .fine{background:var(--grade-fine-solid)}
+.intro-scale .watch{background:var(--grade-watch-solid)}
+.intro-scale .act{background:var(--grade-act-solid)}
+.intro-verdicts{list-style:none;margin:28px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:24px 32px}
+.intro-verdicts .verdict-badge.lg{font-size:var(--text-lg);padding:8px 14px}
+.intro-verdict-text{margin-top:16px;font-size:var(--text-base);line-height:1.6;color:var(--text-2)}
+.intro-todo{margin-top:12px;font-size:var(--text-lg);font-weight:700;line-height:1.5;color:var(--text)}
+.intro-todo span{display:block;margin-bottom:4px;font-size:var(--text-sm);font-weight:500;color:var(--muted)}
+.intro-note{margin-top:28px;font-size:var(--text-sm);color:var(--muted)}
+
+/* 정보가 모이는 그림 (인라인 SVG, 글씨는 CSS로 칠한다) */
+.intro-diagram{margin-top:40px}
+.flow{display:block;width:100%;height:auto;max-width:880px}
+.flow-tall{display:none}
+.f-src{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}
+.f-t{font-size:20px;font-weight:700;fill:var(--text)}
+.f-s{font-size:14px;fill:var(--muted)}
+.f-line{fill:none;stroke:var(--border-strong);stroke-width:2;stroke-dasharray:1;stroke-dashoffset:0}
+.f-arrow{fill:none;stroke:var(--border-strong);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.f-core{fill:var(--brand)}
+.f-core-t{font-size:26px;font-weight:800;fill:#fff}
+.f-core-s{font-size:14px;fill:#dbe5ff}
+.f-v.fine{fill:var(--grade-fine-bg)}.f-v.watch{fill:var(--grade-watch-bg)}.f-v.act{fill:var(--grade-act-bg)}
+.f-vt{font-size:20px;font-weight:800}
+.f-vt.fine{fill:var(--grade-fine)}.f-vt.watch{fill:var(--grade-watch)}.f-vt.act{fill:var(--grade-act)}
+/* 선이 그려지는 효과: 스크롤로 보이면 한 번만 */
+.intro-ready .intro-diagram .f-line{stroke-dashoffset:1;transition:stroke-dashoffset 800ms var(--ease) 200ms}
+.intro-ready .intro-diagram.in .f-line{stroke-dashoffset:0}
+
+/* 실제 화면 캡처 */
+.intro-shots-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.intro-shots-nav{display:flex;gap:8px}
+.intro-shots-nav button{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--surface);color:var(--text-2);box-shadow:0 0 0 1px var(--border-strong) inset;transition:background-color 150ms var(--ease),transform 150ms var(--ease)}
+.intro-shots-nav button:hover{background:var(--brand-soft);color:var(--brand)}
+.intro-shots-nav button:active{transform:scale(.95)}
+.intro-shots{list-style:none;margin:32px 0 0;padding:0 0 8px;display:flex;gap:32px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.intro-shots::-webkit-scrollbar{display:none}
+.intro-shots li{flex:0 0 min(760px,70%);scroll-snap-align:start}
+.intro-shots img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;object-position:top left;border-radius:var(--radius);box-shadow:0 0 0 1px var(--border),0 8px 24px #191f280f}
+.intro-shots h3{margin-top:16px;font-size:var(--text-lg);font-weight:700;color:var(--text)}
+.intro-shots p{margin-top:4px;font-size:var(--text-base);line-height:1.6;color:var(--text-2)}
+
+.intro-final{padding-top:120px;text-align:center}
+.intro-final .intro-cta{margin-top:28px}
+.intro-scope{display:flex;gap:8px;align-items:flex-start;justify-content:center;max-width:36em;margin:32px auto 0;font-size:var(--text-sm);line-height:1.7;color:var(--muted);text-align:left}
+.intro-scope svg{margin-top:3px}
+
+/* 스크롤 등장: intro-ready 가 붙은 뒤에만 숨겼다가 .in 에서 나타낸다. 칸마다 --i 로 40ms씩 늦춘다 */
+.intro-ready .rv{opacity:0;transform:translateY(12px);transition:opacity 320ms var(--ease),transform 320ms var(--ease);transition-delay:calc(var(--i,0) * 60ms)}
+.intro-ready .rv.in{opacity:1;transform:none}
+
+/* ---------- 로그인 ---------- */
+.entry-login{display:grid;place-items:center;min-height:calc(100vh - 160px);padding:40px 16px}
+.entry-login-card{width:min(440px,100%);background:var(--surface);border-radius:var(--radius);padding:40px 32px 32px}
+.entry-login-brand{display:flex;margin-bottom:32px}
+.entry-login-brand img{height:44px;width:auto}
+.entry-login-card h1{font-size:var(--text-xl);font-weight:800;line-height:1.4;letter-spacing:-.02em;color:var(--text)}
+.entry-login-lead{margin-top:12px;font-size:var(--text-base);line-height:1.7;color:var(--text-2)}
+.entry-login-google{width:100%;margin:28px 0 0;min-height:56px;border-radius:var(--radius);font-size:var(--text-base);font-weight:700}
+.entry-login-google svg{background:#fff;border-radius:50%;padding:1px}
+.entry-login-card .request-error{margin:12px 0 0;border-radius:var(--small-radius);font-size:var(--text-sm)}
+.entry-login-points{list-style:none;margin:28px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+.entry-login-points li{display:flex;gap:10px;align-items:flex-start;font-size:var(--text-sm);line-height:1.7;color:var(--muted)}
+.entry-login-points svg{margin-top:3px;color:var(--muted)}
+.entry-login-link{display:inline-flex;align-items:center;gap:6px;margin-top:24px;font-size:var(--text-base);font-weight:600;color:var(--brand)}
+.entry-login-link:hover{color:var(--brand-hover)}
+
+@media(max-width:1000px){
+  .intro-hero{grid-template-columns:1fr;gap:40px}
+  .intro-hero h1{margin-top:32px}
+  .intro-steps{gap:32px}
+  .intro-steps li:not(:last-child)::before{display:none}
+}
+@media(max-width:700px){
+  .intro-page{padding-top:8px;padding-bottom:64px}
+  .intro-section{padding-top:72px}
+  .intro-sub{font-size:var(--text-base)}
+  .intro-cta{width:100%}
+  .intro-steps{grid-template-columns:1fr;gap:32px;margin-top:32px}
+  .intro-steps li{display:grid;grid-template-columns:56px 1fr;column-gap:16px;align-items:start}
+  .intro-steps li h3{margin-top:0;grid-column:2}
+  .intro-steps li p{grid-column:2}
+  .intro-verdicts{grid-template-columns:1fr;gap:32px}
+  .flow-wide{display:none}.flow-tall{display:block;max-width:340px;margin:0 auto}
+  .intro-shots{gap:16px;margin:24px -16px 0;padding:0 16px 8px}
+  .intro-shots li{flex:0 0 84%}
+  .intro-shots-nav{display:none}
+  .intro-final{padding-top:80px}
+  .entry-login-card{padding:32px 20px 24px}
+}
+@media(prefers-reduced-motion:reduce){
+  .intro-ready .rv{opacity:1;transform:none;transition:none}
+  .intro-ready .intro-diagram .f-line{stroke-dashoffset:0;transition:none}
+}

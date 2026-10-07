@@ -5,6 +5,7 @@
 
   POST /api/cargo/watch/state   {"bl_no"}           → {"saved", "watch"}   결과 화면의 버튼 상태
   PUT  /api/cargo/watch         {"bl_no", "on"}     → {"watch"}            지켜보기 켜기·끄기
+  GET  /api/watch                                   → {"items", "updated_at", "sample"}  지켜보는 화물 목록·위치 (10-06)
   GET  /api/watch/changes                           → {"changes": [...]}   안 본 판정 변화 (다음 접속 때 띠)
   POST /api/watch/changes/seen                      → {"cleared": 건수}    띠를 보여 줬으니 "봤음"으로
 
@@ -81,6 +82,18 @@ def put_watch(body: WatchBody, user: Annotated[CurrentUser | None, Depends(curre
         raise HTTPException(status_code=status, detail=detail)
     except Exception as e:
         log_failure("watch_set", type(e).__name__)
+        raise HTTPException(status_code=503, detail=DB_DOWN)
+
+
+@router.get("/watch")
+def get_watch_list(user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> dict:
+    """감시 목록 화면이 부른다. 지켜보는 화물마다 마지막 조회 값과 배 위치·지나온 길 (services/watch.watch_list)."""
+    user = _login_required(user)
+    try:
+        with ops.open_conn() as conn:
+            return svc.watch_list(conn, user.id)
+    except Exception as e:
+        log_failure("watch_list", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN)
 
 

@@ -257,7 +257,7 @@ def test_changed_records_change_and_notifies(upserts, sent):
     assert (row["changed_from"], row["changed_at"], row["change_seen"], row["last_verdict"]) == ("watch", NOW, False, "act")
     [(user_id, text, link)] = sent
     assert user_id == USER and link == "https://web.example.com/"
-    assert text == ("[Marvia] 고추 화물 판정이 '지켜볼 것'에서 '지금 조치'(으)로 바뀌었습니다. "
+    assert text == ("[Marvia] 고추 화물 판정이 '주의'에서 '긴급'(으)로 바뀌었습니다. "
                     "Marvia에서 이유와 할 일을 확인하세요.")
     assert BL not in text
 
@@ -377,7 +377,7 @@ def test_released_cargo_becomes_done(upserts, sent):
     _watched(conn, last_verdict="watch")
     out = svc.run_watch(conn, now=NOW, assess=lambda req, mem: _resp("fine", stage="반출신고"))
     assert upserts[0]["released"] is True and conn.row()["status"] == "done"
-    assert out["changed"] == 1  # 지켜볼 것 → 괜찮음도 등급이 바뀐 것이다
+    assert out["changed"] == 1  # 주의 → 순항도 등급이 바뀐 것이다
     # 다음 실행부터는 끝난 화물이라 보지 않는다
     assert svc.run_watch(conn, now=NOW, assess=lambda req, mem: pytest.fail("끝난 화물")) ["checked"] == 0
 

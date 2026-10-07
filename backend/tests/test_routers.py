@@ -172,7 +172,7 @@ def test_llm_keeps_wrong_verdict_falls_back_to_table(fake, monkeypatch):
         body = client.post("/api/agent", json=_request()).json()
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("partial", "fine", "rule")
-    assert body["answer"] == agent_router.TABLE_FALLBACK.format(label="괜찮음")
+    assert body["answer"] == agent_router.TABLE_FALLBACK.format(label="순항")
 
 
 def test_gray_zone_llm_failure_gives_no_verdict(fake, monkeypatch):
@@ -856,6 +856,69 @@ def test_history_reads_session_rows(monkeypatch):
 
     assert len(mine["items"]) == 1 and mine["items"][0]["bl_masked"] == "TEST****0001"
     assert other["items"] == [] and other["available"] is True
+
+
+def _history_db(monkeypatch, rows, asked):
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
+    monkeypatch.setattr(history_router, "connect", lambda *a, **k: FakeConn())
+
+    def fake(conn, session_id, limit, user_id=None, since=None):
+        asked.append(since)
+        return rows
+
+    monkeypatch.setattr(history_router, "recent_queries", fake)
+
+
+def test_history_reason_is_built_from_margin_and_stage(monkeypatch):
+    """한 줄 이유는 코드가 만든다. 값이 있는 것만 쓰고 둘 다 없으면 null (services/watch._change_reason과 같은 규칙)."""
+    base = {"request_id": "r", "bl_masked": "TEST****0001", "status": "ok", "verdict": "watch",
+            "vessel_match": "confirmed", "decided_by": "rule", "trace_id": "r", "created_at": NOW}
+    rows = [{**base, "days_margin": 3, "stage_name": "반입신고"}, {**base, "days_margin": -2, "stage_name": None},
+            {**base, "days_margin": None, "stage_name": None}]
+    _history_db(monkeypatch, rows, [])
+    with TestClient(app) as client:
+        items = client.get("/api/history", params={"session_id": "s"}).json()["items"]
+    assert [i["reason"] for i in items] == ["여유 3일, 통관 반입신고", "판매 예정일보다 2일 늦음", None]
+
+
+def test_history_since_is_passed_only_when_given(monkeypatch):
+    asked = []
+    _history_db(monkeypatch, [], asked)
+    with TestClient(app) as client:
+        client.get("/api/history", params={"session_id": "s"})
+        r = client.get("/api/history", params={"session_id": "s", "since": "2026-09-01T00:00:00+00:00"})
+        bad = client.get("/api/history", params={"session_id": "s", "since": "어제"})
+    assert asked[0] is None and asked[1] == datetime(2026, 9, 1, tzinfo=timezone.utc)
+    assert r.status_code == 200 and bad.status_code == 422
+
+
+def test_recent_queries_since_adds_condition():
+    """since가 있으면 created_at >= 조건과 값이 붙는다. 없으면 조건이 없다."""
+    from backend.app.db import recent_queries
+
+    seen = []
+
+    class C:
+        def execute(self, sql, params):
+            seen.append((" ".join(sql.split()), params))
+
+            class R:
+                def fetchall(self):
+                    return []
+
+            return R()
+
+    recent_queries(C(), "s1", 5)
+    recent_queries(C(), "s1", 5, since=NOW)
+    assert "created_at >= %s" not in seen[0][0] and seen[0][1] == ["s1", 5]
+    assert "AND created_at >= %s" in seen[1][0] and seen[1][1] == ["s1", NOW, 5]
 
 
 # ── 후속 질문 (C-9) ──
