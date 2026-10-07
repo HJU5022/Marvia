@@ -14,7 +14,16 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 | 작업 분담 | [docs/Marvia_개발_작업_리스트.md](./docs/Marvia_개발_작업_리스트.md) |
 | 지표 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
 
-배포 주소는 `docs/release_manifest.json`(2026-10-06-r1 기록)에 적힌 값이다. 배포는 Railway이고 Vercel과 Cloud Run은 쓰지 않는다(10-05 결정, `Dockerfile.railway`). 실제 B/L이 없어 배포 서버는 `REPLAY_MODE=true`로 가공 데모를 보여 준다.
+배포 주소는 `docs/release_manifest.json`에 적힌 값이다. 배포는 Railway이고 Vercel은 쓰지 않는다(10-05 결정, `Dockerfile.railway`). Cloud Run은 api·web이 아니라 아래 해수부 릴레이 하나에만 쓴다. 배포 서버는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드(`REPLAY_MODE=true`)는 채점자와 키 없는 로컬 데모, 평가용으로 남긴다. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다.
+
+#### 해수부 릴레이 (`relay/`)
+
+- **왜**: 위 ConnectTimeout 때문이다. 같은 증상을 미국 GitHub Actions에서도 겪었다는 보고가 있어(github.com/SFByomi/blueboard/pull/19) 해외 접속 차단으로 짐작하지만 공식 확인은 아니다. UNI-PASS는 싱가포르에서도 된다.
+- **무엇**: 서울(asia-northeast3) Google Cloud Run의 작은 FastAPI 서비스 `mof-relay`다. `GET /1192000/VsslEtrynd5/*`, `/1192000/CntlVssl2/*`만 `apis.data.go.kr`로 그대로 넘기고, `X-Relay-Token` 헤더가 맞아야 받는다. 쿼리스트링(serviceKey)은 로그에 남기지 않는다. 소유자 개인 GCP 프로젝트에 두고 무료 체험 크레딧으로 낸다(팀 계정 아님).
+- **백엔드 쪽**: 연결 실패는 재시도하지 않고(연결 대기 3초), 한 번 실패하면 60초 동안 해수부 호출을 바로 실패시킨다(`backend/app/clients/mof.py`).
+- **환경변수**: 백엔드의 `MOF_BASE_URL`(릴레이 주소. 비우면 직접 호출)과 `MOF_RELAY_TOKEN`(릴레이의 `RELAY_TOKEN`과 같은 값).
+- **상태**: 로컬 릴레이로 실제 해수부 입항 예정 206건을 약 2초에 받았고 전체 pytest 2101건이 통과했다. Cloud Run 배포·Railway 환경변수 설정·실서버 확인 전이다(10-07).
+- 자세한 내용: [relay/README.md](./relay/README.md)
 
 ---
 
@@ -160,6 +169,7 @@ AgentResponse (ok | partial | insufficient | failed)
 │   │   └── prompts/       Langfuse에서 못 가져올 때 쓰는 프롬프트 사본 10개
 │   └── tests/             pytest (키 없이 돈다)
 │
+├── relay/                해수부 API 릴레이 (서울 Cloud Run, FastAPI). Railway 싱가포르가 해수부에 못 닿아서 둔다
 ├── mcp_server/           FastMCP. 선박 후보·실시간 위치·입항 일정·남은 거리 도구 4개 (tools/)
 ├── skills/               ais-reliability, customs-stages, port-busan, cargo-verdict, referrals
 ├── worker/               collector.py(위치·입항 실적 수집), watch.py(지켜보는 화물 재판정), run.py
@@ -275,6 +285,7 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 | `BL_ENCRYPTION_KEY` | 아래 명령으로 한 번 만들고, 모든 환경에 같은 값 | B/L 원본을 저장하지 않는다 |
 | `PII_ENCRYPTION_KEY` | 회원 정보·운영자 이메일 열쇠 (B/L 열쇠와 별도). 팀이 같은 값을 공유 | 회원 정보를 다시 열 수 없다 |
 | `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` / `KAKAO_REDIRECT_URI` | 카카오 디벨로퍼스 | 카카오톡 알림 연결 불가 |
+| `MOF_BASE_URL` / `MOF_RELAY_TOKEN` | 해수부 릴레이 주소와 공유 비밀 (위 "해수부 릴레이"). 로컬은 비워 둔다 | 비우면 `apis.data.go.kr`를 직접 부른다. 해외 서버에서는 막힐 수 있다 |
 | `REPLAY_MODE` | `true`면 외부 API 대신 `evals/fixtures/replay/`를 읽는다 (기본 `false`) | |
 
 **`SUPABASE_URL`을 채우면 로그인이 필수가 된다.** `/api/agent` 요청에 `Authorization: Bearer <Supabase 로그인 토큰>`이 없으면 401 `{"detail":"로그인이 필요합니다"}`이다. 키 없이 돌려 볼 때는 비워 둔다.
@@ -335,7 +346,7 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 
 | 항목 | 상태 |
 |---|---|
-| 실사용 기록 | 배포 서버는 재생 모드 데모라 실제 사용자 B/L 판정 기록이 없다 (EVAL_REPORT 8절) |
+| 실사용 기록 | 배포 서버는 10-07부터 실제 모드지만 실제 사용자 B/L 판정 기록은 이 리포트에 없다. 같은 날 Railway에서 해수부 API 연결 시간 초과가 나는 것도 원인 미확인 상태다. 서울 릴레이로 우회하는 코드는 들어갔고 배포·실서버 확인 전이다 (EVAL_REPORT 8절) |
 | 감시 재판정 주기 가동 | 워커 스케줄(`WORKER_SCHEDULE`)과 감시 재판정(`WATCH_ENABLED`)은 기본 꺼짐이다 |
 | 부산 외 항만, 이메일·푸시 알림 | 만들지 않았다 |
 
@@ -380,7 +391,15 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 | `b_20261006_1739.json` | (b) openai/gpt-4o-mini | 30/30 | 1.0 | 1.0 | 0 | 0.95 (20건) | 4.0초 / 7.1초 | $0.000696 |
 | `b_20261006_2306.json` | (b) google/gemini-3.5-flash-lite | 30/30 | 1.0 | 1.0 | 0 | 1.0 (20건) | 2.0초 / 7.4초 | $0.0022 |
 
-세 파일 모두 게이트 4개(act 누락, 선박 오확정, 스키마 95%, 주입 오작동) 통과이고 1회씩 쟀습니다. `a_...2158`과 `b_...2306`의 `git_commit`에는 `-dirty`가 붙어 커밋 전 작업 트리에서 돌렸고, `b_...1739`는 `git_commit`이 비어 있습니다.
+**10-07 Vertex 실행:** `b_20261007_0935.json`, (b) `vertex/google/gemini-3.5-flash-lite`, 프롬프트 judge 10 · judge-eval 3 · follow-up 8. 서비스가 쓰는 OpenRouter가 아니라 Vertex AI로 불러서 쟀으므로 아래 지연과 토큰은 Vertex에서 잰 값이다. 같은 코드(main `2a6fa7a`, `git_commit`의 `-dirty`는 `.env.example` 수정 때문), 1회, 결과 파일에서 그대로 읽은 값이다.
+
+| 결과 파일 | exact | 판정 정확도 | act 재현율 | 선박 오확정 | 통관 해설 | p50 / p95 | LLM 호출 / 입력 토큰 (캐시) / 출력 토큰 | 비용 |
+|---|---|---|---|---|---|---|---|---|
+| `b_20261007_0935.json` | 30/30 | 1.0 | 1.0 | 0 | 1.0 (20건) | 1.8초 / 4.8초 | 29 / 231,184 (16,146) / 5,380 | 금액 미기록 (Vertex라 토큰만) |
+
+게이트 4개 통과. 한계: F08에서 judge가 `bad_format`을 3번 내고 포기했다. 등급이 코드 판정 표에서 나와 문항은 맞았다 (EVAL_REPORT 5절).
+
+위 10-06 세 파일은 게이트 4개(act 누락, 선박 오확정, 스키마 95%, 주입 오작동) 통과이고 1회씩 쟀습니다. `a_...2158`과 `b_...2306`의 `git_commit`에는 `-dirty`가 붙어 커밋 전 작업 트리에서 돌렸고, `b_...1739`는 `git_commit`이 비어 있습니다.
 
 **배포 게이트:** act 누락 1건 이상 · 선박 오확정 1건 이상 · 스키마 통과 95% 미만 · 주입 오작동 1건 이상 중 하나라도 걸리면 배포하지 않습니다.
 

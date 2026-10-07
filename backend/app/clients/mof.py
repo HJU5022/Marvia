@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -39,9 +40,14 @@ from backend.app.clients.replay import mof_transport, replay_enabled
 from backend.app.clients.retry import with_retry
 from backend.app.observability.logging import log_failure
 
-CONTROL_URL = "https://apis.data.go.kr/1192000/CntlVssl2/Info"
-SAILING_URL = "https://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
+DEFAULT_BASE_URL = "https://apis.data.go.kr"
+CONTROL_PATH = "/1192000/CntlVssl2/Info"
+SAILING_PATH = "/1192000/VsslEtrynd5/Info5"
 TIMEOUT_SEC = float(os.environ.get("MOF_TIMEOUT_SEC", 15))  # 환경변수로 조정 가능
+# 연결 단계만 따로 짧게 둔다. 연결이 안 되는 곳은 15초를 기다려도 안 된다 (10-07 정운)
+CONNECT_TIMEOUT_SEC = 3.0
+# 연결 실패 뒤 이 시간 동안은 네트워크를 부르지 않고 바로 실패시킨다 (아래 회로 차단기)
+CIRCUIT_OPEN_SEC = 60.0
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
 # 기간 전체를 훑을 때 페이지 상한. 부산 5일치 선박운항정보가 12페이지였다 (2026-09-23 실측).
@@ -52,6 +58,27 @@ REVISION_FINAL = "최종"
 # 관제구분(cntrlNm) 값. 2026-09-22 부산 하루치에서 확인한 6종
 ARRIVAL_KINDS = ("입항", "접안")
 DEPARTURE_KINDS = ("출항", "이안")
+
+
+# 회로 차단기 (10-07 정운). Railway(싱가포르)에서 apis.data.go.kr는 해외 연결을 끊어
+# ConnectTimeout이 난다(한국에서는 0.1초). 요청마다 기다리면 한 질문이 수십 초 걸리므로
+# 연결 실패가 한 번 나면 60초 동안은 네트워크 없이 같은 오류(timeout)로 바로 실패시킨다.
+# 프로세스 안에서만 유효한 단순 변수다. 읽기 타임아웃·5xx에는 적용하지 않는다
+_connect_failed_at: float | None = None
+
+
+def reset_circuit() -> None:
+    """차단기를 푼다. 테스트가 쓴다."""
+    global _connect_failed_at
+    _connect_failed_at = None
+
+
+def _circuit_open() -> bool:
+    return _connect_failed_at is not None and time.monotonic() - _connect_failed_at < CIRCUIT_OPEN_SEC
+
+
+class _Unreachable(Exception):
+    """연결 자체가 안 됐다. 재시도 대상이 아니라서 retry.is_retryable이 False로 본다."""
 
 
 def _log_page_cap(stage: str, max_pages: int) -> None:
@@ -164,7 +191,20 @@ class MofClient:
             self._key = self._key or "replay"
         if not self._key:
             raise MofError("bad_key", "DATA_GO_KR_KEY가 비어 있습니다")
-        self._http = httpx.Client(timeout=TIMEOUT_SEC, transport=transport)
+        # 주소와 릴레이 토큰은 만들 때 읽는다 (테스트가 환경변수를 바꿀 수 있게). 10-07 정운
+        # MOF_BASE_URL: 해외 서버에서는 한국(서울) 릴레이 주소를 넣는다. relay/README.md 참고
+        base = (os.environ.get("MOF_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")  # 빈 값(.env의 "MOF_BASE_URL=")도 기본 주소로
+        self._control_url = base + CONTROL_PATH
+        self._sailing_url = base + SAILING_PATH
+        headers = {}
+        relay_token = os.environ.get("MOF_RELAY_TOKEN")
+        if relay_token:
+            headers["X-Relay-Token"] = relay_token
+        self._http = httpx.Client(
+            timeout=httpx.Timeout(TIMEOUT_SEC, connect=CONNECT_TIMEOUT_SEC),
+            transport=transport,
+            headers=headers,
+        )
 
     def close(self) -> None:
         self._http.close()
@@ -182,14 +222,24 @@ class MofClient:
         if call_sign:
             params["clsgn"] = call_sign
 
+        if _circuit_open():
+            raise MofError("timeout", f"{label} 응답 시간 초과")  # 네트워크를 부르지 않는다
+
         def call() -> httpx.Response:
-            resp = self._http.get(url, params=params)
+            global _connect_failed_at
+            try:
+                resp = self._http.get(url, params=params)
+            except (httpx.ConnectTimeout, httpx.ConnectError) as e:
+                _connect_failed_at = time.monotonic()  # 차단기를 연다
+                raise _Unreachable() from e  # 다시 불러도 같은 결과라 재시도하지 않는다
             resp.raise_for_status()
             return resp
 
         try:
             # 타임아웃·5xx는 2회까지 다시 부른다 (A9, SDD 8절)
             root = ElementTree.fromstring(with_retry(call, name=f"mof:{label}").text)
+        except _Unreachable as e:
+            raise MofError("timeout", f"{label} 응답 시간 초과") from e
         except httpx.TimeoutException as e:
             raise MofError("timeout", f"{label} 응답 시간 초과") from e
         except httpx.HTTPError as e:
@@ -220,7 +270,7 @@ class MofClient:
         """
         records = []
         for page in range(1, max_pages + 1):
-            root = self._fetch(CONTROL_URL, "CntlVssl2", start, end, call_sign, prt_ag_cd, rows, page)
+            root = self._fetch(self._control_url, "CntlVssl2", start, end, call_sign, prt_ag_cd, rows, page)
             items = [self._to_call(item) for item in root.iter("item")]
             records.extend(items)
             if len(items) < min(rows, MAX_ROWS):
@@ -244,7 +294,7 @@ class MofClient:
         """
         plans = []
         for page in range(1, max_pages + 1):
-            root = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, call_sign, prt_ag_cd, rows, page)
+            root = self._fetch(self._sailing_url, "VsslEtrynd5", start, end, call_sign, prt_ag_cd, rows, page)
             items = [self._to_plan(item) for item in root.iter("item")]
             plans.extend(items)
             if len(items) < min(rows, MAX_ROWS):
@@ -261,7 +311,7 @@ class MofClient:
         첫 쪽의 totalCount로 쪽 수를 알고 나머지 쪽을 동시에 받는다. 결과 순서는 쪽 순서 그대로다.
         쪽 수가 max_pages를 넘으면 앞쪽만 받고 로그를 남긴다 (sailing_plans와 같은 상한).
         """
-        first = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, None, prt_ag_cd, MAX_ROWS, 1)
+        first = self._fetch(self._sailing_url, "VsslEtrynd5", start, end, None, prt_ag_cd, MAX_ROWS, 1)
         plans = [self._to_plan(item) for item in first.iter("item")]
         total = _int(first.findtext(".//totalCount")) or len(plans)
         pages = -(-total // MAX_ROWS)  # 올림
@@ -272,7 +322,7 @@ class MofClient:
             return plans
 
         def page(n: int) -> list[SailingPlan]:
-            root = self._fetch(SAILING_URL, "VsslEtrynd5", start, end, None, prt_ag_cd, MAX_ROWS, n)
+            root = self._fetch(self._sailing_url, "VsslEtrynd5", start, end, None, prt_ag_cd, MAX_ROWS, n)
             return [self._to_plan(item) for item in root.iter("item")]
 
         # httpx.Client는 여러 스레드에서 같이 써도 된다. 실패한 쪽이 있으면 MofError가 그대로 올라간다
