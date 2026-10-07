@@ -257,28 +257,18 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 /* 10-08 정운 실사용 58번: 대화 맨 위 근거 모음 버튼 줄. 대화 칸을 내려도 위에 붙어 있다 */
 .chat-evidence-bar{position:sticky;top:0;z-index:5;display:flex;justify-content:flex-end;padding:4px 0 6px;background:var(--bg,transparent)}
 
-/* 10-08 정운 실사용 77번: 선박 검색 답 말풍선. 요약 한 줄 → 3칸 표 → 나머지 보기 → 출처 줄 (ChatVesselTable) */
-.cvt{display:flex;flex-direction:column;gap:12px;min-width:0;container-type:inline-size}
+/* 10-08 정운 실사용 77번: 선박 검색 답 말풍선. 요약 한 줄 → 한 줄 목록(배 사이 가는 선만) → 나머지 보기 → 출처 줄 (ChatVesselTable) */
+.cvt{display:flex;flex-direction:column;gap:8px;min-width:0}
 .cvt-lead{margin:0;font-size:16px;font-weight:600;line-height:1.6;color:var(--text);white-space:pre-line;word-break:keep-all}
-.cvt-wrap{min-width:0;border:1px solid var(--border);border-radius:10px;background:var(--surface,#fff);overflow:hidden}
-.cvt-table{width:100%;border-collapse:collapse;font-size:var(--fs-md,15px);line-height:1.5;table-layout:fixed}
-.cvt-table th{text-align:left;font-size:14px;font-weight:500;color:var(--text-2,var(--muted));background:var(--soft,#f2f4f6);padding:10px 14px}
-.cvt-table td{padding:14px;border-top:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}
-.cvt-name{font-weight:600;color:var(--text)}
-.cvt-eta{font-family:var(--mono);font-size:14px;letter-spacing:-.02em;white-space:nowrap}
-.cvt-lbl{display:none}
-.cvt-more{align-self:flex-start;background:none;border:0;padding:8px 0;min-height:44px;font-size:var(--fs-md,15px);font-weight:500;color:var(--rail,var(--brand,#2962f5));text-decoration:underline;text-underline-offset:3px}
-.cvt-more:hover{color:var(--brand-hover,#1d4fd7)}
+.cvt-list{list-style:none;margin:0;padding:0}
+.cvt-list li{padding:10px 0;border-top:1px solid var(--border)}
+.cvt-list li:last-child{border-bottom:1px solid var(--border)}
+.cvt-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.cvt-name{min-width:0;font-size:16px;font-weight:600;line-height:1.4;color:var(--text);overflow-wrap:anywhere}
+.cvt-eta{flex:none;white-space:nowrap;font-size:15px;font-variant-numeric:tabular-nums;color:var(--text)}
+.cvt-port{margin-top:2px;font-size:14px;line-height:1.4;color:var(--text-2,var(--muted));overflow-wrap:anywhere}
+.cvt-more{align-self:flex-start;background:none;border:0;padding:8px 0;min-height:44px;font-size:var(--fs-md,15px);font-weight:500;color:var(--rail,var(--brand,#2962f5))}
+.cvt-more::after{content:' →'}
+.cvt-more:hover{color:var(--brand-hover,#1d4fd7);text-decoration:underline;text-underline-offset:3px}
 .cvt-more-text{margin:0;font-size:var(--fs-md,15px);color:var(--text-2,var(--muted))}
 .cvt-note{margin:0;font-size:14px;line-height:1.6;color:var(--text-2,var(--muted))}
-/* 말풍선이 560px보다 좁으면(대화 칸은 40%라 1440px 화면에서도 해당, 375px 포함): 표를 줄마다 두 줄 카드로 쌓는다. 칸 이름 줄은 눈에는 숨기고 읽어 주는 도구에는 남긴다 */
-@container (max-width:560px){
-  .cvt-table,.cvt-table tbody{display:block}
-  .cvt-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-  .cvt-table tr{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;padding:12px 14px;border-top:1px solid var(--border)}
-  .cvt-table tr:first-child{border-top:0}
-  .cvt-table td{display:block;padding:0;border:0}
-  .cvt-name{font-size:16px}
-  .cvt-eta{white-space:normal}
-  .cvt-lbl{display:inline;font-family:var(--font);color:var(--muted)}
-}

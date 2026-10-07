@@ -215,7 +215,7 @@ try {
     await page.locator('.vessel-results').waitFor();
     assert.equal(await page.locator('.vessel-results thead th').count(), 5);
     // 10-08 정운 실사용 77번: 체험 모드 답도 3칸 표로 (배 이름 | 도착 예정 | 직전 기항지), 직전 기항지 2곳은 접지 않고 바로 보인다
-    assert.deepEqual(await page.locator('.cvt-table thead th').allTextContents(), ['배 이름', '도착 예정', '직전 기항지']);
+    assert((await page.locator('.cvt-list li').count()) >= 1, 'one-line list rows'); assert.equal(await page.locator('.cvt-table').count(), 0, 'no boxed table');
     assert.equal(await page.locator('.vl-ports details, details.vl-ports').count(), 0, 'few ports are shown inline, no disclosure');
     assert.equal(await page.locator('.vl-ports-line .vl-chips li').count(), 2);
     await overflow(page, width);
@@ -364,15 +364,16 @@ try {
 
       // 10-08 정운 실사용 77번: 선박 검색 답은 표로 (3칸 머리글, 줄 나눔, 가로 넘침 없음), "나머지 N척 전체 보기"가 표를 연다, 직전 기항지 40곳은 접어 둔다
       await input(page).fill('VESSELS 일본에서 오는 배'); await input(page).press('Enter');
-      await page.locator('.cvt-table').waitFor();
-      assert.deepEqual(await page.locator('.cvt-table thead th').allTextContents(), ['배 이름', '도착 예정', '직전 기항지']);
-      assert.equal(await page.locator('.cvt-table tbody tr').count(), 5);
+      await page.locator('.cvt-list').waitFor();
+      assert.equal(await page.locator('.cvt-list li').count(), 5);
+      assert.equal(await page.locator('.cvt-list th, .cvt-list thead').count(), 0, 'no visible column headers');
       assert.equal(await page.locator('.cvt-lead').textContent(), '일본에서 1주 안에 부산 오는 수입 화물선 43척이에요.');
       assert.equal(await page.locator('.cvt').getByText('· TEST VESSEL').count(), 0, 'raw dot lines are hidden when the table is drawn');
-      assert.match(await page.locator('.cvt-eta').first().innerText(), /\d+월 \d+일 \([일월화수목금토]\) \d\d:\d\d/);
+      assert.match(await page.locator('.cvt-eta').first().innerText(), /10\/7 \([일월화수목금토]\) \d\d:\d\d$/);
+      assert(await page.evaluate(() => [...document.querySelectorAll('.cvt-eta')].every(e => e.getBoundingClientRect().height < 30)), 'time never wraps');
       assert.equal(await page.locator('.cvt-note').textContent(), '해수부 입항 신고의 직전 기항지 기준이에요.');
       await overflow(page, width);
-      assert(await page.evaluate(() => { const w = document.querySelector('.cvt-wrap'); return w.scrollWidth <= w.clientWidth + 1; }), 'vessel table does not overflow its bubble');
+      assert(await page.evaluate(() => { const w = document.querySelector('.cvt-list'); return w.scrollWidth <= w.clientWidth + 1; }), 'vessel table does not overflow its bubble');
       await page.screenshot({path: `${SHOTS77}/chat-vessel-table-${width}.png`});
       await page.locator('.vessel-results').waitFor();
       // 휴대폰: 입력창에 포커스가 있으면 시트가 접혀 있어 손잡이로 편다

@@ -19,14 +19,14 @@ export function shipListOf(vessels: VesselItem[] | undefined | null): ShipList |
 }
 
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
-/** "10월 7일 (화) 00:00" (한국 시간). ISO가 아니면 보인 글 그대로, 없으면 "-" */
+/** "10/7 (화) 00:00" (한국 시간, 월·일 앞 0 없음). ISO가 아니면 보인 글 그대로, 없으면 "-" */
 export function arrivalLabel(value: string | null | undefined): string {
   if (!value) return '-';
   const d = new Date(value);
   if (Number.isNaN(d.valueOf())) return value;
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short'}).formatToParts(d).map(x => [x.type, x.value]));
   const wd = WEEKDAY[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday)] ?? '';
-  return `${p.month}월 ${p.day}일 (${wd}) ${p.hour}:${p.minute}`;
+  return `${Number(p.month)}/${Number(p.day)} (${wd}) ${p.hour}:${p.minute}`;
 }
 
 /** 표를 그릴 때 글에서 뺄 줄: "· "로 시작하는 배 줄과 "외 N척" 줄. 선박 검색 답(kind vessels)에서 표가 있을 때만 쓴다 (코드가 쓴 고정 모양, backend _ship_list_lines) */
