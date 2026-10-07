@@ -17,10 +17,13 @@ export function CandidatePicker({response:r,request,onResolve,busy}:{response:Ag
  function submit(e:FormEvent){e.preventDefault();if(!selected&&!voyage.trim()&&!eta&&!r.missing_inputs.includes('bl_type')){setError('후보를 고르거나 필요한 추가 정보를 입력해 주세요.');return;}setError('');onResolve({...request,follow_up_question:null,resolved_mmsi:selected,voyage_no:voyage.trim()||null,forwarder_eta:eta||null,bl_type:type});}
  const known=['voyage_no','forwarder_eta','bl_type'];
  const many=r.vessel_candidates.length>1;
+ // 세관에 화물이 없을 때(routers/agent.py NO_CARGO)는 후보 없이 B/L 구분만 다시 묻는다. 이때 "판단할게요" 제목은 진행 중처럼 보이고
+ // 같은 문장이 왼쪽 채팅 답에 이미 있어 되풀이된다 (10-08 정운 55·56번)
+ const noCargo=!r.vessel_candidates.length&&r.missing_inputs.length===1&&r.missing_inputs[0]==='bl_type';
  const needsExtra=known.some(k=>r.missing_inputs.includes(k))||r.missing_inputs.some(x=>!known.includes(x));
  return <section className="candidate-section cand-card">
-  <h3 className="cand-title">{many?'같은 이름의 배가 여러 척 있어요':'배를 확인하고, 정확하게 판단할게요.'}</h3>
-  {r.answer&&<p className="cand-sub">{r.answer}</p>}
+  <h3 className="cand-title">{noCargo?'조회 결과를 찾지 못했어요':many?'같은 이름의 배가 여러 척 있어요':'배를 확인하고, 정확하게 판단할게요.'}</h3>
+  {r.answer&&!noCargo&&<p className="cand-sub">{r.answer}</p>}
   <form onSubmit={submit}>
    <fieldset className="candidate-list cand-list" disabled={busy}><legend className="sr-only">선박 후보와 식별 근거</legend>
     {r.vessel_candidates.length?r.vessel_candidates.map(c=><label className={`candidate cand-row ${selected===c.mmsi?'selected':''}`} key={c.mmsi}>
@@ -32,7 +35,7 @@ export function CandidatePicker({response:r,request,onResolve,busy}:{response:Ag
       <span className="cand-why">후보로 본 이유: {c.match_reasons.join(' ')||'식별 근거가 없어요.'}</span>
      </span>
      <span className="cand-pick" aria-hidden="true">{selected===c.mmsi?<><Check size={16} strokeWidth={2}/>선택됨</>:'선택'}</span>
-    </label>):<p className="muted">고를 수 있는 선박이 없어요. 아래에서 필요한 정보를 입력해 주세요.</p>}
+    </label>):noCargo?<p className="muted">B/L 번호를 확인하고, 마스터·하우스 구분을 바꿔 다시 조회해 보세요.</p>:<p className="muted">고를 수 있는 선박이 없어요. 아래에서 필요한 정보를 입력해 주세요.</p>}
    </fieldset>
    {needsExtra&&<div className="cand-extra">
     {r.missing_inputs.includes('voyage_no')&&<div className="form-field"><label htmlFor="voyage">항차 번호</label><input id="voyage" value={voyage} onChange={e=>setVoyage(e.target.value)} disabled={busy} placeholder="도착 통지서의 항차 번호"/></div>}

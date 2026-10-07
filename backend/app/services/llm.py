@@ -1274,8 +1274,14 @@ class ChatAgentOutput(BaseModel):
 
 def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, history: list[dict],
                tools: list[dict], run_tool: Callable[[str, dict], dict], *, model: str | None = None,
-               feedback: str | None = None) -> LLMAnswer:
+               feedback: str | None = None, on_screen: dict | None = None, evidence: str | None = None) -> LLMAnswer:
     """가린 문장과 최근 대화를 받아 도구를 골라 쓰고 답 한 칸을 낸다. output은 ChatAgentOutput.
+
+    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (10-08 정운 실사용 36번). services/chat._masked_screen이 가리고 거른 자료다.
+    자료일 뿐이다 (프롬프트 Trust boundary). 없으면 입력 JSON에 칸 자체를 넣지 않아 예전 입력과 같다.
+
+    evidence: 이번 문장에서 앞서 부른 도구가 모은 근거 목록 글 (줄마다 [E1] 같은 id, services/citations.evidence_prompt_block, 10-08 정운 실사용 58번).
+    도구 결과 안에도 같은 글이 evidence 칸으로 오지만, 다시 묻는 호출은 앞 도구 결과가 대화에 없어서 입력 자료로 다시 준다. 자료일 뿐이다. 없으면 칸 자체를 넣지 않는다.
 
     history: [{"role": "user"|"assistant", "text": 가린 글}]. 자료일 뿐이다 (프롬프트 Trust boundary).
     부른 도구와 결과는 LLMAnswer.tool_calls에 담긴다. 답 문장 검사는 services/chat.py가 한다.
@@ -1283,6 +1289,10 @@ def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
     """
     data = {"message": masked_message, "bl_refs": bl_refs, "history": history,
             "has_current_cargo": has_current_cargo, "today": today}
+    if on_screen:
+        data["on_screen"] = on_screen
+    if evidence:
+        data["evidence"] = evidence
     return _ask_json(CHAT_AGENT_PROMPT, json.dumps(data, ensure_ascii=False), "chat_agent", CHAT_AGENT_SCHEMA,
                      ChatAgentOutput, model, feedback=feedback, skills=CHAT_AGENT_SKILLS, tools=tools, run_tool=run_tool)
 

@@ -719,13 +719,12 @@ th{background:var(--soft);color:var(--text-2)}
 .conv-confirm button:disabled{opacity:.55;cursor:not-allowed}
 .conv-empty,.conv-error{margin:6px 14px;font-size:14px;line-height:1.6;color:var(--muted)}
 .conv-error{color:var(--danger)}
-.conv-toggle{display:none;align-items:center;gap:6px;min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:0;background:var(--surface);color:var(--blue-dark);font-size:14px;font-weight:500;cursor:pointer}
 .conv-overlay{position:fixed;inset:0;z-index:70}
 .conv-backdrop{position:absolute;inset:0;border:0;background:#191f2866;cursor:pointer}
 .conv-sheet{position:absolute;inset:0 auto 0 0;width:min(340px,calc(100vw - 32px));padding:16px;background:var(--surface);box-shadow:0 10px 30px #191f2814;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
 .conv-sheet-head{display:flex;align-items:center;justify-content:space-between;font-size:var(--fs-md,15px)}
 .conv-sheet-head button{min-height:36px;padding:0 10px;border:0;background:transparent;color:var(--muted);font-size:14px;cursor:pointer}
-@media(max-width:900px){.conv-section{display:none}.conv-toggle{display:inline-flex}.conv-delete{opacity:1}}
+@media(max-width:900px){.conv-section{display:none}.conv-delete{opacity:1}}
 
 /* 내 화물 현황 표 (CargoSheet, 10-06). 새 색 없이 기존 토큰만 쓴다. 전체 화면 개편 전까지 최소한의 모양 */
 .cargo-sheet-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
@@ -1022,9 +1021,8 @@ td small,th small{font-size:14px}
  .schedule-line strong{margin:2px 0 8px auto}
  .back-to-cargo .button{width:100%;justify-content:center}
 }
-/* 접은 메뉴(아이콘만)에는 사이드바에 대화 목록을 둘 자리가 없다. 좁은 화면과 같이 상단바 "대화" 버튼이 여는 패널로 보인다 (Shell.tsx, 10-06) */
+/* 접은 메뉴(아이콘만)에는 사이드바에 대화 목록을 둘 자리가 없다. 사이드바를 펼치면 다시 보인다. 상단바 "대화" 버튼은 10-08 뺐다 (정운 32번) */
 .rail-collapsed .conv-section{display:none}
-.rail-collapsed .conv-toggle{display:inline-flex}
 
 
 /* ==========================================================================
@@ -1141,8 +1139,6 @@ tbody tr:hover{background:var(--hover)}
 .replay-chip span{width:8px;height:8px;background:var(--muted)}
 .avatar{flex:none;width:36px;height:36px;border:0;background:var(--hover);color:var(--text);font-size:var(--text-sm);font-weight:500}
 button.avatar:hover{background:var(--border)}
-.conv-toggle{flex:none;min-height:36px;padding:0 14px;border:0;border-radius:0;background:var(--brand-soft);color:var(--brand);font-size:var(--text-sm);font-weight:500}
-.conv-toggle:hover{background:#dde8ff}
 .user-popover{top:44px;width:250px;padding:8px;border:0;border-radius:0;box-shadow:0 8px 24px #191f2820}
 .user-popover .user-name{padding:8px 12px 0;font-size:var(--text-base)}
 .user-popover .user-email{padding:0 12px 10px;font-family:var(--font);font-size:var(--text-sm)}
@@ -1219,7 +1215,7 @@ main:focus,main:focus-visible{outline:none}
 :focus:not(:focus-visible){outline:none}
 
 /* 버튼 공통: 올림은 배경만, 누름은 살짝 눌림. 위로 뜨는 움직임은 쓰지 않는다 */
-.button,.icon-button,.drawer-close,.nav-link,.nav-sub-item,.nav-toggle,.rail-toggle,.about-link,.avatar,.conv-toggle{
+.button,.icon-button,.drawer-close,.nav-link,.nav-sub-item,.nav-toggle,.rail-toggle,.about-link,.avatar{
  transition:background-color var(--dur-fast) var(--ease),color var(--dur-fast) var(--ease),border-color var(--dur-fast) var(--ease),box-shadow var(--dur-fast) var(--ease),transform var(--dur-fast) var(--ease)}
 .button:hover:not(:disabled),.button.primary:hover:not(:disabled){transform:none}
 .button:active:not(:disabled),.icon-button:active:not(:disabled),.drawer-close:active,.rail-toggle:active,.avatar:active{transform:scale(.98)}

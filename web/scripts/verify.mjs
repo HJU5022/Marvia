@@ -106,10 +106,10 @@ try {
       await page.screenshot({path: `screenshots/${String(i + 8).padStart(2, '0')}-${route}-${width}.png`, fullPage: true}); check(`${route} ${width}px`);
     }
 
-    // 설정은 화면 안 탭 5개, 관리는 탭 2개: 탭마다 접근성 검사 (탭을 바꿔도 가로 넘침이 없어야 한다)
+    // 설정은 화면 안 탭 4개 (10-08 정운 실사용 48번: 조회 이력 탭을 뺐다), 관리는 탭 2개: 탭마다 접근성 검사 (탭을 바꿔도 가로 넘침이 없어야 한다)
     await page.goto(`${base}/settings`); await ready(page);
-    const settingsTabs = page.locator('.st-tabs .st-tab'); assert.equal(await settingsTabs.count(), 5, 'settings has 5 in-page tabs');
-    for (let t = 0; t < 5; t++) { await settingsTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `settings-tab${t}-${width}`); }
+    const settingsTabs = page.locator('.st-tabs .st-tab'); assert.equal(await settingsTabs.count(), 4, 'settings has 4 in-page tabs');
+    for (let t = 0; t < 4; t++) { await settingsTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `settings-tab${t}-${width}`); }
     await page.goto(`${base}/admin`); await ready(page);
     const adminTabs = page.getByRole('tab'); assert.equal(await adminTabs.count(), 2, 'admin has 2 in-page tabs');
     for (let t = 0; t < 2; t++) { await adminTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `admin-tab${t}-${width}`); }
@@ -160,6 +160,36 @@ try {
     await page.locator('.cand-row').first().click(); assert(await page.getByRole('radio').first().isChecked(), 'clicking a candidate row selects its radio'); await page.getByRole('button', {name: '확인하고 판정하기'}).click(); await page.locator('[data-status="ok"][aria-busy="false"]').waitFor();
     check(`candidate validation + resolution ${width}`);
 
+    // 10-08 정운 실사용 37번: 채팅으로 조회해 되묻는 답이 오면 말풍선 아래에 후보 칩이 보이고, 칩을 누르면 같은 요청으로 판정이 나온 뒤 칩은 사라진다
+    await home(page); await input(page).fill('MRVDEMO1102'); await input(page).press('Enter');
+    await page.locator('.chat-cand-chips').waitFor();
+    assert(await page.locator('.chat-cand-chip').count() > 0, 'candidate chips appear under the asking bubble');
+    await page.locator('.chat-cand-chip').first().click();
+    await page.locator('[data-status="ok"][aria-busy="false"]').waitFor();
+    assert.equal(await page.locator('.chat-cand-chips').count(), 0, 'chips disappear once resolved');
+    check(`chat candidate chips resolve ${width}`);
+
+    // 10-08 정운 실사용 58번: 데모의 정상 답에는 모의 근거 표시가 붙는다. 칩을 누르면 그 자리에 출처가 뜨고, Esc로 닫으면 칩으로 포커스가 돌아온다. "근거 N개"는 모음 패널을 연다
+    await home(page); await input(page).fill('MRVDEMO1101'); await input(page).press('Enter');
+    const chip = page.locator('.chat-turn.assistant .ev-chip').first();
+    await chip.waitFor();
+    await chip.click();
+    const pop = page.locator('.ev-pop');
+    await pop.waitFor();
+    assert((await pop.innerText()).includes('해수부'), 'popover shows the source label');
+    assert.equal(await page.locator('.chat-turn.assistant .ev-chip').count(), 1, 'two marks in one sentence merge into one chip');
+    assert.match(await chip.innerText(), /해수부 외 1/, 'merged label is first source plus count');
+    assert.equal(await pop.locator('.ev-pop-item').count(), 2, 'one section per source');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.ev-pop')).borderRadius), '0px', 'popover is a plain square box');
+    await page.keyboard.press('Escape');
+    assert.equal(await pop.count(), 0, 'Esc closes the popover');
+    assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('ev-chip')), true, 'focus returns to the chip');
+    await page.getByRole('button', {name: /근거 \d+개/}).click();
+    await page.getByRole('dialog', {name: '이 대화의 근거 모음'}).waitFor();
+    assert((await page.locator('.ev-collect').innerText()).includes('해수부'), 'collection panel lists the source');
+    await page.keyboard.press('Escape');
+    check(`evidence chip popover + collection panel ${width}`);
+
     // 부분 결과: 해수부 근거만 보기는 화면 필터이고 새 판정이 아니다. 원본 값 펼침
     await cargo(page, 'partial'); await page.getByRole('button', {name: '해수부 근거만 보기'}).click(); await page.locator('.more-fold[open] .filter-notice').waitFor({state: 'visible', timeout: 3000}); // 근거는 접힌 "펼쳐 보기" 안에 있어, 필터가 펼치고 안내를 보인다
     assert(await page.locator('.filter-notice').isVisible());
@@ -194,25 +224,20 @@ try {
     assert(await page.locator('.vessel-results .leaflet-container').count() <= 1, 'only the selected vessel keeps a map');
     check(`vessel search + inline detail switch/cleanup ${width}`);
 
-    // 서류 사진: 드로어에서 확인한 값만 입력창에 넣고 자동으로 조회하지 않는다
+    // 서류 사진 (10-08 정운 49·51·53번): 옆 서랍 대신 입력칸 클립 버튼으로 붙인다. 읽기가 끝나도 스스로 보내지 않고,
+    // 입력칸 위 칩 아래에 확인 카드가 뜬다. "첨부한 서류 빼기"로 떼면 카드도 사라진다
     const turnCount = await turns(page);
     // 휴대폰: 펼친 상세 시트가 입력창을 덮으므로 손잡이로 접는다 (넓은 화면에는 손잡이가 없다)
     if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'true') await handle.click();
-    const docTrigger = page.getByRole('button', {name: '서류 사진으로 채우기'});
-    await docTrigger.click(); await page.getByRole('dialog').waitFor();
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '패널 닫기', 'drawer focus starts on close');
-    assert(await page.evaluate(() => document.querySelector('.app-shell').hasAttribute('inert')), 'page behind the drawer is inert');
-    for (let t = 0; t < 25; t++) await page.keyboard.press('Tab');
-    assert(await page.evaluate(() => !!document.activeElement?.closest('.drawer')), 'focus stays inside the drawer');
-    if (width === 1440 && !interactionsOnly) await audit(page, `document-drawer-${width}`);
-    await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({state: 'detached'});
-    assert(await page.evaluate(() => !!document.activeElement?.classList.contains('doc-trigger')), 'Esc returns focus to the trigger');
-    await docTrigger.click(); await page.getByRole('dialog').waitFor();
+    assert(await page.getByRole('button', {name: '서류 사진·PDF 첨부'}).isVisible(), 'attach button in composer');
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    await page.locator('.drawer input[type=file]').setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
-    await page.getByRole('button', {name: '확인한 값으로 채우기'}).click(); await page.getByRole('dialog').waitFor({state: 'detached'});
-    assert.match(await input(page).inputValue(), /MRVDEMO1101/); assert.equal(await turns(page), turnCount, 'document never sends by itself');
-    check(`document drawer focus/inert/Esc + fills composer without sending ${width}`);
+    await page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
+    await page.locator('.doc-chip').waitFor();
+    await page.getByRole('button', {name: '확인한 값으로 조회'}).waitFor();
+    if (width === 1440 && !interactionsOnly) await audit(page, `document-attach-${width}`);
+    assert.equal(await turns(page), turnCount, 'document never sends by itself');
+    await page.getByRole('button', {name: '첨부한 서류 빼기'}).click(); await page.locator('.doc-chip').waitFor({state: 'detached'});
+    check(`document attach chip + confirm card without sending ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
     // 사이드바 개편(10-07): 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다

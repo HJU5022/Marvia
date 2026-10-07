@@ -29,7 +29,7 @@ def _llm(monkeypatch, script=(), cue=False):
     """가짜 llm.chat_agent. script의 (도구, 인자)를 run에 넘기고 도구를 쓴 답(reply 비어 있음)을 낸다. 받은 도구 결과는 results에 모은다."""
     results = []
 
-    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None):
+    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None, evidence=None):
         calls = []
         if tools:
             for name, args in script:

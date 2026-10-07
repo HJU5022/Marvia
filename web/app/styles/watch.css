@@ -206,3 +206,22 @@
 .cluster-go{border-radius:0;width:30px;height:30px;border:1px solid var(--border-strong,#cfcfcf);background:transparent}
 .cluster-go:hover{background:var(--text);color:#fff;border-color:var(--text)}
 .watch-pin .pin-body{box-shadow:none;border-width:2px}
+
+/* ===== 10-08 정운 실사용 57번: B/L 없이 배만 지켜보는 줄 (components/WatchedVessels.tsx, WatchVesselButton.tsx) ===== */
+.watched-vessels{margin-top:24px}
+.watched-vessels h3{font-size:var(--fs-lg,18px);font-weight:500;margin:0 0 8px}
+.watched-vessels ul{list-style:none;margin:0;padding:0}
+.watched-vessels li{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
+.watched-vessels .wv-main{display:flex;flex-direction:column;gap:4px;min-width:0}
+.watched-vessels .wv-line{font-size:var(--text-sm,13px);color:var(--muted)}
+.watched-vessels .subtle-badge{align-self:flex-start}
+.watch-vessel-btn{display:inline-flex;align-items:center;gap:6px}
+.watch-vessel-btn .request-error:empty{display:none}
+/* 입항 예정 목록 줄의 지켜보기 버튼 (components/VesselList.tsx). 이름 칸이 좁아서(375px) 이름이 줄바꿈되고 버튼은 이름 옆에 붙는다 */
+.vl-name{display:flex;align-items:flex-start;gap:4px;min-width:0}
+.vl-name .ship-link{min-width:0;text-align:left;overflow-wrap:anywhere}
+.vl-watch{flex:none;margin:-6px 0}
+.vl-watch .watch-vessel-btn{flex-wrap:wrap}
+.vl-watch .icon-button{min-width:32px;min-height:32px;width:32px;height:32px;padding:0}
+.vl-watch .request-error{max-width:140px;font-size:var(--text-sm,13px)}
+@media (max-width:480px){.vl-name{flex-direction:column;gap:2px}.vl-watch{margin:0}}

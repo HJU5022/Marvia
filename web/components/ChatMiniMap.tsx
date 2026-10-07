@@ -22,28 +22,30 @@ function goBigMap() {
 
 export function ChatMiniMap({map: m}: {map: ChatMap}) {
   const host = useRef<HTMLDivElement>(null);
-  const name = m.ship_name ?? '선박';
+  // 10-08 정운 52번: 이름이 없을 때 그냥 "선박"이라 쓰면 어떤 배인지 알 수 없다. 서버가 같은 배로 확인한 때만 이름을 주므로(chat.py _map_from), 없으면 이름 모름을 그대로 밝힌다
+  const name = m.ship_name ?? '선박 (이름 확인 안 됨)';
+  // 10-08 정운 39번: 위치 값이 비었거나 0,0이면 지도를 그리지 않는다 (실패한 답에 지도가 붙던 문제의 화면 쪽 방어)
+  const valid = Number.isFinite(m.lat) && Number.isFinite(m.lng) && !(m.lat === 0 && m.lng === 0);
   // 한 줄 설명. 있는 값만 이어 붙인다
-  const sub = [m.distance_nm != null ? `부산까지 약 ${Math.round(m.distance_nm)}해리` : null, m.received_at ? `${dateTime(m.received_at, true)} 기준` : null].filter(Boolean).join(' · ');
+  const sub = [m.distance_nm != null ? `부산까지 바닷길로 약 ${Math.round(m.distance_nm)}해리` : null, m.received_at ? `${dateTime(m.received_at, true)} 기준` : null].filter(Boolean).join(' · ');
 
   // 큰 지도가 화면에 있을 때만 "크게 보기"를 보인다. 화물 결과가 없는 답(목록에서 고른 다른 배의 위치 등)에서는 눌러도 갈 곳이 없다 (10-05)
   const [hasBig,setHasBig] = useState(false);
   useEffect(() => { setHasBig(!!document.getElementById('big-map')); }, []);
   useEffect(() => {
+    if (!valid) return;
     let disposed = false;
     let cleanup: (() => void) | undefined;
     void import('leaflet').then(L => {
       if (disposed || !host.current) return;
       const {demo} = getPresentationData();
-      const css = getComputedStyle(document.documentElement);
-      const color = (n: string) => css.getPropertyValue(n).trim();
       const ship: L.LatLngTuple = [m.lat, m.lng];
       const port: L.LatLngTuple = [demo.port.lat, demo.port.lng];
       // 조작을 모두 막은 고정 지도. 배와 부산항이 함께 들어오게 맞춘다 (먼저 화면 범위를 정한 뒤 선을 올린다, VesselMap 10-01 메모)
       const map = L.map(host.current, {zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false, minZoom: 4, maxZoom: 10, attributionControl: true});
       map.fitBounds(L.latLngBounds([ship, port]).pad(.5), {maxZoom: 8, animate: false});
       const base = addBasemap(L, map, () => { drawLocalGeography(L, map); });
-      L.polyline([ship, port], {color: color('--blue'), weight: 2, dashArray: '5 7', opacity: .8, interactive: false}).addTo(map);
+      // 10-08 정운 39번: 배와 부산항을 잇던 점선 직선은 실제 항로가 아니라 육지를 가로질러 보였다. 항로 데이터가 없으므로 선을 없애고 두 점만 둔다
       L.marker(port, {icon: L.divIcon({className: 'port-marker', html: '<span>⚑</span>', iconSize: [28, 28], iconAnchor: [14, 14]}), interactive: false, keyboard: false}).addTo(map);
       L.marker(ship, {icon: L.divIcon({className: 'ship-marker', html: '<span>▲</span>', iconSize: [30, 30], iconAnchor: [15, 15]}), interactive: false, keyboard: false}).addTo(map);
       map.attributionControl.setPrefix(false);
@@ -52,11 +54,14 @@ export function ChatMiniMap({map: m}: {map: ChatMap}) {
       cleanup = () => { ro.disconnect(); base.dispose(); map.remove(); };
     });
     return () => { disposed = true; cleanup?.(); };
-  }, [m.lat, m.lng]);
+  }, [m.lat, m.lng, valid]);
 
+  if (!valid) return null;
   return <figure className="chat-mini-map">
     <div ref={host} className="chat-mini-map-host" role="img" aria-label={`${name} 현재 위치 지도. 위도 ${m.lat.toFixed(2)}, 경도 ${m.lng.toFixed(2)}${m.distance_nm != null ? `, 부산까지 약 ${Math.round(m.distance_nm)}해리` : ''}`}/>
-    <figcaption><span><strong>{name}</strong>{sub && <small>{sub}</small>}</span>
+    <figcaption><span><strong>{name}</strong>{sub && <small>{sub}</small>}
+      {/* 10-08 정운 39번: 지도에 아무 설명이 없었다. 점이 무엇인지와 거리가 근사값임을 밝힌다 */}
+      <small className="mini-map-legend">▲ 배의 현재 위치 · ⚑ 부산항 · 거리는 바닷길 기준 근사값이에요</small></span>
       {hasBig && <button type="button" onClick={goBigMap} aria-label="크게 보기" title="지도 크게 보기"><Maximize2 size={16}/></button>}</figcaption>
   </figure>;
 }
