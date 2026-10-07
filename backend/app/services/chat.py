@@ -648,21 +648,31 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
         return ChatResult(kind="message", reply=CONTAINER_NOT_FOUND if user_id else CONTAINER_NEED_LOGIN)
     # 기억 뽑기 재료는 가린 문장이다. B/L·MRN 원본은 넘기지 않는다 (CLAUDE.md, docs/specs/memory.md 쓰기 흐름 3)
     types_token = _STORED_TYPES.set(stored_types)
+    early = None
     try:
         with memory.user_text(masked) as turn:
+            # 기억 뽑기는 답 만들기와 같이 턴 시작에 출발한다 (10-08 정운 실사용 76). B/L이 든 문장도 같다: 먼저 도는 쪽은 화물 없이 이 사람에 대해 종류(거래처·선호·일정)만 맡고, 화물에 묶인 것은 조회 뒤 기억 뽑기가 맡는다.
+            # 직전 답이 우리가 붙인 거래처 되묻기였으면 그 문맥을 같이 준다 ("포워더야"가 어느 거래처 답인지 알게)
+            if user_id:
+                early = memory.start_early(user_id, masked, memory.followup_hint(history))
             result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao, on_screen)
     finally:
         _STORED_TYPES.reset(types_token)
     # 로그인 사용자의 평범한 대화 턴도 기억 뽑기에 보낸다 (10-06 정운 결정). 기억 뽑기는 화물 조회·후속 질문 뒤에만 돌아
     # "우리 포워더는 가온 김과장이야" 같은 말이 B/L 없는 턴에서 버려졌다. 같은 문장을 두 번 보내지 않도록,
     # 이 턴에 조회가 이미 맡겼으면(turn.fired) 건너뛴다. 무엇을 기억할지는 LLM이 정한다. 가린 문장만 넘긴다
-    if user_id and not turn.fired:
+    if user_id and not turn.fired and early is None:
         memory.remember_chat_later(user_id, masked)
     if not result.evidence_items and result.agent is not None:
         # 에이전트를 안 거친 화물 답(전 방식 등)도 화면 칩이 쓸 근거 목록은 싣는다. 표시(citations)는 없다 (10-08 정운 실사용 58번)
         result = replace(result, evidence_items=cite.build_evidence_list(result.agent.evidence))
     if repair_notes:
         result = replace(result, reply="\n".join([result.reply, *repair_notes]))
+    # 먼저 맡긴 기억 뽑기의 결과를 짧게 기다려 답 끝에 붙인다: 저장하지 못한 것 알림, 거래처 종류·전화 되묻기 (코드가 쓴 글, LLM 아님).
+    # 이전 턴에서 늦게 끝나 못 붙인 알림도 여기서 같이 붙는다. 기억 뽑기의 어떤 실패도 답을 막지 않는다
+    extra = "\n".join(x for x in (*memory.take_notices(user_id), memory.join_early(user_id, early)) if x)
+    if extra:
+        result = replace(result, reply="\n\n".join(x for x in (result.reply, extra) if x))
     return result
 
 

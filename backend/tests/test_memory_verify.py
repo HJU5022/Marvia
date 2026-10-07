@@ -108,9 +108,12 @@ def test_personal_mobile_in_text_field_rejected():
 
 
 @pytest.mark.parametrize("phone", ["010-1234-5678", "+82-10-1234-5678", "+82-010-1234-5678", "82-10-1234-5678"])
-def test_personal_mobile_in_phone_rejected(phone):
+def test_personal_mobile_in_phone_dropped_but_contact_saved(phone):
+    """휴대폰은 저장하지 않는다. 10-08부터 거래처 전체를 버리지 않고 전화 칸만 뺀다 (정운 실사용 76)."""
     fields = {"company": "가나다물류", "role": "포워더", "source": "사용자", "phone": phone}
-    assert _check(_op(kind="contact", section="about", fields=fields), f"가나다물류 {phone}").rejected == ["bad_phone"]
+    checked = _check(_op(kind="contact", section="about", fields=fields), f"가나다물류 {phone}")
+    assert checked.rejected == [] and checked.dropped == ["mobile_phone"]
+    assert checked.ops[0]["fields"] == {"company": "가나다물류", "role": "포워더", "source": "사용자"}
 
 
 @pytest.mark.parametrize("fields", [

@@ -42,6 +42,7 @@
 | tool_schedule | 에이전트가 부산 입항 기록(get_port_schedule)을 고른 때 | 부산 입항 기록 조회 |
 | tool_distance | 에이전트가 남은 항로 거리(estimate_distance)를 고른 때 | 남은 항로 거리 계산 |
 | tool_web | 에이전트가 웹 검색(web_search)을 고른 때 (10-05) | 웹 검색 |
+| memory | 기억 뽑기가 저장할 내용을 찾았을 때만. 답 만들기와 같이 돌아 다른 단계와 겹칠 수 있다 (10-08 정운 실사용 76) | 메모 저장 중 |
 
 경로마다 지나간 단계만 나온다. 예: 정상 조회 understand → customs → identify → position → judge, 되묻기 understand → customs → identify, 부산 외 understand → customs.
 
