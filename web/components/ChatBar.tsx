@@ -17,6 +17,7 @@ import {useApp} from './AppProvider';
 import {EvidencePopover} from './EvidencePopover';
 import {ConversationEvidence} from './ConversationEvidence';
 import {ChatMiniMap} from './ChatMiniMap';
+import {ChatVesselTable} from './ChatVesselTable';
 import {ChatCargoTable} from './ChatCargoTable';
 import {WatchOfferAction} from './WatchOfferAction';
 import {ChatCandidateChips} from './ChatCandidateChips';
@@ -82,6 +83,8 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   const verdictTurn = view === 'cargo' && result?.verdict ? thread.map((t, i) => t.role === 'assistant' && t.kind === 'cargo' && !(t.cargos && t.cargos.length > 1) ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
   // 선박 후보 칩은 "가장 최근 되묻기 답"에만 붙이고, 그 되묻기가 아직 풀리지 않았을 때만 보인다 (결과 칸이 같은 되묻기 그대로일 때).
   // 후보를 골라 판정이 나오면 결과가 바뀌어 칩이 사라진다 (10-08 정운 실사용 37번)
+  // 선박 검색 답 중 가장 최근 것만 "나머지 N척 전체 보기"가 열린다 (ChatVesselTable)
+  const lastVesselTurn = thread.reduce((a, t, i) => t.role === 'assistant' && t.kind === 'vessels' ? i : a, -1);
   const chipTurn = result?.status === 'insufficient' ? thread.map((t, i) => t.role === 'assistant' && t.agent?.vessel_candidates.length ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
   // 화물 카드가 실제로 보일 때만 "이 화물"로 안내한다. AppProvider.ask도 같은 조건으로 화물을 함께 보낸다 (10-02 UI 점검 F5)
   const cargoShown = view === 'cargo' && !!result && !!request.bl_no;
@@ -252,7 +255,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
         </div>
       </div> : <ol className="chat-thread" aria-live="polite">
         {thread.map((t, i) => <li key={i} className={`chat-turn ${t.role}`}>
-          <div className="chat-body"><div className="chat-bubble"><p>{t.role === 'assistant' ? <EvidencePopover text={t.text} citations={t.citations ?? []} evidence={t.evidence ?? []} renderText={linkify}/> : t.text}</p>{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}{i === chipTurn && t.agent && t.request && t.agent.trace_id === result?.trace_id && <ChatCandidateChips agent={t.agent} request={t.request} disabled={loading || blocked}/>}</div></li>)}
+          <div className="chat-body"><div className="chat-bubble">{t.role === 'assistant' && t.kind === 'vessels' && t.shipList ? <ChatVesselTable text={t.text} list={t.shipList} evidence={t.evidence ?? []} citations={t.citations ?? []} renderText={linkify} latest={i === lastVesselTurn}/> : <p>{t.role === 'assistant' ? <EvidencePopover text={t.text} citations={t.citations ?? []} evidence={t.evidence ?? []} renderText={linkify}/> : t.text}</p>}{i === verdictTurn && verdictBlock}</div>{t.role === 'assistant' && t.cargos && t.cargos.length > 1 ? <ChatCargoTable cargos={t.cargos}/> : t.role === 'assistant' && t.map && <ChatMiniMap map={t.map}/>}{t.role === 'assistant' && t.steps && t.steps.length > 0 && <StepsSummary steps={t.steps} tookMs={t.tookMs ?? 0}/>}{t.role === 'assistant' && t.watchOffer && <WatchOfferAction offer={t.watchOffer}/>}{i === chipTurn && t.agent && t.request && t.agent.trace_id === result?.trace_id && <ChatCandidateChips agent={t.agent} request={t.request} disabled={loading || blocked}/>}</div></li>)}
         {seedAnswer && <li className="chat-seed"><div className="chat-body"><div className="chat-bubble"><p>{seedAnswer.answer}</p>{verdictBlock}</div></div></li>}
       </ol>}
       {loading && pendingSince !== null && <Pending stages={stages} since={pendingSince}/>}

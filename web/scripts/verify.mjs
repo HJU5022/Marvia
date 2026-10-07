@@ -14,6 +14,7 @@ import http from 'node:http';
 import {chromium} from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
+const SHOTS77 = process.env.MARVIA_SHOT_DIR ?? 'screenshots';  // 10-08 정운 실사용 77번 스크린샷 자리
 const base = process.env.MARVIA_TEST_URL ?? 'http://127.0.0.1:3100';
 const live = process.env.MARVIA_LIVE_TEST_URL ?? '';
 const MOCK_PORT = Number(process.env.MARVIA_MOCK_API_PORT ?? 3199);
@@ -53,6 +54,14 @@ const activeId = page => page.evaluate(() => document.activeElement?.id ?? '');
 const mockCalls = [];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chatReply = reply => ({kind: 'message', reply, agent: null, request: null, vessels: [], place: null, ports: [], days: null});
+/** 10-08 정운 실사용 77번: 선박 검색 답. 서버 _ship_list_lines와 같은 모양의 글 + 43척(항구 40곳)의 구조 데이터 */
+function vesselReply() {
+  const vessels = Array.from({length: 43}, (_, i) => ({ship_name: `TEST VESSEL ${i + 1}`, call_sign: `T${i}`, nationality: 'PANAMA', ship_kind: '컨테이너선', previous_port: `PORT ${i % 40}`, next_port: null, purpose: '양하',
+    expected_arrival: new Date(Date.UTC(2026, 9, 6, 15 + i, 0)).toISOString(), facility: null, planned_departure: null, is_cargo: true}));
+  const lines = vessels.slice(0, 5).map(v => `· ${v.ship_name} · 10월 ${7 + Math.floor(Number(v.ship_name.split(' ')[2]) / 24)}일 00:00 도착 예정 · ${v.previous_port}`);
+  return {kind: 'vessels', reply: ['일본에서 1주 안에 부산 오는 수입 화물선 43척이에요.', ...lines, '외 38척', '해수부 입항 신고의 직전 기항지 기준이에요.'].join('\n'),
+    agent: null, request: null, vessels, place: 'JP', ports: Array.from({length: 40}, (_, i) => `PORT ${i}`), days: 7};
+}
 function startMock() {
   const server = http.createServer(async (req, res) => {
     const cors = {'access-control-allow-origin': req.headers.origin ?? '*', 'access-control-allow-headers': 'content-type, authorization, accept', 'access-control-allow-methods': 'GET, POST, PUT, DELETE'};
@@ -76,7 +85,7 @@ function startMock() {
       res.write(': ping\n\n');
       send('progress', {stage: 'customs'}); await sleep(300);
       send('progress', {stage: 'identify'}); await sleep(2500);  // 화면이 진행 중 단계를 보여 주는 동안 기다린다
-      send('result', chatReply('스트림 결과입니다.'));
+      send('result', message.includes('VESSELS') ? vesselReply() : chatReply('스트림 결과입니다.'));
       return res.end();
     }
     json(404, {detail: 'Not Found'});
@@ -205,6 +214,12 @@ try {
     await home(page); await input(page).fill('중국에서 부산 들어오는 배 보여줘'); await input(page).press('Enter');
     await page.locator('.vessel-results').waitFor();
     assert.equal(await page.locator('.vessel-results thead th').count(), 5);
+    // 10-08 정운 실사용 77번: 체험 모드 답도 3칸 표로 (배 이름 | 도착 예정 | 직전 기항지), 직전 기항지 2곳은 접지 않고 바로 보인다
+    assert.deepEqual(await page.locator('.cvt-table thead th').allTextContents(), ['배 이름', '도착 예정', '직전 기항지']);
+    assert.equal(await page.locator('.vl-ports details, details.vl-ports').count(), 0, 'few ports are shown inline, no disclosure');
+    assert.equal(await page.locator('.vl-ports-line .vl-chips li').count(), 2);
+    await overflow(page, width);
+    await page.screenshot({path: `${SHOTS77}/demo-vessel-${width}.png`});
     // 휴대폰: 상세는 아래 시트다. 입력창에 포커스가 있으면 접혀 있어서 손잡이로 편다
     const handle = page.locator('.sheet-handle');
     if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'false') await handle.click();
@@ -345,6 +360,39 @@ try {
       await page.locator('.chat-turn.assistant', {hasText: '대체 경로 답입니다.'}).waitFor();
       assert.equal(mockCalls.filter(c => c === 'POST /api/chat').length, calls + 1, 'falls back to /api/chat once');
       check(`live: missing stream endpoint falls back to /api/chat ${width}`);
+
+
+      // 10-08 정운 실사용 77번: 선박 검색 답은 표로 (3칸 머리글, 줄 나눔, 가로 넘침 없음), "나머지 N척 전체 보기"가 표를 연다, 직전 기항지 40곳은 접어 둔다
+      await input(page).fill('VESSELS 일본에서 오는 배'); await input(page).press('Enter');
+      await page.locator('.cvt-table').waitFor();
+      assert.deepEqual(await page.locator('.cvt-table thead th').allTextContents(), ['배 이름', '도착 예정', '직전 기항지']);
+      assert.equal(await page.locator('.cvt-table tbody tr').count(), 5);
+      assert.equal(await page.locator('.cvt-lead').textContent(), '일본에서 1주 안에 부산 오는 수입 화물선 43척이에요.');
+      assert.equal(await page.locator('.cvt').getByText('· TEST VESSEL').count(), 0, 'raw dot lines are hidden when the table is drawn');
+      assert.match(await page.locator('.cvt-eta').first().innerText(), /\d+월 \d+일 \([일월화수목금토]\) \d\d:\d\d/);
+      assert.equal(await page.locator('.cvt-note').textContent(), '해수부 입항 신고의 직전 기항지 기준이에요.');
+      await overflow(page, width);
+      assert(await page.evaluate(() => { const w = document.querySelector('.cvt-wrap'); return w.scrollWidth <= w.clientWidth + 1; }), 'vessel table does not overflow its bubble');
+      await page.screenshot({path: `${SHOTS77}/chat-vessel-table-${width}.png`});
+      await page.locator('.vessel-results').waitFor();
+      // 휴대폰: 입력창에 포커스가 있으면 시트가 접혀 있어 손잡이로 편다
+      const sheet = page.locator('.sheet-handle');
+      if (await sheet.isVisible() && (await sheet.getAttribute('aria-expanded')) === 'false') await sheet.click();
+      const hdr = page.locator('.vl-head');
+      assert.equal(await hdr.locator('.vl-meta').textContent(), '43척 · 7일 · 모든 시각 한국 시간');
+      assert.equal(await page.locator('.vl-ports summary').textContent(), '직전 기항지 40곳항구 보기');
+      assert.equal(await page.locator('.vl-ports .vl-chips').isVisible(), false, 'ports are collapsed at first');
+      await page.locator('.vl-ports summary').click();
+      assert.equal(await page.locator('.vl-ports .vl-chips li').count(), 40);
+      await page.screenshot({path: `${SHOTS77}/vessel-list-header-${width}.png`});
+      await overflow(page, width);
+      // 휴대폰: 시트를 접어 둔 뒤 누르면 표가 다시 펼쳐진다
+      if (await sheet.isVisible() && (await sheet.getAttribute('aria-expanded')) === 'true') await sheet.click();
+      await page.locator('.cvt-more').click();
+      await page.locator('.vessel-results').waitFor();
+      if (await sheet.isVisible()) assert.equal(await sheet.getAttribute('aria-expanded'), 'true', 'more-button reopens the sheet');
+      assert.equal(await page.locator('.cvt-more').textContent(), '나머지 38척 전체 보기');
+      check(`live: vessel answer renders table, 3 headers, no overflow, more-button, port disclosure ${width}`);
 
       await input(page).fill('BROKEN 질문'); await input(page).press('Enter');
       await page.locator('.chat-turn.assistant', {hasText: '답을 만드는 중 문제가 생겼습니다.'}).waitFor();

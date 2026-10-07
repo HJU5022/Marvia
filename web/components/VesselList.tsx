@@ -23,6 +23,8 @@ const PAGE_SIZES = [10, 30, 50] as const;
 const FRESH_MS = 10 * 60 * 1000;
 
 /** 정렬할 수 있는 5칸. 시각 칸은 ISO 문자열이라 글자 순서가 곧 시간 순서다 */
+/** 직전 기항지가 이 곳 수 이하면 접지 않고 바로 보인다 (10-08 정운 실사용 77번) */
+const PORTS_INLINE_MAX = 5;
 const COLUMNS: {key: keyof VesselItem; label: string; cls: string}[] = [
   {key: 'ship_name', label: '선박 이름', cls: 'c-name'}, {key: 'nationality', label: '국적', cls: 'c-flag'},
   {key: 'previous_port', label: '직전에 들른 항구', cls: 'c-prev'}, {key: 'expected_arrival', label: '부산 입항 예정', cls: 'c-eta'},
@@ -153,7 +155,12 @@ export function VesselList({data}: {data: ChatResponse}) {
     <header className="vl-head">
       <div>
         <h2>{data.place ? `${placeLabel(data.place)}에서 들른 배` : '부산 입항 예정 배'}</h2>
-        <p>{total}척 · {data.days ?? 7}일{data.ports.length > 0 && <> · 직전 기항지 {data.ports.join(', ')}</>} · 모든 시각 한국 시간</p>
+        <p className="vl-meta">{total}척 · {data.days ?? 7}일 · 모든 시각 한국 시간</p>
+        {/* 10-08 정운 실사용 77번: 항구 이름이 많으면(40곳) 한 줄로 이어 붙이지 않고 접어 둔다. 5곳 이하는 바로 보인다 */}
+        {data.ports.length > 0 && (data.ports.length <= PORTS_INLINE_MAX
+          ? <div className="vl-ports vl-ports-line"><b>직전 기항지 {data.ports.length}곳</b><ul className="vl-chips">{data.ports.map(p => <li key={p}>{p}</li>)}</ul></div>
+          : <details className="vl-ports"><summary><b>직전 기항지 {data.ports.length}곳</b><span className="vl-ports-btn">항구 보기</span></summary>
+              <ul className="vl-chips">{data.ports.map(p => <li key={p}>{p}</li>)}</ul></details>)}
       </div>
       <button type="button" className="vl-kinds-toggle" aria-pressed={allKinds}
         onClick={() => { setAllKinds(v => !v); setPage(1); setSel(null); setExpanded(false); }}><SlidersHorizontal size={16} strokeWidth={1.75}/>{allKinds ? '수입 화물선만 보기' : '모든 선박 종류 보기'}</button>
