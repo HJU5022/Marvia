@@ -12,6 +12,7 @@ import {useEffect, useRef, useState, type CSSProperties} from 'react';
 import {LocateFixed, Maximize2, X} from 'lucide-react';
 import {addBasemap, drawLocalGeography} from '@/lib/basemap';
 import {getPresentationData, getWatchList, type WatchItem, type WatchList} from '@/lib/api';
+import {listWatchedVessels, onVesselWatchChange, type WatchedVessel} from '@/lib/watchVessel';
 import {dateTime, verdictLabels} from '@/lib/format';
 import {VerdictBadge} from '@/components/Shared';
 
@@ -55,6 +56,13 @@ function tip(item: WatchItem, letter: string) {
     + `<dl>${rowsOf(item).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></div>`;
 }
 
+/** 배만 지켜보는 줄을 지도 칸 모양(WatchItem)으로 옮긴다. B/L이 없어 판정·통관·여유는 비운다 */
+function vesselItem(v: WatchedVessel): WatchItem {
+  return {bl_masked: `배만 지켜보기 · ${v.mmsi}`, label: null,  // 목록 key로도 쓰여 배마다 달라야 한다 (MMSI)
+    ship_name: v.name, status: 'active', verdict: null, stage: null, eta: v.eta,
+    days_margin: null, lat: v.lat, lng: v.lng, cog: v.cog, sog: v.sog, position_at: v.position_at, track: v.track, ship_flag: v.flag};
+}
+
 export function WatchMap() {
   const [list, setList] = useState<WatchList | null>(null);
   const [showTrack, setShowTrack] = useState(true);  // 경로 보기 켜고 끄기
@@ -66,7 +74,17 @@ export function WatchMap() {
   const hover = useRef<(i: number | null, fromMap?: boolean) => void>(() => {});
   const focus = useRef<(i: number) => void>(() => {});
   const fitAll = useRef<() => void>(() => {});
-  useEffect(() => { let alive = true; void getWatchList().then(l => { if (alive) setList(l); }); return () => { alive = false; }; }, []);
+  // 지도에는 B/L 화물(GET /api/watch)과 배만 지켜보는 배(GET /api/watch/vessels)를 같이 올린다 (10-07 승욱: 배만 지켜보면 지도가 비었다).
+  // 배만 지켜보는 줄은 판정·통관이 없어 등급 없이(회색 점) 그린다. 배 지켜보기를 켜고 끄면 다시 읽는다
+  useEffect(() => {
+    let alive = true;
+    const load = () => void Promise.all([getWatchList(), listWatchedVessels().catch(() => [] as WatchedVessel[])]).then(([l, vs]) => {
+      if (alive) setList({...l, items: [...l.items, ...vs.map(vesselItem)]});
+    });
+    load();
+    const off = onVesselWatchChange(load);
+    return () => { alive = false; off(); };
+  }, []);
 
   // 지도에는 위치가 있는 화물만 올린다. 위치 수집 전 화물은 아래 줄에 이름만 보여 준다 (GET /api/watch, 10-06)
   const active = list?.items.filter((i): i is Located => i.status === 'active' && i.lat != null && i.lng != null) ?? [];
