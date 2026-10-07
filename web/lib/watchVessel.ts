@@ -48,6 +48,8 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 export const onVesselWatchChange = (fn: Listener) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 const notify = () => listeners.forEach(fn => fn());
+/** 채팅이 서버에서 배를 넣거나 뺀 뒤, 같은 화면의 지켜보기 버튼·목록이 새로 읽게 알린다 (10-08 정운 실사용 79) */
+export const notifyVesselWatchChange = notify;
 
 /** GET /api/watch/vessels. 체험 모드면 빈 목록 */
 export async function listWatchedVessels(): Promise<WatchedVessel[]> {

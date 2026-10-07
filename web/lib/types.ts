@@ -15,7 +15,8 @@ export interface ChatDocument { bl_no: string; departed_on: string }
 export interface ChatOnScreen {
   vessel?: {ship_name: string; flag?: string | null; mmsi?: number | null; lat?: number | null; lng?: number | null;
     position_time?: string | null; destination?: string | null} | null;
-  arrivals?: {ship_name: string; flag?: string | null; eta?: string | null; previous_port?: string | null}[];
+  /** call_sign: 배를 지켜볼 때 서버가 MMSI를 찾는 열쇠. selected: 사용자가 목록에서 고른 줄(지도에 보이는 배) (10-08 정운 실사용 79) */
+  arrivals?: {ship_name: string; flag?: string | null; eta?: string | null; previous_port?: string | null; call_sign?: string | null; selected?: boolean}[];
 }
 export interface AgentRequest {
   bl_no: string;
@@ -193,12 +194,16 @@ export interface ChatResponse {
   watch_offer?: WatchOffer | null;
   /** 대화로 지켜보기를 방금 켰거나 껐을 때만 값이 있다 ("응", "그만 지켜봐"). 없거나 null이면 바뀐 게 없다 (10-06 결정) */
   watch_set?: WatchSet | null;
+  /** 대화로 배 한 척을 감시 목록에 넣거나 뺐을 때만 값이 있다 (10-08 정운 실사용 79). 배 지켜보기 버튼이 새로 읽는다 */
+  watch_vessel_set?: WatchVesselSet | null;
   /** 답 문장 속 [E1] 표시가 가리키는 근거 묶음과 표시 위치 (10-08 정운 실사용 58번). 서버가 검증을 끝낸 값이다. 옛 응답·데모에는 없거나 빈 목록이다 (EvidencePopover) */
   evidence_items?: EvidenceItem[];
   citations?: Citation[];
 }
 /** ChatResponse.watch_offer. logged_in은 서버가 본 로그인 여부 */
 export interface WatchOffer { bl_no: string; reason: string; logged_in: boolean }
+/** ChatResponse.watch_vessel_set */
+export interface WatchVesselSet { mmsi: number; name: string; on: boolean }
 /** ChatResponse.watch_set */
 export interface WatchSet { bl_no: string; on: boolean }
 /** ChatResponse.cargos의 한 줄 (백엔드 routers/chat.py ChatCargo, 10-05). bl_no는 사용자가 입력한 값 그대로 */

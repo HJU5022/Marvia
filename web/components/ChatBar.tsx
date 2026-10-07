@@ -9,6 +9,7 @@
  * 읽은 값을 확인하는 카드·수정 화면은 없다(조회가 UNI-PASS 등에서 정확한 값을 가져오므로 선박·항차·날짜는 필요 없다).
  * 화면을 내려 입력창이 안 보이면 "AI에게 이어서 물어보기" 버튼이 나타나 입력창으로 돌려보낸다.
  */
+import Link from 'next/link';
 import {useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {ArrowRight, FileText, LoaderCircle, Paperclip, Sparkles, X} from 'lucide-react';
@@ -48,8 +49,8 @@ function scrollBehavior(): ScrollBehavior {
  * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
 const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
 // [제목](주소) 마크다운 링크: 제목만 보이고 주소는 숨긴다 (10-07 정운 실사용 4번). 제목 속 대괄호·주소 속 공백·괄호는 받지 않는다
-const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
-const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: '];
+const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/[a-z][a-z0-9\-/]*)\)/g;  // 사이트 안 경로(/watch)도 받는다: 감시 화물 링크 (10-08 정운 실사용 79)
+const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: ', '감시 화물에서 보기: '];
 function linkifyLine(line: string, key: number) {
   if (!LINK_LINE_PREFIXES.some(prefix => line.trimStart().startsWith(prefix))) return line;
   const out: ReactNode[] = [];
@@ -57,7 +58,9 @@ function linkifyLine(line: string, key: number) {
   for (const m of line.matchAll(MD_LINK_PATTERN)) {
     const at = m.index ?? 0;
     if (at > last) out.push(...bareUrls(line.slice(last, at), `${key}-${at}`));
-    out.push(<a key={`${key}-md-${at}`} href={m[2]} target="_blank" rel="noopener noreferrer" className="chat-link">{m[1]}</a>);
+    // 사이트 안 경로는 같은 탭에서 앱 안 이동(상태 유지), 바깥 주소는 새 탭. 배포 기본 경로는 next.config에 없어 경로 그대로 쓴다 (Shell의 메뉴 링크와 같다)
+    out.push(m[2].startsWith('/') ? <Link key={`${key}-md-${at}`} href={m[2]} className="chat-link">{m[1]}</Link>
+      : <a key={`${key}-md-${at}`} href={m[2]} target="_blank" rel="noopener noreferrer" className="chat-link">{m[1]}</a>);
     last = at + m[0].length;
   }
   if (last < line.length) out.push(...bareUrls(line.slice(last), `${key}-end`));
