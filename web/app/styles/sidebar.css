@@ -133,8 +133,8 @@
   .sb-collapse{display:none}
   .sb-close,.sb-burger{display:grid}
   .sb-backdrop{display:block;position:fixed;inset:0;z-index:70;border:0;background:#191f2859;cursor:pointer}
-  /* 서랍 안에는 대화 목록이 들어간다. 옛 규칙(900px 이하 숨김)을 덮는다. 40:60 화면에서는 chat.css가 계속 숨긴다 */
-  body:not([data-split]) .app-shell .sb .conv-section.sb-conv{display:block}
+  /* 서랍 안에는 대화 목록이 들어간다. 옛 규칙(900px 이하 숨김)을 덮는다. 40:60 화면에서도 보인다 (10-07) */
+  .app-shell .sb .conv-section.sb-conv{display:block}
   .sb-cl-del{opacity:.7}
   .app-shell .workspace-bar{padding:0 12px}
   .app-shell .workspace-bar .port-label{display:none}

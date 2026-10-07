@@ -75,7 +75,7 @@ export function Shell({children}: {children: React.ReactNode}) {
   useEffect(() => { setDrawer(false); setMenu(false); if (cargoPaths.includes(path)) setCargoOpen(true); }, [path]);
   // 좁은 화면(900px 이하)이나 접은 메뉴는 사이드바에 대화 목록을 둘 자리가 없다. 상단바 버튼이 여는 패널로 같은 목록을 보인다. Esc로 닫는다
   useEffect(() => { if (!convOpen) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setConvOpen(false); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [convOpen]);
-  // 내 화물 화면이 40:60으로 나뉘면 사이드바 대화 목록을 접는다(CSS). 화면 안의 버튼이 같은 패널을 다시 열도록 이벤트를 듣는다 (styles/chat.css)
+  // 화면 안(대화 칸 왼쪽 위)의 버튼이 같은 대화 목록 패널을 열도록 이벤트를 듣는다. 40:60 화면에서도 사이드바 목록은 그대로 보인다 (10-07)
   useEffect(() => { const open = () => setConvOpen(true); window.addEventListener('marvia:conversations', open); return () => window.removeEventListener('marvia:conversations', open); }, []);
   // 서랍은 Esc로 닫는다. 계정 창은 Esc와 바깥 클릭으로 닫힌다 (10-02 UI 점검 F17). 열려 있을 때만 듣는다
   useEffect(() => {

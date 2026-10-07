@@ -18,8 +18,8 @@ body[data-fit] .workspace{height:100dvh;min-height:0}
 body[data-fit] main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 body[data-fit] .route-fade{flex:1;min-height:0;display:flex;flex-direction:column;animation:none}
 body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이드바 아래와 결과 머리표에 이미 있다 */
-/* 40:60으로 나뉘면 사이드바의 대화 목록은 접고, 대화 칸 왼쪽 위 단추로 다시 연다 (Shell의 같은 패널) */
-body[data-split] .conv-section{display:none}
+/* (10-07 승욱) 40:60으로 나뉘어도 사이드바의 대화 목록은 그대로 둔다. 전에는 접혀서 내 화물 결과를 열면 왼쪽 대화 칸이 사라졌다.
+   사이드바를 접었거나 좁은 화면이면 지금처럼 대화 칸 왼쪽 위 단추가 여는 패널(Shell)을 쓴다 */
 
 .chat-app{flex:1;min-height:0;display:flex;background:var(--bg)}
 .chat-pane{flex:1 1 100%;min-width:0;min-height:0;display:flex;flex-direction:column}
