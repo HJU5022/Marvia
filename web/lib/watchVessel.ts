@@ -33,7 +33,8 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
     if (!res.ok) {
       let detail = '';
       try { const b = await res.json(); if (typeof b?.detail === 'string') detail = b.detail; } catch { /* JSON이 아니면 기본 문장 */ }
-      throw new Error(res.status === 401 ? '로그인이 필요해요. 로그인한 뒤 다시 시도해 주세요.' : detail || '배 지켜보기를 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+      // 10-08 정운 실사용 64번: 하루 조회 한도(503)는 서버 안내 문장을 그대로, 문장이 없으면 같은 뜻의 기본 문장
+      throw new Error(res.status === 401 ? '로그인이 필요해요. 로그인한 뒤 다시 시도해 주세요.' : detail || (res.status === 503 ? '오늘 선박 조회 한도를 다 썼어요. 내일 다시 시도해 주세요.' : '') || '배 지켜보기를 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
     }
     return res;
   } catch (e) {

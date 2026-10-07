@@ -225,3 +225,18 @@
 .vl-watch .icon-button{min-width:32px;min-height:32px;width:32px;height:32px;padding:0}
 .vl-watch .request-error{max-width:140px;font-size:var(--text-sm,13px)}
 @media (max-width:480px){.vl-name{flex-direction:column;gap:2px}.vl-watch{margin:0}}
+
+/* ===== 10-08 정운 실사용 64·68번 ===== */
+/* 64: 오류는 이름 아래 작은 글. 입항 예정 목록 줄에서는 버튼 둘레 상자를 풀어 오류가 이름 줄 아래로 내려가게 한다 */
+.wv-err{font-size:var(--text-sm,13px);line-height:1.35;color:var(--danger,#b42318);max-width:240px}
+.wv-err:empty{display:none}
+.vl-name{flex-wrap:wrap}
+.vl-watch,.vl-watch .watch-vessel-btn{display:contents}
+.vl-watch .icon-button{margin:-6px 0}
+.vl-watch .wv-err{flex-basis:100%;max-width:none}
+/* 68: 화물 없이 배만 지켜볼 때는 지도 한 칸만 */
+.wm-body:not(:has(.wm-side)){grid-template-columns:minmax(0,1fr)}
+.vessel-pin span{display:block;width:16px;height:16px;box-sizing:border-box;border:2px dashed var(--text,#111);background:var(--bg,#fff)}
+.vessel-pin-tip{box-shadow:none;border:1px solid var(--border-strong,#cfcfcf);border-radius:0;padding:4px 8px}
+.vessel-pin-tip strong{display:block;font-size:var(--text-sm,13px)}
+.vessel-pin-tip small{color:var(--muted)}

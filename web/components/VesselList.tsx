@@ -173,8 +173,9 @@ export function VesselList({data}: {data: ChatResponse}) {
               onClick={() => pick(v)} onMouseEnter={() => setHover(k)} onMouseLeave={() => setHover(null)}>
               <td className="c-name"><div className="vl-name">
                 <button type="button" className="ship-link" onClick={e => { e.stopPropagation(); pick(v); }} aria-pressed={open} aria-expanded={open}>{v.ship_name}</button>
+                {/* 10-08 정운 실사용 64번: 자세히를 이미 받은 줄은 그 결과의 MMSI로 올려 서버가 다시 찾지 않게 한다. 못 받은 줄은 호출부호+이름을 보내고 서버가 이름으로 가린다 */}
                 {/* 해수부 신고에는 MMSI가 없어 호출부호로 올린다(서버가 찾는다). 호출부호가 없는 배는 지켜볼 수 없어 버튼을 그리지 않는다 (10-08 정운 실사용 57번) */}
-                {v.call_sign ? <span className="vl-watch" onClick={e => e.stopPropagation()}><WatchVesselButton callSign={v.call_sign} name={v.ship_name} flag={v.nationality} eta={v.expected_arrival}/></span> : null}
+                {v.call_sign ? <span className="vl-watch" onClick={e => e.stopPropagation()}><WatchVesselButton mmsi={(entries[k]?.status === 'done' ? entries[k].data.vessel?.mmsi : null) ?? null} callSign={v.call_sign} name={v.ship_name} flag={v.nationality} eta={v.expected_arrival}/></span> : null}
               </div></td>
               <td className="c-flag">{cell(v.nationality)}</td>
               <td className="c-prev">{cell(v.previous_port)}</td>
