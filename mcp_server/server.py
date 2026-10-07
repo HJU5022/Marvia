@@ -83,17 +83,43 @@ def create_mcp(token: str | None = None) -> FastMCP:
     security = (TransportSecuritySettings(enable_dns_rebinding_protection=False) if _token(token)
                 else TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=NO_TOKEN_HOSTS,
                                                allowed_origins=NO_TOKEN_ORIGINS))
-    server = FastMCP("marvia-mcp", instructions=INSTRUCTIONS, streamable_http_path="/mcp",
-                     transport_security=security)
+    mcp = FastMCP("marvia-mcp", instructions=INSTRUCTIONS, streamable_http_path="/mcp",
+                  transport_security=security)
     # 4종 모두 외부 데이터를 조회하거나 거리를 계산할 뿐, 무언가를 바꾸는 부작용이 없어 읽기 전용으로 표시한다
     # (D9 도구 권한 정책, 가이드 v4 신뢰 경계). MCP 클라이언트가 이 표시를 보고 확인 없이 불러도 되는지 판단한다
     read_only = ToolAnnotations(readOnlyHint=True)
-    # 도구 함수(mcp_server/tools/*.py)에 @mcp.tool 데코레이터를 달지 않고 여기서 등록한다. 서버를 API 서버 수명이
-    # 열릴 때마다 새로 만들어야 하고(MountedMCP), 읽기 전용 표시와 스레드 실행(_in_thread)을 4종에 똑같이 붙이기 위해서다.
-    # 도구 이름·설명·입력 스키마는 함수 이름·docstring·타입 힌트에서 나온다 (10-02 점검: 데코레이터가 없어 미정의로 오해됨)
-    for tool in (estimate_distance, get_live_position, get_vessel_candidates, get_port_schedule):
-        server.tool(annotations=read_only)(_in_thread(tool))
-    return server
+
+    # 도구 4종. 본체는 mcp_server/tools/*.py에 있고, 여기서 @mcp.tool로 하나씩 등록한다.
+    # 서버를 API 서버 수명이 열릴 때마다 새로 만들어야 해서(MountedMCP) 도구 파일이 아니라 이 함수 안에서 단다.
+    # functools.wraps가 본체의 이름·docstring·타입 힌트를 옮겨서 도구 이름·설명·입력 스키마는 본체 그대로다.
+    # _in_thread: 동기 도구를 스레드에서 돌려 외부 API를 기다리는 동안 API 서버가 멈추지 않게 한다.
+    # (10-07: 전에는 반복문으로 등록해 데코레이터가 보이지 않아 "MCP tool 미정의"로 오해받았다. 동작은 같다)
+
+    @mcp.tool(annotations=read_only)
+    @_in_thread
+    @functools.wraps(estimate_distance)
+    def _estimate_distance(**kwargs):
+        return estimate_distance(**kwargs)
+
+    @mcp.tool(annotations=read_only)
+    @_in_thread
+    @functools.wraps(get_live_position)
+    def _get_live_position(**kwargs):
+        return get_live_position(**kwargs)
+
+    @mcp.tool(annotations=read_only)
+    @_in_thread
+    @functools.wraps(get_vessel_candidates)
+    def _get_vessel_candidates(**kwargs):
+        return get_vessel_candidates(**kwargs)
+
+    @mcp.tool(annotations=read_only)
+    @_in_thread
+    @functools.wraps(get_port_schedule)
+    def _get_port_schedule(**kwargs):
+        return get_port_schedule(**kwargs)
+
+    return mcp
 
 
 # 도구 목록·설명 확인용 (mcp_server/tests/test_tool_descriptions.py). 서버로 띄울 때는 create_mcp()로 새로 만든다
