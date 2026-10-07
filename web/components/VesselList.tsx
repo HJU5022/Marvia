@@ -3,7 +3,8 @@
  * 맨 위에 큰 지도(VesselMap, 화물 상세 지도와 같은 모양과 지도 펼치기), 그 아래에 5칸짜리 가벼운 목록.
  * 줄을 누르면 지도가 그 배로 날아가고, 줄이 그 자리에서 펼쳐져 자세히(VesselDetail)가 나온다. 줄과 점은 서로 강조한다.
  * 위치는 배마다 ShipFinder를 한 번씩 불러야 알 수 있고 하루 50건 한도가 있다. 그래서 첫 줄(처음 고른 배)만 자동으로 받고 나머지는 누를 때 받는다.
- * 받은 결과는 서버가 10분 캐시하므로 여기서도 같은 시간 동안 들고 있고, 받아 온 배는 이 세션 동안 지도에 계속 점으로 남는다(cache, 모듈 변수).
+ * 받은 결과는 서버가 10분 캐시하므로 여기서도 같은 시간 동안 들고 있다(cache, 모듈 변수). 지도에는 지금 고른 배 하나만 찍는다.
+ * 다른 배를 고르면 앞 배는 캐시에만 남고(점은 지운다), 10분이 지나면 캐시에서도 지운다. 그 뒤 다시 누르면 API를 부른다 (10-07 승욱).
  * 해수부 입항 신고 기준이라 "직전 기항지"를 그대로 보여 준다. 출발지가 아니라는 점은 줄 펼침의 출처 안내에 있다 (EC-04). 판정은 하지 않는다.
  * 수십 척이 나올 수 있어 화면에서 페이지로 나눈다. 한 페이지 10·30·50척 중 고른다(기본 10).
  * 표에 두지 못한 값(호출부호, 선박 종류, 다음에 들를 항구, 목적)은 펼친 줄 안으로 옮겼다. 가로로 밀리는 표가 되지 않게 5칸만 둔다.
@@ -110,11 +111,27 @@ export function VesselList({data}: {data: ChatResponse}) {
     return () => cancelAnimationFrame(id);
   }, [selKey, expanded, page]);
 
-  // 지도에 찍을 배: 이 세션에서 위치를 받은 모든 배
-  const ships = useMemo<MapShip[]>(() => Object.entries(entries).flatMap(([key, e]) => {
-    const pos = e.status === 'done' ? e.data.position : null;
-    return pos ? [{key, name: e.status === 'done' && e.data.vessel?.name || key.split('|')[1], lat: pos.lat, lng: pos.lng, sog: pos.sog, cog: pos.cog, freshness: pos.freshness}] : [];
-  }), [entries]);
+  // 10분이 지난 배는 캐시와 화면 상태에서 지운다. 1분마다 본다 (서버 vessel_detail.CACHE_SEC와 같은 10분).
+  // 지금 고른 배는 지우지 않는다: 지우면 펼친 칸이 "불러오는 중"으로 멈춘다. 그 배는 다시 고를 때 10분이 지났으면 새로 받는다
+  const selRef = useRef<string | null>(null);
+  selRef.current = selKey;
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      const old = [...cache.entries()].filter(([k, e]) => k !== selRef.current && e.status === 'done' && now - e.at >= FRESH_MS).map(([k]) => k);
+      if (!old.length) return;
+      old.forEach(k => cache.delete(k));
+      setEntries(s => { const n = {...s}; old.forEach(k => { delete n[k]; }); return n; });
+    }, 60 * 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // 지도에 찍을 배: 지금 고른 배 하나 (10-07 승욱: 전에는 이 세션에서 받은 배가 모두 점으로 남았다)
+  const ships = useMemo<MapShip[]>(() => {
+    const e = selKey ? entries[selKey] : undefined;
+    const pos = e?.status === 'done' ? e.data.position : null;
+    return pos && selKey ? [{key: selKey, name: e?.status === 'done' && e.data.vessel?.name || selKey.split('|')[1], lat: pos.lat, lng: pos.lng, sog: pos.sog, cog: pos.cog, freshness: pos.freshness}] : [];
+  }, [entries, selKey]);
   const selEntry = selKey ? entries[selKey] : undefined;
   const selData = selEntry?.status === 'done' ? selEntry.data : null;
   const route = useMemo(() => selData?.position?.route ?? [], [selData]);
