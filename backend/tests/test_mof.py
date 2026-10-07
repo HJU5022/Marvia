@@ -155,3 +155,71 @@ def test_sailing_plans_all_fetches_rest_pages_together():
     client = MofClient(key="test-key", transport=httpx.MockTransport(handler))
     plans = client.sailing_plans_all(date(2026, 10, 1), date(2026, 10, 8))
     assert len(plans) == 107 and plans[0].ship_name == "SHIP 0" and plans[-1].ship_name == "SHIP 106"
+
+
+# ── 릴레이·연결 실패 차단기 (10-07 정운) ─────────────────────────
+
+
+def _transport(handler, calls: list):
+    def wrapped(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return handler(request)
+
+    return httpx.MockTransport(wrapped)
+
+
+def _ok(request):
+    return httpx.Response(200, text=(FIXTURES / "control_busan.xml").read_text(encoding="utf-8"))
+
+
+def _refuse(request):
+    raise httpx.ConnectTimeout("unreachable")
+
+
+def test_base_url_comes_from_env(monkeypatch):
+    monkeypatch.setenv("MOF_BASE_URL", "https://relay.example/")
+    calls = []
+    MofClient(key="k", transport=_transport(_ok, calls)).control_records(date(2026, 9, 22), date(2026, 9, 22))
+    assert str(calls[0].url).startswith("https://relay.example/1192000/CntlVssl2/Info?")
+
+
+def test_relay_token_header_only_when_set(monkeypatch):
+    monkeypatch.delenv("MOF_RELAY_TOKEN", raising=False)
+    calls = []
+    MofClient(key="k", transport=_transport(_ok, calls)).control_records(date(2026, 9, 22), date(2026, 9, 22))
+    assert "x-relay-token" not in calls[0].headers
+
+    monkeypatch.setenv("MOF_RELAY_TOKEN", "tok")
+    MofClient(key="k", transport=_transport(_ok, calls)).control_records(date(2026, 9, 22), date(2026, 9, 22))
+    assert calls[1].headers["x-relay-token"] == "tok"
+
+
+def test_connect_failure_is_not_retried():
+    calls = []
+    client = MofClient(key="k", transport=_transport(_refuse, calls))
+    with pytest.raises(MofError) as e:
+        client.control_records(date(2026, 9, 22), date(2026, 9, 22))
+    assert e.value.code == "timeout"
+    assert len(calls) == 1  # 3번 부르지 않는다
+
+
+def test_circuit_skips_network_then_resets(monkeypatch):
+    from backend.app.clients import mof
+
+    now = [1000.0]
+    monkeypatch.setattr(mof.time, "monotonic", lambda: now[0])
+    calls = []
+    client = MofClient(key="k", transport=_transport(_refuse, calls))
+    with pytest.raises(MofError):
+        client.control_records(date(2026, 9, 22), date(2026, 9, 22))
+    assert len(calls) == 1
+
+    now[0] += 30  # 60초 안: 네트워크 없이 같은 오류
+    with pytest.raises(MofError) as e:
+        client.sailing_plans(date(2026, 9, 22), date(2026, 9, 22))
+    assert e.value.code == "timeout" and len(calls) == 1
+
+    now[0] += 31  # 60초 뒤: 다시 시도한다
+    with pytest.raises(MofError):
+        client.control_records(date(2026, 9, 22), date(2026, 9, 22))
+    assert len(calls) == 2

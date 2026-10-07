@@ -8,7 +8,7 @@
 """
 import pytest
 
-from backend.app.clients import retry
+from backend.app.clients import mof, retry
 from backend.app.clients.shipfinder import ShipFinderClient, reset_quota_block
 
 
@@ -19,6 +19,14 @@ def clear_shipfinder_cache():
     yield
     ShipFinderClient.cache.clear()
     reset_quota_block()
+
+
+@pytest.fixture(autouse=True)
+def reset_mof_circuit():
+    """MOF 연결 실패 차단기도 모듈 변수라 테스트 사이에 남는다 (clients/mof.py, 10-07)."""
+    mof.reset_circuit()
+    yield
+    mof.reset_circuit()
 
 
 @pytest.fixture(autouse=True)
