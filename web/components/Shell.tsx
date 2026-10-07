@@ -35,7 +35,8 @@ const aboutItem = {href: '/about', label: 'Marvia 소개', icon: Info};
 // 계정 창의 항목. tab은 SettingsPage의 탭 키 (?tab=)
 const accountMenu = [
   {tab: 'profile', label: '프로필', icon: CircleUserRound},
-  {tab: 'rules', label: '설정', icon: Settings2},
+  // 10-08 정운 실사용 48번: 설정 탭 이름을 "알림·판정 기준"으로 바꿨으니 계정 창 항목도 같은 이름으로 맞춘다 (탭 키 rules는 그대로)
+  {tab: 'rules', label: '알림·판정 기준', icon: Settings2},
   {tab: 'account', label: '계정 관리', icon: UserCog},
 ];
 const cargoPaths = cargoMenu.map(m => m.href);

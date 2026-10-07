@@ -2,25 +2,24 @@
 /** 설정·내 정보 화면. 시안(4-1~4-5, 3-5)이 다섯 화면으로 나눈 것을 /settings 안의 하위 탭으로 옮겼다.
  * 하위 이동은 제목 아래의 밑줄 탭 줄이 맡고, 고른 탭 밑의 막대가 미끄러지듯 따라간다.
  * 판단 기준은 읽기 전용 (SDD 5.13). 설정 키·파일 경로·모델 설정은 일반 사용자에게 내지 않는다 (10-02 화면 용어 점검).
- * 사이드바 계정 창은 ?tab=profile|rules|account 로 연다. 카카오에서 돌아오면(?kakao=) 연결 상태가 있는 "설정" 탭을 연다. KakaoPanel이 그 값을 읽고 주소에서 지우므로 여기서는 지우지 않는다.
- * 탭 종류는 TABS가 정하고, 각 탭 안의 화면은 기존 컴포넌트(ProfileForm·HistoryTable·MemoryPanel·KakaoPanel·AccountPanel)를 그대로 쓴다 (동작·접근성 유지).
+ * 사이드바 계정 창은 ?tab=profile|rules|account 로 연다. 카카오에서 돌아오면(?kakao=) 연결 상태가 있는 "알림·판정 기준" 탭을 연다. KakaoPanel이 그 값을 읽고 주소에서 지우므로 여기서는 지우지 않는다.
+ * 탭 종류는 TABS가 정하고, 각 탭 안의 화면은 기존 컴포넌트(ProfileForm·MemoryPanel·KakaoPanel·AccountPanel)를 그대로 쓴다 (동작·접근성 유지).
  */
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Info, LockKeyhole} from 'lucide-react';
 import {useApp} from './AppProvider';
 import {ProfileForm} from './ProfileForm';
-import {HistoryTable} from './HistoryTable';
 import {MemoryPanel} from './MemoryPanel';
 import {KakaoPanel} from './KakaoPanel';
 import {AccountPanel} from './AccountPanel';
 
-type Tab = 'profile' | 'history' | 'memory' | 'rules' | 'account';
+type Tab = 'profile' | 'memory' | 'rules' | 'account';
+// 10-08 정운 실사용 48번: "조회 이력" 탭을 뺐다(사이드바 화물 > 조회 이력 /history가 같은 화면). "설정" 탭은 내용(기준·카카오 알림)이 잘 드러나게 "알림·판정 기준"으로 바꿨다. 탭 키 rules는 그대로.
 // 탭 아래 설명 문장(lead)은 뺐다 (10-07 정운 21번). 계정 탭 이름은 사이드바 계정 창과 맞춰 "계정 관리" (29번)
 const TABS: {key: Tab; label: string}[] = [
   {key: 'profile', label: '회원 정보'},
-  {key: 'history', label: '조회 이력'},
   {key: 'memory', label: '기억한 화물'},
-  {key: 'rules', label: '설정'},
+  {key: 'rules', label: '알림·판정 기준'},
   {key: 'account', label: '계정 관리'},
 ];
 
@@ -32,6 +31,8 @@ export function SettingsPage(){
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const want = p.get('tab');
+    // 옛 링크 ?tab=history는 /history로 보낸다 (48번: 탭이 없어졌으므로)
+    if (want === 'history') { window.location.replace('/history'); return; }
     if (p.get('kakao') !== null) setTab('rules');
     else if (TABS.some(t => t.key === want)) setTab(want as Tab);
     // 사이드바 계정 창이 이미 열린 설정 화면에서 다른 탭을 고르면 주소만 바뀌므로, 이벤트로 탭을 따라간다 (Shell openTab)
@@ -57,7 +58,6 @@ export function SettingsPage(){
       {bar && <span className="st-tab-bar" aria-hidden="true" style={{transform: `translateX(${bar.left}px)`, width: bar.width}}/>}</nav>
     <div className="st-panel" key={tab}>
       {tab === 'profile' && <ProfileTab/>}
-      {tab === 'history' && <HistoryTable/>}
       {tab === 'memory' && <MemoryPanel/>}
       {tab === 'rules' && <RulesTab/>}
       {tab === 'account' && <AccountPanel/>}
