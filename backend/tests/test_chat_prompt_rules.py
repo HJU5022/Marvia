@@ -10,7 +10,7 @@ def test_vague_remark_rule_exists():
 
 
 def test_polite_tone_rule_exists():
-    assert "polite Korean ending in 습니다 or 요" in PROMPT
+    assert "polite Korean ending in 요" in PROMPT and "never 습니다 or 입니다" in PROMPT  # 10-07 말투 통일
 
 
 def test_unknown_person_rule_exists():

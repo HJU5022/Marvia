@@ -76,14 +76,14 @@ def extract_mrn(message: str) -> tuple[str | None, str]:
 
 # 예시에 테스트 B/L을 쓰지 않는다. 실제 사용자에게 가짜 번호를 보여 주게 된다 (10-02 화면 용어 점검)
 NEED_BL = "조회할 B/L 번호를 문장에 넣어 주세요. 예: (내 B/L 번호) 화물 괜찮아?"
-NO_CARGO = "지금 보고 있는 화물이 없습니다. 먼저 B/L 번호로 화물을 조회해 주세요."
-LLM_DOWN = "지금은 문장 이해 기능을 쓸 수 없어 B/L 번호가 있는 조회만 됩니다. " + NEED_BL
-PREV_PORT_NOTE = ("해수부 입항 신고의 직전 기항지 기준입니다. 출발지 정보는 없어서, 유럽에서 출발한 배도 "
-                  "중국·싱가포르 등을 거쳐 오면 그 항구로 나옵니다.")
+NO_CARGO = "지금 보고 있는 화물이 없어요. 먼저 B/L 번호로 화물을 조회해 주세요."
+LLM_DOWN = "지금은 문장 이해 기능을 쓸 수 없어 B/L 번호가 있는 조회만 돼요. " + NEED_BL
+PREV_PORT_NOTE = ("해수부 입항 신고의 직전 기항지 기준이에요. 출발지 정보는 없어서, 유럽에서 출발한 배도 "
+                  "중국·싱가포르 등을 거쳐 오면 그 항구로 나와요.")
 # 프롬프트 주입 방어 (SDD 7절, 10-01). 아래 두 문구는 LLM이 쓴 문장을 내보낼 수 없을 때 대신 쓰는 고정 안내다
 # 끝을 "B/L 번호를 달라"에서 "사용법을 물어보라"로 바꿨다: 모델이 답을 포기할 때마다 B/L만 요구하면 챗봇 같다는 판단 (10-05 결정)
 OTHER_REPLY = ("마르비아는 B/L 번호로 화물 상태를 확인하고, 지금 보고 있는 화물에 대한 질문에 답하고, "
-               "어디에서 오는 배가 부산에 들어오는지 찾아 드립니다. 자세한 사용법은 \"어떻게 써?\"라고 물어봐 주세요.")
+               "어디에서 오는 배가 부산에 들어오는지 찾아 드려요. 자세한 사용법은 \"어떻게 써?\"라고 물어봐 주세요.")
 # 인사에는 인사만 한다. B/L을 달라고 하거나 기능을 늘어놓지 않는다 (10-05 결정, answer_kind=greeting)
 GREETING_REPLY = "안녕하세요! 무엇을 도와드릴까요?"
 # 사용법 안내 (10-05 결정, answer_kind=help). LLM이 쓰지 않고 코드가 고정 문장으로 낸다: 없는 기능을 지어내지 않게.
@@ -101,9 +101,9 @@ USAGE_GUIDE = (
     "6. 지켜보기: 로그인하면 조회 결과 아래 \"이 화물 지켜보기\"를 누르거나 \"이거 지켜봐 줘\"라고 말하면 판정이 바뀔 때 알려 드려요. 지금 상태를 바로 받고 싶으면 \"카톡으로 보내 줘\"라고 하세요.\n"
     "7. 일반 질문: B/L 번호를 못 찾겠을 때처럼 수입 실무가 궁금하면 그냥 물어보세요."
 )
-INJECTION_REPLY = "문장 속 지시는 따르지 않습니다. " + OTHER_REPLY
+INJECTION_REPLY = "문장 속 지시는 따르지 않아요. " + OTHER_REPLY
 # 후속 답이 원문 속 표식을 옮겨 썼을 때 대신 쓰는 고정 문구 (10-02). routers/agent.FOLLOW_UP_BLOCKED와 같은 뜻으로 맞췄다
-FOLLOW_UP_REFUSED = "문장 속 지시는 따르지 않습니다. 이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다."
+FOLLOW_UP_REFUSED = "문장 속 지시는 따르지 않아요. 이 화물의 조회 결과에 대한 질문에만 답할 수 있어요."
 _PLACE = re.compile(r"^[A-Za-z][A-Za-z .'\-]{0,39}$")  # match_ports에 넘기는 place: 영문 지명 모양만 (40자까지)
 _REPLY_WORDS = {"marvia"}  # other 안내에 쓸 수 있는 영문 낱말. 그 밖의 3글자 이상 영문은 주입 표식으로 본다
 
@@ -125,7 +125,7 @@ def _is_destination(text: object) -> bool:
 
 # 문장에 있는 B/L 모양이 아닌 식별자 후보 (영문+숫자 섞인 3~20자). B/L 토큰 "[BL1]" 안쪽 글자는 뺀다. 되묻는 문장에 코드가 옮겨 쓴다
 _ID_LIKE = re.compile(r"(?<![A-Za-z0-9\[])(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{3,20}(?![A-Za-z0-9\]])")
-CLARIFY_TAIL = "B/L 번호는 보통 영문과 숫자 8~20자입니다."
+CLARIFY_TAIL = "B/L 번호는 보통 영문과 숫자 8~20자예요."
 CLARIFY_NO_ID = "B/L 번호인지 배 이름인지 알려 주세요. " + CLARIFY_TAIL
 
 
@@ -219,7 +219,7 @@ def search_ship_name(name: str, last: str | None = None) -> ChatResult | None:
         reply = not_same_twice(reply, [f"'{name}'는 이번에도 목록에 없어요. 영문 배 이름이나 B/L 번호가 있으면 알려 주세요."], last)
         return ChatResult(kind="message", reply=reply)
     chosen.sort(key=lambda p: p.expected_arrival or datetime.max.replace(tzinfo=timezone.utc))
-    return ChatResult(kind="vessels", reply=f"앞으로 {DAYS_MAX}일 부산 입항 예정 선박 중 '{name}' 이름이 들어간 배는 {len(chosen)}척입니다.",
+    return ChatResult(kind="vessels", reply=f"앞으로 {DAYS_MAX}일 부산 입항 예정 선박 중 '{name}' 이름이 들어간 배는 {len(chosen)}척이에요.",
                       vessels=_vessel_rows(chosen), place=None, ports=[], days=DAYS_MAX)
 
 
@@ -531,6 +531,21 @@ def _match_ports_cached(place: str, available: list[str]) -> list[str]:
     return picked
 
 
+def _ship_list_line(vessels: list[dict]) -> str:
+    """검색 결과 앞쪽 배 이름과 입항 예정일을 한 줄로. 건수만 말하면 "어떤 배냐"를 또 물어야 한다 (10-07 정운 실사용 34).
+    수입 화물선이 있으면 그 배들을, 없으면 전체에서 SHIP_LIST_SHOWN척까지. 값은 해수부 입항 신고 그대로이고 코드가 쓴다 (LLM 문장 아님).
+    vessels는 _vessel_rows가 이미 입항 예정 시각순으로 정렬한 목록이다. 비면 빈 글자."""
+    picked = [v for v in vessels if v["is_cargo"]] or vessels
+    if not picked:
+        return ""
+    parts = []
+    for v in picked[:SHIP_LIST_SHOWN]:
+        eta = (v.get("expected_arrival") or "")[:10]
+        parts.append(f"{v['ship_name']}({eta[5:].replace('-', '/')} 도착 예정)" if eta else str(v["ship_name"]))
+    more = len(picked) - SHIP_LIST_SHOWN
+    return f" 가까운 순으로 {', '.join(parts)}" + (f" 외 {more}척" if more > 0 else "") + "이에요."
+
+
 def search_vessels(place: str | None, days: int | None, label: str | None = None) -> ChatResult:
     """직전 기항지로 거른 부산 입항 예정 선박. 항구는 LLM이 목록 안에서만 고른다 (EC-04).
     place가 도착지 자체(부산·한국, _is_destination)면 거르지 않고 전체를 보인다 (10-06 점검: "이번 주 부산 들어오는 배"가
@@ -545,7 +560,7 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
         plans = _arrivals(days)
     except MofError as e:
         log_failure("chat_vessels", e.code)
-        return ChatResult(kind="message", reply="해수부 입항 정보를 지금 가져오지 못했습니다. 잠시 뒤 다시 물어봐 주세요.")
+        return ChatResult(kind="message", reply="해수부 입항 정보를 지금 가져오지 못했어요. 잠시 뒤 다시 물어봐 주세요.")
     available = sorted({p.previous_port for p in plans if p.previous_port})
     ports: list[str] = []
     if place:
@@ -563,13 +578,14 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
     chosen.sort(key=lambda p: p.expected_arrival or datetime.max.replace(tzinfo=timezone.utc))
     vessels = _vessel_rows(chosen)
     cargo = sum(v["is_cargo"] for v in vessels)
+    listing = _ship_list_line(vessels)
     if place and not vessels:
-        reply = f"앞으로 {days}일 동안 {name} 항구를 직전에 들른 부산 입항 예정 선박은 없습니다. {PREV_PORT_NOTE}"
+        reply = f"앞으로 {days}일 동안 {name} 항구를 직전에 들른 부산 입항 예정 선박은 없어요. {PREV_PORT_NOTE}"
     elif place:
         reply = (f"앞으로 {days}일 동안 {name}({', '.join(ports)})를 직전에 들른 부산 입항 예정 선박 {len(vessels)}척 중 "
-                 f"수입 화물선(컨테이너·일반화물·냉동냉장, 양하)은 {cargo}척입니다. {PREV_PORT_NOTE}")
+                 f"수입 화물선(컨테이너·일반화물·냉동냉장, 양하)은 {cargo}척이에요.{listing} {PREV_PORT_NOTE}")
     else:
-        reply = f"앞으로 {days}일 동안 부산 입항 예정 선박 {len(vessels)}척 중 수입 화물선은 {cargo}척입니다. {PREV_PORT_NOTE}"
+        reply = f"앞으로 {days}일 동안 부산 입항 예정 선박 {len(vessels)}척 중 수입 화물선은 {cargo}척이에요.{listing} {PREV_PORT_NOTE}"
     return ChatResult(kind="vessels", reply=reply, vessels=vessels, place=name, ports=ports, days=days)
 
 
@@ -754,14 +770,26 @@ def _classic_cargo(bls: list[str], bl_type: str | None, sale_due_date: str | Non
 CARGO_CALLS_PER_TURN = 1  # 한 문장에서 화물 도구 호출은 한 번만. 한 문장에 B/L이 여러 개면 그 한 번 안에서 코드가 모두 조회한다 (아래 MAX_BLS_PER_TURN)
 MAX_BLS_PER_TURN = 3  # 한 문장에서 한꺼번에 조회하는 B/L 수 상한. 판정 흐름마다 UNI-PASS·LLM을 부르므로 비용·지연이 B/L 수만큼 는다 (10-05 정운 결정)
 DATE_HINTS = ("오늘", "내일", "모레", "글피", "다음", "이번", "주", "월", "일")  # 포워더 도착일을 사용자가 말했다고 볼 낱말 (숫자가 없을 때)
-FAILED_LOOKUP = "조회하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."  # 고른 도구가 모두 실패했을 때
+FAILED_LOOKUP = "조회하지 못했어요. 잠시 뒤 다시 물어봐 주세요."  # 고른 도구가 모두 실패했을 때
 HISTORY_TURNS = 6  # LLM에 넘길 최근 대화 줄 수. "이건", "그 배"가 가리키는 것은 보통 바로 앞 두세 턴에 있다
+SHIP_LIST_SHOWN = 5  # 입항 선박 검색 답 문장에 이름을 적는 척 수. 전체 표는 화면이 그린다 (10-07 실사용 34)
 ARRIVALS_SHOWN = 8  # 입항 선박 검색 결과 중 LLM에 돌려줄 척 수. 전체 표는 화면이 그린다
 # 읽기 전용 도구 결과를 문장으로 못 옮겼을 때 (검사에 걸렸거나 답이 비었을 때). 틀린 문장을 내보내지 않는다
-LOOKUP_NOT_SUMMARIZED = "조회는 했지만 결과를 문장으로 정리하지 못했습니다. 다시 물어봐 주세요."
+LOOKUP_NOT_SUMMARIZED = "조회는 했지만 결과를 문장으로 정리하지 못했어요. 다시 물어봐 주세요."
+# 위 문구는 마지막 수단이다 (10-07 정운 실사용 35·52: 같은 막다른 문구가 연달아 나갔다). 도구 결과가 있으면 먼저 코드가
+# 결과 값을 그대로 옮긴 문장(lookup_fallback)을 낸다: 값은 도구가 준 것뿐이라 LLM 문장 검사(V7·V9·V10)가 필요 없다
+LOOKUP_FALLBACK_LEAD = "조회한 결과를 그대로 전해 드려요."
+LOOKUP_FALLBACK_SAME = "방금과 같은 조회 결과예요."  # 바로 앞 답과 글자가 같을 때 앞에 붙인다 (같은 답 연속 금지)
+# 같은 B/L이 연달아 "조회 결과 없음"일 때 (10-07 정운 실사용 54: "다시 해줄래"에 같은 문장이 되풀이됐다).
+# 같은 조회를 반복해도 결과가 같으니 번호와 구분을 고쳐 보게 한다. 구분은 코드가 아는 값으로 반대쪽을 권한다
+NO_RESULT_REPLY = "조회 결과가 없어요. B/L 번호와 마스터·하우스 구분을 다시 확인해 주세요."  # routers/agent.NO_CARGO의 "~요" 버전 (10-07 말투 통일)
+NO_RESULT_AGAIN = ("같은 번호로 다시 조회해도 결과가 없어요. 번호를 한 글자씩 다시 확인해 주세요. "
+                   "지금은 {now} B/L로 조회했는데, {other} B/L이면 \"{other_ko}로 다시\"라고 말해 주세요.")
+NO_RESULT_THIRD = "그래도 안 나오면 포워더나 선사에게 B/L 번호를 다시 받아서 확인해 주세요."
+BL_TYPE_KO = {"MASTER": "마스터", "HOUSE": "하우스"}
 # 도구 없는 실무 질문인데 Skill 문서로 받칠 수 없을 때 (answer_kind=not_in_skills, 또는 근거 조각 검사 V14에 끝내 걸렸을 때).
 # 도메인 조언은 제품 담당이 쓴 skills/*.md에서만 나온다. 문서에 없으면 지어내지 않고 없다고 말한다 (10-05 실측)
-NOT_IN_SKILLS = "그 내용은 마르비아가 가진 자료에 없습니다. " + OTHER_REPLY
+NOT_IN_SKILLS = "그 내용은 마르비아가 가진 자료에 없어요. " + OTHER_REPLY
 # ── 세 층 답 (10-05 결정): Skill 문서(1층) → 웹 검색(2층) → 모델 일반 지식(3층) → 마지막에야 "자료에 없다" ──
 # 3층은 교과서 수준의 일반 설명(용어 뜻, 일반 절차)만이다. 근거 조각 없이 내보내는 대신 아래 검사로 막고,
 # 숫자·세액·특정 화물이나 배 이야기는 막는다 (general_violations). 제품 담당의 도메인 판단은 1층(Skill)에서만 나온다
@@ -860,7 +888,7 @@ WEB_SOURCES_SHOWN = 3  # "웹 참고" 줄에 올리는 출처 수 상한 (검색
 BROKER_TOPIC = re.compile(r"관세(?!사)|세율|세금|세액|부가세|부가가치세|과세|면세|환급|HS\s*코드|품목\s*분류|FTA|원산지|"
                           r"통관\s*(?:이|은|도)?\s*(?:될|되|가능|불가|안\s*되|문제|막|걸리|거부)", re.IGNORECASE)
 # 뒤에 공식 창구 줄을 붙인다. 주소·전화는 skills/referrals/rules.md broker_referral에만 있다 (docs/specs/referral-guide.md, 10-06)
-BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않습니다. 관세사에게 문의해 주세요.\n" + referrals.broker_tail()
+BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않아요. 관세사에게 문의해 주세요.\n" + referrals.broker_tail()
 WEB_NOTE = "웹 참고: "  # 웹 근거 답 뒤에 코드가 붙이는 줄의 머리. 출처 제목과 주소는 가져온 결과에서만 온다
 WEB_TITLE_MAX = 30  # 링크 글자(출처 제목) 길이 상한. 긴 주소를 그대로 보이던 것을 짧은 제목 링크로 바꿨다 (10-07 정운 실사용 4)
 
@@ -922,6 +950,39 @@ def _cargo_summary(resp: AgentResponse) -> dict:
                  "goods_name": resp.customs.goods_name}
         summary["customs"] = {key: (None if guard.looks_like_injection(value) else value) for key, value in names.items()}
     return summary
+
+
+def _fmt_time(value) -> str | None:
+    """도구 결과의 시각 글자를 분 단위까지만 보인다 (2026-10-07T01:02:03+00:00 → 2026-10-07 01:02). 없으면 None."""
+    return str(value)[:16].replace("T", " ") if value else None
+
+
+def lookup_fallback(calls: list[dict]) -> str | None:
+    """읽기 전용 MCP 도구가 성공했는데 LLM 문장을 쓸 수 없을 때, 결과 값을 코드가 그대로 문장으로 옮긴다 (10-07 실사용 35·52).
+    도구별 결과 모양은 mcp_server/schemas.py (C4). 모르는 도구나 비어 있는 결과는 건너뛴다. 쓸 것이 하나도 없으면 None."""
+    lines = []
+    for c in calls:
+        r, name = c["result"], c["name"]
+        if not isinstance(r, dict):
+            continue
+        if name == "get_vessel_candidates" and r.get("candidates"):
+            found = r["candidates"]
+            shown = ", ".join(f"{v.get('name')}({v.get('flag') or '국적 미상'}, 목적지 {v.get('dest') or '미상'})"
+                              for v in found[:ARRIVALS_SHOWN])
+            lines.append(f"이름이 비슷한 배는 {len(found)}척이에요: {shown}" + (" 등" if len(found) > ARRIVALS_SHOWN else ""))
+        elif name == "get_live_position" and r.get("lat") is not None and r.get("lng", r.get("lon")) is not None:
+            sog = f", 속력 {round(r['sog'], 1)}노트" if r.get("sog") is not None else ""
+            dest = f", 목적지 {r['dest']}" if r.get("dest") else ""
+            at = f" ({_fmt_time(r.get('last_time'))} 기준)" if r.get("last_time") else ""
+            lines.append(f"현재 위치는 위도 {round(r['lat'], 2)}, 경도 {round(r.get('lng', r.get('lon')), 2)}{sog}{dest}예요.{at}")
+        elif name == "get_port_schedule":
+            parts = [f"{k} {t}" for k, t in (("입항 예정", _fmt_time(r.get("planned_arrival"))), ("실제 입항", _fmt_time(r.get("actual_arrival")))) if t]
+            if parts:
+                lines.append("해수부 기록은 " + ", ".join(parts) + (f", 부두는 {r['facility']}" if r.get("facility") else "") + "이에요.")
+        elif name == "estimate_distance" and r.get("distance_nm") is not None:
+            hours = f", 지금 속력이면 약 {round(r['calc_hours_at_sog'], 1)}시간" if r.get("calc_hours_at_sog") is not None else ""
+            lines.append(f"부산까지 남은 거리는 약 {round(r['distance_nm'], 1)}해리{hours}예요.")
+    return " ".join(lines) if lines else None
 
 
 def _tool_error(code: str, message: str) -> dict:
@@ -996,7 +1057,7 @@ def unread_ids(masked: str, bls: list[str]) -> list[str]:
     known = {b.upper() for b in bls}
     found = [m.group(0) for m in _ID_LIKE.finditer(masked) if m.group(0).upper() not in known]
     return list(dict.fromkeys(found))[:UNREAD_MAX]
-HOUSE_NOTICE = ("(B/L 구분을 말하지 않아 하우스 B/L(포워더가 발행한 B/L)로 조회했습니다. "
+HOUSE_NOTICE = ("(B/L 구분을 말하지 않아 하우스 B/L(포워더가 발행한 B/L)로 조회했어요. "
                 "선사가 발행한 마스터 B/L이면 \"마스터로 다시\"라고 말해 주세요.)")
 
 
@@ -1547,7 +1608,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 summaries = look_up_many(parts, bl_type, _valid_date(args.get("sale_due_date")))
                 return {"cargos": summaries} if summaries else _tool_error("tool_failed", "This lookup failed.")
             if eta:  # LLM이 풀어낸 날짜라 사용자가 맞는지 볼 수 있게 답에 밝힌다 (근거 카드에도 있다, services/evidence.py)
-                result = replace(result, reply=f"{result.reply}\n(포워더가 알려 준 입항일 {eta}로 조회했습니다.)")
+                result = replace(result, reply=f"{result.reply}\n(포워더가 알려 준 입항일 {eta}로 조회했어요.)")
             done.append(result)
             return _cargo_summary(result.agent)
         if name == "ask_cargo":
@@ -1713,6 +1774,20 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                                                "question, set answer_kind to not_in_skills.")]
         return []
 
+    def ok_lookups() -> list[dict]:
+        """성공한 읽기 전용 MCP 도구 호출 (위치·후보·일정·거리). 화물·검색·웹·지켜보기 도구는 아니다."""
+        return [c for c in ran if c["name"] in mcp_names and "error" not in (c["result"] or {})]
+
+    def lookup_violations(text: str) -> list[validate.Violation]:
+        """읽기 전용 도구 결과를 요약한 문장을 다시 물어야 하는 이유. 빈 목록이면 그대로 쓰거나 다시 물을 이유가 없다.
+        비어 있으면 빈 답이라 위반 하나로 센다. 결과가 하나도 성공하지 않았거나 웹 검색이 섞였으면 보지 않는다."""
+        if not ok_lookups() or any(c["name"] == "web_search" for c in ran):
+            return []
+        if not text:
+            return [validate.Violation("EMPTY", "The reply is empty. Write two or three Korean sentences that answer the question "
+                                                "from the tool results you already have. Do not call the same tool again.")]
+        return _reply_violations(text, reference + " ".join(str(c["result"]) for c in ok_lookups()), user_text, earlier)
+
     def web_only() -> bool:
         """이번 문장에서 돌린 도구가 웹 검색뿐이고 쓸 만한 결과를 가져왔는가."""
         return bool(web_state.get("results")) and all(r["name"] == "web_search" for r in ran)
@@ -1727,6 +1802,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     fix_left = 1
     nudge_left = 1 if web_search_enabled() and not BROKER_TOPIC.search(masked) else 0
     web_fix_left = 1
+    lookup_fix_left = 1  # 읽기 전용 도구 결과 요약을 고쳐 쓰게 하는 기회 (한 문장에 LLM 호출 최대 3번 상한 안에서 fix·nudge와 겹치지 않는다: 도구가 돈 문장은 그 둘을 안 탄다)
     first = True
     out, text, violations, feedback = None, "", [], None
     while True:
@@ -1753,6 +1829,14 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                                  "digits) or, if that is not possible, not_in_skills.")
                     first = False
                     continue
+            elif lookup_fix_left and not done and (violations := lookup_violations(text)):
+                # 읽기 전용 도구만 돌았는데 문장이 비었거나 검사에 걸렸다. 전에는 여기서 바로 막다른 문구가 나갔다 (10-07 실사용 35·52).
+                # 고쳐 쓰게 한 번 다시 묻는다. 도구를 또 불러도 같은 인자는 앞 결과가 돌아온다 (run의 seen)
+                lookup_fix_left -= 1
+                log_failure("chat_agent_reply", ",".join(v.rule for v in violations) or "empty")
+                feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
+                first = False
+                continue
             break  # 도구가 돌았다: 아래에서 도구 결과로 답을 조립한다
         violations = no_tool_violations(out, text, first)
         skill_failed = out.answer_kind == "skill" and bool(violations) and not fix_left
@@ -1826,7 +1910,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             if unread:
                 lines.append(UNREAD_NOTICE.format(names=", ".join(f"'{u}'" for u in unread)))
             return replace(chosen, reply="\n".join(lines), map=None, cargos=rows)
-        replies = list(dict.fromkeys(r.reply for r in done))  # 같은 답이 두 번 붙지 않게
+        replies = list(dict.fromkeys(_no_result_text(r, earlier[-1] if earlier else None) for r in done))  # 같은 답이 두 번 붙지 않게
         if looked_up and text and not _reply_violations(text, reference + lookups + " ".join(replies), user_text, earlier) \
                 and not _repeats_reply(text, replies):
             replies.append(text)
@@ -1838,7 +1922,17 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return clarify_out()
     if looked_up:
         ok = bool(text) and not _reply_violations(text, reference + lookups, user_text, earlier)
-        return ChatResult(kind="message", reply=text if ok else LOOKUP_NOT_SUMMARIZED, map=_map_payload(calls, done, started))
+        if ok:
+            return ChatResult(kind="message", reply=text, map=_map_payload(calls, done, started))
+        # 다시 물어도 문장을 못 썼다 (LLM 실패·빈 답·검사 걸림·앞 답 베끼기). 막다른 문구 대신 이미 받은 결과를 코드가 그대로 전한다
+        log_failure("chat_agent_reply", "lookup_fallback")
+        fallback = lookup_fallback(looked_up)
+        if fallback is None:
+            return ChatResult(kind="message", reply=LOOKUP_NOT_SUMMARIZED, map=_map_payload(calls, done, started))
+        reply = f"{LOOKUP_FALLBACK_LEAD} {fallback}"
+        if earlier and _flat_text(reply) == _flat_text(earlier[-1]):
+            reply = f"{LOOKUP_FALLBACK_SAME} {fallback}"
+        return ChatResult(kind="message", reply=reply, map=_map_payload(calls, done, started))
     if web_only():
         # 웹 검색만 돌았다. 웹 글로 낸 답은 근거 조각 검사를 통과했을 때만 내보내고, 출처는 가져온 결과에서만 붙인다 (모델이 쓴 주소는 안 쓴다)
         if out is not None and text and out.answer_kind in ("web", "skill"):
@@ -1940,6 +2034,27 @@ def _safe_reply(reply: str | None, message: str) -> str:
     return text
 
 
+def _is_no_result(r: ChatResult) -> bool:
+    """판정 흐름이 "조회 결과 없음"(routers/agent.NO_CARGO)으로 끝낸 결과인가."""
+    from backend.app.routers import agent as agent_router  # noqa: PLC0415 - 서로 불러오는 순환을 피하려고 쓰는 자리에서 가져온다
+    return bool(r.agent and r.agent.status == "insufficient" and r.agent.answer == agent_router.NO_CARGO)
+
+
+def _no_result_text(r: ChatResult, last: str | None) -> str:
+    """"조회 결과 없음" 답이 바로 앞 답과 같은 안내면 다른 문장으로 바꾼다 (10-07 정운 실사용 54). 아니면 reply 그대로.
+    같은 조회를 되풀이하면 같은 결과라서, 두 번째부터는 번호 확인과 마스터·하우스 구분 바꾸기를 권한다.
+    "지금 쓴 구분"은 요청에 든 값(코드가 아는 값)이고, 권하는 쪽은 그 반대다. 구분을 못 알면 되풀이 방지만 한다."""
+    if not _is_no_result(r) or not last or "결과가없어요" not in _flat_text(last):
+        return r.reply
+    if "다시조회해도" in _flat_text(last):  # 세 번째부터는 번호를 다시 받아 오라고 한다. 같은 문장을 세 번 내지 않는다
+        return r.reply.replace(NO_RESULT_REPLY, NO_RESULT_THIRD)
+    now = r.request.bl_type if r.request else None
+    if now not in BL_TYPE_KO:
+        return r.reply.replace(NO_RESULT_REPLY, "같은 번호로 다시 조회해도 결과가 없어요. 번호를 한 글자씩 다시 확인해 주세요.")
+    other = "HOUSE" if now == "MASTER" else "MASTER"
+    return r.reply.replace(NO_RESULT_REPLY, NO_RESULT_AGAIN.format(now=BL_TYPE_KO[now], other=BL_TYPE_KO[other], other_ko=BL_TYPE_KO[other]))
+
+
 def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: str, context: AgentRequest | None,
            run_agent, note: str | None, mrn: str | None = None, user_id: str | None = None,
            voyage_no: str | None = None, forwarder_eta: str | None = None) -> ChatResult:
@@ -1960,6 +2075,8 @@ def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: 
                        voyage_no=voyage_no, forwarder_eta=forwarder_eta)
     resp = run_agent(req)
     reply = resp.answer
+    if _is_no_result(ChatResult(kind="cargo", reply=reply, agent=resp, request=req)):
+        reply = NO_RESULT_REPLY  # 판정 흐름(routers/agent.py)의 문구는 "~습니다"라 화면 말투(~요)로 맞춘다. 뜻은 같다 (10-07 정운 실사용 38)
     if not kind:
         reply = f"{reply}\n{HOUSE_NOTICE}"
     if notes:

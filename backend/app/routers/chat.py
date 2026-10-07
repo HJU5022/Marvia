@@ -160,7 +160,7 @@ class ChatResponse(BaseModel):
 
 
 BAD_MESSAGE = "문장을 1~500자로 입력해 주세요"
-STREAM_FAILED = "답을 만드는 중 문제가 생겼습니다. 잠시 뒤 다시 시도해 주세요."
+STREAM_FAILED = "답을 만드는 중 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요."
 # 오래 걸리는 단계(LLM 판정 등)에서 중간 장비가 조용한 연결을 끊지 않게 보내는 빈 줄 간격 (chat-progress.md How)
 PING_SEC = 15
 
