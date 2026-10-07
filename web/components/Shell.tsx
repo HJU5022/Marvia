@@ -54,7 +54,6 @@ function crumb(path: string, chatTitle?: string) {
 export function Shell({children}: {children: React.ReactNode}) {
   const path = usePathname();
   const {data, authEnabled, authReady, user, reset, isOperator, profileComplete, meReady, suspended, conversationsOn, savedId, newConversation, loading, opening, conversations, activeId} = useApp();
-  const [convOpen, setConvOpen] = useState(false);  // 접힌 사이드바·40:60 화면에서 대화 목록을 여는 패널. 여는 단추는 채팅 칸 왼쪽 위(page.tsx). 상단바 "대화" 버튼은 사이드바와 겹쳐 뺐다 (10-08 정운 32번)
   const [collapsed, setCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(false);  // 900px 이하: 사이드바가 서랍
   const [drawer, setDrawer] = useState(false);
@@ -73,10 +72,6 @@ export function Shell({children}: {children: React.ReactNode}) {
   }, []);
   // 화면을 옮기면 서랍·계정 창을 닫고, 화물 묶음에 속한 화면이면 그 묶음을 펼친다
   useEffect(() => { setDrawer(false); setMenu(false); if (cargoPaths.includes(path)) setCargoOpen(true); }, [path]);
-  // 좁은 화면(900px 이하)이나 접은 메뉴는 사이드바에 대화 목록을 둘 자리가 없다. 상단바 버튼이 여는 패널로 같은 목록을 보인다. Esc로 닫는다
-  useEffect(() => { if (!convOpen) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setConvOpen(false); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [convOpen]);
-  // 내 화물 화면이 40:60으로 나뉘면 사이드바 대화 목록을 접는다(CSS). 화면 안의 버튼이 같은 패널을 다시 열도록 이벤트를 듣는다 (styles/chat.css)
-  useEffect(() => { const open = () => setConvOpen(true); window.addEventListener('marvia:conversations', open); return () => window.removeEventListener('marvia:conversations', open); }, []);
   // 서랍은 Esc로 닫는다. 계정 창은 Esc와 바깥 클릭으로 닫힌다 (10-02 UI 점검 F17). 열려 있을 때만 듣는다
   useEffect(() => {
     if (!drawer && !menu) return;
@@ -169,7 +164,6 @@ export function Shell({children}: {children: React.ReactNode}) {
         </div>
       </header>
       <main id="main" tabIndex={-1}><div key={path} className="route-fade">{children}</div></main>
-      {conversationsOn && convOpen && <div className="conv-overlay"><button type="button" className="conv-backdrop" aria-label="대화 목록 닫기" onClick={() => setConvOpen(false)}/><aside className="conv-sheet" role="dialog" aria-label="대화 목록"><div className="conv-sheet-head"><strong>대화</strong><button type="button" onClick={() => setConvOpen(false)}>닫기</button></div><ConversationList withNew onPick={() => setConvOpen(false)}/></aside></div>}
       <footer className="app-footer"><LegalLinks/></footer>
     </div>
   </div>;

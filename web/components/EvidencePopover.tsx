@@ -101,11 +101,12 @@ export function EvidencePopover({text, citations, evidence, renderText}: {text: 
   const parts = build(text, citations, byId);
   const toggle = (key: string) => (el: HTMLButtonElement | null) => { opener.current = el; setOpenKey(k => k === key ? null : key); };
 
-  // 서버가 남긴 유효한 표시가 없으면 답 끝에 "근거 N" 칩 하나를 둔다. 누르면 모든 근거가 한 상자에 열린다 (제품 담당 결정)
+  // 서버가 남긴 유효한 표시가 없으면 답 끝에 칩 하나를 둔다. 누르면 모든 근거가 한 상자에 열린다 (제품 담당 결정)
+  // 10-08 정운 실사용 62번: 이름이 "근거 1"이면 위쪽 "근거 28개" 버튼과 헷갈렸다. 문장 속 칩처럼 출처 이름("해수부", "해수부 외 1")으로 쓴다
   if (!parts.some(p => 'g' in p)) {
     const cleaned = text.replace(MARK, '').replace(/\s+([.,!?])/g, '$1');
     return <span ref={root} className="ev-text">{plain(cleaned)}
-      {evidence.length > 0 && <Mention items={evidence} label={`근거 ${evidence.length}`} open={openKey === 'all'} onToggle={toggle('all')} popId={`${base}-all`}/>}
+      {evidence.length > 0 && <Mention items={evidence} label={groupLabel(evidence)} open={openKey === 'all'} onToggle={toggle('all')} popId={`${base}-all`}/>}
     </span>;
   }
   return <span ref={root} className="ev-text">{parts.map((p, i) => {

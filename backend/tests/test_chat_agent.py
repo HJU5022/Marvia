@@ -586,7 +586,7 @@ def test_search_arrivals_days_true_is_ignored(monkeypatch):
     monkeypatch.setattr(svc, "_arrivals", lambda days: [])
     calls = _agent(monkeypatch, [("search_arrivals", {"place": None, "days": True})])
     r = svc.handle("부산 오는 배", "s1", None, lambda req: None)
-    assert "True" not in r.reply and f"{svc.DAYS_DEFAULT}일" in r.reply and len(calls) == 1
+    assert "True" not in r.reply and svc._period_text(svc.DAYS_DEFAULT) in r.reply and len(calls) == 1  # 10-08 정운 실사용 61번: 7일은 "1주"로 적는다
 
 
 

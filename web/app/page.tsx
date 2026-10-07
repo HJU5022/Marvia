@@ -6,7 +6,7 @@
  * 데모 모드는 첫 화면에 정상 예시를 자동으로 보여 주고(가공 데이터, 유료 호출 아님), 실제 모드는 입력을 기다린다.
  */
 import {useEffect,useRef,useState} from 'react';
-import {ArrowLeft,ArrowUpRight,Check,ChevronDown,CircleHelp,FileText,FilterX,Minus,PanelLeftOpen} from 'lucide-react';
+import {ArrowLeft,ArrowUpRight,Check,ChevronDown,CircleHelp,FileText,FilterX,Minus} from 'lucide-react';
 import {ChatBar} from '@/components/ChatBar';
 import {VesselList} from '@/components/VesselList';
 import {useApp} from '@/components/AppProvider';
@@ -51,13 +51,10 @@ export default function CargoPage(){
  // 입력창을 누르면 휴대폰에서는 시트를 접어 키보드와 입력창이 가려지지 않게 한다
  const paneRef=useRef<HTMLElement>(null);
  useEffect(()=>{const el=paneRef.current;if(!el)return;const on=(e:FocusEvent)=>{if((e.target as HTMLElement).id==='chat-input')setSheetOpen(false);};el.addEventListener('focusin',on);return()=>el.removeEventListener('focusin',on);},[]);
- // 사이드바 대화 목록이 접힌 40:60에서 목록을 다시 연다. 목록 패널은 Shell이 갖고 있어 이벤트로 부탁한다 (Shell.tsx)
- const openConversations=()=>window.dispatchEvent(new Event('marvia:conversations'));
  const backButton=r&&showing!=='cargo'&&!loading?<button type="button" className="button secondary" onClick={backToCargo}><ArrowLeft size={15}/>내 화물 결과로 돌아가기<span className="mono">B/L {maskBl(request.bl_no)}</span></button>:null;
  return <div className={`chat-app${split?' split':''}${showing==='vessels'?' wide':''}${sheetOpen?' sheet-open':''}`}>
   <section className="chat-pane" ref={paneRef} aria-label="대화">
    <header className="pane-head">
-    {conversationsOn&&<button type="button" className="pane-icon" aria-label="대화 목록 열기" onClick={openConversations}><PanelLeftOpen size={18}/></button>}
     {/* 10-08 정운 43번: 보이는 "대화 내용" 제목을 없앴다. 화면 읽기 프로그램용 제목만 남긴다 */}
     <h1 className="sr-only">대화</h1>
    </header>

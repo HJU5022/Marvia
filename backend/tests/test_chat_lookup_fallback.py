@@ -86,8 +86,14 @@ def test_34_arrival_search_names_the_ships(monkeypatch):
     monkeypatch.setattr(svc, "_arrivals", lambda days: PLANS)
     r = svc.search_vessels(None, 7)
     names = [v["ship_name"] for v in r.vessels if v["is_cargo"]] or [v["ship_name"] for v in r.vessels]
-    assert r.vessels and names[0] in r.reply and "가까운 순으로" in r.reply
+    assert r.vessels and names[0] in r.reply
     assert "입니다" not in r.reply and "습니다" not in r.reply
+    # 10-08 정운 실사용 61번: 첫 줄은 결론만, 배는 한 척에 한 줄, 마지막은 출처 한 줄
+    lines = r.reply.split("\n")
+    assert lines[0].endswith("척이에요.") or "수입 화물선은 없고" in lines[0]
+    assert lines[-1] == svc.PREV_PORT_NOTE
+    ship_lines = [x for x in lines if x.startswith("· ")]
+    assert ship_lines and ship_lines[0].startswith(f"· {names[0]} · ") and "도착 예정" in ship_lines[0]
 
 
 # ── 54: 조회 결과 없음 반복 ──
