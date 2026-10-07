@@ -175,7 +175,7 @@ def test_skill_answer_failing_twice_without_search_in_retry_gets_nudged(monkeypa
     bad = ("판매처에 문의해 보세요.", "skill", "지어낸 근거 문장입니다 맞지요")
     calls = []
 
-    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None):
+    def fake(masked, refs, has_cargo, today, history, tools, run, *, model=None, feedback=None, evidence=None):
         calls.append(feedback)
         if feedback == svc.WEB_HINT:
             run("web_search", WEB_ARGS)

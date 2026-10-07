@@ -12,6 +12,7 @@ import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from 'react
 import {ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Ship, SlidersHorizontal} from 'lucide-react';
 import {VesselDetail, type DetailEntry} from './VesselDetail';
 import {VesselMap, type MapShip} from './VesselMap';
+import {WatchVesselButton} from './WatchVesselButton';
 import {getVesselDetail} from '@/lib/api';
 import {dateTime, placeLabel} from '@/lib/format';
 import type {ChatResponse, VesselItem} from '@/lib/types';
@@ -153,7 +154,11 @@ export function VesselList({data}: {data: ChatResponse}) {
           return <Fragment key={`${k}-${start + i}`}>
             <tr data-vkey={k} className={`${open ? 'row-open' : ''}${isSel ? ' row-sel' : ''}${hover === k ? ' row-hl' : ''}`}
               onClick={() => pick(v)} onMouseEnter={() => setHover(k)} onMouseLeave={() => setHover(null)}>
-              <td className="c-name"><button type="button" className="ship-link" onClick={e => { e.stopPropagation(); pick(v); }} aria-pressed={open} aria-expanded={open}>{v.ship_name}</button></td>
+              <td className="c-name"><div className="vl-name">
+                <button type="button" className="ship-link" onClick={e => { e.stopPropagation(); pick(v); }} aria-pressed={open} aria-expanded={open}>{v.ship_name}</button>
+                {/* 해수부 신고에는 MMSI가 없어 호출부호로 올린다(서버가 찾는다). 호출부호가 없는 배는 지켜볼 수 없어 버튼을 그리지 않는다 (10-08 정운 실사용 57번) */}
+                {v.call_sign ? <span className="vl-watch" onClick={e => e.stopPropagation()}><WatchVesselButton callSign={v.call_sign} name={v.ship_name} flag={v.nationality} eta={v.expected_arrival}/></span> : null}
+              </div></td>
               <td className="c-flag">{cell(v.nationality)}</td>
               <td className="c-prev">{cell(v.previous_port)}</td>
               <td className="c-eta">{when(v.expected_arrival)}</td>

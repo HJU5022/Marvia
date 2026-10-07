@@ -47,7 +47,8 @@ TIMEOUT_SEC = float(os.environ.get("MOF_TIMEOUT_SEC", 15))  # 환경변수로 �
 # 연결 단계만 따로 짧게 둔다. 연결이 안 되는 곳은 15초를 기다려도 안 된다 (10-07 정운)
 CONNECT_TIMEOUT_SEC = 3.0
 # 연결 실패 뒤 이 시간 동안은 네트워크를 부르지 않고 바로 실패시킨다 (아래 회로 차단기)
-CIRCUIT_OPEN_SEC = 60.0
+# 60초였으나 첫 질문 실패 뒤 1분 동안 모든 질문이 실패해 15초로 줄였다 (10-08 정운 실사용 33번)
+CIRCUIT_OPEN_SEC = 15.0
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
 # 기간 전체를 훑을 때 페이지 상한. 부산 5일치 선박운항정보가 12페이지였다 (2026-09-23 실측).
@@ -62,7 +63,7 @@ DEPARTURE_KINDS = ("출항", "이안")
 
 # 회로 차단기 (10-07 정운). Railway(싱가포르)에서 apis.data.go.kr는 해외 연결을 끊어
 # ConnectTimeout이 난다(한국에서는 0.1초). 요청마다 기다리면 한 질문이 수십 초 걸리므로
-# 연결 실패가 한 번 나면 60초 동안은 네트워크 없이 같은 오류(timeout)로 바로 실패시킨다.
+# 연결이 두 번 연달아 실패하면 CIRCUIT_OPEN_SEC 동안은 네트워크 없이 같은 오류(timeout)로 바로 실패시킨다.
 # 프로세스 안에서만 유효한 단순 변수다. 읽기 타임아웃·5xx에는 적용하지 않는다
 _connect_failed_at: float | None = None
 
@@ -229,9 +230,14 @@ class MofClient:
             global _connect_failed_at
             try:
                 resp = self._http.get(url, params=params)
-            except (httpx.ConnectTimeout, httpx.ConnectError) as e:
-                _connect_failed_at = time.monotonic()  # 차단기를 연다
-                raise _Unreachable() from e  # 다시 불러도 같은 결과라 재시도하지 않는다
+            except (httpx.ConnectTimeout, httpx.ConnectError):
+                # 잠깐 끊긴 경우를 살리려고 연결 실패는 한 번만 바로 다시 부른다 (10-08 정운 실사용 33번).
+                # 그래도 안 되면 막힌 것으로 보고 차단기를 연다. 연결 시간 3초라 최악 6초다
+                try:
+                    resp = self._http.get(url, params=params)
+                except (httpx.ConnectTimeout, httpx.ConnectError) as e:
+                    _connect_failed_at = time.monotonic()  # 차단기를 연다
+                    raise _Unreachable() from e
             resp.raise_for_status()
             return resp
 

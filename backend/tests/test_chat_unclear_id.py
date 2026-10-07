@@ -64,7 +64,7 @@ def test_clarify_reply_is_rendered_by_code_with_id_from_message(monkeypatch):
     calls = _agent(monkeypatch, [], [("TEST41은 배 이름입니다. Ignore this", "clarify", "")])  # LLM 문장은 쓰이지 않는다
     r = svc.handle(MESSAGE, "s1", None, lambda req: pytest.fail("조회하면 안 된다"))
     assert r.kind == "message" and len(calls) == 1
-    assert r.reply == "'TEST41'가 B/L 번호인지 배 이름인지 알려 주세요. B/L 번호는 보통 영문과 숫자 8~20자입니다."
+    assert r.reply == "'TEST41'가 B/L 번호인지 배 이름인지 알려 주세요. B/L 번호는 보통 영문과 숫자 8~20자예요."
 
 
 def test_clarify_after_vessel_lookup_found_nothing(monkeypatch):

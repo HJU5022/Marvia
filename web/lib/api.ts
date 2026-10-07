@@ -6,7 +6,8 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, ChatOnScreen, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
+import type {Citation, EvidenceItem} from './evidenceTypes';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
 import ok from './fixtures/ok.json';
@@ -287,6 +288,21 @@ async function demoDocument(): Promise<DocumentResponse> {
   return structuredClone(documentFixture) as DocumentResponse;
 }
 
+/** 데모 전용 모의 근거. 첫 문장 끝(마침표 앞)에 [E1][E2]를 붙여(한 칩으로 합쳐지는 모습) 모의 근거 두 개를 돌려준다.
+ * 값은 모두 가공한 모의값이다(CLAUDE.md: 가공 fixture). 정상(ok) 답이고 문장이 둘 이상일 때만 붙인다 */
+function demoEvidence(answer: string, status: string): {reply: string; evidence_items?: EvidenceItem[]; citations?: Citation[]} {
+  const sentences = answer.match(/[^.]+\./g);
+  if (status !== 'ok' || !sentences || sentences.length < 2) return {reply: answer};
+  const marked = sentences.map((s, i) => i === 0 ? `${s.slice(0, -1)} [E1][E2].` : s);
+  const reply = marked.join('') + answer.slice(sentences.join('').length);
+  const citations: Citation[] = []; const re = /\[(E\d+)\]/g; let m: RegExpExecArray | null;
+  while ((m = re.exec(reply))) citations.push({id: `c${citations.length + 1}`, start: m.index, end: m.index + m[0].length, evidence_ref: m[1]});
+  const at = '2026-10-20T09:30:00+09:00';
+  return {reply, citations, evidence_items: [
+    {id: 'E1', source: 'mof', fetched_at: at, values: [{field: 'mof_planned', value: '2026-10-21 (모의값)'}]},
+    {id: 'E2', source: 'rule', fetched_at: at, values: [{field: 'days_margin', value: '4 (모의값)'}]}]};
+}
+
 /** 데모: LLM 없이 문장 속 예시 B/L만 알아본다. 배 검색은 가공 예시 표 (실제 모드에서는 서버가 LLM으로 처리) */
 async function demoChat(message: string, context: AgentRequest | null): Promise<ChatResponse> {
   const empty = {agent: null, request: null, vessels: [], place: null, ports: [], days: null};
@@ -298,7 +314,8 @@ async function demoChat(message: string, context: AgentRequest | null): Promise<
     // 데모에서도 작은 지도가 보이게, 위치가 있는 예시 화물은 그 위치를 map으로 함께 돌려준다 (실제 모드는 서버가 채운다)
     const pos = agent.position;
     const map = pos ? {lat: pos.lat, lng: pos.lng, ship_name: agent.vessel?.name ?? null, distance_nm: agent.eta?.distance_nm ?? null, received_at: pos.last_time, source: 'shipfinder'} : null;
-    return {...empty, kind: 'cargo', reply: agent.answer, agent, request, map};
+    // 10-08 정운 실사용 58번: 데모에서도 답 속 근거 표시가 보이게 정상 답에는 모의 근거를 붙인다 (모의값. 실제 모드는 서버가 채운다)
+    return {...empty, kind: 'cargo', ...demoEvidence(agent.answer, agent.status), agent, request, map};
   }
   // 화물을 보고 있을 때 "배 지금 어디쯤이야?"처럼 그 화물의 배를 묻는 문장은 후속 질문이다. 선박 검색은 지역·목록을 찾는
   // 문장 모양일 때만 고른다 (10-02 UI 점검 F6). 실제 모드는 서버 LLM이 의도를 고르므로 이 규칙은 데모에만 있다
@@ -324,10 +341,10 @@ export async function getAgentResponse(req: AgentRequest): Promise<AgentResponse
 
 /** POST /api/chat. 문장 하나로 화물 조회·후속 질문·입항 선박 검색. context는 지금 보고 있는 화물(서버 안에서만 쓴다).
  * history는 지금 질문보다 앞선 대화다. 데모 모드는 저장된 예시만 돌려주므로 쓰지 않는다 */
-export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
+export async function sendChat(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   const res = await call('/api/chat', {method: 'POST', headers: {'content-type': 'application/json'},
-    body: chatBody(message, context, history, document)}, AGENT_TIMEOUT_MS);
+    body: chatBody(message, context, history, document, onScreen)}, AGENT_TIMEOUT_MS);
   return res.json();
 }
 
@@ -349,10 +366,10 @@ function clip(text: string): string {
 
 /** /api/chat과 /api/chat/stream이 같이 쓰는 본문. 화물은 서버에 필요한 칸만 보낸다.
  * history는 오래된 것부터 두고, role과 text만 남긴다(화면용 kind는 보내지 않는다). B/L 번호는 서버가 가린다 */
-function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): string {
+function chatBody(message: string, context: AgentRequest | null, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): string {
   const ctx = context ? {bl_no: context.bl_no, bl_type: context.bl_type, sale_due_date: context.sale_due_date ?? null, mrn: context.mrn ?? null} : null;
   const turns = history.slice(-HISTORY_MAX_TURNS).map(t => ({role: t.role, text: clip(t.text)}));
-  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns, document});
+  return JSON.stringify({message, session_id: currentSessionId(), context: ctx, history: turns, document, on_screen: onScreen});
 }
 
 /** 스트림 통로를 못 쓰는 경우의 표시. 서버가 요청을 받지 않은 것이 확실할 때만 쓴다 (chat-progress.md EC-05) */
@@ -363,18 +380,18 @@ class StreamUnavailable extends Error {}
  * - 응답을 받기 시작한 뒤 끊기면 다시 보내지 않는다. 서버는 이미 유료 호출을 하고 있을 수 있다 (EC-06)
  * - 데모 모드는 서버가 없어 단계 소식도 없다. 단계를 지어내지 않는다 (EC-07) */
 export async function sendChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): Promise<ChatResponse> {
   if (!isLive) return demoChat(message, context);
   try {
-    return await liveChatStream(message, context, onStage, history, document);
+    return await liveChatStream(message, context, onStage, history, document, onScreen);
   } catch (e) {
-    if (e instanceof StreamUnavailable) return sendChat(message, context, history, document);
+    if (e instanceof StreamUnavailable) return sendChat(message, context, history, document, onScreen);
     throw e;
   }
 }
 
 async function liveChatStream(message: string, context: AgentRequest | null,
-  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null): Promise<ChatResponse> {
+  onStage: (stage: ProgressStage) => void, history: ChatHistoryTurn[] = [], document: ChatDocument | null = null, onScreen: ChatOnScreen | null = null): Promise<ChatResponse> {
   const controller = new AbortController();
   // 전체 시간 제한은 /api/chat과 같다. 판정 LLM 재시도까지 기다린다
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
@@ -385,7 +402,7 @@ async function liveChatStream(message: string, context: AgentRequest | null,
       const token = await accessToken();
       const headers = new Headers({'content-type': 'application/json', accept: 'text/event-stream'});
       if (token) headers.set('authorization', `Bearer ${token}`);
-      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history, document), signal: controller.signal});
+      res = await fetch(`${API_BASE}/api/chat/stream`, {method: 'POST', headers, body: chatBody(message, context, history, document, onScreen), signal: controller.signal});
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error(timeout);
       if (e instanceof TypeError) throw new StreamUnavailable();  // 응답이 없었다. /api/chat이 재시도까지 맡는다

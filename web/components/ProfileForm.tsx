@@ -66,14 +66,22 @@ export function ProfileForm({mode}: {mode: 'required' | 'edit'}) {
   const [loading, setLoading] = useState(mode === 'edit');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // 10-08 정운 46번: 마지막으로 저장된(불러온) 값. 바뀐 것이 없으면 저장 단추를 막아 "저장했어요"가 거짓으로 뜨지 않게 한다
+  const [saved, setSaved] = useState<ProfileData>({name: '', phone: '', address: ''});
 
   // 수정 화면은 저장된 값을 불러온다. 이미 동의했던 사람이라 동의도 채운다
   useEffect(() => {
     if (mode !== 'edit') return;
-    getProfile().then(p => { if (p) { setForm(p); setConsent(true); } })
+    getProfile().then(p => { if (p) { setForm(p); setSaved(p); setConsent(true); } })
       .catch(e => setError(e instanceof Error ? e.message : '회원 정보를 불러오지 못했어요.'))
       .finally(() => setLoading(false));
   }, [mode]);
+
+  // 10-08 정운 47번: 저장 완료 문구는 단추 옆에 잠깐만 보이고 3초 뒤 사라진다 (큰 상자로 아래에 계속 남아 있었다)
+  useEffect(() => { if (!message) return; const t = setTimeout(() => setMessage(''), 3000); return () => clearTimeout(t); }, [message]);
+  // 수정 화면에서만 "바뀜" 검사를 한다. 입력 화면(required)은 처음이라 항상 저장할 수 있다. 공백은 서버 정리 규칙처럼 무시하고 비교한다
+  const norm = (p: ProfileData) => [p.name.trim().replace(/\s+/g, ' '), p.phone.trim(), p.address.trim().replace(/\s+/g, ' ')].join('|');
+  const unchanged = mode === 'edit' && norm(form) === norm(saved);
 
   /** 저장 단추: 칸 검사 → 동의가 아직이면 동의 창 → 저장. 동의 창은 칸이 맞을 때만 뜬다 */
   function submit(e: FormEvent) {
@@ -88,8 +96,8 @@ export function ProfileForm({mode}: {mode: 'required' | 'edit'}) {
   async function save(agreed: boolean) {
     setBusy(true);
     try {
-      const saved = await saveProfile({...form, consent: agreed});
-      setForm(saved); setConsent(true); setMessage('저장했어요.'); setProfileComplete(true);
+      const result = await saveProfile({...form, consent: agreed});
+      setForm(result); setSaved(result); setConsent(true); setMessage('저장했어요.'); setProfileComplete(true);
     } catch (err) { setError(err instanceof Error ? err.message : '저장하지 못했어요.'); }
     finally { setBusy(false); setAskConsent(false); }
   }
@@ -107,10 +115,10 @@ export function ProfileForm({mode}: {mode: 'required' | 'edit'}) {
       <input id="pf-address" value={form.address} onChange={e => set('address')(e.target.value)} autoComplete="street-address" maxLength={200} placeholder="시·도 시·군·구 도로명 번지" aria-invalid={!!errors.address} disabled={busy || loading}/>
       {errors.address && <span className="field-error">{errors.address}</span>}</div>
     <div className="wide profile-actions">
-      <button className="button primary" disabled={busy || loading}>{busy ? <LoaderCircle size={15} className="spin"/> : <Check size={15}/>}{mode === 'required' ? '저장하고 시작하기' : '회원 정보 저장하기'}</button>
+      <button className="button primary" disabled={busy || loading || unchanged} title={unchanged ? '바뀐 내용이 없어요' : undefined}>{busy ? <LoaderCircle size={15} className="spin"/> : <Check size={15}/>}{mode === 'required' ? '저장하고 시작하기' : '회원 정보 저장하기'}</button>
       <span className="muted"><LockKeyhole size={13}/>{mode === 'edit' && consent ? '개인정보 수집·이용 동의함 · ' : ''}암호화해서 저장하고, 운영자에게도 가린 값만 보여요.</span>
+      <span role="status" className="profile-saved">{message}</span>
     </div>
-    {message && <p role="status" className="account-message wide">{message}</p>}
     {error && <p role="alert" className="request-error wide">{error}</p>}
     {askConsent && <ConsentModal busy={busy} onAgree={() => void save(true)} onClose={() => setAskConsent(false)}/>}
   </form>;

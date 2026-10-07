@@ -48,6 +48,9 @@ from backend.app.services import watch as watch_service
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
+SCREEN_TEXT_MAX, SCREEN_TIME_MAX = 80, 40  # 배 이름·항구 이름 / 시각 글자 상한. 실제 선박 이름·항구 이름은 이 안이다 (AIS 이름 20자, 해수부 항구명)
+
+
 class ChatContext(BaseModel):
     """화면이 지금 보고 있는 화물. 후속 질문과 "다시 조회"에 쓴다. B/L은 서버 안에서만 쓰고 LLM에는 가는 일이 없다."""
 
@@ -73,6 +76,36 @@ class ChatTurn(BaseModel):
     text: str = Field(max_length=2000)  # 화면은 500자로 잘라 보낸다. 서버도 가린 뒤 다시 자른다
 
 
+class ChatScreenVessel(BaseModel):
+    """화면에 보이는 화물의 배 (10-08 정운 실사용 36번). 위치·시각은 마지막으로 받은 값이다. B/L·컨테이너 번호 칸은 없다.
+    길이 상한은 화면이 보낸 값을 믿지 않는 신뢰 경계다 (SDD 7절). 문자열은 서버가 다시 가리고 주입 모양이면 뺀다 (services/chat._masked_screen)."""
+
+    ship_name: str = Field(max_length=SCREEN_TEXT_MAX)
+    flag: str | None = Field(default=None, max_length=SCREEN_TEXT_MAX)
+    mmsi: int | None = Field(default=None, ge=0, le=999_999_999)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
+    position_time: str | None = Field(default=None, max_length=SCREEN_TIME_MAX)  # 마지막 위치 수신 시각 (ISO 글자)
+    destination: str | None = Field(default=None, max_length=SCREEN_TEXT_MAX)  # 도착항 (화면의 UNI-PASS 양륙항 이름)
+
+
+class ChatScreenArrival(BaseModel):
+    """화면의 부산 입항 예정 선박 목록 한 줄 (10-08 정운 실사용 36번). 목록에 MMSI가 없어 이름·국적·입항 예정·직전 항구만 받는다."""
+
+    ship_name: str = Field(max_length=SCREEN_TEXT_MAX)
+    flag: str | None = Field(default=None, max_length=SCREEN_TEXT_MAX)
+    eta: str | None = Field(default=None, max_length=SCREEN_TIME_MAX)
+    previous_port: str | None = Field(default=None, max_length=SCREEN_TEXT_MAX)
+
+
+class ChatScreen(BaseModel):
+    """지금 화면에 떠 있는 배들 (10-08 정운 실사용 36번, 정운 승인한 요청 계약 추가). "옆에 떠있네 라이베리아에서 오는 거"를 알아듣는 데만 쓴다.
+    선택 칸이라 옛 화면·평가 스크립트는 보내지 않아도 된다. 판정에는 쓰지 않는다. LLM에는 자료로만 간다."""
+
+    vessel: ChatScreenVessel | None = None
+    arrivals: list[ChatScreenArrival] = Field(default_factory=list, max_length=svc.SCREEN_ARRIVALS_MAX)
+
+
 class ChatRequest(BaseModel):
     message: str = Field(max_length=svc.MESSAGE_MAX)
     session_id: str = Field(max_length=SESSION_ID_MAX)  # /api/agent와 같은 상한 (schemas/agent.py, 10-06 점검)
@@ -81,6 +114,8 @@ class ChatRequest(BaseModel):
     document: ChatDocument | None = None
     # 최근 대화. 서버는 마지막 몇 줄만 쓴다 (services/chat.HISTORY_TURNS). 보내지 않아도 된다 (전 화면·평가 스크립트)
     history: list[ChatTurn] = Field(default_factory=list, max_length=50)
+    # 화면에 지금 떠 있는 배 (10-08 정운 실사용 36번). 없어도 된다(전 화면·평가 스크립트)
+    on_screen: ChatScreen | None = None
 
 
 class VesselItem(BaseModel):
@@ -157,10 +192,15 @@ class ChatResponse(BaseModel):
     cargos: list[ChatCargo] = []  # B/L이 2~3개인 문장에서만 채워진다. 한 개짜리 답은 빈 목록이라 옛 화면도 그대로 쓴다
     watch_offer: WatchOffer | None = None  # 지켜보기를 먼저 제안한 답에만 채워진다 (10-06)
     watch_set: WatchSet | None = None  # 대화로 지켜보기를 켜거나 껐을 때만 채워진다 (10-06)
+    # 답 문장 속 근거 표시 (10-08 정운 실사용 58번). 둘 다 더하기만 한 칸이라 옛 화면은 무시해도 된다.
+    # evidence_items: 이번 문장에서 모은 근거 [{id, source, fetched_at, values:[{field,value}], url?, title?}]. 코드 문장·고정 문구에도 실린다(화면이 글 끝 칩으로 보인다)
+    # citations: 검증을 통과한 [E#] 표시 [{id, start, end, evidence_ref}]. start/end는 reply 글 안 "[E1]"의 자리, evidence_ref는 evidence_items[].id
+    evidence_items: list[dict] = []
+    citations: list[dict] = []
 
 
 BAD_MESSAGE = "문장을 1~500자로 입력해 주세요"
-STREAM_FAILED = "답을 만드는 중 문제가 생겼습니다. 잠시 뒤 다시 시도해 주세요."
+STREAM_FAILED = "답을 만드는 중 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요."
 # 오래 걸리는 단계(LLM 판정 등)에서 중간 장비가 조용한 연결을 끊지 않게 보내는 빈 줄 간격 (chat-progress.md How)
 PING_SEC = 15
 
@@ -190,6 +230,11 @@ def _agent_runner(body: ChatRequest, user_id: str | None):
         return run_agent(req, user_id)
 
     return run
+
+
+def _on_screen(body: ChatRequest) -> dict:
+    """화면이 보낸 지금 보이는 배들을 서비스에 넘길 인자로 (10-08 정운 실사용 36번). 없으면 빈 묶음이라 호출이 예전과 같다. /api/chat과 스트림이 같이 쓴다."""
+    return {"on_screen": body.on_screen.model_dump()} if body.on_screen else {}
 
 
 def _history(body: ChatRequest) -> list[dict]:
@@ -292,7 +337,8 @@ def chat(body: ChatRequest, user_id: Annotated[str | None, Depends(current_user_
             try:
                 result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id), user_id,
                                     history=_history(body), run_tool=_follow_up_tool,
-                                    watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
+                                    watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id),
+                                    **_on_screen(body))
             except svc.ChatError as e:
                 raise HTTPException(status_code=400, detail=BAD_MESSAGE) from e
             response = ChatResponse(**result.__dict__)
@@ -332,7 +378,8 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
                         with session_scope(body.session_id, user_id):
                             result = svc.handle(body.message, body.session_id, context, _agent_runner(body, user_id),
                                                 user_id, history=_history(body), run_tool=_follow_up_tool,
-                                                watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id))
+                                                watch=_watch_hooks(user_id), kakao=_kakao_hooks(user_id),
+                                                **_on_screen(body))
                             response = ChatResponse(**result.__dict__)
                             # 맡기기만 한다. 저장·제목은 뒤에서 돈다. session_scope 안이라 제목 LLM 토큰도 이 사용자 몫으로 쌓인다 (10-06 점검)
                             _save_conversation(body, user_id, response)

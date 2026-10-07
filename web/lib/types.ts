@@ -3,12 +3,20 @@
  * Python defaulted fields are optional on request, populated on serialized response.
  * History contracts come from backend/app/routers/history.py, not the mockup.
  */
+import type {Citation, EvidenceItem} from './evidenceTypes';  // 답 속 근거 표시 (10-08 정운 실사용 58번)
 export type Verdict = 'fine' | 'watch' | 'act';
 export type Status = 'ok' | 'partial' | 'insufficient' | 'failed' | 'unsupported';
 export type VesselMatch = 'confirmed' | 'uncertain' | 'none';
 export type Freshness = 'fresh' | 'stale' | 'unknown';
 /** 서류 사진에서 확인한 출항일을 /api/chat에 실어 보내는 칸 (10-06). 서버가 같은 B/L 조회에만 departed_on으로 싣는다 */
 export interface ChatDocument { bl_no: string; departed_on: string }
+/** 화면에 지금 떠 있는 배들. /api/chat 요청의 선택 칸 on_screen (백엔드 routers/chat.py ChatScreen, 10-08 정운 실사용 36번).
+ * 서버는 이 값을 자료로만 LLM에 준다. B/L·컨테이너 번호 칸은 없다. 글자는 80자(시각 40자), 목록은 10줄까지 */
+export interface ChatOnScreen {
+  vessel?: {ship_name: string; flag?: string | null; mmsi?: number | null; lat?: number | null; lng?: number | null;
+    position_time?: string | null; destination?: string | null} | null;
+  arrivals?: {ship_name: string; flag?: string | null; eta?: string | null; previous_port?: string | null}[];
+}
 export interface AgentRequest {
   bl_no: string;
   bl_type: 'MASTER' | 'HOUSE';
@@ -185,6 +193,9 @@ export interface ChatResponse {
   watch_offer?: WatchOffer | null;
   /** 대화로 지켜보기를 방금 켰거나 껐을 때만 값이 있다 ("응", "그만 지켜봐"). 없거나 null이면 바뀐 게 없다 (10-06 결정) */
   watch_set?: WatchSet | null;
+  /** 답 문장 속 [E1] 표시가 가리키는 근거 묶음과 표시 위치 (10-08 정운 실사용 58번). 서버가 검증을 끝낸 값이다. 옛 응답·데모에는 없거나 빈 목록이다 (EvidencePopover) */
+  evidence_items?: EvidenceItem[];
+  citations?: Citation[];
 }
 /** ChatResponse.watch_offer. logged_in은 서버가 본 로그인 여부 */
 export interface WatchOffer { bl_no: string; reason: string; logged_in: boolean }

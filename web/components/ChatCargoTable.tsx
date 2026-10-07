@@ -9,6 +9,7 @@
 import {Check, CircleHelp} from 'lucide-react';
 import {useApp} from './AppProvider';
 import {VerdictBadge} from './Shared';
+import {WatchVesselButton} from './WatchVesselButton';
 import {countryLabel, dateTime} from '@/lib/format';
 import type {ChatCargo} from '@/lib/types';
 
@@ -41,7 +42,9 @@ export function ChatCargoTable({cargos}: {cargos: ChatCargo[]}) {
             <span className="cmp-state">
               {needs ? <span className="verdict-badge neutral"><CircleHelp size={16}/>{ROW_STATUS.insufficient}</span> : <>{c.status !== 'ok' && <small>{ROW_STATUS[c.status] ?? c.status}</small>}<VerdictBadge verdict={c.verdict as ChatCargo['agent']['verdict']}/></>}</span>
           </button></th>
-          <td>{needs ? <span className="cmp-none">-</span> : <><b className="cmp-ship">{c.ship_name ?? '선박 확인 안 됨'}</b>{flag && <small>{flag}</small>}<span className="cmp-eta">{dateTime(c.eta, true)}</span></>}</td>
+          <td>{needs ? <span className="cmp-none">-</span> : <><b className="cmp-ship">{c.ship_name ?? '선박 확인 안 됨'}</b>{flag && <small>{flag}</small>}<span className="cmp-eta">{dateTime(c.eta, true)}</span>
+            {/* 10-08 정운 실사용 57번: 배 번호(mmsi)는 그 화물의 agent.vessel에 있을 때만 단다. 없으면 지어내지 않는다. 줄 클릭(화물 바꾸기)과 섞이지 않게 클릭을 막는다 */}
+            {c.agent.vessel?.mmsi ? <span className="cmp-watch" onClick={e => e.stopPropagation()}><WatchVesselButton mmsi={c.agent.vessel.mmsi} name={c.ship_name ?? c.agent.vessel.name} flag={c.agent.vessel.flag} eta={c.eta}/></span> : null}</>}</td>
           <td>{needs ? <span className="cmp-note">{c.note ?? '-'}</span> : <Margin c={c}/>}</td>
         </tr>;
       })}</tbody>
