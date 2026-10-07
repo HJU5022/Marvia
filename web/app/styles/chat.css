@@ -247,3 +247,9 @@ body[data-split] .conv-section{display:none}
 .chat-cand-chip span{color:var(--muted)}
 .chat-cand-chip:hover:not(:disabled){background:var(--soft)}
 .chat-cand-chip:disabled{opacity:.5;cursor:not-allowed}
+/* 10-08 정운 실사용 57번: 후보 칩 옆 "이 배 지켜보기" 버튼. 칩과 한 묶음으로 줄바꿈하고 375px에서도 안 넘치게 한다 */
+.chat-cand-item{display:flex;align-items:stretch;gap:4px;max-width:100%}
+.chat-cand-item .chat-cand-chip{min-width:0}
+.chat-cand-item .watch-vessel-btn{align-self:center}
+.chat-cand-item .watch-vessel-btn .icon-button,.cmp-watch .watch-vessel-btn .icon-button{min-width:44px;min-height:44px}
+.cmp-watch{display:inline-block;margin-top:2px}
