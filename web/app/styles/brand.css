@@ -3,11 +3,10 @@
  * 실제 로그인 화면(대화, 현황표, 감시, 이력, 설정, 지표, 관리)을 열어 계산된 스타일로 확인한 이름만 고친다.
  * 랜딩과 같은 기준 (ui-ux-pro-max "Trust & Authority" B2B 톤):
  *   - 글씨: 제목은 굵게(h1 700, h2·h3 600), 자간은 기본. 넓은 자간은 작은 눈썹글에만 조금
- *   - 모서리: 버튼·입력 4px, 빈 상태·카드 6px, 입력창 틀 8px. 화면 끝까지 가는 줄(사이드바·윗줄·표 칸)은 각진 그대로
+ *   - 모서리는 각진 그대로 둔다 (10-07 승욱: 둥근 모양은 빼고 가독성만 키운다)
  *   - 버튼: 주 버튼은 브랜드 파랑 채움(랜딩 시작 버튼과 같다), 보조 버튼은 회색 외곽선
  * 선택자에 .app-shell(로그인한 뒤 틀)과 :not(.lp *)(소개 랜딩 제외)를 붙여, 화면별 CSS의 한 단계 선택자보다 우선한다. */
 
-:root{--r-sm:4px;--r:6px;--r-lg:8px;--radius:var(--r);--small-radius:var(--r-sm);--card-radius:var(--r)}
 
 /* 자간: 넓은 자간을 모두 기본으로 (랜딩 본문과 같다) */
 .app-shell *:not(.lp *){letter-spacing:normal}
@@ -26,19 +25,16 @@
 .app-shell :is(.st-tab.on,.adm-tabs button.active):not(.lp *){font-weight:600}
 
 /* 버튼: 랜딩 시작 버튼과 같은 모양 */
-.button{border-radius:var(--r-sm);letter-spacing:normal;font-weight:600}
+.button{letter-spacing:normal;font-weight:600}
 .button.primary{background:var(--brand);color:#fff;border:1px solid var(--brand)}
 .button.primary:hover:not(:disabled){background:var(--brand-hover);border-color:var(--brand-hover);color:#fff}
 .button.secondary{border-color:var(--border-strong);color:var(--text)}
 .button.secondary:hover:not(:disabled){border-color:var(--text);background:var(--hover)}
 
-/* 모서리: 화면에서 테두리가 보이는 것들 (실측한 이름) */
-.app-shell :is(.sb-new,.send,.cargo-edit,.hist-search,.adm-search,.cs-btn,.query-button,.icon-button,.icon-btn):not(.lp *){border-radius:var(--r-sm)}
-.app-shell :is(.watch-empty,.empty-state,.failure-banner,.ask-banner,.doc-hint,.cand-card,.st-card,.admin-card,.adm-box,.cs-card,.profile-card,.pending-card):not(.lp *){border-radius:var(--r)}
-.app-shell :is(.composer-wrap,.map-frame,.vessel-map-frame):not(.lp *){border-radius:var(--r-lg)}
-.app-shell :is(.map-frame,.vessel-map-frame):not(.lp *){overflow:hidden}
-/* 판정 카드(조회 결과)와 근거 영역: 랜딩 판정 카드와 같은 6px */
-.app-shell :is(.verdict-hero,.next-action,.conflicts,.cargo-body>section,.bottom-grid>section):not(.lp *){border-radius:var(--r)}
-
 /* 요약 숫자: 랜딩 숫자 줄처럼 굵게 (현황표 전체·운송 중·입항·완료, 지표 KPI) */
 .app-shell :is(.cs-summary dd,.history-stat strong,.mt-kpi strong,.metric-kpis strong):not(.lp *){font-weight:700;font-variant-numeric:tabular-nums}
+
+/* 가독성: 너무 작던 글씨를 한 단계 키운다 (11px 사이드바 설명·묶음 제목·바닥 줄 → 12px, 사이드바 메뉴 13px → 14px) */
+.app-shell :is(.sb-caption,.sb-cl-group h3,.app-footer,.app-footer *):not(.lp *){font-size:12px}
+.app-shell :is(.sb-item,.sb-new):not(.lp *){font-size:14px}
+.app-shell .sb-item.active:not(.lp *){font-weight:600}
