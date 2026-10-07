@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import contextvars
+import csv
 import json
 import os
 import re
@@ -54,6 +55,49 @@ from backend.app.services import chat as svc  # noqa: E402
 CASES_PATH = ROOT / "scripts" / "eval_chat_agent_cases.jsonl"
 KST = timezone(timedelta(hours=9))
 NOW = datetime.now(timezone.utc)
+
+# ── 10-08 Vertex 실험: 비용 장부와 예산 상한 ─────────────────────
+# 단가: Google Cloud Vertex AI 생성형 AI 가격표(https://cloud.google.com/vertex-ai/generative-ai/pricing, Standard, Global 엔드포인트,
+# 2026-10-07 확인). 단위 USD / 1M 토큰: (입력, 캐시된 입력, 출력). 생각(thinking) 토큰은 출력 단가로 받는다.
+PRICES = {
+    "gemini-3.5-flash-lite": (0.30, 0.03, 2.50), "gemini-3.5-flash": (1.50, 0.15, 9.00),
+    "gemini-2.5-flash-lite": (0.10, 0.01, 0.40), "gemini-2.5-flash": (0.30, 0.03, 2.50),
+}
+KRW_PER_USD = 1450
+BUDGET_KRW = 244_500
+STOP_KRW = 195_600  # 예산의 80%. 장부 합계(상한값)가 이 값에 닿으면 새 호출을 시작하지 않는다
+LEDGER = ROOT / "experiments" / "vertex_1008" / "ledger.csv"
+LEDGER_FIELDS = ["time", "label", "model", "thinking", "variant", "runs", "jobs_done", "llm_calls", "prompt_tokens", "cached_tokens",
+                 "completion_tokens", "usd_est", "usd_upper", "krw_est", "krw_upper", "cum_krw_upper"]
+NOT_JUDGED = {"phone-01", "phone-02", "phone-03"}  # 웹 검색이 있어야 맞는 문항. --no-web 실행에서는 채점하지 않는다 (verdict=skip)
+
+
+def model_prices() -> tuple[float, float, float]:
+    name = (os.environ.get("LLM_MODEL") or "").split("/")[-1]
+    return PRICES[name]  # 단가표에 없는 모델이면 KeyError: 비용을 모르는 채로 돌지 않는다
+
+
+def call_usd(prompt_tokens, cached_tokens, completion_tokens) -> tuple[float, float]:
+    """한 호출의 (추정 비용, 상한 비용) USD. 상한은 캐시 할인을 받지 않았다고 치고 입력 전부를 정가로 계산한다."""
+    pin, pcache, pout = model_prices()
+    p, c, o = prompt_tokens or 0, cached_tokens or 0, completion_tokens or 0
+    return ((p - c) * pin + c * pcache + o * pout) / 1e6, (p * pin + o * pout) / 1e6
+
+
+def ledger_total_krw() -> float:
+    if not LEDGER.exists():
+        return 0.0
+    return sum(float(r["krw_upper"]) for r in csv.DictReader(LEDGER.open(encoding="utf-8")))
+
+
+def ledger_append(row: dict) -> None:
+    LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    new = not LEDGER.exists()
+    with LEDGER.open("a", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=LEDGER_FIELDS)
+        if new:
+            w.writeheader()
+        w.writerow(row)
 
 
 # ── 가공 데이터 ──────────────────────────────────────────────
@@ -137,6 +181,7 @@ RECORD: contextvars.ContextVar[dict | None] = contextvars.ContextVar("record", d
 _web_lock = threading.Lock()
 _web_count = [0]
 WEB_CAP = [150]
+NO_WEB = [False]
 
 
 def fake_load_memo(user_id: str):
@@ -170,6 +215,16 @@ def install() -> None:
     svc.memory.join_early = lambda *a, **k: ""
     svc.memory.lookup_notes = lambda *a, **k: []
 
+    # Vertex 토큰은 처음 쓸 때 만든다. 여러 스레드가 동시에 만들면 토큰이 비어 있는 클라이언트가 생겨서 한 번에 한 스레드만 들어가게 한다
+    orig_vertex_client = llm._vertex_client
+    vertex_lock = threading.Lock()
+
+    def locked_vertex_client():
+        with vertex_lock:
+            return orig_vertex_client()
+
+    llm._vertex_client = locked_vertex_client
+
     orig_agent = llm.chat_agent
 
     def recorded_agent(*args, feedback=None, **kwargs):
@@ -185,9 +240,12 @@ def install() -> None:
                     time.sleep(min(30, 3 * 2 ** attempt))  # 요청 제한은 잠깐 쉬었다 다시 (지수 대기)
                     continue
                 rec["errors"].append(e.kind)
+                rec.setdefault("error_msgs", []).append(str(e)[:300])  # 키는 들어 있지 않다 (HTTP 상태와 메시지)
                 raise
         r = answer.llm
-        rec["calls"].append({
+        usd = call_usd(getattr(r, "prompt_tokens", None), getattr(r, "cached_tokens", None), getattr(r, "completion_tokens", None)) \
+            if getattr(r, "prompt_tokens", None) is not None else (0.0, 0.0)
+        rec["calls"].append({"usd": usd[0], "usd_upper": usd[1],
             "feedback": (feedback or "")[:200] or None, "kind": answer.output.answer_kind, "reply": answer.output.reply,
             "quote": answer.output.skill_quote[:120], "latency_ms": int((time.monotonic() - started) * 1000),
             "prompt_tokens": getattr(r, "prompt_tokens", None), "completion_tokens": getattr(r, "completion_tokens", None),
@@ -212,6 +270,15 @@ def install() -> None:
         return orig_web(query)
 
     llm.web_search = capped_web
+    if NO_WEB[0]:
+        # 10-08 Vertex 실험: 웹 검색은 OpenRouter 요금이 나가므로 막는다. 도구는 그대로 보이고 호출하면 실패로 돌아간다
+        def blocked_web(query: str):
+            rec = RECORD.get()
+            if rec is not None:
+                rec["web_calls"] += 1
+            raise llm.LLMError("web search disabled in this experiment", kind="web_disabled")
+
+        llm.web_search = blocked_web
 
 
 def _tools_once():
@@ -226,7 +293,8 @@ def _tools_once():
 
 def run_once(case: dict, variant: str, prompt_text: str, rep: int) -> dict:
     rec = {"variant": variant, "id": case["id"], "tag": case["tag"], "rep": rep, "message": case["message"], "calls": [], "errors": [],
-           "retries": 0, "web_calls": 0}
+           "retries": 0, "web_calls": 0,
+           "no_web": NO_WEB[0], "thinking": os.environ.get("VERTEX_THINKING_BUDGET")}
     token_p, token_r = PROMPT_TEXT.set(prompt_text), RECORD.set(rec)
     started = time.monotonic()
     context = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="ab") if case.get("has_current_cargo") else None
@@ -249,6 +317,8 @@ def run_once(case: dict, variant: str, prompt_text: str, rep: int) -> dict:
 
 def judge(case: dict, rec: dict) -> tuple[str, list[str]]:
     """pass / fail / code(LLM 없이 코드가 처리) / error(인프라 오류). 이유 목록을 같이 돌려준다."""
+    if rec.get("no_web") and case["id"] in NOT_JUDGED:
+        return "skip", ["웹 검색을 막은 실행이라 채점하지 않음"]
     if rec.get("exception") or rec["errors"]:
         return "error", [rec.get("exception") or "llm_error:" + ",".join(rec["errors"])]
     if not rec["calls"]:
@@ -302,6 +372,7 @@ def load_cases(only: str | None) -> list[dict]:
 
 
 def cmd_run(args) -> None:
+    install_args(args)
     install()
     WEB_CAP[0] = args.web_cap
     out = Path(args.out)
@@ -322,22 +393,56 @@ def cmd_run(args) -> None:
             for name in variants:
                 if (name, case["id"], rep) not in done_keys:
                     jobs.append((case, name, rep))
-    print(f"model={os.environ.get('LLM_MODEL')} cases={len(cases)} variants={list(variants)} jobs={len(jobs)} workers={args.workers}", flush=True)
+    start_total = ledger_total_krw()
+    print(f"model={os.environ.get('LLM_MODEL')} thinking={os.environ.get('VERTEX_THINKING_BUDGET')} cases={len(cases)} variants={list(variants)} "
+          f"jobs={len(jobs)} workers={args.workers} ledger_krw_upper={start_total:.0f}/{STOP_KRW}", flush=True)
     finished = [0]
+    spent = {"usd": 0.0, "upper": 0.0}  # 이 실행에서 쓴 돈. 예산 상한 검사에 쓴다
+    stopped = [False]
+    per_variant: dict[str, dict] = {n: {"jobs": 0, "calls": 0, "p": 0, "c": 0, "o": 0, "usd": 0.0, "upper": 0.0} for n in variants}
 
     def work(job):
         case, name, rep = job
+        with lock:
+            if start_total + spent["upper"] * KRW_PER_USD >= STOP_KRW:  # 80%에 닿으면 새 문항을 시작하지 않는다
+                if not stopped[0]:
+                    print("예산 80% 도달: 남은 문항을 건너뛴다", flush=True)
+                stopped[0] = True
+                return
         rec = run_once(case, name, texts[name], rep)
         with lock:
             with open(out / "runs" / f"{name}.jsonl", "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            pv = per_variant[name]
+            pv["jobs"] += 1
+            for c in rec["calls"]:
+                pv["calls"] += 1
+                pv["p"] += c["prompt_tokens"] or 0
+                pv["c"] += c["cached_tokens"] or 0
+                pv["o"] += c["completion_tokens"] or 0
+                pv["usd"] += c["usd"]
+                pv["upper"] += c["usd_upper"]
+                spent["usd"] += c["usd"]
+                spent["upper"] += c["usd_upper"]
             finished[0] += 1
             if finished[0] % 25 == 0:
-                print(f"  {finished[0]}/{len(jobs)} (web={_web_count[0]})", flush=True)
+                print(f"  {finished[0]}/{len(jobs)} (web_blocked_calls={_web_count[0]}) spent_krw_upper={spent['upper'] * KRW_PER_USD:.0f}", flush=True)
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         list(pool.map(work, jobs))
-    print(f"끝: {finished[0]}건, 웹 검색 {_web_count[0]}회", flush=True)
+    cum = start_total
+    for name, pv in per_variant.items():  # 변형마다 장부에 한 줄
+        cum += pv["upper"] * KRW_PER_USD
+        ledger_append({"time": _stamp(), "label": args.label or Path(args.out).name, "model": os.environ.get("LLM_MODEL"),
+                       "thinking": os.environ.get("VERTEX_THINKING_BUDGET") or "default", "variant": name, "runs": args.runs,
+                       "jobs_done": pv["jobs"], "llm_calls": pv["calls"], "prompt_tokens": pv["p"], "cached_tokens": pv["c"],
+                       "completion_tokens": pv["o"], "usd_est": f"{pv['usd']:.4f}", "usd_upper": f"{pv['upper']:.4f}",
+                       "krw_est": f"{pv['usd'] * KRW_PER_USD:.0f}", "krw_upper": f"{pv['upper'] * KRW_PER_USD:.1f}", "cum_krw_upper": f"{cum:.0f}"})
+    print(f"끝: {finished[0]}건, 이 실행 비용 약 {spent['usd'] * KRW_PER_USD:.0f}원(상한 {spent['upper'] * KRW_PER_USD:.0f}원), 장부 누계(상한) {cum:.0f}원", flush=True)
+
+
+def install_args(args) -> None:
+    NO_WEB[0] = bool(args.no_web)
 
 
 # ── 보고서 ───────────────────────────────────────────────────
@@ -455,6 +560,8 @@ def main() -> None:
     run.add_argument("--out", required=True)
     run.add_argument("--only", help="문항 id나 tag를 쉼표로")
     run.add_argument("--web-cap", type=int, default=150)
+    run.add_argument("--no-web", action="store_true", help="웹 검색을 막는다 (Vertex 실험: OpenRouter 요금 방지). 웹이 필요한 문항은 채점하지 않는다")
+    run.add_argument("--label", help="장부에 적을 이름")
     run.add_argument("--fresh", action="store_true", help="이미 있는 결과를 무시하고 다시 돈다 (파일에 이어 쓴다)")
     rep = sub.add_parser("report")
     rep.add_argument("--base", required=True)
