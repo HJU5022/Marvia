@@ -150,12 +150,12 @@ AIS 신뢰도 규칙(9/22 ShipFinder 실제 응답에서 확인): MMSI 중복(IM
 | API | 용도 | 상태(9/22) | 확인된 것 | 남은 것 |
 | --- | --- | --- | --- | --- |
 | **ShipFinder** VesselSearch · VesselPositionSingle | 선박 검색, 실시간 위치·ETA | **검증 완료** | 실제 호출 성공. 부산 북항 선박 1분 전 위치. 동명 선박·MMSI 중복·53일 전 위치·깨진 목적지 사례 실제 확인 | 스타터 키 호출 한도, 10/6 이후 연장. 상태코드 21(권한 없음)·23·29(빈도 초과) 처리 |
-| ShipFinder 영역 조회·입항 예정 | — | 사용 불가 | 스타터 키 status 21 | 설계에서 제외 |
+| ShipFinder 영역 조회·입항 예정 | - | 사용 불가 | 스타터 키 status 21 | 설계에서 제외 |
 | **searoute** | 남은 해상 거리 | 검증 완료 | 사우샘프턴→부산 10,694해리, 동해→부산 78해리 | venv·Docker에서만 정상 |
 | **UNI-PASS** 화물통관진행정보 | B/L → 선명·국적·입항예정·통관단계·장치장 | 조건부 | 엔드포인트·파라미터(crkyCn, mblNo/hblNo, blYy), 응답 csclPrgsStts·etprDt·shipNat·vydf 확인 | shipNm·shedNm·단계별 일시 필드, 인증키, 테스트용 실제 B/L 1건(소유자 동의). IMO·호출부호 없음 → 선명+국적+입항예정으로 매칭 |
 | **해수부 관제정보** `apis.data.go.kr/1192000/CntlVssl2/Info` | 입항 예정·실적, 접안 시설 | 명세 확인 | 호출부호·선박명·관제구분·입항일시·시설명. 개발계정 10,000건 | 부산 청 코드, 실제 호출 |
 | 해수부 선박운항정보 | 입항 예정 목록 | 조건부 | 항구명·입출항시간·선박명·차항지 | "예정" 목록 제공 여부, 필드명 |
-| OpenRouter / Langfuse | LLM 모델 A·B / 트레이스·프롬프트·평가셋 | 강의 범위 | — | 비교 모델 2개 선정 |
+| OpenRouter / Langfuse | LLM 모델 A·B / 트레이스·프롬프트·평가셋 | 강의 범위 | - | 비교 모델 2개 선정 |
 
 키 발급 4종: UNI-PASS, 공공데이터포털, OpenRouter, Langfuse. ShipFinder는 보유.
 

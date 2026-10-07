@@ -89,7 +89,6 @@ public/brand, about/   로고, 소개 페이지 캡처 이미지
 scripts/               verify.mjs, verify-contract.mjs, bake-basemap.mjs, copy-maplibre-worker.mjs, backend-contract.json
 screenshots/           verify.mjs가 찍는 캡처 (git 제외, 로컬에서 만들어진다)
 DESIGN.md              디자인 방향과 이유
-NOTES.md               스키마·문서 차이, 알려진 한계, 미확인 값
 THIRD_PARTY.md         지도·폰트 출처와 라이선스
 ```
 
@@ -236,4 +235,3 @@ MARVIA_LIVE_TEST_URL=http://127.0.0.1:3101 npm run test:e2e
 
 `npm run test:contracts`. 원본 Python 스키마를 읽어 생성한 `scripts/backend-contract.json` 스냅샷으로 가공 fixture를 검사하므로 원본 저장소·Python·API 없이 실행됩니다. 백엔드 `schemas/*`가 바뀌면 이 스냅샷도 다시 만들어야 합니다 (`AgentResponse`의 필드가 바뀌면 이 검사가 먼저 깨집니다).
 
-원본과의 차이 및 데모 범위는 **NOTES.md**를 먼저 확인해 주세요.
