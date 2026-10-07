@@ -33,12 +33,17 @@ TIMEOUT_SEC = float(os.environ.get("SHIPFINDER_TIMEOUT_SEC", 10))  # 환경변�
 # 13 = Server busy (docs.shipfinder.com/8401497m0). 잠시 뒤 다시 부르면 되므로 retryable (09-22 확인).
 _STATUS_CODES = {
     3: "not_found",
+    # 6 = 키 만료, 7 = 키 잠김 (docs.shipfinder.com/8401497m0). 키를 바꾸기 전에는 다시 불러도 같아 bad_key로 묶는다.
+    # 10-07 실측: 무료 키 기간이 끝나 6이 왔는데, 목록에 없어 "error"로 뭉쳐져 원인이 로그에 안 보였다
+    6: "bad_key",
+    7: "bad_key",
     9: "bad_key",
     13: "busy",
     21: "no_permission",
     23: "rate_limited",
     29: "rate_limited",
-    # 38 = 하루 호출 한도 소진 (docs.shipfinder.com/8401497m0, 10-06 점검). 전에는 목록에 없어 "error"로 뭉쳐졌다.
+    # 38 = 하루 호출 한도 소진. 공식 코드 표(docs.shipfinder.com/8401497m0)에는 없고 10-02에 실제로 받은 응답으로 정했다 (10-06 점검).
+    # 전에는 목록에 없어 "error"로 뭉쳐졌다.
     # 오늘은 다시 불러도 같은 답이라 retryable이 아니다
     38: "quota_exhausted",
 }
