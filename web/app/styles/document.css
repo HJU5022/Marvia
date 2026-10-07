@@ -126,33 +126,15 @@ output.doc-value{color:var(--text)}
 .composer .attach-btn{min-width:40px;justify-content:center;padding:8px}
 .chat-dock .doc-note{margin:0 0 8px}
 
-/* 파일 칩 + 확인 카드: 입력창 바로 위, 입력창과 같은 너비 */
-.document-panel.inline{margin:0 0 8px;padding:0;border:0;background:none}
-.document-panel.inline .doc-chip{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;border:1px solid var(--border-strong);background:var(--surface);font-size:var(--text-sm);color:var(--text)}
-.document-panel.inline .doc-chip-name{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.document-panel.inline .doc-chip-state{flex:1;min-width:0;color:var(--muted);white-space:nowrap}
-.document-panel.inline .doc-chip-state .mono{font-size:var(--text-sm)}
-.document-panel.inline .doc-chip-x{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center}
-/* 확인 카드: 칩 아래에 붙고 길면 안에서만 스크롤한다 (대화 칸을 밀어내지 않게) */
-.document-panel.inline .document-result{gap:16px;max-height:min(52vh,460px);overflow-y:auto;padding:16px;border:1px solid var(--border-strong);border-top:0;background:var(--surface)}
-.document-panel.inline .document-result>*{animation:none}
-.document-panel.inline .doc-group,.document-panel.inline .doc-conditions{padding:0;background:none}
-.document-panel.inline .doc-fields{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px 20px;margin-bottom:0}
-.document-panel.inline .doc-field{display:flex;flex-direction:column;grid-row:auto;margin-bottom:0;gap:4px}
-.document-panel.inline .doc-cond-grid,.document-panel.inline .doc-contact-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}
-.document-panel.inline .doc-cond-fold>summary{cursor:pointer;font-size:var(--text-sm);font-weight:600;color:var(--text-2);padding:4px 0}
-.document-panel.inline .doc-cond-fold[open]>summary{margin-bottom:12px}
-.document-panel.inline .doc-actions{position:static;align-items:center;justify-content:space-between;padding:0;background:none}
-.document-panel.inline .doc-actions-hint{font-size:var(--text-sm);color:var(--muted)}
-.document-panel.inline .doc-actions .button.primary{min-width:0}
-@media(max-width:700px){
-  .document-panel.inline .doc-actions{flex-direction:column;align-items:stretch;gap:8px}
-}
+/* 파일 칩: 입력창 바로 위, 입력창과 같은 너비. 확인 카드는 없다 (10-08 정운 실사용 73번) */
+.doc-attach{margin:0 0 8px}
+.doc-attach .doc-chip{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;border:1px solid var(--border-strong);background:var(--surface);font-size:var(--text-sm);color:var(--text)}
+.doc-attach .doc-chip-name{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.doc-attach .doc-chip-state{flex:1;min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-attach .doc-chip-state .mono{font-size:var(--text-sm)}
+.doc-attach .doc-chip-x{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center}
 
-/* 10-08 정운 실사용 71번: 카드 하나에 수정 버튼 하나. 읽기 전용 값(output)은 입력칸과 높이를 맞춰 눌러도 카드가 출렁이지 않게 한다 */
+/* 서류 읽은 값 제목 줄 */
 .doc-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
 .doc-section-head .doc-section-title{margin:0}
-.doc-edit{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 8px;font-size:var(--text-sm)}
-.document-panel.inline .doc-section-head{margin-bottom:12px}
-.document-panel.inline .doc-actions-hint{font-size:var(--text-sm);color:var(--muted);margin:0}
 .doc-field .field-error,.doc-group .field-error{margin-top:8px}

@@ -87,7 +87,7 @@ interface AppState {
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
   /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다.
    * opts.document(10-08 정운 51번): 서류 확인 직후 같은 렌더에서 setDocHints한 값은 아직 이 함수의 docHints에 없으므로 출항일을 직접 넘긴다. 주면 docHints보다 앞선다 */
-  ask: (message: string, opts?: {document?: ChatDocument | null}) => Promise<boolean>;
+  ask: (message: string, opts?: {document?: ChatDocument | null; display?: string}) => Promise<boolean>;
   /** 채팅 표에서 고른 화물로 아래 결과 칸을 바꾼다. 단일 화물 답을 받았을 때와 같은 상태 바꿈이다 (다음 질문의 문맥도 이 화물) */
   showCargo: (agent: AgentResponse, request: AgentRequest) => void;
   thread: ChatTurn[]; vessels: ChatResponse | null;
@@ -304,14 +304,15 @@ export function AppProvider({children}:{children:ReactNode}) {
     catch (e) { setError(e instanceof Error ? e.message : '조회하지 못했어요. 다시 시도해 주세요.'); return false; }
     finally {setLoading(false);setPendingSince(null);inflight.current=false;refreshUsage();}
   }
-  async function ask(message: string, opts?: {document?: ChatDocument | null}) {
+  async function ask(message: string, opts?: {document?: ChatDocument | null; display?: string}) {
     if (inflight.current || opening) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 서버에 보낼 앞선 대화. 지금 질문을 더하기 전의 thread(이번 렌더의 값)를 잡아 둔다. 자르기는 chatBody가 한다 (최근 6줄, 500자)
     // 답 글 속 [E1] 표시는 화면용이라 서버로 되돌려 보내는 대화에서는 뗀다 (10-08 정운 실사용 58번)
     const history = thread.map(t => t.role === 'assistant' ? {...t, text: t.text.replace(/\s?\[E\d+\]/gi, '')} : t);
     // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
-    setThread(t => [...t.slice(-49), {role: 'user', text: message}]);
+    // display: 서류 첨부로 보낸 문장은 B/L 대신 파일 이름이 보이게 말풍선 글을 따로 받는다 (10-08 정운 실사용 73번). 서버로 가는 대화에도 이 글이 간다
+    setThread(t => [...t.slice(-49), {role: 'user', text: opts?.display ?? message}]);
     try {
       // 화면에 화물 카드가 실제로 보일 때만 그 화물을 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다.
       // 카드를 숨긴 상태(선박 표·안내 문장)에서 보낸 문장이 보이지 않는 화물의 후속 질문이 되지 않게 한다 (10-02 UI 점검 F5)

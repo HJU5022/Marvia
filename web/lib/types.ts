@@ -281,3 +281,7 @@ export interface CustomsDetailRow {
   basis: string | null; content: string | null; notice: string | null; shed_name: string | null; shed_code: string | null;
   package_count: string | null; package_unit: string | null; weight: string | null; weight_unit: string | null;
 }
+
+/** POST /api/document/bl 응답 (10-08 정운 실사용 73번). 채팅 첨부가 쓴다. 코드가 뽑은 B/L·MRN만 있고 LLM 칸은 없다.
+ * bl_no가 null이면 서류에서 번호를 못 찾은 것이다 */
+export interface DocumentBlResponse { bl_no: string | null; mrn: string | null; ocr: {lines: number; rotation: number; runs: number; ocr_ms: number}; trace_id: string }

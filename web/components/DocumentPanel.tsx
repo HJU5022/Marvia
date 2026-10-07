@@ -14,19 +14,10 @@
  * 검사에 걸린 칸은 미리 고르지 않고 비워 둔다(읽은 값은 옆에 보여 준다). 확인 안 한 값이 저장되지 않게 하려는 것이다.
  * 저장은 실제 모드 + 로그인일 때만, 실패해도 입력 채우기는 막지 않는다. 판정 등급에는 쓰지 않는다.
  *
- * 10-08 정운 실사용 71번: 첨부는 칩만 만든다. 읽기(OCR)는 기다리는 20초를 아끼려고 바로 시작하지만, 읽기가 끝나도 스스로 조회하지 않는다.
- * 조회는 사용자가 입력창 보내기(버튼·Enter)를 누를 때만 간다(handleRef.confirm). 읽기 끝 effect(onPhase)는 상태만 알리고 apply를 부르지 않는다.
- * 확인 카드는 읽은 값을 읽기 전용으로 먼저 보이고 "수정" 버튼 하나가 모든 칸을 한꺼번에 고칠 수 있게 연다
- * (칸마다 연필이 있고 어떤 칸은 못 고치던 것이 헷갈렸다). 형식이 틀린 칸이 있으면 자동으로 수정 상태가 된다.
- * 카드 안 "확인한 값으로 조회" 버튼은 보내기와 같은 일이라 뺐다(키보드는 입력창 Enter, 보내기 버튼이 같은 길).
- *
- * 10-08 정운 49·51·53번: 채팅 입력창 클립 버튼·끌어 놓기로 첨부한 파일은 inline 모드로 그린다. 큰 옆 패널과 점선 칸 없이
- * 입력창 위의 파일 칩(이름, 읽는 중 N초, X)과 작은 확인 카드만 보인다. 파일은 올리는 순간 바로 읽기 시작한다(file prop).
- * 입력창 보내기(handleRef.confirm)가 apply()를 불러 onApply로 값을 넘긴다. 입력창에 쓴 설명을 함께 보내는 일은 ChatBar가 한다.
- * heading·dropzone 모드(기본)는 TopBar의 옛 조회 폼이 그대로 쓴다.
+ * 10-08 정운 실사용 73번: 채팅 첨부는 이 컴포넌트를 쓰지 않는다(보내기 때 B/L만 읽는다, ChatBar). 이 파일은 옛 조회 폼(TopBar)용 기본 모드만 남겼다.
  */
-import {useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent, type MutableRefObject} from 'react';
-import {Camera, Check, ChevronDown, FileText, LoaderCircle, Pencil, RotateCcw, TriangleAlert, X} from 'lucide-react';
+import {useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent} from 'react';
+import {Camera, Check, ChevronDown, LoaderCircle, RotateCcw, TriangleAlert, X} from 'lucide-react';
 import {isLive, readDocument, saveDocumentFacts} from '@/lib/api';
 import type {ContactRole, DocumentCheck, DocumentConditionKey, DocumentFactsRequest, DocumentResponse, FreightTerm, Incoterm, OriginalBl} from '@/lib/types';
 
@@ -70,17 +61,9 @@ function CheckBadges({checks, emptyText}: {checks: DocumentCheck[]; emptyText?: 
 
 export interface DocumentValues { bl_no: string; voyage_no: string | null; forwarder_eta: string | null; mrn: string | null; departed_on: string | null }
 
-/** inline 모드가 부모(ChatBar)에게 알리는 지금 상태. busy=읽는 중, ready=확인 카드가 떠 있음, error=읽기 실패.
- * canApply는 확인 카드의 값이 모두 형식에 맞아 조회해도 되는지다 (보내기 버튼을 켜고 끄는 데 쓴다) */
-export interface DocumentPhase { phase: 'idle' | 'busy' | 'ready' | 'error'; canApply: boolean }
-/** 입력창의 보내기 버튼이 확인 카드를 대신 눌러 주는 손잡이. 형식이 틀리면 아무것도 보내지 않고 false */
-export interface DocumentHandle { confirm: () => boolean }
-
-/** heading=false: 드로어(Drawer)가 제목과 닫기 버튼을 그릴 때. 제목·닫기가 두 번 보이지 않게 한다.
- * inline=true + file(10-08 정운 49번): 채팅 입력창 위에 작게 그리는 모드. file이 오면 바로 읽는다. */
-export function DocumentPanel({onApply, onClose, disabled, heading = true, inline = false, file, handleRef, onPhase}: {
+/** heading=false: 드로어(Drawer)가 제목과 닫기 버튼을 그릴 때. 제목·닫기가 두 번 보이지 않게 한다. */
+export function DocumentPanel({onApply, onClose, disabled, heading = true}: {
   onApply: (v: DocumentValues) => void; onClose: () => void; disabled: boolean; heading?: boolean;
-  inline?: boolean; file?: File; handleRef?: MutableRefObject<DocumentHandle | null>; onPhase?: (s: DocumentPhase) => void;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,8 +73,6 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
   const [result, setResult] = useState<DocumentResponse | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [dragging, setDragging] = useState(false);
-  // 10-08 정운 실사용 71번: inline 카드는 읽기 전용이 기본이고 수정 버튼 하나가 모든 칸을 연다. 기본 모드(옛 조회 폼)는 늘 고칠 수 있다
-  const [editMode, setEditMode] = useState(false);
   // 읽는 데 20~28초쯤 걸려 스피너만으로는 멈춘 것처럼 보인다. 브라우저가 실제로 잰 경과 초만 보인다 (10-07 정운 실사용 11번)
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
@@ -103,7 +84,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
 
   async function upload(file: File | undefined) {
     if (!file || busy) return;
-    setBusy(true); setError(''); setResult(null); setFileName(file.name); setEditMode(false);
+    setBusy(true); setError(''); setResult(null); setFileName(file.name);
     try {
       const r = await readDocument(file);
       setResult(r);
@@ -117,15 +98,6 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
       if (inputRef.current) inputRef.current.value = '';  // 같은 파일을 다시 골라도 change가 나게
     }
   }
-
-  // inline 모드: 부모가 넘긴 파일을 마운트 때 한 번만 읽는다. 개발 모드의 effect 두 번 실행이 OCR·토큰을 두 번 쓰지 않게 ref로 막는다.
-  // 다른 파일은 부모가 key를 바꿔 새로 마운트한다
-  const started = useRef(false);
-  useEffect(() => {
-    if (!inline || !file || started.current) return;
-    started.current = true;
-    void upload(file);
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 막힌 상태(보내는 중, 하루 AI 사용량 소진)에는 끌어 놓은 사진도 받지 않는다. 고르기 칸만 막으면 끌어 놓기로 새어 나간다 (F7)
   function onDrop(e: DragEvent) { e.preventDefault(); setDragging(false); if (disabled || busy) return; void upload(e.dataTransfer.files[0]); }
@@ -156,9 +128,6 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
   }
 
   const canApply = blValid && etaValid && etdValid && mrnValid;
-  // 형식이 틀린 칸이 있으면 고치라고 수정 상태를 자동으로 연다. 고치는 도중 닫히지 않게 한 번 열면 사용자가 닫을 때까지 둔다
-  useEffect(() => { if (result && !canApply) setEditMode(true); }, [result, canApply]);
-  const editing = !inline || editMode;
   /** 확인한 값을 넘긴다. 반환값은 실제로 넘겼는지 (입력창 보내기가 형식 오류를 알 수 있게) */
   function apply(): boolean {
     if (!canApply) return false;
@@ -167,15 +136,6 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
     onApply({bl_no: bl, voyage_no: values.voyage?.trim() || null, forwarder_eta: eta || null, mrn: mrnValid ? mrn || null : null, departed_on: etd || null});
     return true;
   }
-
-  // inline 모드: 부모가 보내기 버튼으로 apply를 부를 수 있게(조회는 이 길 하나뿐이다. 이 파일의 어떤 effect도 apply를 부르지 않는다) 매 렌더 최신 apply를 건넨다 (값 state가 바뀔 때마다 apply가 새로 만들어진다)
-  useEffect(() => {
-    if (!handleRef) return;
-    handleRef.current = {confirm: apply};
-    return () => { handleRef.current = null; };
-  });
-  const phase: DocumentPhase['phase'] = busy ? 'busy' : result ? 'ready' : error ? 'error' : 'idle';
-  useEffect(() => { onPhase?.({phase, canApply: !!result && canApply}); }, [phase, result, canApply]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 배너에 "어느 칸을 봐야 하는지" 이름으로 보이려고, 검사에 걸린 칸의 이름을 모은다 (순서는 화면 순서)
   const flaggedNames = result ? [
@@ -191,7 +151,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
 
   const emptyField = {value: null, checks: [] as DocumentCheck[]};  // etd·조건 칸은 옛 서버 응답에 없을 수 있다
 
-  // B/L 조건·연락처 칸. inline 모드는 접어서, 기본 모드는 그대로 펼쳐서 보인다 (아래 return)
+  // B/L 조건·연락처 칸 (아래 return에서 펼쳐 보인다)
   const conditions = result ? (
       <section className="doc-conditions" aria-labelledby={`${inputId}-cond`}>
         <h3 id={`${inputId}-cond`}>B/L 조건과 화물 인도 연락처</h3>
@@ -203,12 +163,12 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
             return <div key={key} className={`doc-cond ${f.checks.length ? 'flagged' : ''}`}>
               <div className="doc-cond-top"><label htmlFor={id}>{label}</label>
                 <span className="doc-badges"><CheckBadges checks={f.checks} emptyText={!f.value ? '서류에 없음' : undefined}/></span></div>
-              {editing ? <div className="doc-select">
+              {<div className="doc-select">
                 <select id={id} value={values[key] ?? ''} onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0}>
                   <option value="">모름</option>
                   {choices.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
                 </select><ChevronDown size={16} aria-hidden="true"/>
-              </div> : <output id={id} className="doc-value">{choices.find(c => c[0] === values[key])?.[1] ?? '모름'}</output>}
+              </div>}
               {f.checks.length > 0 && f.value && <small>읽은 값: {choices.find(c => c[0] === f.value)?.[1] ?? f.value}</small>}
             </div>;
           })}
@@ -220,32 +180,23 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
             return <div key={key} className={`doc-cond ${f.checks.length ? 'flagged' : ''}`}>
               <div className="doc-cond-top"><label htmlFor={id}>{label}</label>
                 <span className="doc-badges"><CheckBadges checks={f.checks} emptyText={!f.value ? '서류에 없음' : undefined}/></span></div>
-              {editing ? <input id={id} className="doc-text" value={values[key] ?? ''} spellCheck={false} maxLength={key === 'contact_company' ? 40 : 20}
-                onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0}/>
-                : <output id={id} className="doc-value">{values[key] || '없음'}</output>}
-              <small>{f.checks.length && f.value ? `읽은 값: ${f.value}` : !editing ? '' : key === 'contact_company' ? '회사 이름만 입력해요. 개인 이름은 받지 않아요' : '숫자와 하이픈만 입력해요. 개인 휴대폰은 받지 않아요'}</small>
+              {<input id={id} className="doc-text" value={values[key] ?? ''} spellCheck={false} maxLength={key === 'contact_company' ? 40 : 20}
+                onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0}/>}
+              <small>{f.checks.length && f.value ? `읽은 값: ${f.value}` : key === 'contact_company' ? '회사 이름만 입력해요. 개인 이름은 받지 않아요' : '숫자와 하이픈만 입력해요. 개인 휴대폰은 받지 않아요'}</small>
             </div>;
           })}
         </div>
       </section>
   ) : null;
 
-  return <section className={`document-panel ${heading ? '' : 'in-drawer'} ${inline ? 'inline' : ''}`} aria-label={inline ? '첨부한 서류' : '서류 사진으로 채우기'}>
-    {!inline && heading && <button type="button" className="icon-button doc-close" onClick={onClose} aria-label="서류 사진 닫기"><X size={18}/></button>}
-    {!inline && <header className="doc-title">
+  return <section className={`document-panel ${heading ? '' : 'in-drawer'}`} aria-label="서류 사진으로 채우기">
+    {heading && <button type="button" className="icon-button doc-close" onClick={onClose} aria-label="서류 사진 닫기"><X size={18}/></button>}
+    {<header className="doc-title">
       <h2>{result ? '서류에서 읽은 값을 확인해 주세요' : '서류 사진으로 채우기'}</h2>
       {result && <p>확인하거나 고친 값만 조회와 기억에 사용해요.</p>}
     </header>}
 
-    {/* 10-08 정운 53번: 파일 칩. 입력창 위에 두고 X로 뗀다. 읽는 동안은 경과 초만 보인다(예상 시간 문구는 재지 않은 값이라 뺐다) */}
-    {inline && <div className="doc-chip" role="status">
-      {busy ? <LoaderCircle size={16} className="spin" aria-hidden="true"/> : <FileText size={16} strokeWidth={1.75} aria-hidden="true"/>}
-      <span className="doc-chip-name">{fileName || file?.name}</span>
-      <span className="doc-chip-state">{busy ? <>서류를 읽는 중 · <span className="mono">{seconds}초</span></> : result ? '읽기 끝' : error ? '읽지 못함' : ''}</span>
-      <button type="button" className="icon-button doc-chip-x" onClick={onClose} aria-label="첨부한 서류 빼기"><X size={16}/></button>
-    </div>}
-
-    {!inline && !result && <label htmlFor={inputId} className={`dropzone ${dragging ? 'dragging' : ''} ${busy ? 'busy' : ''} ${disabled ? 'disabled' : ''}`} aria-disabled={disabled || undefined}
+    {!result && <label htmlFor={inputId} className={`dropzone ${dragging ? 'dragging' : ''} ${busy ? 'busy' : ''} ${disabled ? 'disabled' : ''}`} aria-disabled={disabled || undefined}
       onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       {busy ? <LoaderCircle size={32} className="spin"/> : <Camera size={32} strokeWidth={1.5}/>}
       <strong>{busy ? '서류에서 글자를 읽는 중' : '사진이나 PDF를 끌어 놓거나 눌러서 골라 주세요'}</strong>
@@ -272,9 +223,6 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
       <section className="doc-group" aria-labelledby={`${inputId}-read`}>
       <div className="doc-section-head">
         <h3 id={`${inputId}-read`} className="doc-section-title">서류에서 읽은 값</h3>
-        {/* 수정 버튼은 카드 전체에 하나. 누르면 모든 칸(B/L·선박·항차·일정·항구·품명·MRN·조건·연락처)이 함께 열린다 */}
-        {inline && <button type="button" className="button text-button doc-edit" aria-pressed={editMode} onClick={() => setEditMode(m => !m)}>
-          <Pencil size={14} strokeWidth={1.75} aria-hidden="true"/>{editMode ? '수정 끝' : '수정'}</button>}
       </div>
       <div className="doc-fields">
         {FIELD_LABELS.map(([key, label, use]) => {
@@ -288,20 +236,16 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
               <label htmlFor={id}>{label}<small> · {use}</small></label>
               <span className="doc-badges"><CheckBadges checks={checks} emptyText={(key === 'etd' || etaAbsent) && !f.value && !checks.length ? '서류에 없음' : undefined}/></span>
             </div>
-            {editing
-              ? <div className="doc-value"><input id={id} value={values[key] ?? ''} type={key === 'eta' || key === 'etd' ? 'date' : 'text'} spellCheck={false}
-                  onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0 || (key === 'bl_no' && !blValid) || (key === 'eta' && !etaValid) || (key === 'etd' && !etdValid)}/></div>
-              : <output id={id} className="doc-value">{values[key] || (etaAbsent ? '서류에 없음' : '읽지 못함')}</output>}
+            <div className="doc-value"><input id={id} value={values[key] ?? ''} type={key === 'eta' || key === 'etd' ? 'date' : 'text'} spellCheck={false}
+                onChange={e => setValues(v => ({...v, [key]: e.target.value}))} aria-invalid={f.checks.length > 0 || (key === 'bl_no' && !blValid) || (key === 'eta' && !etaValid) || (key === 'etd' && !etdValid)}/></div>
             {etaAbsent && <small>B/L에는 보통 없는 값이에요. 도착 통지서(A/N)나 포워더 안내를 보고 넣어 주세요.</small>}
           </div>;
         })}
         <div className={`doc-field ${values.mrn && !mrnValid ? 'flagged' : ''}`}>
           <div className="doc-field-top"><label htmlFor={`${inputId}-mrn`}>화물관리번호(MRN)<small> · 배 찾기용</small></label>
             <span className="doc-badges">{values.mrn ? (!mrnValid && <span className="doc-badge warn"><TriangleAlert size={14} strokeWidth={2}/>형식 확인</span>) : <span className="doc-badge none">읽지 못함</span>}</span></div>
-          {editing
-            ? <div className="doc-value"><input id={`${inputId}-mrn`} value={values.mrn ?? ''} spellCheck={false} placeholder="예: 26ABCD1234I" aria-invalid={!mrnValid}
-                onChange={e => setValues(v => ({...v, mrn: e.target.value}))}/></div>
-            : <output id={`${inputId}-mrn`} className="doc-value">{values.mrn || '읽지 못함'}</output>}
+          <div className="doc-value"><input id={`${inputId}-mrn`} value={values.mrn ?? ''} spellCheck={false} placeholder="예: 26ABCD1234I" aria-invalid={!mrnValid}
+              onChange={e => setValues(v => ({...v, mrn: e.target.value}))}/></div>
         </div>
       </div>
       {!blValid && <p className="field-error">B/L 번호를 영문·숫자 8~20자로 고쳐 주세요.</p>}
@@ -310,8 +254,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
       {!mrnValid && <p className="field-error">화물관리번호(MRN)는 숫자 2자리, 영문·숫자 8자, I 또는 E 순서로 고쳐 주세요.</p>}
       </section>
 
-      {/* inline 모드는 조건·연락처를 접어 둔다(선택 입력이라 카드를 짧게). 기본 모드는 그대로 펼쳐 보인다 */}
-      {inline ? <details className="doc-cond-fold" open={editMode || undefined}><summary>B/L 조건과 화물 인도 연락처 (선택)</summary>{conditions}</details> : conditions}
+      {conditions}
 
       {/* 사용법 문장은 지우고, 판단에 쓰이는 주의·저장 안내만 한 번 접어 둔다 (C-275) */}
       <details className="doc-notes">
@@ -321,12 +264,10 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true, inlin
         <p>{isLive ? '로그인한 상태면 위에서 고른 B/L 조건과 연락처를 "내 기억"에 저장해 다음 조회 때 짚어 드려요. "모름"으로 둔 칸은 저장하지 않아요.' : '체험 모드에서는 B/L 조건과 연락처를 저장하지 않아요.'}</p>
       </details>
 
-      {/* 10-08 정운 실사용 71번: inline은 조회 버튼이 없다. 입력창 보내기가 같은 일이다. 칩의 X가 "다른 사진" 역할을 한다 */}
-      {inline ? <p className="doc-actions-hint">입력창의 보내기를 누르면 이 값으로 조회해요. 설명을 적으면 함께 보내요</p>
-        : <div className="doc-actions">
-          <button type="button" className="button secondary" onClick={() => { setResult(null); setError(''); }}><RotateCcw size={16}/>다른 사진</button>
-          <button type="button" className="button primary" onClick={apply} disabled={!canApply || disabled}>확인한 값으로 채우기</button>
-        </div>}
+      <div className="doc-actions">
+        <button type="button" className="button secondary" onClick={() => { setResult(null); setError(''); }}><RotateCcw size={16}/>다른 사진</button>
+        <button type="button" className="button primary" onClick={apply} disabled={!canApply || disabled}>확인한 값으로 채우기</button>
+      </div>
     </div>}
   </section>;
 }

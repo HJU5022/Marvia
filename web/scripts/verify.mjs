@@ -224,41 +224,62 @@ try {
     assert(await page.locator('.vessel-results .leaflet-container').count() <= 1, 'only the selected vessel keeps a map');
     check(`vessel search + inline detail switch/cleanup ${width}`);
 
-    // 서류 사진 (10-08 정운 49·51·53번): 옆 서랍 대신 입력칸 클립 버튼으로 붙인다. 읽기가 끝나도 스스로 보내지 않고,
-    // 입력칸 위 칩 아래에 확인 카드가 뜬다. "첨부한 서류 빼기"로 떼면 카드도 사라진다
+    // 서류 첨부 (10-08 정운 49·51·53·73번): 붙이면 칩만 생기고 아무 일도 없다(읽기·조회 없음). 보내기를 눌러야 서류에서 B/L만 읽어 조회한다.
+    // 입력창은 셋 다 된다: 글만, 사진만, 사진 + 글. 보낼 때마다 사용자 말풍선은 정확히 한 개이고 조회 결과가 온다. 확인 카드·수정 화면은 없다
     const turnCount = await turns(page);
     // 휴대폰: 펼친 상세 시트가 입력창을 덮으므로 손잡이로 접는다 (넓은 화면에는 손잡이가 없다)
     if (await handle.isVisible() && (await handle.getAttribute('aria-expanded')) === 'true') await handle.click();
     assert(await page.getByRole('button', {name: '서류 사진·PDF 첨부'}).isVisible(), 'attach button in composer');
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    await page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
-    await page.locator('.doc-chip').waitFor();
-    // 10-08 정운 실사용 71번: 첨부는 칩만 만든다. 입력창은 막히지 않고, 읽기가 끝나도 보내기 전에는 턴이 늘지 않는다
-    assert.equal(await page.locator('#chat-input').isDisabled(), false, 'composer stays enabled with a document attached');
-    await page.waitForTimeout(1500);
-    assert.equal(await turns(page), turnCount, 'attaching a document adds no turn');
-    await page.locator('#chat-input').fill('이 서류 확인해 줘');
-    assert.equal(await turns(page), turnCount, 'typing an explanation adds no turn');
-    if (await page.getByRole('button', {name: '확인한 값으로 조회'}).count()) assert.fail('no separate lookup button inside the card');
-    if (width === 1440 && !interactionsOnly) await audit(page, `document-attach-${width}`);
-    // 확인 카드: 읽은 값은 읽기 전용, 수정 버튼 하나가 모든 칸을 연다
-    await page.locator('.document-result').waitFor();
-    assert.equal(await page.locator('.document-result input, .document-result select').count(), 0, 'card values are read-only by default');
-    await page.getByRole('button', {name: '수정', exact: true}).click();
-    assert(await page.locator('.document-result input').count() >= 5, 'one edit button opens every field');
-    await page.getByRole('button', {name: '수정 끝'}).click();
-    assert.equal(await page.locator('.document-result input, .document-result select').count(), 0, 'edit button toggles back to read-only');
-    // 첨부한 서류를 한 번 떼고 다시 붙여 X 동작도 확인한 뒤, 보내기를 눌러야 사용자 말풍선이 한 개 생긴다
-    await page.getByRole('button', {name: '첨부한 서류 빼기'}).click(); await page.locator('.doc-chip').waitFor({state: 'detached'});
-    await page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
-    await page.locator('.document-result').waitFor();
+    const sendBtn = page.getByRole('button', {name: 'AI에게 질문 보내기'});
     const userTurns = () => page.locator('.chat-turn.user').count();
-    const usersBefore = await userTurns();
-    await page.locator('#chat-input').fill('이 서류 확인해 줘');
-    await page.getByRole('button', {name: 'AI에게 질문 보내기'}).click();
-    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, usersBefore + 1, {timeout: 15000});
-    assert.equal(await userTurns(), usersBefore + 1, 'send adds exactly one user turn');
-    check(`document attach chip, no auto send, one edit button, send adds one turn ${width}`);
+    const attachPng = () => page.locator('.ask input[type=file]').first().setInputFiles({name: 'notice.png', mimeType: 'image/png', buffer: png});
+    const settle = () => page.waitForFunction(() => !document.querySelector('.pending-card'), null, {timeout: 20000});
+    // (1) 사진만: 칩만 생기고 턴은 늘지 않는다. 보내기 버튼은 글이 없어도 켜진다
+    await input(page).fill('');
+    assert(await sendBtn.isDisabled(), 'send is disabled with nothing to send');
+    await attachPng();
+    await page.locator('.doc-chip').waitFor();
+    assert.equal(await page.locator('#chat-input').isDisabled(), false, 'composer stays enabled with a document attached');
+    await page.waitForTimeout(1200);
+    assert.equal(await turns(page), turnCount, 'attaching a document adds no turn (no background reading)');
+    assert.equal(await page.locator('.document-result, .document-status').count(), 0, 'no confirmation card');
+    assert(await sendBtn.isEnabled(), 'send is enabled for a photo with no text');
+    if (width === 1440 && !interactionsOnly) await audit(page, `document-attach-${width}`);
+    // 칩의 X는 서류를 뗀다
+    await page.getByRole('button', {name: '첨부한 서류 빼기'}).click(); await page.locator('.doc-chip').waitFor({state: 'detached'});
+    await attachPng(); await page.locator('.doc-chip').waitFor();
+    let sentFrom = await userTurns();
+    await sendBtn.click();
+    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, sentFrom + 1, {timeout: 15000});
+    await settle();
+    assert.equal(await userTurns(), sentFrom + 1, 'photo only: exactly one user turn');
+    const photoBubble = await page.locator('.chat-turn.user').last().textContent();
+    assert(photoBubble.includes('notice.png'), 'photo-only bubble shows the file name');
+    assert(!/MRVDEMO\d{4}/.test(photoBubble), 'bubble does not show the raw B/L');
+    assert.equal(await page.locator('.doc-chip').count(), 0, 'chip is removed after a successful send');
+    assert((await page.locator('.chat-turn.assistant').count()) >= 1, 'a lookup answer arrives');
+    check(`document photo only: chip, no auto send, one user turn ${width}`);
+    // (2) 사진 + 글
+    await attachPng(); await page.locator('.doc-chip').waitFor();
+    await input(page).fill('이 서류 확인해 줘');
+    sentFrom = await userTurns();
+    await sendBtn.click();
+    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, sentFrom + 1, {timeout: 15000});
+    await settle();
+    assert.equal(await userTurns(), sentFrom + 1, 'photo + text: exactly one user turn');
+    const bothBubble = await page.locator('.chat-turn.user').last().textContent();
+    assert(bothBubble.includes('이 서류 확인해 줘') && bothBubble.includes('notice.png'), 'bubble shows the typed text and the file name');
+    check(`document photo + text: one user turn ${width}`);
+    // (3) 글만: 전과 같다
+    sentFrom = await userTurns();
+    await input(page).fill('중국에서 부산 들어오는 배 보여줘');
+    assert(await sendBtn.isEnabled(), 'send is enabled for text only');
+    await sendBtn.click();
+    await page.waitForFunction(n => document.querySelectorAll('.chat-turn.user').length === n, sentFrom + 1, {timeout: 15000});
+    await settle();
+    assert.equal(await userTurns(), sentFrom + 1, 'text only: exactly one user turn');
+    check(`text only send: one user turn ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
     // 사이드바 개편(10-07): 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다

@@ -127,3 +127,36 @@ def test_invented_etd_needs_review(monkeypatch):
     body = _post().json()
     assert body["fields"]["etd"]["checks"] == ["not_in_text"]
     assert body["needs_review"] is True
+
+
+# ---- POST /api/document/bl: B/L만 찾기 (10-08 정운 실사용 73번) ----
+
+def _post_bl(name="notice_phone.jpg", content=None):
+    data = content if content is not None else (DOCS / name).read_bytes()
+    return client.post("/api/document/bl", files={"file": (name, data, "application/octet-stream")})
+
+
+def test_bl_mode_returns_code_bl_without_calling_llm(monkeypatch):
+    """채팅 첨부는 B/L(과 MRN)만 코드로 뽑는다. LLM 판독은 부르지 않는다."""
+    def boom(*a, **k):
+        raise AssertionError("LLM must not be called in bl mode")
+    monkeypatch.setattr(llm, "extract_doc_fields", boom)
+    res = _post_bl()
+    assert res.status_code == 200
+    body = res.json()
+    assert body["bl_no"] == BL
+    assert set(body) == {"bl_no", "mrn", "ocr", "trace_id"}  # LLM 칸이 없다
+    assert body["ocr"]["rotation"] == 0
+
+
+def test_bl_mode_rotated_photo(monkeypatch):
+    monkeypatch.setattr(llm, "extract_doc_fields", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no llm")))
+    assert _post_bl("notice_rot90.png").json()["bl_no"] == BL
+
+
+def test_bl_mode_bad_inputs_are_400(monkeypatch):
+    res = _post_bl("x.jpg", b"not an image")
+    assert res.status_code == 400 and res.json()["detail"] == "invalid_image"
+    monkeypatch.setattr(document_router, "MAX_BYTES", 1000)
+    res = _post_bl()
+    assert res.status_code == 400 and res.json()["detail"] == "too_large"
