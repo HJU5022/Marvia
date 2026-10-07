@@ -14,7 +14,7 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 | 작업 분담 | [docs/Marvia_개발_작업_리스트.md](./docs/Marvia_개발_작업_리스트.md) |
 | 지표 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
 
-배포 주소는 `docs/release_manifest.json`(2026-10-06-r1 기록)에 적힌 값이다. 배포는 Railway이고 Vercel과 Cloud Run은 쓰지 않는다(10-05 결정, `Dockerfile.railway`). 실제 B/L이 없어 배포 서버는 `REPLAY_MODE=true`로 가공 데모를 보여 준다.
+배포 주소는 `docs/release_manifest.json`에 적힌 값이다. 배포는 Railway이고 Vercel과 Cloud Run은 쓰지 않는다(10-05 결정, `Dockerfile.railway`). 배포 서버는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드(`REPLAY_MODE=true`)는 채점자와 키 없는 로컬 데모, 평가용으로 남긴다. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다.
 
 ---
 
@@ -335,7 +335,7 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 
 | 항목 | 상태 |
 |---|---|
-| 실사용 기록 | 배포 서버는 재생 모드 데모라 실제 사용자 B/L 판정 기록이 없다 (EVAL_REPORT 8절) |
+| 실사용 기록 | 배포 서버는 10-07부터 실제 모드지만 실제 사용자 B/L 판정 기록은 이 리포트에 없다. 같은 날 Railway에서 해수부 API 연결 시간 초과가 나는 것도 원인 미확인 상태다 (EVAL_REPORT 8절) |
 | 감시 재판정 주기 가동 | 워커 스케줄(`WORKER_SCHEDULE`)과 감시 재판정(`WATCH_ENABLED`)은 기본 꺼짐이다 |
 | 부산 외 항만, 이메일·푸시 알림 | 만들지 않았다 |
 
@@ -380,7 +380,15 @@ PR 때는 GitHub Actions(`.github/workflows/tests.yml`)가 `backend/tests`와 `m
 | `b_20261006_1739.json` | (b) openai/gpt-4o-mini | 30/30 | 1.0 | 1.0 | 0 | 0.95 (20건) | 4.0초 / 7.1초 | $0.000696 |
 | `b_20261006_2306.json` | (b) google/gemini-3.5-flash-lite | 30/30 | 1.0 | 1.0 | 0 | 1.0 (20건) | 2.0초 / 7.4초 | $0.0022 |
 
-세 파일 모두 게이트 4개(act 누락, 선박 오확정, 스키마 95%, 주입 오작동) 통과이고 1회씩 쟀습니다. `a_...2158`과 `b_...2306`의 `git_commit`에는 `-dirty`가 붙어 커밋 전 작업 트리에서 돌렸고, `b_...1739`는 `git_commit`이 비어 있습니다.
+**10-07 Vertex 실행:** `b_20261007_0935.json`, (b) `vertex/google/gemini-3.5-flash-lite`, 프롬프트 judge 10 · judge-eval 3 · follow-up 8. 서비스가 쓰는 OpenRouter가 아니라 Vertex AI로 불러서 쟀으므로 아래 지연과 토큰은 Vertex에서 잰 값이다. 같은 코드(main `2a6fa7a`, `git_commit`의 `-dirty`는 `.env.example` 수정 때문), 1회, 결과 파일에서 그대로 읽은 값이다.
+
+| 결과 파일 | exact | 판정 정확도 | act 재현율 | 선박 오확정 | 통관 해설 | p50 / p95 | LLM 호출 / 입력 토큰 (캐시) / 출력 토큰 | 비용 |
+|---|---|---|---|---|---|---|---|---|
+| `b_20261007_0935.json` | 30/30 | 1.0 | 1.0 | 0 | 1.0 (20건) | 1.8초 / 4.8초 | 29 / 231,184 (16,146) / 5,380 | 금액 미기록 (Vertex라 토큰만) |
+
+게이트 4개 통과. 한계: F08에서 judge가 `bad_format`을 3번 내고 포기했다. 등급이 코드 판정 표에서 나와 문항은 맞았다 (EVAL_REPORT 5절).
+
+위 10-06 세 파일은 게이트 4개(act 누락, 선박 오확정, 스키마 95%, 주입 오작동) 통과이고 1회씩 쟀습니다. `a_...2158`과 `b_...2306`의 `git_commit`에는 `-dirty`가 붙어 커밋 전 작업 트리에서 돌렸고, `b_...1739`는 `git_commit`이 비어 있습니다.
 
 **배포 게이트:** act 누락 1건 이상 · 선박 오확정 1건 이상 · 스키마 통과 95% 미만 · 주입 오작동 1건 이상 중 하나라도 걸리면 배포하지 않습니다.
 

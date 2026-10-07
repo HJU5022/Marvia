@@ -196,7 +196,7 @@ flowchart LR
 | 외부 SaaS | OpenRouter, Langfuse Cloud, 카카오 | HTTPS | api |
 | 외부 API | ShipFinder, 해수부 공공데이터, UNI-PASS | HTTPS | api(MCP 도구 경유), worker |
 
-`docs/release_manifest.json`(2026-10-06-r1)에는 `marvia-api`와 `marvia-web` 배포만 적혀 있고 worker 배포는 없다. 배포된 api는 `REPLAY_MODE=true`(가공 데모)로 돈다. 실제 B/L이 없어서다(10-05 결정).
+`docs/release_manifest.json`에는 `marvia-api`와 `marvia-web` 배포만 적혀 있고 worker 배포는 없다. 배포된 api는 10-07 결정부터 실제 모드(`REPLAY_MODE=false`)로 돈다. 재생 모드는 채점자·키 없는 로컬 데모·평가용이다. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다.
 
 ```mermaid
 flowchart TB
@@ -843,7 +843,7 @@ FROM base AS worker
 - `marvia-api`는 `Dockerfile.railway`로 배포한다. 환경변수는 Railway 서비스 설정에 두고 레포에는 `.env.example`만 둔다. 배포 주소·배포 번호·프롬프트 버전은 `docs/release_manifest.json`(되돌리기: Railway에서 이전 deployment를 Redeploy, 프롬프트는 Langfuse에서 이전 version에 production label).
 - DB는 Supabase(`DATABASE_URL`). 서버가 켜질 때 마이그레이션이 자동 적용된다.
 - CORS: `ALLOWED_ORIGINS`에 화면 도메인(쉼표로 여러 개). 허용 메서드 GET·POST·PUT·DELETE, `Content-Disposition` 노출(엑셀 파일 이름). 카카오 리다이렉트 주소는 화면의 `/settings/kakao`(`KAKAO_REDIRECT_URI`).
-- 배포 서버는 `REPLAY_MODE=true`다. 데모 위치가 약 5시간 반 뒤 오래된 위치가 되므로 시연 직전에 다시 배포하거나 Railway Console에서 `python -m scripts.make_demo`를 한 번 실행한다(서버가 4시간마다 자동 갱신도 한다).
+- 배포 서버는 10-07 결정부터 `REPLAY_MODE=false`(실제 모드)다. 아래는 `REPLAY_MODE=true`로 켰을 때(로컬 데모 등)의 설명이다. 데모 위치가 약 5시간 반 뒤 오래된 위치가 되므로 시연 직전에 다시 배포하거나 Railway Console에서 `python -m scripts.make_demo`를 한 번 실행한다(서버가 4시간마다 자동 갱신도 한다).
 
 ### 6.5 README 실행 절차
 

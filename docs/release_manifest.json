@@ -1,11 +1,11 @@
 {
   "_about": "Marvia 배포 단위 고정 (D10, 3주차 10강 PromptReleaseManifest). 프롬프트 버전만이 아니라 모델·평가셋·채점기·코드·배포를 한 묶음으로 적는다. 프롬프트를 바꾸면 이 파일도 같이 바꾼다. 되돌리기 절차는 rollback 항목.",
-  "release": "2026-10-07-r2",
-  "fixed_at": "2026-10-07T00:40+09:00",
+  "release": "2026-10-07-r3",
+  "fixed_at": "2026-10-07",
   "code": {
-    "branch": "jeongun1 (PR #73 jeongun 뒤 작업, 아직 main 머지 전)",
-    "commit_prompts": "6ce682f",
-    "note": "배포 서버는 아직 r1 코드. deploy 칸은 PR #73·jeongun1 배포 뒤 갱신"
+    "branch": "jeongun (PR #75 병합, main 2a6fa7a)",
+    "commit_prompts": "2a6fa7a",
+    "note": "배포 서버에 r3 코드가 올라갔는지는 이 파일에 기록 없음. deploy 칸의 deployment ID는 r1 때 값 그대로"
   },
   "deploy": {
     "platform": "Railway",
@@ -19,7 +19,8 @@
       "url": "https://marvia.up.railway.app",
       "deployment": "5ec00d64-8fc2-40e9-8a7f-4f83b96a64fb"
     },
-    "replay_mode": true
+    "replay_mode": false,
+    "replay_mode_note": "10-07 소유자 결정: 배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 채점자·키 없는 로컬 데모·평가용. 미해결(원인 미확인): Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다"
   },
   "models": {
     "service": "google/gemini-3.5-flash-lite",
@@ -29,12 +30,12 @@
   },
   "prompts": {
     "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
-    "_release_label": "v2 (10-07): v1 이후 바뀐 4개에만 Langfuse 라벨 v2. 안 바뀐 5개는 v1 그대로라 r2 묶음 = 아래 버전 전부. 다음 변경은 바꾼 것에만 v3",
-    "marvia-chat-agent": 11,
-    "marvia-chat-route": 1,
+    "_release_label": "v3 (10-07): r2 이후 바뀐 3개(chat-agent 12, follow-up 8, chat-route 2)에만 Langfuse 라벨 v3. 나머지 6개는 r2/r1 라벨 그대로라 r3 묶음 = 아래 버전 전부. 다음 변경은 바꾼 것에만 v4",
+    "marvia-chat-agent": 12,
+    "marvia-chat-route": 2,
     "marvia-judge": 10,
     "marvia-judge-eval": 3,
-    "marvia-follow-up": 7,
+    "marvia-follow-up": 8,
     "marvia-pick-vessel": 3,
     "marvia-port-match": 1,
     "marvia-doc-extract": 6,
@@ -54,44 +55,53 @@
     },
     "runner": "python -m evals.run_eval --config b",
     "last_result": {
-      "file": "evals/results/b_20261006_2306.json",
-      "model": "google/gemini-3.5-flash-lite",
-      "prompt_versions": "judge 10, judge-eval 3, follow-up 5 (r2 묶음 그대로 다시 돈 평가는 아직 없음)",
-      "git_commit": "18d6097-dirty",
+      "file": "evals/results/b_20261007_0935.json",
+      "model": "vertex/google/gemini-3.5-flash-lite (Vertex AI 직접 호출. 서비스 경로인 OpenRouter가 아님)",
+      "run_at": "2026-10-07T00:35:11Z",
+      "prompt_versions": "judge 10, judge-eval 3, follow-up 8 (r3 묶음의 follow-up까지 반영)",
+      "git_commit": "ec49ceb-dirty (dirty는 코드와 무관한 .env.example 수정 때문, 코드는 main 2a6fa7a와 같음)",
       "exact_match": "30/30",
       "gates": "4개 모두 통과",
-      "p95_ms": 7446
+      "p50_ms": 1825,
+      "p95_ms": 4824,
+      "llm_calls": 29,
+      "prompt_tokens": 231184,
+      "completion_tokens": 5380,
+      "cached_tokens": 16146,
+      "cost": "금액 미기록(Vertex라 토큰만 남음)",
+      "note": "F08은 judge가 bad_format 3번 뒤 포기했다. 등급은 코드 판정 표에서 나와 문항은 맞았다"
     }
   },
-  "change_reason": "judge 10(통관 해설 예시를 이름+뜻으로), doc-extract 6(10-02 칸 + 출항일 etd), follow-up 6(D11 통관 진행 평가 금지)·7, chat-agent 11(화면 화물과 이어지지 않는 사람·이름은 되묻기, 트레이스 bc9c239a, A/B 124회)",
+  "change_reason": "chat-agent 12·follow-up 8·chat-route 2 (PR #75, 10-07 실사용 점검 항목 2·3·5·6): 답마다 붙이던 고정 면책 문구(\"일반 설명이에요…\")를 빼고 이용약관으로 옮김, B/L 등은 \"비엘\"이 아니라 정상 표기, 회사 연락처는 가져온 웹 결과에 있을 때만, \"호\"로 끝나는 한국어 이름은 선박 이름으로 보고 이름으로 입항 검색(한 번만 되묻고 같은 되묻기 반복 금지). follow-up 8과 chat-route 2는 B/L 표기 줄만 바뀜",
   "rollback": {
     "prompt": "Langfuse에서 해당 프롬프트의 이전 version에 production label을 붙인다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
     "prompt_previous": {
-      "marvia-chat-agent": 10,
-      "marvia-follow-up": 6,
-      "marvia-judge": 9,
-      "marvia-doc-extract": 5
+      "marvia-chat-agent": 11,
+      "marvia-follow-up": 7,
+      "marvia-chat-route": 1
     },
     "code": "Railway에서 이전 deployment를 Redeploy 하거나, git revert 뒤 railway up"
   },
   "previous_release": {
-    "release": "2026-10-06-r1",
-    "fixed_at": "2026-10-06T03:20+09:00",
+    "release": "2026-10-07-r2",
+    "fixed_at": "2026-10-07T00:40+09:00",
     "code": {
-      "branch": "jeongun",
-      "commit": "b986ada"
+      "branch": "jeongun1 (PR #73 jeongun 뒤 작업, 아직 main 머지 전)",
+      "commit_prompts": "6ce682f",
+      "note": "배포 서버는 아직 r1 코드. deploy 칸은 PR #73·jeongun1 배포 뒤 갱신"
     },
     "prompts": {
-      "marvia-chat-agent": 10,
+      "marvia-chat-agent": 11,
       "marvia-chat-route": 1,
-      "marvia-judge": 9,
+      "marvia-judge": 10,
       "marvia-judge-eval": 3,
-      "marvia-follow-up": 5,
+      "marvia-follow-up": 7,
       "marvia-pick-vessel": 3,
       "marvia-port-match": 1,
-      "marvia-doc-extract": 5,
+      "marvia-doc-extract": 6,
       "marvia-chat-title": 1,
       "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
-    }
+    },
+    "change_reason": "judge 10(통관 해설 예시를 이름+뜻으로), doc-extract 6(10-02 칸 + 출항일 etd), follow-up 6(D11 통관 진행 평가 금지)·7, chat-agent 11(화면 화물과 이어지지 않는 사람·이름은 되묻기, 트레이스 bc9c239a, A/B 124회)"
   }
 }
