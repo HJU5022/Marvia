@@ -180,7 +180,7 @@
 /* =========================================================
    엘레강스 v2 (10-07 정운): 표는 바깥 상자 없이 머리글 아래 가는 선과 행마다 가는 선. 단추는 얇은 네모, 숫자는 같은 폭
    ========================================================= */
-.cs-title h1{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.cs-title h1{font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em}
 .cs-title p{font-size:var(--fs-sm,13px);letter-spacing:.02em}
 .cs-btn{min-height:36px;padding:0 20px;font-size:var(--fs-sm,13px);font-weight:400;letter-spacing:.06em}
 .cs-btn-fill,.cs-btn-outline{background:transparent;color:var(--text);border:1px solid var(--text)}
@@ -189,7 +189,7 @@
 .cs-demo-pill{background:none;border:1px solid var(--hairline,#e5e8eb);font-weight:400;letter-spacing:.04em}
 .cs-summary{gap:48px}
 .cs-summary dt{font-weight:400;letter-spacing:.06em;font-size:var(--fs-xs,12px)}
-.cs-summary dd{font-size:var(--fs-xl,22px);font-weight:300}
+.cs-summary dd{font-size:var(--fs-xl,22px);font-weight:400}
 @media (min-width:821px){
   .cargo-sheet .cs-card.table-scroll{border:0;background:none}
   .cargo-sheet th{background:none;color:var(--muted);font-weight:400;font-size:var(--fs-xs,12px);letter-spacing:.06em;border-bottom:1px solid var(--text);padding:12px 12px}

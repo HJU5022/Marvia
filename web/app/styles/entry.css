@@ -2,7 +2,7 @@
  * 소개 랜딩(LoginScreen, /about) 스타일은 10-07 개편 때 styles/landing.css 로 옮겼다 (lp-*). */
 
 /* ---------- 하단 약관 줄 (LegalLinks) ---------- */
-.legal-links{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 14px;font-size:var(--fs-xs,12px);font-weight:300;letter-spacing:.08em;color:var(--muted,#6b6b6b)}
+.legal-links{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 14px;font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.08em;color:var(--muted,#6b6b6b)}
 .legal-links button{background:none;border:0;padding:4px 0;font-size:inherit;letter-spacing:inherit;color:inherit;cursor:pointer}
 .legal-links button:hover{color:var(--text,#1f1f1f)}
 .legal-copy{margin-left:12px}
@@ -12,8 +12,8 @@
 .legal-modal{position:relative;display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,100%);padding:48px 40px 32px;background:#fff;border:1px solid var(--border-strong,#cfcfcf);outline:none}
 .legal-x{position:absolute;top:8px;right:8px;display:grid;place-items:center;width:40px;height:40px;border:0;background:none;color:var(--muted,#6b6b6b);cursor:pointer}
 .legal-x:hover{color:var(--text,#1f1f1f)}
-.legal-modal h2{margin:0;text-align:center;font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em;line-height:1.4;color:var(--text,#1f1f1f)}
-.legal-body{margin-top:28px;padding-top:24px;border-top:1px solid var(--hairline,#e8e8e8);overflow-y:auto;font-size:var(--fs-sm,13px);font-weight:300;line-height:1.9;color:var(--text-2,#4a4a4a)}
+.legal-modal h2{margin:0;text-align:center;font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em;line-height:1.4;color:var(--text,#1f1f1f)}
+.legal-body{margin-top:28px;padding-top:24px;border-top:1px solid var(--hairline,#e8e8e8);overflow-y:auto;font-size:var(--fs-sm,13px);font-weight:400;line-height:1.9;color:var(--text-2,#4a4a4a)}
 .legal-body h3{margin:24px 0 4px;font-size:var(--fs-base,14px);font-weight:400;letter-spacing:.03em;color:var(--text,#1f1f1f)}
 .legal-body h3:first-child{margin-top:0}
 .legal-body p{margin:0}

@@ -172,7 +172,7 @@
 /* =========================================================
    엘레강스 v2 (10-07 정운): 제목은 가볍게, 목록은 가는 선 행, 선택 표시는 얇은 선 하나, 체크는 네모
    ========================================================= */
-.wm-head h2{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.wm-head h2{font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em}
 .wm-head small{letter-spacing:.06em}
 .wm-map-card{padding:0}
 .wm-side{padding:0 0 12px}

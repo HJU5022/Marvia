@@ -260,8 +260,8 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 
 /* 결과 머리줄: B/L 번호는 가볍고 자간을 둔다 */
 .result-head{padding:0 2px 16px}
-.result-id strong{font-size:var(--fs-xs,12px);font-weight:300;letter-spacing:.12em;color:var(--muted)}
-.last-updated{font-size:var(--fs-xs,12px);font-weight:300;letter-spacing:.04em}
+.result-id strong{font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.12em;color:var(--muted)}
+.last-updated{font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.04em}
 /* 판정 줄: 점 + 글자 */
 .verdict-dot{font-size:var(--fs-sm,13px);font-weight:400;letter-spacing:.02em}
 .verdict-dot i{width:7px;height:7px}
@@ -271,7 +271,7 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 /* 지금 할 일 + 여유 일수: 큰 소리로 외치지 않는다 */
 .verdict-todo p,.verdict-hero.act .verdict-todo p{font-weight:400;font-size:var(--fs-md,15px)}
 .verdict-label{font-weight:400;letter-spacing:.08em}
-.slack-value{font-size:var(--fs-lg,18px);font-weight:300;letter-spacing:.01em}
+.slack-value{font-size:var(--fs-lg,18px);font-weight:400;letter-spacing:.01em}
 .verdict-slack small{letter-spacing:.02em}
 /* 일정·통관: 글자만, 숫자는 같은 폭 */
 .sch-node strong,.sch-node em,.cargo-parties dd{font-variant-numeric:tabular-nums}

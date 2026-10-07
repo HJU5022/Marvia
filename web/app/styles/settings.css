@@ -225,7 +225,7 @@
 /* ---- 엘레강스 정리 (10-07 정운 엘레강스: 아임웹 61번 약관 창·글자 탭 기준) ----
    위 규칙을 덮는다. 상자·채움·굵은 글씨를 걷고 얇은 글자 + 가는 선 + 네모 단추만 남긴다 */
 .st-head{margin:0 0 24px}
-.st-head h1{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.st-head h1{font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em}
 .st-tabs{gap:28px;margin:0 0 32px}
 .st-tab{min-height:44px;padding:0 2px;font-weight:var(--fw-regular,400);letter-spacing:.08em}
 .st-tab:hover{background:transparent;color:var(--text)}
@@ -243,7 +243,7 @@
 .profile-form .req{font-weight:var(--fw-regular,400);font-size:var(--fs-xs,12px)}
 
 /* 카카오 */
-.kakao-state{font-size:var(--fs-lg,18px);font-weight:300;letter-spacing:.04em}
+.kakao-state{font-size:var(--fs-lg,18px);font-weight:400;letter-spacing:.04em}
 .kakao-state.on{color:var(--text,#1f1f1f)}
 
 /* 위험 영역: 채움 없이 빨간 가는 테두리 */
@@ -260,7 +260,7 @@
 .memory-item{padding:12px 0;border-bottom:1px solid var(--hairline,#e8e8e8)}
 .memory-item:last-child{border-bottom:0}
 .memory-body small{font-weight:var(--fw-regular,400)}
-.memory-slack{font-size:var(--fs-lg,18px);font-weight:300}
+.memory-slack{font-size:var(--fs-lg,18px);font-weight:400}
 .hist-dist{height:2px}
 .hist-stat:hover,.hist-stat.selected{background:transparent}
 .hist-stat.selected{box-shadow:inset 0 -1px 0 var(--text,#1f1f1f)}
@@ -270,7 +270,7 @@
 /* 개인정보 동의 창: 61번처럼 네모, 가는 선, 가운데 얇은 제목, 네모 단추 둘 */
 .consent-backdrop{background:#1f1f1f66}
 .consent-modal{width:min(440px,100%);padding:32px 32px 28px;border:0;box-shadow:none}
-.consent-modal h2{margin:0 0 24px;text-align:center;font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.08em}
+.consent-modal h2{margin:0 0 24px;text-align:center;font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.08em}
 .consent-modal li{padding:14px 0;letter-spacing:.02em}
 .consent-modal li span{font-size:var(--fs-xs,12px);letter-spacing:.06em}
 .consent-actions{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:24px}

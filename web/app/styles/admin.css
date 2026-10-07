@@ -274,7 +274,7 @@
 
 /* ---- 엘레강스 정리 (10-07 정운 엘레강스: 아임웹 63번 목록 행 기준) ----
    위 규칙을 덮는다. 굵은 글씨·채운 칩·상자를 걷고 가는 선 + 얇은 글자만 남긴다. 평가 지표(mx-*)는 건드리지 않는다 */
-.adm-heading h1{font-size:var(--fs-xl,22px);font-weight:300;letter-spacing:.06em}
+.adm-heading h1{font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em}
 .adm-heading .eyebrow{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.1em;text-transform:uppercase}
 .adm-tabs{gap:28px}
 .adm-tabs button{font-size:var(--fs-base,14px);font-weight:var(--fw-regular,400);letter-spacing:.08em}
@@ -293,7 +293,7 @@
 /* 칩: 채움 없이 글자 + 가는 테두리 */
 .adm-chip,.adm-chip.strong{background:transparent;border:1px solid var(--border-strong,#cfcfcf);padding:2px 10px;font-weight:var(--fw-regular,400);letter-spacing:.04em;color:var(--text-2,#4a4a4a)}
 .adm-chip.suspended{box-shadow:none;border-color:var(--text,#1f1f1f);font-weight:var(--fw-regular,400)}
-.adm-stat>strong{font-weight:300}
+.adm-stat>strong{font-weight:400}
 .adm-timer{font-weight:var(--fw-medium,500)}
 
 /* 검색 줄 + 입력칸 */

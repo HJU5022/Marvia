@@ -1,0 +1,48 @@
+/* 담당 영역: 로그인한 뒤 화면 전체를 소개 랜딩(styles/landing.css)과 같은 톤으로 맞추는 마지막 덮개 (10-07 승욱).
+ * layout.tsx가 맨 마지막에 불러와 같은 무게의 옛 규칙(10-07 엘레강스: 모서리 0, 얇은 글씨, 검은 외곽선 버튼)을 덮는다.
+ * 기준은 랜딩과 같다 (ui-ux-pro-max "Trust & Authority" B2B 톤):
+ *   - 모서리: 버튼·입력 4px, 카드·패널·배지 6px, 큰 틀(지도·창) 8px. 화면 끝까지 가는 줄(사이드바·윗줄·표 칸)은 각진 그대로 둔다
+ *   - 그림자: 떠 있는 것(팝오버·창·토스트)에만 옅게 한 겹. 평평한 카드는 테두리만
+ *   - 글씨: 제목은 굵게(700/600), 본문은 400. 300(가는 글씨)은 쓰지 않는다 (각 파일의 300은 400으로 바꿨다)
+ *   - 버튼: 주 버튼은 브랜드 파랑을 채운다(랜딩 시작 버튼과 같다), 보조 버튼은 회색 외곽선
+ * 소개 랜딩(.lp)은 자기 규칙이 있어 여기서 건드리지 않는다. */
+
+:root{
+  --r-sm:4px;--r:6px;--r-lg:8px;
+  --radius:var(--r);--small-radius:var(--r-sm);--card-radius:var(--r);
+  --shadow-float:0 4px 16px rgba(15,27,45,.12),0 1px 3px rgba(15,27,45,.08);
+}
+
+/* 제목 굵기: 랜딩 제목(700)과 같은 위계. 화면 제목 700, 구역 제목 600 */
+:where(.app-shell,.entry-shell) h1{font-weight:700;letter-spacing:-.02em}
+:where(.app-shell,.entry-shell) h2{font-weight:600;letter-spacing:-.01em}
+:where(.app-shell,.entry-shell) h3{font-weight:600}
+
+/* 버튼: 랜딩 시작 버튼과 같은 모양. 넓은 자간(엘레강스)은 뺀다 */
+.button{border-radius:var(--r-sm);letter-spacing:0;font-weight:600}
+.button.primary{background:var(--brand);color:#fff;border:1px solid var(--brand)}
+.button.primary:hover:not(:disabled){background:var(--brand-hover);border-color:var(--brand-hover);color:#fff}
+.button.secondary{border-radius:var(--r-sm);border-color:var(--border-strong);color:var(--text)}
+.button.secondary:hover:not(:disabled){border-color:var(--text);background:var(--hover)}
+.button.danger{border-radius:var(--r-sm)}
+
+/* 누르는 작은 것들과 입력: 4px */
+.query-button,.icon-button,.icon-btn,.cs-btn,.cs-btn-outline,.cs-btn-fill,.pager-buttons button,.doc-trigger,
+.app-shell input:not([type=checkbox]):not([type=radio]),.app-shell select,.app-shell textarea,
+.entry-shell input:not([type=checkbox]):not([type=radio]),.entry-shell select,.entry-shell textarea,
+.question-input,.form-field input,.cs-field input,.doc-field input,.confirm-field input{border-radius:var(--r-sm)}
+
+/* 칩·배지: 4px (알약 모양은 쓰지 않는다) */
+.status-chip,.role-chip,.fresh-chip,.replay-chip,.map-chips>*,.adm-chip,.watch-chip,
+.verdict-badge,.subtle-badge,.as-badge,.doc-badge,.cargo-badge{border-radius:var(--r-sm)}
+
+/* 카드·패널·배너: 6px */
+.cand-card,.wm-map-card,.st-card,.admin-card,.adm-dcard,.adm-box,.cmp-card,.cs-card,.profile-card,.pending-card,.login-card,
+.document-panel,.cluster-panel,.notification-panel,.resolution-panel,.memory-panel,.kakao-panel,.account-panel,.history-panel,
+.failure-banner,.ask-banner,.evaluation-banner,.doc-hint,.feature-tiles>*,.settings-rules,.settings-side>section{border-radius:var(--r)}
+
+/* 큰 틀: 지도, 창 8px */
+.map-frame,.vessel-map-frame,.consent-modal,.legal-modal{border-radius:var(--r-lg);overflow:hidden}
+
+/* 떠 있는 것만 그림자 */
+.user-popover,.cluster-panel,.consent-modal,.legal-modal,.notification-panel{box-shadow:var(--shadow-float)}

@@ -1,11 +1,11 @@
 /* 평가 지표 화면 (10-07 정운 실사용 26번). 옛 .mx-* 규칙은 안 쓰고 .mt-* 새 이름만 쓴다. 얇은 선, 작은 글자, 색은 뜻에만 */
 .mt-page{max-width:1080px}
-.mt-page h1{font-weight:300;letter-spacing:.06em;font-size:var(--fs-2xl,28px)}
+.mt-page h1{font-weight:400;letter-spacing:.06em;font-size:var(--fs-2xl,28px)}
 .mt-page .eyebrow{font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.14em;color:var(--muted)}
 .mt-empty{margin:var(--space-12,48px) 0;padding:var(--space-8,32px) 0;border-top:1px solid var(--hairline,#e5e8eb);border-bottom:1px solid var(--hairline,#e5e8eb);color:var(--muted);font-size:var(--fs-base,14px);text-align:center}
 .mt-empty.sm{margin:var(--space-4,16px) 0;padding:var(--space-6,24px) 0;border-bottom:0}
 
-.mt-status{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--space-2,8px);margin:0 0 var(--space-6,24px);font-size:var(--fs-md,15px);font-weight:300;letter-spacing:.04em;color:var(--ink)}
+.mt-status{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--space-2,8px);margin:0 0 var(--space-6,24px);font-size:var(--fs-md,15px);font-weight:400;letter-spacing:.04em;color:var(--ink)}
 .mt-status small{margin-left:var(--space-2,8px);font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);color:var(--muted)}
 .mt-dot{width:8px;height:8px;border-radius:50%;background:var(--border-strong,#d1d6db);align-self:center}
 .mt-dot.pass{background:var(--grade-fine-solid,#34b27b)}
@@ -16,7 +16,7 @@
 .mt-kpi{padding:var(--space-6,24px) var(--space-4,16px) var(--space-6,24px) 0;display:flex;flex-direction:column;gap:var(--space-2,8px);min-width:0}
 .mt-kpi + .mt-kpi{padding-left:var(--space-4,16px);border-left:1px solid var(--hairline,#e5e8eb)}
 .mt-kpi h2{margin:0;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.1em;color:var(--muted)}
-.mt-kpi strong{font-size:34px;font-weight:300;letter-spacing:.01em;line-height:1.1;color:var(--ink)}
+.mt-kpi strong{font-size:34px;font-weight:400;letter-spacing:.01em;line-height:1.1;color:var(--ink)}
 .mt-kpi strong span{margin-left:2px;font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400);color:var(--muted)}
 .mt-kpi strong.none{color:var(--border-strong,#d1d6db)}
 .mt-kpi small{font-size:var(--fs-xs,12px);color:var(--muted)}
@@ -26,7 +26,7 @@
 
 .mt-section{margin-top:var(--space-12,48px)}
 .mt-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3,12px);flex-wrap:wrap;padding-bottom:var(--space-2,8px);border-bottom:1px solid var(--hairline,#e5e8eb)}
-.mt-head h2{margin:0;font-size:var(--fs-md,15px);font-weight:300;letter-spacing:.06em}
+.mt-head h2{margin:0;font-size:var(--fs-md,15px);font-weight:400;letter-spacing:.06em}
 .mt-legend{display:flex;align-items:center;gap:var(--space-2,8px);font-size:var(--fs-xs,12px);letter-spacing:.06em;color:var(--muted)}
 .mt-legend i{width:12px;height:2px;border-radius:0;display:inline-block}
 .mt-legend i:not(:first-child){margin-left:var(--space-2,8px)}
@@ -35,7 +35,7 @@
 .mt-legend i.a{background:#c9cfd6}.mt-legend i.b{background:var(--ink)}.mt-legend i.c{background:#8b95a1}
 .mt-chart{list-style:none;margin:0;padding:0}
 .mt-chart li{display:grid;grid-template-columns:160px 1fr;gap:var(--space-4,16px);align-items:center;padding:var(--space-3,12px) 0;border-bottom:1px solid var(--hairline,#e5e8eb)}
-.mt-chart-label{font-size:var(--fs-sm,13px);font-weight:300;letter-spacing:.03em;color:var(--ink)}
+.mt-chart-label{font-size:var(--fs-sm,13px);font-weight:400;letter-spacing:.03em;color:var(--ink)}
 .mt-chart-bars{display:flex;flex-direction:column;gap:5px;min-width:0}
 .mt-chart-row{display:grid;grid-template-columns:1fr 48px;gap:var(--space-2,8px);align-items:center}
 .mt-bar{display:block;height:2px;background:var(--neutral-bg,#f2f4f6);border-radius:0;overflow:hidden}
