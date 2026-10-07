@@ -18,7 +18,8 @@ body[data-fit] .workspace{height:100dvh;min-height:0}
 body[data-fit] main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 body[data-fit] .route-fade{flex:1;min-height:0;display:flex;flex-direction:column;animation:none}
 body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이드바 아래와 결과 머리표에 이미 있다 */
-/* 10-08 정운 실사용 59번: 40:60으로 나뉘어도 사이드바 대화 목록을 접지 않는다. 예전에는 숨기고 작은 아이콘으로만 다시 열었는데 찾기 어려웠다 */
+/* 40:60으로 나뉘어도 사이드바 대화 목록을 접지 않는다 (10-07 승욱 #82, 10-08 정운 실사용 59번). 예전에는 숨기고 작은 아이콘으로만 다시 열었는데 찾기 어려웠다.
+   목록 패널과 아이콘은 쓸 곳이 없어 지웠다(#83) */
 
 .chat-app{flex:1;min-height:0;display:flex;background:var(--bg)}
 .chat-pane{flex:1 1 100%;min-width:0;min-height:0;display:flex;flex-direction:column}
