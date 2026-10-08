@@ -26,12 +26,22 @@ GENUINE = [
 ]
 
 
-def test_real_case_is_flagged():
+# (c) Skill 어디에도 없는 실무 조언(보험·신용장·은행). 걸려야 한다
+OUTSIDE_A = "포워더와 연락이 안 되면 무역보험공사에 클레임을 접수하고 신용장 개설 은행에 지급 정지를 요청하세요."
+
+
+def test_real_case_terms_after_import_basics():
     terms = validate.skill_unsupported_terms(CASE_A, SKILLS, CASE_Q)
     # Kiwi는 "인도증"을 인도+증으로 나눈다. 1글자 "증"은 세지 않고, "인도"는 일반 용어 "인도지시서"의 조각이라 허용된다.
-    # 그래서 이 답은 인도증이 아니라 Skill에 없는 다른 명사(발행·사본·고객·센터)로 걸린다
-    assert "사본" in terms and len(terms) >= validate.UNSUPPORTED_MIN
-    assert validate.skill_unsupported(CASE_A, SKILLS, CASE_Q)
+    # import-basics Skill(B/L은 선박회사가 발행, 관세청 고객지원센터 125)이 들어온 뒤로 발행·고객·센터는 Skill 원문에 있다.
+    # 남는 것은 "사본" 하나라 기준(UNSUPPORTED_MIN) 아래다
+    assert terms == ["사본"]
+
+
+def test_answer_outside_skills_is_flagged():
+    terms = validate.skill_unsupported_terms(OUTSIDE_A, SKILLS, CASE_Q)
+    assert {"보험", "신용장", "은행"} <= set(terms) and len(terms) >= validate.UNSUPPORTED_MIN
+    assert validate.skill_unsupported(OUTSIDE_A, SKILLS, CASE_Q)
 
 
 @pytest.mark.parametrize("reply", GENUINE)
