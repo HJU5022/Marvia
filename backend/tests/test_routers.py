@@ -13,6 +13,7 @@ from backend.app.routers import history as history_router
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import Signal, SignalSet
 from backend.app.services import llm
+from backend.app.services import llm_schemas as llm_llm_schemas
 
 NOW = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
 
@@ -1328,7 +1329,7 @@ def test_party_fields_reach_response_judged_path():
     record = CustomsRecord(ship_name="TEST STAR", stage_name="반입신고", forwarder_name="테스트포워딩(주)",
                            carrier_name="테스트선사(주)", container_no="TSTU1234560, TSTU7654321",
                            bl_masked="TEST****0001", fetched_at=NOW)
-    info = agent_router._customs_info(record, llm.CustomsExplanation(plain_explanation="터미널에 들어갔습니다.", next_stage="수입신고"))
+    info = agent_router._customs_info(record, llm_llm_schemas.CustomsExplanation(plain_explanation="터미널에 들어갔습니다.", next_stage="수입신고"))
     assert (info.forwarder_name, info.carrier_name, info.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560, TSTU7654321")
 
 

@@ -70,6 +70,7 @@ from backend.app.services.judge.customs import CustomsError, UnipassClient
 from backend.app.services.mcp_client import (
     call_tool, estimate_distance, get_live_position, get_port_schedule, get_vessel_candidates, read_only_tools,
 )
+from backend.app.services import llm_support as llm_llm_support
 
 router = APIRouter(prefix="/api", tags=["agent"])
 logger = logging.getLogger(__name__)
@@ -569,7 +570,7 @@ def _follow_up(request: AgentRequest, user_id: str | None = None, memory: str | 
         grounded = previous.model_copy(update={"evidence": previous.evidence + _tool_evidence(answer.tool_calls)})
         # 컨테이너 번호표 [CNTR1]은 번호가 아니라 이름표다 (10-06). 검증에는 번호표를 뺀 글을 넣는다: 그대로 두면 V7이 번호표 속
         # 숫자 1을 근거에 없는 숫자로, V9가 CNTR을 근거에 없는 낱말로 잡는다. 사용자 화면에는 아래 return에서 원래 번호로 되돌린다
-        text = llm.CONTAINER_TOKEN.sub("", out.answer)
+        text = llm_llm_support.CONTAINER_TOKEN.sub("", out.answer)
         answered = grounded.model_copy(update={"answer": out.answer, "trace_id": current_request_id()})
         # V11은 할 일·통관 칸도 보는데, 후속 답은 그 칸을 지난 결과에서 그대로 가져온다. 새로 쓴 answer만 보게 비우고 검사한다
         checked = answered.model_copy(update={"answer": text, "actions": [], "customs": None})
@@ -588,7 +589,7 @@ def _follow_up(request: AgentRequest, user_id: str | None = None, memory: str | 
             # 검증을 통과한 뒤에 되돌린다. LLM에는 번호표만 갔고(llm.answer_follow_up), 화면의 답에는 사용자 화물의 실제 번호가 나간다.
             # 같은 container_tokens로 지난 결과에서 다시 만들어서 LLM이 본 번호표와 번호가 맞는다
             tokens = llm.container_tokens(previous.customs.container_no if previous.customs else None)
-            return answered.model_copy(update={"answer": llm.restore_containers(out.answer, tokens)})
+            return answered.model_copy(update={"answer": llm_llm_support.restore_containers(out.answer, tokens)})
         log_failure("validate_follow_up", f"{','.join(v.rule for v in violations)} attempt {attempt}")
         feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
     # 세 번 다 어기면 틀린 문장을 내보내지 않고 답하지 못했다고 한다. 지난 판정·근거는 그대로 둔다

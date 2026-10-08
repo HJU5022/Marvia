@@ -28,7 +28,7 @@ from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.schemas.customs import mask_bl
 from backend.app.services.judge import guard
 from backend.app.services.judge.evidence import KST
-from backend.app.services.llm import STAGE_SUSPECT  # 주입 모양 단계명 대신 쓰는 글자 (llm._clean_customs와 같다)
+from backend.app.services.llm_config import STAGE_SUSPECT  # 주입 모양 단계명 대신 쓰는 글자 (llm._clean_customs와 같다)
 from backend.app.services.judge.rules import stage_key
 from backend.app.services.judge.verdict import VERDICT_LABEL
 
