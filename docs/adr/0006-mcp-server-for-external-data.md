@@ -21,4 +21,4 @@
 ## 근거
 - `docs/Marvia_SDD.md` 3.4절, 5.9절
 - `CLAUDE.md` "할 것" 4번째 항목
-- 테스트: `mcp_server/tests/`, `backend/tests/test_mcp_client.py`, `test_mcp_mount.py`
+- 테스트: `mcp_server/tests/`, `backend/tests/unit/test_mcp_client.py`, `test_mcp_mount.py`

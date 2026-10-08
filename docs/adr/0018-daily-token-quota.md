@@ -7,7 +7,7 @@ IP당 분당 20회 레이트 리밋(slowapi)은 계획이었으나 구현하지 
 
 ## 결정
 - 한 사람이 하루(한국 시각 자정 기준)에 쓰는 LLM 토큰(입력+출력)을 `DAILY_TOKENS_PER_USER`(`.env.example` 100000)로 막는다. 비우거나 0이면 막지 않는다.
-- `llm.chat`이 성공 호출마다 쌓고(`services/quota.add()`), `token_usage` 표(마이그레이션 016)에 저장한다.
+- `llm.chat`이 성공 호출마다 쌓고(`services/account/quota.add()`), `token_usage` 표(마이그레이션 016)에 저장한다.
 - 한도를 넘긴 요청은 끝까지 답하고, 다음 요청부터 429 `daily_token_limit`이다. 화면은 `GET /api/usage`로 읽어 입력을 막는다.
 - 운영자는 막지 않는다. 금액 기준 상한은 만들지 않는다(`DAILY_COST_CAP_KRW`, `MAX_TOKENS_PER_REQUEST`는 칸만 있고 읽는 코드가 없다).
 
@@ -20,4 +20,4 @@ IP당 분당 20회 레이트 리밋(slowapi)은 계획이었으나 구현하지 
 
 ## 근거
 - `docs/specs/token-quota.md`, `docs/Marvia_SDD.md` 5.20절, 7절
-- 테스트: `backend/tests/test_quota.py`
+- 테스트: `backend/tests/unit/test_quota.py`

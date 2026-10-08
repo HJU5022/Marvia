@@ -6,7 +6,7 @@
 ShipFinder는 하루 50회 호출 한도가 있다. 한도를 넘으면 status 38("The number of queries exceeded")이 난다. 처음 spec은 "1단계 화면만, 서버는 보류"였다 (`docs/specs/cargo-watch.md`).
 
 ## 결정
-- 지켜보기는 사용자가 직접 켠 화물만, 사용자당 최대 5건이다 (`services/watch.py MAX_WATCH`). 모든 화물을 감시하면 ShipFinder 하루 한도와 LLM 비용이 사용자 모르게 나가기 때문이다.
+- 지켜보기는 사용자가 직접 켠 화물만, 사용자당 최대 5건이다 (`services/watch/watch.py MAX_WATCH`). 모든 화물을 감시하면 ShipFinder 하루 한도와 LLM 비용이 사용자 모르게 나가기 때문이다.
 - 지도는 저장된 위치만 읽는다. 지도를 열 때 ShipFinder를 부르지 않는다.
 - 반출이 끝난 화물은 지도에서 빼고 켤 수도 없다(409).
 - 주기 수집은 기본 꺼짐(`WORKER_SCHEDULE=off`, `WATCH_ENABLED` 기본 꺼짐)이다. 수집 주기는 계획의 3시간에서 6시간으로 바꿨다. ShipFinder 하루 50회 한도 때문이다 (SDD 5.10절).

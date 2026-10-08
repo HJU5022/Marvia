@@ -64,8 +64,8 @@ B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 �
 | 지켜보기·알림 | 화물 지켜보기와 바뀐 판정 보기(`/api/watch`), 카카오톡 "나에게 보내기" 연결·시험 발송, 워커의 재판정(`WATCH_ENABLED`, 기본 꺼짐) | `routers/watch.py`, `kakao.py`, `worker/watch.py`. 이메일·푸시는 만들지 않았다 |
 | 내 화물 현황표 | 신용장별 묶음 표와 엑셀 받기(`/api/cargo/sheet`, `sheet.xlsx`) | `routers/cargo_sheet.py` |
 | 운영자 | 고객 목록·정지·삭제, 운영자 권한, 운영 지표(`/api/admin/*`, `/api/metrics`) | `routers/admin.py`, `docs/specs/operator-admin.md` |
-| 토큰 한도 | 1명당 하루 LLM 토큰 한도, 넘으면 다음 요청부터 429 | `services/quota.py`, `docs/specs/token-quota.md` |
-| 안내처 | 답하지 않는 부분은 누구에게 어디서 확인하는지 붙이기 | `skills/referrals/`, `services/referrals.py` |
+| 토큰 한도 | 1명당 하루 LLM 토큰 한도, 넘으면 다음 요청부터 429 | `services/account/quota.py`, `docs/specs/token-quota.md` |
+| 안내처 | 답하지 않는 부분은 누구에게 어디서 확인하는지 붙이기 | `skills/referrals/`, `services/chat/referrals.py` |
 | 화면 | 채팅 화면, 지도, 내 화물, 이력, 설정, 운영자, 지표, 소개 (Next.js 16) | `web/app/` |
 **금지:** LangGraph, RAG. 도메인 지식은 Skill 문서 통째 주입, 실시간 데이터는 MCP 도구.
 
@@ -103,7 +103,7 @@ B/L 번호와 판매 예정일을 넣으면 "내 화물, 지금 신경 써야 �
 | 괜찮음 (순항) | 모든 신호 clear, ETA 근거 2개 이상 일치 |
 | 판정 보류 | 선박 식별 불확정 또는 위치 없음 → 물을 것 1개 이상 |
 
-(변경: 등급은 LLM이 아니라 코드 판정 표가 정한다(`services/verdict.py`, 재료는 `skills/cargo-verdict/rules.md`). LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다. 판매 예정일은 선택 입력이다.)
+(변경: 등급은 LLM이 아니라 코드 판정 표가 정한다(`services/judge/verdict.py`, 재료는 `skills/cargo-verdict/rules.md`). LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다. 판매 예정일은 선택 입력이다.)
 
 **울타리(코드가 LLM을 막는 것):** stale이면 "현재 위치" 표현 금지 / act·watch면 1층 규칙 이름 필수 / 식별 uncertain이면 판정 금지 / 근거에 없는 숫자 거부.
 

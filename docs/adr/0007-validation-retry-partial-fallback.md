@@ -6,7 +6,7 @@
 LLM 출력에 틀린 숫자, 오래된 위치를 "현재 위치"라 쓰는 문장, 근거 없는 낱말이 섞일 수 있다. 프롬프트 문장만으로는 역할 재설정 주입이 완전히 막히지 않았다 (공격 8종 x 5채널 x 3회에서 1/120 잔존, `evals/results/injection/README.md`).
 
 ## 결정
-- `services/validate.py`가 V1~V7, V9~V15를 검사하고 라우터가 V8(등급이 표 아래로 내려가지 않음)을 검사한다.
+- `services/judge/validate.py`가 V1~V7, V9~V15를 검사하고 라우터가 V8(등급이 표 아래로 내려가지 않음)을 검사한다.
 - 위반 시 3단계: 1차 위반 detail을 붙여 재요청, 2차 "JSON만, 규칙 준수"로 강화, 3차 폴백. 시간 예산 `JUDGE_BUDGET_SEC` 60초를 넘길 것 같으면 다음 시도를 시작하지 않는다.
 - 폴백은 `status=partial`: 판정 표 등급 + 고정 문구, evidence 유지. 회색 지대면 등급 없이 partial. 처음엔 failed였다. failed는 통관 정보를 못 가져왔을 때만 쓴다.
 - 프롬프트 방어와 별개로 코드 방어(guard, V9, V10)를 둔다.

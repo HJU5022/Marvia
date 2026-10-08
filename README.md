@@ -168,7 +168,7 @@ flowchart TD
 | `customs-stages` | UNI-PASS 통관 단계의 뜻·다음 단계·할 일 설명법과 관세사 안내 | 판정, 후속 답, 채팅 에이전트, 통관 해설 채점(평가) |
 | `cargo-verdict` | 코드가 낸 등급과 되묻기·보류·실패 결과를 설명하는 법 | 판정, 후속 답, 채팅 에이전트 |
 | `port-busan` | 부두·정박지 이름의 뜻과 하역 장소를 한 문장으로 말하는 법 | 후속 답, 채팅 에이전트 (판정에는 넣지 않음) |
-| `referrals` | 마르비아가 답하지 않는 부분을 누구에게 어느 공식 창구에서 확인하게 하는지 | LLM에 넣지 않고 채팅 코드(`services/referrals.py`)가 `rules.md`를 읽어 고정 문구 뒤에 붙임 |
+| `referrals` | 마르비아가 답하지 않는 부분을 누구에게 어느 공식 창구에서 확인하게 하는지 | LLM에 넣지 않고 채팅 코드(`services/chat/referrals.py`)가 `rules.md`를 읽어 고정 문구 뒤에 붙임 |
 
 ---
 
@@ -334,7 +334,7 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 | API 직접 실행 | `python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt` 후 `.venv/bin/python -m uvicorn backend.app.main:app --port 8000` (API + MCP `/mcp`. 윈도우는 `.venv\Scripts\python`) |
 | 화면(web/) | `cd web && npm install && npm run dev` (:3000, Node 20.9 이상). `web/.env`의 `NEXT_PUBLIC_API_BASE`를 비우면 `web/lib/fixtures` 가공 데이터로 뜨고, `http://localhost:8000`을 넣으면 위 API에 붙는다. 자세한 설명은 [web/README.md](./web/README.md) |
 | MCP 확인 | `python -m scripts.demo.mcp_check http://localhost:8000/mcp` (연결과 도구 4종), `python -m scripts.demo.mcp_demo` (4종 호출), `python -m scripts.demo.mcp_auth_check` (토큰 없으면 401) |
-| 테스트 | `pytest` 키 없이 돈다 (가공 응답으로 대체). `pytest backend/tests mcp_server/tests`로 2309건 통과. PR 때 `.github/workflows/tests.yml`이 같은 범위를 돈다 |
+| 테스트 | `pytest` 키 없이 돈다 (가공 응답으로 대체). `pytest backend/tests mcp_server/tests`로 2360건 통과. PR 때 `.github/workflows/tests.yml`이 같은 범위를 돈다 |
 | 평가 | `python -m evals.run_eval --config a|b|c` (실제 API·LLM을 불러 돈이 든다) |
 
 MCP 서버는 API 서버 안의 `/mcp` 경로다. 서버 하나, 배포 주소 하나로 `/api/agent`(화면용)와 `/mcp`(MCP 클라이언트용)가 같이 열린다. `MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401이고, 배포에서는 반드시 채운다. 우리 서비스(`/api/agent`)도 도구를 `/mcp`를 거쳐 MCP 프로토콜로 부른다(`backend/app/services/mcp_client.py`). Docker 이미지는 `MCP_URL=http://127.0.0.1:8000/mcp`로 같은 서버에 HTTP로 붙고, `MCP_URL`이 없으면(테스트·평가 실행기) 같은 프로세스의 MCP 서버에 메모리로 붙는다. 후속 질문에서는 LLM이 `tools/list`로 받은 읽기 전용 도구를 직접 골라 부르고, 호출마다 Langfuse에 `mcp:<도구>` 관측이 남는다. 도구 4종은 `estimate_distance`, `get_live_position`, `get_vessel_candidates`, `get_port_schedule`이고 본체는 `mcp_server/tools/*.py`, 등록은 `mcp_server/server.py`의 `create_mcp()`다. 폴더 설명은 [mcp_server/README.md](./mcp_server/README.md).
@@ -388,7 +388,7 @@ Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout
 
 | 폴더 | 내용 | 설명 |
 |---|---|---|
-| `backend/` | FastAPI. `app/routers`(요청), `schemas`(계약 C1~C5), `services`(판정·채팅·기억·지켜보기), `clients`(외부 API), `observability`, `db/migrations`(001~023 자동 적용), `prompts`(Langfuse 실패 때 쓰는 사본), `tests` | [backend/README.md](./backend/README.md) |
+| `backend/` | FastAPI. `app/routers`(요청), `schemas`(계약 C1~C5), `services`(`judge/` 판정, `chat/` 채팅, `account/` 기억·회원, `watch/` 지켜보기, `llm*.py`), `clients`(외부 API), `observability`, `db/migrations`(001~023 자동 적용), `prompts`(Langfuse 실패 때 쓰는 사본), `tests`(`unit/` `integration/` `contract/`) | [backend/README.md](./backend/README.md) |
 | `mcp_server/` | FastMCP. 선박 후보·실시간 위치·입항 일정·남은 거리 도구 4개 | [mcp_server/README.md](./mcp_server/README.md) |
 | `skills/` | `ais-reliability`, `customs-stages`, `port-busan`, `cargo-verdict`, `referrals`. 폴더마다 `SKILL.md` + `rules.md` | [skills/README.md](./skills/README.md) |
 | `worker/` | `collector.py`(위치·입항 실적 수집), `watch.py`(지켜보는 화물 재판정), `run.py` | |

@@ -22,7 +22,7 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 - 지연·비용 목표, 보안, 신뢰 경계 → SDD 7절
 - 실패했을 때 무엇을 돌려주나 → SDD 8절
 - 테스트 층 → SDD 9절
-- 임계값·목록·판정 표 재료가 필요하다 → skills/*/rules.md 프론트매터 (C6). 키 하나는 한 파일에만 있고 services/rules.py가 합쳐 읽는다 (rule(key))
+- 임계값·목록·판정 표 재료가 필요하다 → skills/*/rules.md 프론트매터 (C6). 키 하나는 한 파일에만 있고 services/judge/rules.py가 합쳐 읽는다 (rule(key))
 - 만들지 않는 것 → PRD 4절
 - SDD에 없는 새 결정이 필요하다 → 혼자 정해서 코드로 만들지 않는다. 물어보고, 정해지면 SDD를 먼저 고친다
 - 프롬프트를 바꾼다 → docs/prompt_versions.md와 docs/release_manifest.json (아래 "프롬프트 배포 순서")
@@ -31,7 +31,7 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 ## 하지 말 것
 
 - langgraph를 설치하거나 import하지 않는다. 문서를 청킹해 검색하고 프롬프트에 붙이는 RAG를 만들지 않는다. 지식은 호출마다 필요한 skills/ 문서를 시스템 프롬프트에 통째로 넣고(llm.py JUDGE_SKILLS 등), 실시간 데이터는 MCP 도구로 가져온다
-- LLM SDK(openai 등)는 backend/app/services/llm.py에서만 import한다. 라우터, MCP 도구, 워커, 프론트는 LLM을 직접 부르지 않는다
+- LLM SDK(openai 등)는 backend/app/services/llm.py에서만 import한다 (llm_config·llm_types·llm_schemas·llm_support는 SDK를 import하지 않는 보조 파일). 라우터, MCP 도구, 워커, 프론트는 LLM을 직접 부르지 않는다
 - 프롬프트를 코드에 문자열로 두지 않는다. Langfuse Prompt에서 이름으로 가져온다 (SDD 5.6)
 - 임계값(6시간, 12시간, 0.5노트, 24시간, 부산 반경, 여유 일수)을 코드에 숫자로 적지 않는다. rules.md 프론트매터를 코드가 읽는다
 - B/L 번호를 LLM에 넘기지 않는다. UNI-PASS는 코드가 직접 부른다. 트레이스와 로그에는 가운데 절반을 *로 가린 값만 남긴다 (SDD 3.5, 예: TE****01)
@@ -51,8 +51,8 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 ## 할 것
 
 - 작업은 작업 리스트 ID 단위로 받고, 그 행의 "완료 기준"을 그대로 테스트 조건으로 쓴다. 테스트 통과 없이 완료라고 하지 않는다. 지시 형식은 SDD 10절
-- 판정 흐름에서 LLM이 만드는 것은 셋뿐이다: 복수 후보 중 선박 선택(confidence 포함), 2층 판정의 설명(reasons, conflicts, actions, answer, 통관 해설), 후속 질문 답. 나머지는 코드다 (PRD 6.1). llm.py는 이 밖에 채팅 답(services/chat.py), 서류 사진 칸 추출(doc-extract), 대화 제목, 기억 뽑기(memory-write), 항구 매칭(port-match)도 부르지만 등급·days_margin·신호 같은 판정 값은 여전히 코드가 정한다
-- 등급(verdict)은 코드가 판정 표로 정한다. LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다 (D7, services/verdict.py, 재료는 skills/cargo-verdict/rules.md)
+- 판정 흐름에서 LLM이 만드는 것은 셋뿐이다: 복수 후보 중 선박 선택(confidence 포함), 2층 판정의 설명(reasons, conflicts, actions, answer, 통관 해설), 후속 질문 답. 나머지는 코드다 (PRD 6.1). llm.py는 이 밖에 채팅 답(services/chat/chat.py), 서류 사진 칸 추출(doc-extract), 대화 제목, 기억 뽑기(memory-write), 항구 매칭(port-match)도 부르지만 등급·days_margin·신호 같은 판정 값은 여전히 코드가 정한다
+- 등급(verdict)은 코드가 판정 표로 정한다. LLM은 act를 가르는 신호가 unknown인 회색 지대에서만 표 등급 이상으로 올릴 수 있다 (D7, services/judge/verdict.py, 재료는 skills/cargo-verdict/rules.md)
 - 결정마다 권한자는 하나다. 결정은 backend/ 코드, 재료(임계값·목록·표)는 rules.md 프론트매터, 도메인 지식과 결과 설명법은 SKILL.md, 입력 필드 뜻·Skill 사용처·근거와 보안 규칙·출력 규칙은 프롬프트. 같은 판정 문장을 두 곳에 쓰지 않는다
 - 모든 외부 호출(UNI-PASS, ShipFinder, 해수부, searoute, OpenRouter, Vertex AI)은 타임아웃, 재시도 2회, 최종 실패 시 partial 경로가 있어야 한다 (SDD 8절 표). MCP 도구는 예외를 던지지 않고 {error: {code, message, retryable}}을 돌려준다 (SDD 3.4)
 - 모든 도구 응답에 source와 fetched_at을 붙이고 evidence로 남긴다
@@ -97,9 +97,9 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 
 | 폴더 | 책임 | 하지 않는 것 | SDD |
 |---|---|---|---|
-| backend/app/routers/ | 요청 검증, 서비스 호출, 응답 | LLM import, 판정(등급 계산은 services/verdict.py) | 4절 |
+| backend/app/routers/ | 요청 검증, 서비스 호출, 응답 | LLM import, 판정(등급 계산은 services/judge/verdict.py) | 4절 |
 | backend/app/schemas/ | 출력 계약 원본. 필드는 여기서만 | | 3절 |
-| backend/app/services/ | UNI-PASS 조회, 신호 계산, 식별, 판정 표, LLM 오케스트레이션, 검증, 근거 조립, 채팅·기억·지켜보기·알림 | 프롬프트 하드코딩 | 5.1, 5.4~5.8 |
+| backend/app/services/ | llm*.py(LLM 오케스트레이션), judge/(UNI-PASS 조회, 신호 계산, 식별, 판정 표, 검증, 근거 조립), chat/(채팅·서류), account/(기억·회원·운영), watch/(화물 현황·지켜보기·알림) | 프롬프트 하드코딩 | 5.1, 5.4~5.8 |
 | backend/app/clients/ | 외부 API 클라이언트, status 매핑, 캐시 | 판정 | 5.2, 5.3 |
 | backend/app/observability/ | Langfuse 데코레이터, prompt fetch, JSON 로그 | | 5.11 |
 | mcp_server/ | 외부 데이터 도구 4종 노출 (searoute 거리 계산은 tools/distance.py) | 판정, freshness 계산 | 3.4, 5.9 |
@@ -120,10 +120,10 @@ cd web && npm install && npm run dev   # :3000. NEXT_PUBLIC_API_BASE=http://loca
 
 ## 테스트
 
-- 단위·계약·통합: `pytest backend/tests mcp_server/tests` (키 없이, fixture로). PR 때 .github/workflows/tests.yml이 같은 범위를 돌린다
+- 단위·계약·통합: `pytest backend/tests mcp_server/tests` (키 없이, fixture로). backend/tests/는 unit/ integration/ contract/ 세 층 폴더다 (SDD 9절). PR 때 .github/workflows/tests.yml이 같은 범위를 돌린다
 - 화면 e2e: 데모 모드 웹(`NEXT_PUBLIC_API_BASE` 비움, :3100)을 띄운 뒤 `cd web && MARVIA_TEST_URL=http://localhost:3100 npm run test:e2e`. 주소는 `localhost`로 쓴다(`127.0.0.1`이면 Next 개발 서버가 화면 스크립트를 막아 첫 단계에서 시간 초과). 프론트 계약은 `npm run test:contracts`
 - 평가: `python -m evals.run_eval --config a|b|c` → evals/results/<config>_<시각>.json (실행마다 새 파일)
-- 신호 계산(services/signals.py), 판정 표(services/verdict.py)나 skills/*/rules.md를 고쳤으면 pytest를 다시 돌린다. 규칙값을 읽어 쓴다
+- 신호 계산(services/judge/signals.py), 판정 표(services/judge/verdict.py)나 skills/*/rules.md를 고쳤으면 pytest를 다시 돌린다. 규칙값을 읽어 쓴다
 
 ## 협업
 

@@ -7,7 +7,7 @@
 
 ## 결정
 - 숫자와 목록은 `skills/*/rules.md` 프론트매터(계약 C6)에 둔다. 코드에는 숫자를 적지 않고 `rule("키")`로 읽는다.
-- Skill 폴더마다 rules.md 하나. 같은 키가 두 파일에 있으면 `services/rules.py`가 시작할 때 실패한다.
+- Skill 폴더마다 rules.md 하나. 같은 키가 두 파일에 있으면 `services/judge/rules.py`가 시작할 때 실패한다.
 - 결정은 코드, 재료는 rules.md, 도메인 지식과 설명법은 SKILL.md, 입력 필드 뜻과 보안 규칙은 프롬프트가 맡는다. 같은 판정 문장을 두 곳에 쓰지 않는다.
 
 ## 대안

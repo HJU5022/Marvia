@@ -12,7 +12,7 @@ openai SDK는 `backend/app/services/llm.py`에서만 import한다. 라우터, MC
 - 라우터나 서비스에서 SDK를 직접 부르기: `CLAUDE.md` "하지 말 것"이 금지한다. 비교 기록은 근거 문서에 없다.
 
 ## 결과
-좋아진 것: 호출 1회 + 재시도 1회(`MAX_ATTEMPTS=2`), 호출당 타임아웃 60초, 구조화 출력, 하루 토큰 집계(`services/quota.add()`), Langfuse 관측이 한 파일에 모인다 (SDD 5.6절).
+좋아진 것: 호출 1회 + 재시도 1회(`MAX_ATTEMPTS=2`), 호출당 타임아웃 60초, 구조화 출력, 하루 토큰 집계(`services/account/quota.add()`), Langfuse 관측이 한 파일에 모인다 (SDD 5.6절).
 대가: 이 선택의 단점은 근거 문서에 적혀 있지 않다.
 
 ## 근거

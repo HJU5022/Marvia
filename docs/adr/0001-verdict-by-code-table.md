@@ -6,7 +6,7 @@
 처음엔 2층 판정의 등급(fine/watch/act)을 LLM이 골랐다. 평가셋 30건에서 exact 27/30이었고, 실패 유도 문항에서 등급이 어긋났다 (`EVAL_REPORT.md` 4절 1번, `evals/results/b_20260929_2251.json`).
 
 ## 결정
-등급은 `services/verdict.py`가 판정 표로 먼저 정한다. 재료는 `skills/cargo-verdict/rules.md`(`margin_act_days`, `act_signals`, `gray_signals`)다. act를 가르는 신호(anchor_wait, customs_hold)가 unknown인 회색 지대에서만 LLM이 표 등급 이상으로 올릴 수 있다. 낮추지는 못한다(검증 V8).
+등급은 `services/judge/verdict.py`가 판정 표로 먼저 정한다. 재료는 `skills/cargo-verdict/rules.md`(`margin_act_days`, `act_signals`, `gray_signals`)다. act를 가르는 신호(anchor_wait, customs_hold)가 unknown인 회색 지대에서만 LLM이 표 등급 이상으로 올릴 수 있다. 낮추지는 못한다(검증 V8).
 
 ## 대안
 - LLM이 등급까지 고르게 두기: 처음 구현. 위 측정에서 27/30.

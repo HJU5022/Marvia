@@ -32,13 +32,13 @@
 
 - schemas/agent.py(C2): mrn 선택 칸, 형식 ^[0-9]{2}[A-Z0-9]{8}[IE]$ (계약 변경)
 - schemas/document.py: DocumentResponse.mrn (선택, 코드가 뽑음)
-- services/mrn_fallback.py: 대체 응답 조립. 위치 신선도는 rules.md position_stale_hours, trusted_eta는 정하지 않는다(통관·판정 없음)
+- services/judge/mrn_fallback.py: 대체 응답 조립. 위치 신선도는 rules.md position_stale_hours, trusted_eta는 정하지 않는다(통관·판정 없음)
 - routers/agent.py: _assess에서 UNI-PASS가 insufficient이고 mrn이 있으면 대체를 시도
-- services/chat.py: MRN 정규식, ChatContext.mrn
-- 테스트: backend/tests/test_mrn_fallback.py
+- services/chat/chat.py: MRN 정규식, ChatContext.mrn
+- 테스트: backend/tests/unit/test_mrn_fallback.py
 
 ## 구현 상태
 
-- 위 What·How는 모두 코드에 있다: `AgentRequest.mrn`(schemas/agent.py, 형식 `^[0-9]{2}[A-Z0-9]{8}[IE]$`), `DocumentResponse.mrn`(코드가 "MRN" 이름표 옆에서 뽑음, routers/document.py), `services/chat.extract_mrn`(자연어에서 뽑고 그 자리를 [MRN]으로 바꿔 LLM에는 안 보냄), `services/mrn_fallback.assess`, `routers/agent.py`의 insufficient 분기
+- 위 What·How는 모두 코드에 있다: `AgentRequest.mrn`(schemas/agent.py, 형식 `^[0-9]{2}[A-Z0-9]{8}[IE]$`), `DocumentResponse.mrn`(코드가 "MRN" 이름표 옆에서 뽑음, routers/document.py), `services/chat/chat.extract_mrn`(자연어에서 뽑고 그 자리를 [MRN]으로 바꿔 LLM에는 안 보냄), `services/judge/mrn_fallback.assess`, `routers/agent.py`의 insufficient 분기
 - 조회 기간은 입항 신고를 오늘 -3일 ~ +14일로 찾는다 (`mrn_fallback.LOOKBACK_DAYS`, `LOOKAHEAD_DAYS`)
-- 이 Spec 밖에서 MRN은 한 곳에 더 쓰인다: UNI-PASS에서 B/L을 찾은 정상 흐름에서도 세관 기록의 MRN으로 해수부 입항 신고를 찾아 호출부호를 얻고 배를 확정한다 (`services/identify.call_sign_from_mrn`, `routers/agent.py _identify`). 이때 확정 방법은 `user_cargo.vessel_source = 'mrn'`으로 남는다 (docs/ERD.md)
+- 이 Spec 밖에서 MRN은 한 곳에 더 쓰인다: UNI-PASS에서 B/L을 찾은 정상 흐름에서도 세관 기록의 MRN으로 해수부 입항 신고를 찾아 호출부호를 얻고 배를 확정한다 (`services/judge/identify.call_sign_from_mrn`, `routers/agent.py _identify`). 이때 확정 방법은 `user_cargo.vessel_source = 'mrn'`으로 남는다 (docs/ERD.md)

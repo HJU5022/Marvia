@@ -5,7 +5,7 @@
 | 구분 | 내용 |
 |---|---|
 | 책임 | ShipFinder, 해수부, searoute 데이터를 원본 값과 `fetched_at`과 함께 돌려준다 |
-| 하지 않는 것 | 판정, freshness 계산. 위치가 오래됐는지는 `services/signals.py`가 정한다 |
+| 하지 않는 것 | 판정, freshness 계산. 위치가 오래됐는지는 `services/judge/signals.py`가 정한다 |
 
 ## 파일
 
