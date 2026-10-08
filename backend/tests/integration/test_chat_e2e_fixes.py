@@ -190,3 +190,22 @@ def test_save_request_without_login_keeps_login_answer(monkeypatch):
                                       ("기억해?", False)])
 def test_is_save_request(text, hit):
     assert svc.is_save_request(text) is hit
+
+
+# ── 웹 검색 제거 뒤(ADR 0020): 모르는 실무 질문에 남은 도구를 잘못 고르면 돌려보내고, 모델의 다음 답을 Skill 답으로 본다 ──
+def test_practical_question_does_not_become_memo_answer(monkeypatch):
+    from backend.app.services.chat import texts as chat_texts
+    calls = _agent(monkeypatch, [("recall_memo", {"topic": "any", "query": None})],
+                   ["터미널은 컨테이너마다 무료로 둘 수 있는 기간을 두고, 그 뒤부터 보관료가 붙어요."])
+    r = svc.handle("컨테이너 무료기간 언제부터 부과돼?", "m1", None, lambda req: None)
+    assert calls[0]["tool_calls"][0]["result"]["error"]["code"] == "not_a_memo_question"
+    assert r.reply not in (chat_texts.MEMO_ANON, chat_texts.FAILED_LOOKUP)
+
+
+def test_empty_question_does_not_list_all_arrivals(monkeypatch):
+    calls = _agent(monkeypatch, [("search_arrivals", {"place": None, "place_label": None, "days": 7})],
+                   ["확인하실 화물의 B/L 번호를 알려 주세요."])
+    monkeypatch.setattr(svc, "_arrivals", lambda days: PLANS)
+    r = svc.handle("?", "q1", None, lambda req: None)
+    assert calls[0]["tool_calls"][0]["result"]["error"]["code"] == "not_a_list_question"
+    assert r.kind != "vessels"

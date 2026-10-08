@@ -1285,6 +1285,10 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             if not args.get("place") and re.search(r"위치|어디", masked) and not re.search(r"들어오|입항|오는\s*배|목록|들어와", masked):
                 return _tool_error("not_a_list_question", "search_arrivals lists ships arriving at Busan; it cannot find where one ship is. "
                                    "To find a named ship use get_vessel_candidates, then get_live_position.")
+            # 지명도 없고 배·입항을 묻는 말도 없는 문장("?" 같은 빈 질문)에 입항 목록 전체를 내지 않는다. 웹 검색을 뺀 뒤 생긴 일 (10-08 e2e, ADR 0020)
+            if not args.get("place") and not re.search(r"배|선박|입항|들어오|들어와|오는|도착|목록|부산", masked):
+                return _tool_error("not_a_list_question", "The user did not ask for ships arriving at Busan. Do not call search_arrivals. "
+                                   "Answer briefly and ask what cargo (B/L) or ship they want to check.")
             if place and (not _PLACE.match(place) or len(place.split()) > 4 or guard.looks_like_injection(place)):
                 place = None
             label = args.get("place_label")
@@ -1307,6 +1311,12 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if name == "send_kakao":
             return run_kakao(args)
         if name == "recall_memo":
+            # 저장한 것을 묻지 않은 문장(무료 기간·검사 기간 같은 실무 질문)에 모델이 메모 꺼내 보기를 고르면 돌려보낸다.
+            # 웹 검색을 뺀 뒤(ADR 0020) 모르는 실무 질문에 남은 도구를 고르는 일이 생겼다 (10-08 e2e). 답은 Skill 문서나 not_in_skills로 한다
+            if not is_memo_question(masked):
+                log_failure("chat_agent_tool", "recall_memo_not_memo_question")
+                return _tool_error("not_a_memo_question", "The user did not ask about something they saved or told Marvia. "
+                                   "Do not call recall_memo. Answer from the Skill documents, or with not_in_skills if they do not cover it.")
             return run_recall(args)
         if name in mcp_names:
             if context is not None and name in ("get_live_position", "estimate_distance") and is_cargo_vessel_call(name, args):
@@ -1588,7 +1598,11 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if earlier and _flat_text(reply) == _flat_text(earlier[-1]):
             reply = f"{LOOKUP_FALLBACK_SAME} {fallback}"
         return ChatResult(kind="message", reply=reply, map=_map_payload(calls, done, started))
-    if calls:
+    # 메모 꺼내 보기·입항 목록을 잘못 골라 돌려보낸 호출(not_a_memo_question·not_a_list_question)만 있으면 도구를 안 쓴 것과 같다. 모델의 다음 답을 Skill 답 검사로 본다
+    memo_misfire = bool(calls) and all(isinstance(c["result"], dict)
+                                       and (c["result"].get("error") or {}).get("code") in ("not_a_memo_question", "not_a_list_question")
+                                       for c in calls)
+    if calls and not memo_misfire:
         # 도구를 골랐는데 모두 실패했다. LLM 문장 대신 코드가 무엇이 안 됐는지 말한다 (EC-02·EC-03 고정 안내 유지, 10-05 검토)
         codes = [c["result"]["error"]["code"] for c in calls if isinstance(c["result"], dict) and "error" in c["result"]]
         if "need_bl" in codes and _ID_LIKE.search(masked):
