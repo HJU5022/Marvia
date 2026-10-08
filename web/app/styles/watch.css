@@ -237,10 +237,8 @@
 /* 68: 화물 없이 배만 지켜볼 때는 지도 한 칸만 */
 .wm-body:not(:has(.wm-side)){grid-template-columns:minmax(0,1fr)}
 /* 69: 배만 지켜보는 배는 다른 지도와 같은 화살표·작은 이름 알약. 옅은 색과 "배만" 꼬리표로만 구분한다 */
-.heading-marker.vessel-only span{color:var(--text-2,#6b7280);opacity:.85}
-.leaflet-tooltip.vessel-only-tip{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2,#6b7280)}
+/* 배만 지켜보는 배: 화물 핀과 같은 동그라미·알파벳, 판정이 없어 흰 바탕에 회색 점선 테두리 (10-08 승욱, WatchMap.tsx Spot) */
+.watch-pin .pin-body.vessel-only{background:#fff;border:2px dashed #9ca3af}
+.watch-pin .pin-body.vessel-only b{color:var(--muted,#6b7280)}
+.watch-chip.vessel-only{background:#fff;border:2px dashed #9ca3af;color:var(--muted,#6b7280);display:grid;place-items:center;box-shadow:none}
 .vessel-only-tag{font-style:normal;font-size:var(--fs-xs,11px);margin-left:5px;padding:0 4px;border:1px solid var(--border-strong,#cfcfcf);color:var(--muted)}
-.vessel-only-popup .leaflet-popup-content-wrapper{border-radius:0;box-shadow:none;border:1px solid var(--border-strong,#cfcfcf)}
-.vessel-only-popup .leaflet-popup-content{margin:0}
-.vessel-only-popup .watch-tip{width:auto;min-width:180px}
-.vessel-only-popup .watch-tip span{display:block;color:var(--muted)}
