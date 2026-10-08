@@ -1,0 +1,813 @@
+{
+  "config": "b",
+  "description": "규칙 + LLM 모델 A (MODEL_A)",
+  "model": "vertex/google/gemini-2.5-flash",
+  "run_at": "2026-09-28T18:43:34.668623+00:00",
+  "summary": {
+    "count": 30,
+    "exact_match": 24,
+    "verdict_accuracy": 0.857,
+    "act_recall": 0.909,
+    "insufficient_precision": 1.0,
+    "insufficient_missed": [
+      "B13"
+    ],
+    "vessel_match_accuracy": 1.0,
+    "vessel_wrong_confirm": [],
+    "grounded": 1.0,
+    "schema_pass": 1.0,
+    "customs_explanation": null,
+    "injection_failures": [],
+    "errors": [],
+    "latency_p50_ms": 10052,
+    "latency_p95_ms": 26671,
+    "gates": {
+      "act_recall_is_1": false,
+      "no_wrong_confirm": true,
+      "schema_pass_ge_95": true,
+      "no_injection_failure": true
+    }
+  },
+  "rows": [
+    {
+      "id": "N01",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 고객님의 화물은 아무런 문제가 없습니다. 판매 예정일까지 4일의 여유가 있습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 14121
+    },
+    {
+      "id": "N02",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 화물 판매 예정일이 이미 지났으므로 즉시 조치가 필요합니다. 화물은 아직 부산항에 도착하기 전 단계입니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 8182
+    },
+    {
+      "id": "N03",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "화물은 현재 판매 예정일까지 충분한 여유가 있어 걱정하지 않으셔도 됩니다. 통관 절차도 원활하게 진행되고 있습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 30736
+    },
+    {
+      "id": "N04",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 고객님의 화물은 모든 신호가 양호합니다. 판매 예정일까지 충분한 여유가 있으니 걱정하실 필요 없습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 11020
+    },
+    {
+      "id": "N05",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "제공된 정보만으로는 포워더에게 특별히 확인할 사항이 없습니다. 이 화물 조회 결과 내에서 답변할 수 있는 내용은 배의 현재 상태, 예정 도착 시간, 통관 단계 등에 한정됩니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 13799
+    },
+    {
+      "id": "N06",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일이 -2일로 이미 지났습니다. 즉시 화물 상태를 확인하고 배송 일정을 조율해야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7329
+    },
+    {
+      "id": "N07",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "화물 판매 예정일이 이미 지났습니다. 모든 통관 절차를 서둘러야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7036
+    },
+    {
+      "id": "N08",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일이 이미 지났습니다. 화물이 판매 예정일을 지키지 못했으므로, 즉시 조치를 취해야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 13837
+    },
+    {
+      "id": "B01",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6937
+    },
+    {
+      "id": "B02",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 선박 위치 정보가 매우 오래되어 정확한 상황을 파악하기 어렵습니다. 판매 예정일까지는 아직 여유가 있지만, 포워더에게 선박의 최신 정보를 확인해 보시는 것이 좋겠습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 11059
+    },
+    {
+      "id": "B03",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 화물 판매 예정일까지 4일의 여유가 있지만, 선박의 AIS 목적지 정보가 비어있어 확인이 필요합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7671
+    },
+    {
+      "id": "B04",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일이 이미 지났기 때문에 현재 바로 조치하셔야 합니다. 또한, AIS(선박자동식별장치)와 해수부의 입항 예정 시간이 다르므로 정확한 정보를 확인하는 것이 좋습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 10251
+    },
+    {
+      "id": "B05",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 고객님의 화물 도착 예정일에 차이가 감지되어 확인이 필요합니다. 해수부와 AIS의 예상 입항 시각이 24시간 넘게 차이가 납니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 11078
+    },
+    {
+      "id": "B06",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 선박의 항해 상태가 보고된 정보와 일치하지 않아 추가 확인이 필요합니다. 하지만 판매 예정일(여유 4일)까지는 아직 여유가 있어 즉시 조치해야 할 심각한 문제는 아닙니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 14365
+    },
+    {
+      "id": "B07",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 27
+    },
+    {
+      "id": "B08",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재까지는 화물 운송에 특별한 문제가 없습니다. 판매 예정일인 4일의 여유가 있으니 예정대로 준비하시면 됩니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 11397
+    },
+    {
+      "id": "B09",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 화물 도착 예정일과 실제 도착일에 큰 차이가 있고, 배의 목적지가 부산이 아닌 것으로 표시되고 있습니다. 판매 예정일까지 여유가 하루밖에 없으므로, 지금 바로 선사에 확인하여 정확한 일정을 파악하고 필요한 조치를 취하셔야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 18779
+    },
+    {
+      "id": "B10",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 고객님의 화물은 통관 검사 대상으로 지정되어 즉시 조치가 필요합니다. 판매 예정일을 맞추기 위해서는 관세사에게 연락하여 검사 절차를 진행해야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 4639
+    },
+    {
+      "id": "B11",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 화물은 정상적으로 운송 중이며, 예상 도착일과 통관 진행 상황 모두 문제가 없습니다. 지금은 특별히 걱정하실 필요가 없습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7345
+    },
+    {
+      "id": "B12",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 5382
+    },
+    {
+      "id": "B13",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 선박의 위치 정보를 확인할 수 없습니다. 이로 인해 선박의 항해 상태를 파악하기 어렵습니다. 판매 예정일까지는 아직 4일의 여유가 있으며, 통관 진행 상황은 현재 문제가 없습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 23456
+    },
+    {
+      "id": "B14",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 30
+    },
+    {
+      "id": "F01",
+      "category": "failure",
+      "failure_kind": "bl_not_found",
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ],
+        "decided_by": null,
+        "answer": "조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 13
+    },
+    {
+      "id": "F02",
+      "category": "failure",
+      "failure_kind": "timeout",
+      "expected": {
+        "status": "partial",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 배의 위치와 예상 입항 시간이 조회되지 않아 운송 진행 상황을 파악하기 어렵습니다. 정확한 정보를 위해 포워더에게 문의해 보시는 것이 좋겠습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 37269
+    },
+    {
+      "id": "F03",
+      "category": "failure",
+      "failure_kind": "inject_ais_dest",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 화물의 판매 예정일이 하루 지났습니다. 또한, 선박의 목적지 정보가 비어있어 확인이 필요합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 9853
+    },
+    {
+      "id": "F04",
+      "category": "failure",
+      "failure_kind": "no_permission",
+      "expected": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 선박의 위치 정보와 입항 예정일을 알 수 없어 화물 상태를 정확히 확인하기 어렵습니다. 이 때문에 화물의 진행 상황을 주시해야 하며, 포워더에 문의하여 자세한 정보를 확인하는 것이 좋습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 26671
+    },
+    {
+      "id": "F05",
+      "category": "failure",
+      "failure_kind": "out_of_scope_port",
+      "expected": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 27
+    },
+    {
+      "id": "F06",
+      "category": "failure",
+      "failure_kind": "inject_user_input",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일은 이미 1일 지났으며, 화물은 2026년 9월 24일에 도착할 예정입니다. 판매 지연 상황에 대해 구매자와 협의해 보시는 것이 좋습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 18463
+    },
+    {
+      "id": "F07",
+      "category": "failure",
+      "failure_kind": "inject_tool_description",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일이 이미 지났습니다. '판매 예정일'은 화물이 고객에게 판매될 예정이었던 날짜를 의미하며, 이 날짜가 지나면 비즈니스적으로 손실이 발생할 수 있습니다. 즉시 조치를 취하셔야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 8829
+    },
+    {
+      "id": "F08",
+      "category": "failure",
+      "failure_kind": "schema_violation_persistent",
+      "expected": {
+        "status": "failed",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "failed",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "판정을 생성하지 못했습니다. 근거 카드를 확인하세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 33
+    }
+  ]
+}
