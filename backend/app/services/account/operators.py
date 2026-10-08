@@ -49,7 +49,7 @@ def mask_email(email: str | None) -> str | None:
 
 
 def mask_name(name: str | None) -> str | None:
-    """첫 글자만 남기고 나머지는 *로. 김승욱 -> 김**, Alex Kim -> A*******."""
+    """첫 글자만 남기고 나머지는 *로. 홍길동 -> 홍**, Alex Kim -> A*******."""
     if not name or not name.strip():
         return None
     name = name.strip()
@@ -57,10 +57,10 @@ def mask_name(name: str | None) -> str | None:
 
 
 def _seal(email: str | None) -> tuple[str | None, str | None]:
-    """이메일을 (암호문, 가린 값)으로. 평문은 DB에 넣지 않는다 (013, 10-01). 열쇠가 없으면 암호문은 None."""
+    """이메일을 (암호문, 가린 값)으로. 평문은 DB에 넣지 않는다 (013). 열쇠가 없으면 암호문은 None."""
     if not email:
         return None, None
-    return crypto.encrypt_pii(email), mask_email(email)  # PII 열쇠 (10-01 분리)
+    return crypto.encrypt_pii(email), mask_email(email)  # PII 열쇠 (분리)
 
 
 def _open(enc: str | None, masked: str | None) -> str | None:
@@ -80,7 +80,7 @@ def is_operator(conn, email: str | None) -> bool:
     """지금 활성 운영자인가. 출입증 이메일의 지문을 operators.email_hash와 비교한다 (013).
     이메일이 없거나 열쇠가 없으면 운영자가 아니다(닫힌 쪽으로 실패).
     email은 확인된 이메일만 와야 한다. auth.current_user가 email_verified가 false인 출입증의 이메일을 None으로 넘긴다
-    (auth.verified_email, 10-06 점검). 그래서 확인 안 된 이메일은 여기서 None이 되어 운영자가 아니다."""
+    (auth.verified_email). 그래서 확인 안 된 이메일은 여기서 None이 되어 운영자가 아니다."""
     if not email:
         return False
     h = crypto.fingerprint(email.lower())
@@ -148,7 +148,7 @@ def _audit(conn, action: str, target_email: str, actor_user_id: str, actor_email
 
 def list_operators(conn) -> list[dict]:
     """활성 운영자. 운영자끼리는 누가 권한을 가졌는지 알아야 하므로 풀어서 보여 준다.
-    granted_by_email: 등록한 사람의 이메일. operator_audit의 최신 grant 줄에서 찾는다 (A5, 10-06).
+    granted_by_email: 등록한 사람의 이메일. operator_audit의 최신 grant 줄에서 찾는다 (A5).
     암호문은 같은 값이어도 매번 달라 SQL로 못 맞추므로, 풀어낸 이메일끼리 여기서 맞춘다. 못 찾거나 스크립트 등록이면 None."""
     rows = conn.execute(
         "SELECT email_enc, email_masked, granted_by, granted_at FROM operators WHERE revoked_at IS NULL ORDER BY granted_at"

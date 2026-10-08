@@ -126,7 +126,7 @@ def mask_bls(message: str, refs: dict[str, str] | None = None) -> tuple[str, dic
 
     def swap(m: re.Match) -> str:
         bl = m.group(0).upper()
-        if _is_date_digits(bl):  # "20261010 도착이래" 같은 날짜를 B/L로 조회하지 않게 (10-05 검토)
+        if _is_date_digits(bl):  # "20261010 도착이래" 같은 날짜를 B/L로 조회하지 않게
             return m.group(0)
         for token, value in refs.items():
             if value == bl:
@@ -179,7 +179,7 @@ def mask_containers(message: str, refs: dict[str, str] | None = None) -> tuple[s
 
 def _valid_date(value: str | None) -> str | None:
     """YYYY-MM-DD이고 실제 있는 날짜일 때만. LLM이 만든 날짜를 그대로 믿지 않는다."""
-    if not value or not isinstance(value, str):  # 도구 인자는 strict 스키마가 아니라 숫자·목록이 올 수 있다 (10-05 검토)
+    if not value or not isinstance(value, str):  # 도구 인자는 strict 스키마가 아니라 숫자·목록이 올 수 있다
         return None
     try:
         return date.fromisoformat(value).isoformat()
@@ -188,7 +188,7 @@ def _valid_date(value: str | None) -> str | None:
 
 def asked_days(text: str) -> int | None:
     """사용자 글이 입항 목록의 기간을 며칠로 말했는가 (가장 긴 것). "30일", "2주", "한 달", "3개월". 기간 말이 없으면 None.
-    DAYS_MAX를 넘는 요청에 한계를 밝히는 데 쓴다 (search_vessels는 말없이 DAYS_MAX로 줄였다, 10-08 E2E)."""
+    DAYS_MAX를 넘는 요청에 한계를 밝히는 데 쓴다 (search_vessels는 말없이 DAYS_MAX로 줄였다)."""
     spans = []
     for m in _ASKED_SPAN.finditer(text or ""):
         n = int(m.group(1)) if m.group(1).isdigit() else {"한": 1, "두": 2, "세": 3, "네": 4}[m.group(1)]
@@ -214,7 +214,7 @@ def hide_bl_tokens(reply: str, refs: dict[str, str]) -> str:
     """답에 남은 내부 번호표 [BL1] 같은 글자를 사용자가 알아볼 수 있는 가린 B/L(TE****01)로 바꾼다.
 
     왜: LLM은 B/L 대신 [BLn]만 보므로(CLAUDE.md "B/L 번호를 LLM에 넘기지 않는다"), 지난 대화를 보고 "B/L 번호가 뭐였지?"에 답하면
-    번호표가 그대로 화면에 나갔다 (10-08 E2E). 원문이 아니라 가운데를 가린 값으로 되돌린다(SDD 3.5, schemas/customs.mask_bl):
+    번호표가 그대로 화면에 나갔다. 원문이 아니라 가운데를 가린 값으로 되돌린다(SDD 3.5, schemas/customs.mask_bl):
     사용자는 어느 화물인지 알아보고, 원문은 새 곳에 퍼지지 않는다. 표에 없는 토큰은 일반 말로 바꾼다.
     여러 B/L 표 답은 _agent_turn이 이미 사용자가 쓴 B/L로 되돌려 둔 뒤라 여기서는 남은 토큰만 본다."""
     return _BL_TOKEN.sub(lambda m: mask_bl(refs[m.group(0)]) if m.group(0) in refs else UNKNOWN_BL_WORD, reply or "")

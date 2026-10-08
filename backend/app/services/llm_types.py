@@ -10,7 +10,7 @@ class LLMResult:
     """chat() 결과. 로그 4필드(요청 ID·모델·토큰·지연, 작업 A5)를 같이 들고 다닌다."""
 
     content: str | None                 # 모델이 쓴 본문. tool을 부르면 비어 있을 수 있다
-    tool_calls: list[dict] = field(default_factory=list)  # [{"id": ..., "name": ..., "arguments": "<JSON 문자열>"}]
+    tool_calls: list[dict] = field(default_factory=list)  # [{"id":..., "name":..., "arguments": "<JSON 문자열>"}]
     model: str = ""                     # 실제로 답한 모델
     provider: str | None = None         # OpenRouter가 보낸 제공사. 무료 모델은 한 곳뿐인 경우가 많다
     request_id: str | None = None
@@ -18,7 +18,7 @@ class LLMResult:
     completion_tokens: int | None = None
     latency_ms: int = 0                 # 마지막 시도 하나의 지연. 재시도 대기는 빠진다
     attempts: int = 1                   # 몇 번 만에 답을 받았나. Langfuse retry_count 자리 (SDD 5.11)
-    # 입력 중 제공사 캐시에서 읽은 토큰. 프롬프트 + Skill처럼 매번 같은 앞부분이 자동 캐시된다 (09-30 확인: Vertex
+    # 입력 중 제공사 캐시에서 읽은 토큰. 프롬프트 + Skill처럼 매번 같은 앞부분이 자동 캐시된다 (확인: Vertex
     # Gemini 2.5 Flash 판정 입력 4,348 중 두 번째 호출부터 3,514). 요청 옵션 없이 응답 usage.prompt_tokens_details에 온다
     cached_tokens: int | None = None
     cost: float | None = None           # OpenRouter가 응답 usage.cost에 준 실제 금액 (크레딧 = USD). 무료 모델은 0. Vertex는 안 줘서 None
@@ -28,7 +28,7 @@ class LLMError(Exception):
     """OpenRouter·Vertex AI가 답 대신 에러를 준 경우. code가 RETRYABLE_CODES면 chat()이 한 번 더 부른다.
 
     kind는 실패 종류다. 로그(log_failure)에 코드 대신 이 이름을 남긴다. 해결책이 종류마다 달라서 나눈다
-    (09-29 평가 c에서 qwen 무료가 21건 실패했는데 429 말고는 왜 실패했는지 알 수 없었다).
+    (평가 c에서 qwen 무료가 21건 실패했는데 429 말고는 왜 실패했는지 알 수 없었다).
       rate_limited  429 요청이 너무 잦음        overloaded  5xx 제공사 과부하
       auth          401·403·Vertex 로그인 문제   bad_request 그 밖의 4xx (요청 모양·지원 안 하는 옵션)
       connection    연결 실패                   no_choices  200인데 답 없이 error만 옴
@@ -51,7 +51,7 @@ class LLMFormatError(LLMError):
     """LLM이 답은 했는데 JSON이 아니거나 필수 칸이 빠지는 등 모양이 스키마와 다른 경우.
 
     호출 실패(네트워크·키·과부하)와 구분한다. 라우터는 이것을 규칙 위반처럼 보고 무엇이 틀렸는지 붙여 다시 묻는다.
-    세 번 다 깨지면 failed다 (09-28 결정, SDD 5.7 "3단계 재시도 뒤 failed", 평가셋 F08).
+    세 번 다 깨지면 failed다 (SDD 5.7 "3단계 재시도 뒤 failed", 평가셋 F08).
     LLMError를 물려받으므로 이것을 따로 잡지 않는 곳(pick_vessel·후속 질문)은 지금처럼 LLM 실패로 처리한다.
     """
 
@@ -70,5 +70,5 @@ class LLMAnswer:
     output: BaseModel  # 함수마다 JudgeOutput·PickOutput·FollowUpOutput
     llm: LLMResult
     prompt_version: str
-    # LLM이 부른 도구와 결과 [{"name", "arguments", "result"}]. 후속 질문만 쓴다 (10-02). 라우터가 근거 카드로 붙인다
+    # LLM이 부른 도구와 결과 [{"name", "arguments", "result"}]. 후속 질문만 쓴다. 라우터가 근거 카드로 붙인다
     tool_calls: list[dict] = field(default_factory=list)

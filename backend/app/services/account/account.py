@@ -3,7 +3,7 @@
 라우터(routers/account.py)는 로그인 확인과 HTTP 응답만 하고, 무엇을 어떤 순서로 지우는지는 여기서 정한다
 (CLAUDE.md 폴더 책임: 라우터는 요청 검증·서비스 호출·응답, 로직은 services).
 
-순서가 중요하다: 우리 조회 기록과 회원 정보(10-01)를 먼저 지우고, 그다음 Supabase 계정을 지운다.
+순서가 중요하다: 우리 조회 기록과 회원 정보를 먼저 지우고, 그다음 Supabase 계정을 지운다.
 두 곳은 창구가 다르다. 기록은 DATABASE_URL로 DB에 바로, 계정은 Supabase 로그인 서버(Auth)에 인터넷 요청으로 지운다.
 그래서 한 번에 같이 처리되지 않고, 중간에 한쪽만 실패할 수 있다 (연결 끊김, Auth 점검, 관리자 키 삭제 등).
   - 계정을 먼저 지웠는데 기록 삭제가 실패하면, 그 사람은 로그인을 못 해 다시 탈퇴할 수도 없고 기록만 주인 없이 남는다
@@ -42,18 +42,18 @@ def withdraw(user_id: str) -> int:
     if not os.environ.get("DATABASE_URL"):
         raise WithdrawError("account_records", "not_configured")
     try:
-        with connect() as conn, atomic(conn):  # 여러 표를 한 트랜잭션으로. 중간에 실패하면 하나도 안 지워진다 (10-02)
+        with connect() as conn, atomic(conn):  # 여러 표를 한 트랜잭션으로. 중간에 실패하면 하나도 안 지워진다
             deleted = delete_user_queries(conn, user_id)
             # 회원 정보(이름·전화·주소, 잠긴 글자)도 계정보다 먼저 지운다 (docs/specs/user-profile.md EC-08)
             delete_profile(conn, user_id)
             # 화물 표·메모장(잠긴 B/L 포함)도 계정보다 먼저 지운다 (docs/specs/memory.md "개인정보")
             forget_user(conn, user_id)
-            # 대화 목록(잠긴 사용자 말·답)도 계정보다 먼저 지운다. 말풍선은 대화가 지워질 때 같이 지워진다 (10-06, migrations/018)
+            # 대화 목록(잠긴 사용자 말·답)도 계정보다 먼저 지운다. 말풍선은 대화가 지워질 때 같이 지워진다 (migrations/018)
             delete_conversations(conn, user_id)
-            # 카카오톡 알림 토큰도 계정보다 먼저 지운다 (10-02). 줄만 지운다. 카카오 쪽 연결 해제는 부르지 않는다
+            # 카카오톡 알림 토큰도 계정보다 먼저 지운다. 줄만 지운다. 카카오 쪽 연결 해제는 부르지 않는다
             # (카카오 서버 실패가 탈퇴를 막으면 안 되고, 토큰이 사라지면 우리는 더 보낼 수 없다)
             delete_kakao_link(conn, user_id)
-            # 하루 LLM 토큰 사용량 줄도 지운다 (migrations/016, 10-06 점검)
+            # 하루 LLM 토큰 사용량 줄도 지운다 (migrations/016)
             quota.forget_user(conn, user_id)
     except Exception as e:  # 연결·SQL 실패 모두. 오류 종류만 남긴다
         raise WithdrawError("account_records", type(e).__name__) from None

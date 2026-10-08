@@ -1,4 +1,4 @@
-"""대화 목록 저장·읽기·삭제와 제목 짓기 (ChatGPT·Claude식 대화 목록, 10-06 정운 결정, migrations/018).
+"""대화 목록 저장·읽기·삭제와 제목 짓기 (ChatGPT·Claude식 대화 목록, migrations/018).
 
 책임: 로그인 사용자의 채팅 대화를 DB에 잠가 두고(crypto.encrypt_pii) 목록·다시 열기·삭제를 돕는다.
   ready()          저장할 수 있는 환경인가 (DATABASE_URL과 PII 열쇠)
@@ -8,7 +8,7 @@
   list_for_user() / get_one() / delete_one() / delete_all()   창구(routers/conversations.py)와 탈퇴(services/account/account.py)가 쓴다
 
 대화 번호는 채팅 요청의 session_id다. 사용자 말에는 B/L 원본·전화번호가 섞이므로 글과 JSON은 모두 잠근 글자만 DB에 둔다.
-잠그지 못하면(열쇠 없음) 저장하지 않는다 (10-06 결정). 로그에는 오류 종류만 남긴다 (CLAUDE.md, SDD 3.5).
+잠그지 못하면(열쇠 없음) 저장하지 않는다. 로그에는 오류 종류만 남긴다 (CLAUDE.md, SDD 3.5).
 LLM에는 코드가 B/L을 [BL1]로 가린 첫 문장만 간다. 제목 LLM 호출은 services/llm.py 한 곳이다.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ from backend.app.services import llm
 from backend.app.services.account import memory
 from backend.app.services.chat.chat import GREETING_REPLY, USAGE_GUIDE, mask_bls
 
-# ── 숫자 (10-06 결정). 바꿀 곳은 여기 한 곳이다 ──
+# ── 숫자. 바꿀 곳은 여기 한 곳이다 ──
 KEEP_MESSAGES = 200      # 대화당 말풍선 상한. 넘으면 오래된 줄부터 지운다
 LIST_MAX = 50            # 목록에 돌려주는 대화 수
 FALLBACK_CHARS = 20      # 제목이 없을 때 첫 사용자 말에서 가져오는 글자 수
@@ -36,7 +36,7 @@ NO_TITLE = "새 대화"      # 첫 말이 비어 있을 때만
 # 답 말풍선을 다시 그리는 데 필요한 화면 자료 칸. reply는 말풍선 글이라 text로 따로 저장하고,
 # agent·request(큰 판정 덩어리)는 대화의 마지막 값만 conversations.context·result에 둔다.
 # 단, cargos 줄은 눌렀을 때 오른쪽 칸을 바꾸려고 줄마다 agent·request를 들고 있어 그대로 둔다
-# evidence_items·citations (10-08 정운 실사용 58번): 다시 연 대화에서도 근거 표시·칩이 그대로 나오게 extra_enc(잠긴 JSON)에 같이 둔다. 마이그레이션 없음
+# evidence_items·citations: 다시 연 대화에서도 근거 표시·칩이 그대로 나오게 extra_enc(잠긴 JSON)에 같이 둔다. 마이그레이션 없음
 EXTRA_FIELDS = ("kind", "vessels", "place", "ports", "days", "map", "cargos", "watch_offer", "watch_set", "watch_vessel_set", "evidence_items", "citations")
 
 
@@ -63,9 +63,9 @@ def valid_title(raw: str | None) -> str | None:
     return title
 
 
-# 제목으로 삼기엔 내용이 없는 첫 말 (10-06 정운 화면: "안녕"으로 시작한 대화 둘이 모두 "인사"로 고정됐다)
+# 제목으로 삼기엔 내용이 없는 첫 말 (화면: "안녕"으로 시작한 대화 둘이 모두 "인사"로 고정됐다)
 SMALL_TALK = re.compile(r"^\s*(?:안녕|안뇽|하이|헬로|hi|hello|hey|반가|ㅎㅇ|ㅎㅇㅎㅇ|좋은\s*(?:아침|하루|저녁))\S*[\s!?.~]*$", re.IGNORECASE)
-# 인사 때문에 이미 붙은 제목 (10-06 정운 화면: 고치기 전에 만든 대화가 LLM이 지은 "인사"로 남았다). 이런 제목은 자리표시자로 보고 진짜 질문에서 다시 짓는다
+# 인사 때문에 이미 붙은 제목 (화면: 고치기 전에 만든 대화가 LLM이 지은 "인사"로 남았다). 이런 제목은 자리표시자로 보고 진짜 질문에서 다시 짓는다
 PLACEHOLDER_TITLES = {"인사", "인사말", "안부 인사", "안부", "감사 인사", NO_TITLE}
 
 
@@ -121,7 +121,7 @@ def save_turn(conn, user_id: str, conv_id: str, user_text: str, reply: dict) -> 
     extra_enc = _lock(extra) if extra else None
     context_enc = _lock(reply["request"]) if reply.get("request") else None
     result_enc = _lock(reply["agent"]) if reply.get("agent") else None
-    # 첫 턴이 인사면 제목은 일단 "새 대화". 진짜 질문이 오면 _save_job이 다시 짓는다 (10-06)
+    # 첫 턴이 인사면 제목은 일단 "새 대화". 진짜 질문이 오면 _save_job이 다시 짓는다
     title_enc = _lock(NO_TITLE if is_small_talk(user_text, reply) else fallback_title(user_text))
     if None in (user_enc, reply_enc, title_enc) or (extra and extra_enc is None) \
             or (reply.get("request") and context_enc is None) or (reply.get("agent") and result_enc is None):
@@ -143,7 +143,7 @@ def save_turn(conn, user_id: str, conv_id: str, user_text: str, reply: dict) -> 
         for seq, role, text_enc, e_enc in ((last + 1, "user", user_enc, None), (last + 2, "assistant", reply_enc, extra_enc)):
             conn.execute("INSERT INTO conversation_messages (user_id, conversation_id, seq, role, text_enc, extra_enc) "
                          "VALUES (%s, %s, %s, %s, %s, %s)", [user_id, conv_id, seq, role, text_enc, e_enc])
-        # 대화당 마지막 200줄만 둔다 (10-06 결정). seq가 KEEP_MESSAGES 이하로 밀려난 줄을 지운다
+        # 대화당 마지막 200줄만 둔다. seq가 KEEP_MESSAGES 이하로 밀려난 줄을 지운다
         conn.execute("DELETE FROM conversation_messages WHERE user_id = %s AND conversation_id = %s AND seq <= %s",
                      [user_id, conv_id, last + 2 - KEEP_MESSAGES])
     return is_new
@@ -165,7 +165,7 @@ def _save_job(user_id: str, conv_id: str, user_text: str, reply: dict) -> None:
         if is_small_talk(user_text, reply):
             return  # 인사·사용법 턴으로는 제목을 짓지 않는다
         if is_new or is_placeholder_title(current_title(conn, user_id, conv_id)):
-            # 새 대화이거나, 인사로 시작해 아직 임시 제목("새 대화"·"인사" 등)인 대화의 첫 진짜 질문 (10-06)
+            # 새 대화이거나, 인사로 시작해 아직 임시 제목("새 대화"·"인사" 등)인 대화의 첫 진짜 질문
             set_title(conn, user_id, conv_id, make_title(user_text))
 
 

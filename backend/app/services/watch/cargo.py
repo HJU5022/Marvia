@@ -4,17 +4,17 @@
   cargo_key()          화물 지문. 원본 B/L에 BL_ENCRYPTION_KEY에서 파생한 열쇠를 섞은 HMAC (crypto.fingerprint 재사용)
   upsert_assessment()  조회가 끝난 뒤 이번 입력·확정된 배·판정 요약을 적는다. 반출이면 done (Spec 쓰기 흐름 2)
   active_rows()        진행 중 화물 최대 MAX_ACTIVE건. 판정·후속 LLM의 <user_cargo> 블록 재료 (Spec 읽기 흐름 1)
-  previous_line()      "지난 조회(10.01)에서는 '주의'였고, 판매 예정일까지 여유가 3일이었어요." 코드가 쓰는 한 줄 (10-02 결정 4)
+  previous_line()      "지난 조회(10.01)에서는 '주의'였고, 판매 예정일까지 여유가 3일이었어요." 코드가 쓰는 한 줄
   add_pending()        대화에서 나온 화물 값 변경(set_cargo)을 확인 대상으로만 둔다 (Spec 쓰기 흐름 4)
-  apply_document_facts() 서류 사진에서 사용자가 확인한 B/L 조건을 적는다 (10-02 결정 7)
-  find_by_container()  컨테이너 번호로 그 사용자의 화물 한 건을 찾는다 (채팅 "(컨테이너 번호) 어디쯤이야?", 10-06)
+  apply_document_facts() 서류 사진에서 사용자가 확인한 B/L 조건을 적는다
+  find_by_container()  컨테이너 번호로 그 사용자의 화물 한 건을 찾는다 (채팅 "(컨테이너 번호) 어디쯤이야?")
   delete_all()         탈퇴·내 기록 삭제 때 화물 표와 신용장 줄을 지운다 (Spec "개인정보")
   stage_date()         이력에서 입항·입고 날짜를 뽑는다 (내 화물 현황 표, 019). 표 읽기·쓰기는 services/watch/cargo_sheet.py
 
 저장 기준 (Spec "저장 기준"): 다시 조회하면 또 나오는 값(선명, 입항일 원본, 통관 이력)은 저장하지 않는다.
 B/L 원본은 잠근 값(bl_encrypted, crypto.encrypt)과 가린 값(bl_masked, schemas.customs.mask_bl)으로만 둔다 (SDD 3.5).
 UNI-PASS 품명·중량·화주는 받지도 넣지도 않는다 (CLAUDE.md). last_stage는 통관 단계 이름뿐이다.
-B/L 조건 세 칸(original_bl, to_order_bank, freight_term + incoterm)은 판정 등급에 쓰지 않는다 (10-02 결정 5).
+B/L 조건 세 칸(original_bl, to_order_bank, freight_term + incoterm)은 판정 등급에 쓰지 않는다.
 
 DB 연결은 부르는 쪽이 연다 (with connect() as conn). 여기 함수는 conn만 받아 SQL을 보낸다. 실패는 부르는 쪽이 로그만 남긴다.
 """
@@ -34,7 +34,7 @@ from backend.app.services.judge.verdict import VERDICT_LABEL
 
 # 판정에 넣는 진행 중 화물 상한 (Spec "보관과 크기" 상한 설정값 30건). 부르는 쪽이 limit으로 바꿀 수 있다
 MAX_ACTIVE = 30
-# 이름표 글자 수 상한. Spec에 숫자가 없어 화면 한 줄에 들어가는 길이로 정했다 (10-02, memory.md 결정 기록)
+# 이름표 글자 수 상한. Spec에 숫자가 없어 화면 한 줄에 들어가는 길이로 정했다 (memory.md 결정 기록)
 LABEL_MAX = 20
 # 대화로 바꿀 수 있는 화물 칸 (Spec 쓰기 흐름 4 set_cargo). 판정은 이번 입력으로만 한다
 PENDING_FIELDS = ("sale_due_date", "forwarder_eta", "label")
@@ -119,14 +119,14 @@ def found_cargo(response: AgentResponse) -> bool:
     """화물 표에 줄을 만들 만한 조회인가. 세관에 없는 번호(오타일 수 있다), 통관 조회 실패, 부산 밖 화물은 만들지 않는다."""
     if response.status in ("failed", "unsupported"):
         return False
-    # bl_not_found: 구분을 말하지 않아 하우스·마스터를 둘 다 본 조회가 둘 다 없음 (services/chat/chat.NOT_FOUND_BOTH, 10-08 정운 실사용 75)
+    # bl_not_found: 구분을 말하지 않아 하우스·마스터를 둘 다 본 조회가 둘 다 없음 (services/chat/chat.NOT_FOUND_BOTH)
     return not (response.status == "insufficient" and ("bl_type" in response.missing_inputs or "bl_not_found" in response.missing_inputs))
 
 
 def clean_stage(name: str | None) -> str | None:
     """통관 단계 이름(UNI-PASS 외부 글자)이 주입 모양이면 STAGE_SUSPECT로 바꾼다.
     판정 LLM 입력에서 llm._clean_customs가 하는 것과 같은 기준이다. 화물 표에 저장할 때와 <user_cargo>에 넣을 때 둘 다 건다
-    (SDD 7절 신뢰 경계, 10-02 검증 지적: 저장한 단계명이 기억 블록으로 그 길을 다시 열면 안 된다)."""
+    (SDD 7절 신뢰 경계, 검증 지적: 저장한 단계명이 기억 블록으로 그 길을 다시 열면 안 된다)."""
     return STAGE_SUSPECT if guard.looks_like_injection(name) else name
 
 
@@ -149,7 +149,7 @@ def _vessel(request: AgentRequest, response: AgentResponse) -> tuple[int | None,
     return None, None
 
 
-# 내 화물 현황 표의 입항·입고 날짜를 뽑는 UNI-PASS 이력 단계 (019 마이그레이션, 10-06 아버지 관리표 기준).
+# 내 화물 현황 표의 입항·입고 날짜를 뽑는 UNI-PASS 이력 단계 (019 마이그레이션, 아버지 관리표 기준).
 # 이름은 skills/customs-stages/rules.md customs_stages의 name 그대로다. 띄어쓰기는 rules.stage_key로 무시한다
 ARRIVED_STAGE = "입항보고 수리"  # 실제 입항 신고된 날 (예정일 etprDt가 아니다)
 WAREHOUSED_STAGE = "반입신고"  # 화물이 터미널·보세창고에 들어간 날
@@ -183,7 +183,7 @@ def _kst_date(moment: datetime | None) -> date | None:
     return moment.astimezone(KST).date()
 
 
-# 서류 사진에서 읽은 출항일을 화물 줄에 적는 SQL 조각 (10-06). upsert_assessment의 DO UPDATE SET 안에 들어간다.
+# 서류 사진에서 읽은 출항일을 화물 줄에 적는 SQL 조각. upsert_assessment의 DO UPDATE SET 안에 들어간다.
 # 규칙: 사용자가 직접 적은 날짜(departed_source = 'manual')는 절대 덮지 않는다. 서류 값끼리는 새 값이 옛 값을 바꾼다.
 # 이번 조회에 서류 출항일이 없으면(EXCLUDED가 NULL) 저장된 값을 그대로 둔다. 날짜와 출처는 항상 같은 쪽 값을 같이 고른다
 # (둘이 어긋나면 표가 "직접 입력한 날짜"로 잘못 보인다). 테스트가 이 조각을 그대로 SQLite에 돌려 규칙을 확인한다
@@ -228,12 +228,12 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
         "forwarder_name": customs.forwarder_name if customs else None,
         "carrier_name": customs.carrier_name if customs else None,
         "container_no": customs.container_no if customs else None,
-        # 품명 (020, 10-06 오후). 외부 글자라 주입 모양이면 저장하지 않는다: <user_cargo> 블록으로 LLM에 다시 간다
+        # 품명 (020). 외부 글자라 주입 모양이면 저장하지 않는다: <user_cargo> 블록으로 LLM에 다시 간다
         "goods_name": (None if guard.looks_like_injection(customs.goods_name) else customs.goods_name) if customs else None,
         # 선명·국적 (021, 감시 목록 한 줄). 배가 확정된 조회에서만 적는다: 되묻기 중인 후보 이름을 내 화물의 배로 남기지 않는다
         "vessel_name": confirmed.name if confirmed else None,
         "vessel_flag": confirmed.flag if confirmed else None,
-        # 출항일 (019, 10-06). 서류 사진에서 사용자가 확인한 값이 요청에 실려 왔을 때만 적는다. 출처는 늘 'document'.
+        # 출항일 (019). 서류 사진에서 사용자가 확인한 값이 요청에 실려 왔을 때만 적는다. 출처는 늘 'document'.
         # 판정에는 쓰지 않는다(요청에서 여기로만 온다). manual을 지키는 규칙은 DEPARTED_UPSERT_SQL
         "departed_on": request.departed_on,
         "departed_source": "document" if request.departed_on else None,
@@ -277,7 +277,7 @@ def upsert_assessment(conn, user_id: str, request: AgentRequest, response: Agent
 
 
 def _keep_position(conn, mmsi: int | None, response: AgentResponse) -> None:
-    """이번 조회에서 받은 배 위치를 감시·지도 위치 이력(watch_positions, 017)에 한 점 쌓는다 (10-06 감시 목록).
+    """이번 조회에서 받은 배 위치를 감시·지도 위치 이력(watch_positions, 017)에 한 점 쌓는다 (감시 목록).
 
     왜: 그 테이블은 원래 worker가 6시간마다 채우는데 스케줄러가 꺼져 있어(ShipFinder 호출 한도) 비어 있다.
     조회·재판정은 어차피 위치를 받으므로 그 값을 버리지 않고 남기면, 수집 없이도 감시 목록 지도에 마지막 위치와
@@ -295,7 +295,7 @@ def _keep_position(conn, mmsi: int | None, response: AgentResponse) -> None:
 
 def add_pending(conn, user_id: str, key: str, changes: list[dict]) -> int:
     """확인 대기 값을 더한다 (Spec 쓰기 흐름 4: set_cargo는 바로 적용하지 않는다). 같은 칸은 새 값으로 바꾼다.
-    읽고 고쳐 쓰지 않고 UPDATE 한 문장으로 한다. 두 요청이 같이 고쳐도 한쪽 값이 사라지지 않는다 (10-02 검증, EC-04와 같은 이유).
+    읽고 고쳐 쓰지 않고 UPDATE 한 문장으로 한다. 두 요청이 같이 고쳐도 한쪽 값이 사라지지 않는다 (EC-04와 같은 이유).
     화물 줄이 없으면 아무것도 하지 않는다. 더한 개수를 돌려준다."""
     if not changes:
         return 0
@@ -311,7 +311,7 @@ def add_pending(conn, user_id: str, key: str, changes: list[dict]) -> int:
 
 
 def apply_document_facts(conn, user_id: str, bl_no: str, bl_type: str, facts: dict) -> str | None:
-    """서류 사진에서 사용자가 확인한 B/L 조건을 화물 줄에 적는다 (10-02 결정 7). 화물 지문을 돌려준다(열쇠 없으면 None).
+    """서류 사진에서 사용자가 확인한 B/L 조건을 화물 줄에 적는다. 화물 지문을 돌려준다(열쇠 없으면 None).
 
     facts: original_bl, to_order_bank, freight_term, incoterm. None인 칸은 "모름"이라 기존 값을 지우지 않는다.
     줄이 없으면 만든다(아직 조회 전인 화물). 이때 마지막 판정 칸은 비어 있다.
@@ -336,7 +336,7 @@ def apply_document_facts(conn, user_id: str, bl_no: str, bl_type: str, facts: di
 
 def delete_all(conn, user_id: str) -> int:
     """그 사용자의 화물 표 줄과 신용장(user_lc)을 전부 지운다 (탈퇴·내 기록 삭제, Spec "개인정보"). 지운 화물 줄 수.
-    신용장 번호도 사용자가 넣은 거래 정보라 같이 지운다 (019, 10-06). 화물 줄을 먼저 지워 신용장이 가리키는 줄이 없게 한다.
+    신용장 번호도 사용자가 넣은 거래 정보라 같이 지운다 (019). 화물 줄을 먼저 지워 신용장이 가리키는 줄이 없게 한다.
     신용장 줄 수는 세지 않는다. 알리는 숫자는 지금처럼 화물 줄 수다 (응답 모양을 바꾸지 않는다)."""
     rows = conn.execute("DELETE FROM user_cargo WHERE user_id = %s", [user_id]).rowcount
     conn.execute("DELETE FROM user_lc WHERE user_id = %s", [user_id])
@@ -360,12 +360,12 @@ def margin_text(margin: int | None) -> str | None:
     return f"여유 {margin}일" if margin >= 0 else f"판매 예정일보다 {abs(margin)}일 늦음"
 
 
-# 등급 이름 뒤 "이었/였" (받침 있으면 이었, 없으면 였). 순항·긴급은 받침, 주의는 받침 없음 (10-02 검증: "지금 조치이었어요", 10-06 이름을 바꿔 다시 맞춤, 정운 결정)
+# 등급 이름 뒤 "이었/였" (받침 있으면 이었, 없으면 였). 순항·긴급은 받침, 주의는 받침 없음 (검증: "지금 조치이었어요", 이름을 바꿔 다시 맞춤)
 _PAST = {"fine": "이었", "watch": "였", "act": "이었"}
 
 
 def previous_line(row: dict | None) -> str | None:
-    """덮어쓰기 전 화물 줄로 지난 조회 한 줄을 만든다 (10-02 결정 4). LLM을 부르지 않는다.
+    """덮어쓰기 전 화물 줄로 지난 조회 한 줄을 만든다. LLM을 부르지 않는다.
     예: "지난 조회(10.01)에서는 '주의'였고, 판매 예정일까지 여유가 3일이었어요."
         "지난 조회(10.01)에서는 '긴급'이었고, 판매 예정일보다 2일 늦게 도착할 예정이었어요."
         "지난 조회(10.01)에서는 '순항'이었어요." (여유 일수 없음)
@@ -408,7 +408,7 @@ def cargo_line(row: dict) -> str:
     name = f"{row['label']} ({row['bl_masked']})" if row.get("label") else row["bl_masked"]
     parts = [name, "하우스 B/L" if row.get("bl_type") == "HOUSE" else "마스터 B/L"]
     if row.get("goods_name"):
-        # 세관 품명 (020, 10-06 오후). "고추 화물 어디야?"처럼 품명으로 물을 때 어느 줄인지 LLM이 알게. 저장할 때 주입 모양은 걸렀다
+        # 세관 품명 (020). "고추 화물 어디야?"처럼 품명으로 물을 때 어느 줄인지 LLM이 알게. 저장할 때 주입 모양은 걸렀다
         parts.append(f"품명 {row['goods_name']}")
     if row.get("sale_due_date"):
         parts.append(f"받아야 하는 날 {row['sale_due_date'].isoformat()}")
@@ -435,7 +435,7 @@ def render_block(rows: list[dict]) -> str:
 
 def done_summary(row: dict) -> str:
     """끝난 화물 한 줄 요약 ("09.22 고추 반출 완료"). 코드가 판정 기록으로 만든다 (Spec "보관과 크기").
-    끝난 화물 줄은 반출 후 3년 뒤 통째로 지워진다 (10-02 결정 D3, 마이그레이션 015 purge_done_cargo)."""
+    끝난 화물 줄은 반출 후 3년 뒤 통째로 지워진다 (마이그레이션 015 purge_done_cargo)."""
     name = row.get("label") or row["bl_masked"]
     day = _md(row.get("done_at")) or _md(row.get("last_checked_at")) or ""
     return f"{day} {name} 반출 완료".strip()

@@ -1,9 +1,9 @@
-"""선박 식별 중 MRN으로 호출부호를 찾는 단계 (SDD 5.5, 09-28 추가).
+"""선박 식별 중 MRN으로 호출부호를 찾는 단계 (SDD 5.5, 추가).
 
 B/L → UNI-PASS 화물관리번호 앞 11자리(MRN) → 해수부 입항 신고의 같은 MRN → 그 배의 호출부호.
 배 이름으로 찾으면 같은 이름의 배가 여럿 나오거나(동명 선박), 표기가 달라 0척이 나온다.
 MRN은 화물 한 건에 하나라서 이름과 상관없이 그 배의 신고를 바로 가리킨다.
-해수부 배 이름은 국적선이면 한글이라 ShipFinder 영문 이름과 비교할 수 없고, 호출부호로 이어야 한다 (09-28 실측).
+해수부 배 이름은 국적선이면 한글이라 ShipFinder 영문 이름과 비교할 수 없고, 호출부호로 이어야 한다.
 
 찾지 못하면 None을 돌려준다. 입항 신고 전이거나 해수부가 실패한 경우다.
 그때 라우터는 지금까지처럼 배 이름 검색으로 간다 (MRN은 더 정확한 길이지 유일한 길이 아니다).
@@ -23,7 +23,7 @@ from backend.app.observability.logging import log_failure
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.services.judge.evidence import KST  # 근거 카드·판정 입력과 같은 한국 시각
 
-# UNI-PASS 입항(예정)일 앞뒤 며칠의 입항 신고를 훑을지. 09-28 실제 B/L 1건이 ±1일 안에서 찾아졌다.
+# UNI-PASS 입항(예정)일 앞뒤 며칠의 입항 신고를 훑을지. 실제 B/L 1건이 ±1일 안에서 찾아졌다.
 # 넓힐수록 훑는 페이지가 늘어 느려진다 (±1일 1건 실측 7.0초)
 SEARCH_DAYS = 1
 
@@ -35,7 +35,7 @@ def call_sign_from_mrn(customs: CustomsRecord, mof: MofClient | None = None) -> 
 
     day = customs.entry_date.date()
     try:
-        # 해수부 구간을 Langfuse에 남긴다 (10-07). input은 조회 날짜 범위뿐이다. MRN·B/L은 올리지 않는다 (SDD 3.5)
+        # 해수부 구간을 Langfuse에 남긴다. input은 조회 날짜 범위뿐이다. MRN·B/L은 올리지 않는다 (SDD 3.5)
         with tool_span("mof:find_plan_by_mrn", {"days": 2 * SEARCH_DAYS + 1}) as span:
             plan = (mof or MofClient()).find_plan_by_mrn(customs.mrn, day - timedelta(days=SEARCH_DAYS), day + timedelta(days=SEARCH_DAYS))
             span.metadata["found"] = plan is not None
@@ -45,14 +45,14 @@ def call_sign_from_mrn(customs: CustomsRecord, mof: MofClient | None = None) -> 
         log_failure("identify_mrn", e.code)
         return None
     if plan is None:
-        # 입항 신고 전이면 정상적으로 없다 (도착 1주일 안쪽에 신고, 09-23 실측). 해수부 오류와 구분해서 남긴다
+        # 입항 신고 전이면 정상적으로 없다 (도착 1주일 안쪽에 신고). 해수부 오류와 구분해서 남긴다
         log_failure("identify_mrn", "not_found")
         return None
     return plan.call_sign
 
 
 
-PAPERS_WORKERS = 6  # 후보별 해수부 조회를 동시에 몇 개까지. 차례로 부르면 후보 수만큼 느려진다 (10-05 검토)
+PAPERS_WORKERS = 6  # 후보별 해수부 조회를 동시에 몇 개까지. 차례로 부르면 후보 수만큼 느려진다
 
 
 def _kst_day(moment: datetime) -> date:
@@ -63,7 +63,7 @@ def _kst_day(moment: datetime) -> date:
 
 
 def _sign(call_sign: str) -> str:
-    """호출부호 비교·조회용 모양. 공백을 모두 빼고 대문자 (중복 제거·해수부 조회·MRN 비교에 같은 기준을 쓴다, 10-05 검토)."""
+    """호출부호 비교·조회용 모양. 공백을 모두 빼고 대문자 (중복 제거·해수부 조회·MRN 비교에 같은 기준을 쓴다)."""
     return re.sub(r"\s+", "", call_sign).upper()
 
 
@@ -74,7 +74,7 @@ def _port_key(name: str | None) -> str:
 
 def _same_port(loading: str | None, previous: str | None) -> bool:
     """세관 적재항 이름과 해수부 직전 기항지가 같은 항구인가. 한쪽이 다른 쪽 앞부분이면 같다고 본다 (NINGBO ↔ NINGBO PT).
-    앞부분만 보는 이유: 가운데에 들어 있기만 해도 같다고 하면 다른 항구를 같은 항구로 볼 수 있다 (10-05 검토)."""
+    앞부분만 보는 이유: 가운데에 들어 있기만 해도 같다고 하면 다른 항구를 같은 항구로 볼 수 있다."""
     a, b = _port_key(loading), _port_key(previous)
     return bool(a and b) and (a.startswith(b) or b.startswith(a))
 
@@ -82,14 +82,14 @@ def _same_port(loading: str | None, previous: str | None) -> bool:
 def match_by_papers(customs: CustomsRecord, candidates: list[dict], *, mrn_call_sign: str | None = None,
                     same_call_sign: Callable[[str, str], bool], same_nationality: Callable[[str, str], bool],
                     mof: MofClient | None = None) -> tuple[int, str, str] | None:
-    """같은 이름의 배가 여럿일 때, 서류끼리 맞는 배가 정확히 1척이면 그 배를 돌려준다 (10-05 결정).
+    """같은 이름의 배가 여럿일 때, 서류끼리 맞는 배가 정확히 1척이면 그 배를 돌려준다.
 
-    확정 근거는 두 가지이고 둘 다 맞아야 한다 (하정운 실무 확인, 10-05):
+    확정 근거는 두 가지이고 둘 다 맞아야 한다:
       ① 세관(UNI-PASS) 입항(예정)일 = 그 배의 해수부 부산 입항 신고 날짜 (한국 날짜 기준)
       ② 세관 적재항 = 그 배의 해수부 입항 신고 직전 기항지
     두 서류는 같은 입항을 가리키는 신고라 배를 잇는 근거가 된다.
     배 이름·AIS 목적지·위치는 쓰지 않는다. "어느 배가 내 화물을 실었나"의 근거가 아니기 때문이다
-    (10-01 결정, routers/agent._identify. 근거 없이 LLM이 고르게 했더니 B01·B12·데모 TESTBL04에서 남의 배를 확정했다).
+    (routers/agent._identify. 근거 없이 LLM이 고르게 했더니 B01·B12·데모 TESTBL04에서 남의 배를 확정했다).
 
     빼는 근거 (확정 근거가 아니라, 확실히 아닌 배를 빼는 데만 쓴다):
       - 세관 국적이 있고 후보 국적이 다르면 뺀다. 둘 중 하나라도 없으면 빼지 않는다 (단일 후보 B14와 같은 기준)
@@ -111,7 +111,7 @@ def match_by_papers(customs: CustomsRecord, candidates: list[dict], *, mrn_call_
         log_failure("identify_papers", "candidate_without_call_sign")
         return None
     # 호출부호 한 개당 해수부를 한 번만 부른다. 같은 호출부호에 MMSI가 둘 이상이면 어느 MMSI인지 가를 근거가 없어
-    # 그 호출부호가 맞아도 확정하지 않는다 (10-05 검토)
+    # 그 호출부호가 맞아도 확정하지 않는다
     by_sign: dict[str, list[dict]] = {}
     for r in rows:
         by_sign.setdefault(_sign(r["call_sign"]), []).append(r)
@@ -121,7 +121,7 @@ def match_by_papers(customs: CustomsRecord, candidates: list[dict], *, mrn_call_
     start, end = day - timedelta(days=SEARCH_DAYS), day + timedelta(days=SEARCH_DAYS)
     try:
         client = mof or MofClient()  # 키가 없으면 여기서 MofError가 난다. 되묻기로 끝내야 해서 try 안에서 만든다
-        # 후보별 조회를 동시에 도는 구간 전체를 span 하나로 남긴다 (10-07). 풀 스레드는 문맥이 없어 그 안에서는 못 연다.
+        # 후보별 조회를 동시에 도는 구간 전체를 span 하나로 남긴다. 풀 스레드는 문맥이 없어 그 안에서는 못 연다.
         # 호출부호는 올리지 않고 개수만 적는다
         with tool_span("mof:sailing_plans", {"candidates": len(by_sign)}):
             with ThreadPoolExecutor(max_workers=min(PAPERS_WORKERS, len(by_sign))) as pool:

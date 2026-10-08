@@ -6,11 +6,11 @@
 - vessel_search는 해수부 입항 예정의 직전 기항지로 거른다. 항구 고르기만 LLM(match_ports)이 목록 안에서 한다
 - LLM이 안 되면 규칙으로 대신한다 (EC-01): B/L이 있으면 조회, 없으면 B/L을 물어본다
 LLM이 낸 칸은 믿기 전에 다시 본다: bl_ref는 가린 목록 안의 것만, ports는 주어진 목록 안의 것만, days는 1~14.
-화물 비서 기억 (docs/specs/memory.md, 10-02 결정 2·4): 의도 구조는 그대로다. 로그인 사용자의 화물 조회 답에는
+화물 비서 기억 (docs/specs/memory.md): 의도 구조는 그대로다. 로그인 사용자의 화물 조회 답에는
 코드가 쓴 "지난 조회" 한 줄을 붙이고, 가린 사용자 문장을 기억 뽑기 재료로 판정 흐름에 넘긴다 (memory.user_text).
-채팅 에이전트 (10-05 결정): 의도 넷에 안 맞는 실무 질문이 전부 고정 안내로 가고, 앞 대화를 몰라 "이건"을 못 알아듣던 문제를 고친다.
+채팅 에이전트: 의도 넷에 안 맞는 실무 질문이 전부 고정 안내로 가고, 앞 대화를 몰라 "이건"을 못 알아듣던 문제를 고친다.
 도구는 화물 조회·화물 질문·입항 선박 검색과 읽기 전용 MCP 도구, 이다. 등급·여유 일수는 지금처럼 판정 흐름(코드)이 정한다.
-컨테이너 번호로 찾기 (10-06): 문장 속 컨테이너 번호(ISO 6346)는 B/L처럼 LLM에 원문을 주지 않는다. 로그인 사용자의 화물 표에서
+컨테이너 번호로 찾기: 문장 속 컨테이너 번호(ISO 6346)는 B/L처럼 LLM에 원문을 주지 않는다. 로그인 사용자의 화물 표에서
 그 번호를 찾으면 코드가 원본 B/L로 바꿔 기존 B/L 흐름에 넘기고, 못 찾으면 [CNTR1] 번호표로 가린다 (_swap_containers).
 """
 from __future__ import annotations
@@ -269,7 +269,7 @@ def _swap_containers(message: str, user_id: str | None,
     """문장 속 컨테이너 번호를 LLM에 원문이 안 가는 모양으로 바꾼다. (바뀐 문장, 못 찾은 개수, {B/L: 저장된 구분})을 돌려준다.
     - 내 화물에서 찾았으면 그 자리를 원본 B/L로 바꾼다. 이어지는 B/L 흐름(repair_message, mask_bls, check_cargo)이 그대로 맡는다
     - 내 화물에 없으면 세관에 같은 번호의 B/L이 있는지 본다(exists, 보통 bl_parse.exists_in_customs). 있으면 컨테이너가 아니라
-      우연히 컨테이너 모양·검산까지 맞은 B/L이다: 그대로 두면 아래 mask_bls가 [BL1]로 가려 B/L로 조회한다 (10-06 정운 결정:
+      우연히 컨테이너 모양·검산까지 맞은 B/L이다: 그대로 두면 아래 mask_bls가 [BL1]로 가려 B/L로 조회한다 (결정:
       B/L을 넣었는데 "못 찾음"이 뜨는 게 가장 나쁘다). 대가는 이런 번호 하나당 UNI-PASS 최대 2번 호출이다
     - 세관에도 없으면 [CNTR1] 번호표로 바꾼다 (mask_containers와 같은 모양). 이 번호표는 아무 도구에도 연결되지 않는다"""
     containers = find_containers(message)
@@ -310,7 +310,7 @@ def _arrivals(days: int) -> list:
     live = replay_enabled() and os.environ.get("DATA_GO_KR_KEY")
     client = MofClient(transport=httpx.HTTPTransport()) if live else MofClient()
     try:
-        # 캐시 미스일 때만 도는 해수부 구간을 Langfuse에 남긴다 (10-07)
+        # 캐시 미스일 때만 도는 해수부 구간을 Langfuse에 남긴다
         with tool_span("mof:sailing_plans_all", {"days": days}) as span:
             plans = client.sailing_plans_all(today, today + timedelta(days=days))  # 쪽을 동시에 받는다
             span.metadata["count"] = len(plans)
@@ -338,8 +338,8 @@ def _match_ports_cached(place: str, available: list[str]) -> list[str]:
 
 def search_vessels(place: str | None, days: int | None, label: str | None = None) -> ChatResult:
     """직전 기항지로 거른 부산 입항 예정 선박. 항구는 LLM이 목록 안에서만 고른다 (EC-04).
-    place가 도착지 자체(부산·한국, _is_destination)면 거르지 않고 전체를 보인다 (10-06 점검: "이번 주 부산 들어오는 배"가
-    "부산(고현, 광양, ...)를 직전에 들른 배 86척"이 됐다. 항구 고르기 LLM이 부산과 비슷한 국내 항구를 골랐다).
+    place가 도착지 자체(부산·한국, _is_destination)면 거르지 않고 전체를 보인다 (점검: "이번 주 부산 들어오는 배"가
+    "부산(고현, 광양,...)를 직전에 들른 배 86척"이 됐다. 항구 고르기 LLM이 부산과 비슷한 국내 항구를 골랐다).
     부산 입항 목록에서 "부산에서 오는 배"는 뜻이 없으므로 사용자의 뜻은 "부산에 오는 배 전부"다. 전 방식과 에이전트가 같이 탄다"""
     if _is_destination(place) or _is_destination(label):
         place, label = None, None
@@ -350,7 +350,7 @@ def search_vessels(place: str | None, days: int | None, label: str | None = None
         plans = _arrivals(days)
     except MofError as e:
         log_failure("chat_vessels", e.code)
-        return ChatResult(kind="message", reply="해수부 서버에 지금 연결되지 않아 입항 정보를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.")  # 10-08 정운 33번
+        return ChatResult(kind="message", reply="해수부 서버에 지금 연결되지 않아 입항 정보를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.")
     available = sorted({p.previous_port for p in plans if p.previous_port})
     ports: list[str] = []
     if place:
@@ -387,45 +387,45 @@ def handle(message: str, session_id: str, context: AgentRequest | None, run_agen
            kakao: KakaoHooks | None = None, on_screen: dict | None = None) -> ChatResult:
     """문장 하나를 처리한다. run_agent는 routers/agent.run_agent(사용자 묶음 포함)를 부르는 함수다.
     user_id: 로그인 사용자. 있으면 화물 조회 답에 지난 조회 한 줄을 붙인다 (docs/specs/memory.md). 없으면(EC-08) 그대로.
-    history: 화면이 보낸 최근 대화 [{"role", "text"}]. 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다 (10-05).
+    history: 화면이 보낸 최근 대화 [{"role", "text"}]. 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다.
     run_tool: 읽기 전용 MCP 도구를 실제로 부르는 함수 (routers/agent._follow_up_tool). 없으면 에이전트는 MCP 도구 없이 돈다.
     watch: 지켜보기를 읽고 쓰는 함수 묶음 (WatchHooks). 없으면 로그인하지 않았거나 DB가 없는 것과 같다: 아무것도 바꾸지 않고 안내만 한다.
     kakao: 지금 상태를 카카오톡으로 보내는 함수 묶음 (KakaoHooks). 없으면 보내지 않고 안내만 한다.
-    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (routers/chat.ChatScreen, 10-08 정운 실사용 36번). 에이전트가 "옆에 떠 있는 배"를 알아듣는 데만 쓴다."""
+    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (routers/chat.ChatScreen). 에이전트가 "옆에 떠 있는 배"를 알아듣는 데만 쓴다."""
     message = (message or "").strip()
     if not message:
         raise ChatError("empty")
     if len(message) > MESSAGE_MAX:
         raise ChatError("too_long")
     mrn, message = extract_mrn(message)  # B/L 가리기보다 먼저 (MRN도 B/L 모양이라 [BL]로 잘못 가려진다)
-    # 컨테이너 번호도 B/L 가리기보다 먼저 (영숫자 11자라 B/L 모양에 걸린다). 내 화물이면 B/L로 바꾸고, 아니면 [CNTR1]로 가린다 (10-06)
+    # 컨테이너 번호도 B/L 가리기보다 먼저 (영숫자 11자라 B/L 모양에 걸린다). 내 화물이면 B/L로 바꾸고, 아니면 [CNTR1]로 가린다
     message, unmatched_containers, stored_types = _swap_containers(message, user_id, bl_parse.exists_in_customs)
-    # 기호·띄어쓰기로 흐트러진 B/L("test-bl-01")을 세관에 있는 것만 붙여 읽는다 (services/judge/bl_parse.py, 10-05 결정).
+    # 기호·띄어쓰기로 흐트러진 B/L("test-bl-01")을 세관에 있는 것만 붙여 읽는다 (services/judge/bl_parse.py).
     # 가리기 전에 한다: 붙인 번호도 아래 mask_bls가 [BL1]로 가려서 LLM에는 원본이 가지 않는다. 고쳐 읽었다는 알림은 코드 문장이다
     message, repair_notes = bl_parse.repair_message(message, bl_parse.exists_in_customs)
     masked, refs = mask_bls(message)
     if unmatched_containers and not refs:
-        # 찾을 B/L이 없고 컨테이너만 못 찾았다: LLM을 부르지 않고 코드 문장으로 답한다 (컨테이너 번호를 LLM에 주지 않는 규칙, 10-06)
+        # 찾을 B/L이 없고 컨테이너만 못 찾았다: LLM을 부르지 않고 코드 문장으로 답한다 (컨테이너 번호를 LLM에 주지 않는 규칙)
         return ChatResult(kind="message", reply=CONTAINER_NOT_FOUND if user_id else CONTAINER_NEED_LOGIN)
     # 기억 뽑기 재료는 가린 문장이다. B/L·MRN 원본은 넘기지 않는다 (CLAUDE.md, docs/specs/memory.md 쓰기 흐름 3)
     types_token = _STORED_TYPES.set(stored_types)
     early = None
     try:
         with memory.user_text(masked) as turn:
-            # 기억 뽑기는 답 만들기와 같이 턴 시작에 출발한다 (10-08 정운 실사용 76). B/L이 든 문장도 같다: 먼저 도는 쪽은 화물 없이 이 사람에 대해 종류(거래처·선호·일정)만 맡고, 화물에 묶인 것은 조회 뒤 기억 뽑기가 맡는다.
+            # 기억 뽑기는 답 만들기와 같이 턴 시작에 출발한다. B/L이 든 문장도 같다: 먼저 도는 쪽은 화물 없이 이 사람에 대해 종류(거래처·선호·일정)만 맡고, 화물에 묶인 것은 조회 뒤 기억 뽑기가 맡는다.
             # 직전 답이 우리가 붙인 거래처 되묻기였으면 그 문맥을 같이 준다 ("포워더야"가 어느 거래처 답인지 알게)
             if user_id:
                 early = memory.start_early(user_id, masked, memory.followup_hint(history))
             result = _route(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, watch, kakao, on_screen)
     finally:
         _STORED_TYPES.reset(types_token)
-    # 로그인 사용자의 평범한 대화 턴도 기억 뽑기에 보낸다 (10-06 정운 결정). 기억 뽑기는 화물 조회·후속 질문 뒤에만 돌아
+    # 로그인 사용자의 평범한 대화 턴도 기억 뽑기에 보낸다. 기억 뽑기는 화물 조회·후속 질문 뒤에만 돌아
     # "우리 포워더는 가온 김과장이야" 같은 말이 B/L 없는 턴에서 버려졌다. 같은 문장을 두 번 보내지 않도록,
     # 이 턴에 조회가 이미 맡겼으면(turn.fired) 건너뛴다. 무엇을 기억할지는 LLM이 정한다. 가린 문장만 넘긴다
     if user_id and not turn.fired and early is None:
         memory.remember_chat_later(user_id, masked)
     if not result.evidence_items and result.agent is not None:
-        # 에이전트를 안 거친 화물 답(전 방식 등)도 화면 칩이 쓸 근거 목록은 싣는다. 표시(citations)는 없다 (10-08 정운 실사용 58번)
+        # 에이전트를 안 거친 화물 답(전 방식 등)도 화면 칩이 쓸 근거 목록은 싣는다. 표시(citations)는 없다
         result = replace(result, evidence_items=cite.build_evidence_list(result.agent.evidence))
     if repair_notes:
         result = replace(result, reply="\n".join([result.reply, *repair_notes]))
@@ -444,7 +444,7 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     """가린 문장을 처리한다 (handle의 뒷부분). 에이전트가 먼저 맡고, 안 되면 의도 분류 방식(_classic)으로 간다."""
     today = datetime.now(KST).date().isoformat()
 
-    # 10-08 실험 A3 (항상 켜짐; 10-08 실험 A1/A3/A4, Vertex 3회 486턴 기준 person 66.7→100%, broker 62.5→100%, this_ship 90.5→100%):
+    # 실험 A3 (항상 켜짐; 실험 A1/A3/A4, Vertex 3회 486턴 기준 person 66.7→100%, broker 62.5→100%, this_ship 90.5→100%):
     # 관세·세금·세율·"통관 될까" 말이 있고 B/L이 없으면 모델을 거치지 않고 관세사 고정 안내로 답한다 (BROKER_TOPIC 낱말 그대로).
     # 전에는 이 안내가 모델이 도구를 안 고른 길에서만 나와서, 화면에 화물이 있으면 ask_cargo로 샜다. 안내 글은 사용자 글을 옮기지 않아
     # 주입 검사보다 먼저 내도 안전하다. 바로 앞 답이 같은 안내면 fixed()처럼 짧은 말로 바꾼다. B/L이 든 문장은 그 화물 조회가 먼저라 건드리지 않는다
@@ -453,13 +453,13 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
         same = re.sub(r"\s+", "", last_assistant) == re.sub(r"\s+", "", BROKER_ONLY)
         return ChatResult(kind="message", reply=BROKER_SHORT if same else BROKER_ONLY)
 
-    # 주입 모양 문장은 LLM에 보내지 않는다 (services/judge/guard.py, SDD 7절 10-01). 후속 질문 경로는 route_chat이 질문을
+    # 주입 모양 문장은 LLM에 보내지 않는다 (services/judge/guard.py, SDD 7절). 후속 질문 경로는 route_chat이 질문을
     # 다시 쓴 뒤에야 routers/agent의 guard를 지나서, 다시 쓰는 과정에서 공격문 모양이 바뀌면 빠져나갈 수 있다. 원문에서 먼저 본다
     if guard.looks_like_injection(masked):
         log_failure("chat", "blocked prompt injection pattern")
         return ChatResult(kind="message", reply=INJECTION_REPLY)
 
-    # 범위 밖 주제(항공·육상, 창고 수령일, 일정 변경, 날씨, 품목 요건)는 LLM 없이 고정 문장으로 답한다 (docs/specs/referral-guide.md, 10-06).
+    # 범위 밖 주제(항공·육상, 창고 수령일, 일정 변경, 날씨, 품목 요건)는 LLM 없이 고정 문장으로 답한다 (docs/specs/referral-guide.md).
     # B/L이 있는 문장은 그 화물 조회가 먼저라 보지 않는다. 문장과 주제 낱말은 skills/referrals/rules.md out_of_scope
     hit = None if refs else referrals.out_of_scope_topic(masked)
     if hit:
@@ -472,18 +472,18 @@ def _route(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
             return _agent(masked, refs, mrn, session_id, context, run_agent, user_id, history or [], run_tool, today, watch, kakao, on_screen)
         except llm.LLMError as e:
             # 에이전트가 첫 도구를 쓰기도 전에 실패했다 (키 없음, 도구를 붙이면 거절하는 모델·제공사 등).
-            # 전 방식은 도구 없이 한 번 묻는 호출이라 이런 경우에도 된다 (10-02 실측: 도구를 붙이면 404인 제공사가 있었다)
+            # 전 방식은 도구 없이 한 번 묻는 호출이라 이런 경우에도 된다 (실측: 도구를 붙이면 404인 제공사가 있었다)
             log_failure("chat_agent", e.kind)
     if not refs and context is None and BROKER_TOPIC.search(masked):
         # 세액·관세율·통관 가부는 화물이 없어도 관세사 고정 안내다. 에이전트 경로는 이 문구로 끝나지만(반복이면 짧게),
-        # 에이전트를 못 쓸 때의 전 방식(_classic)은 사용 안내로 빠졌다 (10-06 재생 서버 실측 "관세 얼마 나와?")
+        # 에이전트를 못 쓸 때의 전 방식(_classic)은 사용 안내로 빠졌다 (재생 서버 실측 "관세 얼마 나와?")
         return ChatResult(kind="message", reply=BROKER_ONLY)
     return _classic(masked, refs, mrn, session_id, context, run_agent, user_id, today)
 
 
 def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
              run_agent, user_id: str | None, today: str) -> ChatResult:
-    """의도 분류 방식 (10-05 전의 _route 뒷부분 그대로). LLM이 의도 하나와 칸을 고르고 코드가 실행한다.
+    """의도 분류 방식 (전의 _route 뒷부분 그대로). LLM이 의도 하나와 칸을 고르고 코드가 실행한다.
     에이전트를 못 쓸 때의 대비 경로이고, CHAT_AGENT=off면 이 길만 탄다."""
     try:
         route = llm.route_chat(masked, list(refs), context is not None, today).output
@@ -493,7 +493,7 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
             return _classic_cargo(list(refs.values()), None, None, session_id, context, run_agent, mrn, user_id)
         return ChatResult(kind="message", reply=LLM_DOWN)
 
-    # 문장에 지금 화물과 다른 B/L이 있으면 의도와 상관없이 새 화물 조회다 (10-01 실측: 화면에 화물이 있으면
+    # 문장에 지금 화물과 다른 B/L이 있으면 의도와 상관없이 새 화물 조회다 (실측: 화면에 화물이 있으면
     # LLM이 "[BL1] 화물 조회해줘"를 follow_up으로 골라 이전 화물 답과 카드가 나왔다). LLM이 낸 의도를 코드가 덮어쓴다
     new_bls = [bl for bl in refs.values() if context is None or bl != context.bl_no]
     if new_bls and route.intent in ("follow_up", "other"):
@@ -501,7 +501,7 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
 
     if route.intent == "cargo":
         if len(set(refs.values())) > 1:
-            # B/L이 여럿이면 LLM이 고른 하나가 아니라 문장에 나온 순서대로 모두 본다 (에이전트와 같은 기준, 10-06 점검)
+            # B/L이 여럿이면 LLM이 고른 하나가 아니라 문장에 나온 순서대로 모두 본다 (에이전트와 같은 기준)
             return _classic_cargo(list(refs.values()), route.bl_type, sale_if_given(route.sale_due_date, masked), session_id, context,
                                   run_agent, mrn, user_id)
         bl = refs.get(route.bl_ref or "") or (next(iter(refs.values())) if refs else None)
@@ -518,7 +518,7 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
         req = context.model_copy(update={"session_id": session_id, "follow_up_question": question,
                                          "resolved_mmsi": None, "voyage_no": None, "forwarder_eta": None})
         resp = run_agent(req)
-        # 원문 기준 V10 한 번 더 (10-02). 판정 흐름의 V10은 route_chat이 다시 쓴 질문만 본다. 다시 쓰면서 공격 조각이
+        # 원문 기준 V10 한 번 더. 판정 흐름의 V10은 route_chat이 다시 쓴 질문만 본다. 다시 쓰면서 공격 조각이
         # 빠지거나 바뀌면, 원문에 있던 표식을 답이 옮겨도 못 잡는다. 사용자가 실제로 쓴 문장과 한 번 더 대조한다
         if _copies_user_marker(resp, masked):
             log_failure("chat", "follow-up answer copied words from original message")
@@ -527,7 +527,7 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
 
     if route.intent == "vessel_search":
         # place·place_label은 LLM 출력인데 답 문장에 그대로 들어간다. place는 영문 지명 모양만,
-        # place_label은 사용자가 실제로 쓴 글자일 때만 쓴다 (10-01 주입 방어). 아니면 버린다
+        # place_label은 사용자가 실제로 쓴 글자일 때만 쓴다 (주입 방어). 아니면 버린다
         place = route.place.strip() if route.place else None
         if place and (not _PLACE.match(place) or len(place.split()) > 4 or guard.looks_like_injection(place)):
             place = None  # 지명은 네 낱말까지 ("New South Wales"). 문장이 섞이면 버린다
@@ -542,7 +542,7 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
 def _classic_cargo(bls: list[str], bl_type: str | None, sale_due_date: str | None, session_id: str,
                    context: AgentRequest | None, run_agent, mrn: str | None, user_id: str | None) -> ChatResult:
     """전 방식의 화물 조회. B/L이 하나면 _cargo 그대로, 2개 이상이면 에이전트와 같은 기준으로 최대 MAX_BLS_PER_TURN개를
-    조회해 표(cargos)로 낸다 (10-06 점검: 전 방식은 첫 B/L만 조회하고 나머지는 말없이 버렸다).
+    조회해 표(cargos)로 낸다 (점검: 전 방식은 첫 B/L만 조회하고 나머지는 말없이 버렸다).
     넘친 B/L은 MULTI_BL_NOTICE로 알린다. MRN은 B/L 하나에 속하는 값이라 여럿일 때는 쓰지 않는다 (look_up_many와 같다).
     전 방식은 에이전트를 못 쓸 때의 대비 경로라 LLM 비교 문장 없이 코드 문장(MULTI_TABLE_LEAD)만 쓴다."""
     bls = list(dict.fromkeys(bls))  # 같은 B/L을 두 번 적었으면 한 번만
@@ -574,7 +574,7 @@ def _classic_cargo(bls: list[str], bl_type: str | None, sale_due_date: str | Non
     return replace(chosen, reply="\n".join(lines), map=None, cargos=rows)
 
 
-# ── 채팅 에이전트 (10-05 결정) ─────────────────────────────────────
+# ── 채팅 에이전트 ─────────────────────────────────────
 # LLM이 아래 도구를 골라 부르고 결과를 본 뒤 다음 도구를 또 고른다 (llm.chat_agent, 상한 llm.MAX_TOOL_ROUNDS).
 # 도구 실행과 답 조립은 여기서 한다. 지키는 것은 전 방식과 같다:
 #   B/L은 가린 토큰으로만 오가고 코드가 원래 번호로 바꾼다 · 등급과 여유 일수는 판정 흐름이 정한다 ·
@@ -646,7 +646,7 @@ SHIP_WORD = re.compile(r"(?<![가-힣])(?:배|선박)(?:를|을|은|는|이|가|
 
 
 # 쿨다운 기록 {(user_id, cargo_key): 보낸 시각(monotonic)}. 프로세스 메모리에만 있어서 서버가 다시 뜨면 비워진다.
-# Railway에서 한 개로 돌리므로 이대로 충분하다 (10-06 결정). 여러 개로 늘리면 DB로 옮겨야 한다
+# Railway에서 한 개로 돌리므로 이대로 충분하다. 여러 개로 늘리면 DB로 옮겨야 한다
 _kakao_sent_at: dict[tuple[str, str], float] = {}
 _kakao_lock = threading.Lock()
 
@@ -672,13 +672,13 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
            run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
            today: str, watch: WatchHooks | None = None, kakao: KakaoHooks | None = None,
            on_screen: dict | None = None) -> ChatResult:
-    """에이전트 한 턴 + 지켜보기 마무리. 본 처리는 _agent_turn이 하고, 여기서 코드가 쓴 지켜보기 문장·제안을 붙인다 (10-06 결정).
+    """에이전트 한 턴 + 지켜보기 마무리. 본 처리는 _agent_turn이 하고, 여기서 코드가 쓴 지켜보기 문장·제안을 붙인다.
     본 처리가 문장 끝 여러 곳에서 돌아 나가서, 한 곳에서 붙이려고 감쌌다."""
     signals: dict = {}
     result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals, kakao, on_screen)
     result = replace(result, reply=hide_bl_tokens(result.reply, signals.get("refs") or refs))
     # 모델이 Skill 파일 이름을 출처처럼 적은 꼬리표("[SKILL 2]", "[SKILL.md]", "[skills/...]")는 내부 표시라 지운다.
-    # 근거 표시는 코드가 다는 [E#]뿐이다 (10-08 e2e, import-basics 답에서 관찰)
+    # 근거 표시는 코드가 다는 [E#]뿐이다 (e2e, import-basics 답에서 관찰)
     result = replace(result, reply=SKILL_TAG.sub("", result.reply).strip())
     result = _with_citations(result, signals)  # 뒤에 붙는 코드 문장(지켜보기·카톡·제안)은 모두 글 끝에 더해지므로 표시 자리는 그대로 맞다
     done_kakao = signals.get("kakao") or {}
@@ -699,7 +699,7 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
 
 
 def _with_citations(result: ChatResult, signals: dict) -> ChatResult:
-    """LLM이 쓴 문장에 붙인 [E#] 표시를 코드가 검사해 남기고, 이번 문장의 근거 목록을 결과에 싣는다 (10-08 정운 실사용 58번).
+    """LLM이 쓴 문장에 붙인 [E#] 표시를 코드가 검사해 남기고, 이번 문장의 근거 목록을 결과에 싣는다.
 
     왜 여기서 하나: 답 검사(V7 등)는 표시를 걷어 낸 글로 돌았고(_agent_turn), 최종 reply는 도구·코드 문장과 섞여 여러 길로 나간다.
     LLM 문장이 reply 안에 그대로 있을 때만 표시 달린 원문으로 되돌려 parse_and_validate에 맡긴다. 문장이 손질돼 reply에 없으면 표시는 버린다.
@@ -716,7 +716,7 @@ def _with_citations(result: ChatResult, signals: dict) -> ChatResult:
 
 def _with_offer(result: ChatResult, signals: dict, context: AgentRequest | None, user_id: str | None,
                 history: list[dict], watch: WatchHooks | None) -> ChatResult:
-    """화물 답 뒤에 "지켜볼까요?" 제안을 붙인다. 조건 (10-06 결정):
+    """화물 답 뒤에 "지켜볼까요?" 제안을 붙인다. 조건:
     - 화물 하나의 답이고 판정이 있다. 표 답(B/L 여러 개)·반출 끝난 화물·판정 없는 답은 말할 이유가 없다
     - 이미 지켜보는 화물이 아니다 (로그인 사용자만 확인한다)
     - 직전 답이 제안이었으면 또 하지 않는다. 같은 화물에 앞서 제안했으면 사용자가 걱정을 비친 문장(watch_cue)일 때만 다시 한다
@@ -766,20 +766,20 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     - 읽기 전용 도구만 썼으면 LLM 문장을 검사해 내보낸다. 걸리면 정리하지 못했다고 한다
     - 도구를 안 썼으면 두 층 중 하나이거나 안내다. 1층 실무 답(answer_kind=skill)은 Skill 원문 근거 조각(skill_quote)이
       원문에 그대로 있어야 내보낸다 (V14). 1층이 안 되면 2층 일반 설명(general)을
-      검사(숫자·특정 화물·세액 금지 등) 통과 시 내보낸다 (고정 꼬리표는 10-07에 없앴다). 한 문장 잡담 답(unrelated)도 검사를 통과하면 쓴다.
+      검사(숫자·특정 화물·세액 금지 등) 통과 시 내보낸다 (고정 꼬리표는 없앴다). 한 문장 잡담 답(unrelated)도 검사를 통과하면 쓴다.
       그 밖의 안내는 LLM 문장 대신 고정 문구를 쓴다. 앞 답을 베꼈거나(V13) 화면에 화물이 있는데
-      도구를 안 불렀으면 한 번 다시 묻는다 (10-05 실측)
+      도구를 안 불렀으면 한 번 다시 묻는다
     LLM이 첫 도구 전에 실패하면 LLMError를 그대로 올린다 (_route가 전 방식으로 보낸다). 도구가 이미 돌았으면
     그 결과로 답한다: 전 방식으로 넘기면 같은 조회를 한 번 더 하게 된다.
     """
     message_bls = list(refs.values())  # 이번 문장에 든 B/L (대화 기록의 것은 아래에서 refs에 더해진다)
     message_refs = dict(refs)  # {토큰: B/L} 이번 문장 것만. 여러 B/L 조회 결과에 토큰을 붙일 때 쓴다 (원문은 LLM에 안 간다)
     # 복사본에 대화 기록의 B/L을 더한다. 원본을 고치면 에이전트가 실패해 전 방식으로 갈 때 기록의 B/L을
-    # 이번 문장의 B/L로 착각해 엉뚱한 화물을 조회한다 (10-05 검토)
+    # 이번 문장의 B/L로 착각해 엉뚱한 화물을 조회한다
     refs = dict(refs)
     turns = _masked_history(history, refs)
     signals["refs"] = refs  # 대화 기록의 번호표까지 든 표. _agent가 답에 남은 [BLn]을 가릴 때 쓴다 (reveal_tokens)
-    screen = _masked_screen(on_screen)  # 화면에 떠 있는 배들 (10-08 정운 실사용 36번). 비었으면 None이고 LLM 입력에 칸이 안 생긴다
+    screen = _masked_screen(on_screen)  # 화면에 떠 있는 배들. 비었으면 None이고 LLM 입력에 칸이 안 생긴다
     offered_prev = bool(turns) and turns[-1]["role"] == "assistant" and _offered(turns[-1]["text"])  # 바로 앞 답이 우리 제안이었나
     # 답 검사에서 "사용자가 쓴 글"로 칠 것: 이번 문장과 앞에서 사용자가 쓴 줄. 사용자가 앞 턴에 말한 날짜를 되짚는 답이
     # V7에 걸리지 않게 한다. assistant 줄은 넣지 않는다 (V10이 우리 답의 낱말을 사용자 글로 오해하지 않게)
@@ -791,9 +791,9 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     ran: list[dict] = []  # 실제로 실행한 도구와 결과 {"name","arguments","result"}. LLM이 도중에 실패해도 남는다
     seen: dict[str, dict] = {}  # 같은 도구·같은 인자는 다시 실행하지 않고 앞 결과를 돌려준다 (프롬프트 규칙을 코드로)
     # 사용자가 이번 문장이나 앞 줄에서 날짜를 말했는가. 포워더 도착일은 판정 근거(trusted_eta)가 되므로
-    # LLM이 지어낸 날짜를 받지 않으려고 본다 (10-05 검토, CLAUDE.md trusted_eta)
+    # LLM이 지어낸 날짜를 받지 않으려고 본다 (CLAUDE.md trusted_eta)
     gave_date = user_gave_date(user_text)
-    date_notes: list[str] = []  # 판매일에 붙는 코드 문장 (지난 날짜, 읽지 못함). 판정·days_margin은 바꾸지 않고 사실만 알린다 (10-08 E2E)
+    date_notes: list[str] = []  # 판매일에 붙는 코드 문장 (지난 날짜, 읽지 못함). 판정·days_margin은 바꾸지 않고 사실만 알린다
 
     def sale_from(args: dict) -> str | None:
         """check_cargo 인자의 판매일을 조회에 쓸 값으로. 사용자가 날짜를 말하지 않았으면 LLM 값은 버린다.
@@ -815,7 +815,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 date_notes.append(note)
         return value
 
-    # 한 문장에 B/L이 2~3개일 때의 조회 결과 (10-05 결정): {"results": [ChatResult...], "over": 상한 초과, "failed": 일부 실패}
+    # 한 문장에 B/L이 2~3개일 때의 조회 결과: {"results": [ChatResult...], "over": 상한 초과, "failed": 일부 실패}
     multi_state: dict = {}
 
     def look_up_many(bls: list[str], bl_type: str | None, sale_due_date: str | None) -> list[dict]:
@@ -846,7 +846,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     def glued_parts(result: ChatResult, bl: str) -> list[str]:
         """B/L 하나를 조회했는데 세관에 없고 길이가 두 B/L을 붙인 만큼 길면, 둘 이상으로 나눠 모두 세관에 있는 나눔을 돌려준다.
         없으면 빈 목록 (평소처럼 "조회 결과가 없습니다"). 나눈 번호는 문장 속 B/L 목록(message_bls·message_refs)에 넣어 뒤의 조회와
-        LLM에 가는 [BLn] 토큰이 일관되게 한다. 원문 B/L은 LLM에 가지 않는다 (10-05 결정, services/judge/bl_parse.py).
+        LLM에 가는 [BLn] 토큰이 일관되게 한다. 원문 B/L은 LLM에 가지 않는다 (services/judge/bl_parse.py).
         routers.agent는 이 모듈이 올라올 때 서로 부르지 않게 쓰는 자리에서 가져온다."""
         from backend.app.routers import agent as agent_router  # noqa: PLC0415
         resp = result.agent
@@ -902,7 +902,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     watch_out: dict = signals.setdefault("watch", {})  # {"msg": 코드가 쓴 문장, "set": {"bl_no","on"}, "refused": 거절됨}
 
     def kakao_tail() -> str | None:
-        """문장에 카톡·카카오 말이 있을 때만: 카카오톡 연결 상태를 사실대로 말하는 꼬리 문장. 말이 없거나 상태를 못 읽으면 None (10-06 정운 화면)"""
+        """문장에 카톡·카카오 말이 있을 때만: 카카오톡 연결 상태를 사실대로 말하는 꼬리 문장. 말이 없거나 상태를 못 읽으면 None"""
         if not KAKAO_WORD.search(masked) or kakao is None or kakao.linked is None:
             return None
         try:
@@ -912,12 +912,12 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return None
 
     def run_watch(args: dict) -> dict:
-        """지켜보기 켜기·끄기 도구 (10-06 결정). DB에 쓰는 동작이라 LLM 판단만으로는 하지 않는다:
+        """지켜보기 켜기·끄기 도구. DB에 쓰는 동작이라 LLM 판단만으로는 하지 않는다:
         (a) 가린 문장에 지켜보기 낱말이 있거나 (b) 바로 앞 답이 우리 제안이고 이번 문장이 짧은 긍정일 때만 한다.
         (b)는 "응"이 켜기라는 뜻이라 LLM이 on=false를 보내도 켠다. 문장은 코드가 쓰고(watch_out["msg"]) LLM 글은 안 쓴다.
         대상은 이번 문장의 B/L 하나, 없으면 화면의 화물이다."""
         on = args.get("on")
-        explicit = bool(WATCH_WORDS.search(masked)) and not wants_send_now(masked)  # 지금 보내 달라는 말은 지켜보기를 바꾸지 않는다 (10-06 결정)
+        explicit = bool(WATCH_WORDS.search(masked)) and not wants_send_now(masked)  # 지금 보내 달라는 말은 지켜보기를 바꾸지 않는다
         yes = offered_prev and bool(AFFIRM.fullmatch(masked.strip()))
         if not isinstance(on, bool) or not (explicit or yes):
             watch_out["refused"] = True
@@ -940,7 +940,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if watch is None:
             watch_out["msg"] = WATCH_FAIL_REPLY["db"]
             return _tool_error("unavailable", "The watch store is not available.")
-        try:  # 이미 원하는 상태면 다시 켜지 않고 그렇다고 말한다 (10-06 결정). 상태를 못 읽으면 그냥 바꿔 본다
+        try:  # 이미 원하는 상태면 다시 켜지 않고 그렇다고 말한다. 상태를 못 읽으면 그냥 바꿔 본다
             if bool(watch.state(bl).get("watch")) == on:
                 tail = kakao_tail() if on else None
                 watch_out["msg"] = ((f"{WATCH_ALREADY_HEAD} {tail}" if tail else WATCH_ALREADY_ON) + "\n" + WATCH_PAGE_LINE) if on else WATCH_ALREADY_OFF
@@ -955,7 +955,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if "error" in result:
             watch_out["msg"] = WATCH_FAIL_REPLY.get(result["error"], WATCH_FAIL_REPLY["db"])
             if result["error"] == "not_saved" and any(_is_no_result(d) and d.request and d.request.bl_no == bl for d in done):
-                # 같은 문장의 조회가 없음으로 끝나 저장될 화물이 없는 것이지 "저장되는 중"이 아니다 (10-08 정운 실사용 75)
+                # 같은 문장의 조회가 없음으로 끝나 저장될 화물이 없는 것이지 "저장되는 중"이 아니다
                 watch_out["msg"] = WATCH_NOT_FOUND
             return _tool_error(str(result["error"]), "Could not change watching.")
         tail = kakao_tail() if result.get("on") else None
@@ -1019,7 +1019,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 "call_sign": row.get("call_sign"), "mmsi": None}
 
     def run_watch_vessel(args: dict) -> dict:
-        """배 한 척 지켜보기 켜기·끄기 도구 (10-08 정운 실사용 79). run_watch와 같은 안전 규칙이다: 가린 문장에 켜기 낱말이 있어야 하고
+        """배 한 척 지켜보기 켜기·끄기 도구. run_watch와 같은 안전 규칙이다: 가린 문장에 켜기 낱말이 있어야 하고
         (VESSEL_WATCH_WORDS, 지금 보내 달라는 말은 제외) 로그인해야 한다. 어느 배인지는 vessel_target이 코드로 정한다. 문장은 코드가 쓴다."""
         on, ship_name = args.get("on"), args.get("ship_name")
         if not isinstance(on, bool) or not VESSEL_WATCH_WORDS.search(masked) or wants_send_now(masked):
@@ -1063,7 +1063,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     kakao_out: dict = signals.setdefault("kakao", {})  # {"msg": 코드가 쓴 문장, "done": 보냈다, "refused": 거절됨}
 
     def run_kakao(args: dict) -> dict:
-        """지금 상태를 카카오톡으로 보내는 도구 (10-06 결정). 부작용이라 가린 문장에 "카톡으로 보내 줘"류가 있을 때만 한다.
+        """지금 상태를 카카오톡으로 보내는 도구. 부작용이라 가린 문장에 "카톡으로 보내 줘"류가 있을 때만 한다.
         대상은 이번 문장의 B/L 하나, 없으면 화면의 화물이다. 보낼 글은 코드가 저장된 화물 줄로 쓰고(kakao_now_text) LLM은 글에 관여하지 않는다.
         같은 문장에서 두 번 불려도 한 번만 보낸다. 같은 사용자·화물은 5분에 한 번. 보내기는 재시도하지 않는다 (services/watch/kakao 규칙)."""
         if kakao_out.get("done"):
@@ -1115,11 +1115,11 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         run_kakao({})
         return ChatResult(kind="message", reply=kakao_out.get("msg") or KAKAO_FAILED)
 
-    # 지켜보기만 바라는 짧은 말("응", "응 지켜봐 줘", "그만 지켜봐도 돼")은 LLM을 부르지 않고 코드가 바로 처리한다 (10-06 실측:
+    # 지켜보기만 바라는 짧은 말("응", "응 지켜봐 줘", "그만 지켜봐도 돼")은 LLM을 부르지 않고 코드가 바로 처리한다 (실측:
     # "응 지켜봐 줘"에 LLM이 화물 질문(ask_cargo)까지 불러 엉뚱한 화물 답이 지켜보기 문장 앞에 붙었다).
     # 조건: 새 B/L이 없고 화면에 화물이 있고, (앞 답이 제안이고 짧은 긍정) 또는 (WATCH_REQUEST 모양의 WATCH_ONLY_MAX자 이하 문장)
     short = masked.strip()
-    # 입항 선박 목록이 화면에 있는데 "이 배 지켜봐 줘"처럼 배를 가리키면 화물 지켜보기로 가로채지 않는다: LLM이 watch_vessel을 고른다 (10-08 정운 실사용 79)
+    # 입항 선박 목록이 화면에 있는데 "이 배 지켜봐 줘"처럼 배를 가리키면 화물 지켜보기로 가로채지 않는다: LLM이 watch_vessel을 고른다
     about_ship = bool(screen and screen.get("arrivals")) and bool(SHIP_WORD.search(short)) and "화물" not in short
     if not message_bls and context is not None and not about_ship and (
             (offered_prev and AFFIRM.fullmatch(short)) or (WATCH_REQUEST.search(short) and len(short) <= WATCH_ONLY_MAX)):
@@ -1127,7 +1127,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return ChatResult(kind="message", reply=watch_out.get("msg") or WATCH_HOW, watch_set=watch_out.get("set"),
                           watch_vessel_set=watch_out.get("vessel_set"))
 
-    # 이번 문장의 근거 목록 (10-08 정운 실사용 58번). 도구마다 근거 카드를 모아 E1, E2... id를 붙인다 (services/chat/citations.py).
+    # 이번 문장의 근거 목록. 도구마다 근거 카드를 모아 E1, E2... id를 붙인다 (services/chat/citations.py).
     # exposed: LLM에게 보여 준 id. LLM이 문장을 쓰는 도구(여러 B/L 비교, 읽기 전용 조회)만 보여 준다. 화물 한 건의 답은 코드가 쓰는 문장이라
     # LLM 입력에는 근거를 안 넣는다 (UNI-PASS 값을 LLM에 더 넘기지 않으려고, CLAUDE.md). 그 근거는 화면 칩용으로 모으기만 한다
     turn_items: list[dict] = []
@@ -1179,7 +1179,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             block = register(mcp_cards(name, result), True)
         return {**result, "evidence": block} if block else result
 
-    rerouted: dict = {}  # 10-08 실험 A4: 화면 화물의 배를 묻는 위치 호출을 ask_cargo로 돌렸는가 {"own": True}
+    rerouted: dict = {}  # 실험 A4: 화면 화물의 배를 묻는 위치 호출을 ask_cargo로 돌렸는가 {"own": True}
 
     def is_cargo_vessel_call(name: str, args: dict) -> bool:
         """위치·거리 도구 호출이 화면 화물의 배를 가리키는가 (A4). 화면 배(on_screen.vessel)와 MMSI나 이름이 같으면 참.
@@ -1222,7 +1222,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 return _tool_error("need_bl", NEED_BL)
             distinct = list(dict.fromkeys(message_bls))
             if len(distinct) >= 2:
-                # 한 문장에 서로 다른 B/L이 2~3개: 모두 조회하고 함께 보여 준다 (10-05 정운 결정). bl_ref는 무시한다: 모든 B/L이 대상이다
+                # 한 문장에 서로 다른 B/L이 2~3개: 모두 조회하고 함께 보여 준다. bl_ref는 무시한다: 모든 B/L이 대상이다
                 bl_type = args.get("bl_type") if args.get("bl_type") in ("MASTER", "HOUSE") else None
                 summaries = look_up_many(distinct, bl_type, sale_from(args))
                 if not summaries:
@@ -1236,7 +1236,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             voyage = str(args.get("voyage_no") or "").strip() or None
             if voyage and not _VOYAGE_OK.fullmatch(voyage):
                 # 요청 계약(schemas/agent.py voyage_no)에 안 맞는 항차(한글이 섞임·20자 초과)는 넘기지 않는다.
-                # 넘기면 AgentRequest가 ValidationError로 터진다. 항차 없이 조회하면 되묻기가 다시 묻는다 (10-06 점검)
+                # 넘기면 AgentRequest가 ValidationError로 터진다. 항차 없이 조회하면 되묻기가 다시 묻는다
                 voyage = None
             if voyage and re.sub(r"\s+", "", voyage) not in re.sub(r"\s+", "", masked):
                 voyage = None
@@ -1258,7 +1258,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             req = context.model_copy(update={"session_id": session_id, "follow_up_question": question,
                                              "resolved_mmsi": None, "voyage_no": None, "forwarder_eta": None})
             resp = run_agent(req)
-            # 원문 기준 V10 한 번 더 (10-02, _classic과 같은 검사). 판정 흐름의 V10은 에이전트가 다시 쓴 질문만 본다.
+            # 원문 기준 V10 한 번 더 (_classic과 같은 검사). 판정 흐름의 V10은 에이전트가 다시 쓴 질문만 본다.
             # 다시 쓰면서 공격 조각이 빠지면 원문의 표식을 답이 옮겨도 못 잡으므로, 사용자가 실제로 쓴 문장(masked)과 한 번 더 대조한다
             if _copies_user_marker(resp, masked):
                 log_failure("chat", "follow-up answer copied words from original message")
@@ -1266,16 +1266,16 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             done.append(ChatResult(kind="cargo", reply=resp.answer, agent=resp, request=context))
             return {"answer": resp.answer}
         if name == "search_arrivals":
-            # place·place_label은 LLM 출력인데 답 문장에 그대로 들어간다. 전 방식과 같은 검사를 한다 (10-01 주입 방어)
+            # place·place_label은 LLM 출력인데 답 문장에 그대로 들어간다. 전 방식과 같은 검사를 한다 (주입 방어)
             place = str(args.get("place") or "").strip() or None
-            # place는 "어디에서 오는 배"다. 부산·한국 같은 도착지면 빈 표만 나오므로 LLM에 돌려보내 다른 길을 고르게 한다 (10-05 실측).
-            # 단 문장에 식별자 모양 글자(TEST41 등)가 있을 때만이다: 그때는 배·화물 위치 질문을 잘못 고른 것이다 (10-05 "TEST41 선박 위치").
-            # 식별자가 없으면 "이번 주 부산 들어오는 배"처럼 입항 목록 질문이라 search_vessels가 거르지 않고 전체를 보인다 (10-06 점검)
+            # place는 "어디에서 오는 배"다. 부산·한국 같은 도착지면 빈 표만 나오므로 LLM에 돌려보내 다른 길을 고르게 한다.
+            # 단 문장에 식별자 모양 글자(TEST41 등)가 있을 때만이다: 그때는 배·화물 위치 질문을 잘못 고른 것이다 ("TEST41 선박 위치").
+            # 식별자가 없으면 "이번 주 부산 들어오는 배"처럼 입항 목록 질문이라 search_vessels가 거르지 않고 전체를 보인다
             if (_is_destination(place) or _is_destination(args.get("place_label"))) and _ID_LIKE.search(masked):
                 return _tool_error("place_is_destination", "place means where the ships come from (previous port), not Busan or "
                                    "Korea. Use null for all arrivals, or a foreign country or port. If the message is not asking "
                                    "which ships come from somewhere, do not call search_arrivals.")
-            # 입항 목록 속 배 이름이 문장에 통째로 있으면 목록이 아니라 그 배를 찾는다 (10-08 E2E: "EVER GIVEN 위치"가 전체 목록으로 답해졌다)
+            # 입항 목록 속 배 이름이 문장에 통째로 있으면 목록이 아니라 그 배를 찾는다 (E2E: "EVER GIVEN 위치"가 전체 목록으로 답해졌다)
             try:
                 upper = masked.upper()
                 names = sorted({(p.ship_name or "").strip().upper() for p in _arrivals(DAYS_MAX)}, key=len, reverse=True)
@@ -1291,7 +1291,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             if not args.get("place") and re.search(r"위치|어디", masked) and not re.search(r"들어오|입항|오는\s*배|목록|들어와", masked):
                 return _tool_error("not_a_list_question", "search_arrivals lists ships arriving at Busan; it cannot find where one ship is. "
                                    "To find a named ship use get_vessel_candidates, then get_live_position.")
-            # 지명도 없고 배·입항을 묻는 말도 없는 문장("?" 같은 빈 질문)에 입항 목록 전체를 내지 않는다. 웹 검색을 뺀 뒤 생긴 일 (10-08 e2e, ADR 0020)
+            # 지명도 없고 배·입항을 묻는 말도 없는 문장("?" 같은 빈 질문)에 입항 목록 전체를 내지 않는다. 웹 검색을 뺀 뒤 생긴 일 (e2e, ADR 0020)
             if not args.get("place") and not re.search(r"배|선박|입항|들어오|들어와|오는|도착|목록|부산", masked):
                 return _tool_error("not_a_list_question", "The user did not ask for ships arriving at Busan. Do not call search_arrivals. "
                                    "Answer briefly and ask what cargo (B/L) or ship they want to check.")
@@ -1300,7 +1300,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             label = args.get("place_label")
             if not (isinstance(label, str) and label and re.sub(r"\s+", "", label) in re.sub(r"\s+", "", masked)):
                 label = None
-            # bool도 int라서 따로 막는다 (true가 "앞으로 True일"로 답에 들어갔다, 10-05 테스트에서 발견)
+            # bool도 int라서 따로 막는다 (true가 "앞으로 True일"로 답에 들어갔다, 테스트에서 발견)
             days = args.get("days") if isinstance(args.get("days"), int) and not isinstance(args.get("days"), bool) else None
             result = search_vessels(place, days, label)
             span = asked_days(masked)
@@ -1318,7 +1318,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return run_kakao(args)
         if name == "recall_memo":
             # 저장한 것을 묻지 않은 문장(무료 기간·검사 기간 같은 실무 질문)에 모델이 메모 꺼내 보기를 고르면 돌려보낸다.
-            # 웹 검색을 뺀 뒤(ADR 0020) 모르는 실무 질문에 남은 도구를 고르는 일이 생겼다 (10-08 e2e). 답은 Skill 문서나 not_in_skills로 한다
+            # 웹 검색을 뺀 뒤(ADR 0020) 모르는 실무 질문에 남은 도구를 고르는 일이 생겼다 (e2e). 답은 Skill 문서나 not_in_skills로 한다
             if not is_memo_question(masked):
                 log_failure("chat_agent_tool", "recall_memo_not_memo_question")
                 return _tool_error("not_a_memo_question", "The user did not ask about something they saved or told Marvia. "
@@ -1326,7 +1326,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return run_recall(args)
         if name in mcp_names:
             if context is not None and name in ("get_live_position", "estimate_distance") and is_cargo_vessel_call(name, args):
-                # 10-08 실험 A4 (항상 켜짐): 화면 화물의 배("이 배")를 위치·거리 도구로 따로 찾지 않는다. 그 배의 위치는 화물 조회 결과(ask_cargo)가 이미 알고 있고
+                # 실험 A4 (항상 켜짐): 화면 화물의 배("이 배")를 위치·거리 도구로 따로 찾지 않는다. 그 배의 위치는 화물 조회 결과(ask_cargo)가 이미 알고 있고
                 # 코드가 검증한 문장으로 답한다. 도구를 부른 호출은 ask_cargo로 돌려 보낸다 (결과 이름 rerouted_to로 모델도 안다)
                 rerouted["own"] = True
                 answered = run("ask_cargo", {"question": masked[:300]})
@@ -1340,7 +1340,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     skills = llm.skills_reference(llm.CHAT_AGENT_SKILLS)  # V14 근거 조각을 찾는 원문. 지시문은 넣지 않는다 (도메인 지식의 출처가 아니다)
     reference = llm.skills_reference(llm.CHAT_AGENT_SKILLS, llm.CHAT_AGENT_PROMPT) + " " + today
     grounded = reference + OTHER_REPLY  # 도구 없는 답의 V7·V9·V10 근거. OTHER_REPLY의 낱말은 써도 된다
-    # 이 대화에서 앞서 보여 준 답. 같은 답을 되풀이하면 이번 질문을 처리하지 않은 것이다 (V13, 10-05 실측)
+    # 이 대화에서 앞서 보여 준 답. 같은 답을 되풀이하면 이번 질문을 처리하지 않은 것이다 (V13)
     earlier = [t["text"] for t in turns if t["role"] == "assistant"]
 
     # 2층(일반 설명)과 잡담 답의 근거 글. 고정 문구와 오늘 날짜뿐이다: Skill 문서와 지시문에 든 숫자는 근거가 아니다 (V7이 엄격하게 남는다)
@@ -1349,7 +1349,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     skills_only = llm.skills_reference(llm.CHAT_AGENT_SKILLS)
 
     def clarify_out() -> ChatResult:
-        """식별자를 모르겠을 때의 답. 먼저 한글·영문 배 이름이 말에 있는지 보고 입항 예정 목록에서 이름으로 찾는다 (10-07 정운 실사용 6).
+        """식별자를 모르겠을 때의 답. 먼저 한글·영문 배 이름이 말에 있는지 보고 입항 예정 목록에서 이름으로 찾는다.
         이름이 없거나 목록을 못 받으면 코드 문장으로 되묻되, 바로 앞 답과 같은 문장은 내지 않는다."""
         last = earlier[-1] if turns and turns[-1]["role"] == "assistant" and earlier else None
         name = ship_name_guess(masked, [t["text"] for t in turns if t["role"] == "user"])
@@ -1357,7 +1357,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return found or ChatResult(kind="message", reply=clarify_reply(masked, last))
 
     def fixed(reply: str) -> str:
-        """고정 안내를 내보내기 직전의 마지막 손질. 바로 앞 답이 같은 계열의 고정 안내면 더 짧은 말로 바꾼다 (같은 안내 연속 금지, 10-05)."""
+        """고정 안내를 내보내기 직전의 마지막 손질. 바로 앞 답이 같은 계열의 고정 안내면 더 짧은 말로 바꾼다 (같은 안내 연속 금지)."""
         last = re.sub(r"\s+", "", earlier[-1]) if turns and turns[-1]["role"] == "assistant" and earlier else ""
         if not last:
             return reply
@@ -1386,15 +1386,15 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                                          extra_words=validate.GENERAL_WORDS, copy_allowed=skills_only + " " + validate.GENERAL_TERMS)
 
     def general_reply(out: llm.ChatAgentOutput | None, text: str) -> str | None:
-        """2층 답이 검사를 통과하면 최종 문장. 아니면 None (고정 안내로 간다). 꼬리표는 붙이지 않는다 (10-07, 이용약관으로 이동)."""
+        """2층 답이 검사를 통과하면 최종 문장. 아니면 None (고정 안내로 간다). 꼬리표는 붙이지 않는다 (이용약관으로 이동)."""
         if out is None or out.answer_kind != "general" or not text or BROKER_TOPIC.search(masked) or general_violations(text):
             return None
         return _strip_notice(text)
 
     def skill_or_general(text: str) -> str | None:
-        """Skill 근거라고 낸 답을 내보내기 직전 한 번 더 본다 (10-06 결정). 근거 조각은 맞았는데 답의 핵심 낱말이
+        """Skill 근거라고 낸 답을 내보내기 직전 한 번 더 본다. 근거 조각은 맞았는데 답의 핵심 낱말이
         Skill 문서에 2개 이상 없으면(validate.skill_unsupported) 모델 지식이 섞인 것이다. 버리지 않고 2층(일반 설명)으로 낮춰
-        내보낸다 (꼬리표는 10-07에 없앴다). 10-06 재현: "B/L도 없고 포워더 연락 안 돼"에 Skill에 없는 "화물 인도증"이 Skill 답으로 나갔다.
+        내보낸다 (꼬리표는 없앴다). 재현: "B/L도 없고 포워더 연락 안 돼"에 Skill에 없는 "화물 인도증"이 Skill 답으로 나갔다.
         2층 검사(general_violations, 세액 주제)에 걸리면 None (고정 안내로 간다)"""
         if not validate.skill_unsupported(text, skills_only, user_text):
             return text
@@ -1414,7 +1414,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if out.answer_kind in ("help", "greeting"):  # 문장은 코드가 쓴다. 화면에 화물이 있어도 도구를 부를 일이 아니다
             return []
         if first and context is not None and CLEARANCE_TIMING.search(masked):
-            # 통관 시기 질문 (10-05 결정): 화물이 화면에 있으면 그 화물의 실제 통관 단계로 답한다. 일반 설명으로 끝내지 않는다
+            # 통관 시기 질문: 화물이 화면에 있으면 그 화물의 실제 통관 단계로 답한다. 일반 설명으로 끝내지 않는다
             return [validate.Violation("TOOL", CLEARANCE_HINT)]
         if out.answer_kind == "skill":
             return _reply_violations(text, grounded, user_text, earlier, out.skill_quote, skills) if text else []
@@ -1423,11 +1423,11 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return [] if BROKER_TOPIC.search(masked) else general_violations(text)
         if out.answer_kind == "clarify":  # 되묻기 문장은 코드가 쓴다. LLM 문장은 보지 않으므로 검사할 것이 없다
             return []
-        if out.answer_kind == "tool" and first:  # 도구 없이 "도구를 썼다"고 냈다 (10-05 실측). 도구를 부르라고 한 번 다시 묻는다
+        if out.answer_kind == "tool" and first:  # 도구 없이 "도구를 썼다"고 냈다. 도구를 부르라고 한 번 다시 묻는다
             return [validate.Violation("TOOL", "You set answer_kind to tool but called no tool. Call the tool this message "
                                                "needs now, then answer. If no tool fits, use another answer_kind.")]
         # 안내(not_in_skills·unrelated)는 앞 답을 베꼈거나(V13, "중국에서 오는 배"에 포워더 설명을 되풀이), 화면에 화물이 있는데
-        # 도구를 안 불렀을 때(10-05 실측) 다시 묻는다. 잡담 답(unrelated)이 검사를 통과했고 화물·배 이야기가 아니면 그대로 쓴다
+        # 도구를 안 불렀을 때 다시 묻는다. 잡담 답(unrelated)이 검사를 통과했고 화물·배 이야기가 아니면 그대로 쓴다
         found = [v for v in _reply_violations(text, grounded, user_text, earlier) if v.rule == "V13"] if text else []
         chat_ok = out.answer_kind == "unrelated" and bool(text) and not unrelated_violations(text) and not CARGO_TALK.search(masked)
         if first and context is not None and not found and not chat_ok:
@@ -1449,13 +1449,13 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return _reply_violations(text, reference + " ".join(str(c["result"]) for c in ok_lookups()), user_text, earlier)
 
     # 첫 답 + 다시 묻기. 다시 물을 때도 도구를 준다: 도구가 아직 하나도 안 돌았으므로 같은 조회를 두 번 하지 않는다.
-    # 베낀 답·화물 질문은 다시 물어 도구를 부르게 하는 것이 고치는 길이다 (10-05 실측)
+    # 베낀 답·화물 질문은 다시 물어 도구를 부르게 하는 것이 고치는 길이다
     # 다시 묻는 길은 둘이고 각각 한 번이다 (프롬프트·검사 비용 상한: 한 문장에 LLM 호출 최대 3번):
     #   fix: 검사에 걸린 답을 고쳐 쓰게 한다 (V7·V9·V10·V13·V14, 도구를 안 불렀다는 TOOL)
     #   nudge: 사용자가 전에 저장한 것을 묻는데 "자료에 없다"로 답했으면(not_in_skills, 또는 Skill 답이 검사에 끝내 걸림)
     #     recall_memo를 부르라고 한 번 다시 묻는다. 웹 검색 도구는 없앴다 (docs/adr/0020)
     fix_left = 1
-    memo_ask = is_memo_question(masked) and not is_action_request(masked)  # 저장한 것을 묻는다: recall_memo를 부르게 한 번 다시 묻는다 (10-08 정운 실사용 81)
+    memo_ask = is_memo_question(masked) and not is_action_request(masked)  # 저장한 것을 묻는다: recall_memo를 부르게 한 번 다시 묻는다
     nudge_left = 1 if memo_ask and not BROKER_TOPIC.search(masked) and not is_action_request(masked) else 0
     lookup_fix_left = 1  # 읽기 전용 도구 결과 요약을 고쳐 쓰게 하는 기회 (한 문장에 LLM 호출 최대 3번 상한 안에서 fix·nudge와 겹치지 않는다: 도구가 돈 문장은 그 둘을 안 탄다)
     first = True
@@ -1468,20 +1468,20 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 extra["evidence"] = cite.evidence_prompt_block([i for i in turn_items if i["id"] in exposed_ids])
             answer = llm.chat_agent(masked, list(refs), context is not None, today, turns, tools, run, feedback=feedback, **extra)
             out, raw_text = answer.output, (answer.output.reply or "").strip()
-            # 아래의 모든 답 검사(V7 숫자 등)는 [E1] 표시를 걷어 낸 글로 돈다. 표시는 맨 끝 _with_citations가 따로 검사한다 (10-08 정운 실사용 58번)
+            # 아래의 모든 답 검사(V7 숫자 등)는 [E1] 표시를 걷어 낸 글로 돈다. 표시는 맨 끝 _with_citations가 따로 검사한다
             text = cite.strip_marks(raw_text)
             signals["marked"] = (text, raw_text)
         except llm.LLMError as e:
             if first and not ran:  # 아무 도구도 안 돌았다: 전 방식이 같은 일을 처음부터 한다
                 raise
-            # 도구가 돌았으면 그 결과로 끝낸다. 전 방식으로 넘기면 같은 조회를 한 번 더 한다 (10-05 검토)
+            # 도구가 돌았으면 그 결과로 끝낸다. 전 방식으로 넘기면 같은 조회를 한 번 더 한다
             log_failure("chat_agent", f"{e.kind} after tools" if ran else f"{e.kind} on retry")
             if ran:
                 text = ""  # 도구 결과만으로 답한다
             break  # 다시 묻기가 실패했으면 앞 답과 그 위반으로 아래에서 고정 문구를 고른다
         if ran:
             if lookup_fix_left and not done and (violations := lookup_violations(text)):
-                # 읽기 전용 도구만 돌았는데 문장이 비었거나 검사에 걸렸다. 전에는 여기서 바로 막다른 문구가 나갔다 (10-07 실사용 35·52).
+                # 읽기 전용 도구만 돌았는데 문장이 비었거나 검사에 걸렸다. 전에는 여기서 바로 막다른 문구가 나갔다.
                 # 고쳐 쓰게 한 번 다시 묻는다. 도구를 또 불러도 같은 인자는 앞 결과가 돌아온다 (run의 seen)
                 lookup_fix_left -= 1
                 log_failure("chat_agent_reply", ",".join(v.rule for v in violations) or "empty")
@@ -1506,13 +1506,13 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     calls = [c for c in ran if c["name"] not in ("set_watch", "watch_vessel", "send_kakao")]  # 지켜보기·카카오 보내기 도구는 조회 도구가 아니다. 결과 문장은 watch_out에 있다
     signals["watch_cue"] = bool(out is not None and out.watch_cue)
 
-    # 문장에 지금 화물과 다른 B/L이 있는데 에이전트가 조회하지 않았으면 코드가 조회한다 (전 방식의 10-01 규칙과 같다:
+    # 문장에 지금 화물과 다른 B/L이 있는데 에이전트가 조회하지 않았으면 코드가 조회한다 (전 방식의 규칙과 같다:
     # B/L을 넣었는데 다른 화물 답이 나오면 안 된다)
     new_bls = [bl for bl in message_bls if context is None or bl != context.bl_no]
     checked = {r.request.bl_no for r in done if r.kind == "cargo" and r.request}
     if new_bls and not checked.intersection(new_bls):
         if len(set(message_bls)) >= 2:
-            look_up_many(list(dict.fromkeys(message_bls)), None, None)  # 여러 B/L도 하나만 보지 않는다 (10-05 결정)
+            look_up_many(list(dict.fromkeys(message_bls)), None, None)  # 여러 B/L도 하나만 보지 않는다
         else:
             one = _cargo(new_bls[0], None, None, session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
             parts = glued_parts(one, new_bls[0])
@@ -1541,7 +1541,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         # 로그인 안 한 사용자는 저장이 안 되므로 이 길을 타지 않고 로그인 안내(memo_reply_text)가 나간다
         return ChatResult(kind="message", reply=MEMO_SAVE_LEAD)
     if recall_state and not done and not looked_up:
-        # 메모 꺼내 보기를 한 문장이다 (10-08 정운 실사용 81). 답은 메모 항목에서만 나온다
+        # 메모 꺼내 보기를 한 문장이다. 답은 메모 항목에서만 나온다
         found_text = recall_reply(text)
         if found_text:
             return ChatResult(kind="message", reply=found_text)
@@ -1550,20 +1550,20 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         notices = ([MULTI_BL_NOTICE] if multi_state.get("over") else []) + ([MULTI_FAILED_NOTICE] if multi_state.get("failed") else []) \
             + ([bl_parse.NOTE_GLUED] if multi_state.get("glued") else [])
         if len(found) >= 2:
-            # 한 문장에 B/L 2~3개 (10-05 정운 결정). 답은 표(cargos)와 짧은 문장 하나다. 문장은 LLM이 비교 질문에 답한 것이고,
+            # 한 문장에 B/L 2~3개. 답은 표(cargos)와 짧은 문장 하나다. 문장은 LLM이 비교 질문에 답한 것이고,
             # 단일 조회와 같은 검사(숫자·날짜는 조회 결과에 있는 것만 등)를 통과해야 한다. 안 되면 코드 문장만 쓰고 표가 답이다.
             # 원문 B/L은 문장·표 어디에도 새로 쓰지 않는다 (표의 bl_no는 사용자가 입력한 값 그대로, 별도 칸)
             grounded_multi = reference + " ".join(str(c["result"]) for c in calls if c["name"] == "check_cargo") + lookups \
                 + " ".join(r.reply for r in found)
             said = text if (text and any(c["name"] == "check_cargo" for c in calls)
                             and not _reply_violations(text, grounded_multi, user_text, earlier)) else ""
-            # LLM에는 [BL1] 같은 번호표만 갔다. 화면에 나가는 문장에선 번호표를 사용자가 쓴 B/L로 되돌린다 (10-06 정운 결정).
+            # LLM에는 [BL1] 같은 번호표만 갔다. 화면에 나가는 문장에선 번호표를 사용자가 쓴 B/L로 되돌린다.
             # 그대로 두면 "[BL1] 화물은…"이 화면에 보이고, 표 순서("첫 번째")로 바꾸면 어느 화물인지 헷갈린다. 화면에만 가는 문장이라 LLM에는 새지 않는다
             for token, bl in refs.items():
                 said = said.replace(token, bl)
-            need_lines, rows, chosen = _multi_table(found)  # 표 줄과 판정 못 낸 줄 안내 (전 방식과 같이 쓴다, 10-06 점검)
+            need_lines, rows, chosen = _multi_table(found)  # 표 줄과 판정 못 낸 줄 안내 (전 방식과 같이 쓴다)
             # 조회 결과가 없는 줄은 코드가 "~는 조회 결과가 없어요" 줄을 따로 쓴다. LLM 문장도 같은 말("통관 시스템에서 찾지 못했어요")을
-            # 하면 한 답에 두 번 나온다 (10-08 E2E). 그 경우 LLM 문장은 버리고 코드 줄과 표가 답한다
+            # 하면 한 답에 두 번 나온다. 그 경우 LLM 문장은 버리고 코드 줄과 표가 답한다
             if said and any(ROW_SAY_NOT_FOUND.format(bl=r.request.bl_no) in need_lines for r in found) and _SAYS_NOT_FOUND.search(said):
                 said = ""
             lines = [said or MULTI_TABLE_LEAD.format(n=len(found))]
@@ -1578,9 +1578,9 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if looked_up and text and not _reply_violations(text, reference + lookups + " ".join(replies), user_text, earlier) \
                 and not _repeats_reply(text, replies):
             replies.append(text)
-        replies.extend(notices)  # B/L이 상한을 넘었거나 일부만 조회됐을 때 코드가 쓴 안내 (10-05)
+        replies.extend(notices)  # B/L이 상한을 넘었거나 일부만 조회됐을 때 코드가 쓴 안내
         replies.extend(date_notes)
-        # B/L과 함께 온 질문 중 코드가 못 답하는 것은 조회 답 뒤에 고정 문장으로 막는다 (10-08 E2E). 조회는 그대로 돈다:
+        # B/L과 함께 온 질문 중 코드가 못 답하는 것은 조회 답 뒤에 고정 문장으로 막는다. 조회는 그대로 돈다:
         # 앞에서 가로채면 B/L을 넣은 문장이 조회되지 않는다 (test_chat_guard_a3 test_message_with_bl_is_not_intercepted)
         if BROKER_TOPIC.search(masked):
             replies.append(fixed(BROKER_ONLY))
@@ -1589,7 +1589,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return replace(done[-1], reply="\n\n".join(replies), map=_map_payload(calls, done, started))
     if looked_up and all(c["name"] == "get_vessel_candidates" and isinstance(c["result"], dict) and c["result"].get("candidates") == []
                          for c in looked_up):
-        # 사용자가 쓴 이름으로 후보를 찾았지만 한 척도 없다. "찾지 못했다"만 말하지 않고 B/L 번호인지 배 이름인지 되묻는다 (10-05 실측)
+        # 사용자가 쓴 이름으로 후보를 찾았지만 한 척도 없다. "찾지 못했다"만 말하지 않고 B/L 번호인지 배 이름인지 되묻는다
         return clarify_out()
     if looked_up:
         ok = bool(text) and not _reply_violations(text, reference + lookups, user_text, earlier)
@@ -1609,10 +1609,10 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                                        and (c["result"].get("error") or {}).get("code") in ("not_a_memo_question", "not_a_list_question")
                                        for c in calls)
     if calls and not memo_misfire:
-        # 도구를 골랐는데 모두 실패했다. LLM 문장 대신 코드가 무엇이 안 됐는지 말한다 (EC-02·EC-03 고정 안내 유지, 10-05 검토)
+        # 도구를 골랐는데 모두 실패했다. LLM 문장 대신 코드가 무엇이 안 됐는지 말한다 (EC-02·EC-03 고정 안내 유지)
         codes = [c["result"]["error"]["code"] for c in calls if isinstance(c["result"], dict) and "error" in c["result"]]
         if "need_bl" in codes and _ID_LIKE.search(masked):
-            # B/L 모양은 아닌데 식별자 같은 글자가 있다(TESTBL4 같은 오타). 조회할 번호를 달라고만 하지 않고 그 글자를 되묻는다 (10-05 실측)
+            # B/L 모양은 아닌데 식별자 같은 글자가 있다(TESTBL4 같은 오타). 조회할 번호를 달라고만 하지 않고 그 글자를 되묻는다
             return clarify_out()
         fixed_msgs = {"need_bl": NEED_BL, "no_cargo": NO_CARGO, "broker_topic": BROKER_ONLY}
         return ChatResult(kind="message", reply=fixed(next((fixed_msgs[c] for c in codes if c in fixed_msgs), FAILED_LOOKUP)))
@@ -1621,7 +1621,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     # 2층 일반 설명(general), 한 문장 잡담 답(unrelated). 나머지는 코드의 고정 문구다:
     # 문서에 없는 질문은 없다고(NOT_IN_SKILLS), 상관없는 말은 할 수 있는 일(OTHER_REPLY). 같은 안내가 연달아 나가지 않게 fixed()를 거친다
     if out is not None and out.answer_kind == "help":
-        return ChatResult(kind="message", reply=USAGE_GUIDE)  # 사용법은 LLM이 쓰지 않는다 (없는 기능 방지, 10-05 결정)
+        return ChatResult(kind="message", reply=USAGE_GUIDE)  # 사용법은 LLM이 쓰지 않는다 (없는 기능 방지)
     if out is not None and out.answer_kind == "greeting":
         return ChatResult(kind="message", reply=GREETING_REPLY)
     if out is None or not text:
@@ -1631,15 +1631,15 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return ChatResult(kind="message", reply=fixed(BROKER_ONLY))
         return ChatResult(kind="message", reply=fixed(NOT_IN_SKILLS if out is not None and out.answer_kind == "not_in_skills" else OTHER_REPLY))
     if out.answer_kind == "skill":
-        if violations:  # 근거 조각이 끝내 안 맞았다. 세액 주제였다면 "자료에 없다"보다 관세사 안내가 맞다 (10-05 재생 시험에서 발견)
+        if violations:  # 근거 조각이 끝내 안 맞았다. 세액 주제였다면 "자료에 없다"보다 관세사 안내가 맞다 (재생 시험에서 발견)
             return ChatResult(kind="message", reply=fixed(BROKER_ONLY if BROKER_TOPIC.search(masked) else NOT_IN_SKILLS))
         checked = skill_or_general(text)
         return ChatResult(kind="message", reply=checked or fixed(NOT_IN_SKILLS))
-    if BROKER_TOPIC.search(masked):  # 세액·관세율·통관 가능 여부: 마르비아는 답하지 않고 관세사에게 묻게 한다 (PRD 4절, 10-05)
+    if BROKER_TOPIC.search(masked):  # 세액·관세율·통관 가능 여부: 마르비아는 답하지 않고 관세사에게 묻게 한다 (PRD 4절)
         return ChatResult(kind="message", reply=fixed(BROKER_ONLY))
     if out.answer_kind in ("unrelated", "clarify") and not is_memo_question(masked) \
             and echoes_person_name(masked, text, skills_only + OTHER_REPLY + validate.GENERAL_TERMS):
-        # 10-08 실험 A1: 사람 이름을 답에 따라 썼다. 모델 문장을 버리고 고정 문장으로 누구를 말하는지 되묻는다.
+        # 실험 A1: 사람 이름을 답에 따라 썼다. 모델 문장을 버리고 고정 문장으로 누구를 말하는지 되묻는다.
         # 저장한 메모를 묻는 문장(거래처 이름 등)은 사람 이름이 아니라서 건드리지 않는다 (recall_memo 답 보호)
         log_failure("chat_agent_reply", "person_name_echo")
         return ChatResult(kind="message", reply=PERSON_ASK)
@@ -1657,10 +1657,10 @@ def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: 
            voyage_no: str | None = None, forwarder_eta: str | None = None) -> ChatResult:
     """B/L 조회. 같은 화물을 다시 물으면 지금 화물의 구분·판매일·MRN을 이어 쓴다.
     MRN이 있으면 세관에 아직 없는 화물도 배 상태까지 볼 수 있다 (docs/specs/mrn-fallback.md).
-    로그인 사용자가 이미 조회한 화물이면 답 끝에 "지난 조회(10.01)에서는 ○○였어요." 한 줄을 붙인다 (10-02 결정 4).
+    로그인 사용자가 이미 조회한 화물이면 답 끝에 "지난 조회(10.01)에서는 ○○였어요." 한 줄을 붙인다.
     그 줄은 조회 전에 읽은 화물 표 값으로 코드가 쓴다. 응답 칸(C1)은 늘리지 않는다.
-    voyage_no·forwarder_eta: 되묻기에 사용자가 문장으로 답한 값 (10-05, 에이전트만 넘긴다). 전에는 화면의 칸으로만 받았다."""
-    # 답에 붙일 수 있는 것은 코드가 쓴 "지난 조회" 한 줄뿐이다 (10-02 결정 4, D1). lookup_notes가 다른 줄(메모장 가득 참 알림 등)을
+    voyage_no·forwarder_eta: 되묻기에 사용자가 문장으로 답한 값 (에이전트만 넘긴다). 전에는 화면의 칸으로만 받았다."""
+    # 답에 붙일 수 있는 것은 코드가 쓴 "지난 조회" 한 줄뿐이다 (D1). lookup_notes가 다른 줄(메모장 가득 참 알림 등)을
     # 돌려줘도 사용자에게 보이지 않게 여기서 한 번 더 거른다. 가득 참은 설정 "내 기억" 화면만 보여 준다
     notes = [n for n in memory.lookup_notes(user_id, bl) if n.startswith(PREVIOUS_LINE_PREFIX)]
     same = context is not None and context.bl_no == bl
@@ -1676,9 +1676,9 @@ def _cargo(bl: str, bl_type: str | None, sale_due_date: str | None, session_id: 
     resp = run_agent(req)
     reply = resp.answer
     if _is_no_result(ChatResult(kind="cargo", reply=reply, agent=resp, request=req)):
-        reply = NO_RESULT_REPLY  # 판정 흐름(routers/agent.py)의 문구는 "~습니다"라 화면 말투(~요)로 맞춘다. 뜻은 같다 (10-07 정운 실사용 38)
+        reply = NO_RESULT_REPLY  # 판정 흐름(routers/agent.py)의 문구는 "~습니다"라 화면 말투(~요)로 맞춘다. 뜻은 같다
         if not kind:
-            # 10-08 정운 실사용 75: 구분을 말하지 않았으면 하우스로 먼저 보고, 세관에 없다고 하면(오류·시간 초과가 아니라 "없음"일 때만)
+            # 구분을 말하지 않았으면 하우스로 먼저 보고, 세관에 없다고 하면(오류·시간 초과가 아니라 "없음"일 때만)
             # 곧바로 마스터로 한 번 더 본다. 되묻지 않는다. 찾은 쪽 구분이 req에 실려 저장·후속 질문·지켜보기가 그대로 쓴다.
             # 둘 다 없으면 "구분을 말하지 않아…마스터로 다시" 안내 없이 없다고만 하고, 화면의 구분 다시 고르기(CandidatePicker)도 끄도록
             # missing_inputs를 bl_not_found로 바꾼다 (bl_type이 아니므로 화물 표에도 저장하지 않는다, cargo.found_cargo)

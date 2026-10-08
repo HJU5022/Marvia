@@ -1,11 +1,11 @@
-"""평가 결과 파일을 평가지표 화면 모양으로 (GET /api/metrics, 10-01).
+"""평가 결과 파일을 평가지표 화면 모양으로 (GET /api/metrics).
 
 evals/run_eval.py가 실행마다 evals/results/<config>_<한국시각>.json을 남긴다 (D8). 여기서는 읽기만 한다.
 - 구성별 최신 파일: a(규칙만) → baseline, b(서비스 모델) → model_a, c(비교 모델) → model_b (PRD 8절 베이스라인 비교)
 - KPI·게이트는 서비스에 실제로 쓰는 구성 b 기준. b가 없으면 값은 null(화면은 "미측정")
 - 실행 기록은 파일 전부를 최신순으로 (실험 이력)
 숫자를 만들거나 고치지 않는다. 실행하지 않은 값은 null 그대로다 (CLAUDE.md "실행하지 않은 결과 숫자를 적지 않는다").
-보고에 쓴 실행 결과는 레포에 커밋한다(10-01 재감사). 폴더가 비어 있으면 전부 null이다. 주입 측정(injection/ 하위 폴더)은 읽지 않는다.
+보고에 쓴 실행 결과는 레포에 커밋한다(재감사). 폴더가 비어 있으면 전부 null이다. 주입 측정(injection/ 하위 폴더)은 읽지 않는다.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ RESULTS_DIR = Path(__file__).resolve().parents[4] / "evals" / "results"
 ROLE = {"a": "baseline", "b": "model_a", "c": "model_b"}
 EXPERIMENT_LIMIT = 20
 
-# 화면 표의 줄 (web/lib/fixtures/metrics.json의 id와 같다). act 등급의 한국어 이름이 긴급으로 바뀌어 지표 이름도 맞춘다 (10-06 정운 결정)
+# 화면 표의 줄 (web/lib/fixtures/metrics.json의 id와 같다). act 등급의 한국어 이름이 긴급으로 바뀌어 지표 이름도 맞춘다
 COMPARE = [("verdict_accuracy", "판정 정확도"), ("act_recall", "긴급 재현율"),
            ("insufficient_precision", "되묻기 정확도"), ("vessel_match_accuracy", "선박 식별 정확도"),
            ("grounded", "근거 일치율"), ("customs_explanation", "통관 해설 품질")]

@@ -1,4 +1,4 @@
-"""흐트러지게 쓴 B/L 번호를 읽어 내고, 세관에 실제로 있는지 확인해서만 받아들인다 (10-05 결정).
+"""흐트러지게 쓴 B/L 번호를 읽어 내고, 세관에 실제로 있는지 확인해서만 받아들인다.
 
 왜 이렇게 하나: 사용자는 "test-bl-01", "TEST-BL/01", "test bl01"처럼 기호·띄어쓰기를 섞어 쓰고,
 두 B/L을 붙여 "TESTBL01TESTBL02"로 쓰기도 한다. B/L 길이는 8~20자로 제각각이라 글자 모양만으로는
@@ -13,7 +13,7 @@ from typing import Callable
 from backend.app.observability.logging import log_failure
 from backend.app.services.judge.customs import CustomsError, UnipassClient
 
-# 후보를 세관에 물어볼 최대 횟수. exists 한 번이 UNI-PASS 최대 2번 호출(하우스, 마스터)이라 상한을 둔다 (10-05 결정)
+# 후보를 세관에 물어볼 최대 횟수. exists 한 번이 UNI-PASS 최대 2번 호출(하우스, 마스터)이라 상한을 둔다
 MAX_CHECKS = 6
 BL_MIN, BL_MAX = 8, 20  # chat.py _BL과 같은 길이 범위
 GLUED_MIN, GLUED_MAX = 16, 40  # 붙여 쓴 토큰 길이. 2개(8+8)부터 3개(최대 40)까지만 본다
@@ -24,7 +24,7 @@ NOTE_SYMBOL = "(기호를 빼고 B/L 번호로 읽었어요.)"
 NOTE_SPACE = "(띄어쓰기를 붙여 B/L 번호로 읽었어요.)"
 NOTE_GLUED = "(붙어 있던 번호를 두 B/L로 나눠 읽었어요.)"
 
-# 영문·숫자 조각이 기호(- / . _) 또는 공백 한 칸으로 이어진 줄. 한글이 끼면 거기서 끊긴다
+# 영문·숫자 조각이 기호(- /. _) 또는 공백 한 칸으로 이어진 줄. 한글이 끼면 거기서 끊긴다
 _RUN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9]+(?:[-/._ ][A-Za-z0-9]+)+(?![A-Za-z0-9])")
 _PIECE = re.compile(r"[A-Za-z0-9]+")
 _ALNUM = re.compile(r"[A-Za-z0-9]+")
@@ -61,7 +61,7 @@ def _windows(text: str) -> list[tuple[int, int, str]]:
 
 
 def separator_candidates(text: str) -> list[tuple[str, str]]:
-    """(문장 속 원래 글자, 붙인 값) 쌍. 기호(-, /, ., _)로 이은 것이 강한 후보, 공백으로 이은 것은 약한 후보라 뒤로 간다.
+    """(문장 속 원래 글자, 붙인 값) 쌍. 기호(-, /,., _)로 이은 것이 강한 후보, 공백으로 이은 것은 약한 후보라 뒤로 간다.
     둘 다 세관 확인을 거쳐야 한다."""
     return [(text[s:e], joined.upper()) for s, e, joined in _windows(text)]
 
@@ -70,7 +70,7 @@ def split_candidates(token: str) -> list[tuple[str, ...]]:
     """못 찾은 긴 토큰을 두 개(드물게 세 개)로 나눈 후보. 각 조각은 8~20자이고 숫자가 있다.
 
     순서: 앞 4글자가 같은 문자로 시작하는 나눔을 먼저 본다. 선사가 B/L 앞에 4글자 코드를 붙이는 일이 많아서 쓰는
-    경험칙이지 사실은 아니다 (10-05). 그다음 2개 나눔, 그다음 조각 길이가 비슷한 것. 상한은 MAX_CHECKS."""
+    경험칙이지 사실은 아니다. 그다음 2개 나눔, 그다음 조각 길이가 비슷한 것. 상한은 MAX_CHECKS."""
     token = token.upper()
     if not (GLUED_MIN <= len(token) <= GLUED_MAX and token.isascii() and token.isalnum()):
         return []
@@ -150,7 +150,7 @@ def exists_in_customs(bl: str) -> bool:
     """UNI-PASS에 이 B/L이 있는가. 기존 UnipassClient.fetch를 그대로 쓴다 (더 가벼운 조회 API는 없다, 같은 한 번의 호출).
 
     하우스를 먼저, 없으면 마스터로 한 번 더 본다. 사용자가 붙여 쓴 번호가 어느 쪽인지 모르고, 잘못 고르면 "없음"이 나와서
-    진짜 B/L을 못 읽기 때문이다. 대가는 없는 후보 하나당 UNI-PASS 2번 호출이다 (10-05 결정).
+    진짜 B/L을 못 읽기 때문이다. 대가는 없는 후보 하나당 UNI-PASS 2번 호출이다.
     클라이언트에 캐시는 없다. 오류·키 없음은 "확인 못 함"(False)이다. B/L 원문은 로그에 쓰지 않는다."""
     try:
         client = UnipassClient()

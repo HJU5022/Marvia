@@ -79,9 +79,9 @@ def build(customs: CustomsRecord | None, position: dict | None, schedule: dict |
             add("rule", signal.id, signal.value, signals.computed_at)
     add("rule", "trusted_eta", trusted, now)
     add("rule", "days_margin", margin, now)
-    # 남은 거리 ÷ 현재 속도로 계산한 대략 도착. 참고용이지만 답에 "10월 5일쯤"으로 나올 수 있어 카드로 둔다 (09-29 D6·D8)
+    # 남은 거리 ÷ 현재 속도로 계산한 대략 도착. 참고용이지만 답에 "10월 5일쯤"으로 나올 수 있어 카드로 둔다
     add("rule", "calc_eta", signals.calc_eta if signals else None, now)
-    # 사용자가 넣은 날짜도 카드로 둔다. LLM이 "판매 예정일 10월 7일"처럼 말하면 V7이 이 카드로 숫자를 확인한다 (09-29 D8).
+    # 사용자가 넣은 날짜도 카드로 둔다. LLM이 "판매 예정일 10월 7일"처럼 말하면 V7이 이 카드로 숫자를 확인한다.
     # 날짜만 있는 값이라 _text(시각 변환)를 거치지 않는다. 거치면 UTC 0시로 읽혀 한국 시각 9시가 붙는다
     for field, day in (("sale_due_date", sale_due_date), ("forwarder_eta", forwarder_eta)):
         if day is not None:
@@ -90,7 +90,7 @@ def build(customs: CustomsRecord | None, position: dict | None, schedule: dict |
 
 
 def _ok(tool_output: dict | None) -> bool:
-    """도구가 값을 돌려줬나. None이거나 {error: ...}면 카드를 만들지 않는다 (SDD 3.4 도구 실패 형식)."""
+    """도구가 값을 돌려줬나. None이거나 {error:...}면 카드를 만들지 않는다 (SDD 3.4 도구 실패 형식)."""
     return bool(tool_output) and "error" not in tool_output
 
 

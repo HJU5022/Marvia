@@ -1,4 +1,4 @@
-"""화물 지켜보기: 등록·감시·알림의 업무 규칙 (G5, 10-05 결정, docs/Marvia_개발_작업_리스트.md "G5 등록·감시·알림").
+"""화물 지켜보기: 등록·감시·알림의 업무 규칙 (G5, docs/Marvia_개발_작업_리스트.md "G5 등록·감시·알림").
 
 하는 일:
   set_watch()        결과 화면의 "지켜보기" 켜기·끄기. 사용자당 최대 MAX_WATCH건
@@ -41,9 +41,9 @@ from backend.app.services.account import quota
 from backend.app.services.watch.kakao import KakaoLinkError
 from backend.app.services.judge.verdict import VERDICT_LABEL
 
-MAX_WATCH = 5      # 사용자당 지켜볼 수 있는 화물 수 (10-05 결정)
+MAX_WATCH = 5      # 사용자당 지켜볼 수 있는 화물 수
 RUN_LIMIT = 5      # 워커 한 번에 다시 판정하는 화물 수. ShipFinder 하루 한도 50회를 지키려는 상한이다
-# 배(vessel_mmsi)를 아는 화물 한 건을 다시 판정할 때 ShipFinder를 부르는 횟수 (10-06 점검, routers/agent.py에서 확인).
+# 배(vessel_mmsi)를 아는 화물 한 건을 다시 판정할 때 ShipFinder를 부르는 횟수 (routers/agent.py에서 확인).
 # resolved_mmsi가 있으면 _identify가 후보 검색을 건너뛰고(확정), _after_customs가 get_live_position 한 번만 부른다.
 # 규칙이 아니라 코드 경로를 센 값이라 rules.md가 아니라 여기 둔다. 판정 경로가 ShipFinder를 더 부르게 바뀌면 같이 고친다.
 # 배를 모르는 화물은 후보 검색(검색 1 + 후보 5척 x 위치·국적 = 최대 11회, mcp_server/tools/vessel_candidates.py)이라
@@ -113,12 +113,12 @@ def watch_state(conn, user_id: str, bl_no: str) -> dict:
 
 # ── 바뀐 판정 띠 ──
 
-# 감시 목록 지도에 잇는 지나온 길 점 수 (10-06). worker 수집 간격 6시간이면 3일치다. 화면이 그리기 무겁지 않을 만큼만
+# 감시 목록 지도에 잇는 지나온 길 점 수. worker 수집 간격 6시간이면 3일치다. 화면이 그리기 무겁지 않을 만큼만
 TRACK_POINTS = 12
 
 
 def watch_list(conn, user_id: str) -> dict:
-    """지켜보는 화물 목록과 배의 마지막 위치·지나온 길 (GET /api/watch, 10-06). 화면 web/lib/api.ts WatchItem 모양이다.
+    """지켜보는 화물 목록과 배의 마지막 위치·지나온 길 (GET /api/watch). 화면 web/lib/api.ts WatchItem 모양이다.
 
     - 줄 재료는 화물 표(user_cargo)의 마지막 조회 값이다: 등급·통관 단계·도착 예정·여유 일수·품명·선명·국적
     - 위치는 watch_positions(017)에서 그 배의 최근 TRACK_POINTS개를 오래된 순으로. 마지막 점이 현재 위치다
@@ -162,7 +162,7 @@ def _track(conn, mmsi: int) -> list[dict]:
 def pending_changes(conn, user_id: str) -> list[dict]:
     """사용자가 아직 못 본 판정 변화. 최근 것부터. 가린 번호만 담는다.
     to_verdict는 화물 표의 마지막 판정(last_verdict)이다.
-    reason: 마지막 확인 때의 여유 일수·통관 단계를 코드가 한 줄로 쓴 것 (10-06, 접속하면 먼저 말 걸기용). 판정이 왜 바뀌었는지의 원인이
+    reason: 마지막 확인 때의 여유 일수·통관 단계를 코드가 한 줄로 쓴 것 (접속하면 먼저 말 걸기용). 판정이 왜 바뀌었는지의 원인이
     아니라 그 시점의 상태다: 화물 표에는 원인을 따로 저장하지 않는다. 둘 다 없으면 None."""
     rows = conn.execute(
         """SELECT bl_masked, label, changed_from, last_verdict, changed_at, last_days_margin, last_stage FROM user_cargo
@@ -240,7 +240,7 @@ def _check_one(conn, row: tuple, now: datetime, assess) -> tuple[bool, bool, boo
                            voyage_no=voyage_no, resolved_mmsi=mmsi, session_id=f"watch-{now:%Y%m%d}")
     from backend.app.routers.agent import is_released, trusted_vessel  # 맨 위에서 부르면 라우터와 서비스가 서로 불러오는 순환이 된다
 
-    # 지켜보기 재판정도 그 사용자의 LLM 사용량이다 (docs/specs/token-quota.md, 10-06 점검).
+    # 지켜보기 재판정도 그 사용자의 LLM 사용량이다 (docs/specs/token-quota.md).
     # user_id를 넘겨야 토큰이 그 사람 몫으로 쌓이고 Langfuse 트레이스에도 user_id가 붙는다 (SDD 5.11).
     # 오늘 한도를 다 쓴 사람의 화물은 재판정하지 않는다. 화면 조회를 막는 것과 같은 한도다
     try:
@@ -270,7 +270,7 @@ def run_watch(conn, *, limit: int = RUN_LIMIT, now: datetime | None = None, asse
     """지켜보는 화물을 다시 판정하고 결과 개수를 돌려준다: checked / changed / notified / failed / unjudged.
 
     known_vessel_only: 배(vessel_mmsi)를 아는 화물만 다시 판정한다. 수집 워커(worker/run.py)가 ShipFinder 예산을
-    화물당 SHIPFINDER_CALLS_PER_KNOWN_VESSEL회로 떼어 두고 부를 때 쓴다 (10-06 점검). 배를 모르는 화물은 후보 검색으로
+    화물당 SHIPFINDER_CALLS_PER_KNOWN_VESSEL회로 떼어 두고 부를 때 쓴다. 배를 모르는 화물은 후보 검색으로
     최대 11회를 써서 예산을 깬다. 그 화물은 skipped_no_vessel로 센다 (이 값일 때만 결과에 들어간다).
     사용자가 화면에서 다시 조회하면 배가 정해져 vessel_mmsi가 채워지고, 그다음부터 워커가 다시 판정한다.
 

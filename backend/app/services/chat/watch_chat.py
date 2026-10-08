@@ -46,7 +46,7 @@ def _josa_ira(text: str) -> str:
 
 def watch_offer_text(response: AgentResponse, logged_in: bool, worry: str | None) -> str | None:
     """"이 화물을 지켜볼까요?" 제안 문장. 이유는 코드가 가진 사실뿐이다: 판정 이름, 여유 일수, 사용자의 걱정 메모.
-    판정이 없으면(되묻기·실패) 말할 이유가 없어 None. 없는 이유를 지어내지 않는다 (10-06 결정)."""
+    판정이 없으면(되묻기·실패) 말할 이유가 없어 None. 없는 이유를 지어내지 않는다."""
     if response.verdict not in VERDICT_LABEL:
         return None
     label = VERDICT_LABEL[response.verdict]

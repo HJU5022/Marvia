@@ -1,4 +1,4 @@
-"""B/L 없이 배(MMSI)만 지켜보기의 업무 규칙 (10-08 정운 실사용 57번).
+"""B/L 없이 배(MMSI)만 지켜보기의 업무 규칙.
 
 하는 일:
   add_vessel()     채팅에서 본 배를 지켜보기에 올린다 (같은 배를 다시 올리면 보인 값만 갱신)
@@ -51,7 +51,7 @@ def _clean(value: str | None) -> str | None:
 
 
 def resolve_mmsi(call_sign: str, ship_name: str | None = None) -> int:
-    """입항 예정 목록(해수부 신고)의 호출부호로 MMSI를 찾는다 (10-08 정운 실사용 57번, 64번).
+    """입항 예정 목록(해수부 신고)의 호출부호로 MMSI를 찾는다 (64번).
 
     왜 호출부호인가: 해수부 신고에는 MMSI가 없고, 선명은 같은 이름의 다른 배가 많다.
     호출부호는 양쪽 모두 대문자로 하고 공백·하이픈을 지워 비교한다 (표기 차이로 놓치지 않게).
@@ -132,7 +132,7 @@ def add_vessel(conn, user_id: str, mmsi: int, name: str, flag: str | None = None
     """배를 지켜보기에 올린다. 이미 있으면 보인 값(이름·국적·목적지·도착 예정)만 갱신하고 한도를 다시 세지 않는다.
 
     call_sign은 자세히 보기 캐시를 찾는 데만 쓴다 (저장하지 않는다). 올릴 때 그 배의 위치가 10분 캐시에 있으면
-    watch_positions에 바로 넣어 지켜보기 화면이 위치를 곧바로 보이게 한다 (10-08 정운 실사용 66번).
+    watch_positions에 바로 넣어 지켜보기 화면이 위치를 곧바로 보이게 한다.
     ShipFinder를 새로 부르지 않는다. 실패해도 지켜보기 켜기는 성공이다."""
     name = _clean(name)
     if not mmsi or mmsi <= 0 or not name:
@@ -175,7 +175,7 @@ def _is_stale(track: list[dict]) -> bool:
 
 
 def _refresh_stale(conn, user_id: str, rows: list, tracks: dict) -> None:
-    """위치가 없거나 오래된 배의 현재 위치를 받아 watch_positions에 넣는다 (10-08 정운 실사용 66번).
+    """위치가 없거나 오래된 배의 현재 위치를 받아 watch_positions에 넣는다.
 
     워커가 6시간마다 도는 동안 새로 올린 배는 위치가 비어 있었다. 목록을 열면 바로 채운다.
     - 받는 길은 자세히 보기와 같다(vessel_detail.live_position, 10분 캐시 공유). 같은 배를 연달아 열어도 한 번만 부른다

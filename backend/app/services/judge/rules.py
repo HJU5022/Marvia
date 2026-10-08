@@ -1,6 +1,6 @@
 """skills/*/rules.md 프론트매터에서 코드가 쓰는 값 읽기 (계약 C6, SDD 3.6).
 
-결정마다 권한자는 하나다 (10-01 강사 피드백: Prompt·Skill·코드에 같은 판정 규칙이 있어 서로 어긋났다).
+결정마다 권한자는 하나다 (강사 피드백: Prompt·Skill·코드에 같은 판정 규칙이 있어 서로 어긋났다).
 결정은 backend/ 코드가 하고, 그 재료(임계값·목록·표)는 Skill 폴더마다 rules.md 프론트매터에 둔다.
   - ais-reliability/rules.md  AIS 신호 기준값, 출처 우선순위
   - customs-stages/rules.md   통관 보류 낱말, 정상 단계 목록
@@ -36,7 +36,7 @@ def _front_matter(path: Path) -> dict:
 def load_rules(skills_dir: Path = SKILLS_DIR) -> dict:
     """skills/*/rules.md 프론트매터를 모두 읽어 한 dict로 합친다.
 
-    파일 순서는 폴더 이름순이라 실행마다 같다. 같은 키가 두 파일에 있으면 ValueError (권한자는 하나, 10-01).
+    파일 순서는 폴더 이름순이라 실행마다 같다. 같은 키가 두 파일에 있으면 ValueError (권한자는 하나).
     @cache라 파일은 처음 한 번만 읽는다. rules.md를 고쳤으면 서버를 다시 띄운다.
     """
     merged: dict = {}
@@ -55,7 +55,7 @@ def load_rules(skills_dir: Path = SKILLS_DIR) -> dict:
 
 @cache
 def load_file(path: Path) -> dict:
-    """rules.md가 아닌 Skill 파일 하나의 프론트매터 (예: port-busan/cargo-vessels.md, 선박 검색 기준, 10-02).
+    """rules.md가 아닌 Skill 파일 하나의 프론트매터 (예: port-busan/cargo-vessels.md, 선박 검색 기준).
     load_rules의 합치기에는 들어가지 않는다. 판정에 쓰지 않는 값이라 rule()과 섞지 않는다."""
     return _front_matter(path)
 
@@ -82,7 +82,7 @@ def is_listed_stage(name: str) -> bool:
 def customs_stage_names() -> frozenset[str]:
     """customs-stages/rules.md customs_stages 목록의 name들을 stage_key 모양으로 돌려준다.
 
-    관세사 필요 여부(needs_broker)는 코드가 정하고, 어떤 단계가 정상 목록에 있는지는 rules.md가 원본이다 (10-01).
+    관세사 필요 여부(needs_broker)는 코드가 정하고, 어떤 단계가 정상 목록에 있는지는 rules.md가 원본이다.
     그래서 코드가 목록을 따로 적지 않고 rules.md를 읽는다. 전에는 SKILL.md 표 첫 칸을 읽었는데,
     표 모양이 바뀌면 깨지기 쉬워 YAML 목록으로 옮겼다.
     목록이 비어 읽히면 모든 단계가 "목록에 없음"이 되므로 바로 실패시킨다.

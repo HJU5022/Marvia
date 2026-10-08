@@ -1,4 +1,4 @@
-"""세관(UNI-PASS)에 아직 없는 화물은 MRN으로 배 상태까지 보여 준다 (docs/specs/mrn-fallback.md, 10-01).
+"""세관(UNI-PASS)에 아직 없는 화물은 MRN으로 배 상태까지 보여 준다 (docs/specs/mrn-fallback.md).
 
 routers/agent.py의 조회가 UNI-PASS에서 B/L을 못 찾았고(insufficient) 요청에 MRN이 있을 때만 부른다.
 - 해수부 입항 신고에서 MRN으로 배(선명·호출부호·입항 예정·접안 시설)를 찾는다
@@ -16,7 +16,7 @@ from backend.app.schemas.agent import (
     AgentRequest, AgentResponse, BerthInfo, EtaInfo, Evidence, Position, VesselInfo,
 )
 from backend.app.services.watch.vessel_detail import _freshness
-# MCP 도구는 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py)
+# MCP 도구는 /mcp를 거쳐 부른다 (services/mcp_client.py)
 from backend.app.services.mcp_client import estimate_distance, get_live_position, get_vessel_candidates
 
 LOOKBACK_DAYS, LOOKAHEAD_DAYS = 3, 14  # 입항 신고를 찾는 기간. 통지서는 보통 입항 며칠 전에 온다

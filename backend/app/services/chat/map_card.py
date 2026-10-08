@@ -56,7 +56,7 @@ def _map_payload(ran: list[dict], done: list[ChatResult], started: datetime) -> 
         else:
             # (c) 후속 답이 도구를 새로 부르지 않고 지난 결과의 위치로 답했다 (지난 결과에 위치가 이미 있으면 후속 프롬프트가
             # 도구를 부르지 말라고 한다). 답 문장에 그 위치의 위도·경도 숫자가 둘 다 들어 있을 때만 지도를 붙인다.
-            # 숫자 대조는 검증 V7과 같은 방식이다. 10-05 배포본에서 "배가 어디쯤이야?"에 좌표로 답했는데 지도가 안 나올 뻔한 경우
+            # 숫자 대조는 검증 V7과 같은 방식이다. 배포본에서 "배가 어디쯤이야?"에 좌표로 답했는데 지도가 안 나올 뻔한 경우
             for r in reversed(done):
                 pos = r.agent.position if r.agent else None
                 said = set(validate._numbers(r.reply))

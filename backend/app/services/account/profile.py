@@ -83,7 +83,7 @@ def mask_address(address: str | None) -> str | None:
 def save(conn, user_id: str, profile: Profile, *, by_operator: bool = False) -> None:
     """잠가서 저장한다. 하나라도 못 잠그면(열쇠 없음) 아무것도 저장하지 않는다 (EC-04).
     by_operator: 운영자가 고친 경우. 본인 동의 시각(consent_at)은 그대로 둔다 (operator-admin 추가 절)."""
-    sealed = [crypto.encrypt_pii(v) for v in (profile.name, profile.phone, profile.address)]  # PII 열쇠 (10-01 분리)
+    sealed = [crypto.encrypt_pii(v) for v in (profile.name, profile.phone, profile.address)]  # PII 열쇠 (분리)
     if any(s is None for s in sealed):
         raise ProfileError("no_key")
     consent = "user_profiles.consent_at" if by_operator else "now()"

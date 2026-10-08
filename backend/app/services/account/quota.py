@@ -1,4 +1,4 @@
-"""1명당 하루 LLM 토큰 한도 (docs/specs/token-quota.md, 10-02).
+"""1명당 하루 LLM 토큰 한도 (docs/specs/token-quota.md).
 
 하는 일
 - LLM을 한 번 부를 때마다 쓴 토큰(입력+출력)을 그 사람의 오늘 사용량에 더한다 (llm.chat이 add()를 부른다)
@@ -6,7 +6,7 @@
 - 요청을 처리하는 도중에 한도를 넘으면 그 요청은 끝까지 답한다. 다음 요청부터 막는다 (대화가 중간에 끊기지 않게)
 
 사람 구분: 로그인했으면 user_id, 아니면 session_id. 하루는 한국 시각 자정에 바뀐다.
-운영자는 막지 않는다 (10-02 결정). 사용량은 똑같이 쌓아 두되 확인에서 뺀다. 운영자 판단은 로그인 이메일로 한다.
+운영자는 막지 않는다. 사용량은 똑같이 쌓아 두되 확인에서 뺀다. 운영자 판단은 로그인 이메일로 한다.
 한도는 환경변수 DAILY_TOKENS_PER_USER. 비어 있거나 0이면 막지 않는다 (키 없는 테스트·채점 환경).
 저장: DATABASE_URL이 있으면 token_usage 표(016), 없으면 이 프로세스 메모리. 메모리는 서버를 다시 켜면 0으로 돌아간다.
 """
@@ -51,7 +51,7 @@ def owner_key(session_id: str | None, user_id: str | None) -> str | None:
 
 
 def limit() -> int:
-    """오늘 한도(토큰). 0이면 막지 않는다. 재생 모드도 0이다 (10-06 점검: 채점자가 키 없이 데모를 여러 번 돌리는데
+    """오늘 한도(토큰). 0이면 막지 않는다. 재생 모드도 0이다 (점검: 채점자가 키 없이 데모를 여러 번 돌리는데
     /api/agent 한 번이 약 1만 토큰이라 기본 한도 10만이면 열 번 남짓에 429가 난다)."""
     from backend.app.clients.replay import replay_enabled  # 재생 모드 판단은 한 곳에만 둔다
 
@@ -160,7 +160,7 @@ def ensure_allowed(session_id: str | None, user_id: str | None) -> None:
 
 
 def forget_user(conn, user_id: str) -> None:
-    """탈퇴할 때 그 사용자의 사용량 줄을 지운다 (services/account/account.py withdraw, 10-06 점검).
+    """탈퇴할 때 그 사용자의 사용량 줄을 지운다 (services/account/account.py withdraw).
     가명 ID라 위험은 작지만 탈퇴하면 그 사람 몫 기록을 남기지 않는다는 원칙을 따른다. 메모리 사용량도 같이 비운다."""
     owner = owner_key(None, user_id)
     conn.execute("DELETE FROM token_usage WHERE owner = %s", [owner])

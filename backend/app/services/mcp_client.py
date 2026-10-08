@@ -1,4 +1,4 @@
-"""서비스가 MCP 도구를 MCP 프로토콜로 부르는 곳 (10-02, D9 "서비스에서 MCP 도구가 실제로 호출되는지 확인").
+"""서비스가 MCP 도구를 MCP 프로토콜로 부르는 곳 (D9 "서비스에서 MCP 도구가 실제로 호출되는지 확인").
 
 전에는 routers/agent.py 등이 mcp_server.tools의 함수를 파이썬으로 바로 불러서, /mcp는 외부 클라이언트만 썼다.
 가이드 v4 배포 구조(/api/agent → /mcp)대로 서비스도 /mcp를 거치게 바꿨다.
@@ -11,7 +11,7 @@
 
 아래 함수 4개는 도구와 이름·인자가 같다. 부르는 쪽은 import 경로만 바꾸면 되고, 테스트가 바꿔치기하던 이름도 그대로다.
 돌려주는 값도 도구가 돌려준 dict 그대로다. 도구는 결과를 JSON 모드로 만들어서(model_dump(mode="json"))
-MCP 텍스트를 json.loads로 되돌리면 직접 부른 값과 같다 (10-02 확인).
+MCP 텍스트를 json.loads로 되돌리면 직접 부른 값과 같다.
 
 호출마다 Langfuse에 tool 관측 하나를 남긴다 (SDD 5.11, call_tool). 키가 없으면 아무것도 안 한다.
 """
@@ -50,7 +50,7 @@ def _leaves(exc: BaseException):
 
 
 def _transport_failed(exc: BaseException) -> dict:
-    """통로 예외를 오류 dict로 바꾼다 (10-02 점검).
+    """통로 예외를 오류 dict로 바꾼다.
 
     인증 실패(401·403)는 다시 불러도 같은 결과라 retryable=False, 코드 unauthorized로 따로 낸다.
     전에는 ExceptionGroup 하나로 뭉쳐 mcp_failed·retryable=True가 되어, 토큰 설정 문제가 일시 장애처럼 보였다.
@@ -94,7 +94,7 @@ async def _call(name: str, arguments: dict) -> dict:
     if result.isError:  # 도구가 예외를 던졌을 때. 도구는 실패를 {error}로 돌려주게 돼 있어 보통은 없다
         # 입력 스키마 검사 실패(위도 999 등)도 여기로 온다. FastMCP(mcp 1.30)는 이를 별도 코드 없이
         # "... validation error(s) for <도구>Arguments" 문장으로만 알려 준다. 같은 입력으로 다시 불러도
-        # 실패하므로 도구의 입력 오류와 같은 bad_input·retryable=False로 낸다 (port_schedule.py와 같은 코드, 10-02 점검)
+        # 실패하므로 도구의 입력 오류와 같은 bad_input·retryable=False로 낸다 (port_schedule.py와 같은 코드)
         if "validation error" in text:
             return _failed(text[:200], code="bad_input", retryable=False)
         return _failed(text[:200])
@@ -118,7 +118,7 @@ def _run(coro):
 
     서비스 코드는 동기 함수이고 FastAPI 스레드풀에서 돈다. 그 스레드에는 이벤트 루프가 없어 asyncio.run으로 돌린다.
     이미 루프가 도는 곳에서는 asyncio.run이 RuntimeError를 낸다. 평가 실행기의 Langfuse run_experiment가 그렇게
-    문항을 돌려 도구가 전부 mcp_failed였다 (10-02). 그때는 새 스레드에서 따로 루프를 만들어 돌리고 끝날 때까지 기다린다.
+    문항을 돌려 도구가 전부 mcp_failed였다. 그때는 새 스레드에서 따로 루프를 만들어 돌리고 끝날 때까지 기다린다.
     """
     try:
         asyncio.get_running_loop()
@@ -164,7 +164,7 @@ async def _list_tools():
 
 
 def read_only_tools() -> list[dict]:
-    """LLM에게 줄 도구 목록 (10-02, D9 B안: 후속 질문에서 LLM이 도구를 직접 고른다).
+    """LLM에게 줄 도구 목록 (D9 B안: 후속 질문에서 LLM이 도구를 직접 고른다).
 
     MCP tools/list로 받아 OpenAI tool 형식으로 바꾼다. 이름·설명·입력 스키마는 MCP 서버가 준 그대로다.
     읽기 전용 표시(readOnlyHint=True)가 있는 도구만 넘긴다. 부작용 있는 도구는 LLM이 아예 볼 수 없다

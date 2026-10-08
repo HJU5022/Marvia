@@ -1,4 +1,4 @@
-"""마르비아가 답하지 않는 부분의 다음 행선지(안내처)를 코드가 붙인다 (docs/specs/referral-guide.md, 10-06).
+"""마르비아가 답하지 않는 부분의 다음 행선지(안내처)를 코드가 붙인다 (docs/specs/referral-guide.md).
 
 두 군데에 쓴다.
   1. 판정 응답: 켜진 신호마다 누구에게 무엇을 물을지 한 줄을 할 일(actions) 끝에 붙인다 (signal_lines)

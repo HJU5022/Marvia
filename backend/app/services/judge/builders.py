@@ -95,7 +95,7 @@ def _judged(out, signal_set, request: AgentRequest, customs: CustomsRecord, coll
 
 def _llm_gave_up(signal_set, margin: int | None, table: str, gray: bool, customs: CustomsRecord,
                  collected: dict) -> AgentResponse:
-    """판정 LLM이 끝내 실패했을 때의 응답 (09-30 결정). status는 늘 partial이다. 설명 문장을 못 만들었기 때문이다.
+    """판정 LLM이 끝내 실패했을 때의 응답. status는 늘 partial이다. 설명 문장을 못 만들었기 때문이다.
 
     - 표가 확실하면: 등급은 코드 판정 표가 책임지므로 그 등급을 낸다. LLM 문장은 위반했거나 틀린 등급에 맞춰
       쓰였을 수 있어 쓰지 않고 고정 문구를 쓴다. 통관 해설도 없어 비운다 (_customs_info가 None)
@@ -109,14 +109,14 @@ def _llm_gave_up(signal_set, margin: int | None, table: str, gray: bool, customs
         verdict=table,
         decided_by="rule",
         reasons=verdict_table.table_reasons(signal_set, margin) if table != "fine" else [],
-        actions=referrals.signal_lines(signal_set),  # 설명은 못 만들었어도 신호별 확인처는 코드가 붙인다 (10-06)
+        actions=referrals.signal_lines(signal_set),  # 설명은 못 만들었어도 신호별 확인처는 코드가 붙인다
         answer=TABLE_FALLBACK.format(label=VERDICT_LABEL[table]),
         customs=_customs_info(customs, None),
         **collected,
     )
 
 def _no_position(position: dict | None, request: AgentRequest, collected: dict) -> AgentResponse:
-    """쓸 위치가 없을 때 LLM 없이 보류 응답을 만든다 (09-29 결정). 조회한 값(해수부 예정·근거 카드)은 참고로 둔다.
+    """쓸 위치가 없을 때 LLM 없이 보류 응답을 만든다. 조회한 값(해수부 예정·근거 카드)은 참고로 둔다.
 
     둘로 나눈다. 해결책이 달라서다.
       - 데이터 자체가 없음(도구는 성공, 관측값 없음 = not_found, 또는 MMSI가 없어 못 부름)
@@ -133,14 +133,14 @@ def _no_position(position: dict | None, request: AgentRequest, collected: dict) 
     return _response(status="partial", answer=_tool_failed_text(POSITION_TOOL_FAILED, error_code), **collected)
 
 def _tool_failed_text(base: str, error_code: str | None = None) -> str:
-    """도구 실패 문구. ShipFinder 하루 한도를 다 쓴 날이면 "잠시 뒤 다시"를 "내일 다시"로 바꾼다 (10-06 점검).
+    """도구 실패 문구. ShipFinder 하루 한도를 다 쓴 날이면 "잠시 뒤 다시"를 "내일 다시"로 바꾼다.
     도구 응답의 오류 코드가 quota_exhausted이거나, 같은 프로세스가 오늘 38을 받았으면 한도 소진으로 본다."""
     if error_code == "quota_exhausted" or shipfinder_client.quota_blocked():
         return base.replace(" 잠시 뒤 다시 조회해 주세요.", "") + QUOTA_EXHAUSTED_TAIL
     return base
 
 def _no_eta(signal_set, collected: dict) -> AgentResponse:
-    """판매일은 있는데 믿을 도착일이 없어 여유 일수를 못 셀 때 (09-29 결정 D6). LLM 없이 보류한다.
+    """판매일은 있는데 믿을 도착일이 없어 여유 일수를 못 셀 때. LLM 없이 보류한다.
 
     남은 거리 ÷ 현재 속도로 코드가 계산한 대략 도착(calc_eta)이 있으면 "참고용"이라고 밝혀 같이 보여 준다.
     판정 근거로는 쓰지 않는다. 속도가 바뀌거나 다른 항구에 들르면 크게 달라지기 때문이다.
@@ -153,7 +153,7 @@ def _no_eta(signal_set, collected: dict) -> AgentResponse:
     return _response(status="insufficient", missing_inputs=["forwarder_eta"], answer=answer, **collected)
 
 def _released(customs: CustomsRecord) -> AgentResponse:
-    """반출이 끝난 화물의 응답. 판정은 규칙으로 fine이고 LLM은 부르지 않는다 (09-28 결정).
+    """반출이 끝난 화물의 응답. 판정은 규칙으로 fine이고 LLM은 부르지 않는다.
 
     반출 뒤에는 기다릴 입항도 통관도 없어서 "지금 신경 써야 하나?"의 답은 순항이다.
     반출 뒤 배송 일정은 PRD 4절 "창고 수령일 예측"이라 판정하지 않고 운송사로 안내한다.
@@ -174,7 +174,7 @@ def _released(customs: CustomsRecord) -> AgentResponse:
             needs_broker=signals_service.needs_broker(customs.stage_name),
             history=[s.model_dump(mode="json") for s in customs.stage_history],
             **customs.route_fields(),
-            **customs.party_fields(),  # 포워더·선사·컨테이너·품명 (10-06)
+            **customs.party_fields(),  # 포워더·선사·컨테이너·품명
         ),
         berth=BerthInfo(facility=None, shed=customs.shed_name),
         evidence=build_evidence(customs, None, None, None, None, None),
@@ -186,7 +186,7 @@ def _evidence_text(response: AgentResponse) -> str:
 
 def _without_dest(value):
     """도구 결과에서 AIS 목적지 원문(dest)을 뺀다. 아무 배나 쓸 수 있는 글자라 주입 문장이 들어올 수 있다.
-    판정·후속 질문 LLM 입력에서 빼는 것과 같은 기준이다 (SDD 7절, llm.answer_follow_up, 10-01)."""
+    판정·후속 질문 LLM 입력에서 빼는 것과 같은 기준이다 (SDD 7절, llm.answer_follow_up)."""
     if isinstance(value, dict):
         return {k: _without_dest(v) for k, v in value.items() if k != "dest"}
     if isinstance(value, list):
@@ -237,7 +237,7 @@ def _vessel_info(candidates: list[VesselCandidate], mmsi: int | None, call_sign:
                  customs: CustomsRecord, request: AgentRequest) -> VesselInfo | None:
     """확정한 배를 C1 VesselInfo로 만든다 (SDD 3.2, schemas/agent.py VesselInfo). 확정 못 했으면 None.
 
-    10-05 전에는 확정 경로에서 이 칸을 한 번도 채우지 않아 늘 null이었다(mrn_fallback만 채웠다).
+    예전에는 확정 경로에서 이 칸을 한 번도 채우지 않아 늘 null이었다(mrn_fallback만 채웠다).
     값은 후보 목록에서 그 MMSI 줄을 쓰고, 사용자가 직접 고른 배(resolved_mmsi)라 후보 줄이 없으면 세관 선명만 쓴다.
     국적은 스키마 설명대로 UNI-PASS shipNat 우선, 없으면 ShipFinder. 항차는 UNI-PASS vydf, 없으면 사용자 입력.
     """
@@ -285,15 +285,15 @@ def _eta(position: dict | None, schedule: dict | None, signal_set, trusted) -> E
 
 def code_written_explanation(stage_name: str | None) -> bool:
     """통관 설명 문장을 LLM이 아니라 코드가 쓰는 단계인가: 반출신고(_released)와 목록에 없는 단계.
-    평가 실행기(evals/judge.py)가 이 단계들은 LLM 해설 채점에서 뺀다. 코드가 쓴 고정 문장이라 LLM 품질이 아니다 (10-01)."""
+    평가 실행기(evals/judge.py)가 이 단계들은 LLM 해설 채점에서 뺀다. 코드가 쓴 고정 문장이라 LLM 품질이 아니다."""
     if not stage_name:
         return False
     return stage_name == RELEASED_STAGE or not is_listed_stage(stage_name)
 
 def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
-    """단계 이름·코드·이력은 UNI-PASS 값, 관세사 필요 여부는 코드 판단(10-01), 해설 둘은 LLM 값으로 C1 CustomsInfo를 만든다.
+    """단계 이름·코드·이력은 UNI-PASS 값, 관세사 필요 여부는 코드 판단, 해설 둘은 LLM 값으로 C1 CustomsInfo를 만든다.
 
-    목록에 없는 단계는 해설 둘도 코드가 쓴다: 고정 문장 + 다음 단계 null (10-01, UNLISTED_STAGE_EXPLANATION).
+    목록에 없는 단계는 해설 둘도 코드가 쓴다: 고정 문장 + 다음 단계 null (UNLISTED_STAGE_EXPLANATION).
     뜻을 모르는 단계라 LLM 해설이 필요 없어서, LLM이 해설을 못 냈어도 이 경우는 채운다.
     그 밖에 단계 이름이 없거나 LLM이 해설을 안 냈으면 None."""
     if not customs.stage_name:
@@ -312,6 +312,6 @@ def _customs_info(customs: CustomsRecord, explained) -> CustomsInfo | None:
         next_stage=next_stage,
         needs_broker=signals_service.needs_broker(customs.stage_name),
         history=[s.model_dump(mode="json") for s in customs.stage_history],
-        **customs.route_fields(),  # 어디서 어디로 (10-01)
-        **customs.party_fields(),  # 포워더·선사·컨테이너·품명 (10-06)
+        **customs.route_fields(),  # 어디서 어디로
+        **customs.party_fields(),  # 포워더·선사·컨테이너·품명
     )

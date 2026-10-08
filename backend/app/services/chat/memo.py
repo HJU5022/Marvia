@@ -14,7 +14,7 @@ from backend.app.services.chat.patterns import (
 from backend.app.services.chat.texts import MEMO_ANON, MEMO_NONE
 
 def is_save_request(masked: str) -> bool:
-    """이번 문장이 새 사실을 저장해 달라는 부탁인가. 저장 부탁에는 꺼내 보기 답(MEMO_NONE)을 내지 않는다 (10-08 운영 점검)."""
+    """이번 문장이 새 사실을 저장해 달라는 부탁인가. 저장 부탁에는 꺼내 보기 답(MEMO_NONE)을 내지 않는다 (운영 점검)."""
     return bool(SAVE_REQUEST.search(masked)) and not re.search(r"[?？]", masked)
 
 def is_memo_question(masked: str) -> bool:

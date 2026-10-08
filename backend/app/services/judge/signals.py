@@ -4,7 +4,7 @@
 외부 호출이 없는 순수 함수라 같은 입력이면 항상 같은 결과가 나온다 (SDD 5.4).
 
 여기서 판정하는 것은 "사실이 어떤가"까지다. "그래서 괜찮은가"(등급)는 services/judge/verdict.py가
-skills/cargo-verdict/rules.md 판정 표로 정한다 (09-30 D7, 10-01).
+skills/cargo-verdict/rules.md 판정 표로 정한다.
 임계값은 코드에 적지 않고 skills/*/rules.md 프론트매터에서 읽는다 (C6, services/judge/rules.py가 합쳐 읽는다).
 
 unknown과 clear를 구분한다. clear는 확인했고 문제가 없다는 뜻이고,
@@ -21,7 +21,7 @@ from backend.app.schemas.signals import Freshness, Signal, SignalSet
 from backend.app.services.judge.evidence import KST, days_margin
 from backend.app.services.judge.rules import is_listed_stage, rule
 
-# 부산 항구 코드(UN/LOCODE)는 skills/port-busan/rules.md busan_port_code에서 읽는다 (10-01: 코드 상수였다)
+# 부산 항구 코드(UN/LOCODE)는 skills/port-busan/rules.md busan_port_code에서 읽는다 (코드 상수였다)
 # dest_changed 값 가운데 "배의 실제 목적지가 아니라 입력 오류일 수 있다"는 뜻인 둘.
 # 판정 표의 세지 않는 목적지(cargo-verdict/rules.md ignore_dest_values, services/judge/verdict.py)와 평가 베이스라인이 같이 쓴다
 DEST_BROKEN = "항구 코드로 읽을 수 없는 목적지 (깨진 목적지)"
@@ -34,7 +34,7 @@ EARTH_RADIUS_NM = 3440.065
 NAVSTAT_MOORED = (1, 5)
 NAVSTAT_UNDERWAY = 0
 # 항해상태 불일치 속도 기준(navstat_moored_max_kn, navstat_underway_min_kn)과
-# 통관 보류 낱말(customs_hold_words)은 rules.md에서 읽는다 (10-01: 판정 기준은 rules.md 한 곳)
+# 통관 보류 낱말(customs_hold_words)은 rules.md에서 읽는다 (판정 기준은 rules.md 한 곳)
 
 
 def _great_circle_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -78,7 +78,7 @@ def compute(
         sale_due_date: 판매 예정일. 신뢰 ETA가 이 날을 넘기면 sales_date_exceeded
         now: 기준 시각. 테스트에서 고정하려고 받는다
         history: 워커가 6시간마다 모은 같은 배의 위치 이력 [{"at", "lat", "lng", "sog"}]. anchor_wait의
-            정지 지속 시간을 잰다 (09-23 결정 "위치 이력 + 24시간"). 없으면 지속 시간은 unknown
+            정지 지속 시간을 잰다 (결정 "위치 이력 + 24시간"). 없으면 지속 시간은 unknown
         forwarder_eta: 사용자가 되묻기에 답한 포워더 도착 통지서(A/N) 입항 예정일. 신뢰 ETA의 마지막 근거 (trusted_eta)
     """
     now = _as_utc(now) or datetime.now(timezone.utc)
@@ -167,14 +167,14 @@ def _calc_eta(distance: dict | None, now: datetime) -> datetime | None:
 
 def _anchor_wait(position: dict | None, last_time: datetime | None, now: datetime,
                  history: list[dict] | None = None) -> Signal:
-    """부산 반경 안에서 느린 속도로 서 있는지, 서 있다면 얼마나 오래인지 (SDD 5.4, 09-23 결정 "위치 이력 + 24시간").
+    """부산 반경 안에서 느린 속도로 서 있는지, 서 있다면 얼마나 오래인지 (SDD 5.4, 결정 "위치 이력 + 24시간").
 
     지금 위치가 멈춤이 아니면 clear. 멈춤이면 위치 이력(워커 6시간 간격)을 최신부터 거슬러 올라가
     멈춘 점이 이어진 구간의 길이(가장 오래된 멈춘 점 ~ 가장 최근 멈춘 점)를 잰다.
       - 구간이 anchor_wait_hours 이상 → triggered (평가셋 B08: 30시간)
       - 그보다 짧고, 그 앞에 움직이던 점이 있다 → clear. 멈추기 시작한 때를 봤다 (평가셋 B04: 18시간, N03)
       - 그보다 짧고, 이력이 멈춘 채로 시작한다 → unknown. 언제부터 멈췄는지 모른다
-    전에는 이력을 받는 자리가 없어서 멈춰 있으면 늘 unknown이었고, B08(30시간 정박)을 놓쳤다 (09-29 확인).
+    전에는 이력을 받는 자리가 없어서 멈춰 있으면 늘 unknown이었고, B08(30시간 정박)을 놓쳤다.
     """
     speed_limit = rule("anchor_speed_kn")
     wait_hours = rule("anchor_wait_hours")
@@ -251,7 +251,7 @@ def _dest_changed(position: dict) -> Signal:
 
     둘 다 triggered지만 뜻이 다르다. 다른 항구(예: JPOSA)는 경로 변경 가능성이라 확인이 필요하고,
     깨진 글자는 선원 입력 오류일 수 있어 다른 근거가 정상이면 근거로 쓰지 않는다 (SKILL.md 오류 사례 표).
-    전에는 둘 다 코드 그대로 또는 "비어 있음"으로만 넘겨 LLM이 구분하지 못했다 (평가셋 B03·B09, 09-29 확인).
+    전에는 둘 다 코드 그대로 또는 "비어 있음"으로만 넘겨 LLM이 구분하지 못했다 (평가셋 B03·B09).
     AIS 목적지 원문은 값에 넣지 않는다. 지시문이 섞일 수 있는 자유 입력이라서다 (SDD 7절, 평가셋 주입 문항).
     """
     code = (position.get("destcode") or "").strip().upper()
@@ -296,7 +296,7 @@ def _customs_hold(customs: CustomsRecord | None) -> Signal:
 
 def needs_broker(stage_name: str) -> bool:
     """관세사가 봐야 하는 단계인가. 전에는 LLM이 정했고 프롬프트와 Skill에 조건이 따로 적혀 어긋났다.
-    결정은 코드 한 곳이 한다 (10-01 강사 피드백). LLM은 이 값을 입력으로 받아 설명만 한다.
+    결정은 코드 한 곳이 한다. LLM은 이 값을 입력으로 받아 설명만 한다.
 
     true: customs-stages/rules.md customs_hold_words(검사·보류 등) 낱말이 들어간 단계(customs_hold 신호와 같은 기준),
           또는 같은 파일 customs_stages 목록에 없는 단계
@@ -311,7 +311,7 @@ def _eta_gap(ais_eta: datetime, mof_eta: datetime) -> tuple[float, bool]:
     """AIS ETA와 해수부 입항 예정의 차이(시간)와, 해수부 값이 날짜만인지를 돌려준다.
 
     해수부 예정이 한국 시각 정확히 00:00이면 날짜만 신고하고 시각을 00:00으로 채운 값으로 본다.
-    09-27 부산 입항 신고 838건 실측에서 2~9%가 00:00이었고, 00:00이 다른 정각보다 몰려 있었다.
+    부산 입항 신고 838건 실측에서 2~9%가 00:00이었고, 00:00이 다른 정각보다 몰려 있었다.
     이때는 그날 하루(00:00~24:00)를 범위로 보고, AIS ETA가 범위 밖으로 벗어난 만큼만 차이로 센다.
     00:00을 그대로 시각으로 쓰면 같은 날 오후 도착도 12시간 넘게 어긋난 것으로 잡혀 eta_conflict가 가짜로 켜진다.
     """
@@ -333,7 +333,7 @@ def trusted_eta(position: dict | None, schedule: dict | None, forwarder_eta=None
     AIS 목적지 문자열은 시각이 아니라서 여기엔 없다. 라우터도 이 함수를 불러 days_margin을 계산한다.
     AIS 목적지가 다른 항구면 AIS ETA는 그 항구 도착 시각이라 부산 도착으로 쓰지 않는다 (eta_conflict와 같은 이유, 평가셋 B09).
     마지막 근거는 사용자가 알려 준 포워더 A/N 입항 예정일(날짜만, 한국 날짜 0시로 본다). 도착일을 몰라 되물었으면
-    받은 날짜로 여유 일수를 세야 되묻기가 쓸모 있다 (09-29 결정 D6. 전에는 받고도 쓰지 않았다)
+    받은 날짜로 여유 일수를 세야 되묻기가 쓸모 있다 (결정 D6. 전에는 받고도 쓰지 않았다)
     """
     position = position if position and "error" not in position else None
     schedule = schedule if schedule and "error" not in schedule else None
@@ -353,7 +353,7 @@ def _sales_date(trusted: datetime | None, sale_due_date) -> Signal:
     threshold = "판매 예정일"
     margin_days = days_margin(trusted, sale_due_date)  # 한국 날짜로 센다. 라우터와 같은 함수 (evidence.py)
     if margin_days is None:
-        # 판매일은 선택 입력이다 (09-29 결정). 없으면 이 신호는 판정에 쓰지 않는다 (routers/agent.py _judged)
+        # 판매일은 선택 입력이다. 없으면 이 신호는 판정에 쓰지 않는다 (routers/agent.py _judged)
         missing = SALE_DATE_MISSING if sale_due_date is None else "신뢰 ETA 없음"
         return _signal("sales_date_exceeded", "unknown", missing, threshold, "rule")
 

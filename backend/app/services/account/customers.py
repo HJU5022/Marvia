@@ -27,7 +27,7 @@ class CustomerError(Exception):
 def _record(conn, action: str, target_user_id: str, target_email: str | None, actor_id: str,
             actor_email: str | None, reason: str | None = None) -> None:
     """이력 한 줄. 대상은 가린 이메일로만 남긴다 (탈퇴 뒤에도 누구였는지 알아볼 정도만)."""
-    # 처리한 운영자 이메일도 평문으로 두지 않는다 (013, 10-01). 암호문 + 가린 값
+    # 처리한 운영자 이메일도 평문으로 두지 않는다 (013). 암호문 + 가린 값
     a_enc, a_masked = ops._seal(actor_email)
     conn.execute(
         "INSERT INTO admin_actions (action, target_user_id, target_email_masked, actor_user_id, actor_email_enc, "

@@ -9,7 +9,7 @@ def _same_call_sign(a: str, b: str) -> bool:
 def _same_nationality(customs_nat: str, flag: str) -> bool:
     """세관 국적(두 글자 코드, 예: KR)과 ShipFinder 국적(코드 또는 영어 이름)이 같은 나라인가.
 
-    세관 코드를 ISO 국가 이름으로 바꿔(pycountry) 정확히 같은지만 본다. 09-28 실제 응답의 ShipFinder 국적은
+    세관 코드를 ISO 국가 이름으로 바꿔(pycountry) 정확히 같은지만 본다. 실제 응답의 ShipFinder 국적은
     ISO 이름("Korea, Republic of")과 같은 모양이었다. 글자 포함으로 비교하면 KR과 "Korea"가 안 맞고
     ("kr"이 붙어 있지 않다) NE(니제르)와 "Nigeria"는 맞아 버려서 쓰지 않는다.
     코드를 모르거나 이름이 다르게 오면 다르다고 보고, 부르는 쪽이 되묻는다 (진짜 배를 버리지 않는 쪽으로 실수).
@@ -24,7 +24,7 @@ def _same_nationality(customs_nat: str, flag: str) -> bool:
     return b.lower() in {n.lower() for n in names if n}
 
 def _clearly_other_nationality(customs_nat: str, flag: str) -> bool:
-    """세관 국적과 후보 국적이 확실히 다른 나라인가. 둘 다 나라를 알아볼 수 있을 때만 True (10-05 검토).
+    """세관 국적과 후보 국적이 확실히 다른 나라인가. 둘 다 나라를 알아볼 수 있을 때만 True.
 
     _same_nationality는 모르면 "다르다"로 답한다. 단일 후보에서는 그게 되묻기로 이어져 안전하지만, 여러 후보 중
     배를 빼는 데 쓰면 같은 실수가 진짜 배를 지운다. 그래서 빼는 쪽에는 이 함수를 쓴다: 모르면 빼지 않는다.

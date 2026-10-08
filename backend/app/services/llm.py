@@ -5,7 +5,7 @@
 
 여기서 책임지는 것:
   - 출력 형식 검사 (Pydantic)          ← judge()가 JSON 모양만 본다. 내용 7규칙은 C-7 validate.py
-  - 실패 시 재시도와 폴백, 라우팅       ← 재시도 1회만 있음. 폴백·라우팅·요청당 시간 예산은 TODO (09-23 결정)
+  - 실패 시 재시도와 폴백, 라우팅       ← 재시도 1회만 있음. 폴백·라우팅·요청당 시간 예산은 TODO
   - Langfuse 트레이스 남기기            ← _ask_json()이 호출마다 generation 하나 (observability/langfuse.py, SDD 5.11)
 
 지금 있는 것:
@@ -17,19 +17,19 @@
   write_memory()     조회·대화 뒤 메모장에 줄 단위 명령만 낸다. 적용은 services/account/memory.py가 한다 (docs/specs/memory.md)
 
 모델 자리 (.env, 계약 C8):
-  LLM_MODEL           서비스가 쓰는 모델. 위 네 함수 전부 (09-30 이름 바꿈, 전 MODEL_A)
-  MEMORY_MODEL        기억 뽑기(write_memory)만. 비어 있으면 기억 뽑기를 건너뛴다 (10-02 결정 10, 계획 gpt-4o-mini)
+  LLM_MODEL           서비스가 쓰는 모델. 위 네 함수 전부 (이름 바꿈, 전 MODEL_A)
+  MEMORY_MODEL        기억 뽑기(write_memory)만. 비어 있으면 기억 뽑기를 건너뛴다 (계획 gpt-4o-mini)
   EVAL_COMPARE_MODEL  평가에서 비교할 두 번째 모델. run_eval --config c에서만 LLM_MODEL 자리에 들어간다 (전 MODEL_B)
   EVAL_GRADER_MODEL   평가 채점자. 통관 해설 채점(grade_customs)만. 채점받는 모델과 달라야 한다 (전 JUDGE_MODEL.
                       판정 함수 judge()와 헷갈려서 바꿈)
 
-어디로 보내나 (모델 이름 앞머리로 가른다, 09-28):
+어디로 보내나 (모델 이름 앞머리로 가른다):
   "vertex/"로 시작   Vertex AI (GCP 크레딧). 예: LLM_MODEL=vertex/google/gemini-2.5-flash
                      키 대신 `gcloud auth application-default login` 로그인 정보(ADC)를 쓴다.
                      Cloud Run에서는 서비스 계정에 Vertex AI 사용자 권한이 있어야 한다
                      VERTEX_THINKING_BUDGET=0이면 Gemini가 생각 없이 바로 답한다. 비우면 모델 기본값 (_vertex_thinking)
   그 밖             OpenRouter. 예: LLM_MODEL=openai/gpt-4o-mini
-  개발 중엔 크레딧(vertex/)으로 돌리고, 최종 테스트 때 .env 한 줄만 되돌리려고 두 길을 같이 둔다.
+  개발 중엔 크레딧(vertex/)으로 돌리고, 최종 테스트 때.env 한 줄만 되돌리려고 두 길을 같이 둔다.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ from backend.app.observability.langfuse import end_generation, get_prompt, start
 from backend.app.schemas.agent import AgentResponse, VesselCandidate
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
-from backend.app.services.judge import guard  # 통관 단계명 주입 거르기 (_clean_customs, 10-01)
+from backend.app.services.judge import guard  # 통관 단계명 주입 거르기 (_clean_customs)
 from backend.app.services.llm_config import (
     BASE_URL,
     CUT_FINISH_REASONS,
@@ -118,9 +118,9 @@ logger = logging.getLogger(__name__)
 
 
 def _client() -> OpenAI:
-    # 키는 호출할 때 읽는다. import 시점에 .env가 아직 안 읽혔을 수 있어서 (clients/*.py와 같은 방식).
+    # 키는 호출할 때 읽는다. import 시점에.env가 아직 안 읽혔을 수 있어서 (clients/*.py와 같은 방식).
     # max_retries=0: openai SDK는 기본으로 몰래 2번 재시도한다. 재시도는 아래 chat()이 한 곳에서만 한다.
-    # 키가 없으면 KeyError로 서버가 500을 내는 대신 LLMError로 올린다. 라우터가 판정 없이 partial로 돌려준다 (09-23 결정)
+    # 키가 없으면 KeyError로 서버가 500을 내는 대신 LLMError로 올린다. 라우터가 판정 없이 partial로 돌려준다
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         raise LLMError("OPENROUTER_API_KEY가 없습니다")
@@ -136,7 +136,7 @@ def _vertex_client() -> OpenAI:
     """Vertex AI의 OpenAI 형식 주소로 가는 클라이언트. API 키 자리에 Google 액세스 토큰을 넣는다.
 
     google.auth는 여기서만 import한다. OpenRouter만 쓰는 사람은 google-auth가 없어도 서버가 뜬다.
-    로그인 정보가 없거나 토큰을 못 받으면 _client()와 같이 LLMError로 올린다 (09-23 결정, partial 경로).
+    로그인 정보가 없거나 토큰을 못 받으면 _client()와 같이 LLMError로 올린다 (partial 경로).
     """
     global _vertex_creds, _vertex_project
     import google.auth
@@ -160,7 +160,7 @@ def _vertex_client() -> OpenAI:
 
 
 def _create_with_deadline(client: OpenAI, kwargs: dict, extra_body: dict | None, timeout: float | None = None):
-    """요청 하나를 별도 스레드에서 보내고, 최대 TIMEOUT_SEC초만 기다린다 (10-05).
+    """요청 하나를 별도 스레드에서 보내고, 최대 TIMEOUT_SEC초만 기다린다.
 
     왜 SDK timeout만으로 안 되나: httpx timeout은 연결·읽기 구간별 상한이라 "한 번에 이만큼 조용하면" 끊는다.
     OpenRouter는 비스트리밍 요청에서 모델이 생각하는 동안 연결을 살려 두는 신호를 계속 보내서 읽기 상한이 안 걸린다
@@ -200,7 +200,7 @@ def _call_once(kwargs: dict) -> LLMResult:
     else:
         client = _client()
         # require_parameters: 요청에 쓴 기능(구조화 출력, tool)을 지원하는 제공사로만 보낸다.
-        # OpenRouter의 모델 단위 "지원" 표시는 제공사 합계라, 이게 없으면 미지원 제공사로 조용히 넘어갈 수 있다 (09-23 조사).
+        # OpenRouter의 모델 단위 "지원" 표시는 제공사 합계라, 이게 없으면 미지원 제공사로 조용히 넘어갈 수 있다.
         extra_body = {"provider": {"require_parameters": True}}
 
     start = time.monotonic()
@@ -219,7 +219,7 @@ def _call_once(kwargs: dict) -> LLMResult:
                        latency_ms=int((time.monotonic() - start) * 1000), kind="connection") from e
     latency_ms = int((time.monotonic() - start) * 1000)
 
-    # OpenRouter는 제공사가 실패하면 HTTP 200 안에 choices 없이 error만 담아 보낼 때가 있다 (09-23 스모크 테스트).
+    # OpenRouter는 제공사가 실패하면 HTTP 200 안에 choices 없이 error만 담아 보낼 때가 있다 (스모크 테스트).
     # 그대로 두면 choices[0]에서 TypeError가 나서 원인이 가려지므로, 에러 내용과 코드를 그대로 올린다.
     if not resp.choices:
         error = (resp.model_extra or {}).get("error") or {}
@@ -227,19 +227,19 @@ def _call_once(kwargs: dict) -> LLMResult:
                        kind="no_choices")
 
     # Gemini(Vertex)는 생각(reasoning) 토큰으로 한도를 다 쓰면 message 없이 finish_reason=length만 준다
-    # (09-29 실패 훈련 judge_truncated). 그대로 읽으면 AttributeError로 죽고, 라우터는 LLMError만 받으니 500이 났다.
+    # (실패 훈련 judge_truncated). 그대로 읽으면 AttributeError로 죽고, 라우터는 LLMError만 받으니 500이 났다.
     # 빈 답으로 받으면 _ask_json이 finish_reason을 보고 truncated로 올리고, 라우터가 재시도·failed로 처리한다
     msg = resp.choices[0].message or SimpleNamespace(content=None, tool_calls=None)
-    # id: 도구 결과를 돌려줄 때 어느 호출의 결과인지 짝짓는 값 (role=tool 메시지의 tool_call_id, 10-02 후속 질문 도구)
-    # extra_content: Vertex의 Gemini 3.x가 도구 호출마다 붙여 주는 thought_signature({"google": {"thought_signature": ...}}).
-    # 도구 결과를 돌려줄 때 그대로 되돌려 보내야 한다. 없으면 HTTP 400 "missing a thought_signature" (10-08 실험 첫 실행에서 확인).
+    # id: 도구 결과를 돌려줄 때 어느 호출의 결과인지 짝짓는 값 (role=tool 메시지의 tool_call_id, 후속 질문 도구)
+    # extra_content: Vertex의 Gemini 3.x가 도구 호출마다 붙여 주는 thought_signature({"google": {"thought_signature":...}}).
+    # 도구 결과를 돌려줄 때 그대로 되돌려 보내야 한다. 없으면 HTTP 400 "missing a thought_signature" (실험 첫 실행에서 확인).
     # SDK 타입에는 없는 칸이라 model_extra에서 읽는다. 없는 제공사(OpenRouter 등)는 None이고 요청에 넣지 않는다
     calls = [{"id": c.id, "name": c.function.name, "arguments": c.function.arguments,
               "extra_content": (getattr(c, "model_extra", None) or {}).get("extra_content")} for c in (msg.tool_calls or [])]
     usage = resp.usage
     completion_tokens = usage.completion_tokens if usage else None
     # Vertex는 생각(reasoning) 토큰을 completion_tokens에 넣지 않고 completion_tokens_details에 따로 준다
-    # (09-28 curl: prompt 11 + completion 1 + reasoning 33 = total 45). 요금은 생각 토큰도 출력으로 받으므로
+    # (curl: prompt 11 + completion 1 + reasoning 33 = total 45). 요금은 생각 토큰도 출력으로 받으므로
     # 더해 둔다. 안 더하면 Langfuse가 모델 가격표로 계산한 비용이 실제보다 낮게 나온다.
     # OpenRouter는 OpenAI 방식대로 이미 포함해서 주므로 더하지 않는다
     if is_vertex and completion_tokens is not None:
@@ -254,7 +254,7 @@ def _call_once(kwargs: dict) -> LLMResult:
         prompt_tokens=usage.prompt_tokens if usage else None,
         completion_tokens=completion_tokens,  # 생각 토큰 포함 (위 주석)
         cached_tokens=getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None) if usage else None,
-        # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서, 09-28 확인)
+        # OpenRouter 전용 필드라 SDK 타입에는 없다. 요청 옵션 없이 매 응답에 들어온다 (OpenRouter Usage Accounting 문서)
         cost=getattr(usage, "cost", None) if usage else None,
         latency_ms=latency_ms,
         finish_reason=getattr(resp.choices[0], "finish_reason", None),
@@ -274,13 +274,13 @@ def chat(
     """OpenRouter에 묻고 답을 돌려준다. 429·502·503이면 잠깐 쉬고 한 번 더 묻는다. 출력 검증은 아직 안 한다.
 
     Args:
-        messages: [{"role": "system"|"user"|..., "content": ...}]
+        messages: [{"role": "system"|"user"|..., "content":...}]
         model: 생략하면 LLM_MODEL
         response_format: 구조화 출력. {"type": "json_schema", "json_schema": {...}}
         tools: tool 정의 목록 (OpenAI 형식)
         tool_choice: "none"이면 도구를 주되 부르지 말고 답하라는 뜻. 도구 호출 상한에 닿았을 때 쓴다 (_ask_json)
         max_tokens: 출력 상한
-        timeout: 이 호출만의 전체 시간 상한(초). 없으면 TIMEOUT_SEC (기억 뽑기가 10초로 줄여 쓴다, 10-08 정운 실사용 76)
+        timeout: 이 호출만의 전체 시간 상한(초). 없으면 TIMEOUT_SEC (기억 뽑기가 10초로 줄여 쓴다)
 
     Raises:
         LLMError: 재시도해도 안 되거나, 다시 불러도 소용없는 실패(400·401 등)
@@ -318,18 +318,18 @@ def chat(
 
 # ── 2층 판정 judge() ─────────────────────────────────────────────
 # SDD 4.1 7단계: 신호·통관·여유 일수를 받아 verdict·reasons·conflicts·actions·answer를 받는다.
-# 자료는 코드가 미리 다 모아서 준다. LLM이 도구를 부르지 않는다 (09-27 결정, SDD 4.1 방식).
+# 자료는 코드가 미리 다 모아서 준다. LLM이 도구를 부르지 않는다 (SDD 4.1 방식).
 
 SKILL_DIR = Path(__file__).resolve().parents[3] / "skills"  # 레포 루트의 skills/. Dockerfile도 같은 자리에 복사한다
 
 
-# 호출마다 넣을 Skill 폴더 (09-30 결정). 전에는 모든 호출에 Skill 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
+# 호출마다 넣을 Skill 폴더. 전에는 모든 호출에 Skill 전부(약 6,600자, 판정 입력의 약 70%)를 넣었다.
 # 각 호출이 받는 자료를 기준으로, 그 자료를 읽는 데 필요한 Skill만 넣는다. 넣는 Skill은 여전히 통째로다 (RAG 아님)
-# 폴더 안의 *.md를 모두 넣는다: SKILL.md(도메인 지식·설명법)와 rules.md(코드가 읽는 재료와 그 뜻) (10-01 Skill 구조)
+# 폴더 안의 *.md를 모두 넣는다: SKILL.md(도메인 지식·설명법)와 rules.md(코드가 읽는 재료와 그 뜻) (Skill 구조)
 #   ais-reliability  AIS 값 읽는 법(오류 사례, 출처 우선순위), 신호 7종 기준
 #   customs-stages   통관 단계 목록(rules.md)과 해설법
 #   port-busan       부두 이름 뜻, 하역 장소 문장, 부산 기준값
-#   cargo-verdict    등급 판정 표(rules.md), 등급 뜻·결과 설명법·되묻기와 실패 결과 설명법 (10-01 신설)
+#   cargo-verdict    등급 판정 표(rules.md), 등급 뜻·결과 설명법·되묻기와 실패 결과 설명법 (신설)
 #   import-basics    수입 실무 기초(B/L 번호 찾는 곳, 포워더 확인, A/N 같은 낱말). 웹 검색을 없애고 고정 문서로 옮겼다 (docs/adr/0020).
 #                    채팅 답과 후속 질문에만 넣는다. 판정(JUDGE)·후보 판단(PICK)·채점(GRADE)에는 넣지 않아 판정 입력이 그대로다
 AIS, CUSTOMS, PORT, VERDICT = "ais-reliability", "customs-stages", "port-busan", "cargo-verdict"
@@ -342,14 +342,14 @@ GRADE_SKILLS = (CUSTOMS,)               # 통관 해설 채점은 통관 단계 
 
 
 def skills_reference(folders: tuple[str, ...] = ALL_SKILLS, prompt_name: str | None = None) -> str:
-    """검증 V9·V10(validate.py)이 "답에 써도 되는 낱말"의 출처로 쓰는 원문: LLM이 받은 Skill 문서와 지시문 (10-01).
+    """검증 V9·V10(validate.py)이 "답에 써도 되는 낱말"의 출처로 쓰는 원문: LLM이 받은 Skill 문서와 지시문.
     지시문 낱말을 넣는 이유: gpt-4o-mini가 판정 지시문 첫 줄의 "cargo"를 한국어 답에 섞어 판정 출력 228개 중 19개가
     V9에 걸렸다. 지시문에 있는 낱말은 주입이 끼워 넣은 표식이 아니다."""
     return _skills_text(folders) + ("\n\n" + get_prompt(prompt_name).text if prompt_name else "")
 
 
 def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
-    """고른 Skill 폴더의 .md를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
+    """고른 Skill 폴더의.md를 파일 이름과 함께 이어 붙인다. RAG 없이 통째로 넣는다 (CLAUDE.md)."""
     parts = []
     for path in sorted(p for folder in folders for p in (SKILL_DIR / folder).rglob("*.md")):
         # Windows 문제: relative_to()를 그대로 문자열로 쓰면 Windows에서 "ais-reliability\SKILL.md"처럼 역슬래시가 된다.
@@ -367,7 +367,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     """여러 함수가 같이 쓰는 한 번의 문답. 지시문(Langfuse) + skills 문서를 system에, 자료를 user에 넣고
     구조화 출력으로 받은 JSON을 output_model로 검사한다.
     skills는 넣을 Skill 폴더다 (JUDGE_SKILLS 등). 빈 튜플이면 넣지 않는다: 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용.
-    tools·run_tool: LLM이 직접 부를 도구 목록(OpenAI 형식)과, 부른 도구를 실제로 실행하는 함수 (10-02, 후속 질문만).
+    tools·run_tool: LLM이 직접 부를 도구 목록(OpenAI 형식)과, 부른 도구를 실제로 실행하는 함수 (후속 질문만).
     run_tool(이름, 인자)는 도구 결과 dict를 돌려준다. 부른 기록은 LLMAnswer.tool_calls에 담는다.
     context: 로그인 사용자의 기억 블록(<user_cargo>·<user_memory>, services/account/memory.compose_blocks). 판정·후속 질문만 쓴다.
     순서는 지시문 + Skill(system, 고정) → 기억 블록 → 이번 자료 (docs/specs/memory.md 읽기 흐름 2). 고정된 앞부분이
@@ -389,18 +389,18 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         # 검증 위반을 붙여 다시 묻는 경우 (C-7). 코드가 쓴 지시라 자료(user_content)와 섞지 않고 따로 보낸다
         messages.append({"role": "user", "content": f"Your previous answer broke these rules. Answer again in the same JSON format and fix them:\n{feedback}"})
     # 트레이스 입력은 코드가 모은 자료(user_content)만. 지시문·skills 전문은 길고 매번 같아서 빼고 prompt_version으로 가린다
-    # 기억 블록은 가리지 않고 그대로 남긴다 (10-02 결정 8: 운영자가 보는 기록. DB 줄은 탈퇴·삭제 때 지운다)
+    # 기억 블록은 가리지 않고 그대로 남긴다 (결정 8: 운영자가 보는 기록. DB 줄은 탈퇴·삭제 때 지운다)
     generation = start_generation(prompt_name, f"{context}\n\n{user_content}" if context else user_content, prompt.source)
     response_format = {"type": "json_schema", "json_schema": {"name": schema_name, "strict": True, "schema": schema}}
     called: list[dict] = []
     # 이번 생성에서 부른 chat() 결과 전부. 도구 고리는 chat()을 여러 번 부르는데 기록에 마지막 한 번만 남아
-    # Langfuse 토큰·비용이 실제보다 적게 보였다 (10-06 점검). 끝낼 때 _summed로 합쳐 남긴다
+    # Langfuse 토큰·비용이 실제보다 적게 보였다. 끝낼 때 _summed로 합쳐 남긴다
     rounds: list[LLMResult] = []
     try:
         # 도구가 없으면 한 번 묻고 끝난다 (판정·배 고르기 등, 지금까지와 같음: response_format을 붙인 한 번의 호출).
-        # 도구가 있으면(후속 질문·채팅 에이전트, 10-02) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
+        # 도구가 있으면(후속 질문·채팅 에이전트) LLM이 도구를 부르는 동안 결과를 돌려주며 다시 묻는다. MAX_TOOL_ROUNDS번 부른 뒤에는
         # tool_choice="none"으로 더 부르지 말고 답하게 한다. 같은 도구를 끝없이 부르는 것을 막는 상한이다 (가이드 Tool trajectory)
-        # 도구를 고를 기회가 있는 라운드에는 response_format을 붙이지 않는다 (10-05 실측): deepseek-v4-flash(OpenRouter)는
+        # 도구를 고를 기회가 있는 라운드에는 response_format을 붙이지 않는다: deepseek-v4-flash(OpenRouter)는
         # strict json_schema가 같이 오면 도구를 한 번도 안 부르고 JSON만 낸다. 빼면 바로 맞는 도구를 부른다.
         # 대신 도구를 안 부르고 낸 본문을 JSON으로 읽어 보고, 안 읽히면 같은 대화에 response_format + tool_choice="none"으로 한 번 더 묻는다
         for round_no in range(MAX_TOOL_ROUNDS + 1):
@@ -444,19 +444,19 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
         # 앞 라운드에서 이미 쓴 토큰·비용은 남긴다. 한 번도 답을 못 받았으면 None (전과 같음)
         end_generation(generation, _summed(rounds) if rounds else None, prompt.version, error=str(e))
         raise
-    result = _summed(rounds)  # 도구 라운드 합산 (main 10-06 점검)
-    cut_retried = False  # 끊긴 답을 다시 받은 적이 있나. 한 번만 다시 받는다 (10-06)
+    result = _summed(rounds)  # 도구 라운드 합산 (main 점검)
+    cut_retried = False  # 끊긴 답을 다시 받은 적이 있나. 한 번만 다시 받는다
     while True:
         try:
             output = output_model.model_validate_json(result.content or "")
             break
         except ValidationError as e:
             if result.finish_reason in CUT_FINISH_REASONS and not cut_retried:
-                # 10-06 실측: 서류 판독에서 HTTP 200인데 스트림이 JSON 중간(`{"vessel":`)에서 끊기고 finish_reason도 None인 답이
+                # 실측: 서류 판독에서 HTTP 200인데 스트림이 JSON 중간(`{"vessel":`)에서 끊기고 finish_reason도 None인 답이
                 # 두 번 왔다. 정상 종료(stop)나 토큰 한도(length) 신호가 없는 답은 모델이 끝까지 쓰지 못한 것이라, 같은 대화로
                 # 한 번 더 묻는다. chat()은 이 경우를 재시도하지 않으므로(RETRYABLE_CODES는 상태 코드만 본다) 여기서 한다.
                 # length는 다시 물어도 같은 한도에 닿으므로 건드리지 않고, 형식이 틀린 stop 답은 프롬프트 문제라 아래에서 올린다
-                # 10-06 평가 3회 실측: 판정 답 74번 중 4번이 finish_reason="error"·출력 토큰 0으로 JSON 중간에서 끊겼다(제공사 Google).
+                # 평가 3회 실측: 판정 답 74번 중 4번이 finish_reason="error"·출력 토큰 0으로 JSON 중간에서 끊겼다(제공사 Google).
                 # None만 보던 때는 이것이 bad_format(프롬프트 문제)으로 잘못 세져 라우터가 형식 오류 안내를 붙여 다시 물었다
                 cut_retried = True
                 logger.warning("llm %s 답이 끊김(finish_reason %s), %.1f초 뒤 한 번 더 묻는다",
@@ -469,7 +469,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
                 except LLMError as call_error:
                     end_generation(generation, previous, prompt.version, output=previous.content, error=str(call_error))
                     raise
-                # 다시 물은 답도 한 라운드로 더한다. 토큰·비용은 _summed가 모든 라운드를 합친다 (main과 합칠 때 10-06)
+                # 다시 물은 답도 한 라운드로 더한다. 토큰·비용은 _summed가 모든 라운드를 합친다 (main과 합칠 때)
                 rounds.append(again)
                 summed = _summed(rounds)
                 # 끊겨서 다시 물은 것은 Langfuse retry_count에도 센다 (end_generation: attempts - 1). _summed는 라운드 수를 재시도로 세지 않는다
@@ -488,7 +488,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     return LLMAnswer(output=output, llm=result, prompt_version=prompt.version, tool_calls=called)
 
 
-# ── LLM 녹화 답 재생 (09-29 결정) ─────────────────────────────
+# ── LLM 녹화 답 재생 ─────────────────────────────
 # 채점자가 키 없이 데모 3건을 돌리게 하는 장치다 (SDD 6.1, CLAUDE.md "REPLAY_MODE=true면 키 없이").
 # REPLAY_MODE이고 LLM_MODEL이 비어 있을 때만 탄다. LLM_MODEL이 있으면 재생 모드에서도 진짜 LLM을 부른다.
 # 녹화 파일: evals/fixtures/replay/llm/<프롬프트 이름>.json. 실제 모델로 데모 입력을 한 번 돌려 받은 답이다.
@@ -527,7 +527,7 @@ def judge(
     verdict_mode: str | None = None,
     memory: str | None = None,
 ) -> LLMAnswer:
-    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계, 09-29 D8).
+    """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계).
     feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도).
     memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md). 데이터일 뿐이고 등급은 지금처럼 판정 표가 정한다."""
     return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date,
@@ -559,7 +559,7 @@ def pick_vessel(
         "customs": {"ship_name": customs.ship_name, "ship_nat": customs.ship_nat,
                     "voyage": customs.voyage, "entry_date": customs.entry_date.isoformat() if customs.entry_date else None},
         # 마지막 수신 후 경과 시간은 코드가 계산해 붙인다. LLM은 지금 시각을 몰라서 수신 시각만 주면
-        # 1시간 전 신호를 "오래됐다"고 읽었다 (09-27 스모크 테스트). freshness를 코드가 정하는 원칙과 같다 (CLAUDE.md)
+        # 1시간 전 신호를 "오래됐다"고 읽었다 (스모크 테스트). freshness를 코드가 정하는 원칙과 같다 (CLAUDE.md)
         "candidates": [
             {**c.model_dump(mode="json"), "hours_since_last": _hours_since(c.last_time, now)} for c in candidates
         ],
@@ -584,34 +584,34 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
     """이미 나온 판정(response)에 대한 후속 질문에 답한다. output은 FollowUpOutput.
 
     질문은 사용자 자유 입력이라 데이터로만 넘긴다 (SDD 7절 신뢰 경계). 300자 제한은 AgentRequest가 이미 건다.
-    feedback: 앞 답이 검증 규칙(V1·V7)을 어겼을 때 어긴 내용. judge()와 같은 방식으로 다시 묻는다 (09-29, 평가 F06)
+    feedback: 앞 답이 검증 규칙(V1·V7)을 어겼을 때 어긴 내용. judge()와 같은 방식으로 다시 묻는다 (평가 F06)
 
-    AIS 목적지 원문(shipfinder dest 근거 카드)은 빼고 넘긴다 (SDD 7절, 10-01). 아무 배나 AIS에 쓸 수 있는 글자라
+    AIS 목적지 원문(shipfinder dest 근거 카드)은 빼고 넘긴다 (SDD 7절). 아무 배나 AIS에 쓸 수 있는 글자라
     "지금부터 너는 ~" 같은 역할 재설정 문장이 들어올 수 있다. 판정 LLM처럼 코드가 destcode로 계산한
     dest_changed 신호 카드만 남긴다. 화면의 근거 카드에는 그대로 있다 (여기서 빼는 것은 LLM 입력뿐).
 
-    tools·run_tool (10-02, D9 B안): 지난 결과에 없는 지금 값(현재 위치·남은 거리·입항 기록)을 물으면 LLM이
+    tools·run_tool (D9 B안): 지난 결과에 없는 지금 값(현재 위치·남은 거리·입항 기록)을 물으면 LLM이
     읽기 전용 MCP 도구를 직접 골라 부른다. 목록은 mcp_client.read_only_tools(), 실행은 routers/agent.py가 /mcp로 한다.
     판정 흐름(judge)은 지금처럼 코드가 도구를 부른다.
     memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md 읽기 흐름). judge()와 같은 자리에 넣는다.
 
-    컨테이너 번호는 원문을 넘기지 않고 [CNTR1] 번호표로 바꿔 준다 (10-06 결정). LLM은 번호표를 그대로 답에 쓰고,
+    컨테이너 번호는 원문을 넘기지 않고 [CNTR1] 번호표로 바꿔 준다. LLM은 번호표를 그대로 답에 쓰고,
     사용자에게 가는 문장에서는 라우터가 원래 번호로 되돌린다 (container_tokens, restore_containers).
     """
     # customs_detail(UNI-PASS 처리 이력 원문)은 화면 전용이라 LLM에 넘기지 않는다. 중량·관세법인명 등이 들어 있다 (docs/specs/customs-detail.md)
-    # 통관 칸 중 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 원문을 주지 않는다 (10-06 점검). 칸을 빼지 않고 아래에서 [CNTR1]
-    # 번호표로 바꾼다: "컨테이너 번호 뭐야?"에 LLM이 번호표로 답하면 라우터가 화면에서만 원래 번호로 되돌린다 (10-06 정운 결정).
-    # 포워더·선사 이름은 남긴다. "포워더가 어디야" 같은 후속 질문에 답하는 재료다 (10-06 점검)
+    # 통관 칸 중 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 원문을 주지 않는다. 칸을 빼지 않고 아래에서 [CNTR1]
+    # 번호표로 바꾼다: "컨테이너 번호 뭐야?"에 LLM이 번호표로 답하면 라우터가 화면에서만 원래 번호로 되돌린다.
+    # 포워더·선사 이름은 남긴다. "포워더가 어디야" 같은 후속 질문에 답하는 재료다
     result = response.model_dump(mode="json", exclude={"trace_id", "vessel_candidates", "customs_detail"})
     result["evidence"] = [e for e in result.get("evidence") or []
                           if not (e["source"] == "shipfinder" and e["field"] == "dest")]
-    # 컨테이너 번호는 번호표로만 (10-06). customs.container_no는 [CNTR1], [CNTR2]가 되고, 다른 칸(근거 카드 값, 지난 답)에
+    # 컨테이너 번호는 번호표로만. customs.container_no는 [CNTR1], [CNTR2]가 되고, 다른 칸(근거 카드 값, 지난 답)에
     # 같은 번호가 있어도 같은 번호표로 바뀐다. 되돌리는 쪽은 routers/agent.py _follow_up (같은 container_tokens로 다시 만든다)
     tokens = container_tokens(response.customs.container_no if response.customs else None)
     if tokens:
         result = hide_containers(result, tokens)
         question = hide_containers(question, tokens)  # 사용자가 질문에 이 화물의 컨테이너 번호를 직접 써도 번호표로만 간다
-    # 품명(10-06 오후)은 해외 화주가 적하목록에 쓴 글자라 주입 모양이면 뺀다 (chat._cargo_summary와 같은 예방 조치)
+    # 품명은 해외 화주가 적하목록에 쓴 글자라 주입 모양이면 뺀다 (chat._cargo_summary와 같은 예방 조치)
     if result.get("customs") and guard.looks_like_injection(result["customs"].get("goods_name")):
         result["customs"]["goods_name"] = None
     data = {"result": result, "question": question}
@@ -622,7 +622,7 @@ def answer_follow_up(question: str, response: AgentResponse, *, model: str | Non
 
 # ── 서류 칸 뽑기 extract_doc_fields() ────────────────────────────
 # docs/specs/document-extract.md 4단계: OCR 글자에서 6칸을 옮겨 적는다. 판단은 하지 않는다.
-# 10-02 결정 6: B/L 조건 세 칸(원본 B/L·은행 지시식·운임 + 인코텀즈)과 화물 인도 연락처(회사·역할·회사 전화)도 읽는다.
+# B/L 조건 세 칸(원본 B/L·은행 지시식·운임 + 인코텀즈)과 화물 인도 연락처(회사·역할·회사 전화)도 읽는다.
 # 조건은 고르기라 근거 글(*_text)을 글자 그대로 같이 받고, 그 글이 서류에 있는지 코드가 본다 (doc_ocr.check_conditions).
 # B/L 번호는 코드(doc_ocr.take_bl)가 먼저 뽑아 [BL]로 가린 글자만 받는다 (CLAUDE.md).
 # 옮긴 값이 글자에 실제로 있는지는 doc_ocr.check_fields가 검사한다.
@@ -645,7 +645,7 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
 def write_memory(content: str, *, model: str | None = None, timeout: float | None = None) -> LLMAnswer:
     """기억 뽑기. output은 MemoryOpsOutput. content는 services/account/memory.writer_input이 만든 JSON 글자.
 
-    모델은 MEMORY_MODEL(.env). 없으면 LLMError(not_configured)이고 부르는 쪽이 조용히 건너뛴다 (10-02 결정 10).
+    모델은 MEMORY_MODEL(.env). 없으면 LLMError(not_configured)이고 부르는 쪽이 조용히 건너뛴다.
     판단 기준 Skill은 넣지 않는다. 메모장 종류·칸 규칙은 프롬프트에 있고 코드가 다시 검사한다.
     """
     model = model or os.environ.get("MEMORY_MODEL")
@@ -656,7 +656,7 @@ def write_memory(content: str, *, model: str | None = None, timeout: float | Non
 
 
 # ── 대화 제목 make_chat_title() ─────────────────────────────
-# 대화 목록(10-06 결정)의 제목. 첫 사용자 말을 코드가 B/L을 [BL1]로 가린 글만 받는다 (CLAUDE.md, B/L 원본은 LLM에 안 간다).
+# 대화 목록의 제목. 첫 사용자 말을 코드가 B/L을 [BL1]로 가린 글만 받는다 (CLAUDE.md, B/L 원본은 LLM에 안 간다).
 # 결과 검사(한 줄·길이·주입 모양)와 실패 시 대신 쓸 제목은 services/chat/conversations.py가 맡는다.
 
 
@@ -706,9 +706,9 @@ def route_chat(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
                      ChatRouteOutput, model, skills=())
 
 
-# ── 채팅 에이전트 chat_agent() (10-05 결정) ──────────────────────────
+# ── 채팅 에이전트 chat_agent() ──────────────────────────
 # route_chat은 문장을 의도 하나로 나누고 끝났다. 그래서 네 의도에 안 맞는 실무 질문("포워더가 항차 번호를 안 줘")은
-# 전부 고정 안내로 갔고, 한 문장에 조회 둘이 필요한 일("상하이에서 오는 배 중 제일 먼저 오는 배 지금 어디야")도 못 했다 (10-05 실측 대화).
+# 전부 고정 안내로 갔고, 한 문장에 조회 둘이 필요한 일("상하이에서 오는 배 중 제일 먼저 오는 배 지금 어디야")도 못 했다 (실측 대화).
 # chat_agent는 LLM이 도구를 골라 부르고, 결과를 보고 다음 도구를 또 고른다 (_ask_json의 도구 루프, 상한 MAX_TOOL_ROUNDS).
 # 도구 목록과 실행은 services/chat/chat.py가 준다: 화물 조회·화물 질문·입항 선박 검색 + 읽기 전용 MCP 도구.
 # 등급·여유 일수는 지금처럼 코드가 정한다. B/L은 가린 토큰만 온다 (CLAUDE.md).
@@ -722,10 +722,10 @@ def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
                feedback: str | None = None, on_screen: dict | None = None, evidence: str | None = None) -> LLMAnswer:
     """가린 문장과 최근 대화를 받아 도구를 골라 쓰고 답 한 칸을 낸다. output은 ChatAgentOutput.
 
-    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (10-08 정운 실사용 36번). services/chat/chat._masked_screen이 가리고 거른 자료다.
+    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"}. services/chat/chat._masked_screen이 가리고 거른 자료다.
     자료일 뿐이다 (프롬프트 Trust boundary). 없으면 입력 JSON에 칸 자체를 넣지 않아 예전 입력과 같다.
 
-    evidence: 이번 문장에서 앞서 부른 도구가 모은 근거 목록 글 (줄마다 [E1] 같은 id, services/chat/citations.evidence_prompt_block, 10-08 정운 실사용 58번).
+    evidence: 이번 문장에서 앞서 부른 도구가 모은 근거 목록 글 (줄마다 [E1] 같은 id, services/chat/citations.evidence_prompt_block).
     도구 결과 안에도 같은 글이 evidence 칸으로 오지만, 다시 묻는 호출은 앞 도구 결과가 대화에 없어서 입력 자료로 다시 준다. 자료일 뿐이다. 없으면 칸 자체를 넣지 않는다.
 
     history: [{"role": "user"|"assistant", "text": 가린 글}]. 자료일 뿐이다 (프롬프트 Trust boundary).

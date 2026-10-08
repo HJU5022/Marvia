@@ -42,7 +42,7 @@ from backend.app.services.chat.screen import _fmt_time
 from backend.app.services.chat.models import ChatResult
 
 def not_same_twice(reply: str, alternatives: list[str], last: str | None) -> str:
-    """바로 앞 assistant 답과 글자가 같으면 다른 문장으로 바꾼다 (10-07 정운 실사용 6: 같은 되묻기가 세 번 나갔다).
+    """바로 앞 assistant 답과 글자가 같으면 다른 문장으로 바꾼다 (같은 되묻기가 세 번 나갔다).
     alternatives는 차례대로 시도한다. 모두 앞 답과 같으면 마지막 것을 쓴다."""
     if not last or _flat_text(reply) != _flat_text(last):
         return reply
@@ -82,8 +82,8 @@ def _arrival_text(iso: str | None) -> str:
     return f"{t.month}월 {t.day}일 {t:%H:%M}"
 
 def _ship_list_lines(vessels: list[dict]) -> str:
-    """검색 결과 앞쪽 배를 한 척에 한 줄로 ("· 이름 · 10월 8일 08:00 도착 예정 · 직전 기항지"). 건수만 말하면 "어떤 배냐"를 또 물어야 한다 (10-07 정운 실사용 34).
-    10-08 정운 실사용 61번: 한 문단에 다 붙이면 읽기 힘들어 줄로 나눴다. 말풍선이 줄바꿈을 그대로 보인다 (chat.css .bubble).
+    """검색 결과 앞쪽 배를 한 척에 한 줄로 ("· 이름 · 10월 8일 08:00 도착 예정 · 직전 기항지"). 건수만 말하면 "어떤 배냐"를 또 물어야 한다.
+    한 문단에 다 붙이면 읽기 힘들어 줄로 나눴다. 말풍선이 줄바꿈을 그대로 보인다 (chat.css.bubble).
     수입 화물선이 있으면 그 배들을, 없으면 전체에서 SHIP_LIST_SHOWN척까지. 값은 해수부 입항 신고 그대로이고 코드가 쓴다 (LLM 문장 아님).
     vessels는 _vessel_rows가 이미 입항 예정 시각순으로 정렬한 목록이다. 비면 빈 글자."""
     picked = [v for v in vessels if v["is_cargo"]] or vessels
@@ -102,7 +102,7 @@ def _ship_list_lines(vessels: list[dict]) -> str:
 def _period_text(days: int) -> str:
     """기간을 사람 말로: 14일은 "2주", 그 밖에는 "N일"."""
     if days == 1:
-        return "오늘부터 1일"  # "1일 안에"만 쓰면 내일 하루만 보여 주는 것으로 읽힌다 (10-08 E2E). 오늘부터 하루 안이라고 밝힌다
+        return "오늘부터 1일"  # "1일 안에"만 쓰면 내일 하루만 보여 주는 것으로 읽힌다. 오늘부터 하루 안이라고 밝힌다
     return f"{days // 7}주" if days % 7 == 0 else f"{days}일"
 
 # 통관 시기 질문 낱말. 꼬리표는 없어졌지만 화면에 화물이 있을 때 ask_cargo로 다시 묻는 판단(CLEARANCE_HINT)이 쓴다
@@ -115,7 +115,7 @@ def is_action_request(masked: str) -> bool:
     return bool(ACTION_ENDING.search(masked) and any(w in masked for w in ACTION_WORDS)) or bool(WATCH_REQUEST.search(masked))
 
 def lookup_fallback(calls: list[dict]) -> str | None:
-    """읽기 전용 MCP 도구가 성공했는데 LLM 문장을 쓸 수 없을 때, 결과 값을 코드가 그대로 문장으로 옮긴다 (10-07 실사용 35·52).
+    """읽기 전용 MCP 도구가 성공했는데 LLM 문장을 쓸 수 없을 때, 결과 값을 코드가 그대로 문장으로 옮긴다.
     도구별 결과 모양은 mcp_server/schemas.py (C4). 모르는 도구나 비어 있는 결과는 건너뛴다. 쓸 것이 하나도 없으면 None."""
     lines = []
     for c in calls:
@@ -171,8 +171,8 @@ def row_need(agent: AgentResponse) -> tuple[str, str] | None:
 
 def _multi_table(found: list[ChatResult]) -> tuple[list[str], list[dict], ChatResult]:
     """B/L 2~3개 조회 결과로 (판정 못 낸 줄마다의 안내 문장, 말풍선 표 줄, 문맥이 될 결과)를 만든다.
-    에이전트(_agent_turn)와 전 방식(_classic_cargo)이 같이 쓴다 (10-06 점검: 전 방식은 첫 B/L만 보고 나머지를 말없이 버렸다)."""
-    # 판정을 못 낸 줄마다 무엇이 필요한지 코드가 한 문장씩 쓴다 (10-06 정운 화면)
+    에이전트(_agent_turn)와 전 방식(_classic_cargo)이 같이 쓴다 (점검: 전 방식은 첫 B/L만 보고 나머지를 말없이 버렸다)."""
+    # 판정을 못 낸 줄마다 무엇이 필요한지 코드가 한 문장씩 쓴다
     needs = [(r, row_need(r.agent)) for r in found]
     lines = [need[1].format(bl=r.request.bl_no) for r, need in needs if need]
     rows = [{"bl_no": r.request.bl_no, "status": r.agent.status, "verdict": r.agent.verdict,
@@ -180,14 +180,14 @@ def _multi_table(found: list[ChatResult]) -> tuple[list[str], list[dict], ChatRe
              "eta": r.agent.eta.trusted_eta if r.agent.eta else None, "days_margin": r.agent.days_margin,
              "sale_due_date": r.request.sale_due_date, "note": need[0] if need else None,
              "agent": r.agent, "request": r.request} for r, need in needs]
-    # 문맥(다음 문장의 "이 화물")과 아래 결과 칸은 같은 이름 되묻기가 필요한 줄이 먼저고, 없으면 첫 B/L (10-06 정운 화면:
+    # 문맥(다음 문장의 "이 화물")과 아래 결과 칸은 같은 이름 되묻기가 필요한 줄이 먼저고, 없으면 첫 B/L (화면:
     # 되묻기 줄이 문맥이 아니면 사용자가 "항차 V123"이라고 답해도 엉뚱한 화물에 붙는다). 말풍선 미니 지도는 만들지 않는다: 결과 칸 지도가 대신 보여 준다
     chosen = next((r for r, need in needs if need and r.agent.vessel_candidates), found[0])
     return lines, rows, chosen
 
 def _repeats_reply(text: str, replies: list[str]) -> bool:
     """LLM 문장이 화물 답에 이미 있는 문장을 되풀이하는가. 같은 되묻기가 두 번 나가던 것을 막는다.
-    공백을 정리한 뒤 문장 단위로 비교한다. 짧은 문장은 우연히 겹칠 수 있어 12자 이상만 본다 (10-05 버그 찾기)"""
+    공백을 정리한 뒤 문장 단위로 비교한다. 짧은 문장은 우연히 겹칠 수 있어 12자 이상만 본다 (버그 찾기)"""
     flat = " ".join(" ".join(replies).split())
     sentences = re.split(r"(?<=[.!?。])\s+|\n+", text)
     return any(len(n) >= 12 and n in flat for n in (" ".join(x.split()) for x in sentences))
@@ -213,7 +213,7 @@ def _copies_user_marker(resp: AgentResponse, message: str) -> bool:
 def _safe_reply(reply: str | None, message: str) -> str:
     """other 의도의 LLM 안내 문장을 화면에 내보내도 되는지 본다. 안 되면 고정 안내(OTHER_REPLY).
 
-    이 문장은 검증 없이 화면에 바로 간다. 그래서 후속 답 V9·V10과 같은 기준을 건다 (services/judge/validate.py, 10-01):
+    이 문장은 검증 없이 화면에 바로 간다. 그래서 후속 답 V9·V10과 같은 기준을 건다 (services/judge/validate.py):
     숫자 없음(판정·숫자 없는 짧은 안내, docs/specs/chat-search.md), 정한 것 밖의 영문 낱말 없음,
     사용자 문장에서 옮겨 온 낱말이 안내 문구에 없는 것이면 안 됨, 주입 모양 아님.
     """
@@ -232,12 +232,12 @@ def _is_no_result(r: ChatResult) -> bool:
     return bool(r.agent and r.agent.status == "insufficient" and r.agent.answer == agent_router.NO_CARGO)
 
 def _no_result_text(r: ChatResult, last: str | None) -> str:
-    """"조회 결과 없음" 답이 바로 앞 답과 같은 안내면 다른 문장으로 바꾼다 (10-07 정운 실사용 54). 아니면 reply 그대로.
+    """"조회 결과 없음" 답이 바로 앞 답과 같은 안내면 다른 문장으로 바꾼다. 아니면 reply 그대로.
     같은 조회를 되풀이하면 같은 결과라서, 두 번째부터는 번호 확인과 마스터·하우스 구분 바꾸기를 권한다.
     "지금 쓴 구분"은 요청에 든 값(코드가 아는 값)이고, 권하는 쪽은 그 반대다. 구분을 못 알면 되풀이 방지만 한다."""
     if not _is_no_result(r) or not last or "결과가없어요" not in _flat_text(last):
         return r.reply
-    # 하우스·마스터를 둘 다 본 결과(NO_RESULT_BOTH)면 구분을 바꾸라고 권하지 않는다 (10-08 정운 실사용 75)
+    # 하우스·마스터를 둘 다 본 결과(NO_RESULT_BOTH)면 구분을 바꾸라고 권하지 않는다
     tried_both = NOT_FOUND_BOTH in r.agent.missing_inputs
     base = NO_RESULT_BOTH if tried_both else NO_RESULT_REPLY
     if "다시조회해도" in _flat_text(last):  # 세 번째부터는 번호를 다시 받아 오라고 한다. 같은 문장을 세 번 내지 않는다
