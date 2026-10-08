@@ -9,7 +9,7 @@
 
 새 화물을 더하는 법 (10건 뒤에 10건을 더 쓸 때):
   SPECS 맨 아래에 dict 하나를 더하고 이 파일을 실행한다. 나머지(MMSI·IMO·호출부호·MRN·컨테이너 검사숫자·위치 이력·이력 줄)는 빌더가 채운다.
-  `expect`(기대 등급)와 `signals`(켜져야 할 신호)를 같이 적으면 backend/tests/test_demo_live.py가 코드 판정 표(services/judge/verdict.py)로 맞는지 확인한다.
+  `expect`(기대 등급)와 `signals`(켜져야 할 신호)를 같이 적으면 backend/tests/integration/test_demo_live.py가 코드 판정 표(services/judge/verdict.py)로 맞는지 확인한다.
 
 명세 한 줄의 뜻 (시간은 전부 "지금" 기준 시간 단위. 음수는 과거):
   n          번호. 1부터. MRN 글자와 컨테이너 일련번호의 씨앗이다
@@ -55,7 +55,7 @@ REF_CLOCK = datetime(2026, 10, 6, 12, 0, tzinfo=KST)  # jsonl의 기준 시각. 
 HEAD = ("# 라이브 시연용 모의 화물 10건 (모의값). 평가 문항이 아니다: evals/dataset.jsonl과 모양만 같고 평가 실행기는 읽지 않는다. "
         "B/L(DEMO...)·선박(DEMO ...)·MMSI(440999201~211)·호출부호(DMO..)·컨테이너(DEMU...)·포워더·선사·좌표·시각·판매 예정일은 전부 가공값. "
         "손으로 고치지 말고 scripts/demo/demo_live.py의 SPECS를 고친 뒤 python -m scripts.demo.demo_live로 다시 쓴다. "
-        "만드는 법: python -m scripts.demo.make_demo. 확인: backend/tests/test_demo_live.py")
+        "만드는 법: python -m scripts.demo.make_demo. 확인: backend/tests/integration/test_demo_live.py")
 
 # 적재항 이름 -> (UN/LOCODE, 적출국). 세관 ldprCd·lodCntyCd 칸과 해수부 직전 기항지 이름에 쓴다
 PORTS = {

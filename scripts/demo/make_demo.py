@@ -38,7 +38,7 @@ F04만 배를 바꾼다:
 서류 대조 데모 10건 (10-05 추가, 10-06부터 서버 데모에는 안 쓴다):
   TESTBL41~50. 동명 선박 중 세관 입항일·적재항과 해수부 입항 신고가 맞는 배를 확정하는 기능
   (services/judge/identify.match_by_papers)과 그 경계를 보여 준다. 문항은 evals/fixtures/demo_papers.jsonl
-  (평가셋이 아니다). 기능 확인은 backend/tests/test_demo_papers.py가 build_with_papers로 계속 한다.
+  (평가셋이 아니다). 기능 확인은 backend/tests/integration/test_demo_papers.py가 build_with_papers로 계속 한다.
   서버 데모에 안 넣는 이유: 라이브 시연은 위 10건으로 정했다 (10-06 정운 결정). 이 문항 파일과 테스트는 기능 근거로 남겨 둔다.
 """
 from __future__ import annotations

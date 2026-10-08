@@ -283,7 +283,7 @@ def _langfuse_trace_end() -> None:
 
 def _shipfinder_served_from_cache() -> None:
     """첫 위치 조회는 성공, 두 번째는 빈도 초과(status 29). 두 번째를 캐시가 받아 주며 줄을 남긴다.
-    backend/tests/test_cache.py와 같은 방식이다. 캐시는 새로 만들어 쓰고 끝나면 원래 캐시로 되돌린다."""
+    backend/tests/unit/test_cache.py와 같은 방식이다. 캐시는 새로 만들어 쓰고 끝나면 원래 캐시로 되돌린다."""
     from backend.app.clients.cache import ResponseCache
     from backend.app.clients.shipfinder import ShipFinderClient
 
@@ -301,7 +301,7 @@ def _shipfinder_served_from_cache() -> None:
 
 def _mof_page_cap_hit() -> None:
     """해수부 두 API를 한 페이지 2건, 최대 2페이지로 부르고 매번 꽉 찬 페이지(2건)를 준다.
-    마지막 페이지까지 꽉 차 있으니 뒤를 못 본 것 → page_cap_hit. backend/tests/test_mof.py와 같은 방식이다."""
+    마지막 페이지까지 꽉 차 있으니 뒤를 못 본 것 → page_cap_hit. backend/tests/unit/test_mof.py와 같은 방식이다."""
     from backend.app.clients.mof import MofClient
 
     def client(fixture: str) -> MofClient:
@@ -353,7 +353,7 @@ SCENARIOS = [
 
     # 도구 실패: 평가셋 재생 자료에서 자연히 나온다
     # 09-29 결정: 시간 초과는 평가셋에 있는 예전 위치(캐시)로 대신하고 partial로 판정한다. 그래서 도구 실패
-    # 대신 "캐시로 대체" 줄이 남는다. 캐시도 없는 시간 초과는 backend/tests/test_cache.py가 본다
+    # 대신 "캐시로 대체" 줄이 남는다. 캐시도 없는 시간 초과는 backend/tests/unit/test_cache.py가 본다
     Scenario("tool_timeout_f02", "평가셋 F02 (위치 조회 타임아웃 재생, 캐시 위치로 대체, 규칙 판정기)",
              [("shipfinder:pos", "timeout served_from_cache")],
              False, "평가셋 F02", _rules_case("F02")),
