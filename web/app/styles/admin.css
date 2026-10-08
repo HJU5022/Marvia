@@ -1,6 +1,6 @@
 /* 담당 영역: 운영자 화면 (AdminPage, CustomerActions, MetricsPage). 시안 4-6 · 4-7 · 4-8.
    토큰은 globals.css :root, 이 파일은 globals.css 뒤에 불러와져 같은 선택자를 덮는다.
-   10-06 폴리시: 흰 상자를 줄였다. 숫자·표·목록은 배경 위에 글자 크기와 선으로만 나누고, 상자는 입력 폼과 고객 작업 카드에만 쓴다.
+   폴리시: 흰 상자를 줄였다. 숫자·표·목록은 배경 위에 글자 크기와 선으로만 나누고, 상자는 입력 폼과 고객 작업 카드에만 쓴다.
    색 규칙: 초록·노랑·빨강 신호등은 순항·주의·긴급 전용이라 정지·게이트 통과/실패는 회색·굵은 테두리·모양으로만 가른다.
    파랑은 누를 수 있는 것(버튼·선택 탭)에만 쓴다. 위험한 동작(강제 탈퇴·운영자 해지)은 빨간 아이콘으로 수정류와 구별하고 오른쪽 끝에 둔다. */
 
@@ -272,7 +272,7 @@
   .mx-runs li .mx-gate{grid-column:2;justify-self:start}
 }
 
-/* ---- 엘레강스 정리 (10-07 정운 엘레강스: 아임웹 63번 목록 행 기준) ----
+/* ---- 엘레강스 정리 (아임웹 63번 목록 행 기준) ----
    위 규칙을 덮는다. 굵은 글씨·채운 칩·상자를 걷고 가는 선 + 얇은 글자만 남긴다. 평가 지표(mx-*)는 건드리지 않는다 */
 .adm-heading h1{font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em}
 .adm-heading .eyebrow{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.1em;text-transform:uppercase}

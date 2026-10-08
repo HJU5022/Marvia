@@ -19,18 +19,18 @@ export interface ChatTurn { role: 'user' | 'assistant'; text: string; kind?: Cha
   map?: ChatMap | null;
   /** B/L을 2~3개 물었을 때 조회한 화물 표 (ChatCargoTable). 서버로 되돌려 보내지 않는다 */
   cargos?: ChatCargo[];
-  /** 에이전트가 이 화물을 지켜보자고 제안한 답이면 말풍선 아래에 버튼을 그린다 (WatchOfferAction, 10-06 결정). 서버로 되돌려 보내지 않는다 */
+  /** 에이전트가 이 화물을 지켜보자고 제안한 답이면 말풍선 아래에 버튼을 그린다 (WatchOfferAction). 서버로 되돌려 보내지 않는다 */
   watchOffer?: WatchOffer | null;
-  /** 이 답의 판정 응답과 요청. 되묻기(insufficient)의 선박 후보를 말풍선 아래 칩으로 그리고, 칩을 누르면 같은 요청에 resolved_mmsi만 더해 조회한다 (ChatCandidateChips, 10-08 정운 실사용 37번). 서버로 되돌려 보내지 않는다 */
+  /** 이 답의 판정 응답과 요청. 되묻기(insufficient)의 선박 후보를 말풍선 아래 칩으로 그리고, 칩을 누르면 같은 요청에 resolved_mmsi만 더해 조회한다 (ChatCandidateChips). 서버로 되돌려 보내지 않는다 */
   agent?: AgentResponse | null; request?: AgentRequest | null;
-  /** 답이 오기까지 서버가 알린 단계와 브라우저가 처음 본 시각(ms). 답 아래 "N단계 · M초" 접힌 요약에 쓴다. 이 화면에서 받은 답에만 있고 서버에서 불러온 대화·체험 모드에는 없다 (10-07 정운 엘레강스) */
+  /** 답이 오기까지 서버가 알린 단계와 브라우저가 처음 본 시각(ms). 답 아래 "N단계 · M초" 접힌 요약에 쓴다. 이 화면에서 받은 답에만 있고 서버에서 불러온 대화·체험 모드에는 없다 */
   steps?: {stage: ProgressStage; at: number}[]; tookMs?: number;
-  /** 답 문장 속 [E1] 표시와 그 근거 (10-08 정운 실사용 58번). 글(text)에는 표시가 그대로 있고, 화면(EvidencePopover)이 칩으로 그린다. 서버로 되돌려 보낼 때는 표시를 뗀다 */
+  /** 답 문장 속 [E1] 표시와 그 근거. 글(text)에는 표시가 그대로 있고, 화면(EvidencePopover)이 칩으로 그린다. 서버로 되돌려 보낼 때는 표시를 뗀다 */
   evidence?: EvidenceItem[]; citations?: Citation[];
-  /** 선박 검색 답이면 말풍선에 그릴 표 데이터 (ChatVesselTable, 10-08 정운 실사용 77번). 앞쪽 줄만 남긴다. 서버로 되돌려 보내지 않는다 */
+  /** 선박 검색 답이면 말풍선에 그릴 표 데이터 (ChatVesselTable). 앞쪽 줄만 남긴다. 서버로 되돌려 보내지 않는다 */
   shipList?: ShipList }
 
-/** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 (10-06 결정) */
+/** 접속하자마자 보이는 첫 말풍선 글. 코드가 쓴 문장이고 서버가 준 값만 쓴다. 서버가 reason을 주면 덧붙이고, 없으면 지어내지 않는다 */
 function changesText(changes: WatchChange[]): string {
   const lines = changes.map(c => {
     const base = `지켜보던 화물 ${c.label ?? c.bl_masked}의 판정이 ${verdictLabels[c.from_verdict]}에서 ${verdictLabels[c.to_verdict]} 등급으로 바뀌었어요.`;
@@ -38,9 +38,9 @@ function changesText(changes: WatchChange[]): string {
   });
   return `${lines.join('\n')}\nB/L로 다시 조회하면 이유를 자세히 볼 수 있어요.`;
 }
-/** 화면에 지금 보이는 배들을 서버가 알아들을 모양으로 (10-08 정운 실사용 36번). 화물 카드가 보이면 그 화물의 배와 마지막 위치, 선박 표가 보이면 표의 앞 10척(기본 화면처럼 수입 화물선만).
+/** 화면에 지금 보이는 배들을 서버가 알아들을 모양으로. 화물 카드가 보이면 그 화물의 배와 마지막 위치, 선박 표가 보이면 표의 앞 10척(기본 화면처럼 수입 화물선만).
  * B/L·컨테이너 번호는 담지 않는다. 글자는 서버 상한(routers/chat.py SCREEN_TEXT_MAX 80자, 시각 40자)에 맞춰 자른다. 없으면 null */
-/** 목록에서 사용자가 고른 배 (지도에 보이는 배). 채팅이 "이 배 지켜봐 줘"를 알아듣는 데 쓴다 (10-08 정운 실사용 79) */
+/** 목록에서 사용자가 고른 배 (지도에 보이는 배). 채팅이 "이 배 지켜봐 줘"를 알아듣는 데 쓴다 */
 export interface SelectedArrival { name: string; call_sign: string | null }
 const SCREEN_TEXT = 80, SCREEN_TIME = 40, SCREEN_ROWS = 10;
 function onScreenOf(view: 'cargo' | 'vessels' | 'none', result: AgentResponse | null, vessels: ChatResponse | null, picked: SelectedArrival | null = null): ChatOnScreen | null {
@@ -61,32 +61,32 @@ const presentation = getPresentationData();
 // 실제 모드는 빈 폼으로 시작한다. 세션 ID는 lib/api.ts가 요청 때 브라우저 값으로 채운다
 const emptyRequest: AgentRequest = {bl_no: '', bl_type: 'HOUSE', sale_due_date: null, session_id: ''};
 
-/** 서버에 저장된 대화 한 줄을 말풍선으로. extra에는 그 턴이 처음 왔을 때의 화면용 값이 있어 지도·표·지켜보기 버튼이 같게 다시 그려진다 (10-06 결정) */
+/** 서버에 저장된 대화 한 줄을 말풍선으로. extra에는 그 턴이 처음 왔을 때의 화면용 값이 있어 지도·표·지켜보기 버튼이 같게 다시 그려진다 */
 function toTurn(m: ConversationMessage): ChatTurn {
   const x = m.extra;
   return {role: m.role, text: m.text, kind: x?.kind, map: x?.map ?? null, cargos: x?.cargos ?? [], watchOffer: x?.watch_offer ?? null, ...pickable(x?.agent, x?.request),
     ...(x?.kind === 'vessels' ? shipListField(x.vessels) : {}),
-    // 저장된 턴에 근거가 실려 있으면 되살린다. 없으면(옛 대화) 아무것도 붙이지 않는다 (10-08 정운 실사용 58번)
+    // 저장된 턴에 근거가 실려 있으면 되살린다. 없으면(옛 대화) 아무것도 붙이지 않는다
     ...(x?.evidence_items?.length ? {evidence: x.evidence_items, citations: x.citations ?? []} : {})};
 }
 
-/** 선박 검색 답의 표 데이터. 배가 없으면 아무것도 붙이지 않는다 (10-08 정운 실사용 77번) */
+/** 선박 검색 답의 표 데이터. 배가 없으면 아무것도 붙이지 않는다 */
 function shipListField(v: ChatResponse['vessels'] | undefined): {shipList?: ShipList} { const l = shipListOf(v); return l ? {shipList: l} : {}; }
 
-/** 되묻기 답(insufficient)만 판정 응답과 요청을 턴에 둔다. 다른 답의 큰 응답까지 대화 상태·탭 저장소에 쌓지 않으려는 것이다 (10-08 정운 실사용 37번) */
+/** 되묻기 답(insufficient)만 판정 응답과 요청을 턴에 둔다. 다른 답의 큰 응답까지 대화 상태·탭 저장소에 쌓지 않으려는 것이다 */
 function pickable(agent?: AgentResponse | null, request?: AgentRequest | null): {agent?: AgentResponse; request?: AgentRequest} {
   return agent && request && agent.status === 'insufficient' && agent.vessel_candidates.length ? {agent, request} : {};
 }
 
 /** 로그인하지 않은(또는 대화 목록을 못 쓰는) 탭이 새로고침해도 대화를 이어 가려고 sessionStorage에 두는 값.
- * 탭을 닫으면 사라지고, 주소(URL)에는 대화 글을 넣지 않는다. 저장이 막힌 브라우저에서는 조용히 건너뛴다 (10-06 결정) */
+ * 탭을 닫으면 사라지고, 주소(URL)에는 대화 글을 넣지 않는다. 저장이 막힌 브라우저에서는 조용히 건너뛴다 */
 const CHAT_STATE_KEY = 'marvia-chat-state';
-/** 새 대화의 첫 질문을 보냈지만 서버가 아직 저장했는지 모르는 동안 탭에 적어 두는 표시 (10-08 정운 실사용 80).
+/** 새 대화의 첫 질문을 보냈지만 서버가 아직 저장했는지 모르는 동안 탭에 적어 두는 표시.
  * 답을 기다리다 화면이 새로고침돼도 주소의 ?c=로 그 대화를 찾고, 서버가 저장할 때까지 잠시 다시 시도하려는 것이다 */
 const PENDING_KEY = 'marvia-pending-conv';
 interface PendingConv { id: string; title: string; at: number }
 const PENDING_TTL_MS = 60_000;
-/** 서버가 저장하기를 기다리며 다시 읽는 간격(ms). 합쳐서 약 10초 (10-08 정운 실사용 80) */
+/** 서버가 저장하기를 기다리며 다시 읽는 간격(ms). 합쳐서 약 10초 */
 const OPEN_RETRY_MS = [1000, 1500, 2000, 2500, 3000];
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 function readPending(): PendingConv | null {
@@ -98,7 +98,7 @@ function writePending(p: PendingConv | null) {
 interface SavedChat { session: string; thread: ChatTurn[]; request: AgentRequest; result: AgentResponse | null; view: 'cargo' | 'vessels' | 'none'; vessels: ChatResponse | null }
 
 /** 서류 사진에서 사용자가 확인한 항차·입항 예정일·출항일. 항차·입항일은 되묻기 화면에 미리 채우는 데만 쓴다 (DocumentPanel).
- * departed_on(10-06)은 그 서류의 B/L(bl_no) 조회 때 서버로 보내 내 화물 현황 표 출항 칸에 적게 한다. 판정에는 안 쓰인다 */
+ * departed_on은 그 서류의 B/L(bl_no) 조회 때 서버로 보내 내 화물 현황 표 출항 칸에 적게 한다. 판정에는 안 쓰인다 */
 export interface DocHints { voyage_no: string | null; forwarder_eta: string | null; bl_no: string; departed_on: string | null }
 
 interface AppState {
@@ -111,18 +111,18 @@ interface AppState {
   pendingSince: number | null;
   lookup: (req: AgentRequest) => Promise<boolean>; replay: (id: string) => boolean;
   /** 문장 하나 보내기 (POST /api/chat). 화물 답이면 result를, 선박 검색이면 vessels를 바꾼다.
-   * opts.document(10-08 정운 51번): 서류 확인 직후 같은 렌더에서 setDocHints한 값은 아직 이 함수의 docHints에 없으므로 출항일을 직접 넘긴다. 주면 docHints보다 앞선다 */
+   * opts.document: 서류 확인 직후 같은 렌더에서 setDocHints한 값은 아직 이 함수의 docHints에 없으므로 출항일을 직접 넘긴다. 주면 docHints보다 앞선다 */
   ask: (message: string, opts?: {document?: ChatDocument | null; display?: string}) => Promise<boolean>;
   /** 채팅 표에서 고른 화물로 아래 결과 칸을 바꾼다. 단일 화물 답을 받았을 때와 같은 상태 바꿈이다 (다음 질문의 문맥도 이 화물) */
   showCargo: (agent: AgentResponse, request: AgentRequest) => void;
   thread: ChatTurn[]; vessels: ChatResponse | null;
   /** 아래 결과 칸에 무엇을 보여 줄지. none이면 안내 문장이라 지난 결과를 숨긴다 (지난 화물은 기억만, 다시 보기 버튼으로 돌아온다) */
   view: 'cargo' | 'vessels' | 'none';
-  /** 숨겨 둔 화물 결과를 다시 보인다 (선박 검색 뒤 "내 화물 결과로 돌아가기", 10-02 UI 점검 F4) */
+  /** 숨겨 둔 화물 결과를 다시 보인다 (선박 검색 뒤 "내 화물 결과로 돌아가기", UI 점검 F4) */
   backToCargo: () => void;
-  /** 가장 최근 선박 검색 결과의 전체 표를 다시 연다 (말풍선 "나머지 N척 전체 보기", 10-08 정운 실사용 77번) */
+  /** 가장 최근 선박 검색 결과의 전체 표를 다시 연다 (말풍선 "나머지 N척 전체 보기") */
   showVessels: () => void;
-  /** 선박 목록에서 고른 배. VesselList가 고르거나 해제할 때 setSelectedArrival로 알린다 (null이면 고른 배 없음). 서버로 보내는 on_screen에 selected로 실린다 (10-08 정운 실사용 79) */
+  /** 선박 목록에서 고른 배. VesselList가 고르거나 해제할 때 setSelectedArrival로 알린다 (null이면 고른 배 없음). 서버로 보내는 on_screen에 selected로 실린다 */
   selectedArrival: SelectedArrival | null; setSelectedArrival: (v: SelectedArrival | null) => void;
   /** 결과 칸의 React key. 새 화물 조회일 때만 바뀌고 후속 질문에는 그대로라 지도·펼친 근거가 다시 그려지지 않는다 (F10) */
   cargoKey: string;
@@ -137,9 +137,9 @@ interface AppState {
   docHints: DocHints | null; setDocHints: (h: DocHints | null) => void;
   /** 탈퇴·로그아웃 뒤 이전 사용자의 결과가 화면에 남지 않게 비운다 */
   reset: () => void;
-  /** 지켜보는 중인 화물(정규화한 B/L → 켜짐/꺼짐). WatchToggle과 말풍선 버튼이 같이 쓴다. 값이 없으면 아직 모른다 (10-06 결정) */
+  /** 지켜보는 중인 화물(정규화한 B/L → 켜짐/꺼짐). WatchToggle과 말풍선 버튼이 같이 쓴다. 값이 없으면 아직 모른다 */
   watching: Record<string, boolean>; setWatching: (blNo: string, on: boolean) => void;
-  /** 대화 목록 (10-06 결정). conversationsOn이 false(로그아웃·로그인 기능 꺼짐·서버가 401/503)면 목록을 그리지 않고 탭 sessionStorage로 대화를 이어 간다 */
+  /** 대화 목록. conversationsOn이 false(로그아웃·로그인 기능 꺼짐·서버가 401/503)면 목록을 그리지 않고 탭 sessionStorage로 대화를 이어 간다 */
   conversationsOn: boolean; conversations: ConversationSummary[]; refreshConversations: () => Promise<void>;
   /** 지금 대화의 chat session_id. 열린 대화는 이 값이 목록의 id와 같다 */
   activeId: string;
@@ -186,7 +186,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   // 대화를 열거나 새로 시작할 때마다 올린다. 느리게 도착한 옛 응답(대화 내용, 먼저 말 걸기)이 새 화면을 덮지 않게 비교한다
   const epoch = useRef(0);
   const restored = useRef(false);
-  // 지금 경로와 "보냈지만 저장 확인 전인 새 대화". ask()가 오래 걸리는 사이 사용자가 다른 화면으로 가도 최신 값을 보려고 ref에 둔다 (10-08 정운 실사용 80)
+  // 지금 경로와 "보냈지만 저장 확인 전인 새 대화". ask()가 오래 걸리는 사이 사용자가 다른 화면으로 가도 최신 값을 보려고 ref에 둔다
   const pathRef = useRef(pathname); pathRef.current = pathname;
   const pending = useRef<PendingConv | null>(null);
   const conversationsOn = isLive && authEnabled && !!user && convAvail !== false;
@@ -213,11 +213,11 @@ export function AppProvider({children}:{children:ReactNode}) {
     return () => { alive = false; };
   }, [authReady, user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 다음 접속 때 먼저 말 걸기 (10-06 결정): 지난 접속 뒤 판정이 바뀐 지켜보는 화물이 있으면 대화의 첫 말풍선으로 알린다.
+  // 다음 접속 때 먼저 말 걸기: 지난 접속 뒤 판정이 바뀐 지켜보는 화물이 있으면 대화의 첫 말풍선으로 알린다.
   // 말풍선을 thread에 넣은 뒤에 확인 처리한다(안 보여 준 알림을 지우지 않으려고). 알림은 덤이라 실패하면 조용히 넘어간다 (예전 배너와 같다)
   useEffect(() => {
     if (!isLive || !authEnabled || !authReady || !user) return;
-    // 저장된 대화를 다시 연 주소(?c=)에는 말 걸지 않는다. 새 대화로 들어왔을 때만 보여 주고, 확인 처리도 그때 한다 (10-06 결정)
+    // 저장된 대화를 다시 연 주소(?c=)에는 말 걸지 않는다. 새 대화로 들어왔을 때만 보여 주고, 확인 처리도 그때 한다
     if (new URLSearchParams(window.location.search).get('c')) return;
     let alive = true; const mine = epoch.current;
     void getWatchChanges().then(changes => {
@@ -234,7 +234,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     if (!isLive || !authEnabled || !authReady || !user) { setConversations([]); setConvAvail(null); return; }
     try { window.sessionStorage.removeItem(CHAT_STATE_KEY); } catch { /* 저장소가 막혀 있어도 괜찮다 */ }
     const id = new URLSearchParams(window.location.search).get('c');
-    // 10-08 정운 실사용 80: 보낸 직후 새로고침돼 서버가 아직 저장하기 전이면 404가 날 수 있다. 같은 id의 표시가 있으면 잠시 다시 시도한다
+    // 보낸 직후 새로고침돼 서버가 아직 저장하기 전이면 404가 날 수 있다. 같은 id의 표시가 있으면 잠시 다시 시도한다
     const p = id ? readPending() : null;
     if (id && p && p.id === id) { pending.current = p; setThread([{role: 'user', text: p.title}]); void openConversation(id, true); }
     else if (id) void openConversation(id); else startSession(newSessionId());
@@ -270,13 +270,13 @@ export function AppProvider({children}:{children:ReactNode}) {
   function syncUrl(id: string | null, navigate = true) {
     setSavedId(id);
     const url = id ? `/?c=${encodeURIComponent(id)}` : '/';
-    // pathRef: 답을 기다리는 사이 다른 화면으로 갔다면 그 화면에 그대로 둔다(navigate=false). 대화 칸 주소만 미리 맞춘다 (10-08 정운 실사용 80)
+    // pathRef: 답을 기다리는 사이 다른 화면으로 갔다면 그 화면에 그대로 둔다(navigate=false). 대화 칸 주소만 미리 맞춘다
     if (pathRef.current === '/') window.history.replaceState(null, '', url); else if (navigate) router.push(url);
   }
   async function refreshConversations() {
     try {
       const list = await listConversations();
-      // 방금 보낸 새 대화는 서버가 저장하기 전이면 목록에 없다. 저장 확인 전에는 임시 줄을 맨 위에 남긴다 (10-08 정운 실사용 80)
+      // 방금 보낸 새 대화는 서버가 저장하기 전이면 목록에 없다. 저장 확인 전에는 임시 줄을 맨 위에 남긴다
       const p = pending.current;
       setConversations(p && !list.some(c => c.id === p.id) ? [{id: p.id, title: p.title, updated_at: new Date().toISOString()}, ...list] : list); setConvAvail(true); }
     catch (e) {
@@ -297,7 +297,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     setOpening(true); setError('');
     try {
       let c;
-      // 보낸 직후라 서버가 아직 저장하지 않았을 수 있다(404). 그때만 약 10초까지 간격을 늘려 다시 읽는다 (10-08 정운 실사용 80)
+      // 보낸 직후라 서버가 아직 저장하지 않았을 수 있다(404). 그때만 약 10초까지 간격을 늘려 다시 읽는다
       for (let i = 0; ; i++) {
         try { c = await getConversation(id); break; }
         catch (e) { if (!retryUntilSaved || errorStatus(e) !== 404 || i >= OPEN_RETRY_MS.length) throw e; await wait(OPEN_RETRY_MS[i]); if (mine !== epoch.current) return false; }
@@ -309,12 +309,12 @@ export function AppProvider({children}:{children:ReactNode}) {
       setThread(c.messages.slice(-50).map(toTurn));  // 화면에는 최근 50줄만 (ask와 같다)
       if (c.context && c.result) { setRequest({...c.context, session_id: id}); setResult(c.result); setCargoKey(c.result.trace_id); }
       // 결과 칸은 가장 최근의 vessels/cargo 답이 정한다. ask()가 vessels·cargo 답에서만 view를 바꾸고
-      // 일반 message 답은 그대로 두기 때문이다. 마지막 답만 보면 뒤에 message 답이 붙었을 때 지도가 사라진다 (10-08 정운 실사용 78)
+      // 일반 message 답은 그대로 두기 때문이다. 마지막 답만 보면 뒤에 message 답이 붙었을 때 지도가 사라진다
       const last = [...c.messages].reverse().find(m => m.role === 'assistant' && (m.extra?.kind === 'vessels' || m.extra?.kind === 'cargo'));
       const kind = last?.extra?.kind;
       if (kind === 'vessels' && last?.extra) {
         setVessels({kind: 'vessels', reply: last.text, agent: null, request: null, vessels: [], place: null, ports: [], days: null, ...last.extra} as ChatResponse); setView('vessels');
-      } else setView(!(c.context && c.result) ? 'none' : 'cargo');  // 안내 문장이 마지막이어도 저장된 화물 결과가 있으면 보인다 (10-07 15번)
+      } else setView(!(c.context && c.result) ? 'none' : 'cargo');  // 안내 문장이 마지막이어도 저장된 화물 결과가 있으면 보인다
       syncUrl(id);
       return true;
     } catch (e) {
@@ -336,7 +336,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   }
 
   // 한도는 한국 시간 자정에 풀린다(docs/specs/token-quota.md). 탭을 켜 둔 채 자정을 넘기면 입력이 계속 막혀 있으므로
-  // 창으로 돌아올 때와 10분마다 다시 읽는다 (10-02 UI 점검 F7). 데모 모드는 getUsage가 서버를 부르지 않는다
+  // 창으로 돌아올 때와 10분마다 다시 읽는다 (UI 점검 F7). 데모 모드는 getUsage가 서버를 부르지 않는다
   useEffect(() => {
     if (!isLive) return;
     const onFocus = () => refreshUsage();
@@ -345,7 +345,7 @@ export function AppProvider({children}:{children:ReactNode}) {
     return () => { window.removeEventListener('focus', onFocus); window.clearInterval(id); };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 10-08 정운 실사용 80: 대화 화면으로 돌아오거나 창이 다시 보일 때 목록을 다시 읽는다. 다른 화면에 가 있는 사이 저장된 대화가 보이게 한다
+  // 대화 화면으로 돌아오거나 창이 다시 보일 때 목록을 다시 읽는다. 다른 화면에 가 있는 사이 저장된 대화가 보이게 한다
   useEffect(() => { if (conversationsOn && pathname === '/') void refreshConversations(); }, [pathname, conversationsOn]);  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!conversationsOn) return;
@@ -366,12 +366,12 @@ export function AppProvider({children}:{children:ReactNode}) {
     if (inflight.current || opening) return false;
     inflight.current = true; setLoading(true); setError(''); setReplaying(false); setStages([]); setPendingSince(Date.now());
     // 서버에 보낼 앞선 대화. 지금 질문을 더하기 전의 thread(이번 렌더의 값)를 잡아 둔다. 자르기는 chatBody가 한다 (최근 6줄, 500자)
-    // 답 글 속 [E1] 표시는 화면용이라 서버로 되돌려 보내는 대화에서는 뗀다 (10-08 정운 실사용 58번)
+    // 답 글 속 [E1] 표시는 화면용이라 서버로 되돌려 보내는 대화에서는 뗀다
     const history = thread.map(t => t.role === 'assistant' ? {...t, text: t.text.replace(/\s?\[E\d+\]/gi, '')} : t);
     // 화면에만 두는 대화. 최근 50줄까지 남기고 대화창은 스크롤로 본다 (ChatBar)
-    // display: 서류 첨부로 보낸 문장은 B/L 대신 파일 이름이 보이게 말풍선 글을 따로 받는다 (10-08 정운 실사용 73번). 서버로 가는 대화에도 이 글이 간다
+    // display: 서류 첨부로 보낸 문장은 B/L 대신 파일 이름이 보이게 말풍선 글을 따로 받는다. 서버로 가는 대화에도 이 글이 간다
     setThread(t => [...t.slice(-49), {role: 'user', text: opts?.display ?? message}]);
-    // 10-08 정운 실사용 80: 새 대화의 첫 질문이면 답을 기다리지 않고 지금 바로 이 대화를 "활성"으로 만든다.
+    // 새 대화의 첫 질문이면 답을 기다리지 않고 지금 바로 이 대화를 "활성"으로 만든다.
     // 주소(?c=)와 사이드바 임시 줄을 먼저 맞추고, 중간에 다른 화면으로 갔다 와도 같은 대화를 찾게 한다. 서버는 답이 끝나야 저장하므로 임시 줄이다
     const sid = currentSessionId(); const firstSend = conversationsOn && savedId !== sid;
     if (firstSend) {
@@ -382,14 +382,14 @@ export function AppProvider({children}:{children:ReactNode}) {
     }
     try {
       // 화면에 화물 카드가 실제로 보일 때만 그 화물을 함께 보낸다(후속 질문, "마스터로 다시"). B/L은 서버 안에서만 쓰인다.
-      // 카드를 숨긴 상태(선박 표·안내 문장)에서 보낸 문장이 보이지 않는 화물의 후속 질문이 되지 않게 한다 (10-02 UI 점검 F5)
+      // 카드를 숨긴 상태(선박 표·안내 문장)에서 보낸 문장이 보이지 않는 화물의 후속 질문이 되지 않게 한다 (UI 점검 F5)
       const context = view === 'cargo' && result && request.bl_no ? request : null;
       const seen: ProgressStage[] = [];
       const stepLog: {stage: ProgressStage; at: number}[] = [];  // 단계별 처음 본 시각 (접힌 요약용)
       const startedAt = Date.now();
       // 서버가 단계에 들어갈 때마다 목록에 더한다. 같은 단계가 두 번 오면(후속 질문이 재조회할 때 등) 한 번만 둔다
-      // 서류에서 확인한 출항일이 있으면 그 B/L과 함께 보낸다. 서버가 그 B/L 조회에만 실어 화물 표에 적는다 (10-06)
-      // 10-08 정운 51번: 서류 확인 화면에서 바로 보낼 때는 opts.document가 이 값을 대신한다 (setDocHints가 아직 반영되기 전이라서)
+      // 서류에서 확인한 출항일이 있으면 그 B/L과 함께 보낸다. 서버가 그 B/L 조회에만 실어 화물 표에 적는다
+      // 서류 확인 화면에서 바로 보낼 때는 opts.document가 이 값을 대신한다 (setDocHints가 아직 반영되기 전이라서)
       const document = opts && 'document' in opts ? opts.document ?? null : docHints?.departed_on ? {bl_no: docHints.bl_no, departed_on: docHints.departed_on} : null;
       const res = await sendChatStream(message, context,
         s => { seen.push(s); if (!stepLog.some(x => x.stage === s)) stepLog.push({stage: s, at: Date.now()}); setStages(list => list.includes(s) ? list : [...list, s]); }, history, document, onScreenOf(view, result, vessels, selectedArrival));
@@ -397,7 +397,7 @@ export function AppProvider({children}:{children:ReactNode}) {
         ...(res.evidence_items?.length ? {evidence: res.evidence_items, citations: res.citations ?? []} : {}), ...(stepLog.length ? {steps: stepLog, tookMs: Date.now() - startedAt} : {})}]);
       // 대화로 지켜보기를 켜고 껐으면 결과 칸의 버튼·말풍선 버튼이 같은 상태를 보게 한다
       if (res.watch_set) setWatching(res.watch_set.bl_no, res.watch_set.on);
-      if (res.watch_vessel_set) notifyVesselWatchChange();  // 배 지켜보기 버튼·목록이 서버 상태를 다시 읽는다 (10-08 정운 실사용 79)
+      if (res.watch_vessel_set) notifyVesselWatchChange();  // 배 지켜보기 버튼·목록이 서버 상태를 다시 읽는다
       if (res.kind === 'cargo' && res.agent && res.request) {
         if (context && result && isFollowUp(res.agent, res.request, context, result, seen)) {
           // 후속 질문의 답은 대화 칸에만 둔다. 서버는 지난 결과의 answer만 바꿔 돌려주므로(routers/agent.py _follow_up)
@@ -409,8 +409,8 @@ export function AppProvider({children}:{children:ReactNode}) {
         setView('cargo');
       }
       if (res.kind === 'vessels') { setVessels(res); setView('vessels'); }
-      // 안내 문장(B/L 없음, 화물과 상관없는 질문 등)이 와도 보던 화물 결과는 그대로 둔다. 새 화물 조회가 올 때만 바뀐다 (10-07 정운 실사용 15번)
-      // 서버가 이 턴을 저장했다. 주소에 대화 id를 붙이고 목록을 새로 읽는다. 제목은 조금 늦게 생길 수 있어 한 번 더 읽는다 (10-06 결정)
+      // 안내 문장(B/L 없음, 화물과 상관없는 질문 등)이 와도 보던 화물 결과는 그대로 둔다. 새 화물 조회가 올 때만 바뀐다
+      // 서버가 이 턴을 저장했다. 주소에 대화 id를 붙이고 목록을 새로 읽는다. 제목은 조금 늦게 생길 수 있어 한 번 더 읽는다
       if (conversationsOn) { pending.current = null; writePending(null); syncUrl(sid, false); void refreshConversations(); setTimeout(() => void refreshConversations(), 3000); }
       return true;
     } catch (e) {
@@ -429,7 +429,7 @@ export function AppProvider({children}:{children:ReactNode}) {
   function replay(id: string) {
     if (inflight.current) return false;
     const snapshot = getReplaySnapshot(id); if (!snapshot) return false;
-    // 선박 표를 보던 중이어도 재생한 화물이 보이게 화물 보기로 바꾼다 (10-02 발견: 표가 남아 재생 결과가 가려졌다)
+    // 선박 표를 보던 중이어도 재생한 화물이 보이게 화물 보기로 바꾼다 (표가 남아 재생 결과가 가려졌다)
     setResult(snapshot.response);setRequest(snapshot.request);setReplaying(true);setError('');setView('cargo');setCargoKey(snapshot.response.trace_id);return true;
   }
   /** 숨겨 둔 화물 결과를 다시 보인다 (선박 검색 뒤 "내 화물 결과로 돌아가기"). 채팅 표 행을 여는 showCargo(agent, request)와 이름이 겹쳐 따로 부른다 */

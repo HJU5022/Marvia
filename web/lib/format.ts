@@ -2,10 +2,10 @@
 import type { Status, Verdict } from './types';
 export const statusLabels: Record<Status, string> = {ok:'조회 완료',partial:'일부만 확인',insufficient:'정보 확인 필요',failed:'조회 실패',unsupported:'지원 범위 밖'};
 export const verdictLabels: Record<Verdict, string> = {fine:'순항',watch:'주의',act:'긴급'};
-// 출처 이름. 서비스 이름 대신 무엇을 하는 곳인지로 적는다 (10-02 화면 용어 점검)
+// 출처 이름. 서비스 이름 대신 무엇을 하는 곳인지로 적는다
 export const sourceLabels: Record<string, string> = {shipfinder:'선박 위치 신호',unipass:'관세청 통관 조회',mof:'해양수산부 입항 신고',searoute:'해상 거리 계산',rule:'Marvia 계산'};
 
-// 화면에 내부 ID를 그대로 내지 않는다. 모르는 키는 아래 label()이 "기타 항목"으로 바꾼다 (10-02 화면 용어 점검)
+// 화면에 내부 ID를 그대로 내지 않는다. 모르는 키는 아래 label()이 "기타 항목"으로 바꾼다
 // 신호 7종. id는 backend/app/schemas/signals.py SignalId와 같다
 export const ruleLabels: Record<string, string> = {
   position_stale:'선박 위치 수신이 끊김', eta_conflict:'도착 예정 시각이 서로 다름', anchor_wait:'항구 앞 대기',
@@ -25,7 +25,7 @@ export const fieldLabels: Record<string, string> = {
 };
 /** 근거 field를 사람이 읽는 이름으로. 통관 이력은 "stage:단계명"으로 온다.
  * 후속 질문에서 LLM이 부른 도구 근거는 "<도구>.<키>"로 온다 (routers/agent.py _tool_evidence). 키에 이름이 있으면 그 이름을 쓴다.
- * 이름이 있는 항목을 "기타 항목"으로 내지 않는다 (10-02 UI 점검 F14) */
+ * 이름이 있는 항목을 "기타 항목"으로 내지 않는다 (UI 점검 F14) */
 export function fieldLabel(field: string) {
   if (field.startsWith('stage:')) return `통관 이력 · ${field.slice(6)}`;
   const key = field.split(/[.:]/).pop() ?? field;
@@ -66,7 +66,7 @@ export function countryLabel(code: string | null | undefined) {
   try { return new Intl.DisplayNames(['ko'], {type:'region'}).of(code.toUpperCase()) ?? code; } catch { return code; }
 }
 // 선박 검색의 지명은 서버가 영어(China)로 줄 때가 있다 (services/chat.py search_vessels, 사용자 말이 없을 때).
-// 나라 이름은 ISO 코드로 바꿔 countryLabel로, 자주 나오는 도시는 한국어 이름으로 적는다. 모르는 이름은 그대로 둔다 (10-02 UI 점검 V8)
+// 나라 이름은 ISO 코드로 바꿔 countryLabel로, 자주 나오는 도시는 한국어 이름으로 적는다. 모르는 이름은 그대로 둔다 (UI 점검 V8)
 const placeCodes: Record<string, string> = {CHINA:'CN', JAPAN:'JP', VIETNAM:'VN', 'VIET NAM':'VN', TAIWAN:'TW', 'HONG KONG':'HK', SINGAPORE:'SG',
   THAILAND:'TH', MALAYSIA:'MY', INDONESIA:'ID', PHILIPPINES:'PH', INDIA:'IN', RUSSIA:'RU', 'UNITED STATES':'US', USA:'US', AUSTRALIA:'AU',
   CANADA:'CA', GERMANY:'DE', NETHERLANDS:'NL', KOREA:'KR', 'SOUTH KOREA':'KR'};
@@ -109,7 +109,7 @@ export function dateTime(value: string | null | undefined, short = false) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Seoul', year:'numeric', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).formatToParts(d).map(x => [x.type, x.value]));
   return `${short ? '' : `${p.year}년 `}${p.month}월 ${p.day}일 ${p.hour}:${p.minute}`;
 }
-/** 서버·채팅이 준 시각 글이 ISO면 "10월 8일 08:00"(한국 시간)으로, 아니면 보인 글 그대로 (10-08 정운 실사용 67번: 도착 예정이 2026-10-08T08:00:00+09:00로 그대로 나왔다) */
+/** 서버·채팅이 준 시각 글이 ISO면 "10월 8일 08:00"(한국 시간)으로, 아니면 보인 글 그대로 (도착 예정이 2026-10-08T08:00:00+09:00로 그대로 나왔다) */
 export function timeOrRaw(value: string | null | undefined) {
   if (!value) return '확인 안 됨';
   return ISO_TIME.test(value.trim()) ? dateTime(value, true) : value;

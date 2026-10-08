@@ -1,5 +1,5 @@
 'use client';
-/** Leaflet 지도. 바탕은 OpenFreeMap 세계 지도(lib/basemap.ts), 안 되면 레포의 Natural Earth 해안선으로 되돌린다 (10-06 정운 승인).
+/** Leaflet 지도. 바탕은 OpenFreeMap 세계 지도(lib/basemap.ts), 안 되면 레포의 Natural Earth 해안선으로 되돌린다.
  * The line points toward Busan; it is explicitly not a measured track or searoute.
  */
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
@@ -27,11 +27,11 @@ export function MapPanel({response:r,watch}:{response:AgentResponse;watch?:React
    // 펼치기는 오른쪽 위, 확대·축소·맞추기는 왼쪽 아래 아이콘 단추(map-tools, map-zoom)가 맡는다. 아래 오른쪽은 떠 있는 카드가 쓰므로 저작자 표시는 왼쪽 아래로 보낸다
    const map=L.map(host.current,{zoomControl:false,scrollWheelZoom:false,minZoom:4,maxZoom:10,attributionControl:false});
    mapRef.current=map;touched.current=false;map.on('dragstart',()=>{touched.current=true;});L.control.attribution({position:'bottomleft',prefix:false}).addTo(map);
-   // 직접 쓴 바다·나라 이름은 세계 지도를 못 쓰는 되돌림 때만 올라온다(세계 지도에는 이름이 이미 있다, 10-06). 그 이름이 배와 부산항 표시(마커와 이름표)에 겹치면 그 이름만 숨긴다. 확대·이동 때마다 다시 계산한다
+   // 직접 쓴 바다·나라 이름은 세계 지도를 못 쓰는 되돌림 때만 올라온다(세계 지도에는 이름이 이미 있다). 그 이름이 배와 부산항 표시(마커와 이름표)에 겹치면 그 이름만 숨긴다. 확대·이동 때마다 다시 계산한다
    const labels:{el:()=>HTMLElement|undefined;ll:L.LatLngTuple}[]=[];const hideNearLabels=()=>{const pts=[port,...(position?[position]:[])].map(q=>map.latLngToContainerPoint(q));
     labels.forEach(l=>{const el=l.el();if(!el)return;const q=map.latLngToContainerPoint(l.ll);el.classList.toggle('map-place-hide',pts.some(a=>Math.abs(q.x-a.x)<110&&Math.abs(q.y-a.y)<46));});};
    map.on('zoomend moveend',hideNearLabels);
-   // 요약 줄(판정·선명·거리)은 지도 아래로 옮겼다(10-07 정운 실사용 12번). 지도 위에는 배와 부산항뿐이라 여백은 사방 같게 둔다
+   // 요약 줄(판정·선명·거리)은 지도 아래로 옮겼다. 지도 위에는 배와 부산항뿐이라 여백은 사방 같게 둔다
    const home=()=>{if(!position){map.setView(port,6);return;}
     map.invalidateSize();map.fitBounds(L.latLngBounds([position,port]),{maxZoom:8,animate:false,padding:[56,56]});hideNearLabels();};
 home();reset.current=home;
@@ -57,7 +57,7 @@ home();reset.current=home;
  /** 지도 펼치기: 지도 칸이 작은 자리에서 작업 공간 전체(상단바 아래, 두 칸 모두)로 커진다. 지도 칸(frame)을 fixed로 바꾼 뒤
   * 원래 자리(slot)의 크기로 되돌려 놓고 transform을 풀어 주는 FLIP 방식이라 레이아웃을 매 프레임 다시 계산하지 않는다. 움직임 줄이기를 켰으면 바로 바뀐다. */
  const reduced=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
- /** 칸 크기가 바뀐 뒤 Leaflet과 MapLibre 캔버스를 새 크기에 맞춘다. 맞추지 않으면 세계 지도 타일이 옛 크기에 머문다 (10-06) */
+ /** 칸 크기가 바뀐 뒤 Leaflet과 MapLibre 캔버스를 새 크기에 맞춘다. 맞추지 않으면 세계 지도 타일이 옛 크기에 머문다 */
  function settle(){mapRef.current?.invalidateSize({animate:false});baseRef.current?.resize();}
  function open(){
   if(big)return;const m=document.querySelector('main')?.getBoundingClientRect();if(!m)return;
@@ -108,7 +108,7 @@ home();reset.current=home;
   </div>
   <div className="map-zoom"><button type="button" className="map-tool" aria-label="지도 확대" title="확대" onClick={()=>{touched.current=true;mapRef.current?.zoomIn();}}><Plus size={18}/></button><button type="button" className="map-tool" aria-label="지도 축소" title="축소" onClick={()=>{touched.current=true;mapRef.current?.zoomOut();}}><Minus size={18}/></button><button type="button" className="map-tool map-reset" onClick={()=>{touched.current=false;reset.current();}} aria-label="선박과 부산항에 지도 맞추기" title="선박과 부산항에 맞추기"><LocateFixed size={18}/></button></div>
  </div></div>
-  {/* 지도 아래 한 줄 요약: 판정은 작은 점과 글자로, 선명·거리·수신 상태는 옅은 글씨로 (10-07 디자인 방향: 채운 배지·떠 있는 흰 카드 대신) */}
+  {/* 지도 아래 한 줄 요약: 판정은 작은 점과 글자로, 선명·거리·수신 상태는 옅은 글씨로 (디자인 방향: 채운 배지·떠 있는 흰 카드 대신) */}
   <div className="map-summary" ref={card}>
    <div className="map-summary-main">{r.verdict&&<span className={`verdict-dot ${r.verdict}`}><i aria-hidden="true"/>{verdictLabels[r.verdict]}</span>}{r.vessel?.name&&<strong className="map-card-ship">{r.customs?.goods_name&&<span className="map-card-goods">{r.customs.goods_name} 실은 </span>}{r.vessel.name}{r.vessel.flag&&<span> ({countryLabel(r.vessel.flag)})</span>}</strong>}</div>
    {watch&&<div className="map-summary-watch">{watch}</div>}

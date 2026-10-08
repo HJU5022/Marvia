@@ -58,10 +58,10 @@ export default function CargoPage(){
   <section className="chat-pane" ref={paneRef} aria-label="대화">
    <header className="pane-head">
     {conversationsOn&&<button type="button" className="pane-icon" aria-label="대화 목록 열기" onClick={openConversations}><PanelLeftOpen size={18}/></button>}
-    {/* 10-08 정운 43번: 보이는 "대화 내용" 제목을 없앴다. 화면 읽기 프로그램용 제목만 남긴다 */}
+    {/* 보이는 "대화 내용" 제목을 없앴다. 화면 읽기 프로그램용 제목만 남긴다 */}
     <h1 className="sr-only">대화</h1>
    </header>
-   {/* 지켜보던 화물의 판정이 바뀐 알림은 이제 대화의 첫 말풍선으로 온다 (AppProvider, 10-06 결정) */}
+   {/* 지켜보던 화물의 판정이 바뀐 알림은 이제 대화의 첫 말풍선으로 온다 (AppProvider) */}
    {/* 데모 첫 조회처럼 대화 없이 실패한 경우만 여기 알린다. 문장 질문의 실패는 대화 칸에 이미 있다 */}
    {error&&!thread.length&&!showing&&<p role="alert" className="request-error page-error">{error}</p>}
    <ChatBar idle={idle} onShowDetail={()=>setSheetOpen(true)}/>
@@ -82,7 +82,7 @@ export default function CargoPage(){
    {/* 머리 한 줄: B/L과 기준 시각만. 조회 상태는 아래 안내·판정이 이미 말하고, "체험 · 예시 데이터"는 상단바에 한 번만 둔다 */}
    <div className="result-head">
     <div className="result-id"><strong className="mono">B/L {maskBl(request.bl_no)}</strong>{replaying&&<span className="status-chip replay history">저장된 이력</span>}</div>
-    {/* 근거가 없으면 시각을 비운다. "조회 시각을 알 수 없어요"는 결과 없음 화면에서 고장처럼 보였다 (10-08 정운 55번) */}
+    {/* 근거가 없으면 시각을 비운다. "조회 시각을 알 수 없어요"는 결과 없음 화면에서 고장처럼 보였다 */}
     {r.evidence[0]&&<span className="last-updated">{dateTime(r.evidence[0].fetched_at,true)} 기준</span>}
    </div>
    <FailureBanner response={r} onRetry={()=>void lookup({...request,follow_up_question:null})} busy={loading||blocked} onMof={showMof}/>
@@ -99,12 +99,12 @@ export default function CargoPage(){
     const names=[hasSignals||hasEvidence?'판정 근거':null,!failedLike&&r.status!=='insufficient'?'출처별 원본 자료':null,hasHistory?(r.customs_detail?.length?'통관 이력 · 관세청 처리 내역':'통관 이력'):null].filter(Boolean);
     if(!names.length)return null;
     return <details className="more-fold" open={forceOpen||moreOpen} onToggle={e=>{if(!forceOpen)setMoreOpen(e.currentTarget.open);}}>
-     {/* 상세 정보: 구역 제목 + 근거 개수 + 펼치기 버튼 모양. 지나가는 한 줄로 보여 상세인 줄 모른다는 지적 (10-07 정운 실사용 13번) */}
+     {/* 상세 정보: 구역 제목 + 근거 개수 + 펼치기 버튼 모양. 지나가는 한 줄로 보여 상세인 줄 모른다는 지적 */}
      <summary><strong>상세 정보</strong>{r.evidence.length>0&&<em className="more-count">근거 {r.evidence.length}개</em>}<span className="more-action">{forceOpen||moreOpen?'접기':'펼쳐 보기'}<ChevronDown size={16} className="more-chevron" aria-hidden="true"/></span><span className="more-names">{names.join(' · ')}</span></summary>
      <div className="more-body">
       {(hasSignals||hasEvidence)&&<section className="more-block" aria-label="판정 근거">
        {r.answer&&!failedLike&&r.verdict&&<p className="answer-summary">{r.answer}</p>}
-       {/* 체크 표시는 감지된 신호에만 단다. 감지 안 된 신호에 체크가 붙으면 "문제 있음"으로 읽혔다 (10-02 UI 점검 F8) */}
+       {/* 체크 표시는 감지된 신호에만 단다. 감지 안 된 신호에 체크가 붙으면 "문제 있음"으로 읽혔다 (UI 점검 F8) */}
        {hasSignals&&<div className="signal-summary" aria-label="판정 신호"><span>확인한 신호</span>{r.reasons.map((s,i)=><details key={i} className={s.triggered?'triggered':'clear'}><summary>{s.triggered?<Check size={13} aria-hidden="true"/>:<Minus size={13} aria-hidden="true"/>}{ruleLabels[s.rule]??'기타 신호'}<span className="signal-state">{s.triggered?'해당됨':'해당 없음'}</span></summary><p>{s.value}</p></details>)}</div>}
        {hasEvidence&&<div>{mofOnly&&<div className="filter-notice">해수부 근거만 보여 드리는 중이에요 · 새 판정이 아니에요.<button onClick={()=>setMofOnly(false)}><FilterX size={14}/>전체 보기</button></div>}<EvidenceCards evidence={mofOnly?r.evidence.filter(e=>e.source==='mof'):r.evidence} traceId={r.trace_id}/></div>}
       </section>}

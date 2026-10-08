@@ -1,6 +1,6 @@
-/* 사이드바·계정 창·상단 줄·하단 링크 (10-07 정운 실사용 16·18·29·30·31번 개편).
+/* 사이드바·계정 창·상단 줄·하단 링크.
    새 클래스(sb-*)로 짜고, 옛 규칙이 남은 틀 클래스(.sidebar .workspace .workspace-bar .app-footer .app-shell)만 이 파일에서 덮는다.
-   globals.css는 건드리지 않는다. 글자 크기·굵기·선 색은 공용 토큰(--fs-*, --fw-*, --hairline)을 쓰고 값은 폴백이다 (10-07 정운 8번). */
+   globals.css는 건드리지 않는다. 글자 크기·굵기·선 색은 공용 토큰(--fs-*, --fw-*, --hairline)을 쓰고 값은 폴백이다. */
 
 /* ---- 틀: 폭은 --rail-width 하나가 정한다. 본문(.workspace)이 이 값만큼 밀리므로 펼쳐도 덮지 않는다 ---- */
 .app-shell{--sb-w:248px;--rail-width:var(--sb-w)}
@@ -115,10 +115,10 @@
 .app-shell .workspace-meta{flex:none;gap:12px;margin-left:auto}
 .app-shell .workspace-bar .port-label,.app-shell .workspace-bar .replay-chip{font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
 
-/* ---- 하단: 개인정보처리방침 · 이용약관 (LegalLinks). 접속 시각 안내 문구는 뺐다 (10-07 정운 23번) ---- */
+/* ---- 하단: 개인정보처리방침 · 이용약관 (LegalLinks). 접속 시각 안내 문구는 뺐다 ---- */
 .app-shell .app-footer{justify-content:center;padding:20px 24px 24px;border-top:0;font-size:var(--fs-xs,12px);color:var(--muted,#5f6b7a)}
 
-/* ---- 로그인 전·회원 정보 입력·정지 안내: 사이드바 없는 전체 화면 (10-07 정운 25번) ---- */
+/* ---- 로그인 전·회원 정보 입력·정지 안내: 사이드바 없는 전체 화면 ---- */
 .entry-shell{min-height:100dvh;background:var(--surface,#fff)}
 .entry-shell main{padding:0;min-height:100dvh}
 .entry-shell .login-page{min-height:100dvh}
@@ -133,7 +133,7 @@
   .sb-collapse{display:none}
   .sb-close,.sb-burger{display:grid}
   .sb-backdrop{display:block;position:fixed;inset:0;z-index:70;border:0;background:#191f2859;cursor:pointer}
-  /* 서랍 안에는 대화 목록이 들어간다. 옛 규칙(900px 이하 숨김)을 덮는다. 40:60 화면에서도 보인다 (10-07) */
+  /* 서랍 안에는 대화 목록이 들어간다. 옛 규칙(900px 이하 숨김)을 덮는다. 40:60 화면에서도 보인다 */
   .app-shell .sb .conv-section.sb-conv{display:block}
   .sb-cl-del{opacity:.7}
   .app-shell .workspace-bar{padding:0 12px}
@@ -147,7 +147,7 @@
   .app-shell .workspace,.app-shell .sidebar.sb{transition:none}
 }
 
-/* ---- 엘레강스 정리 (10-07 정운 엘레강스: 56번 검은 채움 단추 싫음, 59·60번 아임웹 얇은 글자 메뉴가 기준) ----
+/* ---- 엘레강스 정리 (56번 검은 채움 단추 싫음, 59·60번 아임웹 얇은 글자 메뉴가 기준) ----
    위 규칙을 덮는다. 채움·그림자·회색 바탕을 걷고, 글자 간격 + 얇은 선만 남긴다 */
 .app-shell .sidebar.sb{padding:16px 14px 12px;font-weight:var(--fw-regular,400);letter-spacing:.03em}
 .sb-brand strong{font-size:var(--fs-base,14px);font-weight:var(--fw-regular,400);letter-spacing:.08em}

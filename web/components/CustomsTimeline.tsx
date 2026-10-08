@@ -1,5 +1,5 @@
 /** 통관 단계. part="summary"는 상세 패널 4번 줄(지금 단계 + ⓘ + 다음 단계, 포워더·선사·컨테이너는 값이 있는 칸만, 마누스 시안 2-2),
- * part="history"는 펼쳐 보기 안의 통관 이력과 접안 시설이다. 화물 경로(적재항 → 양륙항, UNI-PASS 값 그대로, 10-01)는 일정 줄(EtaCompare)로 옮겼다.
+ * part="history"는 펼쳐 보기 안의 통관 이력과 접안 시설이다. 화물 경로(적재항 → 양륙항, UNI-PASS 값 그대로)는 일정 줄(EtaCompare)로 옮겼다.
  * 이력은 list[dict]라 빈 칸은 그대로 보인다 */
 import {Container} from 'lucide-react';
 import type {AgentResponse} from '@/lib/types';

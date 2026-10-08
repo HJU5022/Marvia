@@ -3,7 +3,7 @@
  * 값은 GET /api/vessels/detail 한 번으로 오는 해수부 일정, AIS 위치, 부산까지 거리다. 받아 오는 일은 VesselList가 한다
  * (지도에 이전에 받은 배도 같이 남기려고 결과를 목록이 들고 있다). 이 파일은 받은 값을 그리기만 한다. 판정은 하지 않는다.
  * 지도는 이 안에 없다. 표 위의 큰 지도(VesselMap)가 고른 배로 날아간다.
- * 값 칸은 보통 글꼴이다. 한국어(확인되지 않음, 노트, 해리)가 고정폭 글꼴로 보이지 않게 한다 (10-02 UI 점검 V4).
+ * 값 칸은 보통 글꼴이다. 한국어(확인되지 않음, 노트, 해리)가 고정폭 글꼴로 보이지 않게 한다 (UI 점검 V4).
  * "펼쳐 보기"에는 줄에 못 넣은 값(호출부호, 선박 종류, 다음에 들를 항구, 목적)과 출처·조회 시각, 출처 안내를 둔다.
  * 불러오는 동안은 큰 상자 대신 작은 뼈대 줄 세 개만 보인다.
  */
@@ -15,7 +15,7 @@ import type {VesselDetailResponse, VesselItem} from '@/lib/types';
 export type DetailEntry = {status: 'loading'} | {status: 'error'; message: string} | {status: 'done'; data: VesselDetailResponse; at: number};
 
 const SOURCE_LABEL: Record<string, string> = {mof: '해수부 입항 일정', shipfinder: '선박 위치', searoute: '남은 거리 계산'};
-// 출처별 실패 안내. 서버 message에는 엔드포인트·키 이름·예외명이 섞여 있어 화면에 내지 않고 고정 문구만 쓴다 (10-02 화면 용어 점검)
+// 출처별 실패 안내. 서버 message에는 엔드포인트·키 이름·예외명이 섞여 있어 화면에 내지 않고 고정 문구만 쓴다
 const SOURCE_FAIL: Record<string, string> = {mof: '지금 받지 못했어요', shipfinder: '지금 받지 못했어요', searoute: '계산하지 못했어요'};
 
 // 펼쳐 보기의 출처 표기. 모르는 이름은 서버가 준 글자 그대로 보인다

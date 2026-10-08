@@ -18,9 +18,9 @@ export function CandidatePicker({response:r,request,onResolve,busy}:{response:Ag
  const known=['voyage_no','forwarder_eta','bl_type','bl_not_found'];
  const many=r.vessel_candidates.length>1;
  // 세관에 화물이 없을 때(routers/agent.py NO_CARGO)는 후보 없이 B/L 구분만 다시 묻는다. 이때 "판단할게요" 제목은 진행 중처럼 보이고
- // 같은 문장이 왼쪽 채팅 답에 이미 있어 되풀이된다 (10-08 정운 55·56번)
+ // 같은 문장이 왼쪽 채팅 답에 이미 있어 되풀이된다
  const noCargo=!r.vessel_candidates.length&&r.missing_inputs.length===1&&(r.missing_inputs[0]==='bl_type'||r.missing_inputs[0]==='bl_not_found');
- // bl_not_found: 구분을 말하지 않아 서버가 하우스·마스터를 둘 다 조회했는데 없음. 구분을 다시 고르게 할 필요가 없어 선택칸과 버튼을 그리지 않는다 (10-08 정운 실사용 75)
+ // bl_not_found: 구분을 말하지 않아 서버가 하우스·마스터를 둘 다 조회했는데 없음. 구분을 다시 고르게 할 필요가 없어 선택칸과 버튼을 그리지 않는다
  const triedBoth=noCargo&&r.missing_inputs[0]==='bl_not_found';
  const needsExtra=known.filter(k=>k!=='bl_not_found').some(k=>r.missing_inputs.includes(k))||r.missing_inputs.some(x=>!known.includes(x));
  return <section className="candidate-section cand-card">

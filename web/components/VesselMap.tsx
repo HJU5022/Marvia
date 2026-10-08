@@ -78,7 +78,7 @@ export function VesselMap(p: VesselMapProps) {
       const {demo} = getPresentationData();
       const port: [number, number] = [demo.port.lat, demo.port.lng];
       const map = L.map(host.current, {zoomControl: false, scrollWheelZoom: false, minZoom: 4, maxZoom: 10, attributionControl: false});
-      // 중심·확대를 먼저 정해야 한다. 정하기 전에 선을 올리면 Leaflet이 화면 범위를 몰라 멈춘다 (10-01)
+      // 중심·확대를 먼저 정해야 한다. 정하기 전에 선을 올리면 Leaflet이 화면 범위를 몰라 멈춘다
       map.setView(port, 6, {animate: false});
       map.on('dragstart', () => { touched.current = true; });
       L.control.attribution({position: 'bottomleft', prefix: false}).addTo(map);

@@ -1,4 +1,4 @@
-/** 지도 바탕(OpenFreeMap 세계 지도)을 Leaflet 지도 밑에 깔고, 안 되면 레포의 해안선으로 되돌리는 공용 도우미 (10-06 정운 승인).
+/** 지도 바탕(OpenFreeMap 세계 지도)을 Leaflet 지도 밑에 깔고, 안 되면 레포의 해안선으로 되돌리는 공용 도우미.
  *
  * 왜 이렇게 했나
  * - 직접 그린 Natural Earth 해안선은 바다·해협 이름과 나라 경계가 없어 어디쯤인지 읽기 어려웠다. 키가 필요 없는 OpenFreeMap 벡터 타일을
@@ -7,7 +7,7 @@
  *   예전 해안선(lib/fixtures/geography.json)과 손으로 쓴 이름표를 그대로 보여 준다. 오프라인 시연도 같은 길이다.
  * - 4개 지도(MapPanel, ChatMiniMap, VesselMap, WatchMap)가 한 곳을 쓰므로, 지도가 사라질 때 dispose()를 부르면 WebGL 문맥도 함께 풀린다.
  * - 브라우저에서만 불러온다(동적 import). 서버 렌더링 때는 이 파일이 실행되지 않는다.
- * 외부로 나가는 주소는 tiles.openfreemap.org 하나뿐이다(스타일, 타일, 글꼴, 아이콘 모두 같은 호스트, 10-06 확인). */
+ * 외부로 나가는 주소는 tiles.openfreemap.org 하나뿐이다(스타일, 타일, 글꼴, 아이콘 모두 같은 호스트). */
 import type {GeoJsonObject} from 'geojson';
 import type {Map as LeafletMap} from 'leaflet';
 import type {Map as GLMap} from 'maplibre-gl';
@@ -17,9 +17,9 @@ import {getGeography} from '@/lib/api';
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 /** 스타일 파일이 이 시간 안에 안 오면 예전 해안선으로 되돌린다 (스타일이 안 오면 지도를 그릴 수 없다) */
 const STYLE_TIMEOUT_MS = 8000;
-/** 스타일이 온 뒤 이 시간 안에 타일이 한 장도 안 오면 되돌린다. 타일이 한 장이라도 그려지면 그 뒤로는 절대 되돌리지 않는다 (10-06) */
+/** 스타일이 온 뒤 이 시간 안에 타일이 한 장도 안 오면 되돌린다. 타일이 한 장이라도 그려지면 그 뒤로는 절대 되돌리지 않는다 */
 const TILE_TIMEOUT_MS = 8000;
-/** 미리 구워 둔 정적 타일(2단계)이 있는 곳과 안내 파일. 만드는 법은 scripts/bake-basemap.mjs (10-06 정운 승인) */
+/** 미리 구워 둔 정적 타일(2단계)이 있는 곳과 안내 파일. 만드는 법은 scripts/bake-basemap.mjs */
 const BAKED_DIR = '/basemap';
 /** 정적 타일 안내 파일이나 첫 타일이 이 시간 안에 안 오면 3단계(예전 해안선)로 간다 */
 const STATIC_TIMEOUT_MS = 8000;
@@ -67,7 +67,7 @@ function tune(gl: GLMap) {
   const paint = (id: string, prop: 'background-color' | 'fill-color', v: string) => { try { if (v && gl.getLayer(id)) gl.setPaintProperty(id, prop, v); } catch { /* 레이어가 없으면 건너뜀 */ } };
   paint('background', 'background-color', c('--land'));
   paint('water', 'fill-color', c('--sea'));
-  // 조용한 배경: 도로, 철도, 건물, 공항, 시군구 경계, 마을 이름은 배 위치를 읽는 데 방해라서 숨긴다. 바다·나라·도시 이름과 나라 경계만 남긴다 (10-06)
+  // 조용한 배경: 도로, 철도, 건물, 공항, 시군구 경계, 마을 이름은 배 위치를 읽는 데 방해라서 숨긴다. 바다·나라·도시 이름과 나라 경계만 남긴다
   const QUIET = /^(highway|railway|aeroway|building|bridge|tunnel|landuse|boundary_3|airport|label_village|label_other|waterway)/;
   for (const l of gl.getStyle().layers) {
     if (QUIET.test(l.id)) { try { gl.setLayoutProperty(l.id, 'visibility', 'none'); } catch { /* 건너뜀 */ } }
@@ -183,7 +183,7 @@ export function addBasemap(L: typeof import('leaflet'), map: LeafletMap, onFallb
   const toNext = () => { if (!disposed && mode === 'loading') void toStatic(); };
 
   /** 대기 시간을 건다. 탭이 숨겨진 동안(배경 탭, 다른 창)에는 브라우저가 그리기 프레임을 멈춰서 MapLibre가 타일을 요청조차 못 하므로,
-   * 그때 시간이 다 돼도 되돌리지 않고 보일 때까지 기다린다. 숨겨졌다 돌아오면 시간을 처음부터 다시 잰다 (10-06 확인: 숨겨진 탭은 영원히 안 그려진다) */
+   * 그때 시간이 다 돼도 되돌리지 않고 보일 때까지 기다린다. 숨겨졌다 돌아오면 시간을 처음부터 다시 잰다 (숨겨진 탭은 영원히 안 그려진다) */
   const arm = (ms: number) => {
     clearTimeout(timer);
     timer = setTimeout(() => {
@@ -202,7 +202,7 @@ export function addBasemap(L: typeof import('leaflet'), map: LeafletMap, onFallb
     try {
       const [{maplibreGL}, ml] = await Promise.all([import('@maplibre/maplibre-gl-leaflet'), import('maplibre-gl')]);
       if (disposed || mode !== 'loading') return;
-      // 타일을 해석하는 워커 파일 주소. 번들러가 만든 조각 주소로는 워커를 못 찾아서(10-06 확인), 같은 출처로 내려 주는 사본을 가리킨다.
+      // 타일을 해석하는 워커 파일 주소. 번들러가 만든 조각 주소로는 워커를 못 찾아서, 같은 출처로 내려 주는 사본을 가리킨다.
       // 사본은 scripts/copy-maplibre-worker.mjs가 node_modules에서 public/maplibre/로 복사한다(predev, prebuild)
       ml.setWorkerUrl(new URL('/maplibre/maplibre-gl-worker.mjs', window.location.origin).href);
       const l = maplibreGL({style: STYLE_URL, attributionControl: {customAttribution: ATTRIBUTION}, renderWorldCopies: false});

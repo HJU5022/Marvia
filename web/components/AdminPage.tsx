@@ -3,7 +3,7 @@
  *
  * 고객 관리: 서버가 가려 준 이메일·이름, 가입일, 마지막 로그인만 보여 준다. 원문은 받지도 않는다.
  * 시안 4-6·4-7: 요약 숫자 → 목록 → 선택한 고객의 작업 카드(표 아래) → 작업 이력. 행 버튼은 툴팁 달린 아이콘 버튼이고 강제 탈퇴는 오른쪽 끝에 색을 달리해 따로 둔다.
- * 표와 숫자는 흰 상자에 넣지 않고 배경 위에 선으로만 나눈다 (10-06 폴리시: 상자 줄이기).
+ * 표와 숫자는 흰 상자에 넣지 않고 배경 위에 선으로만 나눈다 (폴리시: 상자 줄이기).
  * 운영자: 이메일로 등록, 목록에서 해지(화면 안에서 한 번 더 확인), 아래에 누가 언제 등록·해지했는지 이력.
  * 운영자가 아닌 사람이 주소로 들어오면 안내만 한다. 데이터는 서버가 403으로 막는다 (EC-01).
  */
@@ -24,7 +24,7 @@ export function AdminPage() {
   const [tab, setTab] = useState<Tab>('customers');
 
   // 운영자 여부(GET /api/me)를 받기 전에는 판단하지 않는다. 받기 전 isOperator는 false라 운영자에게도
-  // "운영자만 볼 수 있는 화면"이 잠깐 보였다 (10-02 UI 점검 F12, OperatorOnly와 같은 조건)
+  // "운영자만 볼 수 있는 화면"이 잠깐 보였다 (UI 점검 F12, OperatorOnly와 같은 조건)
   if (!authReady || !meReady) return <div className="page"><div className="initial-loading" role="status"><div className="loading-orbit"/><strong>권한을 확인하고 있어요.</strong></div></div>;
   if (!isOperator) return <div className="page"><div className="empty-state admin-denied"><ShieldUser size={34} strokeWidth={1.2}/><h2>운영자만 볼 수 있는 화면이에요.</h2><p>권한이 필요하면 기존 운영자에게 등록을 요청해 주세요.</p></div></div>;
 
@@ -59,7 +59,7 @@ function CustomersPanel() {
   const refreshActions = useCallback(() => { getAdminActions().then(setActions).catch(() => {}); }, []);
   const close = useCallback(() => { setOpen(null); refreshActions(); }, [refreshActions]);
 
-  // 고객 검색은 전화번호 뒷 4자리로 한다 (10-06 정운: 전화로 문의한 고객을 찾는 일이 많다). 목록에는 가린 번호
+  // 고객 검색은 전화번호 뒷 4자리로 한다 (전화로 문의한 고객을 찾는 일이 많다). 목록에는 가린 번호
   // (010-****-1234)만 오고 뒷 4자리는 보이므로 화면에서 끝자리를 비교한다. 숫자가 아닌 글자를 넣으면 예전처럼 이메일 앞부분으로 찾는다
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();

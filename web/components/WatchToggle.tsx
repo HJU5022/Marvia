@@ -8,8 +8,8 @@
  * B/L 번호는 URL이 아니라 요청 본문으로만 보내고(api.ts), 이 화면의 글에도 번호를 쓰지 않는다 (마스킹 값은 상위 카드가 이미 보인다).
  * 새 결과(trace_id)마다 page.tsx가 key를 바꿔 이 칸이 처음 상태로 다시 시작한다.
  * 키보드·화면 낭독기: 버튼은 켜짐/꺼짐이 바뀌어도 같은 요소로 남아 포커스를 잃지 않고, 결과 글은 늘 있는 status/alert 칸에서만 바꾼다 (KakaoPanel과 같은 방식).
- * 대화로 켜고 끈 결과는 AppProvider의 watching으로 받아 같은 상태를 보인다 (10-06 결정).
- * 출처: G5 작업 리스트, 10-05 결정. 데모 모드·로그인이 꺼진 서버·비로그인에서는 page.tsx가 아예 그리지 않는다.
+ * 대화로 켜고 끈 결과는 AppProvider의 watching으로 받아 같은 상태를 보인다.
+ * 출처: G5 작업 리스트. 데모 모드·로그인이 꺼진 서버·비로그인에서는 page.tsx가 아예 그리지 않는다.
  */
 import {useEffect, useRef, useState} from 'react';
 import {Eye, EyeOff, LoaderCircle} from 'lucide-react';
@@ -60,7 +60,7 @@ export function WatchToggle({blNo}: {blNo: string}) {
     return () => { alive = false; clearTimeout(timer); };
   }, [blNo, reload]);
 
-  // 대화로 켜고 끈 결과(말풍선 버튼, "응")가 오면 이 버튼도 새로고침 없이 따라간다 (10-06 결정)
+  // 대화로 켜고 끈 결과(말풍선 버튼, "응")가 오면 이 버튼도 새로고침 없이 따라간다
   const sharedNow = shared[watchKey(blNo)];
   useEffect(() => { if (sharedNow !== undefined) setWatching(sharedNow); }, [sharedNow]);
 

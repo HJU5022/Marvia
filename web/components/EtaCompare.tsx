@@ -1,5 +1,5 @@
 /** ETA field names match C1. trusted_eta is rendered, never recomputed by the UI.
- * 값이 없는 칸의 "확인되지 않음"은 보통 글꼴로 흐리게 둔다 (10-02 UI 점검 V4, 고정폭은 시각에만).
+ * 값이 없는 칸의 "확인되지 않음"은 보통 글꼴로 흐리게 둔다 (UI 점검 V4, 고정폭은 시각에만).
  * "AI에게 근거 묻기"는 입력창에 후속 질문을 채우기만 한다. 보내기는 사용자가 한다 (lib/composer.ts).
  * 한 컴포넌트가 두 자리를 맡는다 (마누스 시안 2-2): part="schedule"은 상세 패널 3번 줄 "출항 ── 지금 ── 입항 예정"(판정 바로 아래, 한 단계 작게),
  * part="sources"는 펼쳐 보기 안의 출처별 도착 예정 비교다. 값은 응답에 있는 것만 쓰고 없으면 "확인되지 않음"이다. */
@@ -12,7 +12,7 @@ import {InfoTip} from './VerdictCard';
 export function EtaCompare({response:r,part='schedule'}:{response:AgentResponse;part?:'schedule'|'sources'}) {
  if(part==='schedule'){
   const c=r.customs,p=r.position;
-  // 현재 위치와 입항 예정이 둘 다 모르면 보여 줄 게 출항지뿐이라 줄을 숨긴다 (10-07 정운 실사용 14번)
+  // 현재 위치와 입항 예정이 둘 다 모르면 보여 줄 게 출항지뿐이라 줄을 숨긴다
   if(!p&&!r.eta?.trusted_eta)return null;
   const from=c?.loading_port_name??(c?.loading_port?portLabel(c.loading_port):null);
   const to=c?.discharge_port_name??(c?.discharge_port?portLabel(c.discharge_port):null);

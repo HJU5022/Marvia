@@ -1,5 +1,5 @@
 'use client';
-/** 채팅에서 본 배 옆에 놓는 "이 배 지켜보기" 아이콘 버튼 (10-08 정운 실사용 57번). B/L 없이 배(MMSI)만 지켜본다.
+/** 채팅에서 본 배 옆에 놓는 "이 배 지켜보기" 아이콘 버튼. B/L 없이 배(MMSI)만 지켜본다.
  *
  * 흐름: 마운트될 때 내 지켜보는 배 목록을 읽어 이 배가 들어 있는지 정한다 → 누르면 켜고(POST) 다시 누르면 끈다(DELETE).
  * 같은 화면의 버튼이 여럿이어도 목록 요청은 한 번만 나가도록 짧게 묶는다(SHARE_MS). 켜고 끈 일은 lib/watchVessel.ts가 다른 버튼에 알린다.
@@ -44,7 +44,7 @@ export function WatchVesselButton({mmsi: mmsiProp, callSign, name, flag, dest, e
   const [error, setError] = useState('');
   const buttonRef = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
-  // 10-08 정운 실사용 64번: 오류는 이름 아래 작은 글로만 보이고 5초 뒤 사라진다 (전에는 큰 분홍 상자가 줄 모양을 깨뜨렸다)
+  // 오류는 이름 아래 작은 글로만 보이고 5초 뒤 사라진다 (전에는 큰 분홍 상자가 줄 모양을 깨뜨렸다)
   useEffect(() => { if (!error) return; const t = window.setTimeout(() => setError(''), 5000); return () => window.clearTimeout(t); }, [error]);
   useEffect(() => { if (!busy && refocus.current) { refocus.current = false; buttonRef.current?.focus(); } }, [busy]);
 

@@ -1,4 +1,4 @@
-/* 평가 지표 화면 (10-07 정운 실사용 26번). 옛 .mx-* 규칙은 안 쓰고 .mt-* 새 이름만 쓴다. 얇은 선, 작은 글자, 색은 뜻에만 */
+/* 평가 지표 화면. 옛 .mx-* 규칙은 안 쓰고 .mt-* 새 이름만 쓴다. 얇은 선, 작은 글자, 색은 뜻에만 */
 .mt-page{max-width:1080px}
 .mt-page h1{font-weight:400;letter-spacing:.06em;font-size:var(--fs-2xl,28px)}
 .mt-page .eyebrow{font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.14em;color:var(--muted)}
@@ -75,4 +75,4 @@
   .mt-table td,.mt-table th{padding-right:6px}
   .mt-table td:nth-child(3){word-break:break-all}
 }
-.mt-table th{background:none}  /* 전역 th 회색 바탕 제거 (10-07 정운 엘레강스) */
+.mt-table th{background:none}  /* 전역 th 회색 바탕 제거 */

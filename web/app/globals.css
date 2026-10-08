@@ -1,8 +1,8 @@
 /* Marvia design system. All interface colours, type, spacing and radii live here.
-   10-06 토스형 개편: :root 토큰이 기준이고, 맨 끝 "Marvia 토스형 프레임" 구역이 옛 규칙(10-02 Ocean workspace)을 덮는다.
+   토스형 개편: :root 토큰이 기준이고, 맨 끝 "Marvia 토스형 프레임" 구역이 옛 규칙을 덮는다.
    화면별 스타일은 app/styles/*.css (layout.tsx가 이 파일 뒤에 불러온다). */
 :root {
- /* Marvia 토스형 팔레트 (10-06 개편, web/DESIGN.md). 옛 변수 이름은 그대로 두어 아직 안 고친 화면도 새 색을 따라온다.
+ /* Marvia 토스형 팔레트 (개편, web/DESIGN.md). 옛 변수 이름은 그대로 두어 아직 안 고친 화면도 새 색을 따라온다.
     --rail은 여전히 "누를 수 있는 것"의 파랑(버튼·선택 메뉴). 파랑은 누를 수 있는 것에만 쓴다. */
 
  /* 새 이름 (화면 작업은 이 이름을 쓴다) */
@@ -23,12 +23,12 @@
  --blue:var(--brand);--blue-dark:var(--brand-hover);--cyan:var(--brand);--ease:cubic-bezier(.2,.8,.2,1);
 
  /* 글꼴: 영문·숫자는 Manrope(번들, 이미 의존성), 한글은 Noto Sans KR. 고정폭은 B/L·컨테이너 번호에만.
-    10-07 정운: imweb Reservation 테마처럼 흰 바탕·각진 모서리·얇은 글씨. 상자와 둥근 모서리는 안 예쁘다 → 바탕 흰색, 모서리 0(원형 점만 50%), 그림자 없음 */
+    imweb Reservation 테마처럼 흰 바탕·각진 모서리·얇은 글씨. 상자와 둥근 모서리는 안 예쁘다 → 바탕 흰색, 모서리 0(원형 점만 50%), 그림자 없음 */
  --mono:'IBM Plex Mono',ui-monospace,monospace;--font:'Manrope Variable','Noto Sans KR Variable',-apple-system,sans-serif;
  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;
- /* 글자 크기 (10-07 정운 실사용 8번: 너무 크다). 본문 14 · 보조 13 · 작은 글 12 · 구역 제목 18 · 화면 제목 22 */
+ /* 글자 크기 (너무 크다). 본문 14 · 보조 13 · 작은 글 12 · 구역 제목 18 · 화면 제목 22 */
  --text-xs:12px;--text-sm:13px;--text-base:14px;--text-lg:18px;--text-xl:22px;
- /* 공용 토큰 (10-07 디자인 방향: 가볍고 얇은 글씨, 상자 대신 가는 선과 여백). 다른 화면 CSS는 fallback과 함께 쓴다 */
+ /* 공용 토큰 (디자인 방향: 가볍고 얇은 글씨, 상자 대신 가는 선과 여백). 다른 화면 CSS는 fallback과 함께 쓴다 */
  --fs-xs:12px;--fs-sm:13px;--fs-base:14px;--fs-md:15px;--fs-lg:18px;--fs-xl:22px;--fs-2xl:28px;
  --fw-regular:400;--fw-medium:500;--fw-semibold:600;
  --hairline:#e8e8e8;
@@ -315,7 +315,7 @@ tr.action-row>td{padding:0!important;background:var(--canvas)}
 .experiment-list small{font-size:14px;color:var(--muted)}
 
 /* ==========================================================================
-   Ocean workspace (10-02). White rail, cool ocean blue, AI composer at the centre.
+   Ocean workspace. White rail, cool ocean blue, AI composer at the centre.
    Source: Marvia_Claude_구현작업서 4~5절 and the Ocean mockup (pixel reference only, values are not copied).
    This block comes after the older rules on purpose: it restyles them with the same specificity,
    and it carries its own breakpoints for everything it redefines (1100 / 900 / 700px).
@@ -362,7 +362,7 @@ dd{font-size:14px}
 .about-link:hover,.about-link.active{color:var(--blue)}
 .sidebar-meta{border-top:1px solid var(--border);color:var(--muted);font-size:14px;padding:16px 6px 0}
 .online-dot{background:var(--blue)}
-/* (10-06 흐림 효과는 뺐지만 이 z-index는 둔다) 상단바를 독립된 층으로 두고, 계정 메뉴(z-index 20)가 그 층 안에 갇혀 본문 버튼 아래로 깔리지 않게 층 자체를 본문 위에 둔다 (10-02 로컬 확인) */
+/* 상단바를 독립된 층으로 두고, 계정 메뉴(z-index 20)가 그 층 안에 갇혀 본문 버튼 아래로 깔리지 않게 층 자체를 본문 위에 둔다 */
 .workspace-bar{position:relative;z-index:40;height:65px;padding:0 38px;background:#ffffffa6;border-bottom:1px solid var(--border);font-size:14px;}
 .breadcrumb{color:var(--muted)}
 .replay-chip{border:0;border-radius:0;background:var(--soft);color:var(--text-2);font-size:14px;font-weight:500;padding:4px 9px}
@@ -633,14 +633,14 @@ th{background:var(--soft);color:var(--text-2)}
  .pending-dots i,.loading-line:after,.spin{animation:none!important}
 }
 
-/* 근거 카드를 펼쳤을 때 원본 JSON 대신 보이는 4줄 표 (10-02 화면 용어 점검). 항목 이름은 한글이라 글자를 조금 키운다 */
+/* 근거 카드를 펼쳤을 때 원본 JSON 대신 보이는 4줄 표. 항목 이름은 한글이라 글자를 조금 키운다 */
 .evidence-field{font-size:14px}
 .evidence-detail{display:grid;gap:6px;margin:0;padding:10px;background:var(--soft);border-top:1px solid var(--border);font-size:14px}
 .evidence-detail div{display:grid;grid-template-columns:64px 1fr;gap:8px}
 .evidence-detail dt{color:var(--muted)}
 .evidence-detail dd{margin:0;overflow-wrap:anywhere}
 
-/* 설정 화면 "내 기억" (components/MemoryPanel.tsx, docs/specs/memory.md 10-02). 계정 구역과 같은 틀을 쓰고 목록만 더한다 */
+/* 설정 화면 "내 기억" (components/MemoryPanel.tsx, docs/specs/memory.md). 계정 구역과 같은 틀을 쓰고 목록만 더한다 */
 .memory-panel>p.muted{font-size:14px;margin-top:6px}
 .memory-block{margin-top:18px}
 .memory-block h3{font-size:14px;margin-bottom:6px}
@@ -659,12 +659,12 @@ th{background:var(--soft);color:var(--text-2)}
 .memory-full{margin-top:12px;padding:12px;border-radius:0;background:var(--warning-bg);color:var(--warning);font-size:14px}
 @media (max-width:720px){.memory-item{flex-direction:column;align-items:flex-start}}
 
-/* 서류 확인 화면의 B/L 조건·연락처 칸 (DocumentPanel, 10-02 결정 6). 고르기 칸도 입력 칸과 같은 모양 */
+/* 서류 확인 화면의 B/L 조건·연락처 칸 (DocumentPanel, 결정 6). 고르기 칸도 입력 칸과 같은 모양 */
 .document-field select{min-width:0;font-size:14px;min-height:36px;padding:7px 10px;border-radius:0;border:1px solid var(--border);background:var(--surface)}
 .document-field.flagged select{border-color:var(--warning);background:var(--warning-bg)}
 .document-subhead{margin:16px 0 4px;font-size:14px}
 
-/* 화물 지켜보기 (WatchToggle·WatchOfferAction, G5 10-05·10-06 결정). 새 값 없이 기존 토큰과 .button/.subtle-badge를 쓴다 */
+/* 화물 지켜보기 (WatchToggle·WatchOfferAction, G5). 새 값 없이 기존 토큰과 .button/.subtle-badge를 쓴다 */
 .watch-toggle{margin:-8px 0 24px;padding:16px 20px;border:1px solid var(--border);border-radius:0;background:var(--surface)}
 .watch-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .watch-row .muted{margin:0;font-size:14px}
@@ -675,7 +675,7 @@ th{background:var(--soft);color:var(--text-2)}
 .watch-offer{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .watch-offer .request-error{margin:0;flex-basis:100%}
 .watch-toggle .account-message:focus-visible{outline-offset:2px}
-/* 채팅 말풍선 아래 작은 지도 (ChatMiniMap, 10-05). 높이 180px, 말풍선 폭에 맞춘다 */
+/* 채팅 말풍선 아래 작은 지도 (ChatMiniMap). 높이 180px, 말풍선 폭에 맞춘다 */
 .chat-body{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
 .chat-mini-map{margin:0;border:1px solid var(--border);border-radius:0;background:var(--surface);overflow:hidden;max-width:420px}
 .chat-mini-map-host{height:180px;width:100%;position:relative;isolation:isolate;background:var(--sea);filter:saturate(.35);font-family:var(--font)}
@@ -683,7 +683,7 @@ th{background:var(--soft);color:var(--text-2)}
 .chat-mini-map figcaption button{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;padding:4px 9px;border-radius:0;background:var(--soft);color:var(--accent-dark);font-size:14px;font-weight:500}
 .chat-mini-map figcaption button:hover{background:var(--hover)}
 @media (max-width:700px){.chat-mini-map{max-width:100%}}
-/* B/L 2~3개 비교 표 (ChatCargoTable, 10-05). 좁은 화면은 가로로 밀어 볼 수 있게 한다 */
+/* B/L 2~3개 비교 표 (ChatCargoTable). 좁은 화면은 가로로 밀어 볼 수 있게 한다 */
 .chat-cargo-table{border:1px solid var(--border);border-radius:0;background:var(--surface);overflow-x:auto;max-width:520px}
 .chat-cargo-table table{width:100%;border-collapse:collapse;font-size:14px;color:var(--body)}
 .chat-cargo-table th,.chat-cargo-table td{padding:8px 10px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -696,7 +696,7 @@ th{background:var(--soft);color:var(--text-2)}
 .chat-cargo-table .verdict-badge{min-width:0}
 .chat-cargo-hint{margin:0;padding:6px 10px;font-size:14px;color:var(--muted)}
 @media (max-width:700px){.chat-cargo-table{max-width:100%}}
-/* 대화 목록 (10-06 결정). 넓은 화면은 사이드바 안, 900px 이하는 상단바 "대화" 버튼이 여는 왼쪽 패널. 색·여백은 위 토큰만 쓴다 */
+/* 대화 목록. 넓은 화면은 사이드바 안, 900px 이하는 상단바 "대화" 버튼이 여는 왼쪽 패널. 색·여백은 위 토큰만 쓴다 */
 .conv-section{flex:1 1 auto;min-height:120px;overflow-y:auto;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
 .conv-list{display:flex;flex-direction:column;gap:6px}
 .conv-new{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:0;background:var(--surface);color:var(--blue-dark);font-size:14px;font-weight:500;cursor:pointer;transition:background .18s}
@@ -726,7 +726,7 @@ th{background:var(--soft);color:var(--text-2)}
 .conv-sheet-head button{min-height:36px;padding:0 10px;border:0;background:transparent;color:var(--muted);font-size:14px;cursor:pointer}
 @media(max-width:900px){.conv-section{display:none}.conv-delete{opacity:1}}
 
-/* 내 화물 현황 표 (CargoSheet, 10-06). 새 색 없이 기존 토큰만 쓴다. 전체 화면 개편 전까지 최소한의 모양 */
+/* 내 화물 현황 표 (CargoSheet). 새 색 없이 기존 토큰만 쓴다. 전체 화면 개편 전까지 최소한의 모양 */
 .cargo-sheet-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
 .cargo-sheet-bar p{margin:0;font-size:14px}
 .cargo-sheet .table-scroll{border:1px solid var(--border);border-radius:0;background:var(--surface)}
@@ -753,17 +753,17 @@ th{background:var(--soft);color:var(--text-2)}
 .cargo-parties dt{color:var(--muted)}
 .cargo-parties dd{margin:0;font-weight:500;overflow-wrap:anywhere}
 
-/* 관세청 처리 내역 원문 표 (docs/specs/customs-detail.md, 10-02). 칸이 많아 가로 스크롤, 안내 칸만 줄바꿈 */
+/* 관세청 처리 내역 원문 표 (docs/specs/customs-detail.md). 칸이 많아 가로 스크롤, 안내 칸만 줄바꿈 */
 .customs-detail-section{margin-top:24px}
 .customs-detail-section>p{font-size:14px;margin:4px 0 10px}
 .customs-detail-table{font-size:14px;white-space:nowrap}
 .customs-detail-table td.notice-cell{white-space:normal;min-width:260px;color:var(--body)}
 
-/* 하루 AI 사용량 안내 (docs/specs/token-quota.md, 10-02). 다 쓰면 붉게, 얼마 안 남으면 노랗게 입력창 아래에 보인다 */
+/* 하루 AI 사용량 안내 (docs/specs/token-quota.md). 다 쓰면 붉게, 얼마 안 남으면 노랗게 입력창 아래에 보인다 */
 .quota-note{margin:10px 4px 0;padding:10px 14px;border-radius:0;font-size:14px;background:var(--warning-bg,var(--neutral-bg));color:var(--warning,var(--text-2))}
 .quota-note.blocked{background:var(--danger-bg,var(--danger-bg));color:var(--danger,var(--danger));font-weight:500}
 
-/* 왼쪽 메뉴 접기 (10-02). 기본은 원래 넓은 메뉴. "메뉴 접기"를 누르면 아이콘만 보이고, 마우스를 올리거나 초점을 주면 이름 말풍선.
+/* 왼쪽 메뉴 접기. 기본은 원래 넓은 메뉴. "메뉴 접기"를 누르면 아이콘만 보이고, 마우스를 올리거나 초점을 주면 이름 말풍선.
    휴대폰(700px 이하)은 위쪽 가로 메뉴라 접기와 상관없다 */
 .about-icon,.rail-toggle{display:none}
 @media(min-width:701px){
@@ -786,7 +786,7 @@ th{background:var(--soft);color:var(--text-2)}
 }
 
 /* 감시·지도 (docs/specs/cargo-watch.md) */
-/* section.watch로 좁힌다. 그냥 .watch면 판정 "주의"(watch)의 .watch(판정 카드·배지·이력 칸)까지 세로로 쌓였다 (10-02 UI 점검) */
+/* section.watch로 좁힌다. 그냥 .watch면 판정 "주의"(watch)의 .watch(판정 카드·배지·이력 칸)까지 세로로 쌓였다 */
 section.watch{display:flex;flex-direction:column;gap:14px}
 .watch-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
 .watch-head h2{display:flex;align-items:center;gap:8px;font-size:var(--fs-lg,18px);color:var(--ink)}
@@ -825,7 +825,7 @@ section.watch{display:flex;flex-direction:column;gap:14px}
 .watch-tip dd{margin:0;color:var(--ink);white-space:normal}
 @media(max-width:900px){.watch-body{grid-template-columns:1fr}.watch-map{height:380px}.watch-list{max-height:none}}
 
-/* 왼쪽 메뉴 "화물" 묶음의 하위 메뉴 (docs/specs/cargo-watch.md, 10-02. 10-08 "내 화물" 항목은 뺐다).
+/* 왼쪽 메뉴 "화물" 묶음의 하위 메뉴 (docs/specs/cargo-watch.md. "내 화물" 항목은 뺐다).
    넓은 메뉴: 내 화물 바로 밑에 들여 써서 펼친다(▾로 접고 펼침). 접은 메뉴: 아이콘에 마우스를 올리면 옆으로 뜬다 */
 .nav-group{position:relative}
 .nav-group-head{display:flex;align-items:center}
@@ -881,13 +881,13 @@ section.watch{display:flex;flex-direction:column;gap:14px}
 .cluster-panel dt{color:var(--text-2)}
 .cluster-panel dd{margin:0;color:var(--ink)}
 @media(max-width:900px){.cluster-panel{left:12px;width:auto;top:auto;max-height:70%}}
-/* 감시·지도 경로 점: 평소에는 흐리게, 고른 배만 또렷하게 (10-02) */
+/* 감시·지도 경로 점: 평소에는 흐리게, 고른 배만 또렷하게 */
 .track-dot{transition:opacity .2s}
 .track-dot.faint{opacity:.3}
 .track-dot span:hover{background:#fff}
 
 /* ==========================================================================
-   10-02 UI 점검 반영. 위의 옛 규칙과 Ocean 블록이 다투던 곳을 여기서 한 번에 정리한다.
+   UI 점검 반영. 위의 옛 규칙과 Ocean 블록이 다투던 곳을 여기서 한 번에 정리한다.
    - 위쪽에서 같은 선택자·같은 속성으로 뒤에 다시 정의되어 적용되지 않던 선언 311개는 지웠다 (V6, 화면 캡처가 그대로인지 비교함)
    - 11px보다 작은 글자 크기는 모두 11px로 올렸다. 휴대폰 규칙도 데스크톱보다 작아지지 않는다 (V5)
    - 판정 색(순항 초록·주의 주황·긴급 빨강)은 그대로 두고, 판정이 아닌 강조만 Ocean 파랑으로 바꾼다 (V2)
@@ -1021,12 +1021,12 @@ td small,th small{font-size:14px}
  .schedule-line strong{margin:2px 0 8px auto}
  .back-to-cargo .button{width:100%;justify-content:center}
 }
-/* 접은 메뉴(아이콘만)에는 사이드바에 대화 목록을 둘 자리가 없다. 사이드바를 펼치면 다시 보인다. 상단바 "대화" 버튼은 10-08 뺐다 (정운 32번) */
+/* 접은 메뉴(아이콘만)에는 사이드바에 대화 목록을 둘 자리가 없다. 사이드바를 펼치면 다시 보인다. 상단바 "대화" 버튼은 뺐다 */
 .rail-collapsed .conv-section{display:none}
 
 
 /* ==========================================================================
-   Marvia 토스형 프레임 (10-06). 위의 옛 규칙을 같은 선택자로 다시 덮는 마지막 구역.
+   Marvia 토스형 프레임. 위의 옛 규칙을 같은 선택자로 다시 덮는 마지막 구역.
    원칙 (web/DESIGN.md): 연회색 바탕 + 흰 카드, 파랑(--brand)은 누를 수 있는 것에만, 신호등 색(--grade-*)은 판정 등급에만,
    글자는 14/16/20/26 네 단계, 둥글기 8~12px, 그라데이션·빛·유리·큰 그림자 없음.
    화면별 세부는 app/styles/*.css가 이 구역 뒤에 불러와져 덮는다 (layout.tsx).
@@ -1181,7 +1181,7 @@ button.avatar:hover{background:var(--border)}
  .about-link{padding:6px 8px;margin:0;font-size:var(--text-sm)}
 }
 
-/* 사이드바 정리 (10-06 2차 다듬기) */
+/* 사이드바 정리 */
 /* 701~900px: 레일이 아이콘만 남는 폭이라 하위 메뉴(화물 조회·감시·지도)도 글자를 숨기고 아이콘만 둔다. 글자가 레일 밖으로 튀어나오던 문제 */
 @media(min-width:701px) and (max-width:900px){
  .nav-sub{padding-left:0;align-items:center}
@@ -1196,13 +1196,13 @@ button.avatar:hover{background:var(--border)}
 /* WCAG AA 대비: 연한 파랑(--brand-soft) 위의 파란 글씨는 4.5:1이 안 돼 한 단계 진한 파랑을 쓴다. 눌러 보는 것의 색 의미는 그대로다 (axe color-contrast) */
 .nav-link.active,.nav-link.active span,.nav-sub-item.active,.nav-sub-item.active span,[role=tab].active,.row-open>td .ship-link,.sort-head.on,.sort-head.on svg{color:var(--brand-hover)}
 
-/* 10-06 정운 지적 "여백이 너무 많이 남는다": 넓은 모니터에서 본문이 1450px 가운데 상자에 갇혀 양옆이 비었다.
+/* "여백이 너무 많이 남는다"는 지적: 넓은 모니터에서 본문이 1450px 가운데 상자에 갇혀 양옆이 비었다.
    본문은 작업 영역 폭을 다 쓰고 양옆 여백만 일정하게 둔다. 아주 넓은 화면(2200px 이상)에서만 상한을 둔다 */
 .page{max-width:2200px;margin:0 auto;padding:28px 40px 48px}
 @media(max-width:1190px){.page{padding:24px 24px 48px}}
 @media(max-width:700px){.page{padding:16px 16px 84px}}
 
-/* ===== 앱 틀 다듬기 (10-06 3차): 움직임 토큰, 사이드바 접기 아이콘, 포커스, 서랍 =====
+/* ===== 앱 틀 다듬기: 움직임 토큰, 사이드바 접기 아이콘, 포커스, 서랍 =====
    다른 화면 CSS도 아래 토큰을 쓴다. 150ms 눌림/올림, 220ms 나타남, 320ms 패널·서랍. 곡선은 --ease. */
 :root{--dur-fast:150ms;--dur-base:220ms;--dur-slow:320ms}
 
@@ -1275,7 +1275,7 @@ main:focus,main:focus-visible{outline:none}
  .button:active:not(:disabled),.icon-button:active:not(:disabled),.nav-link:active,.nav-sub-item:active{transform:none}
 }
 
-/* ── 10-07 엘레강스 기준 (정운: imweb Reservation 테마처럼. 상자·둥근 모서리 빼고, 각진 얇은 테두리 버튼) ──
+/* ── 엘레강스 기준 (imweb Reservation 테마처럼. 상자·둥근 모서리 빼고, 각진 얇은 테두리 버튼) ──
    이 구역이 파일 맨 끝이라 같은 선택자의 옛 규칙을 덮는다. 화면별 CSS(app/styles/*)는 이 뒤에 오니 거기서 더 다듬는다.
    - 버튼: 채운 덩어리 대신 1px 테두리 + 넓은 자간. 누르면(hover) 반전. 파랑은 링크·선택 표시에만
    - 바탕은 흰색, 구분은 가는 선(--hairline)과 여백 */

@@ -1,6 +1,6 @@
 /** 답을 기다리는 동안 보여 줄 서버의 실제 처리 단계 (docs/specs/chat-progress.md).
  * 단계 이름은 backend/app/services/progress.py STAGES와 같다. 여기 없는 이름은 화면에 보이지 않는다.
- * 화면은 서버가 보낸 단계만 그린다. 타이머로 단계를 넘기거나 퍼센트를 만들지 않는다 (가이드 8-3, 10-02 결정).
+ * 화면은 서버가 보낸 단계만 그린다. 타이머로 단계를 넘기거나 퍼센트를 만들지 않는다 (가이드 8-3).
  */
 export type ProgressStage = 'understand' | 'customs' | 'identify' | 'position' | 'judge' | 'answer' | 'schedule' | 'ports'
   | 'tool_candidates' | 'tool_position' | 'tool_schedule' | 'tool_distance' | 'memory';

@@ -5,16 +5,16 @@
  * 읽은 값으로 바로 조회하지 않는다 (Spec "사용자 확인 화면", SDD 비전 울타리). 검사에 걸린 칸은 "확인 필요"로 드러낸다.
  * B/L은 조회 폼에 바로 넣고, 항차·입항 예정일은 되묻기 화면(CandidatePicker)에 미리 채울 값으로만 둔다.
  * 첫 조회에 섞어 보내면 백엔드가 되묻기 답으로 읽기 때문이다 (schemas/agent.py "선택 칸으로 첫 조회/되묻기 답 구분").
- * 출항일(etd, 10-06): 사용자가 확인한 값만 DocHints로 넘기고, 조회 때 서버가 내 화물 현황 표 출항 칸에 적는다(source 'document').
+ * 출항일(etd): 사용자가 확인한 값만 DocHints로 넘기고, 조회 때 서버가 내 화물 현황 표 출항 칸에 적는다(source 'document').
  * 판정에는 쓰이지 않고, 직접 적은 날짜는 덮지 않는다 (services/cargo.upsert_assessment).
  * 품명·선적항·양하항은 확인용으로만 보여 주고 어디에도 보내거나 저장하지 않는다 (CLAUDE.md 품명 비저장).
  *
- * B/L 조건 세 칸·인코텀즈·화물 인도 연락처 (10-02 결정 6·7, docs/specs/memory.md):
+ * B/L 조건 세 칸·인코텀즈·화물 인도 연락처 (결정 6·7, docs/specs/memory.md):
  * 사용자가 고르거나 고친 값만 "확인한 값으로 채우기"를 누를 때 POST /api/memory/document-facts로 저장한다.
  * 검사에 걸린 칸은 미리 고르지 않고 비워 둔다(읽은 값은 옆에 보여 준다). 확인 안 한 값이 저장되지 않게 하려는 것이다.
  * 저장은 실제 모드 + 로그인일 때만, 실패해도 입력 채우기는 막지 않는다. 판정 등급에는 쓰지 않는다.
  *
- * 10-08 정운 실사용 73번: 채팅 첨부는 이 컴포넌트를 쓰지 않는다(보내기 때 B/L만 읽는다, ChatBar). 이 파일은 옛 조회 폼(TopBar)용 기본 모드만 남겼다.
+ * 채팅 첨부는 이 컴포넌트를 쓰지 않는다(보내기 때 B/L만 읽는다, ChatBar). 이 파일은 옛 조회 폼(TopBar)용 기본 모드만 남겼다.
  */
 import {useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent} from 'react';
 import {Camera, Check, ChevronDown, LoaderCircle, RotateCcw, TriangleAlert, X} from 'lucide-react';
@@ -73,7 +73,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {
   const [result, setResult] = useState<DocumentResponse | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [dragging, setDragging] = useState(false);
-  // 읽는 데 20~28초쯤 걸려 스피너만으로는 멈춘 것처럼 보인다. 브라우저가 실제로 잰 경과 초만 보인다 (10-07 정운 실사용 11번)
+  // 읽는 데 20~28초쯤 걸려 스피너만으로는 멈춘 것처럼 보인다. 브라우저가 실제로 잰 경과 초만 보인다
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     if (!busy) { setSeconds(0); return; }
@@ -88,7 +88,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {
     try {
       const r = await readDocument(file);
       setResult(r);
-      // 조건·연락처 칸은 검사에 걸리면 미리 채우지 않는다. 사용자가 직접 골라야 저장된다 (10-02 결정 7)
+      // 조건·연락처 칸은 검사에 걸리면 미리 채우지 않는다. 사용자가 직접 골라야 저장된다 (결정 7)
       setValues({...Object.fromEntries(Object.entries(r.fields).map(([k, f]) =>
         [k, (CONDITION_KEYS as string[]).includes(k) && f.checks.length ? '' : f.value ?? ''])), mrn: r.mrn ?? ''});
     } catch (e) {
@@ -144,7 +144,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {
     ...CONTACT_LABELS.map(([k, l]) => [k, l] as const),
   ].filter(([k]) => {
     const checks = result.fields[k]?.checks ?? [];
-    // B/L에는 원래 입항 예정일이 없다. 비어서 missing만 걸린 eta는 경고가 아니라 안내라서 배너 목록에서도 뺀다 (10-08 정운 실사용 72번)
+    // B/L에는 원래 입항 예정일이 없다. 비어서 missing만 걸린 eta는 경고가 아니라 안내라서 배너 목록에서도 뺀다
     if (k === 'eta' && !result.fields[k]?.value && checks.every(c => c === 'missing')) return false;
     return checks.length > 0;
   }).map(([, l]) => l) : [];
@@ -217,7 +217,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {
           {result.status === 'partial' && <span>B/L 번호만 읽었어요. 나머지 칸은 직접 확인해 주세요.</span>}
         </div>
       </div>
-      {/* 10-06: AI 단계가 실패하면 빈 칸이 서류 탓처럼 보인다. 실패했다고 알리고 사진을 다시 올리게 한다 ("다른 사진" 버튼) */}
+      {/* AI 단계가 실패하면 빈 칸이 서류 탓처럼 보인다. 실패했다고 알리고 사진을 다시 올리게 한다 ("다른 사진" 버튼) */}
       {result.llm_error && <p role="alert" className="request-error">AI가 서류 글자를 정리하지 못했어요. 다시 시도해 주세요.</p>}
 
       <section className="doc-group" aria-labelledby={`${inputId}-read`}>
@@ -228,7 +228,7 @@ export function DocumentPanel({onApply, onClose, disabled, heading = true}: {
         {FIELD_LABELS.map(([key, label, use]) => {
           const f = result.fields[key] ?? emptyField;
           const id = `${inputId}-${key}`;
-          // 10-08 정운 실사용 72번: B/L에는 입항 예정일이 보통 없다. 비었을 때 "읽지 못함" 경고는 오류처럼 읽히므로 안내로 바꾼다
+          // B/L에는 입항 예정일이 보통 없다. 비었을 때 "읽지 못함" 경고는 오류처럼 읽히므로 안내로 바꾼다
           const etaAbsent = key === 'eta' && !f.value && f.checks.length > 0 && f.checks.every(c => c === 'missing');
           const checks = etaAbsent ? [] : f.checks;
           return <div key={key} className={`doc-field ${checks.length ? 'flagged' : ''} ${CARD_STRONG.has(key) ? 'strong' : ''}`}>

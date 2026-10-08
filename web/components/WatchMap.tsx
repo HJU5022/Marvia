@@ -1,5 +1,5 @@
 'use client';
-/** 지켜보는 화물 (docs/specs/cargo-watch.md, 10-02). 내 화물 B/L마다 그 배의 마지막 위치를 한 지도에 서로 다른 마커로 보여 준다.
+/** 지켜보는 화물 (docs/specs/cargo-watch.md). 내 화물 B/L마다 그 배의 마지막 위치를 한 지도에 서로 다른 마커로 보여 준다.
  * - 위치는 worker가 6시간마다 모은 마지막 값을 쓸 예정이다 (watch_positions, 017). 지금은 위치 수집이 꺼져 있어(ShipFinder 호출 한도) 예시 데이터다
  * - 반출이 끝난 화물(status done)은 지도에서 빼고 목록 아래에 개수만 알린다
  * - 마커에 마우스를 올리면 선명, 가린 B/L, 운송 화물 이름표, 판정, 통관 단계, 도착 예정, 위치 수신 시각이 뜬다.
@@ -27,10 +27,10 @@ const CLUSTER_PX = 44;
 /** 위치가 있어 지도에 올릴 수 있는 화물 */
 type Located = WatchItem & {lat: number; lng: number};
 
-/** 지도에 올리는 점 하나. B/L 화물(cargo)이거나 배만 지켜보는 배(vessel)다. 둘은 같은 핀 모양·같은 클러스터를 쓴다 (10-08 승욱) */
+/** 지도에 올리는 점 하나. B/L 화물(cargo)이거나 배만 지켜보는 배(vessel)다. 둘은 같은 핀 모양·같은 클러스터를 쓴다 */
 type Spot = {lat: number; lng: number; cargo?: Located; vessel?: WatchedVessel};
 
-/** 진짜 선명만. 서버가 선명을 모르면 api.ts가 가린 B/L로 채워 오므로(ship_name ?? bl_masked) 같은 값이면 선명이 아니다 (10-07 정운 실사용 17번) */
+/** 진짜 선명만. 서버가 선명을 모르면 api.ts가 가린 B/L로 채워 오므로(ship_name ?? bl_masked) 같은 값이면 선명이 아니다 */
 const realShip = (item: WatchItem) => item.ship_name && item.ship_name !== item.bl_masked ? item.ship_name : null;
 /** 화물 이름: 이름표 > 품명 > 진짜 선명 > "B/L 가린번호" 한 번 */
 const nameOf = (item: WatchItem) => item.label ?? item.goods_name ?? realShip(item) ?? `B/L ${item.bl_masked}`;
@@ -40,7 +40,7 @@ const shipOf = (item: WatchItem) => realShip(item) ?? nameOf(item);
 /** 말풍선과 클러스터 상세 창이 같이 쓰는 항목 */
 function rowsOf(item: WatchItem): [string, string][] {
   return [
-    ['화물 이름', nameOf(item)],  // 이름표가 없으면 UNI-PASS 품명 (10-06)
+    ['화물 이름', nameOf(item)],  // 이름표가 없으면 UNI-PASS 품명
     ['B/L', item.bl_masked],
     ['국적', item.ship_flag ?? '-'],  // 시안에 국적 칸이 있다. 값이 없으면 대시
     ['통관 단계', item.stage ?? '확인 안 됨'],
@@ -67,7 +67,7 @@ export function WatchMap() {
   const [cluster, setCluster] = useState<number[] | null>(null);  // 누른 클러스터 안의 배 번호들. 상세 창에 보인다
   const [selected, setSelected] = useState<number | null>(null);  // 지금 고른 배. 목록 카드를 강조한다 (보기 전용 상태)
   const [hovered, setHovered] = useState<number | null>(null);  // 마우스·키보드가 가리키는 배. 선택과 별개인 임시 강조 (지도 ↔ 목록 양방향)
-  // 10-08 정운 실사용 68번: B/L 없이 배만 지켜보는 배도 같은 지도에 따로 찍는다. null은 아직 읽는 중
+  // B/L 없이 배만 지켜보는 배도 같은 지도에 따로 찍는다. null은 아직 읽는 중
   const [vessels, setVessels] = useState<WatchedVessel[] | null>(vesselWatchEnabled ? null : []);
   const host = useRef<HTMLDivElement>(null);
   const listEl = useRef<HTMLOListElement>(null);
@@ -84,13 +84,13 @@ export function WatchMap() {
   }, []);
   useEffect(() => { let alive = true; void getWatchList().then(l => { if (alive) setList(l); }); return () => { alive = false; }; }, []);
 
-  // 지도에는 위치가 있는 화물만 올린다. 위치 수집 전 화물은 아래 줄에 이름만 보여 준다 (GET /api/watch, 10-06)
+  // 지도에는 위치가 있는 화물만 올린다. 위치 수집 전 화물은 아래 줄에 이름만 보여 준다 (GET /api/watch)
   const active = list?.items.filter((i): i is Located => i.status === 'active' && i.lat != null && i.lng != null) ?? [];
   const waiting = list?.items.filter(i => i.status === 'active' && (i.lat == null || i.lng == null)) ?? [];
   const done = list?.items.filter(i => i.status === 'done').length ?? 0;
   const total = active.length + waiting.length;
   // 위치가 있는 배만 지도에 찍는다. 위치 없는 배는 아래 "지켜보는 배" 목록에 글로 나온다
-  // 10-08 정운 실사용 69번: 같은 배(MMSI)가 두 번 오면 마커가 겹쳐 글상자가 두 겹으로 보였다. MMSI마다 가장 늦게 받은 위치 하나만 남긴다.
+  // 같은 배(MMSI)가 두 번 오면 마커가 겹쳐 글상자가 두 겹으로 보였다. MMSI마다 가장 늦게 받은 위치 하나만 남긴다.
   // 화물(B/L) 쪽 항목에는 MMSI가 없어, 화물의 진짜 선명이 같은 배는 화물 마커 하나만 보이도록 이름(대소문자·공백 무시)으로 뺀다
   const normName = (n: string) => n.trim().toUpperCase().replace(/\s+/g, ' ');
   const cargoShips = new Set(active.map(i => realShip(i)).filter((n): n is string => !!n).map(normName));
@@ -106,7 +106,7 @@ export function WatchMap() {
   const spotColor = (k: number) => spots[k]?.vessel ? VESSEL_ONLY_COLOR : colorOf(k);
 
   useEffect(() => {
-    if (!list || !(total || vesselPins.length)) return;  // 위치 있는 화물이 없어도 부산항 기준 빈 지도는 그린다 (10-07 17번)
+    if (!list || !(total || vesselPins.length)) return;  // 위치 있는 화물이 없어도 부산항 기준 빈 지도는 그린다
     let disposed = false;
     setSelected(null);
     let cleanup: (() => void) | undefined;
@@ -122,17 +122,17 @@ export function WatchMap() {
       // 중심을 먼저 정한 뒤 선을 올린다 (VesselMap과 같은 이유: 범위를 모르면 Leaflet이 멈춘다)
       if (points.length) map.fitBounds(L.latLngBounds([...points, port]).pad(.25), {maxZoom: 8, animate: false});
       else map.setView(port, 6, {animate: false});
-      // 바탕은 세계 지도, 못 쓰면 해안선 (lib/basemap.ts, 10-06)
+      // 바탕은 세계 지도, 못 쓰면 해안선 (lib/basemap.ts)
       const base = addBasemap(L, map, () => { drawLocalGeography(L, map); });
       map.attributionControl.setPrefix(false);
       // 부산항 마커는 배 핀보다 아래층에 두고, 이름표(툴팁 층)는 늘 핀 위에 떠서 배가 같은 자리에 있어도 가려지지 않는다
       L.marker(port, {icon: L.divIcon({className: 'port-marker', html: '<span>⚑</span>', iconSize: [28, 28], iconAnchor: [14, 14]}), interactive: false, zIndexOffset: -1000})
         .addTo(map).bindTooltip('부산항', {permanent: true, direction: 'bottom', offset: [0, 12], className: 'port-tooltip'});
 
-      // 경로 동그라미는 배 핀·클러스터보다 아래 층에 둔다. 같은 층이면 위도 순으로 겹쳐 클러스터를 가려 누를 수 없었다 (10-02 확인)
+      // 경로 동그라미는 배 핀·클러스터보다 아래 층에 둔다. 같은 층이면 위도 순으로 겹쳐 클러스터를 가려 누를 수 없었다
       map.createPane('watch-track').style.zIndex = '550';  // overlay(선) 400 < 경로 점 550 < 마커 600
       // 경로: 지난 위치를 오래된 순으로 선으로 잇고, 현재 위치를 뺀 지점마다 작은 동그라미 (마지막 점은 큰 핀).
-      // 평소에는 모든 배 경로를 흐리게 깔고, 고른 배(핀·목록·클러스터 상세에서 누름)의 경로만 진하게 보인다 (10-02 사용자 결정).
+      // 평소에는 모든 배 경로를 흐리게 깔고, 고른 배(핀·목록·클러스터 상세에서 누름)의 경로만 진하게 보인다.
       // 경로 점에는 말풍선을 달지 않는다
       const trackLines: (L.Polyline | null)[] = [];
       const trackHits: (L.Polyline | null)[] = [];  // 보이지 않는 굵은 선. 가는 선에 마우스를 맞추기 쉽게 한다
@@ -189,7 +189,7 @@ export function WatchMap() {
           .on('click', e => { L.DomEvent.stopPropagation(e); highlight(i); })
           .on('mouseover', () => hover.current(i, true)).on('mouseout', () => hover.current(null, true));
       });
-      // 배만 지켜보는 배도 화물 핀과 같은 동그라미 핀·알파벳(화물 다음 글자부터)으로 그리고 같은 클러스터에 넣는다 (10-08 승욱).
+      // 배만 지켜보는 배도 화물 핀과 같은 동그라미 핀·알파벳(화물 다음 글자부터)으로 그리고 같은 클러스터에 넣는다.
       // 전에는 방향 화살표로 따로 올려 클러스터에 안 묶이고 화물 핀과 포개졌다. 판정이 없다는 것은 흰 바탕·회색 점선 테두리 핀으로 보인다(판정 색·테두리 없음).
       // 오른쪽 "내 화물" 목록에는 넣지 않는다(판정·통관 줄이라서). 지도 아래 WatchedVessels 목록에 따로 있다
       markers.push(...vesselPins.map((v, j) => {
@@ -208,7 +208,7 @@ export function WatchMap() {
       const layer = L.layerGroup().addTo(map);
 
       // 목록에서 연 말풍선은 마우스를 떼도 저절로 안 닫힌다. 한 번에 하나만 열어 두고,
-      // 다른 배를 고르거나, 다른 마커에 마우스를 올리거나, 지도 빈 곳을 누르면 닫는다 (10-02 사용자 발견: 말풍선이 쌓였다)
+      // 다른 배를 고르거나, 다른 마커에 마우스를 올리거나, 지도 빈 곳을 누르면 닫는다 (말풍선이 쌓였다)
       let opened: L.Marker | null = null;
       const closeOpened = () => { opened?.closeTooltip(); opened = null; };
       markers.forEach(m => m.on('mouseover', () => { if (opened && opened !== m) closeOpened(); }));
@@ -261,7 +261,7 @@ export function WatchMap() {
         map.once('moveend', after);
         setTimeout(after, 700);  // 이미 그 자리라 지도가 안 움직이면 moveend가 오지 않는다
         // 그 배가 다른 배와 떨어져 보이는(클러스터에서 빠지는) 가장 낮은 확대 단계를 찾는다.
-        // 경로 전체가 들어오는 단계가 그보다 낮으면 경로를 포기하고 배를 가운데 두고 그 단계로 확대한다 (10-02 사용자 발견:
+        // 경로 전체가 들어오는 단계가 그보다 낮으면 경로를 포기하고 배를 가운데 두고 그 단계로 확대한다 (사용자 발견:
         // 클러스터 안의 배를 목록에서 누르면 경로 범위에만 맞춰져 그 배로 가지 않았다)
         const here = L.latLng(spots[i].lat, spots[i].lng);
         const apartAt = (z: number) => spots.every((o, j) => j === i
@@ -287,7 +287,7 @@ export function WatchMap() {
   return <section className="watch wm" aria-labelledby="watch-title">
     <div className="wm-head"><h2 id="watch-title">지켜보는 화물 지도</h2></div>
     {!list || vessels === null ? <div className="wm-skeleton" role="status" aria-label="지켜보는 화물을 불러오고 있어요."><div className="wm-sk-map"/><div className="wm-sk-list"><i/><i/><i/><i/></div></div>
-      // 10-08 정운 실사용 68번: 예전 문장은 "자동으로 추가된다"고 했지만 직접 지켜보기를 눌러야 올라간다
+      // 예전 문장은 "자동으로 추가된다"고 했지만 직접 지켜보기를 눌러야 올라간다
       : !total && !vesselPins.length ? <div className="watch-empty">지켜보는 화물이 없어요. B/L 조회 결과나 선박 옆의 지켜보기 버튼을 누르면 여기에 나와요.</div>
       : <div className="wm-body">
         {<div className="wm-map-card">
@@ -334,7 +334,7 @@ export function WatchMap() {
                 <span className="watch-side"><VerdictBadge verdict={item.verdict}/>{!nameOf(item).startsWith('B/L ') && <small className="watch-bl">{item.bl_masked}</small>}</span>
               </button>
             </li>)}
-            {/* 위치를 아직 못 받은 화물도 같은 행 모양으로. 지도에는 없어서 눌러도 갈 곳이 없으니 버튼이 아니다 (10-07 17번) */}
+            {/* 위치를 아직 못 받은 화물도 같은 행 모양으로. 지도에는 없어서 눌러도 갈 곳이 없으니 버튼이 아니다 */}
             {waiting.map((item, i) => <li key={item.bl_masked} className="no-pos" style={{'--i': Math.min(active.length + i, 5)} as CSSProperties}>
               <div className="watch-row-static">
                 <span className="watch-chip idle" aria-hidden="true">-</span>

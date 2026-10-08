@@ -1,7 +1,7 @@
 'use client';
 /** 설정·내 정보 화면. 시안(4-1~4-5, 3-5)이 다섯 화면으로 나눈 것을 /settings 안의 하위 탭으로 옮겼다.
  * 하위 이동은 제목 아래의 밑줄 탭 줄이 맡고, 고른 탭 밑의 막대가 미끄러지듯 따라간다.
- * 판단 기준은 읽기 전용 (SDD 5.13). 설정 키·파일 경로·모델 설정은 일반 사용자에게 내지 않는다 (10-02 화면 용어 점검).
+ * 판단 기준은 읽기 전용 (SDD 5.13). 설정 키·파일 경로·모델 설정은 일반 사용자에게 내지 않는다.
  * 사이드바 계정 창은 ?tab=profile|rules|account 로 연다. 카카오에서 돌아오면(?kakao=) 연결 상태가 있는 "알림·판정 기준" 탭을 연다. KakaoPanel이 그 값을 읽고 주소에서 지우므로 여기서는 지우지 않는다.
  * 탭 종류는 TABS가 정하고, 각 탭 안의 화면은 기존 컴포넌트(ProfileForm·MemoryPanel·KakaoPanel·AccountPanel)를 그대로 쓴다 (동작·접근성 유지).
  */
@@ -14,8 +14,8 @@ import {KakaoPanel} from './KakaoPanel';
 import {AccountPanel} from './AccountPanel';
 
 type Tab = 'profile' | 'memory' | 'rules' | 'account';
-// 10-08 정운 실사용 48번: "조회 이력" 탭을 뺐다(사이드바 화물 > 조회 이력 /history가 같은 화면). "설정" 탭은 내용(기준·카카오 알림)이 잘 드러나게 "알림·판정 기준"으로 바꿨다. 탭 키 rules는 그대로.
-// 탭 아래 설명 문장(lead)은 뺐다 (10-07 정운 21번). 계정 탭 이름은 사이드바 계정 창과 맞춰 "계정 관리" (29번)
+// "조회 이력" 탭을 뺐다(사이드바 화물 > 조회 이력 /history가 같은 화면). "설정" 탭은 내용(기준·카카오 알림)이 잘 드러나게 "알림·판정 기준"으로 바꿨다. 탭 키 rules는 그대로.
+// 탭 아래 설명 문장(lead)은 뺐다. 계정 탭 이름은 사이드바 계정 창과 맞춰 "계정 관리" (29번)
 const TABS: {key: Tab; label: string}[] = [
   {key: 'profile', label: '회원 정보'},
   {key: 'memory', label: '기억한 화물'},
@@ -65,7 +65,7 @@ export function SettingsPage(){
   </div>;
 }
 
-/** 회원 정보: 입력 폼 하나. 로그인 계정(이메일)은 제목 아래 작은 글로만 둔다 (10-07 정운 20번: 오른쪽에 큰 글로 떠 있던 블록을 뺐다) */
+/** 회원 정보: 입력 폼 하나. 로그인 계정(이메일)은 제목 아래 작은 글로만 둔다 (오른쪽에 큰 글로 떠 있던 블록을 뺐다) */
 function ProfileTab(){
   const {authEnabled, user} = useApp();
   const usable = authEnabled && !!user;
@@ -90,7 +90,7 @@ function RulesTab(){
 }
 
 /** 운영자용 모델·프롬프트 설정. isOperator일 때만 그려진다(위 RulesTab). 값이 있는 줄만 보이고, 하나도 없으면 한 줄로 알린다.
- * 전에는 다섯 줄이 모두 "확인되지 않음"으로 채워져 고장처럼 보였다 (10-02 UI 점검 V7). 값을 지어내지 않는다 */
+ * 전에는 다섯 줄이 모두 "확인되지 않음"으로 채워져 고장처럼 보였다 (UI 점검 V7). 값을 지어내지 않는다 */
 function ModelCard({rows}:{rows:[string,unknown][]}){
   const known = rows.filter(([, v]) => v !== null && v !== undefined && v !== '');
   return <section className="st-card"><h2>모델과 프롬프트</h2>{known.length

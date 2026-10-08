@@ -17,7 +17,7 @@ export type CustomerMode = 'unmask' | 'edit' | 'delete' | 'suspend';
 
 export function CustomerActions({customer, mode, onDone, onClose, onLogged}: {
   customer: CustomerItem; mode: CustomerMode; onDone: (msg: string) => void; onClose: () => void;
-  onLogged?: () => void;  // 원문 열람처럼 패널을 연 채로 이력이 남는 동작 뒤에 부른다 (10-07 정운: 작업 이력에 바로 안 올라옴)
+  onLogged?: () => void;  // 원문 열람처럼 패널을 연 채로 이력이 남는 동작 뒤에 부른다 (작업 이력에 바로 안 올라옴)
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

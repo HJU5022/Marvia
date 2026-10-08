@@ -1,9 +1,9 @@
 'use client';
-/** 답 문장 속 근거 표시를 작은 칩으로 그리고, 누르면 그 자리에서 작은 말풍선(popover)을 연다 (10-08 정운 실사용 58번).
+/** 답 문장 속 근거 표시를 작은 칩으로 그리고, 누르면 그 자리에서 작은 말풍선(popover)을 연다.
  * 왜: 오른쪽 패널로 시선을 옮기지 않고 "이 말이 어디서 왔나"를 바로 본다. 표시 검증은 서버가 끝냈다(services/citations.py).
  * 화면은 서버가 준 citations 위치를 믿되, 위치가 글자와 어긋나면 [E#]를 다시 찾는다.
  * 표시가 하나도 없으면(fallback) 글은 그대로 두고 끝에 근거 칩 줄을 모은다.
- * 한 문장에 표시가 여럿이면 하나의 칩으로 합친다("해수부 외 2"). 누르면 말풍선 꼬리 없는 네모 상자가 열리고 출처마다 한 칸씩 보인다 (10-08 제품 담당 결정).
+ * 한 문장에 표시가 여럿이면 하나의 칩으로 합친다("해수부 외 2"). 누르면 말풍선 꼬리 없는 네모 상자가 열리고 출처마다 한 칸씩 보인다.
  * 접근성: 칩은 button(aria-expanded/haspopup), Esc와 바깥 클릭으로 닫고 닫으면 칩으로 포커스가 돌아간다. 글은 React 텍스트로만 그려 HTML로 해석되지 않는다. */
 import {useCallback, useEffect, useId, useRef, useState, type ReactNode} from 'react';
 import {fieldLabel, evidenceValue, dateTime} from '@/lib/format';
@@ -36,7 +36,7 @@ function EvidenceBody({item}: {item: EvidenceItem}) {
   </>;
 }
 
-/** 칩 이름: 첫 근거의 출처 이름, 근거가 둘 이상이면 "외 N" (제품 담당 결정 10-08) */
+/** 칩 이름: 첫 근거의 출처 이름, 근거가 둘 이상이면 "외 N" (제품 담당 결정) */
 function groupLabel(items: EvidenceItem[]) {
   const first = citationSourceLabel(items[0].source);
   return items.length > 1 ? `${first} 외 ${items.length - 1}` : first;
@@ -102,7 +102,7 @@ export function EvidencePopover({text, citations, evidence, renderText}: {text: 
   const toggle = (key: string) => (el: HTMLButtonElement | null) => { opener.current = el; setOpenKey(k => k === key ? null : key); };
 
   // 서버가 남긴 유효한 표시가 없으면 답 끝에 칩 하나를 둔다. 누르면 모든 근거가 한 상자에 열린다 (제품 담당 결정)
-  // 10-08 정운 실사용 62번: 이름이 "근거 1"이면 위쪽 "근거 28개" 버튼과 헷갈렸다. 문장 속 칩처럼 출처 이름("해수부", "해수부 외 1")으로 쓴다
+  // 이름이 "근거 1"이면 위쪽 "근거 28개" 버튼과 헷갈렸다. 문장 속 칩처럼 출처 이름("해수부", "해수부 외 1")으로 쓴다
   if (!parts.some(p => 'g' in p)) {
     const cleaned = text.replace(MARK, '').replace(/\s+([.,!?])/g, '$1');
     return <span ref={root} className="ev-text">{plain(cleaned)}

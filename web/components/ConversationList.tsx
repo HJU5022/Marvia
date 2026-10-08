@@ -1,6 +1,6 @@
 'use client';
-/** 사이드바의 "대화" 목록 (10-06 결정). ChatGPT·Claude처럼 날짜별 묶음, 지금 보는 대화는 강조한다.
- * "새 대화" 버튼은 사이드바 맨 위로 옮겼다(10-07 정운 29번). 이 목록은 withNew일 때만(좁은 화면 패널) 맨 위에 그린다.
+/** 사이드바의 "대화" 목록. ChatGPT·Claude처럼 날짜별 묶음, 지금 보는 대화는 강조한다.
+ * "새 대화" 버튼은 사이드바 맨 위로 옮겼다. 이 목록은 withNew일 때만(좁은 화면 패널) 맨 위에 그린다.
  * 목록·열기·삭제 상태는 모두 AppProvider에 있고 여기서는 그리기와 "정말 지울까요?" 확인 한 단계만 가진다.
  * 로그인했을 때만 Shell이 그린다. 넓은 화면은 사이드바 안에, 좁은 화면(900px 이하)은 상단바의 "대화" 버튼이 여는 패널 안에 같은 컴포넌트를 쓴다.
  */
@@ -34,7 +34,7 @@ export function ConversationList({onPick, withNew = false}: {onPick?: () => void
   function start() { setConfirmId(null); setError(''); newConversation(); onPick?.(); }
   async function open(c: ConversationSummary) {
     setConfirmId(null); setError('');
-    // 10-08 정운 45번: 이미 보던 대화여도 다른 화면(소개 등)에 있으면 채팅 화면으로 돌아간다. 예전에는 여기서 그냥 끝나 눌러도 아무 일이 없었다
+    // 이미 보던 대화여도 다른 화면(소개 등)에 있으면 채팅 화면으로 돌아간다. 예전에는 여기서 그냥 끝나 눌러도 아무 일이 없었다
     if (c.id === activeId) { onPick?.(); if (path !== '/') router.push(`/?c=${encodeURIComponent(c.id)}`); return; }
     onPick?.();
     await openConversation(c.id);

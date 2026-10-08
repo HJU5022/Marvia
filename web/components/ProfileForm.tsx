@@ -1,7 +1,7 @@
 'use client';
 /** 회원 정보 입력 (docs/specs/user-profile.md). 두 곳에서 쓴다.
  * - mode="required": 로그인 뒤 정보가 없으면 본문 대신 나온다(Shell). 입력하고 저장을 누르면 동의 창이 떠서, 읽고 동의해야 저장된다
- * - mode="edit": 설정 > 회원 정보에서 본인 정보 확인·수정. 동의는 가입 때 한 번만 받는다: 체크 칸을 두지 않고 작은 글 한 줄만 보인다 (10-07 정운 22번)
+ * - mode="edit": 설정 > 회원 정보에서 본인 정보 확인·수정. 동의는 가입 때 한 번만 받는다: 체크 칸을 두지 않고 작은 글 한 줄만 보인다
  * API 계약은 그대로다: PUT /api/profile은 consent=true가 있어야 저장한다 (routers/profile.py). 이미 저장된 정보가 있으면 동의한 사람이라 true를 보낸다
  * 검사는 서버(services/profile.clean)와 같은 규칙으로 먼저 해서 400을 줄인다. 저장은 서버가 암호화한다.
  */
@@ -66,7 +66,7 @@ export function ProfileForm({mode}: {mode: 'required' | 'edit'}) {
   const [loading, setLoading] = useState(mode === 'edit');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  // 10-08 정운 46번: 마지막으로 저장된(불러온) 값. 바뀐 것이 없으면 저장 단추를 막아 "저장했어요"가 거짓으로 뜨지 않게 한다
+  // 마지막으로 저장된(불러온) 값. 바뀐 것이 없으면 저장 단추를 막아 "저장했어요"가 거짓으로 뜨지 않게 한다
   const [saved, setSaved] = useState<ProfileData>({name: '', phone: '', address: ''});
 
   // 수정 화면은 저장된 값을 불러온다. 이미 동의했던 사람이라 동의도 채운다
@@ -77,7 +77,7 @@ export function ProfileForm({mode}: {mode: 'required' | 'edit'}) {
       .finally(() => setLoading(false));
   }, [mode]);
 
-  // 10-08 정운 47번: 저장 완료 문구는 단추 옆에 잠깐만 보이고 3초 뒤 사라진다 (큰 상자로 아래에 계속 남아 있었다)
+  // 저장 완료 문구는 단추 옆에 잠깐만 보이고 3초 뒤 사라진다 (큰 상자로 아래에 계속 남아 있었다)
   useEffect(() => { if (!message) return; const t = setTimeout(() => setMessage(''), 3000); return () => clearTimeout(t); }, [message]);
   // 수정 화면에서만 "바뀜" 검사를 한다. 입력 화면(required)은 처음이라 항상 저장할 수 있다. 공백은 서버 정리 규칙처럼 무시하고 비교한다
   const norm = (p: ProfileData) => [p.name.trim().replace(/\s+/g, ' '), p.phone.trim(), p.address.trim().replace(/\s+/g, ' ')].join('|');

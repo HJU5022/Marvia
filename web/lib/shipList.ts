@@ -1,6 +1,6 @@
 import type {VesselItem} from '@/lib/types';
 
-/** 선박 검색 답 말풍선에 표로 보이는 척 수. 백엔드 services/chat.py SHIP_LIST_SHOWN과 같은 값이어야 글 줄과 표 줄이 같다 (10-08 정운 실사용 77번) */
+/** 선박 검색 답 말풍선에 표로 보이는 척 수. 백엔드 services/chat.py SHIP_LIST_SHOWN과 같은 값이어야 글 줄과 표 줄이 같다 */
 export const SHIP_LIST_SHOWN = 5;
 
 /** 말풍선 표 한 줄. 서버 값 그대로이고 화면이 계산하지 않는다 */
