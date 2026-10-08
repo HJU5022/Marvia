@@ -75,6 +75,7 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 
 - Railway는 GitHub에서 자동 배포되지 않는다. 배포하면 배포한 커밋, 배포 주소의 /health 응답, 실제 호출 한 건 이상의 결과를 docs/release_manifest.json에 적는다
 - 배포 서버는 실제 모드(REPLAY_MODE=false)다. 문서에 배포 모드를 쓸 때 이 한 가지로만 쓴다
+- 배포 명령 (레포 루트에서). api: `railway up --service marvia-api --detach` (Railway 변수 RAILWAY_DOCKERFILE_PATH가 Dockerfile.railway를 고른다). web: `railway up web --path-as-root --service marvia-web --detach`. CLI는 연결한 폴더 전체를 올리므로 web에 `--path-as-root`가 없으면 루트 Dockerfile의 worker 단계가 빌드돼 화면이 502가 된다
 
 ## 문서 문체
 

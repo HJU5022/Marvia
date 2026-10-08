@@ -353,6 +353,15 @@ MCP 서버는 API 서버 안의 `/mcp` 경로다. 서버 하나, 배포 주소 �
 | `marvia-worker` | Railway | 위치·입항 실적 수집, 지켜보는 화물 재판정 |
 | `mof-relay` | Google Cloud Run (서울) | 해수부 API 릴레이 ([relay/README.md](./relay/README.md)) |
 
+배포는 Railway CLI로 한다 (GitHub에서 자동 배포되지 않는다). 레포 루트에서 실행한다.
+
+```bash
+railway up --service marvia-api --detach                     # Railway 변수 RAILWAY_DOCKERFILE_PATH=Dockerfile.railway
+railway up web --path-as-root --service marvia-web --detach  # web 폴더만 올린다
+```
+
+CLI는 연결한 폴더 전체를 올린다. web에 `--path-as-root`가 없으면 루트 `Dockerfile`의 마지막 단계(worker)가 빌드돼 화면이 502가 된다. 배포한 커밋과 확인 결과는 `docs/release_manifest.json`에 적는다.
+
 Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패하는 원인은 확인하지 못했다. 한국에서는 0.1초에 응답한다. 같은 증상을 미국 GitHub Actions에서도 겪었다는 보고가 있어(github.com/SFByomi/blueboard/pull/19) 해외 접속 차단으로 짐작하지만 공식 확인은 아니다. UNI-PASS는 싱가포르에서도 된다.
 
 | 릴레이 항목 | 내용 |
