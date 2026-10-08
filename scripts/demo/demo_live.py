@@ -1,9 +1,9 @@
 """라이브 시연용 데모 화물 10건의 시나리오 목록과, 그것을 재생 문항(evals/fixtures/demo_live.jsonl)으로 펼치는 빌더 (10-06 정운 결정).
 
-    python -m scripts.demo_live        # 아래 SPECS를 펼쳐 evals/fixtures/demo_live.jsonl을 다시 쓴다 (고치고 나면 한 번 돌린다)
+    python -m scripts.demo.demo_live        # 아래 SPECS를 펼쳐 evals/fixtures/demo_live.jsonl을 다시 쓴다 (고치고 나면 한 번 돌린다)
 
 왜 만드나:
-  발표 서버는 REPLAY_MODE라 UNI-PASS·ShipFinder·해수부 호출을 파일(evals/fixtures/replay/)이 대신한다. 그 파일을 scripts/make_demo.py가 만든다.
+  발표 서버는 REPLAY_MODE라 UNI-PASS·ShipFinder·해수부 호출을 파일(evals/fixtures/replay/)이 대신한다. 그 파일을 scripts/demo/make_demo.py가 만든다.
   10건의 상황(순항·주의·긴급, 되묻기, 반출 완료)을 시연에서 바로 보여 주려고, 실제 API 응답처럼 보이는 필드를 모두 채운 모의 화물을 만든다.
   모든 값은 가공값이다. B/L은 DEMO로 시작하고, 선박·포워더·선사·컨테이너 소유자 코드도 DEMO를 넣어 한눈에 모의값임이 보이게 한다 (CLAUDE.md).
 
@@ -49,13 +49,13 @@ from pathlib import Path
 
 from backend.app.services.evidence import KST
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "evals" / "fixtures" / "demo_live.jsonl"
 REF_CLOCK = datetime(2026, 10, 6, 12, 0, tzinfo=KST)  # jsonl의 기준 시각. 서버에서는 make_demo가 "지금"으로 옮긴다
 HEAD = ("# 라이브 시연용 모의 화물 10건 (모의값). 평가 문항이 아니다: evals/dataset.jsonl과 모양만 같고 평가 실행기는 읽지 않는다. "
         "B/L(DEMO...)·선박(DEMO ...)·MMSI(440999201~211)·호출부호(DMO..)·컨테이너(DEMU...)·포워더·선사·좌표·시각·판매 예정일은 전부 가공값. "
-        "손으로 고치지 말고 scripts/demo_live.py의 SPECS를 고친 뒤 python -m scripts.demo_live로 다시 쓴다. "
-        "만드는 법: python -m scripts.make_demo. 확인: backend/tests/test_demo_live.py")
+        "손으로 고치지 말고 scripts/demo/demo_live.py의 SPECS를 고친 뒤 python -m scripts.demo.demo_live로 다시 쓴다. "
+        "만드는 법: python -m scripts.demo.make_demo. 확인: backend/tests/test_demo_live.py")
 
 # 적재항 이름 -> (UN/LOCODE, 적출국). 세관 ldprCd·lodCntyCd 칸과 해수부 직전 기항지 이름에 쓴다
 PORTS = {

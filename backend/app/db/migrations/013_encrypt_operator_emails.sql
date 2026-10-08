@@ -5,7 +5,7 @@
 -- - email_hash: HMAC-SHA256 지문 (crypto.fingerprint). 운영자 찾기와 중복 확인은 이것으로만 한다
 -- - email_enc: Fernet 암호문 (crypto.encrypt). 운영자 화면에서만 풀어 보여 준다
 -- - email_masked: ks***@g***.com. 열쇠를 잃어도 누구였는지 짐작할 수 있게
--- 평문 칸(email, target_email, actor_email)은 남기되 비워 둔다. 기존 행은 scripts/encrypt_operator_emails.py가 옮기고 비운다
+-- 평문 칸(email, target_email, actor_email)은 남기되 비워 둔다. 기존 행은 scripts/ops/encrypt_operator_emails.py가 옮기고 비운다
 -- (마이그레이션은 SQL이라 열쇠로 잠글 수 없다). 새 행은 코드가 평문을 쓰지 않는다.
 -- operator_audit·admin_actions는 INSERT만 하는 이력이지만, 평문을 지우는 이 이전 한 번만 기존 줄을 고친다 (Spec에 기록).
 

@@ -1,6 +1,6 @@
 # Langfuse 도착 기록 (집계)
 
-`python scripts/langfuse_evidence.py`가 Langfuse Cloud 공개 API에서 읽은 집계값이다. 생성 2026-10-07T12:47:33+00:00 (UTC), 기간 2026-09-01T00:00:00Z ~ 2026-10-08T23:59:59Z.
+`python scripts/eval/langfuse_evidence.py`가 Langfuse Cloud 공개 API에서 읽은 집계값이다. 생성 2026-10-07T12:47:33+00:00 (UTC), 기간 2026-09-01T00:00:00Z ~ 2026-10-08T23:59:59Z.
 트레이스 입력·출력 원문은 담지 않는다. 같은 값이 `langfuse_summary.json`에 있다.
 
 

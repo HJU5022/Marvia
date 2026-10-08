@@ -16,7 +16,7 @@ from backend.app.routers import chat as chat_router
 from backend.app.services import chat as svc
 from backend.app.services import progress
 from backend.tests.test_demo import RECORDING
-from scripts import make_demo
+from scripts.demo import make_demo
 
 
 def _events(text: str) -> list[tuple[str, dict]]:

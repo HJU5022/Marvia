@@ -1,7 +1,7 @@
 """프롬프트 주입 레드팀 점검. 유료 API 키 없이 구독 Claude Code로 돈다 (docs/specs/injection-redteam.md).
 
-    python -m scripts.injection_redteam              # 공격 20개 x 채널 5개
-    python -m scripts.injection_redteam --limit 5    # 구독 사용량을 아끼려면 공격 수를 줄인다
+    python -m scripts.eval.injection_redteam              # 공격 20개 x 채널 5개
+    python -m scripts.eval.injection_redteam --limit 5    # 구독 사용량을 아끼려면 공격 수를 줄인다
 
 왜 필요한가:
   10-01에 코드 방어(services/guard.py, 후속 답 V9·V10, chat·doc_ocr 검사)를 넣을 때 쓴 공격은 사람이 만든 16종이다.
@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / "evals" / "results" / "injection" / "redteam"  # 레포에 남겨 문서 수치의 근거로 쓴다 (10-01 재감사)
 
 # 키가 있으면 서비스가 Langfuse·OpenRouter로 간다. 이 점검은 구독 Claude만 쓴다 (유료 키 금지, 사용자 지시 10-01)

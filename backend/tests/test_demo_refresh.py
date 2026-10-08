@@ -1,7 +1,7 @@
-"""재생 모드 데모 파일 자동 갱신 (scripts/make_demo.refresh, backend/app/main.py, 10-05 결정)."""
+"""재생 모드 데모 파일 자동 갱신 (scripts/demo/make_demo.refresh, backend/app/main.py, 10-05 결정)."""
 from datetime import datetime, timezone
 
-from scripts import make_demo
+from scripts.demo import make_demo
 
 
 def test_refresh_swaps_in_new_files_and_keeps_other_folders(tmp_path):

@@ -11,7 +11,7 @@
   - GET /api/public/experiments         평가 실행(실험)별 시작·끝 시각·문항 수
 키는 레포 .env의 LANGFUSE_HOST · LANGFUSE_PUBLIC_KEY · LANGFUSE_SECRET_KEY. 키는 출력하지 않는다.
 
-실행: python scripts/langfuse_evidence.py [--from 2026-09-01] [--to 2026-10-03]
+실행: python scripts/eval/langfuse_evidence.py [--from 2026-09-01] [--to 2026-10-03]
 결과: docs/evidence/langfuse_summary.json, docs/evidence/langfuse_summary.md
 """
 
@@ -26,7 +26,7 @@ from pathlib import Path
 import httpx
 from dotenv import dotenv_values
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / "docs" / "evidence"
 
 # 평가 실행기(evals/run_eval.py)는 문항마다 session_id를 "eval-<문항>"으로 붙인다 (evals/dataset.jsonl request.session_id)
@@ -266,7 +266,7 @@ def to_markdown(s: dict) -> str:
     md = [
         "# Langfuse 도착 기록 (집계)",
         "",
-        f"`python scripts/langfuse_evidence.py`가 Langfuse Cloud 공개 API에서 읽은 집계값이다. 생성 {s['generated_at']} (UTC), 기간 {s['window']['from']} ~ {s['window']['to']}.",
+        f"`python scripts/eval/langfuse_evidence.py`가 Langfuse Cloud 공개 API에서 읽은 집계값이다. 생성 {s['generated_at']} (UTC), 기간 {s['window']['from']} ~ {s['window']['to']}.",
         "트레이스 입력·출력 원문은 담지 않는다. 같은 값이 `langfuse_summary.json`에 있다.",
         "",
         (f"이번 실행에서 API 한도(429)로 못 받아 이전 실행 값을 그대로 둔 항목과 그 값을 받은 시각: {s['carried_over']}" if s.get("carried_over") else ""),

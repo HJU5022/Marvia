@@ -1,7 +1,7 @@
 """키 없이 도는 서버 데모 13건(라이브 모의 화물 10건 + 평가셋 3건)의 재생 파일을 만든다 (SDD 6.1, CLAUDE.md "REPLAY_MODE=true면 키 없이 데모", 09-29, 10-06 확장).
 
-    python -m scripts.make_demo                              # 로컬: 만든 뒤 REPLAY_MODE=true로 서버를 켠다
-    docker compose exec api python -m scripts.make_demo      # compose: 떠 있는 api 컨테이너 안에서 만든다
+    python -m scripts.demo.make_demo                              # 로컬: 만든 뒤 REPLAY_MODE=true로 서버를 켠다
+    docker compose exec api python -m scripts.demo.make_demo      # compose: 떠 있는 api 컨테이너 안에서 만든다
 
 데모 3건 (평가셋 evals/dataset.jsonl의 문항을 그대로 쓴다. 사람이 라벨링한 입력이다):
   TESTBL01  정상    N01  순항(fine)
@@ -30,7 +30,7 @@ F04만 배를 바꾼다:
 
 라이브 데모 10건 (10-06 정운 결정, 발표 서버용):
   DEMOQD2610001 ~ DEMOQD2610010. 순항·주의·긴급 세 등급과 되묻기, 반출 완료를 실제 API 응답처럼 필드를 다 채운 모의 화물로 보여 준다.
-  시나리오 목록은 scripts/demo_live.py의 SPECS이고, 그것을 펼친 문항이 evals/fixtures/demo_live.jsonl이다 (평가셋이 아니다).
+  시나리오 목록은 scripts/demo/demo_live.py의 SPECS이고, 그것을 펼친 문항이 evals/fixtures/demo_live.jsonl이다 (평가셋이 아니다).
   평가셋 3건(TESTBL01·04·26)은 그대로 같이 쓴다. 10건과 3건은 한 폴더에 같이 써서 해수부 _ALL.xml이 모두의 배를 담는다
   (evals/replay_fixtures._write_all. 전에는 마지막에 쓴 문항만 남아 N01이 마지막이어야 했다).
   위치 이력(6시간 간격)은 positions/<MMSI>.json으로 써서 서버가 DB 대신 읽는다 (clients/replay.position_history).
@@ -52,12 +52,12 @@ from pathlib import Path
 from backend.app.clients.replay import REPLAY_DIR
 from backend.app.services.evidence import KST
 from evals.replay_fixtures import write_replay_files
-from scripts import demo_live
+from scripts.demo import demo_live
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DATASET = ROOT / "evals" / "dataset.jsonl"
 PAPERS = ROOT / "evals" / "fixtures" / "demo_papers.jsonl"  # 서류 대조 데모 10건 (평가셋 아님, 모듈 설명)
-LIVE = ROOT / "evals" / "fixtures" / "demo_live.jsonl"  # 라이브 데모 10건 (평가셋 아님. scripts/demo_live.py가 만든다)
+LIVE = ROOT / "evals" / "fixtures" / "demo_live.jsonl"  # 라이브 데모 10건 (평가셋 아님. scripts/demo/demo_live.py가 만든다)
 
 # (평가셋 문항 id, 화면에 보일 이름, 기대 결과). 쓰는 순서도 이 순서다. N01을 마지막에 둬서
 # 해수부 _ALL.xml(호출부호 없이 부를 때 읽는 전체 목록)이 정상 건의 배로 남게 한다 (evals/replay_fixtures.py _write_mof)
@@ -159,7 +159,7 @@ def _write_live(now: datetime, out_dir: Path) -> list[dict]:
     """라이브 데모 10건을 now 기준으로 옮겨 쓴다. 3건과 같은 shift_record·write_replay_files를 쓴다.
 
     시각을 옮긴 뒤 demo_live.finalize로 세관 입항일과 판매 예정일을 다시 계산한다. 일 수만 옮기면 자정 전후에
-    여유 일수가 하루 어긋난다 (scripts/demo_live.py 머리 주석)."""
+    여유 일수가 하루 어긋난다 (scripts/demo/demo_live.py 머리 주석)."""
     guide = []
     for original in load_live():
         record = demo_live.finalize(shift_record(original, now))
@@ -252,7 +252,7 @@ def main() -> None:
     until = (now + timedelta(hours=5, minutes=30)).astimezone(KST)
     print(f"데모 재생 파일을 만들었습니다: {REPLAY_DIR.relative_to(ROOT)}")
     print(f"위치가 '오래된 위치'가 되기 전까지: {until:%m-%d %H:%M} (한국 시각). 넘으면 다시 실행하세요\n")
-    print("라이브 데모 10건 (모의 화물. scripts/demo_live.py, evals/fixtures/demo_live.jsonl)\n")
+    print("라이브 데모 10건 (모의 화물. scripts/demo/demo_live.py, evals/fixtures/demo_live.jsonl)\n")
     print("| B/L | 배 | 시나리오 | 판매 예정일 | 기대 결과 |")
     print("|---|---|---|---|---|")
     for g in live:

@@ -129,8 +129,8 @@
       "note": "정답 지표는 버전 사이에 같고, 지연·비용은 회차 간 흔들림이 버전 간 차이보다 크다. 채점기 호출 비용은 위 금액에 없다(재지 않았다)"
     },
     "chat_agent_ab": {
-      "script": "scripts/eval_chat_agent_ab.py",
-      "cases": "scripts/eval_chat_agent_cases.jsonl (162건 x2)",
+      "script": "scripts/eval/eval_chat_agent_ab.py",
+      "cases": "scripts/eval/eval_chat_agent_cases.jsonl (162건 x2)",
       "model": "google/gemini-3.5-flash-lite (OpenRouter)",
       "compare": "v13 + 2줄 -> v14",
       "pass_rate": "85.0% -> 87.6%",

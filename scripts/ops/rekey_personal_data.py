@@ -4,7 +4,7 @@
 잠갔다. 이 스크립트가 옛 열쇠로 풀어 PII_ENCRYPTION_KEY로 다시 잠그고, 운영자 지문(email_hash)도 새 열쇠로 다시 만든다.
 한 트랜잭션이다. 하나라도 못 풀거나 못 잠그면 전부 되돌린다. 이미 새 열쇠로 잠긴 값은 건너뛴다(다시 돌려도 안전).
 
-    python -m scripts.rekey_personal_data
+    python -m scripts.ops.rekey_personal_data
 
 두 열쇠가 모두 .env에 있어야 한다. 같은 DB를 쓰는 팀원도 PII_ENCRYPTION_KEY를 같은 값으로 받아야 회원 정보를 읽는다.
 """

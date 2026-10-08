@@ -3,8 +3,8 @@
 services/llm.py의 chat()을 불러서 모델이 붙는지, 구조화 출력(JSON 스키마)을 지키는지 본다.
 사례는 가공값이다. 실제 B/L·고객 서류는 넣지 않는다 (무료 모델은 입력이 로깅될 수 있음).
 
-    python -m scripts.smoke_llm                 # .env의 LLM_MODEL
-    python -m scripts.smoke_llm --model qwen/qwen3.8-27b:free
+    python -m scripts.eval.smoke_llm                 # .env의 LLM_MODEL
+    python -m scripts.eval.smoke_llm --model qwen/qwen3.8-27b:free
 
 무료 모델은 하루 50회 한도(한국 시각 오전 9시 초기화). 한 번 실행 = 1회.
 """

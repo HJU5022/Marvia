@@ -76,4 +76,4 @@ PR 본문, SDD 7절, docs/prompt_versions.md, docs/specs/injection-redteam.md에
   - userinput_guard_check.py: 10-02 사용자 입력 채널 보강 전후 guard 비교 (키 없이, LLM 호출 없음)
   - whitebox_gen.py, whitebox_run.py: 6번
 - prompts/: 2번에서 바꿔 끼운 프롬프트 (prompts_orig는 넣기 전, prompts_lock·lock2는 후보)
-- 7번은 레포 scripts/injection_redteam.py (키 없이, Claude Code 로그인만). 새 결과는 이 폴더 redteam/에 쌓인다
+- 7번은 레포 scripts/eval/injection_redteam.py (키 없이, Claude Code 로그인만). 새 결과는 이 폴더 redteam/에 쌓인다

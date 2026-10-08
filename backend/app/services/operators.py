@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from backend.app import crypto
 from backend.app.db import connect
 
-BOOTSTRAP_ACTOR = "bootstrap"  # 스크립트로 넣은 최초 운영자의 등록자 (scripts/grant_operator.py)
+BOOTSTRAP_ACTOR = "bootstrap"  # 스크립트로 넣은 최초 운영자의 등록자 (scripts/ops/grant_operator.py)
 AUDIT_LIMIT = 100  # 관리 화면에 보여 줄 이력 수. 오래된 것은 DB에 남고 화면에만 안 나온다
 
 # 흔한 이메일 모양만 받는다. 정확한 RFC 검사는 하지 않는다. 오타(공백, @ 없음)를 막는 게 목적이다

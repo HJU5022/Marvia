@@ -26,15 +26,15 @@
 
 ## 서버 데모 13건 (10-06)
 
-`python -m scripts.make_demo`가 라이브 데모 10건과 평가셋 3건을 지금 시각 기준으로 옮겨 이 폴더에 쓴다.
+`python -m scripts.demo.make_demo`가 라이브 데모 10건과 평가셋 3건을 지금 시각 기준으로 옮겨 이 폴더에 쓴다.
 만든 파일(`shipfinder/`·`mof/`·`unipass/`·`positions/`)은 실행 시각에 따라 바뀌어 깃에 올리지 않는다(.gitignore).
 
 - 라이브 데모 10건: B/L `DEMOQD2610001` ~ `DEMOQD2610010`. 순항·주의·긴급과 되묻기, 반출 완료를 실제 API 응답처럼 필드를 다 채운 모의 화물로 보여 준다.
-  시나리오는 `scripts/demo_live.py`의 `SPECS`에 한 건당 dict 하나로 적고, 그것을 펼친 `evals/fixtures/demo_live.jsonl`을 make_demo가 읽는다
+  시나리오는 `scripts/demo/demo_live.py`의 `SPECS`에 한 건당 dict 하나로 적고, 그것을 펼친 `evals/fixtures/demo_live.jsonl`을 make_demo가 읽는다
 - 평가셋 3건: N01(정상)·B01(되묻기)·F04(실패). B/L은 `TESTBL01`·`TESTBL04`·`TESTBL26`
 - 서류 대조 10건(`TESTBL41~50`, `demo_papers.jsonl`)은 서버 데모에서 뺐다. 기능 테스트(`test_demo_papers.py`)만 쓴다
 
-날짜를 왜 옮기는지, F04만 배 이름을 바꾸는 이유는 `scripts/make_demo.py` 머리 주석에 있다.
+날짜를 왜 옮기는지, F04만 배 이름을 바꾸는 이유는 `scripts/demo/make_demo.py` 머리 주석에 있다.
 
 ## LLM 녹화 답
 

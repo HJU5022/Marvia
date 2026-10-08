@@ -3,8 +3,8 @@
 응답 원본은 레포에 커밋하지 않는다 (CLAUDE.md, ShipFinder 이용 조건).
 저장 위치는 .local/ 이며 .gitignore에 있다.
 
-    python scripts/fetch_shipfinder.py <MMSI>             # 위치 조회
-    python scripts/fetch_shipfinder.py --search <선명>    # 선박 검색
+    python scripts/demo/fetch_shipfinder.py <MMSI>             # 위치 조회
+    python scripts/demo/fetch_shipfinder.py --search <선명>    # 선박 검색
 """
 import argparse
 import json

@@ -134,7 +134,7 @@ THIRD_PARTY.md         지도·폰트 출처와 라이선스
 ```bash
 # 레포 루트: 키 없이 백엔드 데모 13건 (루트 README "키 없이 데모")
 docker compose up -d --build
-docker compose exec api python -m scripts.make_demo
+docker compose exec api python -m scripts.demo.make_demo
 
 # web/
 NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev

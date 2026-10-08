@@ -1,6 +1,6 @@
 """서류 대조 데모 10건 테스트 (임시, 10-05). evals/fixtures/demo_papers.jsonl을 키 없이 실제 요청 경로로 돌린다.
 
-scripts/make_demo.build_with_papers가 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo.py와 같은 방식).
+scripts/demo/make_demo.build_with_papers가 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo.py와 같은 방식).
 10-06부터 서버 데모(build_all)는 라이브 10건이라 이 10건을 안 쓴다. 서류 대조 기능 확인용으로 여기서만 쓴다.
 LLM 키가 없어 판정 문장은 녹화 답이나 폴백이 될 수 있다. 그래서 식별 단계 결과(status, vessel_match,
 확정한 MMSI와 근거 한 줄)만 본다. 판정 등급은 보지 않는다.
@@ -15,7 +15,7 @@ import pytest
 
 from backend.app.clients import replay
 from backend.app.clients.shipfinder import ShipFinderClient
-from scripts import make_demo
+from scripts.demo import make_demo
 
 ROOT = Path(__file__).resolve().parents[2]
 RECORDING = ROOT / "evals" / "fixtures" / "replay" / "llm" / "marvia-judge.json"

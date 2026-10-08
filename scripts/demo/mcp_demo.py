@@ -3,8 +3,8 @@
 서버에 붙어 도구 목록을 보이고, 실제 부산항 데이터로 네 개를 차례로 부른다.
 화면 캡처를 염두에 두고 한 단계씩 제목을 붙여 출력한다.
 
-    python -m scripts.mcp_demo --ship-name <선명> --mmsi <MMSI> --call-sign <호출부호>
-    python -m scripts.mcp_demo --url http://localhost:8000/mcp --token <MCP_TOKEN> --ship-name ... --mmsi ... --call-sign ...
+    python -m scripts.demo.mcp_demo --ship-name <선명> --mmsi <MMSI> --call-sign <호출부호>
+    python -m scripts.demo.mcp_demo --url http://localhost:8000/mcp --token <MCP_TOKEN> --ship-name ... --mmsi ... --call-sign ...
 
 토큰을 생략하면 환경변수 MCP_TOKEN을 쓴다. 서버에 토큰이 걸려 있는데 안 주면 401이 난다.
 시연 선박은 실행할 때 인자로 준다. 실제 선명·MMSI·호출부호를 레포에 두지 않기 위해서다

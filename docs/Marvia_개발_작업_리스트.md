@@ -62,7 +62,7 @@ proj2-5/
 | A6 | `POST /api/agent` 라우터. 서비스 계층 호출만, LLM SDK import 금지 | 라우터에 openai/anthropic import 없음 | ✅ | |
 | A7 | B/L 형식 검증, 범위 밖 입력 거절 | 잘못된 형식 400, 정상 통과. 부산 외 항만은 unsupported | ✅ | |
 | A8 | UNI-PASS 클라이언트, 응답 → C5 정제, 필드 마스킹 | 실제 B/L 1건 조회 성공 또는 모의 응답으로 파싱 통과 | ✅ | 실제 B/L 1건 MRN 식별까지 확인 |
-| A9 | 실패 경로: 외부 API 타임아웃 · 5xx 재시도 2회 + 백오프, partial 응답 | 모의 지연으로 재시도 로그 확인 | ✅ | 실패 훈련 스크립트 `scripts/failure_drill.py` |
+| A9 | 실패 경로: 외부 API 타임아웃 · 5xx 재시도 2회 + 백오프, partial 응답 | 모의 지연으로 재시도 로그 확인 | ✅ | 실패 훈련 스크립트 `scripts/eval/failure_drill.py` |
 | A10 | CORS, /mcp 토큰 인증, 비밀값 서버 환경변수만 | 브라우저에서 키 노출 없음, 토큰 없으면 401 | ✅ | 배포 때 `MCP_TOKEN`을 새로 만들어 넣는다 |
 | A11 | README 실행 절차 (clone → .env → compose up, 10분) | 다른 사람이 처음 클론해서 재현 | ✅ 완료 | 키 없이 도는 데모 3건 절차 작성 · 로컬과 Docker로 확인. 다른 사람 재현은 하지 않았다 (F5). README에 키 없는 데모 13건(라이브 10 + 평가셋 3) 절차. 다른 사람 재현은 F5에서 확인하지 못했다 |
 | A12 | `GET /api/history` 라우터. query_log를 session_id로 읽기만 | agent 2회 호출 뒤 같은 세션 조회 시 2건, 다른 세션 0건 | ✅ | |

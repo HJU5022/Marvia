@@ -1,9 +1,9 @@
 """에러 로깅 실패 훈련 (D6 에러 로깅 확인, 09-29).
 
-    python -m scripts.failure_drill --list            # 시나리오 목록: 무엇을 바꾸나 · 기대 줄 · LLM 필요 여부
-    python -m scripts.failure_drill --no-llm          # LLM 없이 도는 것만 (비용 0, 외부 API 호출 0)
-    python -m scripts.failure_drill                   # 전부. LLM 시나리오는 .env의 LLM_MODEL을 실제로 부른다 (비용이 든다)
-    python -m scripts.failure_drill --only judge_truncated judge_connection
+    python -m scripts.eval.failure_drill --list            # 시나리오 목록: 무엇을 바꾸나 · 기대 줄 · LLM 필요 여부
+    python -m scripts.eval.failure_drill --no-llm          # LLM 없이 도는 것만 (비용 0, 외부 API 호출 0)
+    python -m scripts.eval.failure_drill                   # 전부. LLM 시나리오는 .env의 LLM_MODEL을 실제로 부른다 (비용이 든다)
+    python -m scripts.eval.failure_drill --only judge_truncated judge_connection
 
 책임:
   실패 경로를 하나씩 일부러 일으키고, 그때 log_failure()가 기대한 줄

@@ -38,5 +38,5 @@
 ```bash
 pytest mcp_server/tests                                          # 키 없이
 python -m mcp_server.server --port 8001                          # 따로 띄울 때 (기본 포트 8001)
-python -m scripts.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   # API 서버 안의 /mcp 확인
+python -m scripts.demo.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   # API 서버 안의 /mcp 확인
 ```

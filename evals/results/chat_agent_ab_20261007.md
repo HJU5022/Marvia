@@ -6,8 +6,8 @@
 
 | 항목 | 내용 |
 |---|---|
-| 실행기 | `scripts/eval_chat_agent_ab.py` (`services/chat.handle()`을 그대로 부름. 외부 API는 가공 응답, 입력 B/L은 `TESTBL..` 모의값) |
-| 문항 | `scripts/eval_chat_agent_cases.jsonl` 162건 x 2회 (병합본 기준. 이후 로컬 커밋이 10건을 더했지만 이 비교에는 들어가지 않았다) |
+| 실행기 | `scripts/eval/eval_chat_agent_ab.py` (`services/chat.handle()`을 그대로 부름. 외부 API는 가공 응답, 입력 B/L은 `TESTBL..` 모의값) |
+| 문항 | `scripts/eval/eval_chat_agent_cases.jsonl` 162건 x 2회 (병합본 기준. 이후 로컬 커밋이 10건을 더했지만 이 비교에는 들어가지 않았다) |
 | 모델 | `google/gemini-3.5-flash-lite` (OpenRouter, 서비스 모델) |
 | 비교 | 이전: chat-agent 13에 2줄을 더한 글 → 이후: chat-agent 14 (지시문을 중복 없이 재정리, 3758 → 3030 단어) |
 | 통과 기준 | 문항마다 정한 기대(부른 도구, 부르면 안 되는 도구, 답 종류)를 지켰는가 |

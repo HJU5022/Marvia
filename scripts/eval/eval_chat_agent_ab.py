@@ -1,7 +1,7 @@
 """채팅 에이전트 지시문(marvia-chat-agent) A/B 평가 (10-07 결정: 새 지시문은 진짜 모델로 비교한 뒤 Langfuse에 올린다).
 
-    python -m scripts.eval_chat_agent_ab run    --variant old=경로 --variant new=경로 --runs 2 --workers 8 --out 결과폴더
-    python -m scripts.eval_chat_agent_ab report --base old --cand new --out 결과폴더      # 결과폴더/RESULT.md를 만든다
+    python -m scripts.eval.eval_chat_agent_ab run    --variant old=경로 --variant new=경로 --runs 2 --workers 8 --out 결과폴더
+    python -m scripts.eval.eval_chat_agent_ab report --base old --cand new --out 결과폴더      # 결과폴더/RESULT.md를 만든다
 
 무엇을 재나
   services/chat.handle()을 그대로 부른다 (에이전트 도구 루프·코드 검사·고정 문구까지 실제 경로). LLM은 .env의 LLM_MODEL로 진짜 호출한다.
@@ -36,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
@@ -52,7 +52,7 @@ from backend.app.schemas.agent import AgentRequest, EtaInfo, VesselInfo  # noqa:
 from backend.app.services import bl_parse, llm  # noqa: E402
 from backend.app.services import chat as svc  # noqa: E402
 
-CASES_PATH = ROOT / "scripts" / "eval_chat_agent_cases.jsonl"
+CASES_PATH = ROOT / "scripts" / "eval" / "eval_chat_agent_cases.jsonl"
 KST = timezone(timedelta(hours=9))
 NOW = datetime.now(timezone.utc)
 

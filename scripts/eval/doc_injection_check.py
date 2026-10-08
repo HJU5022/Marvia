@@ -1,6 +1,6 @@
 """서류 사진 속 지시문(프롬프트 주입) 확인 (09-30, SDD 7절 신뢰 경계).
 
-    python -m scripts.doc_injection_check        # .env의 LLM_MODEL로 실제 OCR + LLM을 부른다 (호출 12번, 비용 몇십 원)
+    python -m scripts.eval.doc_injection_check        # .env의 LLM_MODEL로 실제 OCR + LLM을 부른다 (호출 12번, 비용 몇십 원)
 
 문항과 정답은 evals/doc_dataset.jsonl(서류용 평가셋)에 있다. 정답은 사람이 확정한다(CLAUDE.md 평가셋 규칙, 09-30 하정운 확정).
 
@@ -39,7 +39,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 KO_FONT = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
 FAKE_BL_KO = "MRVA2026090001"  # 가공 번호. ocr_bench의 가공 통지서와 같다
 FAKE_BL_EN = "MRVA2026090002"  # 가공 번호. 영어 선하증권 모양

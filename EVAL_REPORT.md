@@ -29,7 +29,7 @@
 
 ## 1. 관측 (Observability)
 
-Langfuse Cloud에 도착한 기록은 `docs/evidence/langfuse_summary.md`(같은 값 `.json`)에 집계로 남겼다. `scripts/langfuse_evidence.py`가 Langfuse 공개 API를 읽기만 해서 만들고 트레이스 입력·출력 원문은 넣지 않았다. 아래 숫자는 최신 생성본(집계 기간 09-01 ~ 10-08) 기준이고 이전 생성본은 `langfuse_summary_20261002.md`에 있다.
+Langfuse Cloud에 도착한 기록은 `docs/evidence/langfuse_summary.md`(같은 값 `.json`)에 집계로 남겼다. `scripts/eval/langfuse_evidence.py`가 Langfuse 공개 API를 읽기만 해서 만들고 트레이스 입력·출력 원문은 넣지 않았다. 아래 숫자는 최신 생성본(집계 기간 09-01 ~ 10-08) 기준이고 이전 생성본은 `langfuse_summary_20261002.md`에 있다.
 
 | 항목 | 상태 |
 |---|---|
@@ -134,7 +134,7 @@ marvia-chat-agent 15는 production, latest, v6 라벨로 Langfuse에 등록돼 �
 
 ### 4-2. 채팅 에이전트 지시문 개선 전후 (chat-agent 13 + 2줄 → 14)
 
-판정 평가셋 30건은 채팅 에이전트(`marvia-chat-agent`, 도구를 골라 쓰는 대화)를 재지 않는다. 그래서 `scripts/eval_chat_agent_ab.py`와 케이스 `scripts/eval_chat_agent_cases.jsonl`(162건 x 2회, 모의 입력, 외부 API는 가공 응답)로 두 지시문을 같은 모델로 비교했다. 14는 지시문을 중복 없이 정리한 글이다(3758 → 3030 단어). 14에는 watch_vessel 도구와 on_screen 입력 설명이 같이 들어 있다. 요약표는 `evals/results/chat_agent_ab_20261007.md`, 수치 출처는 `release_manifest.json` `evaluation.chat_agent_ab`이다.
+판정 평가셋 30건은 채팅 에이전트(`marvia-chat-agent`, 도구를 골라 쓰는 대화)를 재지 않는다. 그래서 `scripts/eval/eval_chat_agent_ab.py`와 케이스 `scripts/eval/eval_chat_agent_cases.jsonl`(162건 x 2회, 모의 입력, 외부 API는 가공 응답)로 두 지시문을 같은 모델로 비교했다. 14는 지시문을 중복 없이 정리한 글이다(3758 → 3030 단어). 14에는 watch_vessel 도구와 on_screen 입력 설명이 같이 들어 있다. 요약표는 `evals/results/chat_agent_ab_20261007.md`, 수치 출처는 `release_manifest.json` `evaluation.chat_agent_ab`이다.
 
 | 지표 | 이전 (13 + 2줄) | 이후 (14) |
 |---|---|---|

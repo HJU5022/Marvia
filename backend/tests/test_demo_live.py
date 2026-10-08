@@ -1,12 +1,12 @@
 """라이브 시연 데모 10건 테스트 (10-06 정운 결정). evals/fixtures/demo_live.jsonl을 키 없이 실제 요청 경로로 돌린다.
 
-scripts/make_demo.build_all이 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo_papers.py와 같은 방식).
+scripts/demo/make_demo.build_all이 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo_papers.py와 같은 방식).
 판정 LLM은 쓰지 않는다. 평가 (a) 규칙만과 같이 llm.judge·llm.pick_vessel 자리에 evals/baseline_rules를 끼운다.
 그래서 이 테스트가 보는 것은 코드의 몫이다: 1층 신호, 판정 표 등급(services/verdict.table_verdict), 선박 식별, 품명·컨테이너 파싱.
 (LLM이 쓰는 설명 문장은 여기서 안 본다. 등급은 회색 지대가 아니면 LLM이 못 바꾼다, routers/agent.py)
 
 기준 시각을 셋으로 돌린다 (한국 시각 낮, 자정 직전, 자정 직후). make_demo가 시각을 옮기면 날짜 칸이 어긋나기 쉬운 시간대라서다.
-여유 일수와 동명 선박 서류 대조(세관 입항일 = 해수부 입항 신고 날짜)가 어느 시각에 만들어도 같게 나와야 한다 (scripts/demo_live.finalize).
+여유 일수와 동명 선박 서류 대조(세관 입항일 = 해수부 입항 신고 날짜)가 어느 시각에 만들어도 같게 나와야 한다 (scripts/demo/demo_live.finalize).
 재생 폴더는 tmp_path에 만든다. 레포의 evals/fixtures/replay/는 건드리지 않는다.
 값은 전부 모의값이다 (DEMO B/L·선박, MMSI 440999201~211, 호출부호 DMO, 컨테이너 소유자 DEM, CLAUDE.md).
 """
@@ -25,7 +25,7 @@ from backend.app.clients.shipfinder import ShipFinderClient
 from backend.app.services import verdict
 from backend.app.services.evidence import KST
 from evals import baseline_rules
-from scripts import demo_live, make_demo
+from scripts.demo import demo_live, make_demo
 
 ROOT = Path(__file__).resolve().parents[2]
 RECORDING = ROOT / "evals" / "fixtures" / "replay" / "llm" / "marvia-judge.json"
@@ -112,7 +112,7 @@ def test_ten_cases_marked_as_mock():
     assert [c["request"]["bl_no"] for c in CASES] == [f"DEMO{code}26100{n:02d}" for n, code in
                                                       enumerate(["QD", "SH", "NB", "HC", "TJ", "DL", "KH", "HP", "SH", "QD"], start=1)]
     assert all(c["category"] == "demo_live" and c["labeler"] is None for c in CASES)
-    text = demo_live.OUTPUT.read_text(encoding="utf-8") + (ROOT / "scripts" / "demo_live.py").read_text(encoding="utf-8")
+    text = demo_live.OUTPUT.read_text(encoding="utf-8") + (ROOT / "scripts" / "demo" / "demo_live.py").read_text(encoding="utf-8")
     assert chr(0x2014) not in text  # CLAUDE.md: 파일 안에서 em dash를 쓰지 않는다
     mmsis = {int(m) for c in CASES for m in c["fixtures"]["shipfinder"]["positions"]}
     assert mmsis == set(range(440999201, 440999212))  # 11척. 101~106은 이미 쓰는 번호라 겹치지 않는다

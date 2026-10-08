@@ -3,7 +3,7 @@
 마이그레이션(SQL)은 열쇠로 잠글 수 없어서 기존 행은 이 스크립트가 옮긴다. 새 행은 코드가 처음부터 평문을 쓰지 않는다.
 한 트랜잭션이다. 하나라도 잠그지 못하면(열쇠 없음) 전부 되돌린다. 다시 돌려도 평문이 남은 행만 건드린다.
 
-    python -m scripts.encrypt_operator_emails
+    python -m scripts.ops.encrypt_operator_emails
 
 operator_audit·admin_actions는 INSERT만 하는 이력이지만, 평문을 지우는 이 이전 한 번만 기존 줄을 고친다 (Spec에 기록).
 """

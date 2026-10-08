@@ -23,7 +23,7 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 ## What
 
 **Happy Path**
-1. 최초 운영자: 사람이 `python -m scripts.grant_operator <이메일>`을 한 번 실행한다. 이력에 등록자는 `bootstrap`으로 남는다
+1. 최초 운영자: 사람이 `python -m scripts.ops.grant_operator <이메일>`을 한 번 실행한다. 이력에 등록자는 `bootstrap`으로 남는다
 2. 운영자가 로그인하면 GET /api/me가 `is_operator: true`를 주고, 화면 사이드바에 "관리" 탭이 생긴다
 3. 관리 > 고객 관리: 가입자 목록을 마스킹해서 보여 준다 (Supabase 관리자 API)
 4. 관리 > 운영자: 이메일을 입력해 등록, 목록에서 해지, 아래에 등록·해지 이력
@@ -91,7 +91,7 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 | EC-11 | 회원 정보가 없는 고객을 수정 | 운영자가 새로 입력할 수 있다. 동의 시각은 운영자 입력 시각, 이력에 남는다 |
 | EC-12 | 운영자 계정 강제 탈퇴 | 409. 운영자 해지 먼저 |
 
-**테스트 고객**: scripts/seed_test_users.py가 testuser1~3@marvia.test 계정(Supabase 관리자 API, user_metadata.test=true)과 가공 회원 정보를 만든다. 실제 사람이 아님을 이름(testUser1~3)으로 드러낸다. 다시 돌리면 이미 있는 계정은 건너뛴다
+**테스트 고객**: scripts/ops/seed_test_users.py가 testuser1~3@marvia.test 계정(Supabase 관리자 API, user_metadata.test=true)과 가공 회원 정보를 만든다. 실제 사람이 아님을 이름(testUser1~3)으로 드러낸다. 다시 돌리면 이미 있는 계정은 건너뛴다
 
 ## 추가: 고객 계정 일시 정지
 
@@ -115,4 +115,4 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 - operator_audit: target/actor 이메일을 암호문 + 가린 값으로. admin_actions의 처리자 이메일도 같다
 - 암호문·지문 열쇠는 PII_ENCRYPTION_KEY (B/L 열쇠와 분리, .env.example에 키 이름 추가). 지문은 그 열쇠에서 용도 이름을 붙여 갈라 쓴다. 열쇠가 없으면 운영자 기능은 닫힌 쪽으로 실패(운영자 아님, 등록 503)
 - 화면 응답 모양은 그대로(서버가 풀어서 준다). 열쇠가 바뀌어 못 풀면 가린 값
-- 기존 행은 scripts/encrypt_operator_emails.py로 옮기고 평문을 비웠다. INSERT만 하는 이력 표를 고친 유일한 예외다
+- 기존 행은 scripts/ops/encrypt_operator_emails.py로 옮기고 평문을 비웠다. INSERT만 하는 이력 표를 고친 유일한 예외다

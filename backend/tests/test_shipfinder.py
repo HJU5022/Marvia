@@ -1,7 +1,7 @@
 """B2 ShipFinder 클라이언트 단위 테스트.
 
 fixture는 evals/fixtures/shipfinder/. 실제 응답과 형식만 같은 가공값이다
-(CLAUDE.md "실제 응답 원본은 커밋하지 않는다"). 진짜 호출은 scripts/fetch_shipfinder.py.
+(CLAUDE.md "실제 응답 원본은 커밋하지 않는다"). 진짜 호출은 scripts/demo/fetch_shipfinder.py.
 """
 import json
 from pathlib import Path

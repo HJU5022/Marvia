@@ -187,7 +187,7 @@ erDiagram
 | 표 | 쓰는 곳 | 읽는 곳 | 상태 |
 |---|---|---|---|
 | query_log | routers/agent.py `_logged` (db `log_query`) | db `recent_queries`(이력 화면), `latest_response`·후속 질문, 탈퇴 삭제 | 사용 중 |
-| user_profiles | services/profile.py | profile.py, 운영자 고객 목록, scripts/rekey_personal_data.py | 사용 중 |
+| user_profiles | services/profile.py | profile.py, 운영자 고객 목록, scripts/ops/rekey_personal_data.py | 사용 중 |
 | suspended_users | services/customers.py | auth.py 요청마다 확인, 고객 목록 | 사용 중 |
 | operators | services/operators.py | 운영자 판단, 운영자 목록 | 사용 중 |
 | operator_audit | services/operators.py | 운영자 화면 이력 | 사용 중 |

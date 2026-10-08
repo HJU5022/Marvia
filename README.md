@@ -255,12 +255,12 @@ open http://localhost:8000/docs          # API 문서
 cp .env.example .env
 # .env에서 REPLAY_MODE=false 를 REPLAY_MODE=true 로 바꾼다. 다른 칸은 비워 둔다
 docker compose up -d --build
-docker compose exec api python -m scripts.make_demo      # 데모 재생 파일을 지금 시각 기준으로 만든다
+docker compose exec api python -m scripts.demo.make_demo      # 데모 재생 파일을 지금 시각 기준으로 만든다
 ```
 
 `make_demo`가 B/L 번호와 넣을 판매 예정일을 표로 보여 준다. 판매 예정일은 실행한 날에 따라 달라진다(아래 `<판매일>`).
 
-라이브 데모 10건 (시나리오는 `scripts/demo_live.py`의 `SPECS`, 펼친 문항은 `evals/fixtures/demo_live.jsonl`)
+라이브 데모 10건 (시나리오는 `scripts/demo/demo_live.py`의 `SPECS`, 펼친 문항은 `evals/fixtures/demo_live.jsonl`)
 
 | B/L | 시나리오 | 켜지는 신호 | 기대 결과 |
 |---|---|---|---|
@@ -296,8 +296,8 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 - 녹화 답은 평가셋 `TESTBL01` 입력에만 맞다. 판매 예정일을 다른 날짜로 넣거나 라이브 데모 10건을 부르면 녹화 답을 쓰지 않고 `partial`로 끝난다. 등급은 판정 표가 정해서 그대로 나오고, "설명 문장은 만들지 못했습니다" 안내가 붙는다. 틀린 설명을 그럴듯하게 보이지 않게 한 것이다
 - `.env`에 `LLM_MODEL`를 넣으면 같은 데모를 진짜 LLM이 판정한다 (녹화 답을 쓰지 않는다)
 - 위치 수신 시각이 "만든 시각 30분 전"이라 약 5시간 반 뒤에는 오래된 위치가 된다. 재생 모드 서버는 4시간마다 스스로 다시 만들고, 직접 돌릴 때는 `make_demo`를 다시 돌린다
-- 새 시나리오는 `scripts/demo_live.py`의 `SPECS`에 dict 하나를 더하고 `python -m scripts.demo_live`로 jsonl을 다시 쓴다
-- Docker 없이: `python -m scripts.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
+- 새 시나리오는 `scripts/demo/demo_live.py`의 `SPECS`에 dict 하나를 더하고 `python -m scripts.demo.demo_live`로 jsonl을 다시 쓴다
+- Docker 없이: `python -m scripts.demo.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
 
 ### 키
 
@@ -333,7 +333,7 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 |---|---|
 | API 직접 실행 | `python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt` 후 `.venv/bin/python -m uvicorn backend.app.main:app --port 8000` (API + MCP `/mcp`. 윈도우는 `.venv\Scripts\python`) |
 | 화면(web/) | `cd web && npm install && npm run dev` (:3000, Node 20.9 이상). `web/.env`의 `NEXT_PUBLIC_API_BASE`를 비우면 `web/lib/fixtures` 가공 데이터로 뜨고, `http://localhost:8000`을 넣으면 위 API에 붙는다. 자세한 설명은 [web/README.md](./web/README.md) |
-| MCP 확인 | `python -m scripts.mcp_check http://localhost:8000/mcp` (연결과 도구 4종), `python -m scripts.mcp_demo` (4종 호출), `python -m scripts.mcp_auth_check` (토큰 없으면 401) |
+| MCP 확인 | `python -m scripts.demo.mcp_check http://localhost:8000/mcp` (연결과 도구 4종), `python -m scripts.demo.mcp_demo` (4종 호출), `python -m scripts.demo.mcp_auth_check` (토큰 없으면 401) |
 | 테스트 | `pytest` 키 없이 돈다 (가공 응답으로 대체). `pytest backend/tests mcp_server/tests`로 2309건 통과. PR 때 `.github/workflows/tests.yml`이 같은 범위를 돈다 |
 | 평가 | `python -m evals.run_eval --config a|b|c` (실제 API·LLM을 불러 돈이 든다) |
 
@@ -395,7 +395,7 @@ Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout
 | `relay/` | 해수부 API 릴레이 (서울 Cloud Run) | [relay/README.md](./relay/README.md) |
 | `evals/` | 평가셋 30건(`dataset.jsonl`)·서류 12건, `fixtures/`(재생 파일), `results/`, 실행기·채점 | [evals/README.md](./evals/README.md) |
 | `web/` | Next.js 16. 경로 `/`, `/watch`, `/cargo`, `/history`, `/settings`, `/admin`, `/metrics`, `/about`. `public/basemap/`에 미리 구운 지도 타일 | [web/README.md](./web/README.md) |
-| `scripts/` | 손으로 돌리는 스크립트 (make_demo, demo_live, mcp_check, langfuse_evidence 등) | |
+| `scripts/` | 손으로 돌리는 스크립트. ops/ 실제 DB·계정 변경, eval/ 평가·측정, demo/ 데모 (make_demo, demo_live, mcp_check, langfuse_evidence 등) | |
 | `docs/` | PRD, SDD, 작업 리스트, ERD, 릴리스 manifest, 프롬프트 버전, specs, evidence | [docs/README.md](./docs/README.md) |
 | 루트 | `EVAL_REPORT.md`, `Dockerfile`(base / app / worker), `Dockerfile.railway`, `docker-compose.yml`(api + worker + postgres 16), `.env.example`, `CLAUDE.md` · `AGENTS.md`(AI 코딩 도구 작업 지침) | |
 

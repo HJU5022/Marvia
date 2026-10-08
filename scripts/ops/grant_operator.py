@@ -3,8 +3,8 @@
 운영자만 운영자를 등록할 수 있어서 첫 사람은 화면 밖에서 넣는다. 이력(operator_audit)에 등록자는 'bootstrap'으로 남는다.
 두 번째부터는 관리 화면에서 등록한다.
 
-    python -m scripts.grant_operator someone@example.com
-    docker compose exec api python -m scripts.grant_operator someone@example.com
+    python -m scripts.ops.grant_operator someone@example.com
+    docker compose exec api python -m scripts.ops.grant_operator someone@example.com
 
 DATABASE_URL을 .env에서 읽는다. 마이그레이션(009)을 먼저 적용하므로 서버를 한 번도 안 띄웠어도 된다.
 """

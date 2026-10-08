@@ -104,7 +104,7 @@ def get_user(user_id: str) -> dict | None:
 
 
 def create_user(email: str, full_name: str, metadata: dict | None = None) -> dict:
-    """확인된 계정을 만든다 (POST /auth/v1/admin/users). 테스트 고객 만들기(scripts/seed_test_users.py)에서만 쓴다.
+    """확인된 계정을 만든다 (POST /auth/v1/admin/users). 테스트 고객 만들기(scripts/ops/seed_test_users.py)에서만 쓴다.
     비밀번호는 넣지 않는다. 그 계정으로 로그인할 일이 없는 가공 고객이다."""
     resp = _admin_call("POST", "/auth/v1/admin/users", name="supabase:create_user",
                        json={"email": email, "email_confirm": True, "user_metadata": {"full_name": full_name, **(metadata or {})}})

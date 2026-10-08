@@ -38,7 +38,7 @@
 ## How
 
 - **DB (010_user_profiles.sql)**: user_profiles(user_id PK, name_enc, phone_enc, address_enc, consent_at, created_at, updated_at). 세 칸은 Fernet으로 잠근 글자. RLS 켜고 규칙 없음(005와 같음)
-- **열쇠**: PII_ENCRYPTION_KEY (B/L 열쇠와 분리, 사용자 결정). 회원 정보와 운영자 이메일(암호문·지문)만 이 열쇠를 쓰고 B/L 원본은 BL_ENCRYPTION_KEY 그대로. 한쪽이 새도 다른 쪽은 안전하다. 없으면 B/L 열쇠로 대신하지 않고 막는다. 처음 B/L 열쇠로 잠갔던 기존 값은 scripts/rekey_personal_data.py로 옮겼다. 같은 DB를 쓰는 환경은 같은 PII 열쇠가 있어야 읽을 수 있다
+- **열쇠**: PII_ENCRYPTION_KEY (B/L 열쇠와 분리, 사용자 결정). 회원 정보와 운영자 이메일(암호문·지문)만 이 열쇠를 쓰고 B/L 원본은 BL_ENCRYPTION_KEY 그대로. 한쪽이 새도 다른 쪽은 안전하다. 없으면 B/L 열쇠로 대신하지 않고 막는다. 처음 B/L 열쇠로 잠갔던 기존 값은 scripts/ops/rekey_personal_data.py로 옮겼다. 같은 DB를 쓰는 환경은 같은 PII 열쇠가 있어야 읽을 수 있다
 - **API**: GET /api/profile(본인 원문), PUT /api/profile(저장), GET /api/me에 profile_complete 추가, GET /api/admin/customers에 마스킹한 phone·address·이름(입력값 우선, 없으면 구글 이름)
 - **마스킹 (services/profile.py)**: 이름 첫 글자 + *, 전화 앞 3자리와 뒤 4자리, 주소 앞 두 마디 + ***
 - **동의 문구**: 수집 항목(이름, 전화번호, 주소), 목적(화물 관련 연락과 본인 확인), 보유 기간(탈퇴 시까지), 거부 시 서비스 이용 불가. consent_at에 동의 시각을 남긴다

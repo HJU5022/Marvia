@@ -2,8 +2,8 @@
 
 토큰 없이·틀린 토큰·맞는 토큰 세 경우를 차례로 불러 /mcp에 인증이 걸려 있음을 보인다.
 
-    python -m scripts.mcp_auth_check                       # localhost:8000 (API 서버 안의 /mcp)
-    python -m scripts.mcp_auth_check --url http://...      # 배포 주소
+    python -m scripts.demo.mcp_auth_check                       # localhost:8000 (API 서버 안의 /mcp)
+    python -m scripts.demo.mcp_auth_check --url http://...      # 배포 주소
 
 서버에 MCP_TOKEN이 없으면 인증이 걸리지 않아 앞의 두 경우도 통과한다. 그때는 그렇게 알린다.
 """
@@ -14,7 +14,7 @@ import os
 import httpx
 from dotenv import load_dotenv
 
-from scripts.mcp_check import list_tools
+from scripts.demo.mcp_check import list_tools
 
 load_dotenv()
 

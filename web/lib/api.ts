@@ -42,10 +42,10 @@ const DOCUMENT_TIMEOUT_MS = 60_000;
 /** routers/document.py MAX_BYTES와 같다. 보내기 전에 막아 큰 파일을 올리느라 기다리지 않게 한다 */
 export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 
-/** 실제 모드의 예시 B/L. 백엔드 REPLAY_MODE 데모와 같다 (scripts/make_demo.py). 앞 10건은 라이브 시연용 모의 화물
- * (scripts/demo_live.py, 10-06 정운 결정), 뒤 3건은 평가셋 데모 3건이다 (README "키 없이 데모").
+/** 실제 모드의 예시 B/L. 백엔드 REPLAY_MODE 데모와 같다 (scripts/demo/make_demo.py). 앞 10건은 라이브 시연용 모의 화물
+ * (scripts/demo/demo_live.py, 10-06 정운 결정), 뒤 3건은 평가셋 데모 3건이다 (README "키 없이 데모").
  * sale_in_days: 판매 예정일을 "오늘(한국) + N일"로 채운다 (10-06). 서버 데모는 해수부 입항 예정을 "오늘 + 일"로 못 박아 만들어서
- * (scripts/demo_live.py finalize) 이 날짜를 넣으면 표의 등급과 여유 일수가 나온다. 값은 evals/fixtures/demo_live.jsonl의
+ * (scripts/demo/demo_live.py finalize) 이 날짜를 넣으면 표의 등급과 여유 일수가 나온다. 값은 evals/fixtures/demo_live.jsonl의
  * demo_sale_in_days와 같아야 하고 backend/tests/test_demo_live.py가 맞는지 본다. 없는 예시는 비운다(09-29 선택 입력, 비워도 같은 등급).
  */
 export const liveExamples = [

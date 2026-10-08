@@ -1,4 +1,4 @@
-"""키 없는 데모 테스트 (SDD 6.1, 09-29). scripts/make_demo.py의 날짜 옮기기와 services/llm.py의 녹화 답 재생을 본다.
+"""키 없는 데모 테스트 (SDD 6.1, 09-29). scripts/demo/make_demo.py의 날짜 옮기기와 services/llm.py의 녹화 답 재생을 본다.
 
 마지막 테스트는 데모 3건을 실제 요청 경로(routers/agent.run_agent)로 끝까지 돌려서
 키·DB 없이 정상 fine · 되묻기 insufficient · 실패 partial이 나오는지 확인한다.
@@ -15,7 +15,7 @@ from backend.app.clients import replay
 from backend.app.clients.shipfinder import ShipFinderClient
 from backend.app.services import llm
 from backend.app.services.evidence import KST
-from scripts import make_demo
+from scripts.demo import make_demo
 
 ROOT = Path(__file__).resolve().parents[2]
 RECORDING = ROOT / "evals" / "fixtures" / "replay" / "llm" / "marvia-judge.json"

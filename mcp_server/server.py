@@ -18,7 +18,7 @@ MCP_TOKEN이 없으면 REPLAY_MODE일 때만 열고, 아니면 같은 컨테이�
   외부 MCP 클라이언트와 같은 창구입니다.
 
 실행:  python -m mcp_server.server --port 8001          (따로 띄울 때)
-확인:  python -m scripts.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   (API 서버 안)
+확인:  python -m scripts.demo.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   (API 서버 안)
 """
 import argparse
 import functools

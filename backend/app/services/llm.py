@@ -383,7 +383,7 @@ JUDGE_PROMPT = "marvia-judge"  # Langfuse 프롬프트 이름 (SDD 5.6 표)
 SKILL_DIR = Path(__file__).resolve().parents[3] / "skills"  # 레포 루트의 skills/. Dockerfile도 같은 자리에 복사한다
 
 # 구조화 출력 스키마. Pydantic에서 자동으로 뽑지 않고 손으로 적은 이유: strict 모드는 minItems 같은
-# 키워드를 받지 않는 제공사가 있어서, 09-23 스모크 테스트에서 통과한 모양(scripts/smoke_llm.py)을 그대로 따른다.
+# 키워드를 받지 않는 제공사가 있어서, 09-23 스모크 테스트에서 통과한 모양(scripts/eval/smoke_llm.py)을 그대로 따른다.
 # 모양은 아래 JudgeOutput과 같아야 한다. 받은 뒤 JudgeOutput으로 한 번 더 검사한다.
 JUDGE_SCHEMA = {
     "type": "object",

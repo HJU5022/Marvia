@@ -53,9 +53,9 @@ DEMO_REFRESH_HOURS = 4
 
 
 def _refresh_demo_forever(stop: threading.Event) -> None:
-    """재생 모드일 때만 도는 일꾼. DEMO_REFRESH_HOURS마다 데모 재생 파일을 새로 만든다 (scripts/make_demo.refresh).
+    """재생 모드일 때만 도는 일꾼. DEMO_REFRESH_HOURS마다 데모 재생 파일을 새로 만든다 (scripts/demo/make_demo.refresh).
     켜질 때 한 번 만드는 것은 Dockerfile.railway 시작 명령이 한다. 실패해도 서버는 계속 돈다 (다음 차례에 다시 해 본다)."""
-    from scripts import make_demo  # 재생 모드에서만 필요해서 여기서 불러온다
+    from scripts.demo import make_demo  # 재생 모드에서만 필요해서 여기서 불러온다
 
     while not stop.wait(DEMO_REFRESH_HOURS * 3600):
         try:

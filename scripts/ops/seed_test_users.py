@@ -5,7 +5,7 @@
 - 회원 정보: 이름 testUser1~3, 가공 전화·주소. 실제 사람·번호·주소가 아니다. 서버와 같은 방식으로 암호화해 저장한다
 - 다시 돌리면 이미 있는 계정은 건너뛰고, 회원 정보만 가공값으로 다시 맞춘다
 
-    python -m scripts.seed_test_users
+    python -m scripts.ops.seed_test_users
 
 .env의 SUPABASE_URL, SUPABASE_SECRET_KEY, DATABASE_URL, BL_ENCRYPTION_KEY가 필요하다.
 """

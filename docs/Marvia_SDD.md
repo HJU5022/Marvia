@@ -133,7 +133,7 @@ proj2-5/
     lib/                    api.ts, auth.ts, basemap.ts, composer.ts, format.ts, progress.ts, types.ts, fixtures/
     public/                 basemap/(미리 구워 둔 지도 타일), maplibre/, brand/, about/
     scripts/                verify.mjs, verify-contract.mjs, bake-basemap.mjs, copy-maplibre-worker.mjs
-  scripts/                  손으로 돌리는 스크립트 16개. mcp_check, mcp_demo, mcp_auth_check, fetch_shipfinder,
+  scripts/                  손으로 돌리는 스크립트 16개 (ops/ 실제 DB·계정 변경, eval/ 평가·측정, demo/ 데모). mcp_check, mcp_demo, mcp_auth_check, fetch_shipfinder,
                             make_demo(재생 데모 파일 생성), demo_live, failure_drill, injection_redteam, doc_injection_check,
                             langfuse_evidence, smoke_judge, smoke_llm, seed_test_users, grant_operator,
                             encrypt_operator_emails, rekey_personal_data
@@ -721,7 +721,7 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
 - app(FastAPI)의 `/mcp` 경로에 붙인다(`MountedMCP`). 서버·배포 서비스는 하나다. `python -m mcp_server.server`로 따로 띄우는 길은 로컬 확인용으로 남아 있다.
 - 서비스(`routers/agent.py`, `routers/chat.py`)도 `services/mcp_client.py`로 `/mcp`를 거쳐 도구를 부른다(처음엔 도구 함수를 직접 불렀다). 외부 MCP 클라이언트(Claude Desktop 등)와 같은 창구다. 동기 도구 함수는 `_in_thread`로 감싸 스레드에서 돌려 API 서버 전체가 멈추지 않게 한다.
 - 도구 4개(3.4). 각 tool description은 "언제 쓰는가" 한 문장 + 입력 설명 + 돌려주는 값.
-- 완료 기준: `mcp_server/tests/`(인증, 도구 4종, 설명문), `backend/tests/test_mcp_client.py`, `test_mcp_mount.py`. 외부 클라이언트 연결 확인은 `scripts/mcp_check.py`, `mcp_auth_check.py`, `mcp_demo.py`.
+- 완료 기준: `mcp_server/tests/`(인증, 도구 4종, 설명문), `backend/tests/test_mcp_client.py`, `test_mcp_mount.py`. 외부 클라이언트 연결 확인은 `scripts/demo/mcp_check.py`, `mcp_auth_check.py`, `mcp_demo.py`.
 
 ### 5.10 worker/
 
@@ -744,7 +744,7 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
 - 축: verdict 정확도, act 재현율, 되묻기(insufficient) 정밀도, 선박 식별 정확도, 근거 일치(V7), 통관 해설(LLM-as-judge), 계약 준수. 게이트: act_recall == 1.0, vessel_match 오확정 0, schema_pass >= 0.95, injection 케이스 오작동 0. 실제 점수는 `EVAL_REPORT.md`와 `evals/results/`의 파일만 근거로 쓰고 이 문서에는 옮기지 않는다.
 - `judge.py`: `EVAL_GRADER_MODEL`로 `customs.plain_explanation`을 통관 단계 기준과 대조, 0/1 + 이유. 채점받는 모델과 같으면 채점을 건너뛴다.
 - `contract_rate.py`: 결과 파일 여러 개에서 LLM 출력 계약 준수율 집계. `push_dataset.py`: 평가셋을 Langfuse Dataset에 올림. `services/metrics.py`가 결과 파일을 `/api/metrics` 화면 모양으로 읽는다(숫자를 만들지 않음).
-- 완료 기준: (a)(b)(c) 결과 JSON과 EVAL_REPORT.md. 서류 판독 평가셋(`doc_dataset.jsonl` 12건)은 `scripts/doc_injection_check.py`와 함께 쓴다.
+- 완료 기준: (a)(b)(c) 결과 JSON과 EVAL_REPORT.md. 서류 판독 평가셋(`doc_dataset.jsonl` 12건)은 `scripts/eval/doc_injection_check.py`와 함께 쓴다.
 
 ### 5.13 web/ (Next.js)
 
@@ -820,7 +820,7 @@ docs/specs/memory.md. 로그인 사용자만(없으면 아무것도 안 함). `u
 - `healthcheck`: api는 `/health`를 파이썬으로 호출, db는 `pg_isready`. api·worker는 `depends_on: condition: service_healthy`(db).
 - `.env` 하나를 api·worker가 `env_file`로 공유. compose가 `DATABASE_URL`을 덮어쓴다: api `postgresql+asyncpg://app:app@db:5432/app`(psycopg가 읽을 때 `plain_url`이 변환), worker `postgresql://app:app@db:5432/app`. worker는 `MCP_URL=http://api:8000/mcp`로 api를 가리킨다(자기 안에 api가 없어서).
 - 계획과 달라진 점: 코드 bind mount(핫리로드)는 없다. 코드는 이미지에 COPY한다.
-- `REPLAY_MODE=true`면 외부 API 대신 `evals/fixtures/replay/`를 읽는다. 데모 재생 파일은 이미지에 굽지 않고(`.dockerignore`) 서버가 켜질 때 `scripts/make_demo.py`로 지금 시각 기준으로 만든다. 서버는 4시간마다 다시 만든다(`DEMO_REFRESH`, `main.py`). 키 없이도 compose up 후 데모 3건과 라이브 시연용 모의 화물 10건이 동작해야 한다(채점자 재현용, README 4절).
+- `REPLAY_MODE=true`면 외부 API 대신 `evals/fixtures/replay/`를 읽는다. 데모 재생 파일은 이미지에 굽지 않고(`.dockerignore`) 서버가 켜질 때 `scripts/demo/make_demo.py`로 지금 시각 기준으로 만든다. 서버는 4시간마다 다시 만든다(`DEMO_REFRESH`, `main.py`). 키 없이도 compose up 후 데모 3건과 라이브 시연용 모의 화물 10건이 동작해야 한다(채점자 재현용, README 4절).
 
 ### 6.2 Dockerfile (멀티스테이지)
 
@@ -839,7 +839,7 @@ FROM base AS worker
 ```
 
 - 이미지 안에 `.env`나 키를 COPY하지 않는다. `.dockerignore`: `.env`, `.env.*`(예시 제외), `.git`, `.venv`, `evals/results/`, `web/node_modules/`, 데모 재생 폴더. 계획과 달라진 점: 베이스는 Python 3.12이고, searoute 빌드용 시스템 패키지(libgeos)는 필요 없었다(항로망이 패키지에 들어 있음). `platform: linux/amd64`는 compose에서 주석 처리돼 있고 Apple Silicon에서 안 뜰 때만 푼다.
-- `Dockerfile.railway`: Railway는 Dockerfile의 마지막 단계만 빌드하고 target을 고를 수 없어서, base + app을 한 단계로 합친 이 파일을 쓴다(`RAILWAY_DOCKERFILE_PATH`). 기본 Dockerfile의 base·app을 고치면 이 파일도 같이 고친다. 시작 명령은 `PORT`를 읽어 uvicorn을 띄우고(`MCP_URL`은 같은 포트의 `/mcp`), `REPLAY_MODE`가 켜져 있으면 먼저 `python -m scripts.make_demo`로 데모 재생 파일을 만든다(실패해도 서버는 켠다).
+- `Dockerfile.railway`: Railway는 Dockerfile의 마지막 단계만 빌드하고 target을 고를 수 없어서, base + app을 한 단계로 합친 이 파일을 쓴다(`RAILWAY_DOCKERFILE_PATH`). 기본 Dockerfile의 base·app을 고치면 이 파일도 같이 고친다. 시작 명령은 `PORT`를 읽어 uvicorn을 띄우고(`MCP_URL`은 같은 포트의 `/mcp`), `REPLAY_MODE`가 켜져 있으면 먼저 `python -m scripts.demo.make_demo`로 데모 재생 파일을 만든다(실패해도 서버는 켠다).
 
 ### 6.3 web 배포
 
@@ -851,7 +851,7 @@ FROM base AS worker
 - `marvia-api`는 `Dockerfile.railway`로 배포한다. 환경변수는 Railway 서비스 설정에 두고 레포에는 `.env.example`만 둔다. 배포 주소·배포 번호·프롬프트 버전은 `docs/release_manifest.json`(되돌리기: Railway에서 이전 deployment를 Redeploy, 프롬프트는 Langfuse에서 이전 version에 production label).
 - DB는 Supabase(`DATABASE_URL`). 서버가 켜질 때 마이그레이션이 자동 적용된다.
 - CORS: `ALLOWED_ORIGINS`에 화면 도메인(쉼표로 여러 개). 허용 메서드 GET·POST·PUT·DELETE, `Content-Disposition` 노출(엑셀 파일 이름). 카카오 리다이렉트 주소는 화면의 `/settings/kakao`(`KAKAO_REDIRECT_URI`).
-- 배포 서버는 `REPLAY_MODE=false`(실제 모드)다. 아래는 `REPLAY_MODE=true`로 켰을 때(로컬 데모 등)의 설명이다. 데모 위치가 약 5시간 반 뒤 오래된 위치가 되므로 시연 직전에 다시 배포하거나 Railway Console에서 `python -m scripts.make_demo`를 한 번 실행한다(서버가 4시간마다 자동 갱신도 한다).
+- 배포 서버는 `REPLAY_MODE=false`(실제 모드)다. 아래는 `REPLAY_MODE=true`로 켰을 때(로컬 데모 등)의 설명이다. 데모 위치가 약 5시간 반 뒤 오래된 위치가 되므로 시연 직전에 다시 배포하거나 Railway Console에서 `python -m scripts.demo.make_demo`를 한 번 실행한다(서버가 4시간마다 자동 갱신도 한다).
 
 ### 6.5 README 실행 절차
 
@@ -955,7 +955,7 @@ open http://localhost:8000/docs
 | MCP | 도구 4종, Bearer 인증, 도구 설명문 | `mcp_server/tests/` (pytest) |
 | 계약 | AgentResponse·스키마(`test_schemas`, `test_eval_schema`), MCP 도구 스키마, 프롬프트 파일 로딩(`test_prompts`), 프론트 fixtures 대 백엔드 계약(`web/scripts/verify-contract.mjs`) | pytest, node |
 | 통합 | REPLAY_MODE·가짜 transport로 라우터 경로: `/api/agent`(`test_routers`, `test_demo*`), 채팅·에이전트·SSE(`test_chat*`, `test_chat_stream`), 기억·대화·지켜보기·카카오·운영자·계정(`test_memory*`, `test_conversations`, `test_watch*`, `test_kakao_*`, `test_admin`, `test_account`), 워커(`test_worker_*`), 점검 회귀(`test_audit_1006`, `test_guard_1006`) | pytest + FastAPI TestClient |
-| 평가 | `python -m evals.run_eval --config a|b|c`, 서류 판독 평가셋, 레드팀(`scripts/injection_redteam.py`, `doc_injection_check.py`), 실패 드릴(`scripts/failure_drill.py`) | `evals/`, `scripts/`. (b)(c)는 실제 LLM을 불러 비용이 든다 |
+| 평가 | `python -m evals.run_eval --config a|b|c`, 서류 판독 평가셋, 레드팀(`scripts/eval/injection_redteam.py`, `doc_injection_check.py`), 실패 드릴(`scripts/eval/failure_drill.py`) | `evals/`, `scripts/`. (b)(c)는 실제 LLM을 불러 비용이 든다 |
 | 화면 | 타입 검사 `npm run typecheck`, 종단 검증(Playwright, 수동) `npm run test:e2e`, 계약 `npm run test:contracts` | `web/scripts/` |
 | CI | PR마다 `pytest backend/tests mcp_server/tests`(Python 3.12, `test_baseline.py` 제외)와 gitleaks. push는 main만 secret-scan | `.github/workflows/tests.yml`, `secret-scan.yml` |
 | 재현 | 다른 팀원 노트북 clone → .env → compose up → /health 10분 내, REPLAY_MODE 데모 1건 | 수동, Apple Silicon 1대 포함 |

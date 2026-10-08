@@ -13,4 +13,4 @@ MMSI·IMO·선명·호출부호·좌표·시각 모두 실재하지 않는 값�
 | not_found.json, no_permission.json, rate_limited.json | status 3, 21, 29 |
 | quota_exhausted.json | status 38 하루 호출 한도 소진 (10-06 점검, msg 문구는 가공) |
 
-실제 응답이 필요하면 `scripts/fetch_shipfinder.py`로 받아 로컬(.local/, gitignore)에만 둔다.
+실제 응답이 필요하면 `scripts/demo/fetch_shipfinder.py`로 받아 로컬(.local/, gitignore)에만 둔다.

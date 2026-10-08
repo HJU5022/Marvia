@@ -203,7 +203,7 @@ def _write_mof(m: dict, out_dir: Path) -> None:
 def _write_all(path: Path, items: list[str]) -> None:
     """호출부호 없이 부를 때 읽는 전체 목록(_ALL.xml)을 쓴다. 이미 있으면 그 안의 item 뒤에 이어 붙인다 (10-06).
 
-    전에는 문항마다 덮어써서 마지막에 쓴 문항 것만 남았다 (scripts/make_demo.py 머리 주석 "N01이 마지막이어야"). 한 폴더에
+    전에는 문항마다 덮어써서 마지막에 쓴 문항 것만 남았다 (scripts/demo/make_demo.py 머리 주석 "N01이 마지막이어야"). 한 폴더에
     여러 문항을 쓰는 서버 데모(13건)에서는 MRN으로 훑는 조회(identify_mrn)가 앞에 쓴 문항의 배를 못 찾았다.
     같은 item 글자는 한 번만 넣는다. 평가 실행기는 문항마다 새 폴더라 이어 붙일 것이 없어 결과가 전과 같다."""
     old = re.findall(r"<item>.*?</item>", path.read_text(encoding="utf-8"), re.S) if path.is_file() else []
