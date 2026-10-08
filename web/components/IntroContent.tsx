@@ -117,7 +117,7 @@ export function IntroContent({action, navRight, footer}: {action: ReactNode; nav
       <div className="lp-band-shade" aria-hidden="true"/>
       <div className="lp-wrap lp-band-in">
         <p className="lp-eyebrow light">데이터 출처</p>
-        <h2 id="lp-src">공공 데이터 세 곳을 한 화면에</h2>
+        <h2 id="lp-src">공공 데이터와 선박 위치 신호를 한 화면에</h2>
         <ul className="lp-sources">
           {SOURCES.map(({icon: Icon, name, what}) => <li key={name}><Icon size={22} strokeWidth={1.75} aria-hidden="true"/><b>{name}</b><span>{what}</span></li>)}
         </ul>
