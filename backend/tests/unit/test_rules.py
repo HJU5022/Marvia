@@ -88,9 +88,10 @@ def test_busan_port_code_change_is_followed(monkeypatch):
 
 def test_every_skill_folder_has_skill_and_rules_with_spec_front_matter():
     folders = sorted(p for p in rules.SKILLS_DIR.iterdir() if p.is_dir())
-    assert {f.name for f in folders} == {"ais-reliability", "customs-stages", "port-busan", "cargo-verdict", "referrals"}
+    assert {f.name for f in folders} == {"ais-reliability", "customs-stages", "port-busan", "cargo-verdict", "referrals", "import-basics"}
     for folder in folders:
-        assert (folder / "rules.md").is_file(), folder.name
+        # import-basics는 글만 있는 Skill이다 (코드가 읽는 재료 없음). rules.md가 없어도 load_rules가 건너뛴다
+        assert (folder / "rules.md").is_file() or folder.name == "import-basics", folder.name
         front = rules._front_matter(folder / "SKILL.md")
         assert front["name"] == folder.name
         assert front["description"].strip()

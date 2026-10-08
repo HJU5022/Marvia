@@ -330,11 +330,14 @@ SKILL_DIR = Path(__file__).resolve().parents[3] / "skills"  # 레포 루트의 s
 #   customs-stages   통관 단계 목록(rules.md)과 해설법
 #   port-busan       부두 이름 뜻, 하역 장소 문장, 부산 기준값
 #   cargo-verdict    등급 판정 표(rules.md), 등급 뜻·결과 설명법·되묻기와 실패 결과 설명법 (10-01 신설)
+#   import-basics    수입 실무 기초(B/L 번호 찾는 곳, 포워더 확인, A/N 같은 낱말). 웹 검색을 없애고 고정 문서로 옮겼다 (docs/adr/0020).
+#                    채팅 답과 후속 질문에만 넣는다. 판정(JUDGE)·후보 판단(PICK)·채점(GRADE)에는 넣지 않아 판정 입력이 그대로다
 AIS, CUSTOMS, PORT, VERDICT = "ais-reliability", "customs-stages", "port-busan", "cargo-verdict"
+IMPORT = "import-basics"
 ALL_SKILLS = (AIS, CUSTOMS, PORT, VERDICT)
 JUDGE_SKILLS = (AIS, CUSTOMS, VERDICT)  # 신호 읽기 · 통관 해설 · 등급 설명. 판정 입력에 부두 · 하역 장소가 없어 부두 Skill은 안 넣는다
 PICK_SKILLS = (AIS,)                    # 동명 선박 · 후보 판단. 통관 · 부두 · 등급은 쓰지 않는다
-FOLLOW_UP_SKILLS = ALL_SKILLS           # 이전 응답 전체(등급 · 통관 · 하역 장소 · 되묻기 문구 포함)를 근거로 답하므로 전부
+FOLLOW_UP_SKILLS = ALL_SKILLS + (IMPORT,)  # 이전 응답 전체(등급 · 통관 · 하역 장소 · 되묻기 문구 포함)를 근거로 답하므로 전부, 수입 실무 기초까지
 GRADE_SKILLS = (CUSTOMS,)               # 통관 해설 채점은 통관 단계 목록(customs-stages/rules.md)만 기준으로 한다 (평가 때만)
 
 
@@ -711,7 +714,7 @@ def route_chat(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
 # 등급·여유 일수는 지금처럼 코드가 정한다. B/L은 가린 토큰만 온다 (CLAUDE.md).
 # Skill 문서를 통째로 넣는다: 도구가 필요 없는 실무 질문은 이 문서 안에서만 답하게 한다 (RAG 아님).
 
-CHAT_AGENT_SKILLS = ALL_SKILLS  # 되묻기 설명법(cargo-verdict), 통관 단계, AIS, 부두를 모두 물을 수 있다
+CHAT_AGENT_SKILLS = FOLLOW_UP_SKILLS  # 되묻기 설명법(cargo-verdict), 통관 단계, AIS, 부두, 수입 실무 기초(import-basics)를 모두 물을 수 있다
 
 
 def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, history: list[dict],

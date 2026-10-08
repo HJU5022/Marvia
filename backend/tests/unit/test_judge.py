@@ -79,12 +79,14 @@ def test_system_has_prompt_and_judge_skills(monkeypatch):
 
 @pytest.mark.parametrize("folders, present, absent", [
     (llm.PICK_SKILLS, ["ais-reliability/SKILL.md"],
-     ["customs-stages/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/"]),
+     ["customs-stages/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/", "import-basics/"]),
     # 채점 기준인 단계 목록은 customs-stages/rules.md에 있다 (10-01)
     (llm.GRADE_SKILLS, ["customs-stages/SKILL.md", "customs-stages/rules.md"],
      ["ais-reliability/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/"]),
     (llm.FOLLOW_UP_SKILLS, ["ais-reliability/SKILL.md", "customs-stages/SKILL.md", "port-busan/SKILL.md",
-                            "cargo-verdict/SKILL.md"], []),
+                            "cargo-verdict/SKILL.md", "import-basics/SKILL.md"], []),
+    # 수입 실무 기초는 채팅·후속 질문에만 들어간다. 판정·후보 판단·채점 입력은 그대로다 (docs/adr/0020)
+    (llm.JUDGE_SKILLS, ["ais-reliability/SKILL.md"], ["import-basics/"]),
 ])
 def test_skills_per_call(folders, present, absent):
     """호출마다 필요한 Skill 폴더만 붙인다 (09-30). 붙이는 문서는 통째로다."""
@@ -258,3 +260,11 @@ def test_write_memory_uses_memory_prompt_and_model(monkeypatch):
     assert out.ops[0].op == "noop"
     assert calls[0]["model"] == "openai/gpt-4o-mini" and calls[0]["response_format"]["json_schema"]["strict"] is True
     assert "line commands" in calls[0]["messages"][0]["content"]  # 로컬 프롬프트 marvia-memory-write.md
+
+
+def test_import_basics_is_in_chat_and_follow_up_but_not_judge():
+    """수입 실무 기초 Skill은 채팅 답(V14 근거 검색 포함)과 후속 질문에만 들어간다. 판정 입력은 그대로다 (docs/adr/0020)."""
+    assert llm.IMPORT in llm.CHAT_AGENT_SKILLS and llm.IMPORT in llm.FOLLOW_UP_SKILLS
+    assert not {llm.IMPORT} & set(llm.JUDGE_SKILLS + llm.PICK_SKILLS + llm.GRADE_SKILLS)
+    assert "skills/import-basics/SKILL.md" in llm.skills_reference(llm.CHAT_AGENT_SKILLS)
+    assert "import-basics" not in llm.skills_reference(llm.JUDGE_SKILLS)

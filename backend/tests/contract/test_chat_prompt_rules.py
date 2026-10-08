@@ -22,3 +22,14 @@ def test_unknown_person_rule_exists():
 def test_follow_up_subject_scope_rule_exists():
     follow_up = (Path(__file__).resolve().parents[2] / "app" / "prompts" / "marvia-follow-up.md").read_text(encoding="utf-8")
     assert "If the subject of the question is not this cargo" in follow_up
+
+
+def test_service_name_spelling_rule_exists():
+    """v16: 서비스 이름 표기는 마르비아 하나로 고정한다 (services/chat/texts.py 고정 문구와 같은 철자)."""
+    assert '"마르비아"' in PROMPT and 'never "마비아"' in PROMPT
+
+
+def test_no_web_search_in_prompt():
+    """v16: 웹 검색 도구를 없앴다 (docs/adr/0020). 프롬프트에 도구 이름과 web 답 종류가 남지 않는다."""
+    assert "web_search" not in PROMPT
+    assert "  - web:" not in PROMPT
