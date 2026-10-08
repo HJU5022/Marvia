@@ -20,10 +20,15 @@ import {VerdictBadge} from '@/components/Shared';
 const PALETTE = ['#1d4ed8', '#7c3aed', '#0f766e', '#c2410c', '#be185d', '#4d7c0f', '#0369a1', '#a21caf', '#b45309', '#334155'];
 const markerLetter = (i: number) => String.fromCharCode(65 + (i % 26));
 const colorOf = (i: number) => PALETTE[i % PALETTE.length];
+// 배만 지켜보는 배(판정 없음)의 점 색. 화물 색·판정 색과 겹치지 않는 회색 (클러스터 아래 점에 쓴다)
+const VESSEL_ONLY_COLOR = '#9ca3af';
 // 화면에서 이 거리(px) 안에 있는 배끼리 한 클러스터로 묶는다. 핀 폭(34px)보다 조금 넓게
 const CLUSTER_PX = 44;
 /** 위치가 있어 지도에 올릴 수 있는 화물 */
 type Located = WatchItem & {lat: number; lng: number};
+
+/** 지도에 올리는 점 하나. B/L 화물(cargo)이거나 배만 지켜보는 배(vessel)다. 둘은 같은 핀 모양·같은 클러스터를 쓴다 (10-08 승욱) */
+type Spot = {lat: number; lng: number; cargo?: Located; vessel?: WatchedVessel};
 
 /** 진짜 선명만. 서버가 선명을 모르면 api.ts가 가린 B/L로 채워 오므로(ship_name ?? bl_masked) 같은 값이면 선명이 아니다 (10-07 정운 실사용 17번) */
 const realShip = (item: WatchItem) => item.ship_name && item.ship_name !== item.bl_masked ? item.ship_name : null;
@@ -95,6 +100,10 @@ export function WatchMap() {
     if (!prev || (v.position_at ?? '') > (prev.position_at ?? '')) latestByMmsi.set(v.mmsi, v);
   });
   const vesselPins = [...latestByMmsi.values()].filter(v => !cargoShips.has(normName(v.name)));
+  // 클러스터·확대·상세 창이 같이 쓰는 점 목록. 번호 0..active.length-1은 화물(목록·경로 번호와 같다), 그 뒤는 배만 지켜보는 배
+  const spots: Spot[] = [...active.map(c => ({lat: c.lat, lng: c.lng, cargo: c})), ...vesselPins.map(v => ({lat: v.lat as number, lng: v.lng as number, vessel: v}))];
+  const spotName = (sp: Spot) => sp.cargo ? shipOf(sp.cargo) : sp.vessel?.name ?? '';
+  const spotColor = (k: number) => spots[k]?.vessel ? VESSEL_ONLY_COLOR : colorOf(k);
 
   useEffect(() => {
     if (!list || !(total || vesselPins.length)) return;  // 위치 있는 화물이 없어도 부산항 기준 빈 지도는 그린다 (10-07 17번)
@@ -119,39 +128,6 @@ export function WatchMap() {
       // 부산항 마커는 배 핀보다 아래층에 두고, 이름표(툴팁 층)는 늘 핀 위에 떠서 배가 같은 자리에 있어도 가려지지 않는다
       L.marker(port, {icon: L.divIcon({className: 'port-marker', html: '<span>⚑</span>', iconSize: [28, 28], iconAnchor: [14, 14]}), interactive: false, zIndexOffset: -1000})
         .addTo(map).bindTooltip('부산항', {permanent: true, direction: 'bottom', offset: [0, 12], className: 'port-tooltip'});
-
-      // 10-08 정운 실사용 69번: 배만 지켜보는 배도 앱의 다른 지도(VesselMap)와 같은 방향 화살표(heading-marker)와 작은 이름 알약(ship-tooltip)으로 그린다.
-      // 네모 점선 표지와 늘 열린 큰 글상자는 글상자끼리 겹쳐 읽을 수 없었고 다른 지도와 모양이 달랐다. 구분은 옅은 색과 "배만" 꼬리표 정도로만 한다.
-      // 긴 설명("배만 지켜보는 중 · 수신 시각")은 마우스를 올리거나 누르거나 키보드로 열 때만 말풍선으로 보인다 (화물 핀과 같은 방식)
-      const vesselLayers: {m: L.Marker; at: L.LatLng}[] = vesselPins.map(v => {
-        const at = L.latLng(v.lat as number, v.lng as number);
-        const when = v.position_at ? dateTime(v.position_at, true) : null;
-        const detail = `<div class="watch-tip"><header><strong>${esc(v.name)}</strong></header><span>배만 지켜보는 중${when ? ` · ${esc(when)} 수신` : ''}</span>`
-          + `${v.sog != null ? `<span>${esc(`${v.sog}노트${v.cog != null ? ` · ${Math.round(v.cog)}°` : ''}`)}</span>` : ''}</div>`;
-        // 방향은 VesselMap과 같은 식(화살표 글자가 오른쪽을 보므로 cog - 90). 침로를 모르면 0도로 둔다
-        const icon = L.divIcon({className: 'heading-marker vessel-only', iconSize: [34, 34], iconAnchor: [17, 17],
-          html: `<span style="transform:rotate(${(v.cog ?? 0) - 90}deg)">➤</span>`});
-        const label = `${v.name} (배만 지켜보는 중)`;
-        const m = L.marker(at, {icon, title: label, alt: label, riseOnHover: true})
-          .addTo(map)
-          .bindTooltip(`${esc(v.name)}<em class="vessel-only-tag">배만</em>`, {permanent: true, direction: 'top', offset: [0, -16], className: 'ship-tooltip vessel-only-tip', opacity: 1})
-          .bindPopup(detail, {className: 'vessel-only-popup', closeButton: false, offset: [0, -14]});
-        // 누르기·키보드(Enter)는 Leaflet이 팝업을 열어 준다. 마우스를 올릴 때도 같이 연다
-        m.on('mouseover', () => m.openPopup()).on('mouseout', () => m.closePopup());
-        return {m, at};
-      });
-      // 가까운 배끼리 이름 알약이 겹치면 먼저 놓인 하나만 두고 나머지 알약은 감춘다(마커와 말풍선은 그대로). 화물 핀 가까이의 배도 감춘다.
-      // 화물 핀의 CLUSTER_PX 거리 기준을 그대로 쓰고 새 충돌 체계는 만들지 않는다. 확대하면 거리가 벌어져 다시 보인다
-      const declutterVessels = () => {
-        const taken = active.map(it => map.latLngToLayerPoint([it.lat, it.lng]));
-        vesselLayers.forEach(({m, at}) => {
-          const pt = map.latLngToLayerPoint(at);
-          if (taken.some(q => q.distanceTo(pt) < CLUSTER_PX)) m.closeTooltip();
-          else { m.openTooltip(); taken.push(pt); }
-        });
-      };
-      map.on('zoomend', declutterVessels);
-      declutterVessels();
 
       // 경로 동그라미는 배 핀·클러스터보다 아래 층에 둔다. 같은 층이면 위도 순으로 겹쳐 클러스터를 가려 누를 수 없었다 (10-02 확인)
       map.createPane('watch-track').style.zIndex = '550';  // overlay(선) 400 < 경로 점 550 < 마커 600
@@ -192,7 +168,7 @@ export function WatchMap() {
       // 지도에서 가리키면(fromMap) 옆 목록이 그 줄로 스크롤하고, 목록에서 가리키면 지도 선·핀이 강조된다
       hover.current = (i, fromMap) => {
         hovNow = i; setHovered(i); paint();
-        const row = i !== null && fromMap ? listEl.current?.children[i] as HTMLElement | undefined : undefined;
+        const row = i !== null && i < active.length && fromMap ? listEl.current?.children[i] as HTMLElement | undefined : undefined;
         const box = listEl.current;
         if (row && box && box.scrollHeight > box.clientHeight + 1) {
           const r = row.getBoundingClientRect(), b = box.getBoundingClientRect();
@@ -213,6 +189,22 @@ export function WatchMap() {
           .on('click', e => { L.DomEvent.stopPropagation(e); highlight(i); })
           .on('mouseover', () => hover.current(i, true)).on('mouseout', () => hover.current(null, true));
       });
+      // 배만 지켜보는 배도 화물 핀과 같은 동그라미 핀·알파벳(화물 다음 글자부터)으로 그리고 같은 클러스터에 넣는다 (10-08 승욱).
+      // 전에는 방향 화살표로 따로 올려 클러스터에 안 묶이고 화물 핀과 포개졌다. 판정이 없다는 것은 흰 바탕·회색 점선 테두리 핀으로 보인다(판정 색·테두리 없음).
+      // 오른쪽 "내 화물" 목록에는 넣지 않는다(판정·통관 줄이라서). 지도 아래 WatchedVessels 목록에 따로 있다
+      markers.push(...vesselPins.map((v, j) => {
+        const letter = markerLetter(active.length + j);
+        const when = v.position_at ? dateTime(v.position_at, true) : null;
+        const move = v.sog != null ? `${v.sog}노트${v.cog != null ? ` · ${Math.round(v.cog)}°` : ''}` : null;
+        const detail = `<div class="watch-tip"><header><strong>${esc(letter)} · ${esc(v.name)}</strong><em class="vessel-only-tag">배만</em></header>`
+          + `<span>배만 지켜보는 중 (B/L 없음, 판정 없음)</span>${move ? `<span>${esc(move)}</span>` : ''}${when ? `<span>${esc(when)} 수신</span>` : ''}</div>`;
+        const icon = L.divIcon({className: 'watch-pin', iconSize: [34, 34], iconAnchor: [17, 17],
+          html: `<span class="pin-body vessel-only"><b>${letter}</b></span>`});
+        const label = `${letter} ${v.name} (배만 지켜보는 중)`;
+        return L.marker([v.lat as number, v.lng as number], {icon, title: label, alt: label, riseOnHover: true})
+          .bindTooltip(detail, {direction: 'auto', offset: [18, 0], className: 'watch-tooltip', opacity: 1})
+          .on('click', e => { L.DomEvent.stopPropagation(e); highlight(null); });
+      }));
       const layer = L.layerGroup().addTo(map);
 
       // 목록에서 연 말풍선은 마우스를 떼도 저절로 안 닫힌다. 한 번에 하나만 열어 두고,
@@ -226,22 +218,22 @@ export function WatchMap() {
       const recluster = () => {
         closeOpened();
         layer.clearLayers();
-        const pts = active.map(it => map.latLngToLayerPoint([it.lat, it.lng]));
+        const pts = spots.map(it => map.latLngToLayerPoint([it.lat, it.lng]));
         const used = new Set<number>();
         groups = [];
-        active.forEach((_, i) => {
+        spots.forEach((_, i) => {
           if (used.has(i)) return;
           const g = [i]; used.add(i);
-          active.forEach((__, j) => { if (!used.has(j) && pts[i].distanceTo(pts[j]) < CLUSTER_PX) { g.push(j); used.add(j); } });
+          spots.forEach((__, j) => { if (!used.has(j) && pts[i].distanceTo(pts[j]) < CLUSTER_PX) { g.push(j); used.add(j); } });
           groups.push(g);
         });
         groups.forEach(g => {
           if (g.length === 1) { layer.addLayer(markers[g[0]]); return; }
-          const center = L.latLng(g.reduce((a, k) => a + active[k].lat, 0) / g.length, g.reduce((a, k) => a + active[k].lng, 0) / g.length);
-          // 테두리는 안에서 가장 급한 판정 색. 아래 점은 안에 든 배들의 색(최대 4개)
-          const urgent = g.some(k => active[k].verdict === 'act') ? 'act' : g.some(k => active[k].verdict === 'watch') ? 'watch' : '';
-          const dots = g.slice(0, 4).map(k => `<em style="background:${colorOf(k)}"></em>`).join('');
-          const names = g.map(k => `${markerLetter(k)} ${shipOf(active[k])}`).join(', ');
+          const center = L.latLng(g.reduce((a, k) => a + spots[k].lat, 0) / g.length, g.reduce((a, k) => a + spots[k].lng, 0) / g.length);
+          // 테두리는 안에서 가장 급한 판정 색(배만 지켜보는 배는 판정이 없어 빠진다). 아래 점은 안에 든 배들의 색(최대 4개, 배만은 회색)
+          const urgent = g.some(k => spots[k].cargo?.verdict === 'act') ? 'act' : g.some(k => spots[k].cargo?.verdict === 'watch') ? 'watch' : '';
+          const dots = g.slice(0, 4).map(k => `<em style="background:${spotColor(k)}"></em>`).join('');
+          const names = g.map(k => `${markerLetter(k)} ${spotName(spots[k])}`).join(', ');
           L.marker(center, {icon: L.divIcon({className: 'watch-cluster', iconSize: [46, 46], iconAnchor: [23, 23],
             html: `<span class="cluster-body ${urgent}"><b>${g.length}</b><i>${dots}</i></span>`}), title: `배 ${g.length}척: ${names}`, alt: `배 ${g.length}척`, riseOnHover: true, zIndexOffset: 1000})
             .on('click', e => { L.DomEvent.stopPropagation(e); closeOpened(); setCluster(g); })
@@ -271,12 +263,12 @@ export function WatchMap() {
         // 그 배가 다른 배와 떨어져 보이는(클러스터에서 빠지는) 가장 낮은 확대 단계를 찾는다.
         // 경로 전체가 들어오는 단계가 그보다 낮으면 경로를 포기하고 배를 가운데 두고 그 단계로 확대한다 (10-02 사용자 발견:
         // 클러스터 안의 배를 목록에서 누르면 경로 범위에만 맞춰져 그 배로 가지 않았다)
-        const here = L.latLng(active[i].lat, active[i].lng);
-        const apartAt = (z: number) => active.every((o, j) => j === i
+        const here = L.latLng(spots[i].lat, spots[i].lng);
+        const apartAt = (z: number) => spots.every((o, j) => j === i
           || map.project(here, z).distanceTo(map.project(L.latLng(o.lat, o.lng), z)) >= CLUSTER_PX);
         let apart = map.getMaxZoom();
         for (let z = map.getMinZoom(); z <= map.getMaxZoom(); z++) { if (apartAt(z)) { apart = z; break; } }
-        const track = showTrack ? (active[i].track ?? []) : [];
+        const track = showTrack ? (spots[i].cargo?.track ?? []) : [];
         const trackBounds = track.length > 1 ? L.latLngBounds(track.map(t => L.latLng(t.lat, t.lng))).pad(.3) : null;
         const trackZoom = trackBounds ? Math.min(map.getBoundsZoom(trackBounds), 9) : 0;
         if (trackBounds && trackZoom >= apart) map.fitBounds(trackBounds, {maxZoom: 9, animate: true});
@@ -301,7 +293,7 @@ export function WatchMap() {
         {<div className="wm-map-card">
           <div className="wm-toolbar">
             <span className="watch-updated">{list.updated_at ? `${dateTime(list.updated_at, true)} 기준` : ''}</span>
-            {active.length > 0 && <button type="button" className="watch-fit" onClick={() => fitAll.current()} title="모든 배 보기" aria-label="모든 배 보기"><Maximize2 size={16} strokeWidth={1.9}/>모든 배 보기</button>}
+            {spots.length > 0 && <button type="button" className="watch-fit" onClick={() => fitAll.current()} title="모든 배 보기" aria-label="모든 배 보기"><Maximize2 size={16} strokeWidth={1.9}/>모든 배 보기</button>}
             {active.length > 0 && <label className="watch-track-toggle"><input type="checkbox" checked={showTrack} onChange={e => setShowTrack(e.target.checked)}/>6시간 간격 경로 보기</label>}
           </div>
           <div className="watch-map">
@@ -309,7 +301,14 @@ export function WatchMap() {
             {cluster && <div className="cluster-panel" role="dialog" aria-label={`이 자리에 있는 배 ${cluster.length}척`} onKeyDown={e => { if (e.key === 'Escape') setCluster(null); }}>
               <div className="cluster-head"><strong>이 자리에 있는 배 {cluster.length}척</strong>
                 <button type="button" className="icon-button" onClick={() => setCluster(null)} aria-label="닫기" autoFocus><X size={16}/></button></div>
-              <ul>{cluster.map(k => { const item = active[k]; const move = motion(item); return <li key={item.bl_masked}>
+              <ul>{cluster.map(k => { const v = spots[k]?.vessel; if (v) return <li key={`v${v.mmsi}`}>
+                <div className="cluster-item-head"><span className="watch-chip vessel-only">{markerLetter(k)}</span>
+                  <span className="watch-main"><strong>{v.name}</strong><small className="vessel-only-note">배만 지켜보는 중 (B/L 없음, 판정 없음)</small></span>
+                  <button type="button" className="cluster-go" onClick={() => focus.current(k)} aria-label={`${v.name} 위치로 지도 이동`} title="지도에서 보기"><LocateFixed size={18} strokeWidth={1.9} aria-hidden="true"/></button></div>
+                <dl><div><dt>위치 받은 시각</dt><dd>{v.position_at ? dateTime(v.position_at, true) : '확인 안 됨'}</dd></div>
+                  {v.sog != null && <div><dt>속력·침로</dt><dd>{`${v.sog}노트${v.cog != null ? ` · ${Math.round(v.cog)}°` : ''}`}</dd></div>}</dl>
+              </li>;
+                const item = active[k]; const move = motion(item); return <li key={item.bl_masked}>
                 <div className="cluster-item-head"><span className="watch-chip" style={{background: colorOf(k)}}>{markerLetter(k)}</span>
                   <span className="watch-main"><strong>{shipOf(item)}</strong>{move && <small>{move}</small>}</span>
                   <button type="button" className="cluster-go" onClick={() => focus.current(k)} aria-label={`${shipOf(item)} 위치로 지도 이동`} title="지도에서 보기"><LocateFixed size={18} strokeWidth={1.9} aria-hidden="true"/></button></div>
