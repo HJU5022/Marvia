@@ -209,3 +209,9 @@ def test_empty_question_does_not_list_all_arrivals(monkeypatch):
     r = svc.handle("?", "q1", None, lambda req: None)
     assert calls[0]["tool_calls"][0]["result"]["error"]["code"] == "not_a_list_question"
     assert r.kind != "vessels"
+
+
+def test_model_written_skill_tag_is_removed(monkeypatch):
+    _agent(monkeypatch, [], ["도착통지서를 못 받았다면 포워더에게 도착 안내를 요청해 보세요 [SKILL 2]."])
+    r = svc.handle("A/N 도착통지서 못 받으면 어떻게 해?", "t1", None, lambda req: None)
+    assert "[SKILL" not in r.reply

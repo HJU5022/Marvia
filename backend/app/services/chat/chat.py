@@ -210,6 +210,9 @@ from backend.app.services.chat.watch_chat import _offered, kakao_now_text, wants
 DAYS_DEFAULT, DAYS_MAX = 7, 14  # 입항 예정 검색 기간. 해수부 한 번 조회가 20쪽까지라 길게 잡지 않는다
 
 
+
+SKILL_TAG = re.compile(r"\s*\[(?:SKILL|Skill|skill|skills/)[^\]\n]{0,40}\]")  # 모델이 붙인 Skill 파일 꼬리표
+
 def search_ship_name(name: str, last: str | None = None) -> ChatResult | None:
     """부산 입항 예정 목록(앞으로 DAYS_MAX일)에서 배 이름으로 찾는다. 이름 글자가 선박 이름에 들어 있으면 맞는 것 (대소문자 무시, 끝의 "호" 뺌).
     찾으면 선박 표, 없으면 무엇을 찾았는지 말하는 문장. 입항 목록을 못 받으면 None (호출한 쪽이 되묻는다)."""
@@ -674,6 +677,9 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     signals: dict = {}
     result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals, kakao, on_screen)
     result = replace(result, reply=hide_bl_tokens(result.reply, signals.get("refs") or refs))
+    # 모델이 Skill 파일 이름을 출처처럼 적은 꼬리표("[SKILL 2]", "[SKILL.md]", "[skills/...]")는 내부 표시라 지운다.
+    # 근거 표시는 코드가 다는 [E#]뿐이다 (10-08 e2e, import-basics 답에서 관찰)
+    result = replace(result, reply=SKILL_TAG.sub("", result.reply).strip())
     result = _with_citations(result, signals)  # 뒤에 붙는 코드 문장(지켜보기·카톡·제안)은 모두 글 끝에 더해지므로 표시 자리는 그대로 맞다
     done_kakao = signals.get("kakao") or {}
     if done_kakao.get("msg") and done_kakao["msg"] not in result.reply:
