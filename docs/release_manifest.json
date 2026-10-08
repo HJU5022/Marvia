@@ -21,9 +21,10 @@
     "web": {
       "service": "marvia-web",
       "url": "https://marvia.up.railway.app",
-      "deployment": "803b2aff-9297-4737-bc4b-710b8327752e",
+      "deployment": "ca49edde-5981-4828-9c27-1995fe56bc00",
       "status": "SUCCESS",
-      "command": "railway up web --path-as-root --service marvia-web --detach (web 폴더만 올린다. 레포 루트에서 올리면 루트 Dockerfile의 worker 단계가 빌드돼 화면이 502가 된다)"
+      "command": "railway up web --path-as-root --service marvia-web --detach (web 폴더만 올린다. 레포 루트에서 올리면 루트 Dockerfile의 worker 단계가 빌드돼 화면이 502가 된다)",
+      "note": "r7 뒤 화면만 두 번 다시 배포했다: 소개 페이지 사진·데이터 출처 제목(ed7476ab), 지도 클러스터 패널 라벨 줄바꿈 수정(ca49edde). 백엔드는 그대로"
     },
     "worker": {
       "service": "marvia-worker",
