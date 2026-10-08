@@ -1,7 +1,7 @@
 # 해수부 API 릴레이
 
 ## 무엇을, 왜
-10-07 실측: Railway(싱가포르)에서 해수부 API(`apis.data.go.kr`)를 부르면 ConnectTimeout이 난다(한국에서는 0.1초).
+실측: Railway(싱가포르)에서 해수부 API(`apis.data.go.kr`)를 부르면 ConnectTimeout이 난다(한국에서는 0.1초).
 서울 Cloud Run에 이 릴레이를 두고 백엔드가 여기를 거쳐 부르게 한다. GET만 그대로 넘기고 상태·본문·content-type을 돌려준다.
 
 ## 보안

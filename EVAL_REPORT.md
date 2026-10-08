@@ -47,7 +47,7 @@ Langfuse Cloud에 도착한 기록은 `docs/evidence/langfuse_summary.md`(같은
 | `langfuse-01-dashboard.jpg` | Home 대시보드 (최근 30일) | 트레이스 4.19K, 관측 12.86K, 비용 $6.90, 모델별 비용, 이름별 트레이스 수 |
 | `langfuse-02-trace-detail.jpg` | 채팅 요청 트레이스 상세 | 입력·출력, 모델 `google/gemini-3.5-flash-lite`, 프롬프트 `marvia-chat-agent` v14, 지연 6.72초, 토큰 45,346, 비용 $0.010178. 같은 요청의 `marvia-memory-write`가 병렬로 보인다 |
 | `langfuse-03-retry-trace.jpg` | 판정 재시도 트레이스 (평가 문항 F08) | `marvia-judge` generation 3개가 모두 Error(`bad_format`), 그 뒤 판정 표 폴백으로 exact_match 1.0 |
-| `langfuse-04-prompts.jpg` | Prompts > `marvia-chat-agent` 버전 | 캡처 시점: 버전 14에 production·latest·v5 라벨, 10~13에 v1~v4 릴리스 라벨 |
+| `langfuse-04-prompts.jpg` | Prompts > `marvia-chat-agent` 버전 | 버전 15에 production·latest·v6 라벨, 10~14에 v1~v5 릴리스 라벨 |
 | `langfuse-05-experiments.jpg` | Datasets > marvia-golden-30 > Experiments | 실행별 exact_match 추이, 평균 지연, 총 비용 |
 | `langfuse-06-demo-trace-tools.jpg` | 시연 녹화 중 B/L 조회 트레이스 | 하우스 조회(없음) 뒤 마스터 재조회, `unipass:fetch`·`mof:find_plan_by_mrn`·`mcp:*`·`shipfinder.VesselSearch` 호출 순서 |
 | `langfuse-07-prompts-list.jpg` | Prompts 목록 | 프롬프트 10개와 버전 수, 최근 7일 사용량 |
