@@ -21,11 +21,11 @@
 | 개선 전후 | 두 번 이상 재측정하고 회귀 문항을 보인다 | 같은 평가셋으로 전후 비교 6건. 회귀 문항 명시 (예: F02, 통관 해설 3문항, 5번의 10문항) | 통과 | 4절, 4-1절, `evals/results/*.json` |
 | 게이트: 스키마 | 검증 통과율 ≥ 95% | 최종 응답 schema_pass 1.0 (6회 모두). 출력 단위는 flash-lite로 재지 않음 | 통과 | 7절, 6절 |
 | 게이트: p95 지연 | ≤ 15초 | 3.6~6.3초 (6회 모두) | 통과 | 7절 |
-| 게이트: 유해 오작동 | 0건 | `injection_failures` 빈 목록 (6회 모두). 주입 방어 0/240 | 통과 | 7절, `evals/results/injection/README.md` |
+| 게이트: 유해 오작동 | 0건 | `injection_failures` 빈 목록 (6회 모두). 주입 방어 0/240. 서비스 모델·서류 PDF·사진 채널 공격 e2e 뚫림 0 | 통과 | 7절, `evals/results/injection/README.md`, `evals/results/e2e_attack_20261008/README.md` |
 | 게이트: act 누락·선박 오확정 | 0건 | act_recall 1.0, `vessel_wrong_confirm` 빈 목록 (6회 모두) | 통과 | 7절 |
 | 게이트: 요청당 비용 | ≤ $0.005 | 6회 평균 $0.00259 (회차별 $0.002406~0.002808). 채팅·후속 질문 비용은 포함 안 됨 | 통과 | 7절 |
 | 출력 계약 준수율 | 100건 이상 실측 | 출력 112개 중 110개 통과 = 98.2% (gpt-4o-mini, 5회). 현재 서비스 모델 flash-lite의 출력 단위 준수율은 재지 않음 | 일부 | 9-2절, `evals.contract_rate` |
-| MCP | 도구 4종 연결 근거 | `mcp:*` 4종 tool 관측 3,641개. 로컬 연결 캡처는 있으나 배포 주소 `/mcp` 연결 캡처는 없음 | 일부 | 1절, `docs/evidence/B10-mcp-연결-도구목록-호출.png` |
+| MCP | 도구 4종 연결 근거 | `mcp:*` 4종 tool 관측 3,641개. 배포 주소 `/mcp`에 토큰으로 연결해 도구 4종 목록 확인, 토큰 없으면 401 | 통과 | 1절, `docs/evidence/mcp-02-deployed-tools.txt`, `docs/evidence/B10-mcp-연결-도구목록-호출.png` |
 
 ## 1. 관측 (Observability)
 
@@ -55,7 +55,7 @@ Langfuse Cloud에 도착한 기록은 `docs/evidence/langfuse_summary.md`(같은
 | `langfuse-09-observations-cost.jpg` | Home 아래쪽 | 일자별 관측량(DEFAULT·ERROR), 모델별 비용 추이 |
 | `langfuse-10-latency-percentiles.jpg` | Home 지연 분위수 | 트레이스·generation·관측 단위 p50/p90/p95/p99. `ocr:read` p95가 큰 것은 서버 OCR 스레드 수정 전 기록이 섞인 값이다 |
 
-배포 주소 `/mcp` 연결 캡처는 없다. 로컬 연결 캡처는 `docs/evidence/B10-mcp-연결-도구목록-호출.png`다.
+배포 주소 `/mcp` 연결 확인은 `docs/evidence/mcp-02-deployed-tools.txt`다(릴리스 r7, 토큰으로 연결해 도구 4종 목록, 토큰 없으면 401). 로컬 연결 캡처는 `docs/evidence/B10-mcp-연결-도구목록-호출.png`다.
 
 ## 2. 프롬프트 운영 (Prompt Management)
 
@@ -211,7 +211,18 @@ marvia-chat-agent 15는 production, latest, v6 라벨로 Langfuse에 등록돼 �
 
 비용 상한 $0.005는 재측정 평균의 약 2배로 정했고 근거는 이 측정치뿐이다. 이 비용은 평가셋 30건의 판정 요청(서비스 모델 호출 합, 채점기 제외)이라 채팅·후속 질문의 요청당 비용은 포함하지 않는다. 사용자별 하루 한도는 토큰 단위(`DAILY_TOKENS_PER_USER`)로 따로 걸려 있다.
 
-프롬프트 주입 방어 측정(`evals/results/injection/README.md`, 모두 코드 방어 포함 서비스 경로): 공격 16종 x 5채널 x 3회 0/240, 자연어 창구 4채널 0/192, 새로 만든 공격 20개 x 5채널을 Haiku로 쟀을 때 0/100(2회). 정상 문장 오탐은 60문장 기준 0/60이다.
+프롬프트 주입 방어 측정(`evals/results/injection/README.md`, 모두 코드 방어 포함 서비스 경로): 공격 16종 x 5채널 x 3회 0/240, 자연어 창구 4채널 0/192, 새로 만든 공격 20개 x 5채널을 Haiku로 쟀을 때 0/100(2회).
+
+**서비스 모델과 서류 채널 공격 e2e** (`evals/results/e2e_attack_20261008/`). 위 측정은 옛 서비스 모델 기준이고 서류 PDF 채널이 없었다. 그래서 지금 서비스 모델(gemini-3.5-flash-lite, Vertex로 호출)과 로컬 백엔드(로컬 DB, 대부분 재생 파일)로 채팅·서류 경로를 다시 공격했다.
+
+| 채널 | 시도 | 뚫림 |
+|---|---|---|
+| 사용자 입력 (채팅 텍스트, 다국어·역할 바꾸기·base64·가짜 도구 결과·판정 바꾸기·B/L 원문 요구) | 약 60 | 0 |
+| 외부 데이터 (가짜 대화 기록, 화면 배 이름·목적지 속 지시문) | 약 12 | 0 |
+| 서류 PDF (스캔형 10, 글자층 9) | 19 | 0 |
+| 서류 사진 (PNG 12, JPG 8) | 20 | 0 |
+
+정보 누출과 정책 위반은 0건이었다. 같은 측정에서 공격이 아닌 버그 11건(정상 후속 질문 오거절, `[BL1]` 노출, 판매일 지어냄, 큰 그림 500 등)을 찾아 고쳤고, 부산 외 항구와 먼 미래 판매일 기준은 rules.md 키가 필요해 남겼다. 웹 검색 도구를 지운 뒤(ADR 0020) 53건으로 다시 확인했다. 요청 수는 수백 건 규모라 비율을 통계로 말하지 않는다. 정상 문장 오탐은 60문장 기준 0/60이다.
 
 ## 8. 지금 이 서비스의 가장 큰 약점
 
