@@ -12,6 +12,7 @@ from backend.app.routers import chat as chat_router
 from backend.app.schemas.agent import AgentRequest
 from backend.app.services.chat import chat as svc
 from backend.app.services import llm
+from backend.app.services.chat import ids as chat_ids
 
 
 class _Plan:
@@ -169,9 +170,9 @@ def test_new_bl_overrides_follow_up(monkeypatch):
 
 def test_cargo_ship_flag_follows_skill_list():
     """선종·목적 목록은 skills/port-busan/cargo-vessels.md에서 읽는다 (10-01)."""
-    assert svc.is_cargo_ship("풀컨테이너선", "양적하") and svc.is_cargo_ship("냉동.냉장선", "양하")
-    assert not svc.is_cargo_ship("원양 어선", "양하") and not svc.is_cargo_ship("풀컨테이너선", "급유")
-    assert not svc.is_cargo_ship(None, None)
+    assert chat_ids.is_cargo_ship("풀컨테이너선", "양적하") and chat_ids.is_cargo_ship("냉동.냉장선", "양하")
+    assert not chat_ids.is_cargo_ship("원양 어선", "양하") and not chat_ids.is_cargo_ship("풀컨테이너선", "급유")
+    assert not chat_ids.is_cargo_ship(None, None)
 
 
 # ── 전 방식의 B/L 여러 개 (10-06 점검: 첫 B/L만 조회하고 나머지는 말없이 버렸다) ──

@@ -45,6 +45,8 @@ from backend.app.services.chat import progress
 from backend.app.services.watch import vessel_detail
 from backend.app.services.watch import vessel_watch as vessel_watch_service
 from backend.app.services.watch import watch as watch_service
+from backend.app.services.chat import limits as chat_limits
+from backend.app.services.chat import models as chat_models
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -107,7 +109,7 @@ class ChatScreen(BaseModel):
     선택 칸이라 옛 화면·평가 스크립트는 보내지 않아도 된다. 판정에는 쓰지 않는다. LLM에는 자료로만 간다."""
 
     vessel: ChatScreenVessel | None = None
-    arrivals: list[ChatScreenArrival] = Field(default_factory=list, max_length=svc.SCREEN_ARRIVALS_MAX)
+    arrivals: list[ChatScreenArrival] = Field(default_factory=list, max_length=chat_limits.SCREEN_ARRIVALS_MAX)
 
 
 class ChatRequest(BaseModel):
@@ -260,7 +262,7 @@ def _history(body: ChatRequest) -> list[dict]:
 SAVE_WAIT_TRIES, SAVE_WAIT_SEC = 3, 1.0
 
 
-def _vessel_hooks(user_id: str) -> svc.VesselHooks:
+def _vessel_hooks(user_id: str) -> chat_models.VesselHooks:
     """로그인 사용자의 배 한 척 지켜보기 함수 셋 (10-08 정운 실사용 79). 오류는 종류만 서비스에 돌려주고 문장은 서비스가 정한다."""
 
     def resolve(call_sign: str, name: str | None) -> dict:
@@ -280,7 +282,7 @@ def _vessel_hooks(user_id: str) -> svc.VesselHooks:
         with ops.open_conn() as conn:
             return {"mmsi": vessel_watch_service.remove_vessel(conn, user_id, mmsi).get("mmsi", mmsi)}
 
-    return svc.VesselHooks(resolve=resolve, add=add, remove=remove)
+    return chat_models.VesselHooks(resolve=resolve, add=add, remove=remove)
 
 
 def _watch_hooks(user_id: str | None) -> svc.WatchHooks | None:

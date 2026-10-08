@@ -8,6 +8,7 @@ import pytest
 from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat_agent import _agent, agent_path  # noqa: F401 (fixture)
+from backend.app.services.chat import texts as chat_texts
 
 USER = "user-1"
 SENTENCE = "아까 우리 감시했던 홍콩보야지? 그 배 담당부서 전화번호 뭐였지"
@@ -128,17 +129,17 @@ def test_empty_model_reply_falls_back_to_code_list(monkeypatch):
 
 def test_anonymous(monkeypatch):
     r, _ = ask(monkeypatch, "전화번호 뭐였지", "아무 말", user_id=None)
-    assert r.reply == svc.MEMO_ANON
+    assert r.reply == chat_texts.MEMO_ANON
 
 
 def test_nothing_saved_turn(monkeypatch):
     r, _ = ask(monkeypatch, "전화번호 뭐였지", "", items=[])
-    assert r.reply == svc.MEMO_NONE
+    assert r.reply == chat_texts.MEMO_NONE
 
 
 def test_no_match_lists_companies_without_phones(monkeypatch):
     r, _ = ask(monkeypatch, "없는회사 전화번호 뭐였지", "", {"topic": "contact", "query": "없는회사"})
-    assert r.reply.startswith(svc.MEMO_NONE) and "테스트로지스(포워더), 테스트수출(수출자)" in r.reply and "051" not in r.reply
+    assert r.reply.startswith(chat_texts.MEMO_NONE) and "테스트로지스(포워더), 테스트수출(수출자)" in r.reply and "051" not in r.reply
 
 
 def test_ship_question_asks_which_one(monkeypatch):

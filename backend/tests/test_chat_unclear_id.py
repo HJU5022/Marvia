@@ -10,6 +10,7 @@ from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat import PLANS
 from backend.tests.test_chat_agent import _agent, _mcp, _no_classic
+from backend.app.services.chat import texts as chat_texts
 
 MESSAGE = "지금 TEST41 선박 위치 어디야?"
 
@@ -80,16 +81,16 @@ def test_clarify_after_vessel_lookup_found_nothing(monkeypatch):
 def test_clarify_without_extractable_id_uses_generic_sentence_and_never_echoes_masked_bl(monkeypatch):
     _agent(monkeypatch, [], [("", "clarify", "")])
     r = svc.handle("HMM ALGECIRAS 위치", "s1", None, lambda req: None)
-    assert r.reply == svc.CLARIFY_NO_ID
+    assert r.reply == chat_texts.CLARIFY_NO_ID
     # 가려진 B/L 토큰 안쪽 글자("BL1")는 식별자로 뽑히지 않는다
-    assert svc.clarify_reply("[BL1] 어디야") == svc.CLARIFY_NO_ID and "BL1" not in svc.clarify_reply("[BL1] 어디야")
-    assert svc.clarify_reply("[MRN] 확인") == svc.CLARIFY_NO_ID
+    assert svc.clarify_reply("[BL1] 어디야") == chat_texts.CLARIFY_NO_ID and "BL1" not in svc.clarify_reply("[BL1] 어디야")
+    assert svc.clarify_reply("[MRN] 확인") == chat_texts.CLARIFY_NO_ID
 
 
 def test_id_extraction_needs_letter_and_digit_and_skips_dates():
     assert svc.clarify_reply("TESTBL4 조회해줘").startswith("'TESTBL4'")
-    assert svc.clarify_reply("20261010 도착이래") == svc.CLARIFY_NO_ID
-    assert svc.clarify_reply("7일 안에 오는 배") == svc.CLARIFY_NO_ID
+    assert svc.clarify_reply("20261010 도착이래") == chat_texts.CLARIFY_NO_ID
+    assert svc.clarify_reply("7일 안에 오는 배") == chat_texts.CLARIFY_NO_ID
 
 
 def test_check_cargo_need_bl_with_id_like_text_asks_back_with_that_id(monkeypatch):

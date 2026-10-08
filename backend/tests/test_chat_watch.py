@@ -11,6 +11,7 @@ from backend.app.schemas.agent import AgentRequest
 from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.app.services.watch.watch import WatchError
+from backend.app.services.chat import texts as chat_texts
 
 USER = "user-1"
 BL = "TESTBL01"
@@ -69,7 +70,7 @@ class Hooks:
 CONTEXT = AgentRequest(bl_no=BL, bl_type="HOUSE", session_id="s1")
 ASK = [("ask_cargo", {"question": "지금 어디쯤이야?"})]
 WATCH_ON = [("set_watch", {"on": True})]
-OFFER_TURN = {"role": "assistant", "text": "조회 결과 답입니다.\n\n판매 예정일까지 여유가 2일이고 '주의' 판정이에요. " + svc.WATCH_ASK}
+OFFER_TURN = {"role": "assistant", "text": "조회 결과 답입니다.\n\n판매 예정일까지 여유가 2일이고 '주의' 판정이에요. " + chat_texts.WATCH_ASK}
 
 
 def _handle(message, *, user_id=USER, hooks=None, context=CONTEXT, history=None, run=None):
@@ -191,7 +192,7 @@ def test_offer_mentions_worry_memo_when_user_has_one(monkeypatch):
     _llm(monkeypatch, ASK)
     r = _handle("지금 어디쯤이야?", hooks=Hooks(worry="통관 늦어질까 걱정"))
     assert "지난번에 '통관 늦어질까 걱정'이라고 하셨죠." in r.watch_offer["reason"]
-    assert r.watch_offer["reason"].endswith(svc.WATCH_ASK)
+    assert r.watch_offer["reason"].endswith(chat_texts.WATCH_ASK)
 
 
 def test_offer_without_margin_or_late(monkeypatch):
@@ -205,7 +206,7 @@ def test_offer_without_margin_or_late(monkeypatch):
 def test_no_offer_without_a_verdict(monkeypatch):
     _llm(monkeypatch, ASK)
     r = _handle("지금 어디쯤이야?", hooks=Hooks(), run=lambda req: _response(status="insufficient", verdict=None, answer="더 알려 주세요"))
-    assert r.watch_offer is None and svc.WATCH_ASK not in r.reply  # 이유가 없으면 말하지 않는다
+    assert r.watch_offer is None and chat_texts.WATCH_ASK not in r.reply  # 이유가 없으면 말하지 않는다
 
 
 def test_not_logged_in_offer_ends_with_login_notice(monkeypatch):
@@ -218,7 +219,7 @@ def test_not_logged_in_offer_ends_with_login_notice(monkeypatch):
 def test_already_watching_gets_no_offer(monkeypatch):
     _llm(monkeypatch, ASK)
     r = _handle("지금 어디쯤이야?", hooks=Hooks(watching=True))
-    assert r.watch_offer is None and svc.WATCH_ASK not in r.reply
+    assert r.watch_offer is None and chat_texts.WATCH_ASK not in r.reply
 
 
 def test_offer_only_once_per_cargo_in_history(monkeypatch):
@@ -249,7 +250,7 @@ def test_cue_without_flag_does_not_bypass_once_per_cargo(monkeypatch):
 def test_multi_bl_table_gets_no_offer(monkeypatch):
     _llm(monkeypatch, [("check_cargo", {"bl_ref": "[BL1]"})])
     r = svc.handle("TESTBL01 TESTBL02 뭐가 먼저 와?", "s1", None, _run(), USER, watch=Hooks().hooks())
-    assert len(r.cargos) == 2 and r.watch_offer is None and svc.WATCH_ASK not in r.reply
+    assert len(r.cargos) == 2 and r.watch_offer is None and chat_texts.WATCH_ASK not in r.reply
 
 
 def test_state_failure_skips_offer_but_keeps_answer(monkeypatch):

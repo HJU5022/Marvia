@@ -168,16 +168,17 @@ def test_unreadable_sale_date_gets_note(monkeypatch):
 
 # ── 저장 부탁에는 꺼내 보기 답을 내지 않는다 (10-08 운영 점검) ──
 from backend.tests.test_chat_recall_memo import ask  # noqa: E402
+from backend.app.services.chat import texts as chat_texts
 
 
 def test_save_request_does_not_produce_recall_answer(monkeypatch):
     r, _ = ask(monkeypatch, "우리 포워더는 테스트물류고 담당 전화번호는 051-000-1234야. 기억해 줘", "", items=[])
-    assert r.reply == svc.MEMO_SAVE_LEAD and svc.MEMO_NONE not in r.reply
+    assert r.reply == svc.MEMO_SAVE_LEAD and chat_texts.MEMO_NONE not in r.reply
 
 
 def test_recall_question_still_gets_recall_answer(monkeypatch):
     r, _ = ask(monkeypatch, "우리 포워더 전화번호 기억해?", "", items=[])
-    assert svc.MEMO_NONE in r.reply  # 물음표가 있으면 물어보는 말이다
+    assert chat_texts.MEMO_NONE in r.reply  # 물음표가 있으면 물어보는 말이다
 
 
 def test_save_request_without_login_keeps_login_answer(monkeypatch):

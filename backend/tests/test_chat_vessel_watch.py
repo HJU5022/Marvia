@@ -9,6 +9,7 @@ from backend.app.services import llm
 from backend.app.services.judge import validate
 from backend.tests.test_chat_agent import QUOTE, _agent, _out, agent_path, web_off  # noqa: F401 (fixture)
 from backend.tests.test_chat_tiers import WEB_ARGS, WEB_QUOTE  # noqa: F401
+from backend.app.services.chat import models as chat_models
 
 USER = "user-1"
 ON_SCREEN = {"arrivals": [{"ship_name": "TEST STAR", "flag": "Panama", "eta": "2026-10-09T03:00:00", "call_sign": "TST01"},
@@ -93,7 +94,7 @@ class Vessels:
             self.resolved.append((sign, name))
             return self._resolve(sign, name)
         return svc.WatchHooks(tool=lambda bl, on: {"on": on}, state=lambda bl: {"watch": False}, worry=lambda bl: None,
-                              vessel=svc.VesselHooks(resolve=resolve, add=add, remove=lambda m: self.removed.append(m) or {"mmsi": m}))
+                              vessel=chat_models.VesselHooks(resolve=resolve, add=add, remove=lambda m: self.removed.append(m) or {"mmsi": m}))
 
 
 def _vessel_llm(monkeypatch, args, tools=None):

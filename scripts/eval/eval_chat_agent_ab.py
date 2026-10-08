@@ -52,6 +52,7 @@ from backend.app.schemas.agent import AgentRequest, EtaInfo, VesselInfo  # noqa:
 from backend.app.services.judge import bl_parse  # noqa: E402
 from backend.app.services import llm
 from backend.app.services.chat import chat as svc  # noqa: E402
+from backend.app.services.chat import models as chat_models
 
 CASES_PATH = ROOT / "scripts" / "eval" / "eval_chat_agent_cases.jsonl"
 KST = timezone(timedelta(hours=9))
@@ -150,7 +151,7 @@ def fake_run_agent(req: AgentRequest):
 
 def fake_watch_hooks() -> svc.WatchHooks:
     """로그인한 사용자의 지켜보기 저장소 대신 하는 메모리 함수들 (DB·ShipFinder 없음). 도구가 끝까지 도는지 보려고 켜짐·꺼짐을 그냥 받아 준다."""
-    vessel = svc.VesselHooks(resolve=lambda call_sign, name: {"mmsi": 440999000}, add=lambda mmsi, *a, **k: {"mmsi": mmsi},
+    vessel = chat_models.VesselHooks(resolve=lambda call_sign, name: {"mmsi": 440999000}, add=lambda mmsi, *a, **k: {"mmsi": mmsi},
                              remove=lambda mmsi: {"mmsi": mmsi})
     return svc.WatchHooks(tool=lambda bl, on: {"on": on}, state=lambda bl: {"saved": True, "watch": False}, worry=lambda bl: None, vessel=vessel)
 

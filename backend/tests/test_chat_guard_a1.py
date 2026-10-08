@@ -9,6 +9,7 @@ from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.app.services.judge import validate
 from backend.tests.test_chat_agent import _agent, _no_classic
+from backend.app.services.chat import ids as chat_ids
 
 KNOWN = llm.skills_reference(llm.CHAT_AGENT_SKILLS) + svc.OTHER_REPLY + validate.GENERAL_TERMS
 
@@ -16,12 +17,12 @@ KNOWN = llm.skills_reference(llm.CHAT_AGENT_SKILLS) + svc.OTHER_REPLY + validate
 @pytest.mark.parametrize("message,name", [("호준이", "호준"), ("민수 어디야?", "민수"), ("김대리한테 전달해야 돼", "김대리"),
                                           ("민수야", "민수"), ("김대리", "김대리")])
 def test_person_like_words_are_found(message, name):
-    assert name in svc.person_names(message, KNOWN)
+    assert name in chat_ids.person_names(message, KNOWN)
 
 
 @pytest.mark.parametrize("message", ["아 짜증나", "ㅋㅋㅋ", "망했다", "힘들다", "B/L 번호는 어디서 찾아?", "통관 며칠 걸려?", "이 배 어디야?", "D/O가 뭐야?"])
 def test_ordinary_messages_have_no_person_name(message):
-    assert svc.person_names(message, KNOWN) == []
+    assert chat_ids.person_names(message, KNOWN) == []
 
 
 def test_echo_is_detected_only_when_the_reply_writes_the_name():
@@ -61,5 +62,5 @@ def test_memo_question_without_tool_is_not_replaced_by_person_ask(monkeypatch):
 
 def test_bl_and_ship_text_is_not_a_person_name():
     """B/L 자리표시자와 영문 배 이름은 한글 낱말만 보는 이름 찾기에 걸리지 않는다."""
-    assert svc.person_names("[BL1] 어디야?", KNOWN) == []
-    assert svc.person_names("HONGKONG VOYAGER 어디야?", KNOWN) == []
+    assert chat_ids.person_names("[BL1] 어디야?", KNOWN) == []
+    assert chat_ids.person_names("HONGKONG VOYAGER 어디야?", KNOWN) == []

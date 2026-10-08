@@ -14,6 +14,7 @@ from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat import _agent_calls
 from backend.tests.test_chat_agent import _agent
+from backend.app.services.chat import ids as chat_ids
 
 BL = "MOCKBL20261006"  # 모의 B/L
 
@@ -96,7 +97,7 @@ def _no_llm(monkeypatch):
 def test_check_digit_accepts_valid_and_rejects_invalid():
     assert svc.find_containers(f"{C1} 어디쯤이야?") == [C1]
     assert svc.find_containers(f"{C_BAD} 어디쯤이야?") == []  # 검산 숫자가 틀리면 컨테이너로 보지 않는다
-    assert svc.container_check_digit(C1[:10]) == int(C1[10])
+    assert chat_ids.container_check_digit(C1[:10]) == int(C1[10])
 
 
 def test_detection_shape_rules():
@@ -112,7 +113,7 @@ def test_plain_bl_is_not_a_container():
 
 
 def test_mask_containers_tokens_before_bl_mask():
-    masked, refs = svc.mask_containers(f"{C1}랑 {C2}, {C1}")
+    masked, refs = chat_ids.mask_containers(f"{C1}랑 {C2}, {C1}")
     assert masked == "[CNTR1]랑 [CNTR2], [CNTR1]" and refs == {"[CNTR1]": C1, "[CNTR2]": C2}
     # 먼저 가리지 않으면 B/L 모양에 걸려 [BL1]이 된다 (순서가 중요한 이유)
     assert svc.mask_bls(C1)[0] == "[BL1]"
