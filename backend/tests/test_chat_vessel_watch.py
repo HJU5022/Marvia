@@ -1,11 +1,12 @@
-"""배 지켜보기·웹 답·지도 점선 테스트 (10-08 정운 실사용 79, services/chat.py watch_vessel·is_action_request, validate.is_mostly_foreign).
+"""배 지켜보기·웹 답·지도 점선 테스트 (10-08 정운 실사용 79, services/chat/chat.py watch_vessel·is_action_request, validate.is_mostly_foreign).
 
 LLM·DB·ShipFinder는 부르지 않는다. llm.chat_agent를 가짜로 끼우고 배 저장소는 가짜 VesselHooks로 둔다. 배 이름·호출부호·MMSI는 모의값이다.
 """
 import pytest
 
-from backend.app.services import chat as svc
-from backend.app.services import llm, validate
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.judge import validate
 from backend.tests.test_chat_agent import QUOTE, _agent, _out, agent_path, web_off  # noqa: F401 (fixture)
 from backend.tests.test_chat_tiers import WEB_ARGS, WEB_QUOTE  # noqa: F401
 

@@ -1,6 +1,6 @@
-"""운영자 관리 테스트 (docs/specs/operator-admin.md, routers/admin.py, services/operators.py).
+"""운영자 관리 테스트 (docs/specs/operator-admin.md, routers/admin.py, services/account/operators.py).
 
-진짜 DB와 Supabase는 부르지 않는다. services/operators.py가 보내는 SQL 문장을 흉내 내는 가짜 연결과
+진짜 DB와 Supabase는 부르지 않는다. services/account/operators.py가 보내는 SQL 문장을 흉내 내는 가짜 연결과
 가짜 list_users를 끼운다. 실제 SQL은 서버 기동 때 009 마이그레이션 적용과 화면 확인으로 본다.
 """
 from contextlib import contextmanager
@@ -13,7 +13,7 @@ from backend.app.clients import supabase_admin
 from backend.app.main import app
 from backend.app.routers import admin as admin_router
 from backend.app import crypto
-from backend.app.services import operators as ops
+from backend.app.services.account import operators as ops
 
 OPERATOR = "boss@marvia.test"
 

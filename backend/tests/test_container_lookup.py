@@ -1,4 +1,4 @@
-"""컨테이너 번호로 화물 찾기 테스트 (10-06, services/chat.py _swap_containers·mask_containers, services/cargo.find_by_container).
+"""컨테이너 번호로 화물 찾기 테스트 (10-06, services/chat/chat.py _swap_containers·mask_containers, services/watch/cargo.find_by_container).
 
 DB·LLM·판정 흐름은 부르지 않는다. 가짜 연결과 가짜 llm.chat_agent를 끼운다.
 B/L과 컨테이너 번호는 모두 모의값이다(실제 번호 아님). 컨테이너는 검산 숫자를 아래 _make가 따로 계산해 만든다.
@@ -9,8 +9,8 @@ import pytest
 from cryptography.fernet import Fernet
 
 from backend.app import crypto
-from backend.app.services import cargo
-from backend.app.services import chat as svc
+from backend.app.services.watch import cargo
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat import _agent_calls
 from backend.tests.test_chat_agent import _agent

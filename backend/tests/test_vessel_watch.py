@@ -1,4 +1,4 @@
-"""B/L 없이 배만 지켜보기 테스트 (services/vessel_watch.py, routers/watch.py /api/watch/vessels, 10-08 정운 실사용 57번).
+"""B/L 없이 배만 지켜보기 테스트 (services/watch/vessel_watch.py, routers/watch.py /api/watch/vessels, 10-08 정운 실사용 57번).
 
 DB 없이 돈다. vessel_watch·watch_positions 두 표를 흉내 내는 가짜 연결을 쓴다. 배 번호·이름·좌표는 모의값이다.
 """
@@ -8,9 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.services import operators as ops
-from backend.app.services import vessel_watch as vsvc
-from backend.app.services.watch import MAX_WATCH
+from backend.app.services.account import operators as ops
+from backend.app.services.watch import vessel_watch as vsvc
+from backend.app.services.watch.watch import MAX_WATCH
 from backend.tests.test_admin import _login
 
 NOW = datetime(2026, 10, 8, 6, tzinfo=timezone.utc)
@@ -80,7 +80,7 @@ def _no_external(monkeypatch):
     """테스트는 실제 ShipFinder·MCP를 부르지 않는다. 위치 새로 받기·자세히 보기 캐시는 기본으로 "없음/실패"로 막고,
     필요한 테스트가 다시 바꿔 끼운다. 하루 한도 표시와 자세히 보기 캐시도 테스트마다 비운다."""
     from backend.app.clients import shipfinder
-    from backend.app.services import vessel_detail
+    from backend.app.services.watch import vessel_detail
     shipfinder.reset_quota_block()
     vessel_detail._cache.clear()
     monkeypatch.setattr(vessel_detail, "get_live_position", lambda mmsi: {"error": {"code": "timeout", "message": "x"}})
@@ -290,7 +290,7 @@ def test_many_match_via_endpoint_uses_body_name(db, me, monkeypatch):
 
 def test_detail_and_watch_pick_same_ship(monkeypatch):
     # 자세히 보기(후보 순서가 유사도 순)와 지켜보기가 같은 규칙으로 같은 배를 고른다
-    from backend.app.services import vessel_detail as vd
+    from backend.app.services.watch import vessel_detail as vd
     cands = [{"mmsi": 1, "name": "NEWER", "call_sign": "T", "last_time": D(1).isoformat()},
              {"mmsi": 2, "name": "TEST STAR", "call_sign": "T", "last_time": D(200).isoformat()}]
     monkeypatch.setattr(vd, "get_port_schedule", lambda **kw: {})
@@ -349,7 +349,7 @@ def test_mmsi_wins_and_neither_is_422(db, me, monkeypatch):
 # ── 위치 바로 보이기 (66번) ──
 
 def _detail_cache(call_sign, name, mmsi, last_time, **extra):
-    from backend.app.services import vessel_detail as vd
+    from backend.app.services.watch import vessel_detail as vd
     pos = {"mmsi": mmsi, "lat": 33.5, "lng": 128.5, "sog": 11.0, "cog": 80.0, "navistat": 0,
            "last_time": last_time.isoformat(), "fetched_at": NOW.isoformat(), "freshness": "fresh", **extra}
     vd._cache_put(vd._key(call_sign, name), {"vessel": {"mmsi": mmsi}, "position": pos})
@@ -384,7 +384,7 @@ def test_seed_failure_does_not_fail_add(db, me, monkeypatch):
 # ── 목록을 열 때 오래된 위치 새로 받기 (66번) ──
 
 def _live(monkeypatch, calls, hours_old=0, fail=()):
-    from backend.app.services import vessel_detail as vd
+    from backend.app.services.watch import vessel_detail as vd
 
     def fake(mmsi):
         calls.append(mmsi)
@@ -437,7 +437,7 @@ def test_list_refresh_is_capped_and_failure_tolerant(db, me, monkeypatch):
 
 def test_list_refresh_survives_exceptions_and_skips_when_quota_out(db, me, monkeypatch):
     from backend.app.clients import shipfinder
-    from backend.app.services import vessel_detail as vd
+    from backend.app.services.watch import vessel_detail as vd
     vsvc.add_vessel(db, USER, 1, "S1")
     monkeypatch.setattr(vd, "get_live_position", lambda m: (_ for _ in ()).throw(RuntimeError("secret-host")))
     r = _call("get", "/api/watch/vessels", None, me)
@@ -453,7 +453,7 @@ def test_refresh_reuses_detail_cache(db, me, monkeypatch):
     _live(monkeypatch, calls)
     vsvc.add_vessel(db, USER, 440999901, "TEST STAR")  # call_sign 없이 올렸지만 이름 열쇠로 캐시를 찾는다
     _detail_cache(None, "TEST STAR", 440999901, NOW - timedelta(hours=1))
-    from backend.app.services import vessel_detail as vd
+    from backend.app.services.watch import vessel_detail as vd
     pos = vd.live_position(440999901, None, "TEST STAR")
     assert pos["lat"] == 33.5 and calls == []
 

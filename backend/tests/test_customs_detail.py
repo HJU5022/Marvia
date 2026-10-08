@@ -13,7 +13,7 @@ from backend.app.routers import agent as agent_router
 from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.schemas.customs import CustomsDetailRow
 from backend.app.services import llm
-from backend.app.services.customs import UnipassClient
+from backend.app.services.judge.customs import UnipassClient
 
 XML = """<?xml version="1.0" encoding="UTF-8"?><cargCsclPrgsInfoQryRtnVo><tCnt>1</tCnt>
 <cargCsclPrgsInfoQryVo><shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><cargMtNo>26TEST0099I00010001</cargMtNo>

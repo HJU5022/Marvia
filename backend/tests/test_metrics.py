@@ -1,7 +1,7 @@
-"""평가지표 API 테스트 (services/metrics.py). 가짜 결과 파일을 임시 폴더에 둔다."""
+"""평가지표 API 테스트 (services/account/metrics.py). 가짜 결과 파일을 임시 폴더에 둔다."""
 import json
 
-from backend.app.services import metrics as svc
+from backend.app.services.account import metrics as svc
 
 
 def _write(tmp_path, name, config, run_at, **summary):

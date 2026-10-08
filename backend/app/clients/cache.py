@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.app.services.rules import rule
+from backend.app.services.judge.rules import rule
 
 
 def default_ttl() -> timedelta:

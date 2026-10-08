@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from backend.app.schemas.agent import AgentResponse
-from backend.app.services.validate import check
+from backend.app.services.judge.validate import check
 
 NOW = datetime(2026, 9, 28, 3, 0, tzinfo=timezone.utc)
 EVIDENCE = [

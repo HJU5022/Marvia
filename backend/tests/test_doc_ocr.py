@@ -1,4 +1,4 @@
-"""services/doc_ocr.py 테스트 (docs/specs/document-extract.md). 키 없이 돈다.
+"""services/chat/doc_ocr.py 테스트 (docs/specs/document-extract.md). 키 없이 돈다.
 
 규칙 함수는 OCR 없이 글자 줄로 시험한다. 끝의 OCR 테스트는 가공 서류 사진(fixtures/documents/)을 실제로 읽는다.
 rapidocr가 없으면 OCR 테스트만 건너뛴다. 처음 돌릴 때 모델 파일(약 18MB)을 받는다.
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.app.services import doc_ocr
+from backend.app.services.chat import doc_ocr
 
 DOCS = Path(__file__).parent / "fixtures" / "documents"
 BL = "MRVA2026090001"  # 가공 번호
@@ -209,7 +209,7 @@ COND_LINES = ["BILL OF LADING", "CONSIGNEE: TO ORDER OF MOCK BANK", "FREIGHT COL
 
 
 def _conditions(**over):
-    from backend.app.services import doc_ocr
+    from backend.app.services.chat import doc_ocr
 
     values = {"original_bl": "required", "to_order_bank": "true", "freight_term": "collect", "incoterm": "CFR",
               "contact_company": "GANADA LOGISTICS", "contact_role": "포워더", "contact_phone": "051-000-0000"}
@@ -227,7 +227,7 @@ def test_conditions_pass_when_grounded():
 
 def test_empty_conditions_are_not_missing():
     """서류에 없는 경우가 흔한 칸이라 비어 있으면 검사하지 않는다 (needs_review를 올리지 않는다)."""
-    from backend.app.services import doc_ocr
+    from backend.app.services.chat import doc_ocr
 
     shown, checks = doc_ocr.check_conditions({}, {}, COND_LINES)
     assert all(v is None for v in shown.values()) and all(c == [] for c in checks.values())
@@ -244,7 +244,7 @@ def test_condition_checks_follow_existing_names():
 
 
 def test_incoterm_needs_whole_word():
-    from backend.app.services import doc_ocr
+    from backend.app.services.chat import doc_ocr
 
     _, checks = doc_ocr.check_conditions({"incoterm": "CIF"}, {}, ["SPECIFIC GOODS"])
     assert checks["incoterm"] == ["not_in_text"]
@@ -259,7 +259,7 @@ def test_personal_mobile_is_dropped():
 
 def test_email_or_mobile_in_company_is_dropped():
     """회사 칸에 이메일·휴대폰이 섞이면 값을 비운다 (휴대폰과 같은 처리, 10-02 검증 지적 6)."""
-    from backend.app.services import doc_ocr
+    from backend.app.services.chat import doc_ocr
 
     lines = ["PARTY TO CONTACT kim@example.com", "GANADA 010-1234-5678"]
     for value in ("kim@example.com", "GANADA 010-1234-5678"):

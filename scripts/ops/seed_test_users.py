@@ -17,8 +17,8 @@ from dotenv import load_dotenv
 
 from backend.app.clients.supabase_admin import AdminError, create_user, list_users
 from backend.app.db import apply_migrations, connect
-from backend.app.services import operators as ops
-from backend.app.services import profile as profile_svc
+from backend.app.services.account import operators as ops
+from backend.app.services.account import profile as profile_svc
 
 # 가공값. 010-0000-000N은 실제로 쓰이지 않는 번호 꼴로 골랐다
 TEST_USERS = [

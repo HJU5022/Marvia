@@ -1,4 +1,4 @@
-"""services/identify.match_by_papers 테스트 (10-05 서류 대조 확정).
+"""services/judge/identify.match_by_papers 테스트 (10-05 서류 대조 확정).
 
 동명 선박이 여럿이고 사용자가 항차·포워더 입항 예정일을 안 줬을 때, 세관 입항일·적재항과 후보별 해수부 입항 신고가
 둘 다 맞는 배가 정확히 1척이면 확정하는지 본다. 해수부는 가짜 클라이언트로 바꿔 끼워 키 없이 돈다.
@@ -15,7 +15,7 @@ from backend.app.clients.mof import MofError
 from backend.app.main import app
 from backend.app.routers import agent as agent_router
 from backend.app.schemas.customs import CustomsRecord
-from backend.app.services import identify
+from backend.app.services.judge import identify
 from backend.tests.test_routers import JUDGED, POSITION, _candidate, _request, fake  # noqa: F401  fake는 fixture
 
 NOW = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)

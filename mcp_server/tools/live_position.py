@@ -2,7 +2,7 @@
 
 ShipFinder VesselPositionSingle을 그대로 옮긴다. 값은 원본이고, freshness 판정은 하지 않는다.
 last_time(선박이 보고한 시각)과 fetched_at(우리가 조회한 시각)을 같이 돌려주면
-services/signals.py가 position_stale을 계산한다 (C-4 경계, 작업 리스트 "경계 정리").
+services/judge/signals.py가 position_stale을 계산한다 (C-4 경계, 작업 리스트 "경계 정리").
 
 출력 계약은 mcp_server/schemas.py의 LivePositionResult, 실패는 ToolError다 (C4, SDD 3.4).
 

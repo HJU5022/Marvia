@@ -21,9 +21,10 @@ from backend.app.observability.logging import log_failure
 from backend.app.schemas.memory import (
     CargoSummary, DocumentFactsRequest, DocumentFactsResponse, MemoryDeleteResponse, MemoryItem, MemoryResponse,
 )
-from backend.app.services import cargo, memory
-from backend.app.services.chat import DEFAULT_BL_TYPE
-from backend.app.services.evidence import KST
+from backend.app.services.watch import cargo
+from backend.app.services.account import memory
+from backend.app.services.chat.chat import DEFAULT_BL_TYPE
+from backend.app.services.judge.evidence import KST
 
 router = APIRouter(prefix="/api", tags=["memory"])
 

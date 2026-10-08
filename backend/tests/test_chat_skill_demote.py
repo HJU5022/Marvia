@@ -1,6 +1,6 @@
-"""Skill 근거라고 낸 답에 Skill에 없는 핵심 낱말이 섞이면 3층(일반 설명)으로 낮춘다 (10-06 결정, services/chat.py skill_or_general).
+"""Skill 근거라고 낸 답에 Skill에 없는 핵심 낱말이 섞이면 3층(일반 설명)으로 낮춘다 (10-06 결정, services/chat/chat.py skill_or_general).
 10-06 재현: "B/L도 없고 포워더 연락 안 돼"에 Skill에 없는 "화물 인도증"이 꼬리표 없이 Skill 답처럼 나갔다."""
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.tests.test_chat_agent import KNOWLEDGE, QUOTE, _agent, agent_path  # noqa: F401 - agent_path는 autouse 픽스처
 from backend.tests.test_chat_tiers import _ask, web_off  # noqa: F401 - web_off는 픽스처
 

@@ -1,7 +1,7 @@
 """10-06 점검 수정 테스트. 키·DB 없이 돈다.
 
 분당 횟수 제한·동시 요청 상한·선박 자세히 보기 하루 상한은 넣었다가 뺐다 (10-06 결정: 유료 전환 때 다시 정한다).
-2. 선박 자세히 보기 캐시 상한·정규화 (services/vessel_detail.py)
+2. 선박 자세히 보기 캐시 상한·정규화 (services/watch/vessel_detail.py)
 4. AgentRequest voyage_no·session_id 제한 (schemas/agent.py)
 6. 후속 질문: 입력 날짜가 바뀌면 다시 판정, 로그인 없는 이력도 B/L 지문으로 가른다 (routers/agent.py)
 7. 재생 모드는 하루 토큰 한도 없음
@@ -21,7 +21,8 @@ from pydantic import ValidationError
 from backend.app import auth
 from backend.app.routers import agent as agent_router
 from backend.app.schemas.agent import AgentRequest, Evidence
-from backend.app.services import quota, vessel_detail
+from backend.app.services.account import quota
+from backend.app.services.watch import vessel_detail
 
 NOW = datetime(2026, 10, 6, 3, tzinfo=timezone.utc)
 
@@ -217,7 +218,7 @@ def test_verified_email(claims, expected):
 
 def test_unverified_email_is_not_operator(monkeypatch):
     """확인 안 된 이메일 출입증이면 current_user.email이 None이라 운영자 판단(is_operator)이 거짓이 된다."""
-    from backend.app.services import operators
+    from backend.app.services.account import operators
 
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setattr(auth, "verify_claims", lambda token, base: {"sub": "u-9", "email": "op@example.com",

@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from backend.app import crypto
 from backend.app.db import apply_migrations, connect
-from backend.app.services import operators as ops
+from backend.app.services.account import operators as ops
 
 
 def _sealed(email: str) -> tuple[str, str, str]:

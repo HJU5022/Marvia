@@ -1,4 +1,4 @@
-"""카카오톡 연결 API 테스트 (routers/kakao.py, 탈퇴 때 지우기는 services/account.py).
+"""카카오톡 연결 API 테스트 (routers/kakao.py, 탈퇴 때 지우기는 services/account/account.py).
 
 진짜 카카오·DB는 부르지 않는다. test_kakao_service.FakeConn, clients/kakao.py 가짜, 테스트용 열쇠를 쓴다.
 """
@@ -9,9 +9,9 @@ from fastapi.testclient import TestClient
 from backend.app.clients import kakao as client
 from backend.app.clients.kakao import KakaoError, Tokens
 from backend.app.main import app
-from backend.app.services import account as account_service
-from backend.app.services import kakao as svc
-from backend.app.services import operators as ops
+from backend.app.services.account import account as account_service
+from backend.app.services.watch import kakao as svc
+from backend.app.services.account import operators as ops
 from backend.tests.test_admin import _login
 from backend.tests.test_kakao_service import ACCESS, REFRESH, FakeConn, tokens
 

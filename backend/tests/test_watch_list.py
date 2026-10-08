@@ -1,4 +1,4 @@
-"""감시 목록 테스트 (GET /api/watch, services/watch.watch_list, services/cargo._keep_position, 10-06).
+"""감시 목록 테스트 (GET /api/watch, services/watch/watch.watch_list, services/watch/cargo._keep_position, 10-06).
 
 DB 없이 돈다. 가짜 연결이 SQL 모양을 보고 정해 둔 줄을 돌려준다. B/L·배·좌표는 모두 모의값이다.
 """
@@ -7,8 +7,8 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.services import operators as ops
-from backend.app.services import watch as svc
+from backend.app.services.account import operators as ops
+from backend.app.services.watch import watch as svc
 from backend.tests.test_admin import _login
 
 NOW = datetime(2026, 10, 6, 6, tzinfo=timezone.utc)

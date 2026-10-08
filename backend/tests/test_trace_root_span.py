@@ -19,8 +19,8 @@ from backend.app.main import app
 from backend.app.observability import langfuse as tracing
 from backend.app.observability.logging import request_id_var
 from backend.app.routers import chat as chat_router
-from backend.app.services import chat as svc
-from backend.app.services import customs as customs_service
+from backend.app.services.chat import chat as svc
+from backend.app.services.judge import customs as customs_service
 
 
 class FakeSpan:
@@ -282,7 +282,7 @@ def test_ocr_span(fake):
 
     from PIL import Image
 
-    from backend.app.services import doc_ocr
+    from backend.app.services.chat import doc_ocr
 
     class Engine:  # OCR 엔진 대신. 줄 하나를 돌려준다
         def __call__(self, img):

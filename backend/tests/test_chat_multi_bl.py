@@ -1,11 +1,11 @@
-"""채팅 에이전트 버그 두 개 (10-05 버그 찾기, services/chat.py _agent).
+"""채팅 에이전트 버그 두 개 (10-05 버그 찾기, services/chat/chat.py _agent).
 1) 한 문장에 B/L이 2~3개: 모두 병렬로 조회해 표(cargos)로 돌려준다. 4개 이상이면 앞 셋과 코드 안내 (10-05 정운 결정).
 2) 화물 답과 LLM 문장이 같은 문장을 되풀이하면 LLM 문장을 버린다.
 LLM·MCP는 test_chat_agent.py의 가짜를 그대로 쓴다."""
 import pytest
 
 from backend.app.routers.agent import _response
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.tests.test_chat import _agent_calls
 from backend.tests.test_chat_agent import _agent, _mcp
 
@@ -16,7 +16,7 @@ def _two_run():
     """B/L마다 다른 배·도착일·판정을 돌려주는 가짜 판정 흐름. 일꾼 스레드에서도 단계 소식이 나가는지 보려고 step도 부른다."""
     from datetime import datetime, timezone
     from backend.app.schemas.agent import EtaInfo, VesselInfo
-    from backend.app.services import progress
+    from backend.app.services.chat import progress
     seen = []
 
     def run(req):
@@ -84,7 +84,7 @@ def test_one_failed_lookup_keeps_the_others(monkeypatch):
 
 
 def test_stage_events_stream_from_worker_threads(monkeypatch):
-    from backend.app.services import progress
+    from backend.app.services.chat import progress
     _agent(monkeypatch, CHECK)
     _, run = _two_run()
     got = []

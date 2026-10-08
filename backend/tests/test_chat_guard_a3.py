@@ -1,4 +1,4 @@
-"""10-08 실험 A3: 관세·세금·"통관 될까" 말은 모델과 상관없이 관세사 고정 안내 (services/chat.py _route, 항상 켜짐).
+"""10-08 실험 A3: 관세·세금·"통관 될까" 말은 모델과 상관없이 관세사 고정 안내 (services/chat/chat.py _route, 항상 켜짐).
 
 화면에 화물이 있어도, 주입 말투가 섞여도 모델을 부르지 않고 같은 고정 문장으로 답한다. B/L이 든 문장은 건드리지 않는다.
 LLM은 부르지 않는다 (가짜 chat_agent가 불리면 실패).
@@ -6,7 +6,7 @@ LLM은 부르지 않는다 (가짜 chat_agent가 불리면 실패).
 import pytest
 
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat import _agent_calls
 from backend.tests.test_chat_agent import _agent, _no_classic

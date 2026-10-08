@@ -1,6 +1,6 @@
 """내 화물 현황 표 /api (019, 10-06 결정, 아버지가 손으로 쓰는 관리표 기준).
 
-창구만 한다: 로그인 확인 → services.cargo_sheet 부르기 → HTTP 응답. 묶는 규칙·신용장 처리·엑셀 만들기는 서비스에 있다.
+창구만 한다: 로그인 확인 → services.watch.cargo_sheet 부르기 → HTTP 응답. 묶는 규칙·신용장 처리·엑셀 만들기는 서비스에 있다.
 
   GET /api/cargo/sheet                          → {"groups": [{"lc": {...}|null, "rows": [...]}], "truncated": bool}  신용장별로 묶은 표 (truncated: 500줄 넘어 잘림)
   PUT /api/cargo/sheet/{cargo_key}/lc           {"lc_no", "opened_on"}      → 바뀐 표   신용장 잇기·풀기 (lc_no null이면 풀기, opened_on null이면 개설일 비움, 키 생략이면 유지)
@@ -21,8 +21,8 @@ from pydantic import BaseModel, field_validator
 
 from backend.app.auth import CurrentUser, current_user
 from backend.app.observability.logging import log_failure
-from backend.app.services import cargo_sheet as svc
-from backend.app.services import operators as ops
+from backend.app.services.watch import cargo_sheet as svc
+from backend.app.services.account import operators as ops
 
 router = APIRouter(prefix="/api/cargo", tags=["cargo-sheet"])
 

@@ -1,4 +1,4 @@
-"""skills/*/rules.md 합쳐 읽기 (services/rules.py, 10-01 Skill 구조).
+"""skills/*/rules.md 합쳐 읽기 (services/judge/rules.py, 10-01 Skill 구조).
 
 - 폴더마다 rules.md 프론트매터를 한 dict로 합친다. 부르는 쪽은 키가 어느 파일에 있는지 몰라도 된다
 - 같은 키가 두 파일에 있으면 실패한다 (결정마다 권한자 하나, 10-01 강사 피드백)
@@ -8,9 +8,9 @@
 """
 import pytest
 
-from backend.app.services import rules
-from backend.app.services.rules import customs_stage_names, load_rules, rule, stage_key
-from backend.app.services.signals import _dest_changed
+from backend.app.services.judge import rules
+from backend.app.services.judge.rules import customs_stage_names, load_rules, rule, stage_key
+from backend.app.services.judge.signals import _dest_changed
 
 
 def _write_rules(folder, body: str) -> None:

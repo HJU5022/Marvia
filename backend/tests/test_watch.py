@@ -1,4 +1,4 @@
-"""화물 지켜보기 서비스 테스트 (services/watch.py, G5 10-05 결정).
+"""화물 지켜보기 서비스 테스트 (services/watch/watch.py, G5 10-05 결정).
 
 DB·카카오·LLM·ShipFinder는 부르지 않는다. user_cargo 표를 흉내 내는 가짜 연결, 판정 함수(assess) 가짜,
 카카오 보내기 가짜, 테스트용 열쇠를 쓴다. B/L은 모의값이다(실제 번호 아님).
@@ -11,9 +11,9 @@ from cryptography.fernet import Fernet
 
 from backend.app import crypto
 from backend.app.clients.kakao import KakaoError
-from backend.app.services import cargo
-from backend.app.services import watch as svc
-from backend.app.services.kakao import KakaoLinkError
+from backend.app.services.watch import cargo
+from backend.app.services.watch import watch as svc
+from backend.app.services.watch.kakao import KakaoLinkError
 
 NOW = datetime(2026, 10, 5, 3, tzinfo=timezone.utc)
 USER = "user-123"
@@ -396,8 +396,8 @@ def test_default_assess_is_the_user_lookup_path(upserts, sent, monkeypatch):
 # ── 하루 토큰 한도 (10-06 점검). 재판정도 그 사용자의 LLM 사용량이다 ──
 
 def test_rejudge_is_scoped_to_the_cargo_owner(upserts, sent, monkeypatch):
-    """session_scope에 user_id를 넘겨 토큰이 그 사람 몫으로 쌓인다 (services/quota.py owner_var)."""
-    from backend.app.services import quota
+    """session_scope에 user_id를 넘겨 토큰이 그 사람 몫으로 쌓인다 (services/account/quota.py owner_var)."""
+    from backend.app.services.account import quota
     conn = FakeConn()
     _watched(conn, last_verdict="watch")
     owners = []
@@ -406,7 +406,7 @@ def test_rejudge_is_scoped_to_the_cargo_owner(upserts, sent, monkeypatch):
 
 
 def test_rejudge_skipped_when_owner_is_over_quota(upserts, sent, monkeypatch):
-    from backend.app.services import quota
+    from backend.app.services.account import quota
     conn = FakeConn()
     _watched(conn, last_verdict="watch")
     failures = []

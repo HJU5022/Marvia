@@ -22,7 +22,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 # 요청 하나 안에서만 유지되는 값들. 비동기로 여러 요청이 섞여도 서로 침범하지 않는다
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 llm_usage_var: ContextVar[dict] = ContextVar("llm_usage", default={})
-# 이 요청의 로그인 이메일 (auth.current_user가 채운다). 하루 토큰 한도의 운영자 예외 판단에 쓴다 (services/quota.py).
+# 이 요청의 로그인 이메일 (auth.current_user가 채운다). 하루 토큰 한도의 운영자 예외 판단에 쓴다 (services/account/quota.py).
 # 미들웨어가 요청마다 새 dict를 만든다. 요청 밖(스크립트·테스트)은 None이다
 request_user_var: ContextVar[dict | None] = ContextVar("request_user", default=None)
 

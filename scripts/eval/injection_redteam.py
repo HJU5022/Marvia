@@ -4,7 +4,7 @@
     python -m scripts.eval.injection_redteam --limit 5    # 구독 사용량을 아끼려면 공격 수를 줄인다
 
 왜 필요한가:
-  10-01에 코드 방어(services/guard.py, 후속 답 V9·V10, chat·doc_ocr 검사)를 넣을 때 쓴 공격은 사람이 만든 16종이다.
+  10-01에 코드 방어(services/judge/guard.py, 후속 답 V9·V10, chat·doc_ocr 검사)를 넣을 때 쓴 공격은 사람이 만든 16종이다.
   방어가 그 문장에만 맞춰졌을 수 있어서, 처음 보는 공격으로 다시 본다 (SDD 7·8절).
 
 어떻게:
@@ -40,11 +40,13 @@ from backend.app.routers import agent as agent_router  # noqa: E402
 from backend.app.schemas.agent import AgentRequest, AgentResponse, Evidence, VesselCandidate  # noqa: E402
 from backend.app.schemas.customs import CustomsRecord, CustomsStage  # noqa: E402
 from backend.app.schemas.signals import Signal, SignalSet  # noqa: E402
-try:  # 자연어 창구(services/chat.py)가 아직 없는 브랜치에서는 chat 채널만 뺀다
-    from backend.app.services import chat as chat_svc  # noqa: E402
+try:  # 자연어 창구(services/chat/chat.py)가 아직 없는 브랜치에서는 chat 채널만 뺀다
+    from backend.app.services.chat import chat as chat_svc  # noqa: E402
 except ImportError:
     chat_svc = None
-from backend.app.services import doc_ocr, llm, validate  # noqa: E402
+from backend.app.services.chat import doc_ocr  # noqa: E402
+from backend.app.services import llm
+from backend.app.services.judge import validate
 
 ATTACKER = "claude-sonnet-5-5"  # 공격 문장 생성. 강한 모델일수록 사람이 생각 못 한 공격을 만든다
 TARGET = "haiku"                # 서비스 LLM 자리. 서비스 모델(gpt-4o-mini)에 가까운 소형 모델

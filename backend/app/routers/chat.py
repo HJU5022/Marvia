@@ -1,14 +1,14 @@
 """POST /api/chat 자연어 입력 창구 (docs/specs/chat-search.md).
 
-창구만 한다: 로그인 확인 → services.chat.handle → 응답. 화물 조회·후속 질문은 /api/agent와 같은 run_agent를 부르므로
+창구만 한다: 로그인 확인 → services.chat.chat.handle → 응답. 화물 조회·후속 질문은 /api/agent와 같은 run_agent를 부르므로
 판정 규칙·조회 이력·트레이스가 그대로다. 기존 /api/agent는 평가셋·데모·정해진 칸 입력용으로 남긴다.
 POST /api/chat/stream은 같은 일을 하면서 실제 처리 단계를 SSE로 흘려 준다 (docs/specs/chat-progress.md).
 채팅 에이전트(10-05)가 읽기 전용 MCP 도구를 부를 때는 후속 질문과 같은 실행 함수(routers/agent._follow_up_tool)를 쓴다:
 읽기 전용 목록 확인, /mcp 경유, 실패 로그, AIS 목적지 원문 빼기가 그대로 걸린다.
 대화로 지켜보기(10-06): 로그인 사용자에게는 지켜보기를 읽고 쓰는 함수(_watch_hooks)를 만들어 넘긴다. 서비스는 DB를 모르고, 여기서 연결을 연다.
-지금 상태 카카오톡 보내기(10-06): 같은 방식으로 _kakao_hooks를 넘긴다. 보낼 글은 서비스가 쓰고, 여기서는 저장된 화물 줄을 읽고 services/kakao.send_to_user를 부른다.
+지금 상태 카카오톡 보내기(10-06): 같은 방식으로 _kakao_hooks를 넘긴다. 보낼 글은 서비스가 쓰고, 여기서는 저장된 화물 줄을 읽고 services/watch/kakao.send_to_user를 부른다.
 대화 목록(10-06): 두 창구 모두 답을 만든 뒤 _save_conversation으로 로그인 사용자의 대화를 뒤에서 저장한다. 실패는 로그만 남기고 답에는 영향이 없다.
-두 창구 모두 로그인 사용자를 services.chat.handle에 넘긴다. 화물 비서 기억(docs/specs/memory.md)의 지난 조회 한 줄과
+두 창구 모두 로그인 사용자를 services.chat.chat.handle에 넘긴다. 화물 비서 기억(docs/specs/memory.md)의 지난 조회 한 줄과
 기억 쓰기가 두 창구에서 똑같이 돈다. 기억 쓰기는 run_agent가 뒤 작업으로 돌려 응답·스트림을 늦추지 않는다.
 """
 from __future__ import annotations
@@ -35,16 +35,16 @@ from backend.app.observability.logging import log_failure
 from backend.app.routers.agent import _follow_up_tool, quota_guard, run_agent
 from backend.app.routers.kakao import _web
 from backend.app.schemas.agent import SESSION_ID_MAX, AgentRequest, AgentResponse
-from backend.app.services import cargo as cargo_service
-from backend.app.services import conversations as conversations_service
-from backend.app.services import chat as svc
-from backend.app.services import kakao as kakao_service
-from backend.app.services import memory as memory_service
-from backend.app.services import operators as ops
-from backend.app.services import progress
-from backend.app.services import vessel_detail
-from backend.app.services import vessel_watch as vessel_watch_service
-from backend.app.services import watch as watch_service
+from backend.app.services.watch import cargo as cargo_service
+from backend.app.services.chat import conversations as conversations_service
+from backend.app.services.chat import chat as svc
+from backend.app.services.watch import kakao as kakao_service
+from backend.app.services.account import memory as memory_service
+from backend.app.services.account import operators as ops
+from backend.app.services.chat import progress
+from backend.app.services.watch import vessel_detail
+from backend.app.services.watch import vessel_watch as vessel_watch_service
+from backend.app.services.watch import watch as watch_service
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -71,7 +71,7 @@ class ChatDocument(BaseModel):
 
 class ChatTurn(BaseModel):
     """화면에 보이는 대화 한 줄. 채팅 에이전트가 "이건", "그 배"를 알아듣는 데만 쓴다 (10-05).
-    화면이 보낸 값이라 믿지 않는다: 서버가 B/L을 가리고 주입 모양 줄을 뺀 뒤 자료로만 LLM에 넘긴다 (services/chat._masked_history)."""
+    화면이 보낸 값이라 믿지 않는다: 서버가 B/L을 가리고 주입 모양 줄을 뺀 뒤 자료로만 LLM에 넘긴다 (services/chat/chat._masked_history)."""
 
     role: Literal["user", "assistant"]
     text: str = Field(max_length=2000)  # 화면은 500자로 잘라 보낸다. 서버도 가린 뒤 다시 자른다
@@ -79,7 +79,7 @@ class ChatTurn(BaseModel):
 
 class ChatScreenVessel(BaseModel):
     """화면에 보이는 화물의 배 (10-08 정운 실사용 36번). 위치·시각은 마지막으로 받은 값이다. B/L·컨테이너 번호 칸은 없다.
-    길이 상한은 화면이 보낸 값을 믿지 않는 신뢰 경계다 (SDD 7절). 문자열은 서버가 다시 가리고 주입 모양이면 뺀다 (services/chat._masked_screen)."""
+    길이 상한은 화면이 보낸 값을 믿지 않는 신뢰 경계다 (SDD 7절). 문자열은 서버가 다시 가리고 주입 모양이면 뺀다 (services/chat/chat._masked_screen)."""
 
     ship_name: str = Field(max_length=SCREEN_TEXT_MAX)
     flag: str | None = Field(default=None, max_length=SCREEN_TEXT_MAX)
@@ -116,7 +116,7 @@ class ChatRequest(BaseModel):
     context: ChatContext | None = None
     # 서류 사진에서 확인한 출항일 (10-06). 없어도 된다(전 화면·평가 스크립트)
     document: ChatDocument | None = None
-    # 최근 대화. 서버는 마지막 몇 줄만 쓴다 (services/chat.HISTORY_TURNS). 보내지 않아도 된다 (전 화면·평가 스크립트)
+    # 최근 대화. 서버는 마지막 몇 줄만 쓴다 (services/chat/chat.HISTORY_TURNS). 보내지 않아도 된다 (전 화면·평가 스크립트)
     history: list[ChatTurn] = Field(default_factory=list, max_length=50)
     # 화면에 지금 떠 있는 배 (10-08 정운 실사용 36번). 없어도 된다(전 화면·평가 스크립트)
     on_screen: ChatScreen | None = None
@@ -138,7 +138,7 @@ class VesselItem(BaseModel):
 
 class ChatMap(BaseModel):
     """답 말풍선 밑 미니 지도 자료 (10-05). 에이전트가 이번 문장에서 선박 실시간 위치를 실제로 조회했을 때만 붙는다.
-    좌표는 도구 결과에서만 읽는다 (services/chat._map_payload). received_at은 AIS 수신 시각(없으면 조회 시각)의 ISO 8601 글자."""
+    좌표는 도구 결과에서만 읽는다 (services/chat/chat._map_payload). received_at은 AIS 수신 시각(없으면 조회 시각)의 ISO 8601 글자."""
 
     lat: float
     lng: float
@@ -231,9 +231,9 @@ def _context(body: ChatRequest) -> AgentRequest | None:
 
 
 def _agent_runner(body: ChatRequest, user_id: str | None):
-    """services.chat.handle이 부르는 조회 함수. 서류에서 확인한 출항일이 있고 요청의 B/L이 그 서류의 B/L일 때만
+    """services.chat.chat.handle이 부르는 조회 함수. 서류에서 확인한 출항일이 있고 요청의 B/L이 그 서류의 B/L일 때만
     요청에 departed_on을 실어 run_agent로 넘긴다 (10-06). 문장에 다른 B/L이 섞여 있어도 그 화물에는 이 날짜가 가지 않는다.
-    서비스(services/chat.py)는 이 값을 모른다. 채팅 에이전트·판정 LLM 입력에도 가지 않고, 화물 표 쓰기(upsert_assessment)만 읽는다."""
+    서비스(services/chat/chat.py)는 이 값을 모른다. 채팅 에이전트·판정 LLM 입력에도 가지 않고, 화물 표 쓰기(upsert_assessment)만 읽는다."""
     doc = body.document
     want = re.sub(r"\s+", "", doc.bl_no).upper() if doc else None
 
@@ -255,7 +255,7 @@ def _history(body: ChatRequest) -> list[dict]:
     return [turn.model_dump() for turn in body.history]
 
 
-# 켜기 직전에 화물 줄이 아직 없을 수 있다: 조회가 끝난 뒤 뒤 작업이 쓴다 (services/watch.set_watch not_saved). 같은 문장에서 조회하고
+# 켜기 직전에 화물 줄이 아직 없을 수 있다: 조회가 끝난 뒤 뒤 작업이 쓴다 (services/watch/watch.set_watch not_saved). 같은 문장에서 조회하고
 # 바로 지켜보라고 한 경우를 위해 아주 잠깐만 기다린다. 길게 기다리지 않는다 (응답이 늦어진다)
 SAVE_WAIT_TRIES, SAVE_WAIT_SEC = 3, 1.0
 
@@ -307,7 +307,7 @@ def _watch_hooks(user_id: str | None) -> svc.WatchHooks | None:
             return watch_service.watch_state(conn, user_id, bl_no)
 
     def worry(bl_no: str) -> str | None:
-        """그 화물에 적어 둔 걱정 메모 중 가장 나중 것의 글. 사용자가 쓴 말을 기억 뽑기가 정리해 둔 값이다 (services/memory.py worry)."""
+        """그 화물에 적어 둔 걱정 메모 중 가장 나중 것의 글. 사용자가 쓴 말을 기억 뽑기가 정리해 둔 값이다 (services/account/memory.py worry)."""
         key = cargo_service.cargo_key(bl_no)
         if key is None:  # 열쇠가 없으면 화물을 가리킬 수 없다 (cargo_key가 없는 항목과 짝지어지지 않게)
             return None
@@ -321,8 +321,8 @@ def _watch_hooks(user_id: str | None) -> svc.WatchHooks | None:
 
 def _kakao_hooks(user_id: str | None) -> svc.KakaoHooks | None:
     """로그인 사용자의 카카오톡으로 지금 상태를 보내는 함수 둘 (10-06 결정). 로그인하지 않았거나 DB가 없으면 None.
-    send는 재시도하지 않는다 (services/kakao.send_to_user의 규칙). 실패는 종류만 서비스에 돌려주고 토큰·본문은 로그에 남기지 않는다.
-    누르면 열리는 주소는 지켜보기 알림(services/watch._notify)과 같은 화면 첫 페이지다."""
+    send는 재시도하지 않는다 (services/watch/kakao.send_to_user의 규칙). 실패는 종류만 서비스에 돌려주고 토큰·본문은 로그에 남기지 않는다.
+    누르면 열리는 주소는 지켜보기 알림(services/watch/watch._notify)과 같은 화면 첫 페이지다."""
     if not user_id or not os.environ.get("DATABASE_URL"):
         return None
 
@@ -452,7 +452,7 @@ def chat_stream(body: ChatRequest, user_id: Annotated[str | None, Depends(curren
 def vessel_detail_view(call_sign: str | None = Query(default=None, max_length=20),
                        ship_name: str | None = Query(default=None, max_length=100),
                        user_id: Annotated[str | None, Depends(current_user_id)] = None) -> dict:
-    """선박 표에서 선명을 눌렀을 때. 해수부 일정 + AIS 위치 + 부산까지 거리. 판정은 하지 않는다 (services/vessel_detail.py)."""
+    """선박 표에서 선명을 눌렀을 때. 해수부 일정 + AIS 위치 + 부산까지 거리. 판정은 하지 않는다 (services/watch/vessel_detail.py)."""
     if not (call_sign or ship_name):
         raise HTTPException(status_code=400, detail="호출부호나 선명이 필요합니다")
     return vessel_detail.detail(call_sign, ship_name)

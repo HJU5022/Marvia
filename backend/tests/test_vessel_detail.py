@@ -1,10 +1,10 @@
-"""선박 자세히 보기 테스트 (services/vessel_detail.py). 도구 넷을 가짜로 끼운다. 키 없이 돈다."""
+"""선박 자세히 보기 테스트 (services/watch/vessel_detail.py). 도구 넷을 가짜로 끼운다. 키 없이 돈다."""
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.services import vessel_detail as svc
+from backend.app.services.watch import vessel_detail as svc
 
 NOW = datetime.now(timezone.utc)
 
@@ -59,7 +59,7 @@ def test_api_requires_identifier(monkeypatch):
 
 def test_route_points_end_at_busan_and_are_capped():
     """지도용 남은 바닷길: 첫 점은 배, 마지막 점은 부산 기준점(rules.md busan_ref), 점 수 상한."""
-    from backend.app.services.rules import rule
+    from backend.app.services.judge.rules import rule
     from mcp_server.tools.distance import ROUTE_MAX_POINTS, route_points
     ref = rule("busan_ref")
     far = route_points(31.2, 121.9)  # 상하이 앞바다

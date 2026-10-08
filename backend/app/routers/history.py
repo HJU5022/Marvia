@@ -14,10 +14,11 @@ from pydantic import BaseModel
 
 from backend.app.auth import current_user_id
 from backend.app.db import atomic, connect, delete_user_queries, recent_queries
-from backend.app.services import cargo, conversations
+from backend.app.services.watch import cargo
+from backend.app.services.chat import conversations
 from backend.app.observability.logging import log_failure
-from backend.app.services.memory import forget_user
-from backend.app.services import quota
+from backend.app.services.account.memory import forget_user
+from backend.app.services.account import quota
 
 router = APIRouter(prefix="/api", tags=["history"])
 
@@ -38,7 +39,7 @@ class HistoryItem(BaseModel):
 
 
 def _reason(margin: int | None, stage: str | None) -> str | None:
-    """이력 한 줄 이유. 저장된 결과의 여유 일수·통관 단계를 사람 말로 (services/watch._change_reason과 같은 규칙, 없는 값은 안 쓴다)."""
+    """이력 한 줄 이유. 저장된 결과의 여유 일수·통관 단계를 사람 말로 (services/watch/watch._change_reason과 같은 규칙, 없는 값은 안 쓴다)."""
     parts = [p for p in (cargo.margin_text(margin), f"통관 {cargo.clean_stage(stage)}" if stage else None) if p]
     return ", ".join(parts) if parts else None
 

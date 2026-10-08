@@ -2,8 +2,8 @@
 from datetime import date, datetime, timezone
 
 from backend.app.schemas.customs import CustomsRecord
-from backend.app.services.evidence import build, days_margin
-from backend.app.services.signals import trusted_eta
+from backend.app.services.judge.evidence import build, days_margin
+from backend.app.services.judge.signals import trusted_eta
 
 
 def test_days_margin_counts_days_to_sale():

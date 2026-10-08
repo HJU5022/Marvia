@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.services import operators as ops
+from backend.app.services.account import operators as ops
 from backend.tests.test_admin import _login
 from backend.tests.test_watch import BL, USER, FakeConn, env  # noqa: F401  (env는 autouse 열쇠 설정)
 

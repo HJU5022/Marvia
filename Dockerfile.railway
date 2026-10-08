@@ -24,7 +24,7 @@ COPY backend/requirements-doc.txt ./backend/requirements-doc.txt
 RUN pip install --no-cache-dir -r backend/requirements-doc.txt -c backend/requirements.lock.txt
 
 # OCR 모델을 빌드 때 받아 이미지에 넣는다 (첫 요청이 모델 내려받기로 느려지지 않게)
-RUN python -c "from backend.app.services.doc_ocr import _get_engine; _get_engine()"
+RUN python -c "from backend.app.services.chat.doc_ocr import _get_engine; _get_engine()"
 
 EXPOSE 8000
 # Railway는 포트를 PORT 환경변수로 준다(docs.railway.com/reference/healthchecks). 없으면 8000.

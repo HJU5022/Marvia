@@ -9,7 +9,7 @@ from mcp_server.server import mcp
 
 EXPECTED_TOOLS = {"get_vessel_candidates", "get_live_position", "get_port_schedule", "estimate_distance"}
 
-# 설명에 넣지 않는 판단·지시 표현. 신뢰 순서는 skills/ais-reliability, 등급은 services/verdict.py와 skills/cargo-verdict가 맡는다 (CLAUDE.md 폴더 표)
+# 설명에 넣지 않는 판단·지시 표현. 신뢰 순서는 skills/ais-reliability, 등급은 services/judge/verdict.py와 skills/cargo-verdict가 맡는다 (CLAUDE.md 폴더 표)
 FORBIDDEN_PHRASES = ("믿는다", "믿어라", "무조건", "판정하지 말고", "되물어야")
 
 

@@ -1,4 +1,4 @@
-"""내 화물 현황 표 테스트 (services/cargo_sheet.py, routers/cargo_sheet.py, cargo.stage_date, 019 마이그레이션).
+"""내 화물 현황 표 테스트 (services/watch/cargo_sheet.py, routers/cargo_sheet.py, cargo.stage_date, 019 마이그레이션).
 
 DB 없이 돈다. FakeConn이 user_cargo·user_lc 두 표를 메모리에 두고, 서비스가 보내는 SQL을 문장 앞부분으로 가려 흉내 낸다
 (test_watch.FakeConn과 같은 방식). 진짜 Postgres에서의 SQL 동작은 따로 손으로 확인했다(작업 보고 참고). B/L은 모의값이다.
@@ -13,8 +13,9 @@ from openpyxl import load_workbook
 
 from backend.app import crypto
 from backend.app.main import app
-from backend.app.services import cargo, cargo_sheet
-from backend.app.services import operators as ops
+from backend.app.services.watch import cargo
+from backend.app.services.watch import cargo_sheet
+from backend.app.services.account import operators as ops
 from backend.tests.test_admin import _login
 
 USER, OTHER = "user-123", "someone-else"  # USER는 test_admin._login이 만드는 출입증의 사용자 ID

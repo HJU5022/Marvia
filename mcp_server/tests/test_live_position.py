@@ -39,7 +39,7 @@ def test_returns_raw_values_and_both_times(use_fixture):
 
 
 def test_does_not_judge_freshness(use_fixture):
-    """freshness·stale 판정은 services/signals.py 몫이라 도구 출력에 없다 (작업 리스트 경계 정리)."""
+    """freshness·stale 판정은 services/judge/signals.py 몫이라 도구 출력에 없다 (작업 리스트 경계 정리)."""
     use_fixture("position_busan_anchored.json")
     r = get_live_position(440999001)
     assert "freshness" not in r and "stale" not in r

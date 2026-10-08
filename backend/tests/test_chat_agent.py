@@ -1,4 +1,4 @@
-"""채팅 에이전트 테스트 (10-05 결정, services/chat.py _agent·_masked_history, validate.check_chat_reply, routers/chat.py history).
+"""채팅 에이전트 테스트 (10-05 결정, services/chat/chat.py _agent·_masked_history, validate.check_chat_reply, routers/chat.py history).
 
 LLM·해수부·MCP·판정 흐름은 부르지 않는다. llm.chat_agent를 가짜로 끼우고, 그 가짜가 받은 run_tool(도구 실행 함수)을
 대본대로 직접 부른다. 진짜 llm._ask_json의 도구 루프가 하는 일(도구 실행 → 결과 모으기 → 답)을 흉내 낸 것이다.
@@ -10,8 +10,10 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.routers import chat as chat_router
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import chat as svc
-from backend.app.services import llm, progress, validate
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.chat import progress
+from backend.app.services.judge import validate
 from backend.tests.test_chat import PLANS, _agent_calls, _route
 
 # MCP가 준 읽기 전용 도구 목록 모양 (mcp_client.read_only_tools, OpenAI 도구 형식)

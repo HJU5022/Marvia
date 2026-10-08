@@ -13,7 +13,8 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.routers import agent as agent_router
 from backend.app.schemas.agent import AgentResponse, Evidence
-from backend.app.services import llm, mcp_client
+from backend.app.services import llm
+from backend.app.services import mcp_client
 
 NOW = datetime(2026, 9, 27, tzinfo=timezone.utc)
 ANSWER = {"in_scope": True, "answer": "현재 속력은 12.3노트입니다."}

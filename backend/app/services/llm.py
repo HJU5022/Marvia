@@ -14,7 +14,7 @@
   pick_vessel()      이름 같은 후보가 여럿일 때 어느 배인지 고른다 (SDD 5.5, C-5)
   answer_follow_up() 판정 뒤 후속 질문에 근거 안에서만 답한다 (C-9)
   extract_doc_fields() 서류 사진 OCR 글자에서 선명·항차·ETA 등 6칸과 B/L 조건·연락처를 옮겨 적는다 (docs/specs/document-extract.md)
-  write_memory()     조회·대화 뒤 메모장에 줄 단위 명령만 낸다. 적용은 services/memory.py가 한다 (docs/specs/memory.md)
+  write_memory()     조회·대화 뒤 메모장에 줄 단위 명령만 낸다. 적용은 services/account/memory.py가 한다 (docs/specs/memory.md)
 
 모델 자리 (.env, 계약 C8):
   LLM_MODEL           서비스가 쓰는 모델. 위 네 함수 전부 (09-30 이름 바꿈, 전 MODEL_A)
@@ -50,14 +50,14 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
-from backend.app.services import quota  # 1명당 하루 토큰 한도 (docs/specs/token-quota.md)
+from backend.app.services.account import quota  # 1명당 하루 토큰 한도 (docs/specs/token-quota.md)
 from backend.app.observability.langfuse import end_generation, end_web_search, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, Conflict, Evidence, Reason, VesselCandidate, Verdict
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
-from backend.app.services.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
-from backend.app.services import guard  # 통관 단계명 주입 거르기 (_clean_customs, 10-01)
-from backend.app.services.signals import needs_broker  # 관세사 필요 여부는 코드가 정해 입력으로 준다 (10-01)
+from backend.app.services.judge.evidence import KST  # 판정 입력의 날짜를 근거 카드와 같은 한국 시각으로 (09-29 D8)
+from backend.app.services.judge import guard  # 통관 단계명 주입 거르기 (_clean_customs, 10-01)
+from backend.app.services.judge.signals import needs_broker  # 관세사 필요 여부는 코드가 정해 입력으로 준다 (10-01)
 
 # OpenRouter는 OpenAI와 같은 요청 형식을 받는다. 그래서 openai SDK에 주소만 바꿔 쓴다 (requirements.txt 주석).
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -363,7 +363,7 @@ def chat(
         try:
             result = _call_once(kwargs)
             result.attempts = attempt
-            # 1명당 하루 토큰 한도에 쌓는다 (services/quota.py, docs/specs/token-quota.md). 이 요청은 끝까지 답하고 다음 요청부터 막는다
+            # 1명당 하루 토큰 한도에 쌓는다 (services/account/quota.py, docs/specs/token-quota.md). 이 요청은 끝까지 답하고 다음 요청부터 막는다
             quota.add((result.prompt_tokens or 0) + (result.completion_tokens or 0))
             return result
         except LLMError as e:
@@ -463,7 +463,7 @@ class JudgeOutput(BaseModel):
     actions: list[str]
     answer: str
     customs: CustomsExplanation | None
-    table_disagree: str | None = None  # 기록만 한다 (services/verdict.py). 녹화 답·베이스라인은 없어도 된다
+    table_disagree: str | None = None  # 기록만 한다 (services/judge/verdict.py). 녹화 답·베이스라인은 없어도 된다
 
 
 @dataclass
@@ -513,7 +513,7 @@ def _skills_text(folders: tuple[str, ...] = ALL_SKILLS) -> str:
 
 # 판정 LLM 입력에서 뺄 통관 칸. B/L(bl_masked)·MRN·조회 시각 외에, 10-06에 붙은 포워더·선사·컨테이너 번호도 뺀다:
 # 판정에 쓰이지 않고(프롬프트·평가 결과를 그대로 두려고), 컨테이너 번호는 B/L처럼 화물을 특정하는 번호라 LLM에 줄 수 없다.
-# 포워더·선사 이름은 채팅 에이전트가 받는다 (services/chat.py _cargo_summary).
+# 포워더·선사 이름은 채팅 에이전트가 받는다 (services/chat/chat.py _cargo_summary).
 # 품명(goods_name, 10-06 오후)도 판정에 쓰이지 않아 뺀다. 채팅 에이전트만 받는다
 JUDGE_CUSTOMS_EXCLUDE = {"bl_masked", "mrn", "fetched_at", "forwarder_name", "carrier_name", "container_no", "goods_name"}
 
@@ -526,7 +526,7 @@ def _judge_input(signals: SignalSet, customs: CustomsRecord | None, days_margin:
     날짜는 한국 시각으로 준다 (09-29 D8). 전에는 여유 일수 숫자만 줘서 "언제 와요?"에 날짜로 답하지 못했고,
     사용자가 말한 판매일을 근거에 없는 숫자로 보고 검증(V7)이 막기도 했다 (평가 F06 "9월 23일"). 판매일이 없으면 null이다 (선택 입력, 09-29 결정).
     calc_eta는 남은 거리 ÷ 현재 속도로 코드가 계산한 대략값이다. 참고용이라 판정 근거로 쓰지 않게 지시문에 적는다.
-    table_verdict·verdict_mode (09-30 D7, services/verdict.py): 코드가 판정 표로 낸 등급과, LLM이 그 등급을
+    table_verdict·verdict_mode (09-30 D7, services/judge/verdict.py): 코드가 판정 표로 낸 등급과, LLM이 그 등급을
     그대로 써야 하는지(fixed) 표 이상에서 고를 수 있는지(raise_only, 회색 지대)를 알려 준다.
     needs_broker (10-01): 관세사가 봐야 하는 단계인지 코드가 정한 값. LLM은 이 값에 맞춰 설명만 한다. 통관 정보가 없으면 null.
     """
@@ -562,7 +562,7 @@ def _clean_customs(data: dict) -> dict:
 
 
 def _kst(moment: datetime | None) -> str | None:
-    """시각을 한국 시각 "YYYY-MM-DD HH:MM"으로. 근거 카드(services/evidence.py)와 같은 모양이라 V7 대조가 맞는다."""
+    """시각을 한국 시각 "YYYY-MM-DD HH:MM"으로. 근거 카드(services/judge/evidence.py)와 같은 모양이라 V7 대조가 맞는다."""
     if moment is None:
         return None
     if moment.tzinfo is None:
@@ -597,7 +597,7 @@ def _ask_json(prompt_name: str, user_content: str, schema_name: str, schema: dic
     skills는 넣을 Skill 폴더다 (JUDGE_SKILLS 등). 빈 튜플이면 넣지 않는다: 판단 기준이 필요 없는 호출(서류 칸 옮겨 적기)용.
     tools·run_tool: LLM이 직접 부를 도구 목록(OpenAI 형식)과, 부른 도구를 실제로 실행하는 함수 (10-02, 후속 질문만).
     run_tool(이름, 인자)는 도구 결과 dict를 돌려준다. 부른 기록은 LLMAnswer.tool_calls에 담는다.
-    context: 로그인 사용자의 기억 블록(<user_cargo>·<user_memory>, services/memory.compose_blocks). 판정·후속 질문만 쓴다.
+    context: 로그인 사용자의 기억 블록(<user_cargo>·<user_memory>, services/account/memory.compose_blocks). 판정·후속 질문만 쓴다.
     순서는 지시문 + Skill(system, 고정) → 기억 블록 → 이번 자료 (docs/specs/memory.md 읽기 흐름 2). 고정된 앞부분이
     제공사 캐시에 걸리게 하고, 이번 자료(user_content)는 녹화 답 재생의 대조 키라 섞지 않고 따로 보낸다.
 
@@ -1039,7 +1039,7 @@ def extract_doc_fields(masked_text: str, *, model: str | None = None) -> LLMAnsw
 
 
 # ── 기억 뽑기 write_memory() ─────────────────────────────────
-# docs/specs/memory.md 쓰기 흐름 4: 메모장을 다시 쓰지 않고 줄 단위 명령만 받는다. 검사·적용은 services/memory.py.
+# docs/specs/memory.md 쓰기 흐름 4: 메모장을 다시 쓰지 않고 줄 단위 명령만 받는다. 검사·적용은 services/account/memory.py.
 # 입력은 가린 B/L, 이번 판정 한 줄, 사용자 문장(B/L은 [BL1]), 번호 있는 메모장. B/L 원본은 넘기지 않는다 (CLAUDE.md).
 
 MEMORY_PROMPT = "marvia-memory-write"
@@ -1083,7 +1083,7 @@ MEMORY_SCHEMA = {
 
 
 class MemoryFields(BaseModel):
-    """명령의 칸 값. 종류마다 쓰는 칸이 다르고 나머지는 null. 어느 칸이 허용되는지는 services/memory.py가 본다."""
+    """명령의 칸 값. 종류마다 쓰는 칸이 다르고 나머지는 null. 어느 칸이 허용되는지는 services/account/memory.py가 본다."""
 
     text: str | None = None
     done: bool | None = None
@@ -1111,7 +1111,7 @@ class MemoryOpsOutput(BaseModel):
 
 
 def write_memory(content: str, *, model: str | None = None, timeout: float | None = None) -> LLMAnswer:
-    """기억 뽑기. output은 MemoryOpsOutput. content는 services/memory.writer_input이 만든 JSON 글자.
+    """기억 뽑기. output은 MemoryOpsOutput. content는 services/account/memory.writer_input이 만든 JSON 글자.
 
     모델은 MEMORY_MODEL(.env). 없으면 LLMError(not_configured)이고 부르는 쪽이 조용히 건너뛴다 (10-02 결정 10).
     판단 기준 Skill은 넣지 않는다. 메모장 종류·칸 규칙은 프롬프트에 있고 코드가 다시 검사한다.
@@ -1125,7 +1125,7 @@ def write_memory(content: str, *, model: str | None = None, timeout: float | Non
 
 # ── 대화 제목 make_chat_title() ─────────────────────────────
 # 대화 목록(10-06 결정)의 제목. 첫 사용자 말을 코드가 B/L을 [BL1]로 가린 글만 받는다 (CLAUDE.md, B/L 원본은 LLM에 안 간다).
-# 결과 검사(한 줄·길이·주입 모양)와 실패 시 대신 쓸 제목은 services/conversations.py가 맡는다.
+# 결과 검사(한 줄·길이·주입 모양)와 실패 시 대신 쓸 제목은 services/chat/conversations.py가 맡는다.
 
 TITLE_PROMPT = "marvia-chat-title"
 TITLE_SCHEMA = {
@@ -1192,7 +1192,7 @@ def grade_customs(customs: dict, *, model: str | None = None) -> LLMAnswer:
 
 
 # ── 자연어 입력 라우팅 route_chat(), 항구 고르기 match_ports() ──────────
-# docs/specs/chat-search.md. 검색 폼 대신 문장 하나를 받는다. LLM은 의도와 칸만 고르고 실행은 코드(services/chat.py)가 한다.
+# docs/specs/chat-search.md. 검색 폼 대신 문장 하나를 받는다. LLM은 의도와 칸만 고르고 실행은 코드(services/chat/chat.py)가 한다.
 # B/L은 코드가 [BL1]처럼 가린 뒤에만 넘어온다 (CLAUDE.md). Skill 문서는 넣지 않는다(판단 기준이 필요 없는 분류).
 
 CHAT_ROUTE_PROMPT = "marvia-chat-route"
@@ -1218,7 +1218,7 @@ class ChatRouteOutput(BaseModel):
     intent: Literal["cargo", "follow_up", "vessel_search", "other"]
     bl_ref: str | None
     bl_type: Literal["MASTER", "HOUSE"] | None
-    sale_due_date: str | None  # 모양 검사는 services/chat.py가 한다
+    sale_due_date: str | None  # 모양 검사는 services/chat/chat.py가 한다
     question: str | None
     place: str | None
     place_label: str | None = None  # 답에 쓸 이름. 사용자가 쓴 말 그대로 (예: 중국)
@@ -1228,7 +1228,7 @@ class ChatRouteOutput(BaseModel):
 
 def route_chat(masked_message: str, bl_refs: list[str], has_current_cargo: bool, today: str, *,
                model: str | None = None) -> LLMAnswer:
-    """가린 문장을 의도 하나와 칸으로 나눈다. output은 ChatRouteOutput. 칸 값은 services/chat.py가 다시 검사한다."""
+    """가린 문장을 의도 하나와 칸으로 나눈다. output은 ChatRouteOutput. 칸 값은 services/chat/chat.py가 다시 검사한다."""
     data = {"message": masked_message, "bl_refs": bl_refs, "has_current_cargo": has_current_cargo, "today": today}
     return _ask_json(CHAT_ROUTE_PROMPT, json.dumps(data, ensure_ascii=False), "chat_route", CHAT_ROUTE_SCHEMA,
                      ChatRouteOutput, model, skills=())
@@ -1238,7 +1238,7 @@ def route_chat(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
 # route_chat은 문장을 의도 하나로 나누고 끝났다. 그래서 네 의도에 안 맞는 실무 질문("포워더가 항차 번호를 안 줘")은
 # 전부 고정 안내로 갔고, 한 문장에 조회 둘이 필요한 일("상하이에서 오는 배 중 제일 먼저 오는 배 지금 어디야")도 못 했다 (10-05 실측 대화).
 # chat_agent는 LLM이 도구를 골라 부르고, 결과를 보고 다음 도구를 또 고른다 (_ask_json의 도구 루프, 상한 MAX_TOOL_ROUNDS).
-# 도구 목록과 실행은 services/chat.py가 준다: 화물 조회·화물 질문·입항 선박 검색 + 읽기 전용 MCP 도구.
+# 도구 목록과 실행은 services/chat/chat.py가 준다: 화물 조회·화물 질문·입항 선박 검색 + 읽기 전용 MCP 도구.
 # 등급·여유 일수는 지금처럼 코드가 정한다. B/L은 가린 토큰만 온다 (CLAUDE.md).
 # Skill 문서를 통째로 넣는다: 도구가 필요 없는 실무 질문은 이 문서 안에서만 답하게 한다 (RAG 아님).
 
@@ -1261,7 +1261,7 @@ CHAT_AGENT_SKILLS = ALL_SKILLS  # 되묻기 설명법(cargo-verdict), 통관 단
 #   unrelated: 이제 한 문장짜리 직접 답을 낼 수 있다 (날짜·"마르비아가 뭐야?" 같은 잡담). 검사에 걸리면 고정 안내로 바뀐다
 #   clarify: 사용자가 쓴 식별자(예: TEST41)가 B/L 번호인지 배 이름인지 모르겠다 (10-05 실측). 코드가 고정 문장으로 되묻는다
 #     (chat.clarify_reply). reply는 비운다: LLM 글은 화면에 가지 않고 식별자도 코드가 문장에서 직접 뽑는다
-# help·greeting: 사용법 질문과 인사. 문장은 services/chat.py가 고정 문구로 낸다 (10-05 결정)
+# help·greeting: 사용법 질문과 인사. 문장은 services/chat/chat.py가 고정 문구로 낸다 (10-05 결정)
 CHAT_AGENT_KINDS = ("tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting")
 CHAT_AGENT_SCHEMA = {
     "type": "object",
@@ -1277,11 +1277,11 @@ CHAT_AGENT_SCHEMA = {
 
 
 class ChatAgentOutput(BaseModel):
-    reply: str  # 화면에 내보내기 전에 services/chat.py가 검사한다
+    reply: str  # 화면에 내보내기 전에 services/chat/chat.py가 검사한다
     # 기본값은 도구를 쓴 답(두 칸을 보지 않음)과 예전 녹화 답이 그대로 읽히게 둔 것이다. 실제 호출은 strict 스키마라 늘 채워 온다
     answer_kind: Literal["tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting"] = "unrelated"
     skill_quote: str = ""  # answer_kind가 skill이면 Skill 문서, web이면 웹 검색 결과 원문 그대로의 한 조각
-    # 사용자 말에 걱정·기한 압박이 묻어 있나 (10-06 결정 "먼저 제안"). 신호일 뿐이다: 제안할지는 services/chat.py가 정한다.
+    # 사용자 말에 걱정·기한 압박이 묻어 있나 (10-06 결정 "먼저 제안"). 신호일 뿐이다: 제안할지는 services/chat/chat.py가 정한다.
     # 기본값 False는 예전 녹화 답이 그대로 읽히게 둔 것이다 (실제 호출은 strict 스키마라 늘 채워 온다)
     watch_cue: bool = False
 
@@ -1291,14 +1291,14 @@ def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
                feedback: str | None = None, on_screen: dict | None = None, evidence: str | None = None) -> LLMAnswer:
     """가린 문장과 최근 대화를 받아 도구를 골라 쓰고 답 한 칸을 낸다. output은 ChatAgentOutput.
 
-    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (10-08 정운 실사용 36번). services/chat._masked_screen이 가리고 거른 자료다.
+    on_screen: 화면에 지금 떠 있는 배들 {"vessel", "arrivals"} (10-08 정운 실사용 36번). services/chat/chat._masked_screen이 가리고 거른 자료다.
     자료일 뿐이다 (프롬프트 Trust boundary). 없으면 입력 JSON에 칸 자체를 넣지 않아 예전 입력과 같다.
 
-    evidence: 이번 문장에서 앞서 부른 도구가 모은 근거 목록 글 (줄마다 [E1] 같은 id, services/citations.evidence_prompt_block, 10-08 정운 실사용 58번).
+    evidence: 이번 문장에서 앞서 부른 도구가 모은 근거 목록 글 (줄마다 [E1] 같은 id, services/chat/citations.evidence_prompt_block, 10-08 정운 실사용 58번).
     도구 결과 안에도 같은 글이 evidence 칸으로 오지만, 다시 묻는 호출은 앞 도구 결과가 대화에 없어서 입력 자료로 다시 준다. 자료일 뿐이다. 없으면 칸 자체를 넣지 않는다.
 
     history: [{"role": "user"|"assistant", "text": 가린 글}]. 자료일 뿐이다 (프롬프트 Trust boundary).
-    부른 도구와 결과는 LLMAnswer.tool_calls에 담긴다. 답 문장 검사는 services/chat.py가 한다.
+    부른 도구와 결과는 LLMAnswer.tool_calls에 담긴다. 답 문장 검사는 services/chat/chat.py가 한다.
     feedback: 앞 답이 검사에 걸렸을 때 걸린 내용. 이때는 tools를 비워 부른다 (같은 도구를 두 번 실행하지 않게).
     """
     data = {"message": masked_message, "bl_refs": bl_refs, "history": history,
@@ -1312,7 +1312,7 @@ def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
 
 
 # ── 웹 검색 web_search() (10-05 결정) ──────────────────────────────
-# 채팅 에이전트의 좁은 웹 검색 도구가 쓴다 (services/chat.py WEB_TOOL). Skill 문서가 못 받치는 실무 질문(B/L 번호 찾는 곳, 포워더 확인,
+# 채팅 에이전트의 좁은 웹 검색 도구가 쓴다 (services/chat/chat.py WEB_TOOL). Skill 문서가 못 받치는 실무 질문(B/L 번호 찾는 곳, 포워더 확인,
 # A/N 뜻)에만 쓰고, 판정·특정 화물·세액·통관 가능 여부에는 쓰지 않는다 (PRD 4절). 그 제한은 chat.py가 건다. 여기는 검색 호출만 한다.
 # OpenRouter 웹 플러그인을 engine=exa로 쓴다 (10-05 실측, 계정은 ZDR 제한이 있음):
 #   - engine 기본값(네이티브)은 Gemini의 구글 검색이라 출처가 vertexaisearch 리다이렉트 주소이고 원문이 안 온다. 검증할 글이 없어 못 쓴다
@@ -1379,7 +1379,7 @@ def web_search(query: str) -> list[dict]:
                 getattr(resp.usage, "cost", None) if resp.usage else None)
     found = found[:WEB_RESULTS]
     end_web_search(generation, found, resp.usage, getattr(resp, "model", None) or model)
-    # 웹 검색도 하루 토큰 한도에 쌓는다. chat()을 거치지 않는 호출이라 여기서 따로 더한다 (services/quota.py, docs/specs/token-quota.md).
+    # 웹 검색도 하루 토큰 한도에 쌓는다. chat()을 거치지 않는 호출이라 여기서 따로 더한다 (services/account/quota.py, docs/specs/token-quota.md).
     # 검색 결과가 입력에 붙으므로 prompt_tokens가 작지 않다. usage가 없으면 0으로 본다
     usage = resp.usage
     quota.add((getattr(usage, "prompt_tokens", 0) or 0) + (getattr(usage, "completion_tokens", 0) or 0) if usage else 0)

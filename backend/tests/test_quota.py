@@ -15,7 +15,8 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.observability.langfuse import session_scope
 from backend.app.routers.agent import QUOTA_DETAIL, quota_guard
-from backend.app.services import llm, quota
+from backend.app.services import llm
+from backend.app.services.account import quota
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +121,7 @@ def test_agent_route_returns_429_when_exhausted():
 def test_operator_is_not_blocked(monkeypatch):
     """운영자는 한도를 다 써도 막지 않는다 (10-02 결정). 운영자 판단은 로그인 이메일로 한다."""
     from backend.app.observability.logging import request_user_var
-    from backend.app.services import operators
+    from backend.app.services.account import operators
 
     monkeypatch.setenv("DATABASE_URL", "postgresql://test")
     monkeypatch.setattr(quota, "used", lambda owner, day=None: 1_000)  # 이미 한도(100)를 넘김

@@ -1,4 +1,4 @@
-"""처리 단계 소식 테스트 (docs/specs/chat-progress.md, services/progress.py, routers/chat.py POST /api/chat/stream).
+"""처리 단계 소식 테스트 (docs/specs/chat-progress.md, services/chat/progress.py, routers/chat.py POST /api/chat/stream).
 
 키·DB 없이 돈다. 스트림 라우터는 handle을 가짜로 끼워 이벤트 모양만 보고,
 단계 순서는 데모 3건(test_demo.py와 같은 재생 폴더)을 실제 판정 경로(run_agent)로 돌려 확인한다.
@@ -13,8 +13,8 @@ from backend.app.clients import replay
 from backend.app.clients.shipfinder import ShipFinderClient
 from backend.app.main import app
 from backend.app.routers import chat as chat_router
-from backend.app.services import chat as svc
-from backend.app.services import progress
+from backend.app.services.chat import chat as svc
+from backend.app.services.chat import progress
 from backend.tests.test_demo import RECORDING
 from scripts.demo import make_demo
 

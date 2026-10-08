@@ -1,4 +1,4 @@
-"""V11: 통관이 잘되는지·늦어질지 평가하지 않는다 (10-01, services/validate.py).
+"""V11: 통관이 잘되는지·늦어질지 평가하지 않는다 (10-01, services/judge/validate.py).
 
 Skill에 적어도 LLM이 "통관 절차도 원활하게 진행 중입니다"를 계속 써서 코드가 걸러 다시 쓰게 한다.
 낱말은 customs-stages/rules.md customs_subject_words · customs_assessment_words.
@@ -6,7 +6,7 @@ Skill에 적어도 LLM이 "통관 절차도 원활하게 진행 중입니다"를
 from datetime import datetime, timezone
 
 from backend.app.schemas.agent import AgentResponse
-from backend.app.services.validate import check
+from backend.app.services.judge.validate import check
 
 NOW = datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc)
 EVIDENCE = [{"source": "rule", "field": "days_margin", "value": "4", "fetched_at": NOW}]

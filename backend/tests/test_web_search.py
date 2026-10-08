@@ -1,4 +1,4 @@
-"""채팅 에이전트의 웹 검색 도구 테스트 (10-05 결정, services/chat.py run_web·web_violations, llm.web_search).
+"""채팅 에이전트의 웹 검색 도구 테스트 (10-05 결정, services/chat/chat.py run_web·web_violations, llm.web_search).
 
 키 없이 돈다. llm.web_search와 llm.chat_agent는 가짜다. 웹 글·주소·제목은 모두 모의값이다 (example.test 도메인).
 지키는 것: 화물·선박 도구가 돈 문장에는 웹을 안 쓴다 · 웹 답은 근거 조각이 가져온 웹 글에 그대로 있어야 한다 ·
@@ -9,8 +9,9 @@ import types
 
 import pytest
 
-from backend.app.services import chat as svc
-from backend.app.services import llm, progress
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.chat import progress
 from backend.tests.test_chat import _agent_calls
 from backend.tests.test_chat_agent import _agent, _no_classic, agent_path  # noqa: F401 - agent_path는 autouse 픽스처
 

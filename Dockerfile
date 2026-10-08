@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir -r backend/requirements-doc.txt -c backend/requir
 
 # OCR 모델(약 18MB)을 빌드 때 받아 이미지에 넣는다. 안 하면 첫 요청이 인터넷에서 모델을 받느라 느리고,
 # 네트워크가 막힌 곳에서는 실패한다. 엔진을 한 번 만들면 rapidocr가 패키지 폴더에 받아 둔다
-RUN python -c "from backend.app.services.doc_ocr import _get_engine; _get_engine()"
+RUN python -c "from backend.app.services.chat.doc_ocr import _get_engine; _get_engine()"
 
 # 서비스가 MCP 도구를 자기 /mcp로 부른다 (10-02, backend/app/services/mcp_client.py). 포트는 아래 CMD의 8000과 같아야 한다.
 # 이 값이 없으면(테스트·평가 실행기) 같은 프로세스 안의 MCP 서버에 메모리로 붙는다

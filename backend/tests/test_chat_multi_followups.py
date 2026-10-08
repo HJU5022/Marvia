@@ -1,4 +1,4 @@
-"""10-06 정운 실제 화면에서 나온 여러 B/L·카톡·제목 문제 (services/chat.py, services/conversations.py).
+"""10-06 정운 실제 화면에서 나온 여러 B/L·카톡·제목 문제 (services/chat/chat.py, services/chat/conversations.py).
 1) B/L로 읽지 못한 식별자 모양 글자(tesbl41)가 말없이 빠지지 않는다  2) 판정을 못 낸 줄의 이유 + 답 문장
 3) 되묻기가 필요한 줄이 다음 문장의 문맥  4) "아래" 문구  5) 카톡 말과 함께 지켜보기 요청 → 연결 상태를 사실대로
 6) "인사" 같은 임시 제목은 첫 진짜 질문에서 다시 짓는다. LLM·DB는 가짜."""
@@ -8,8 +8,8 @@ import pytest
 
 from backend.app.routers.agent import ASK_BACK, ASK_BACK_AFTER_EVIDENCE, NO_CARGO, _response
 from backend.app.schemas.agent import VesselCandidate
-from backend.app.services import chat as svc
-from backend.app.services import conversations as conv
+from backend.app.services.chat import chat as svc
+from backend.app.services.chat import conversations as conv
 from backend.tests.test_chat_agent import _agent
 from backend.tests.test_chat_multi_bl import CHECK, _two_run
 from backend.tests.test_chat_watch import CONTEXT, USER, Hooks, _llm, _run, agent_path  # noqa: F401 (fixture)

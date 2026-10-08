@@ -3,7 +3,7 @@
 VesselSearch(선박 검색)와 VesselPositionSingle(단일 선박 위치) 두 개만 부릅니다.
 MCP 도구(B3·B4)와 수집 워커(D1)가 이 클라이언트를 같이 씁니다. 위치는 SDD 1.1·CLAUDE.md의 backend/app/clients/.
 
-- 값은 원본 그대로 돌려주고 판정(freshness 등)은 하지 않습니다. 판정은 services/signals.py 몫입니다.
+- 값은 원본 그대로 돌려주고 판정(freshness 등)은 하지 않습니다. 판정은 services/judge/signals.py 몫입니다.
 - API의 "무효" 표시값(sog -1, hdg 511, eta 0 등)만 None으로 바꾸고, 원본은 raw에 남깁니다.
 - 빈도 초과(23·29)로 실패하면 마지막 성공 응답을 캐시에서 돌려줍니다 (B8, TTL은 rules.md api_cache_ttl_hours).
   캐시 값은 fetched_at이 과거라서 받는 쪽이 오래된 값임을 알 수 있습니다.

@@ -1,4 +1,4 @@
-"""채팅 응답의 미니 지도 자료 테스트 (10-05, services/chat._map_payload, routers/chat.ChatMap).
+"""채팅 응답의 미니 지도 자료 테스트 (10-05, services/chat/chat._map_payload, routers/chat.ChatMap).
 
 에이전트가 이번 문장에서 선박 실시간 위치를 실제로 조회했을 때만 map이 붙고, 좌표는 도구 결과에서만 온다.
 LLM·MCP·판정 흐름은 부르지 않는다: llm.chat_agent와 run_tool을 가짜로 끼운다 (test_chat_agent.py와 같은 방식).
@@ -12,7 +12,7 @@ from backend.app.main import app
 from backend.app.routers import chat as chat_router
 from backend.app.routers.agent import _response
 from backend.app.schemas.agent import AgentRequest, Evidence, EtaInfo, VesselInfo
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.tests.test_chat_agent import MCP_TOOLS, _agent, _mcp  # noqa: F401 - autouse 픽스처(agent_path)도 같이 쓴다
 from backend.tests.test_chat_agent import agent_path  # noqa: F401
 from backend.tests.test_chat import _agent_calls

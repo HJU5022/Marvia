@@ -4,7 +4,7 @@
     python -m scripts.eval.eval_chat_agent_ab report --base old --cand new --out 결과폴더      # 결과폴더/RESULT.md를 만든다
 
 무엇을 재나
-  services/chat.handle()을 그대로 부른다 (에이전트 도구 루프·코드 검사·고정 문구까지 실제 경로). LLM은 .env의 LLM_MODEL로 진짜 호출한다.
+  services/chat/chat.handle()을 그대로 부른다 (에이전트 도구 루프·코드 검사·고정 문구까지 실제 경로). LLM은 .env의 LLM_MODEL로 진짜 호출한다.
   바꿔 끼우는 것은 지시문 글(llm.get_prompt를 이 프로세스 안에서만 바꾼다. Langfuse는 부르지 않는다)과 아래 외부 호출뿐이다.
 
 바꿔 끼우는 것 (외부 쿼터를 쓰지 않으려고, 변형 사이에 같은 값이 나오게 하려고)
@@ -49,8 +49,9 @@ os.environ["CHAT_AGENT"] = "on"
 
 from backend.app.observability import langfuse as lf  # noqa: E402
 from backend.app.schemas.agent import AgentRequest, EtaInfo, VesselInfo  # noqa: E402
-from backend.app.services import bl_parse, llm  # noqa: E402
-from backend.app.services import chat as svc  # noqa: E402
+from backend.app.services.judge import bl_parse  # noqa: E402
+from backend.app.services import llm
+from backend.app.services.chat import chat as svc  # noqa: E402
 
 CASES_PATH = ROOT / "scripts" / "eval" / "eval_chat_agent_cases.jsonl"
 KST = timezone(timedelta(hours=9))

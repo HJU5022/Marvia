@@ -25,8 +25,8 @@ def _no_real_db(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clear_memory_notices():
-    """다음 답에 붙일 기억 알림(services/memory._notices)은 프로세스 메모리에 있다. 테스트끼리 새지 않게 비운다 (10-08 정운 실사용 76)."""
-    from backend.app.services import memory
+    """다음 답에 붙일 기억 알림(services/account/memory._notices)은 프로세스 메모리에 있다. 테스트끼리 새지 않게 비운다 (10-08 정운 실사용 76)."""
+    from backend.app.services.account import memory
 
     memory._notices.clear()
     yield

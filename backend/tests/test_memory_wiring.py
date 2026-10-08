@@ -1,4 +1,4 @@
-"""화물 비서 기억 연결 테스트 (routers/agent.py, services/chat.py, docs/specs/memory.md 읽기·쓰기 흐름, EC-02·05·08·09).
+"""화물 비서 기억 연결 테스트 (routers/agent.py, services/chat/chat.py, docs/specs/memory.md 읽기·쓰기 흐름, EC-02·05·08·09).
 
 외부 API·DB·LLM 없이 돈다. test_routers.py의 가짜(fake)와 로그인 도장(_login)을 그대로 쓴다. B/L은 모의값이다.
 """
@@ -9,8 +9,10 @@ from fastapi.testclient import TestClient
 from backend.app import crypto
 from backend.app.main import app
 from backend.app.routers import agent as agent_router
-from backend.app.services import chat as svc
-from backend.app.services import llm, memory, validate
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.account import memory
+from backend.app.services.judge import validate
 from backend.tests.test_chat import _agent_calls, _route
 from backend.tests.test_routers import JUDGED, POSITION, _candidate, _login, _request, _signals, fake  # noqa: F401
 
@@ -193,7 +195,7 @@ def test_memory_id_rule_unit():
 
 from datetime import date, datetime, timezone  # noqa: E402
 
-from backend.app.services import cargo  # noqa: E402
+from backend.app.services.watch import cargo  # noqa: E402
 
 # 낡은 값(지난 조회)과 사용자가 준 값이 한 줄에 같이 든 화물 표를 실제 렌더 함수로 만든다 (모양이 바뀌면 이 테스트가 깨진다)
 STALE_ROW = {

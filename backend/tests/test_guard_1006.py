@@ -1,11 +1,11 @@
-"""services/guard.py 10-06 점검 보강 테스트. 키 없이 돈다. 문장은 모두 가공이다.
+"""services/judge/guard.py 10-06 점검 보강 테스트. 키 없이 돈다. 문장은 모두 가공이다.
 
 점검에서 아래 넷이 guard를 그대로 통과했다. 정상 질문 목록(test_guard.BENIGN, evals/results/injection/scripts/chat_benign.py CASES)과
 판정 등급을 묻는 정상 질문이 걸리지 않는지도 같이 본다.
 """
 import pytest
 
-from backend.app.services import guard
+from backend.app.services.judge import guard
 from backend.tests.test_guard import BENIGN
 
 ATTACKS_1006 = [

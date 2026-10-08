@@ -1,5 +1,5 @@
 """B7 estimate_distance 단위 테스트. searoute는 로컬 계산이라 외부 호출 없음."""
-from backend.app.services.rules import rule
+from backend.app.services.judge.rules import rule
 from mcp_server.tools.distance import estimate_distance
 
 

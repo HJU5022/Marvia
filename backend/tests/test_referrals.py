@@ -1,4 +1,4 @@
-"""안내처(다음 행선지) 붙이기 (services/referrals.py, docs/specs/referral-guide.md, 10-06).
+"""안내처(다음 행선지) 붙이기 (services/chat/referrals.py, docs/specs/referral-guide.md, 10-06).
 
 - 판정: 켜진 신호마다 확인처 한 줄. 위험한 순서로 두 개까지, 괜찮음과 입력 오류 신호에는 붙이지 않는다
 - 판정 응답: LLM 검증을 통과한 뒤 할 일 끝에 붙고, LLM이 끝내 실패한 표 등급 응답에도 붙는다
@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 import pytest
 
 from backend.app.schemas.signals import Signal, SignalSet
-from backend.app.services import referrals
-from backend.app.services.rules import rule
-from backend.app.services.signals import DEST_BROKEN
+from backend.app.services.chat import referrals
+from backend.app.services.judge.rules import rule
+from backend.app.services.judge.signals import DEST_BROKEN
 
 NOW = datetime(2026, 10, 6, tzinfo=timezone.utc)
 IDS = ["position_stale", "eta_conflict", "anchor_wait", "dest_changed", "navstat_mismatch", "customs_hold",
@@ -115,10 +115,10 @@ def test_weather_reply_does_not_claim_a_cause():
     assert "미리 판단하지 않습니다" in reply
 
 
-# ── 채팅 연결 (services/chat.py) ──
+# ── 채팅 연결 (services/chat/chat.py) ──
 
 def test_chat_answers_out_of_scope_without_llm(monkeypatch):
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
     monkeypatch.setattr(svc.llm, "chat_agent", lambda *a, **k: pytest.fail("범위 밖 주제는 LLM을 부르지 않는다"))
     monkeypatch.setattr(svc.llm, "route_chat", lambda *a, **k: pytest.fail("범위 밖 주제는 LLM을 부르지 않는다"),
                         raising=False)
@@ -128,7 +128,7 @@ def test_chat_answers_out_of_scope_without_llm(monkeypatch):
 
 def test_chat_with_bl_goes_to_lookup_not_out_of_scope(monkeypatch):
     """B/L이 있으면 날씨 낱말이 있어도 그 화물 조회가 먼저다."""
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
     seen = []
     monkeypatch.setattr(svc.referrals, "out_of_scope_topic", lambda m: seen.append(m) or ("weather", "x"))
     monkeypatch.setattr(svc, "agent_enabled", lambda: False)
@@ -138,13 +138,13 @@ def test_chat_with_bl_goes_to_lookup_not_out_of_scope(monkeypatch):
 
 
 def test_broker_only_has_official_tail():
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
     assert svc.BROKER_ONLY.endswith(rule("broker_referral")) and "관세사" in svc.BROKER_ONLY
 
 
 def test_chat_broker_topic_without_cargo_is_fixed_even_without_agent(monkeypatch):
     """에이전트를 못 쓰는 전 방식에서도 세액 질문은 관세사 고정 안내다 (10-06 재생 서버 실측)."""
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
     monkeypatch.setattr(svc, "agent_enabled", lambda: False)
     monkeypatch.setattr(svc, "_classic", lambda *a, **k: pytest.fail("세액 질문은 전 방식으로 가지 않는다"))
     r = svc.handle("관세 얼마 나와?", "s-ref", None, lambda req: None)
@@ -153,7 +153,7 @@ def test_chat_broker_topic_without_cargo_is_fixed_even_without_agent(monkeypatch
 
 def test_chat_broker_word_in_broker_name_is_not_tax(monkeypatch):
     """'관세사'는 세액 주제가 아니다 (BROKER_TOPIC 관세(?!사))."""
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
     monkeypatch.setattr(svc, "agent_enabled", lambda: False)
     monkeypatch.setattr(svc, "_classic", lambda *a, **k: svc.ChatResult(kind="message", reply="전 방식"))
     assert svc.handle("관세사는 어떻게 찾아?", "s-ref", None, lambda req: None).reply == "전 방식"

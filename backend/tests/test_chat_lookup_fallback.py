@@ -1,4 +1,4 @@
-"""채팅 답 버그 수정 테스트 (10-07 정운 실사용 34·35·52·54, services/chat.py).
+"""채팅 답 버그 수정 테스트 (10-07 정운 실사용 34·35·52·54, services/chat/chat.py).
 
 LLM·MCP·해수부·판정 흐름은 부르지 않는다. test_chat_agent.py의 가짜 llm.chat_agent와 MCP 가짜를 그대로 쓴다.
 배 이름·B/L은 모두 모의값이다.
@@ -7,7 +7,7 @@ LLM·MCP·해수부·판정 흐름은 부르지 않는다. test_chat_agent.py의
   54: 같은 B/L이 연달아 조회 결과 없음이면 같은 문장을 되풀이하지 않는다
 """
 from backend.app.routers.agent import NO_CARGO, _response
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat import PLANS
 from backend.tests.test_chat_agent import MCP_TOOLS, _agent, _mcp  # noqa: F401 - 같은 가짜 도구 목록을 쓴다

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 
 from backend.app.schemas.signals import Signal, SignalSet
-from backend.app.services.signals import DEST_BROKEN, DEST_EMPTY
+from backend.app.services.judge.signals import DEST_BROKEN, DEST_EMPTY
 from evals.baseline_rules import verdict_for
 
 IDS = ["position_stale", "eta_conflict", "anchor_wait", "dest_changed",

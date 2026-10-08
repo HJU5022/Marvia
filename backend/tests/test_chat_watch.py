@@ -1,4 +1,4 @@
-"""대화로 지켜보기 + 먼저 제안 테스트 (10-06 결정, services/chat.py WatchHooks·_with_offer·run_watch, routers/chat.py 계약).
+"""대화로 지켜보기 + 먼저 제안 테스트 (10-06 결정, services/chat/chat.py WatchHooks·_with_offer·run_watch, routers/chat.py 계약).
 
 LLM·DB·판정 흐름은 부르지 않는다. llm.chat_agent를 가짜로 끼워 도구를 대본대로 부르게 하고, 지켜보기 저장소는 가짜 WatchHooks로 둔다.
 B/L은 모의값이다.
@@ -8,9 +8,9 @@ import pytest
 from backend.app.routers import chat as chat_router
 from backend.app.routers.agent import _response
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
-from backend.app.services.watch import WatchError
+from backend.app.services.watch.watch import WatchError
 
 USER = "user-1"
 BL = "TESTBL01"
@@ -323,7 +323,7 @@ def test_router_worry_picks_latest_worry_of_that_cargo(monkeypatch):
     from cryptography.fernet import Fernet
     monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())  # 화물 지문(cargo_key)에 필요
     monkeypatch.setenv("DATABASE_URL", "postgres://example")
-    from backend.app.services import cargo
+    from backend.app.services.watch import cargo
 
     class Conn:
         def __enter__(self): return self

@@ -1,4 +1,4 @@
-"""화물 표 서비스 테스트 (services/cargo.py, docs/specs/memory.md "화물 표 컬럼").
+"""화물 표 서비스 테스트 (services/watch/cargo.py, docs/specs/memory.md "화물 표 컬럼").
 
 DB 없이 돈다. conn은 보낸 SQL과 값을 적어 두는 가짜다. B/L은 모의값이다(실제 번호 아님).
 """
@@ -8,8 +8,8 @@ import pytest
 from cryptography.fernet import Fernet
 
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import cargo
-from backend.app.services.verdict import VERDICT_LABEL
+from backend.app.services.watch import cargo
+from backend.app.services.judge.verdict import VERDICT_LABEL
 
 NOW = datetime(2026, 10, 2, 3, tzinfo=timezone.utc)  # 한국 시각 10-02 12:00
 BL = "MOCKBL20261002"  # 모의 B/L

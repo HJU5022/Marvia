@@ -1,4 +1,4 @@
-"""기억 뽑기 명령 정리(칸 정리, 화물 없는 대화의 거래처 칸 옮기기) 테스트 (services/memory.check_ops, 10-06 정운 결정).
+"""기억 뽑기 명령 정리(칸 정리, 화물 없는 대화의 거래처 칸 옮기기) 테스트 (services/account/memory.check_ops, 10-06 정운 결정).
 
 배경: 실제 모델(gpt-4o-mini)로 시험하니 판단은 맞는데 check_ops가 거의 모든 좋은 명령을 거절했다.
  - 엄격한 출력 스키마가 모든 칸 이름을 반드시 내게 해서, 모델이 안 쓰는 칸(text, source)을 채워 와 unknown_field로 거절
@@ -10,7 +10,7 @@ from datetime import date
 
 import pytest
 
-from backend.app.services import memory
+from backend.app.services.account import memory
 
 TODAY = date(2026, 10, 6)
 KEY = "cargo-key-1"

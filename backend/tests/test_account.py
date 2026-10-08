@@ -1,4 +1,4 @@
-"""회원 탈퇴 테스트 (삭제 3단계: routers/account.py 창구, services/account.py 순서 규칙, clients/supabase_admin.py).
+"""회원 탈퇴 테스트 (삭제 3단계: routers/account.py 창구, services/account/account.py 순서 규칙, clients/supabase_admin.py).
 
 진짜 Supabase는 부르지 않는다. httpx.delete와 DB 함수를 가짜로 바꿔 끼운다.
 """
@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.clients import supabase_admin
 from backend.app.main import app
-from backend.app.services import account as account_service
+from backend.app.services.account import account as account_service
 from backend.tests.test_routers import _login
 
 SECRET = "sb_secret_test-only-value"
@@ -71,7 +71,7 @@ def test_missing_key_is_not_configured(monkeypatch):
     assert e.value.kind == "not_configured"
 
 
-# ── 탈퇴 순서 (services/account.py)와 입구 (routers/account.py) ──
+# ── 탈퇴 순서 (services/account/account.py)와 입구 (routers/account.py) ──
 
 class FakeConn:
     def __enter__(self):

@@ -1,12 +1,13 @@
-"""10-08 실험 A1: 사람 이름 되풀이 막기 테스트 (services/chat.py person_names·echoes_person_name, 항상 켜짐).
+"""10-08 실험 A1: 사람 이름 되풀이 막기 테스트 (services/chat/chat.py person_names·echoes_person_name, 항상 켜짐).
 
 화물·배와 상관없는 사람 이름("호준이", "민수 어디야?", "김대리한테 전달해야 돼")에 모델이 이름을 따라 쓴 답은 버리고
 고정 문장으로 누구를 말하는지 되묻는다. 저장한 메모를 묻는 말(거래처 이름 등)의 답은 건드리지 않는다. LLM은 부르지 않는다 (가짜 chat_agent).
 """
 import pytest
 
-from backend.app.services import chat as svc
-from backend.app.services import llm, validate
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.judge import validate
 from backend.tests.test_chat_agent import _agent, _no_classic
 
 KNOWN = llm.skills_reference(llm.CHAT_AGENT_SKILLS) + svc.OTHER_REPLY + validate.GENERAL_TERMS

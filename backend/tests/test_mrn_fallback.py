@@ -4,9 +4,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import chat as chat_svc
-from backend.app.services import doc_ocr
-from backend.app.services import mrn_fallback as svc
+from backend.app.services.chat import chat as chat_svc
+from backend.app.services.chat import doc_ocr
+from backend.app.services.judge import mrn_fallback as svc
 
 KST = timezone(timedelta(hours=9))
 

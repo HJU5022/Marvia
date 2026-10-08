@@ -1,7 +1,7 @@
 """POST /api/document: 서류 사진에서 조회 값 7칸과 출항일(etd)을 뽑아 확인 화면용으로 돌려준다 (docs/specs/document-extract.md).
 
 처리 순서 (Spec "흐름"):
-  1~2. 전처리 + OCR               services/doc_ocr.read_lines (로컬, 외부 호출 없음). PDF(%PDF로 시작)는 read_pdf: 글자층 먼저, 없으면 그림으로 OCR
+  1~2. 전처리 + OCR               services/chat/doc_ocr.read_lines (로컬, 외부 호출 없음). PDF(%PDF로 시작)는 read_pdf: 글자층 먼저, 없으면 그림으로 OCR
   3.   B/L 번호를 코드로 뽑고 가림   doc_ocr.take_bl, mask_bl. 가려지지 않으면 LLM을 부르지 않는다
   4.   나머지 6칸                   services/llm.extract_doc_fields (소형 모델, LLM_MODEL)
   5.   칸 검사                      doc_ocr.check_fields, B/L 조건·연락처는 doc_ocr.check_conditions (10-02 결정 6)
@@ -20,7 +20,8 @@ from backend.app.observability.langfuse import request_span, session_scope
 from backend.app.observability.logging import current_request_id, log_failure
 from backend.app.routers.agent import quota_guard
 from backend.app.schemas.document import DocumentFields, DocumentResponse, FieldResult, OcrInfo
-from backend.app.services import doc_ocr, llm
+from backend.app.services.chat import doc_ocr
+from backend.app.services import llm
 
 router = APIRouter(prefix="/api", tags=["document"])
 
@@ -108,7 +109,7 @@ def _read_document(file: UploadFile, session_id: str | None, user_id: str | None
         masked, status = None, "partial"
 
     if masked is not None and ocr.lines:
-        # 로그인 사용자면 session 없이 와도 범위를 연다. 안 열면 서류 판독 토큰이 하루 한도에 안 쌓인다 (services/quota.py, 10-06 점검)
+        # 로그인 사용자면 session 없이 와도 범위를 연다. 안 열면 서류 판독 토큰이 하루 한도에 안 쌓인다 (services/account/quota.py, 10-06 점검)
         with session_scope(session_id, user_id) if (session_id or user_id) else nullcontext():  # 둘 다 없으면 트레이스만 남긴다
             try:
                 out = llm.extract_doc_fields(masked).output

@@ -167,7 +167,7 @@ def test_unexpected_exception_returns_bad_response(monkeypatch):
 
 def test_defaults_come_from_rules():
     """조회 기간·선명 비교 기준은 port-busan/rules.md 프론트매터 값이다 (C6, 10-06)."""
-    from backend.app.services.rules import rule
+    from backend.app.services.judge.rules import rule
 
     assert port_schedule.LOOKBACK_DAYS == rule("port_schedule_lookback_days")
     assert port_schedule.LOOKAHEAD_DAYS == rule("port_schedule_lookahead_days")

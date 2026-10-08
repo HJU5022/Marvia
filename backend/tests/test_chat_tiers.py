@@ -1,4 +1,4 @@
-"""채팅 에이전트의 세 층 답 테스트 (10-05 결정, services/chat.py _agent, validate.check_chat_reply 3층 인자).
+"""채팅 에이전트의 세 층 답 테스트 (10-05 결정, services/chat/chat.py _agent, validate.check_chat_reply 3층 인자).
 
 세 층: Skill 문서(1층) → 웹 검색(2층) → 모델 일반 지식(3층, answer_kind=general, 꼬리표를 코드가 붙임) → 마지막에야 "자료에 없다".
 키 없이 돈다. llm.chat_agent와 llm.web_search는 가짜다. 웹 글·주소는 모의값(example.test)이다.
@@ -9,8 +9,9 @@ from datetime import datetime
 import pytest
 
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import chat as svc
-from backend.app.services import llm, validate
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.judge import validate
 from backend.tests.test_chat_agent import KNOWLEDGE, _agent, _no_classic, agent_path  # noqa: F401 - agent_path는 autouse 픽스처
 
 GENERAL = "마스터 B/L은 선사가 발행하는 선하증권이고, 하우스 B/L은 포워더가 화주에게 발행하는 선하증권이에요."

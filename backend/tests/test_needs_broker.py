@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
 from backend.app.services import llm
-from backend.app.services.rules import customs_stage_names, stage_key
-from backend.app.services.signals import needs_broker
+from backend.app.services.judge.rules import customs_stage_names, stage_key
+from backend.app.services.judge.signals import needs_broker
 
 
 def test_stage_names_come_from_rules_yaml():

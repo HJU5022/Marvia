@@ -1,11 +1,11 @@
-"""메모 꺼내 보기 recall_memo 테스트 (10-08 정운 실사용 81, services/chat.py select_memo·run_recall).
+"""메모 꺼내 보기 recall_memo 테스트 (10-08 정운 실사용 81, services/chat/chat.py select_memo·run_recall).
 
 LLM·DB는 부르지 않는다. llm.chat_agent를 가짜로 끼우고, 메모 읽기(_load_memo)는 가짜 항목으로 바꾼다.
 회사 이름·배 이름·전화번호(051-000-0000 등)는 모두 모의값이다.
 """
 import pytest
 
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat_agent import _agent, agent_path  # noqa: F401 (fixture)
 

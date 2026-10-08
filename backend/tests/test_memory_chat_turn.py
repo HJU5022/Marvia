@@ -1,4 +1,4 @@
-"""화물 조회 없는 채팅 턴도 기억 뽑기에 간다 (services/memory.remember_chat_later, services/chat.handle, 10-06 정운 결정).
+"""화물 조회 없는 채팅 턴도 기억 뽑기에 간다 (services/account/memory.remember_chat_later, services/chat/chat.handle, 10-06 정운 결정).
 
 배경: 기억 뽑기는 화물 조회·후속 질문 뒤에만 돌아, "우리 포워더는 가온 김과장이야" 같은 말이 B/L 없는 평범한 대화에서 버려졌다.
 외부 API·DB·LLM 없이 돈다. DB는 test_memory.py의 FakeMemoryDB, 기억 뽑기 LLM은 가짜 함수다. B/L은 모의값이다.
@@ -8,8 +8,9 @@ import json
 import pytest
 from cryptography.fernet import Fernet
 
-from backend.app.services import chat as svc
-from backend.app.services import llm, memory
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.account import memory
 from backend.tests.test_chat import _route
 from backend.tests.test_memory import FakeMemoryDB, _ops_answer, _op, _wire
 

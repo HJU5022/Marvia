@@ -1,4 +1,4 @@
-"""메모장 서비스 테스트 (services/memory.py, docs/specs/memory.md 쓰기 흐름 4~7, EC-01·03·04·06·07·08).
+"""메모장 서비스 테스트 (services/account/memory.py, docs/specs/memory.md 쓰기 흐름 4~7, EC-01·03·04·06·07·08).
 
 DB·LLM 없이 돈다. 메모장 표는 SQL 모양을 보고 답하는 가짜(FakeMemoryDB), 기억 뽑기 LLM은 가짜 함수다.
 B/L은 모의값이다(실제 번호 아님).
@@ -10,7 +10,9 @@ import pytest
 from cryptography.fernet import Fernet
 
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import cargo, llm, memory
+from backend.app.services.watch import cargo
+from backend.app.services import llm
+from backend.app.services.account import memory
 
 TODAY = date(2026, 10, 2)
 NOW = datetime(2026, 10, 2, 3, tzinfo=timezone.utc)

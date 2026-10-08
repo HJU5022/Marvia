@@ -1,9 +1,9 @@
-"""services/identify.py 테스트. 해수부는 가짜 클라이언트로 바꿔 끼워 키 없이 돈다."""
+"""services/judge/identify.py 테스트. 해수부는 가짜 클라이언트로 바꿔 끼워 키 없이 돈다."""
 from datetime import date, datetime, timezone
 
 from backend.app.clients.mof import MofError
 from backend.app.schemas.customs import CustomsRecord
-from backend.app.services import identify
+from backend.app.services.judge import identify
 
 NOW = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
 

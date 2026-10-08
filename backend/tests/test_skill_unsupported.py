@@ -3,7 +3,8 @@ Skill 원문은 실제 skills/ 폴더(llm.CHAT_AGENT_SKILLS)를 쓴다. LLM 호�
 근거: 10-06 실측 "B/L도 없고 포워더는 연락이 안 되는데" 답의 "화물 인도증"은 Skill 어디에도 없는데 꼬리표 없이 Skill 답으로 나갔다."""
 import pytest
 
-from backend.app.services import llm, validate
+from backend.app.services import llm
+from backend.app.services.judge import validate
 
 SKILLS = llm.skills_reference(llm.CHAT_AGENT_SKILLS)
 

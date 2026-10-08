@@ -11,7 +11,9 @@ import pytest
 from cryptography.fernet import Fernet
 
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import cargo, llm, memory
+from backend.app.services.watch import cargo
+from backend.app.services import llm
+from backend.app.services.account import memory
 
 TODAY = date(2026, 10, 2)
 NOW = datetime(2026, 10, 2, 3, tzinfo=timezone.utc)
@@ -363,14 +365,14 @@ def test_replay_key_ignores_context(monkeypatch):
 
 def test_verdict_label_values():
     from backend.app.routers import agent
-    from backend.app.services import verdict
+    from backend.app.services.judge import verdict
 
     assert verdict.VERDICT_LABEL == {"fine": "순항", "watch": "주의", "act": "긴급"}
     assert agent.VERDICT_LABEL is verdict.VERDICT_LABEL
 
 
 def test_validate_extra_empty_is_identical():
-    from backend.app.services import validate
+    from backend.app.services.judge import validate
 
     resp = _resp(answer="여유 3일, 7일 뒤 도착")
     assert [v.rule for v in validate.check(resp)] == [v.rule for v in validate.check(resp, extra="")]

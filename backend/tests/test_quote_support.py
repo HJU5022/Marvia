@@ -1,6 +1,6 @@
 """V14 받침 검사(validate.quote_supports) 시험 (10-05). 근거 조각이 원문에 있다는 것(quote_found)과 별개로,
 그 조각이 답과 상관있는지를 본다. 앞의 두 사례는 실제 웹 검색 결과와 답이다 (10-05 실측)."""
-from backend.app.services import validate
+from backend.app.services.judge import validate
 
 DO_SOURCE = ("D/O는 선사나 포워더가 발행한다. 실무적으로 이러한 비용을 선사나 포워더에 지불하면, 선사나 포워더는 화물인도지시서를 발행하여 "
              "수입물품을 찾아갈 수 있도록 합니다. 해상운임과 부대비용을 정산하고 원본 B/L 제출이나 서렌더 처리를 해야 합니다.")

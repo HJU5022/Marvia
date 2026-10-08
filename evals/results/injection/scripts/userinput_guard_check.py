@@ -1,6 +1,6 @@
 """사용자 입력 채널 공격문을 guard 수정 전·후에 넣어 LLM 전에 막히는 수를 센다 (10-02, 키 없이, LLM 호출 없음).
 
-git show <수정 전 커밋>:backend/app/services/guard.py > /tmp/guard_old.py
+git show <수정 전 커밋>:backend/app/services/judge/guard.py > /tmp/guard_old.py
 PYTHONPATH=. python evals/results/injection/scripts/userinput_guard_check.py /tmp/guard_old.py
 
 세는 것
@@ -21,7 +21,7 @@ HERE = ROOT / "evals" / "results" / "injection"
 spec = importlib.util.spec_from_file_location("guard_old", sys.argv[1])
 old = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(old)
-from backend.app.services import guard as new  # noqa: E402
+from backend.app.services.judge import guard as new  # noqa: E402
 from backend.tests import test_guard, test_guard_userinput  # noqa: E402
 
 whitebox = json.loads((HERE / "whitebox_attacks.json").read_text(encoding="utf-8"))

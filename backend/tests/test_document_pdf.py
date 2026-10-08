@@ -13,7 +13,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from backend.app.main import app
-from backend.app.services import doc_ocr, llm
+from backend.app.services.chat import doc_ocr
+from backend.app.services import llm
 
 pdfium = pytest.importorskip("pypdfium2")
 

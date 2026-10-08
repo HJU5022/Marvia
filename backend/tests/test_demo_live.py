@@ -2,7 +2,7 @@
 
 scripts/demo/make_demo.build_all이 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo_papers.py와 같은 방식).
 판정 LLM은 쓰지 않는다. 평가 (a) 규칙만과 같이 llm.judge·llm.pick_vessel 자리에 evals/baseline_rules를 끼운다.
-그래서 이 테스트가 보는 것은 코드의 몫이다: 1층 신호, 판정 표 등급(services/verdict.table_verdict), 선박 식별, 품명·컨테이너 파싱.
+그래서 이 테스트가 보는 것은 코드의 몫이다: 1층 신호, 판정 표 등급(services/judge/verdict.table_verdict), 선박 식별, 품명·컨테이너 파싱.
 (LLM이 쓰는 설명 문장은 여기서 안 본다. 등급은 회색 지대가 아니면 LLM이 못 바꾼다, routers/agent.py)
 
 기준 시각을 셋으로 돌린다 (한국 시각 낮, 자정 직전, 자정 직후). make_demo가 시각을 옮기면 날짜 칸이 어긋나기 쉬운 시간대라서다.
@@ -22,8 +22,8 @@ from freezegun import freeze_time
 
 from backend.app.clients import replay
 from backend.app.clients.shipfinder import ShipFinderClient
-from backend.app.services import verdict
-from backend.app.services.evidence import KST
+from backend.app.services.judge import verdict
+from backend.app.services.judge.evidence import KST
 from evals import baseline_rules
 from scripts.demo import demo_live, make_demo
 
@@ -132,7 +132,7 @@ def test_case(demo, case, monkeypatch):
     assert response.verdict == case["expected_verdict"]
     if case["expected_vessel_match"] == "confirmed":
         assert [c.mmsi for c in response.vessel_candidates] == [case["expected_mmsi"]]
-        # MRN으로 해수부 신고를 찾아 호출부호로 이은 배다 (이름이 아니라 번호로 확정, services/identify.call_sign_from_mrn)
+        # MRN으로 해수부 신고를 찾아 호출부호로 이은 배다 (이름이 아니라 번호로 확정, services/judge/identify.call_sign_from_mrn)
         assert "MRN 입항 신고의 호출부호 일치" in response.vessel_candidates[0].match_reasons
     unipass = case["fixtures"]["unipass"]
     mof_mrns = {r["mrNum"] for r in case["fixtures"]["mof"]["arrival_reports"] if r["mrNum"]}
@@ -158,9 +158,9 @@ def test_case(demo, case, monkeypatch):
 
 @pytest.mark.parametrize("case", CASES, ids=[c["id"] for c in CASES])
 def test_customs_record_parsed(demo, case):
-    """세관 응답 파싱(services/customs.UnipassClient.fetch, 라우터가 쓰는 길 그대로): 품명·컨테이너·포워더·선사·적재항·이력.
+    """세관 응답 파싱(services/judge/customs.UnipassClient.fetch, 라우터가 쓰는 길 그대로): 품명·컨테이너·포워더·선사·적재항·이력.
     판정 LLM이 통관 해설을 쓰지 않는 규칙 판정에서는 응답에 통관 칸이 안 채워져, 파싱 결과를 여기서 직접 본다."""
-    from backend.app.services.customs import UnipassClient
+    from backend.app.services.judge.customs import UnipassClient
 
     unipass = case["fixtures"]["unipass"]
     record = UnipassClient().fetch(case["request"]["bl_no"], "HOUSE")

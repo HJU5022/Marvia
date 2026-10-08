@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.routers import agent as agent_router
 from backend.app.routers import chat as chat_module
-from backend.app.services import llm, memory
+from backend.app.services import llm
+from backend.app.services.account import memory
 from backend.tests.test_chat import _route
 from backend.tests.test_chat_stream import _events
 from backend.tests.test_memory_wiring import _capture_judge

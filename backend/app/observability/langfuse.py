@@ -77,7 +77,7 @@ def session_scope(session_id: str, user_id: str | None = None) -> AbstractContex
     같은 세션의 조회·후속 질문을 Langfuse Sessions 화면에서 한 줄로 볼 수 있다.
     로그인했으면 user_id도 붙인다 (G3). Supabase 사용자 ID(무작위 UUID)라 이메일·이름은 Langfuse에 가지 않는다.
     잘못된 값(ASCII가 아니거나 200자 초과)은 langfuse가 경고만 남기고 버린다. 요청은 막히지 않는다.
-    같은 범위에서 LLM 토큰 사용량을 누구 몫으로 쌓을지도 정한다 (services/quota.py, 10-02). 트레이스 키가 없어도 정한다.
+    같은 범위에서 LLM 토큰 사용량을 누구 몫으로 쌓을지도 정한다 (services/account/quota.py, 10-02). 트레이스 키가 없어도 정한다.
     """
     return _scoped(session_id, user_id)
 
@@ -85,7 +85,7 @@ def session_scope(session_id: str, user_id: str | None = None) -> AbstractContex
 @contextmanager
 def _scoped(session_id: str, user_id: str | None):
     """session_scope 본체. 사용량 주인을 정하고, 키가 있으면 Langfuse 속성도 붙인다."""
-    from backend.app.services import quota  # 순환 import를 피하려고 여기서 부른다
+    from backend.app.services.account import quota  # 순환 import를 피하려고 여기서 부른다
 
     token = quota.owner_var.set(quota.owner_key(session_id, user_id))
     try:

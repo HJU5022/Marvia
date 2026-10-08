@@ -1,12 +1,13 @@
-"""채팅 에이전트 10-05 결정 A~F 테스트 (services/chat.py, prompts/marvia-chat-agent.md, services/bl_parse.py 연결).
+"""채팅 에이전트 10-05 결정 A~F 테스트 (services/chat/chat.py, prompts/marvia-chat-agent.md, services/judge/bl_parse.py 연결).
 A 인사 · B 사용법(코드 고정 문장)·고정 안내 · C 상황 설명 · D 통관 시기 · E 여러 B/L 비교 문장(프롬프트) · F B/L 고쳐 읽기·붙은 번호.
 LLM·판정 흐름은 test_chat_agent.py의 가짜를 쓴다. B/L은 모의값이다."""
 import pytest
 
 from backend.app.routers.agent import NO_CARGO, _response
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import bl_parse, llm
-from backend.app.services import chat as svc
+from backend.app.services.judge import bl_parse
+from backend.app.services import llm
+from backend.app.services.chat import chat as svc
 from backend.tests.test_chat_agent import _agent, _out, agent_path, web_off  # noqa: F401 (fixture)
 
 CTX = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="old")

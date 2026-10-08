@@ -23,7 +23,7 @@ from typing import Annotated
 from pydantic import Field
 
 from backend.app.clients.mof import MofClient, MofError, SailingPlan, VesselCall
-from backend.app.services.rules import rule
+from backend.app.services.judge.rules import rule
 from mcp_server.schemas import ControlEvent, PortScheduleResult, ToolError
 
 # 조회 기간과 선명 비교 기준은 skills/port-busan/rules.md 프론트매터가 원본이다 (C6, 10-06 점검: 코드 숫자를 옮김).

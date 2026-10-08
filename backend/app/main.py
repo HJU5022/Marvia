@@ -26,7 +26,7 @@ from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
 from backend.app.routers import account, admin, agent, cargo_sheet, chat, conversations, document, history, kakao, memory, profile, watch
-from backend.app.services import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
+from backend.app.services.account import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
 from mcp_server.server import MountedMCP
 
 setup_logging()

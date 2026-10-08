@@ -16,7 +16,7 @@ import sys
 from dotenv import load_dotenv
 
 from backend.app.db import apply_migrations, connect
-from backend.app.services import operators as ops
+from backend.app.services.account import operators as ops
 
 
 def main() -> int:

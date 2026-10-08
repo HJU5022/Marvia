@@ -63,7 +63,7 @@ def test_papers_case(demo, case):
     response = _ask(g)
     assert response.vessel_match == case["expected_vessel_match"]
     if case["expected_vessel_match"] == "confirmed":
-        # 확정한 배 1척과 서류 대조 근거 한 줄 (services/identify.match_by_papers가 만드는 문장)
+        # 확정한 배 1척과 서류 대조 근거 한 줄 (services/judge/identify.match_by_papers가 만드는 문장)
         assert response.status not in ("insufficient", "failed")
         assert [c.mmsi for c in response.vessel_candidates] == [case["expected_mmsi"]]
         day = datetime.strptime(g["entry_date"], "%Y%m%d").date().isoformat()

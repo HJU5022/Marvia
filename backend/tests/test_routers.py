@@ -143,7 +143,7 @@ def test_table_verdict_with_llm_text(fake, monkeypatch):
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("ok", "watch", "rule")
     assert (seen["table_verdict"], seen["verdict_mode"]) == ("watch", "fixed")
-    # LLM이 쓴 할 일 뒤에 켜진 신호의 확인처 줄을 코드가 붙인다 (services/referrals.py, 10-06)
+    # LLM이 쓴 할 일 뒤에 켜진 신호의 확인처 줄을 코드가 붙인다 (services/chat/referrals.py, 10-06)
     assert body["actions"][0] == "포워더에 확인" and body["answer"] == JUDGED["answer"]
     assert all(a.startswith("확인처: ") or a.startswith("진행 상황") for a in body["actions"][1:])
     assert body["customs"]["stage_name"] == "반입신고" and body["customs"]["next_stage"] == "수입신고"
@@ -877,7 +877,7 @@ def _history_db(monkeypatch, rows, asked):
 
 
 def test_history_reason_is_built_from_margin_and_stage(monkeypatch):
-    """한 줄 이유는 코드가 만든다. 값이 있는 것만 쓰고 둘 다 없으면 null (services/watch._change_reason과 같은 규칙)."""
+    """한 줄 이유는 코드가 만든다. 값이 있는 것만 쓰고 둘 다 없으면 null (services/watch/watch._change_reason과 같은 규칙)."""
     base = {"request_id": "r", "bl_masked": "TEST****0001", "status": "ok", "verdict": "watch",
             "vessel_match": "confirmed", "decided_by": "rule", "trace_id": "r", "created_at": NOW}
     rows = [{**base, "days_margin": 3, "stage_name": "반입신고"}, {**base, "days_margin": -2, "stage_name": None},

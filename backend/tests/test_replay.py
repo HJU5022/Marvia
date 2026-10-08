@@ -12,7 +12,7 @@ import pytest
 from backend.app.clients import replay
 from backend.app.clients.mof import MofClient
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
-from backend.app.services.customs import UnipassClient
+from backend.app.services.judge.customs import UnipassClient
 
 FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "fixtures"
 

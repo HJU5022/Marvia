@@ -205,7 +205,7 @@ def purge_watch_positions(conn) -> int:
 
 
 def recent_positions(conn, mmsi: int, limit: int = 20) -> list[dict]:
-    """워커가 모은 같은 배의 위치 이력을 오래된 순으로 읽는다. anchor_wait 정지 시간 계산용 (services/signals.py).
+    """워커가 모은 같은 배의 위치 이력을 오래된 순으로 읽는다. anchor_wait 정지 시간 계산용 (services/judge/signals.py).
 
     limit 20줄은 워커 6시간 간격(09-23 결정)이면 약 5일치다. 정지 기준 24시간(rules.md anchor_wait_hours)과
     그 앞에 움직이던 점까지 보기에 넉넉하다. 모양은 signals.compute의 history와 같게 {"at", "lat", "lng", "sog"}.

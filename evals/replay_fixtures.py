@@ -98,7 +98,7 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
         return
     stage = (u.get("prgsStts") or "").replace(SUMMARY_MARK, "").strip()
     fields = {
-        # 이력 줄이 없으면 서버는 csclPrgsStts를 단계 이름으로 쓴다 (services/customs.py FIELD_CANDIDATES)
+        # 이력 줄이 없으면 서버는 csclPrgsStts를 단계 이름으로 쓴다 (services/judge/customs.py FIELD_CANDIDATES)
         "csclPrgsStts": u.get("csclPrgsStts") or stage,
         "prgsStts": stage,
         "cargMtNo": u.get("cargMtNo"),
@@ -129,7 +129,7 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
 # 라이브 데모가 쓰는 API001 상단 칸 (연계가이드 v4.1, evals/fixtures/unipass/progress_ok.xml 순서). 서버는 이 중 일부만 읽고 나머지는 실제 응답 모양을 맞추려고 둔다
 UNIPASS_EXTRA = ("prgsStCd", "mblNo", "hblNo", "shipNatNm", "vydf", "etprCstm", "lodCntyCd", "dsprNm", "prnm", "ttwg", "wghtUt",
                  "cargTp", "rlseDtyPridPassTpcd", "dclrDelyAdtxYn", "cntrGcnt", "shcoFlcoSgn", "shcoFlco", "frwrSgn", "frwrEntsConm")
-# 이력 한 줄의 13칸 (services/customs.py DETAIL_FIELDS와 같은 이름). 실제 응답처럼 빈 칸도 빈 태그로 쓴다
+# 이력 한 줄의 13칸 (services/judge/customs.py DETAIL_FIELDS와 같은 이름). 실제 응답처럼 빈 칸도 빈 태그로 쓴다
 HISTORY_TAGS = ("cargTrcnRelaBsopTpcd", "prcsDttm", "dclrNo", "rlbrDttm", "rlbrBssNo", "rlbrCn", "bfhnGdncCn", "shedNm", "shedSgn",
                 "pckGcnt", "pckUt", "wght", "wghtUt")
 

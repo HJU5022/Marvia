@@ -2,8 +2,8 @@
 LLM·MCP는 test_chat_agent.py의 가짜를 그대로 쓴다. 키 없이 돈다."""
 from backend.app.routers import agent as agent_router
 from backend.app.routers.agent import _response
-from backend.app.services import chat as svc
-from backend.app.services import validate
+from backend.app.services.chat import chat as svc
+from backend.app.services.judge import validate
 from backend.tests.test_chat_agent import _agent
 
 

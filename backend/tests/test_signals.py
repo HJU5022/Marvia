@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from backend.app.schemas.customs import CustomsRecord
-from backend.app.services.signals import compute, trusted_eta
+from backend.app.services.judge.signals import compute, trusted_eta
 
 NOW = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
 

@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 
 from backend.app.main import app
 from backend.app.routers import chat as chat_router
-from backend.app.services import chat as svc
-from backend.app.services import quota
+from backend.app.services.chat import chat as svc
+from backend.app.services.account import quota
 
 
 def _stubs(monkeypatch) -> list:

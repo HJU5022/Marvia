@@ -1,4 +1,4 @@
-"""회원 정보 테스트 (docs/specs/user-profile.md, routers/profile.py, services/profile.py).
+"""회원 정보 테스트 (docs/specs/user-profile.md, routers/profile.py, services/account/profile.py).
 
 진짜 DB는 부르지 않는다. test_admin.FakeConn(user_profiles 흉내)과 테스트용 Fernet 열쇠를 쓴다.
 """
@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 
 from backend.app.main import app
 from backend.app.routers import admin as admin_router
-from backend.app.services import operators as ops
-from backend.app.services import profile as svc
+from backend.app.services.account import operators as ops
+from backend.app.services.account import profile as svc
 from backend.tests.test_admin import OPERATOR, FakeConn, _login
 
 GOOD = {"name": "김승욱", "phone": "010-1234-5678", "address": "서울특별시 강남구 테헤란로 1", "consent": True}

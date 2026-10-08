@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from backend.app.main import app
 from backend.app.routers import document as document_router
-from backend.app.services import doc_ocr, llm
+from backend.app.services.chat import doc_ocr
+from backend.app.services import llm
 
 pytest.importorskip("rapidocr")
 

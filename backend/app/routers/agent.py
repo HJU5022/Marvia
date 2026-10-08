@@ -12,20 +12,20 @@
   4. 도구 호출 (위치·입항 일정·남은 거리)
   5. 1층 신호 판정 (코드)
   6. 2층 판정 (LLM, services/llm.judge)
-  7. 출력 검증 V1~V8 (services/validate.py, V8은 여기). 위반이면 최대 3번까지 다시 묻고, 그래도 위반이면 판정 표 등급 + 고정 문구로 partial
+  7. 출력 검증 V1~V8 (services/judge/validate.py, V8은 여기). 위반이면 최대 3번까지 다시 묻고, 그래도 위반이면 판정 표 등급 + 고정 문구로 partial
      다시 물으면 시간 예산(JUDGE_BUDGET_SEC)을 넘길 것 같을 때도 거기서 멈추고 같은 partial을 낸다 (10-05)
 
 6단계는 services/llm.judge()가 한다 (C-6, 09-27 연결). 결과를 어떻게 응답에 담나:
   - LLM이 끝내 실패하면(호출 실패, 세 번 모두 위반) status=partial. 등급은 판정 표 것을 내고 문장은 고정 문구. 회색 지대면 등급 없이 (09-30 결정, _llm_gave_up)
-  - 등급은 코드가 판정 표로 정한다(decided_by=rule). LLM은 그 등급에 맞춰 설명·할 일·상충·통관 해설을 쓴다 (09-30 D7, services/verdict.py)
+  - 등급은 코드가 판정 표로 정한다(decided_by=rule). LLM은 그 등급에 맞춰 설명·할 일·상충·통관 해설을 쓴다 (09-30 D7, services/judge/verdict.py)
   - 회색 지대(anchor_wait·customs_hold가 unknown)만 LLM이 표 등급 이상에서 고른다. 표보다 올리면 decided_by=llm
   - LLM이 표가 틀렸다고 보면 table_disagree에 적는다. 응답에 쓰지 않고 기록만 한다 (Langfuse generation output, 로그)
   - 쓸 위치가 없으면 LLM을 부르지 않는다. 데이터 없음은 insufficient, 도구 고장은 partial (09-29 결정, _no_position)
   - 위치가 캐시에서 왔으면(실시간 조회 실패) 판정은 하되 status=partial (09-29 결정, 평가셋 F02)
-근거 카드는 services/evidence.build()가 만든다 (C-8).
+근거 카드는 services/judge/evidence.build()가 만든다 (C-8).
 
 화물 비서 기억 (docs/specs/memory.md, 10-02): 로그인 사용자면 판정 전에 화물 표·메모장을 읽어 판정·후속 LLM에
-데이터 블록으로 넣고(services/memory.load_context), 응답을 돌려준 뒤 뒤에서 화물 표 쓰기와 기억 뽑기를 한다
+데이터 블록으로 넣고(services/account/memory.load_context), 응답을 돌려준 뒤 뒤에서 화물 표 쓰기와 기억 뽑기를 한다
 (memory.remember_later). 등급은 지금처럼 판정 표가 정한다. 사용자가 없으면(채점 환경·평가 실행기·데모) 아무것도 안 한다.
 10-02 검증 반영: 회색 지대(raise_only) 판정에는 기억 블록을 주지 않고(F7), 출력 검사에서 기억은 사용자가 준 날짜·숫자만 V7 근거로 친다.
 지난 조회 값과 메모 낱말은 근거가 아니다(F8, validate.user_supplied_text). V12는 블록을 실제로 줬을 때만 건다.
@@ -52,14 +52,20 @@ from backend.app.schemas.agent import (
     VesselInfo,
 )
 from backend.app.schemas.customs import CustomsRecord, mask_bl
-from backend.app.services import guard, identify, llm, progress, quota, referrals, validate
-from backend.app.services import memory as memory_service
-from backend.app.services import verdict as verdict_table
-from backend.app.services import signals as signals_service
-from backend.app.services.evidence import KST, build as build_evidence, days_margin
-from backend.app.services.rules import is_listed_stage, rule
+from backend.app.services.judge import guard
+from backend.app.services.judge import identify
+from backend.app.services import llm
+from backend.app.services.chat import progress
+from backend.app.services.account import quota
+from backend.app.services.chat import referrals
+from backend.app.services.judge import validate
+from backend.app.services.account import memory as memory_service
+from backend.app.services.judge import verdict as verdict_table
+from backend.app.services.judge import signals as signals_service
+from backend.app.services.judge.evidence import KST, build as build_evidence, days_margin
+from backend.app.services.judge.rules import is_listed_stage, rule
 from backend.app.clients import shipfinder as shipfinder_client
-from backend.app.services.customs import CustomsError, UnipassClient
+from backend.app.services.judge.customs import CustomsError, UnipassClient
 # MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py)
 from backend.app.services.mcp_client import (
     call_tool, estimate_distance, get_live_position, get_port_schedule, get_vessel_candidates, read_only_tools,
@@ -100,7 +106,7 @@ NOT_BUSAN = "부산항에 내리는 화물만 확인할 수 있습니다. 이 �
 LLM_FAILED = "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다."
 # 판정 LLM이 끝내 실패했을 때 표 등급으로 확정하며 쓰는 문구 (09-30 결정, _llm_gave_up). 숫자를 넣지 않는다 (V7)
 TABLE_FALLBACK = "판정 표 기준으로 '{label}'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요."
-VERDICT_LABEL = verdict_table.VERDICT_LABEL  # 원본은 services/verdict.py (화물 비서 "지난 조회" 줄과 같이 쓴다)
+VERDICT_LABEL = verdict_table.VERDICT_LABEL  # 원본은 services/judge/verdict.py (화물 비서 "지난 조회" 줄과 같이 쓴다)
 
 # 반출된 화물 (09-28 결정). 반출신고는 통관의 마지막 단계다 (skills/customs-stages/rules.md customs_stages, next가 null)
 RELEASED_STAGE = "반출신고"
@@ -125,10 +131,10 @@ JUDGE_BUDGET_SEC = 60.0
 # _identify가 "선박 검색 도구가 실패했다"를 알릴 때 쓰는 라우터 안의 표시. 응답의 vessel_match로는 나가지 않는다
 TOOL_FAILED = "tool_failed"
 FOLLOW_UP_FAILED = "질문에 답하지 못했습니다. 잠시 뒤 다시 물어봐 주세요."
-# 질문이 역할 재설정·지시 무시 모양이면 LLM을 부르지 않고 이 문구로 답한다 (services/guard.py, SDD 7절 10-01)
+# 질문이 역할 재설정·지시 무시 모양이면 LLM을 부르지 않고 이 문구로 답한다 (services/judge/guard.py, SDD 7절 10-01)
 FOLLOW_UP_BLOCKED = "이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다. 예: 여유가 며칠인가요? 지금 통관 단계는 무엇인가요?"
 # 후속 답에 거는 검증 규칙. answer 문장을 보는 것은 V1(오래된 위치를 현재 위치라 하지 않기),
-# V7(근거에 없는 숫자 금지), V11(통관 진행 평가 금지)이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/validate.py)
+# V7(근거에 없는 숫자 금지), V11(통관 진행 평가 금지)이다. 나머지는 판정·근거 칸을 보는데, 후속 질문은 그 칸을 바꾸지 않는다 (services/judge/validate.py)
 # 여기에 후속 답 전용 V9(근거에 없는 영문 낱말 금지, validate.check_follow_up_words)와 V10(질문 낱말 옮기기 금지)을 더 건다 (10-01)
 FOLLOW_UP_RULES = {"V1", "V7", "V11", "V15"}  # V11: 후속 답에도 통관 진행 평가를 쓰지 않는다 (10-01). V15: 판매 예정일이 지났다고 쓰지 않는다 (10-06 점검)
 # 후속 질문에서 LLM이 부른 도구 결과를 근거 카드로 붙일 때의 출처 (10-02). Evidence.source 값 중에서 고른다 (계약 C1, 바꾸지 않음)
@@ -156,7 +162,7 @@ def _response(**over) -> AgentResponse:
     return AgentResponse(**{**base, **over})
 
 
-# 하루 토큰 한도를 다 쓴 사람에게 주는 오류 (services/quota.py). 화면(web/lib/api.ts)이 이 값을 보고 입력을 막는다
+# 하루 토큰 한도를 다 쓴 사람에게 주는 오류 (services/account/quota.py). 화면(web/lib/api.ts)이 이 값을 보고 입력을 막는다
 QUOTA_DETAIL = "daily_token_limit"
 
 
@@ -216,7 +222,7 @@ def _assess(request: AgentRequest, memory: str | None = None) -> AgentResponse:
         # 세관에 아직 없는 B/L이고 MRN이 있으면 해수부 입항 신고로 배 상태까지는 보여 준다 (docs/specs/mrn-fallback.md).
         # 세관 장애(failed)는 대체하지 않는다 (EC-04)
         if failure.status == "insufficient" and request.mrn:
-            from backend.app.services import mrn_fallback  # 이 경우에만 불러온다
+            from backend.app.services.judge import mrn_fallback  # 이 경우에만 불러온다
             alternative = mrn_fallback.assess(request)
             if alternative is not None:
                 return alternative
@@ -379,7 +385,7 @@ def _after_customs(request: AgentRequest, customs: CustomsRecord, memory: str | 
                     violations += validate.check_memory_ids(texts, _evidence_text(response))
                 if not violations:
                     # 검증을 통과한 뒤에 확인처(다음 행선지)를 붙인다. LLM이 쓴 문장이 아니라 코드 문장이라
-                    # V1~V12 검사 대상이 아니고, 전화번호·시각 숫자가 V7 근거 검사에 걸리지도 않는다 (services/referrals.py, 10-06)
+                    # V1~V12 검사 대상이 아니고, 전화번호·시각 숫자가 V7 근거 검사에 걸리지도 않는다 (services/chat/referrals.py, 10-06)
                     return response.model_copy(update={"actions": referrals.with_signal_lines(response.actions, signal_set)})
                 # 규칙 번호만 남긴다. detail에는 LLM이 쓴 문장이 들어 있다
                 log_failure("validate", f"{','.join(v.rule for v in violations)} attempt {attempt}")
@@ -666,7 +672,7 @@ def _previous_response(request: AgentRequest, user_id: str | None = None) -> Age
     return previous
 
 
-# 사용자가 준 날짜 중 바뀌면 여유 일수·등급이 달라지는 것. 지난 결과의 근거 카드(services/evidence.py, source=rule)에 같은 이름으로 있다
+# 사용자가 준 날짜 중 바뀌면 여유 일수·등급이 달라지는 것. 지난 결과의 근거 카드(services/judge/evidence.py, source=rule)에 같은 이름으로 있다
 _DATE_INPUTS = ("sale_due_date", "forwarder_eta")
 
 
@@ -783,7 +789,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     호출부호도 같이 돌려준다. C1 VesselCandidate에는 자리가 없지만 해수부 조회에 필요하다.
 
     MRN 먼저 (09-28): B/L의 MRN으로 해수부 입항 신고에서 호출부호를 찾고, 그 호출부호로 최근 신호를 보낸 배가
-    1척이면 코드가 확정한다 (services/identify.py). 이름이 아니라 번호로 이어서 동명 선박·표기 차이가 없다.
+    1척이면 코드가 확정한다 (services/judge/identify.py). 이름이 아니라 번호로 이어서 동명 선박·표기 차이가 없다.
     MRN으로 못 찾거나(입항 신고 전 등) 호출부호로 최근 배가 1척이 아니면 지금까지처럼 이름으로 찾는다.
     """
     mrn_call_sign = identify.call_sign_from_mrn(customs)
@@ -840,7 +846,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     # 남의 배를 확정했다(B01 매번, B12 3번 중 2~3번, 데모 TESTBL04). 확정은 근거가 있을 때만 한다 (PRD 6.2 되묻기가 낫다).
     # SDD 5.5("2척 이상이면 LLM")와 다르다. 문서는 팀이 나중에 몰아서 현행화한다
     if not (request.voyage_no or request.forwarder_eta):
-        # 사용자에게 묻기 전에 서류끼리 먼저 맞춰 본다 (10-05 결정, services/identify.match_by_papers).
+        # 사용자에게 묻기 전에 서류끼리 먼저 맞춰 본다 (10-05 결정, services/judge/identify.match_by_papers).
         # 세관 입항일·적재항과 후보별 해수부 입항 신고가 둘 다 맞는 배가 1척이면 확정한다. 이름·위치는 쓰지 않는다
         # 후보 목록(candidates)에 든 배만 맞춰 본다. 목록에서 빠진 줄을 확정하면 화면에 그 배가 없다
         listed = {c.mmsi for c in candidates}
@@ -868,7 +874,7 @@ def _identify(customs: CustomsRecord, request: AgentRequest) -> tuple[list[Vesse
     return candidates, "uncertain", None, None
 
 
-# 지켜보기 재판정이 다시 쓰는 배 (services/watch.py). 그 화물을 처음 조회할 때 이미 확정해 user_cargo.vessel_mmsi에 저장한 배라
+# 지켜보기 재판정이 다시 쓰는 배 (services/watch/watch.py). 그 화물을 처음 조회할 때 이미 확정해 user_cargo.vessel_mmsi에 저장한 배라
 # 후보 확인 검색(ShipFinder 1~2회)을 다시 하지 않는다. 워커는 화물당 ShipFinder 1회만 떼어 두기 때문이다 (worker/run.py, 10-06 점검).
 # 사용자 요청 경로에서는 늘 None이다. 화면이 보낸 resolved_mmsi는 아래처럼 후보와 대조한다
 trusted_vessel: ContextVar[int | None] = ContextVar("trusted_vessel", default=None)
@@ -1161,7 +1167,7 @@ def _logged(request: AgentRequest, response: AgentResponse, user_id: str | None 
                 # 후속 질문이 꺼내 쓸 결과 전체 (004 마이그레이션). B/L 원본은 AgentResponse에 없다.
                 # UNI-PASS 처리 이력 원문(customs_detail)은 화면 전용이라 저장하지 않는다 (docs/specs/customs-detail.md)
                 # 컨테이너 번호도 평문 이력에 남기지 않는다. B/L처럼 화물을 특정하는 번호다 (schemas/customs.py, 10-06 점검).
-                # 내 화물 현황 표에 필요한 값은 user_cargo가 따로 가진다 (services/cargo.py)
+                # 내 화물 현황 표에 필요한 값은 user_cargo가 따로 가진다 (services/watch/cargo.py)
                 # 칸을 빼는 것만으로는 부족하다: 후속 답(answer)은 화면용으로 실제 번호를 되돌린 문장이라(_follow_up) 그대로 두면
                 # 다음 후속 질문 때 이력에서 원문이 LLM에 간다. 그래서 저장 전에 남은 글자 속 번호도 [CNTR1] 번호표로 바꾼다 (10-06 병합).
                 # 번호 자체는 잠가서 따로 둔다(_seal_containers). 후속 질문이 이력을 읽을 때 풀어야 LLM이 번호표로 알고 답할 수 있다 (10-06 정운 결정)

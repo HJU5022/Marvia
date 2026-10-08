@@ -1,7 +1,7 @@
 """화물 지켜보기 /api (G5 등록·감시·알림, 10-05 결정, docs/Marvia_개발_작업_리스트.md).
 
-창구만 한다: 로그인 확인 → services.watch 부르기 → HTTP 응답. 최대 5건·반출 끝난 화물 제외 같은 규칙과
-다시 판정·알림은 services/watch.py에 있다.
+창구만 한다: 로그인 확인 → services.watch.watch 부르기 → HTTP 응답. 최대 5건·반출 끝난 화물 제외 같은 규칙과
+다시 판정·알림은 services/watch/watch.py에 있다.
 
   POST /api/cargo/watch/state   {"bl_no"}           → {"saved", "watch"}   결과 화면의 버튼 상태
   PUT  /api/cargo/watch         {"bl_no", "on"}     → {"watch"}            지켜보기 켜기·끄기
@@ -29,9 +29,9 @@ from pydantic import BaseModel
 
 from backend.app.auth import CurrentUser, current_user
 from backend.app.observability.logging import log_failure
-from backend.app.services import operators as ops
-from backend.app.services import vessel_watch as vsvc
-from backend.app.services import watch as svc
+from backend.app.services.account import operators as ops
+from backend.app.services.watch import vessel_watch as vsvc
+from backend.app.services.watch import watch as svc
 
 router = APIRouter(prefix="/api", tags=["watch"])
 
@@ -50,7 +50,7 @@ class StateBody(BaseModel):
 
 
 class VesselBody(BaseModel):
-    """채팅에서 본 배. name 이하는 사용자가 본 글 그대로의 표시용 값이다 (services/vessel_watch.py)."""
+    """채팅에서 본 배. name 이하는 사용자가 본 글 그대로의 표시용 값이다 (services/watch/vessel_watch.py)."""
     mmsi: int | None = None
     call_sign: str | None = None  # 입항 예정 목록처럼 MMSI가 없는 곳에서 온다. mmsi가 있으면 쓰지 않는다
     name: str
@@ -104,7 +104,7 @@ def put_watch(body: WatchBody, user: Annotated[CurrentUser | None, Depends(curre
 
 @router.get("/watch")
 def get_watch_list(user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> dict:
-    """감시 목록 화면이 부른다. 지켜보는 화물마다 마지막 조회 값과 배 위치·지나온 길 (services/watch.watch_list)."""
+    """감시 목록 화면이 부른다. 지켜보는 화물마다 마지막 조회 값과 배 위치·지나온 길 (services/watch/watch.watch_list)."""
     user = _login_required(user)
     try:
         with ops.open_conn() as conn:

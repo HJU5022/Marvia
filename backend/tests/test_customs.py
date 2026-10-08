@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from backend.app.schemas.customs import mask_bl
-from backend.app.services.customs import CustomsError, UnipassClient
+from backend.app.services.judge.customs import CustomsError, UnipassClient
 
 FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "fixtures" / "unipass"
 

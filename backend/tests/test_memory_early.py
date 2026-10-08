@@ -10,8 +10,10 @@ import time
 import pytest
 from cryptography.fernet import Fernet
 
-from backend.app.services import chat as svc
-from backend.app.services import llm, memory, progress
+from backend.app.services.chat import chat as svc
+from backend.app.services import llm
+from backend.app.services.account import memory
+from backend.app.services.chat import progress
 from backend.tests.test_chat import _route
 from backend.tests.test_memory import FakeMemoryDB, _op, _ops_answer, _wire
 

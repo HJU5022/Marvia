@@ -1,7 +1,7 @@
 """정상 문장이 자연어 창구에서 잘못 막히거나 고정 안내로 바뀌는지 본다 (gpt-4o-mini, 실서비스 코드)."""
 import chat_check as cc
 import role_reset_check2 as rc
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 
 CASES = [("안녕하세요", None), ("뭘 할 수 있어?", None), ("고마워요", None), ("오늘 날씨 어때?", None),
          ("중국에서 오는 배 알려줘", None), ("이번 주 부산 들어오는 배 뭐 있어?", None), ("일본에서 오는 배", None),

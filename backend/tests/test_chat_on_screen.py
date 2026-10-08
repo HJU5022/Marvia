@@ -1,4 +1,4 @@
-"""화면에 떠 있는 배 알려 주기 테스트 (10-08 정운 실사용 36번, services/chat._masked_screen, routers/chat.ChatScreen).
+"""화면에 떠 있는 배 알려 주기 테스트 (10-08 정운 실사용 36번, services/chat/chat._masked_screen, routers/chat.ChatScreen).
 
 LLM은 부르지 않는다. llm.chat_agent를 가짜로 끼워 입력으로 받은 on_screen을 모은다. 배 이름·항구·MMSI는 모두 모의값이다.
 """
@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat_agent import _out, agent_path, web_off  # noqa: F401 (fixture)
 

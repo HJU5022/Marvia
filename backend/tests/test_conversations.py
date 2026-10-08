@@ -1,4 +1,4 @@
-"""대화 목록 테스트 (services/conversations.py, routers/conversations.py, routers/chat.py 저장 연결, services/account.py, 10-06 결정).
+"""대화 목록 테스트 (services/chat/conversations.py, routers/conversations.py, routers/chat.py 저장 연결, services/account/account.py, 10-06 결정).
 
 DB·LLM·키 없이 돈다. 연결은 SQL과 값을 기록하는 가짜, LLM·뒤 일꾼은 바꿔 끼운다. B/L은 모의값이다.
 진짜 SQL은 migrations/018을 임시 Postgres에 한 번 돌려 확인했다 (이 파일은 코드 흐름만 본다).
@@ -13,8 +13,8 @@ from backend.app import crypto
 from backend.app.main import app
 from backend.app.routers import chat as chat_router
 from backend.app.routers import conversations as conv_router
-from backend.app.services import account as account_service
-from backend.app.services import conversations as conv
+from backend.app.services.account import account as account_service
+from backend.app.services.chat import conversations as conv
 from backend.tests.test_routers import _login
 
 BL = "MOCKBL20261006"
@@ -310,7 +310,7 @@ def test_db_failure_is_503_without_details(monkeypatch, db):
 # ── 채팅 연결 ──
 
 def test_chat_saves_after_reply_for_logged_in_user(monkeypatch):
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
 
     headers = _login(monkeypatch)
     monkeypatch.setattr(svc, "handle", lambda *a, **k: _result(svc))
@@ -325,7 +325,7 @@ def test_chat_saves_after_reply_for_logged_in_user(monkeypatch):
 
 
 def test_chat_saving_failure_does_not_break_reply(monkeypatch):
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
 
     headers = _login(monkeypatch)
     monkeypatch.setattr(svc, "handle", lambda *a, **k: _result(svc))
@@ -342,7 +342,7 @@ def test_chat_saving_failure_does_not_break_reply(monkeypatch):
 
 
 def test_chat_logged_out_saves_nothing(monkeypatch):
-    from backend.app.services import chat as svc
+    from backend.app.services.chat import chat as svc
 
     monkeypatch.setattr(svc, "handle", lambda *a, **k: _result(svc))
     monkeypatch.setenv("DATABASE_URL", "postgresql://fake")

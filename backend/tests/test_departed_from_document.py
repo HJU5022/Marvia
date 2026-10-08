@@ -14,7 +14,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import cargo
+from backend.app.services.watch import cargo
 
 NOW = datetime(2026, 10, 6, 3, tzinfo=timezone.utc)
 BL = "MOCKBL20261006"  # 모의 B/L
@@ -179,5 +179,5 @@ def test_llm_and_chat_services_never_read_departed_on():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "app"
-    for rel in ("services/llm.py", "services/chat.py", "routers/agent.py"):
+    for rel in ("services/llm.py", "services/chat/chat.py", "routers/agent.py"):
         assert "departed_on" not in (root / rel).read_text(encoding="utf-8"), rel

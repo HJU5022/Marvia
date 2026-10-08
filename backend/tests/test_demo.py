@@ -14,7 +14,7 @@ import pytest
 from backend.app.clients import replay
 from backend.app.clients.shipfinder import ShipFinderClient
 from backend.app.services import llm
-from backend.app.services.evidence import KST
+from backend.app.services.judge.evidence import KST
 from scripts.demo import make_demo
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -3,7 +3,7 @@
 키 없이 돈다. 웹 글·주소는 모의값이다."""
 import pytest
 
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat_agent import _agent, _no_classic, agent_path  # noqa: F401 - agent_path는 autouse 픽스처
 

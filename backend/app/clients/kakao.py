@@ -1,7 +1,7 @@
 """카카오 로그인·카카오톡 메시지 API 호출 (카카오톡 "나에게 보내기" 알림, 10-02).
 
 이 파일은 카카오 서버에 HTTP 요청을 보내고 결과를 Tokens나 KakaoError로 바꿔 주는 일만 한다.
-토큰을 DB에 저장하거나 언제 보낼지 정하는 일은 services/kakao.py, 주소 연결은 routers/kakao.py 몫이다.
+토큰을 DB에 저장하거나 언제 보낼지 정하는 일은 services/watch/kakao.py, 주소 연결은 routers/kakao.py 몫이다.
 동의 화면이 끝나면 카카오는 브라우저를 우리 화면(/settings/kakao)으로 돌려보낸다. 그 화면이 로그인 출입증을 붙여
 routers/kakao.py의 POST /callback을 부른다 (10-05 결정). 백엔드 주소로 바로 돌려보내지 않는다.
 

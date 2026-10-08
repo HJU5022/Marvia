@@ -9,7 +9,7 @@
 
 새 화물을 더하는 법 (10건 뒤에 10건을 더 쓸 때):
   SPECS 맨 아래에 dict 하나를 더하고 이 파일을 실행한다. 나머지(MMSI·IMO·호출부호·MRN·컨테이너 검사숫자·위치 이력·이력 줄)는 빌더가 채운다.
-  `expect`(기대 등급)와 `signals`(켜져야 할 신호)를 같이 적으면 backend/tests/test_demo_live.py가 코드 판정 표(services/verdict.py)로 맞는지 확인한다.
+  `expect`(기대 등급)와 `signals`(켜져야 할 신호)를 같이 적으면 backend/tests/test_demo_live.py가 코드 판정 표(services/judge/verdict.py)로 맞는지 확인한다.
 
 명세 한 줄의 뜻 (시간은 전부 "지금" 기준 시간 단위. 음수는 과거):
   n          번호. 1부터. MRN 글자와 컨테이너 일련번호의 씨앗이다
@@ -20,7 +20,7 @@
   goods      품명 prnm (영어)
   cntr       컨테이너 일련번호 6자리 목록. 소유자 코드 DEM + U와 검사숫자는 빌더가 붙인다 (ISO 6346)
   fwd, carrier  포워더·선사 이름. fwd가 ""이면 빈 칸으로 온다 (포워더가 비어 오는 화물)
-  rows       처리 이력 [(단계 이름, 지금부터 몇 시간)]. 비우면 이력 줄이 없다 (상단 csclPrgsStts를 단계로 쓴다, services/customs.py)
+  rows       처리 이력 [(단계 이름, 지금부터 몇 시간)]. 비우면 이력 줄이 없다 (상단 csclPrgsStts를 단계로 쓴다, services/judge/customs.py)
   margin     판매 예정일까지 여유 일수. 판매 예정일 = 믿을 도착일(해수부 실적 > 해수부 예정 > AIS ETA)의 한국 날짜 + margin
   ships      배 목록. 첫 배가 화물의 배다. 둘 이상이면 동명 선박이다 (3번째 항목 설명)
   entry_vs_plan  (선택) 세관 입항일을 해수부 예정에서 몇 시간 옮길지. 기본은 같은 시각 (8번은 -24로 하루 어긋나게 해 서류 대조가 확정하지 못하게 한다)
@@ -47,7 +47,7 @@ import random
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from backend.app.services.evidence import KST
+from backend.app.services.judge.evidence import KST
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "evals" / "fixtures" / "demo_live.jsonl"
@@ -240,7 +240,7 @@ def make_track(ship: dict, mmsi: int) -> list[dict]:
       - 처음 `dwell`점은 길의 첫 점에 머문다 (출항 전 대기). 속도 0.3노트
       - 마지막 `stop`점은 길의 끝에 멈춘다 (접안·묘박). 속도는 현재 속도. 멈춘 점은 몇 미터 흔들려 실제 AIS처럼 한 점으로 안 겹친다
       - 가운데 점은 길을 따라 고르게 간다. 속도는 현재 속도 근처
-    anchor_wait는 이 이력에서 멈춘 점이 이어진 시간을 잰다 (services/signals.py _anchor_wait)."""
+    anchor_wait는 이 이력에서 멈춘 점이 이어진 시간을 잰다 (services/judge/signals.py _anchor_wait)."""
     total, dwell, stop = ship["track"]
     path, pos = ship["path"], ship["pos"]
     movers = total - dwell - stop
@@ -288,7 +288,7 @@ def _unipass(spec: dict, main: dict, mrn: str, entry_day: date) -> dict:
             row.update(rlbrDttm=row["prcsDttm"], rlbrBssNo=row["dclrNo"])
         history.append(row)
     return {
-        "cargMtNo": mrn + "0001" + "0001",  # 화물관리번호 19자 = MRN 11 + MSN 4 + HSN 4 (services/customs.py)
+        "cargMtNo": mrn + "0001" + "0001",  # 화물관리번호 19자 = MRN 11 + MSN 4 + HSN 4 (services/judge/customs.py)
         "shipNm": main["name"], "shipNat": main["nat"], "shipNatNm": FLAGS[main["nat"]][1], "vydf": spec["vyg"],
         "etprDt": entry_day.strftime("%Y%m%d"), "etprCstm": "부산세관",
         "csclPrgsStts": last, "prgsStts": status, "prgsStCd": status_code,
@@ -305,7 +305,7 @@ def _unipass(spec: dict, main: dict, mrn: str, entry_day: date) -> dict:
 def expand(spec: dict, first_ship: int) -> tuple[dict, int]:
     """명세 한 줄을 재생 문항(dict) 하나로 펼친다. 돌려주는 값: (문항, 다음 배 번호). 배 번호가 MMSI·IMO·호출부호를 정한다."""
     n = spec["n"]
-    mrn = f"26DMO{chr(64 + n)}{n:04d}I"  # 입항 MRN 11자: 연도 2 + DMO + 구분 글자 + 일련번호 4 + I (끝이 I면 입항, services/customs.py)
+    mrn = f"26DMO{chr(64 + n)}{n:04d}I"  # 입항 MRN 11자: 연도 2 + DMO + 구분 글자 + 일련번호 4 + I (끝이 I면 입항, services/judge/customs.py)
     ships, searches, positions, flags, tracks, arrivals, controls = [], [], {}, {}, {}, [], []
     for offset, ship in enumerate(spec["ships"]):
         idx = first_ship + offset
@@ -338,7 +338,7 @@ def expand(spec: dict, first_ship: int) -> tuple[dict, int]:
         ships.append(ship)
     main = ships[0]
 
-    # 믿을 도착 시각(시간 단위): 해수부 실적 > 해수부 예정 > AIS ETA (services/signals.trusted_eta). 화물의 배(첫 배) 기준
+    # 믿을 도착 시각(시간 단위): 해수부 실적 > 해수부 예정 > AIS ETA (services/judge/signals.trusted_eta). 화물의 배(첫 배) 기준
     arrived = [h for kind, h, _ in main.get("control", []) if kind in ("입항", "접안")]
     trusted = min(arrived) if arrived else main["plan_h"] if main.get("plan") is not None else main.get("ais_eta")
     entry = trusted + spec["entry_vs_plan"] if spec.get("entry_vs_plan") is not None else trusted
@@ -365,7 +365,7 @@ def expand(spec: dict, first_ship: int) -> tuple[dict, int]:
         "expected_vessel_match": first["match"], "expected_mmsi": None if first["match"] != "confirmed" else searches[0]["mmsi"],
         "expected_missing_inputs": ["voyage_no", "forwarder_eta"] if expect == "insufficient" else [],
         "expected_signals": spec["signals"],
-        "label_reason": f"{spec['title']}. 코드 판정 표(services/verdict.py)로 정한 기대 등급이다. 확정은 제품 책임자가 검토한다.",
+        "label_reason": f"{spec['title']}. 코드 판정 표(services/judge/verdict.py)로 정한 기대 등급이다. 확정은 제품 책임자가 검토한다.",
         "labeler": None, "labeled_at": None, "actual_arrival": None,
     }
     if isinstance(main.get("plan"), list):  # (일, "HH:MM") 쌍. finalize가 오늘 + 일의 그 시각으로 다시 못 박는다

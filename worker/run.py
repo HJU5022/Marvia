@@ -23,7 +23,7 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 from backend.app.db import (apply_migrations, connect, purge_done_cargo, purge_old_conversations, purge_old_queries,
                             purge_watch_positions)
-from backend.app.services.watch import RUN_LIMIT, SHIPFINDER_CALLS_PER_KNOWN_VESSEL, known_vessel_due_count, run_watch
+from backend.app.services.watch.watch import RUN_LIMIT, SHIPFINDER_CALLS_PER_KNOWN_VESSEL, known_vessel_due_count, run_watch
 from worker.collector import Budget, collect_port, collect_positions, collect_watch_positions, purge_positions, select_targets
 
 DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
@@ -65,7 +65,7 @@ def run_once(shipfinder_calls: int) -> dict:
     # 재판정은 api 프로세스의 MCP(/mcp)를 거쳐 api 쪽 ShipFinderClient로 부른다. 이 워커의 ShipFinderClient 캐시와는
     # 프로세스가 달라 아래 collect_watch_positions가 받아 둔 위치를 다시 쓰지 못한다. 화물마다 실제로 호출된다고 센다.
     # 배를 아는 화물만 다시 판정한다(known_vessel_only): 그 경로는 화물당 SHIPFINDER_CALLS_PER_KNOWN_VESSEL회(위치 1회)다.
-    # 배를 모르는 화물은 후보 검색으로 최대 11회를 써서 예산으로 묶기 어렵다 (services/watch.py 설명)
+    # 배를 모르는 화물은 후보 검색으로 최대 11회를 써서 예산으로 묶기 어렵다 (services/watch/watch.py 설명)
     watch_limit = 0
     if watch_enabled():
         try:
@@ -93,7 +93,7 @@ def run_once(shipfinder_calls: int) -> dict:
     summary["watch_positions_purged"] = purge_watch_positions(conn)  # 안 지켜보는 배의 30일 지난 감시 위치 삭제 (migrations/021)
     if watch_enabled():
         try:
-            # 지켜보는 화물 재판정 (services/watch.py). 떼어 둔 예산만큼, 배를 아는 화물만
+            # 지켜보는 화물 재판정 (services/watch/watch.py). 떼어 둔 예산만큼, 배를 아는 화물만
             summary["watch"] = run_watch(conn, limit=watch_limit, known_vessel_only=True)
         except Exception as e:  # 재판정이 실패해도 위에서 끝낸 수집 결과는 그대로 남긴다
             summary["watch"] = {"error": type(e).__name__}

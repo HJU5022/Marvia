@@ -1,4 +1,4 @@
-"""자연어 입력 테스트 (docs/specs/chat-search.md, services/chat.py, routers/chat.py).
+"""자연어 입력 테스트 (docs/specs/chat-search.md, services/chat/chat.py, routers/chat.py).
 
 LLM·해수부·판정 흐름은 부르지 않는다. llm.route_chat / match_ports, 해수부 캐시, run_agent를 가짜로 끼운다.
 """
@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.routers import chat as chat_router
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 
 

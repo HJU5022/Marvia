@@ -55,7 +55,7 @@ LIST_PER_PAGE = 200
 
 
 def list_users(page: int = 1, per_page: int = LIST_PER_PAGE) -> list[dict]:
-    """가입자 목록 한 페이지 (GET /auth/v1/admin/users). 원문 이메일이 들어 있으므로 부르는 쪽(services/operators.py)이
+    """가입자 목록 한 페이지 (GET /auth/v1/admin/users). 원문 이메일이 들어 있으므로 부르는 쪽(services/account/operators.py)이
     가린 뒤에만 밖으로 낸다. 못 받으면 AdminError. 읽기라 재시도해도 안전하다."""
     base, key = supabase_url(), os.environ.get("SUPABASE_SECRET_KEY", "").strip()
     if not base or not key:
@@ -117,7 +117,7 @@ BAN_FOREVER, BAN_NONE = "876000h", "none"
 
 def set_ban(user_id: str, banned: bool) -> None:
     """계정을 차단하거나 푼다 (PUT /auth/v1/admin/users/{id}). 차단되면 새 로그인과 출입증 갱신이 막힌다.
-    없는 계정이면 AdminError(failed, 404). 고객 일시 정지(services/customers.py)에서만 쓴다."""
+    없는 계정이면 AdminError(failed, 404). 고객 일시 정지(services/account/customers.py)에서만 쓴다."""
     resp = _admin_call("PUT", f"/auth/v1/admin/users/{user_id}", name="supabase:set_ban",
                        json={"ban_duration": BAN_FOREVER if banned else BAN_NONE})
     if resp is None:

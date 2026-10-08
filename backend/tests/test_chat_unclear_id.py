@@ -1,4 +1,4 @@
-"""알 수 없는 식별자와 목적지 장소 테스트 (10-05 실측, services/chat.py _is_destination·clarify_reply·_agent).
+"""알 수 없는 식별자와 목적지 장소 테스트 (10-05 실측, services/chat/chat.py _is_destination·clarify_reply·_agent).
 
 배포 화면에서 "지금 TEST41 선박 위치 어디야?"(진짜 B/L은 8자 이상)에 에이전트가 search_arrivals place=Busan을 불러
 빈 "Busan에서 들른 배" 표를 보였다. 고친 것: (1) 도착지(부산·한국)는 place로 거절, (2) 식별자를 모르면 코드가 되묻는다.
@@ -6,7 +6,7 @@ LLM과 해수부는 부르지 않는다 (가짜 llm.chat_agent). 값은 모두 �
 """
 import pytest
 
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 from backend.app.services import llm
 from backend.tests.test_chat import PLANS
 from backend.tests.test_chat_agent import _agent, _mcp, _no_classic

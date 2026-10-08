@@ -1,4 +1,4 @@
-"""카카오톡 연결 서비스 테스트 (services/kakao.py).
+"""카카오톡 연결 서비스 테스트 (services/watch/kakao.py).
 
 진짜 카카오·DB는 부르지 않는다. kakao_links 표를 흉내 내는 가짜 연결과, clients/kakao.py 함수를 바꿔 끼운 가짜,
 테스트용 Fernet 열쇠·가짜 시크릿을 쓴다.
@@ -11,7 +11,7 @@ from cryptography.fernet import Fernet
 from backend.app import crypto
 from backend.app.clients import kakao as client
 from backend.app.clients.kakao import KakaoError, Tokens
-from backend.app.services import kakao as svc
+from backend.app.services.watch import kakao as svc
 
 SECRET = "fake-kakao-client-secret"
 ACCESS, REFRESH = "raw-access-token-AAA", "raw-refresh-token-BBB"

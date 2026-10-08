@@ -1,4 +1,4 @@
-"""운영자의 고객 수정·강제 탈퇴·마스킹 해제 테스트 (docs/specs/operator-admin.md 추가 절, services/customers.py).
+"""운영자의 고객 수정·강제 탈퇴·마스킹 해제 테스트 (docs/specs/operator-admin.md 추가 절, services/account/customers.py).
 
 진짜 DB·Supabase는 부르지 않는다. test_admin.FakeConn과 가짜 get_user·withdraw를 끼운다.
 """
@@ -7,9 +7,9 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.services import customers as svc
-from backend.app.services import operators as ops
-from backend.app.services import profile as profile_svc
+from backend.app.services.account import customers as svc
+from backend.app.services.account import operators as ops
+from backend.app.services.account import profile as profile_svc
 from backend.tests.test_admin import OPERATOR, FakeConn, _login
 
 USERS = {
