@@ -68,7 +68,8 @@
 
 /* 클러스터 상세 창: 지도 오른쪽 일부만 쓴다 */
 .cluster-panel{width:300px;top:12px;bottom:auto;max-height:calc(100% - 24px);border:0;box-shadow:0 4px 16px #191f2824}
-.cluster-panel dl div{grid-template-columns:72px 1fr}
+.cluster-panel dl div{grid-template-columns:88px 1fr}
+.cluster-panel dl dt{white-space:nowrap}  /* 가장 긴 라벨 "위치 받은 시각"이 두 줄로 꺾이지 않게 칸을 넓히고 줄바꿈을 막는다 */
 .cluster-go{font-size:var(--text-sm)}
 
 /* 휴대폰(시안 3-6): 지도 카드 → 목록 카드 순으로 쌓는다 */
