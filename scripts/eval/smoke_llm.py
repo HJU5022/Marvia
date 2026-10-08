@@ -18,14 +18,14 @@ from backend.app.services.llm import chat
 
 load_dotenv()  # OPENROUTER_API_KEY, LLM_MODEL을 .env에서 읽는다
 
-# 가공 사례. 기대 답: 판매일까지 여유 3일이라 act는 아님 (fine/watch는 하정운 확인 대기)
+# 가공 사례. 기대 답: 판매일까지 여유 3일이라 act는 아님 (fine/watch는 확인 대기)
 CASE = (
     "화물의 통관 단계는 '입항적하목록 제출'. 선박 ETA는 2일 뒤, 판매 예정일은 5일 뒤. "
     "선박 위치 정보는 3시간 전 것. 신호 상충 없음."
 )
 
-# 역할 지시 + 판정 정의. 정의가 없으면 모델이 act를 "절차 계속 진행"으로 읽었다 (09-23 3회 실행, 3회차).
-# 정의 문구는 하정운 확인 (09-23). 서비스에서는 Skill·Langfuse Prompt가 이 자리를 맡는다 (SDD 5.6)
+# 역할 지시 + 판정 정의. 정의가 없으면 모델이 act를 "절차 계속 진행"으로 읽었다 (3회 실행, 3회차).
+# 정의 문구는 사람이 확인한다. 서비스에서는 Skill·Langfuse Prompt가 이 자리를 맡는다 (SDD 5.6)
 SYSTEM = (
     "너는 수입 화물 판정 도우미다. 주어진 근거만 쓴다.\n"
     "verdict 정의:\n"

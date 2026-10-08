@@ -56,7 +56,7 @@ def test_failure_returns_tool_error_not_exception(fixture, code, retryable, use_
     assert r["error"]["message"]
 
 
-# ── 도구는 예외를 던지지 않는다 (C4, 10-06 점검) ──
+# ── 도구는 예외를 던지지 않는다 (C4) ──
 
 def test_missing_key_returns_bad_key_error(monkeypatch):
     """클라이언트 만들기에서 난 실패(키 없음)도 {error}로, 코드는 bad_key 그대로."""

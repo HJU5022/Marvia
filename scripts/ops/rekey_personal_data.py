@@ -1,4 +1,4 @@
-"""개인정보를 B/L 열쇠에서 PII 열쇠로 옮긴다 (10-01 열쇠 분리, docs/specs/user-profile.md).
+"""개인정보를 B/L 열쇠에서 PII 열쇠로 옮긴다 (열쇠 분리, docs/specs/user-profile.md).
 
 회원 정보(user_profiles)와 운영자 이메일(operators, operator_audit, admin_actions)은 처음에 BL_ENCRYPTION_KEY로
 잠갔다. 이 스크립트가 옛 열쇠로 풀어 PII_ENCRYPTION_KEY로 다시 잠그고, 운영자 지문(email_hash)도 새 열쇠로 다시 만든다.

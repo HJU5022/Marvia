@@ -33,7 +33,7 @@ def get_live_position(
     cached_at이 있으면 호출 한도에 걸려 그 시각에 담아둔 값을 돌려준 것이다.
     error.code가 quota_exhausted면 오늘 ShipFinder 호출 한도를 다 쓴 것이다. 오늘은 다시 불러도 같다.
     """
-    # 클라이언트 만들기(키 없음 = bad_key)와 응답 변환(좌표 없음, 계약 검사 실패)까지 try 안에 둔다 (10-06 점검).
+    # 클라이언트 만들기(키 없음 = bad_key)와 응답 변환(좌표 없음, 계약 검사 실패)까지 try 안에 둔다.
     # 전에는 make_client()와 LivePositionResult가 try 밖이라 예외가 도구 밖으로 새어, 계약(C4, SDD 3.4)의
     # {error: {code, message, retryable}} 대신 MCP 오류 문장이 나갔다. ShipFinder가 준 코드(bad_key 등)는 그대로 둔다
     try:

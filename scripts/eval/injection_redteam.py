@@ -4,7 +4,7 @@
     python -m scripts.eval.injection_redteam --limit 5    # 구독 사용량을 아끼려면 공격 수를 줄인다
 
 왜 필요한가:
-  10-01에 코드 방어(services/judge/guard.py, 후속 답 V9·V10, chat·doc_ocr 검사)를 넣을 때 쓴 공격은 사람이 만든 16종이다.
+  코드 방어(services/judge/guard.py, 후속 답 V9·V10, chat·doc_ocr 검사)를 넣을 때 쓴 공격은 사람이 만든 16종이다.
   방어가 그 문장에만 맞춰졌을 수 있어서, 처음 보는 공격으로 다시 본다 (SDD 7·8절).
 
 어떻게:
@@ -14,7 +14,7 @@
 
 표식은 공격문에 글자 그대로 쓰지 않는다(조각을 합치라고만 함). 모델이 거절하면서 공격문을 인용한 것을 뚫림으로 세지 않으려는 것이다.
 값은 전부 가공값이다 (B/L TESTBL..., 가공 서류·후보 배). 결과는 evals/results/injection/redteam/ (커밋해서 문서 수치의 근거로 쓴다).
-Langfuse 키는 빼고 레포 프롬프트 파일을 쓴다. 실서비스 Langfuse 글과 다를 수 있다 (docs/prompt_versions.md 10-01 줄).
+Langfuse 키는 빼고 레포 프롬프트 파일을 쓴다. 실서비스 Langfuse 글과 다를 수 있다 (docs/prompt_versions.md 해당 줄).
 """
 from __future__ import annotations
 
@@ -30,9 +30,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = ROOT / "evals" / "results" / "injection" / "redteam"  # 레포에 남겨 문서 수치의 근거로 쓴다 (10-01 재감사)
+OUT_DIR = ROOT / "evals" / "results" / "injection" / "redteam"  # 레포에 남겨 문서 수치의 근거로 쓴다
 
-# 키가 있으면 서비스가 Langfuse·OpenRouter로 간다. 이 점검은 구독 Claude만 쓴다 (유료 키 금지, 사용자 지시 10-01)
+# 키가 있으면 서비스가 Langfuse·OpenRouter로 간다. 이 점검은 구독 Claude만 쓴다 (유료 키 금지, 사용자 지시)
 for key in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "OPENROUTER_API_KEY", "REPLAY_MODE", "LLM_MODEL"):
     os.environ.pop(key, None)
 

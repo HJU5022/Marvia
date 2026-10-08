@@ -17,7 +17,7 @@ COPY scripts/ ./scripts/
 COPY evals/ ./evals/
 
 # 서류 사진 OCR은 api(app 스테이지)만 쓴다. OCR 패키지·시스템 라이브러리·모델을 base에 두면 worker 이미지까지
-# 458MB → 1.28GB로 커져서 app 스테이지로 옮겼다 (09-29 결정 (a), backend/requirements-doc.txt)
+# 458MB → 1.28GB로 커져서 app 스테이지로 옮겼다 (결정 (a), backend/requirements-doc.txt)
 FROM base AS app
 
 # rapidocr가 설치하는 opencv-python은 slim 이미지에 없는 화면 라이브러리(libGL, glib)를 찾는다.
@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir -r backend/requirements-doc.txt -c backend/requir
 # 네트워크가 막힌 곳에서는 실패한다. 엔진을 한 번 만들면 rapidocr가 패키지 폴더에 받아 둔다
 RUN python -c "from backend.app.services.chat.doc_ocr import _get_engine; _get_engine()"
 
-# 서비스가 MCP 도구를 자기 /mcp로 부른다 (10-02, backend/app/services/mcp_client.py). 포트는 아래 CMD의 8000과 같아야 한다.
+# 서비스가 MCP 도구를 자기 /mcp로 부른다 (backend/app/services/mcp_client.py). 포트는 아래 CMD의 8000과 같아야 한다.
 # 이 값이 없으면(테스트·평가 실행기) 같은 프로세스 안의 MCP 서버에 메모리로 붙는다
 ENV MCP_URL=http://127.0.0.1:8000/mcp
 EXPOSE 8000

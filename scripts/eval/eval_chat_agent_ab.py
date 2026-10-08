@@ -1,4 +1,4 @@
-"""채팅 에이전트 지시문(marvia-chat-agent) A/B 평가 (10-07 결정: 새 지시문은 진짜 모델로 비교한 뒤 Langfuse에 올린다).
+"""채팅 에이전트 지시문(marvia-chat-agent) A/B 평가 (새 지시문은 진짜 모델로 비교한 뒤 Langfuse에 올린다).
 
     python -m scripts.eval.eval_chat_agent_ab run    --variant old=경로 --variant new=경로 --runs 2 --workers 8 --out 결과폴더
     python -m scripts.eval.eval_chat_agent_ab report --base old --cand new --out 결과폴더      # 결과폴더/RESULT.md를 만든다
@@ -57,7 +57,7 @@ CASES_PATH = ROOT / "scripts" / "eval" / "eval_chat_agent_cases.jsonl"
 KST = timezone(timedelta(hours=9))
 NOW = datetime.now(timezone.utc)
 
-# ── 10-08 Vertex 실험: 비용 장부와 예산 상한 ─────────────────────
+# ── Vertex 실험: 비용 장부와 예산 상한 ─────────────────────
 # 단가: Google Cloud Vertex AI 생성형 AI 가격표(https://cloud.google.com/vertex-ai/generative-ai/pricing, Standard, Global 엔드포인트,
 # 2026-10-07 확인). 단위 USD / 1M 토큰: (입력, 캐시된 입력, 출력). 생각(thinking) 토큰은 출력 단가로 받는다.
 PRICES = {

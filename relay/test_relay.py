@@ -1,4 +1,4 @@
-"""릴레이 테스트 (10-07 정운). 실제 네트워크 없이 MockTransport로 돈다."""
+"""릴레이 테스트. 실제 네트워크 없이 MockTransport로 돈다."""
 import httpx
 import pytest
 from fastapi.testclient import TestClient

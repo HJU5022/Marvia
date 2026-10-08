@@ -1,4 +1,4 @@
-"""해수부 API 릴레이 (10-07 정운).
+"""해수부 API 릴레이 .
 
 왜: Railway(싱가포르)에서 apis.data.go.kr로 연결하면 ConnectTimeout이 난다(한국에서는 0.1초).
 이 서버를 Google Cloud Run 서울(asia-northeast3)에 두고, 백엔드가 MOF_BASE_URL로 여기를 부르게 한다.
@@ -23,7 +23,7 @@ UPSTREAM_TIMEOUT_SEC = 10.0
 
 logger = logging.getLogger("relay")
 logging.basicConfig(level=logging.INFO)
-# httpx는 INFO에서 요청 주소 전체(serviceKey 포함)를 찍는다. 키가 로그에 남지 않게 WARNING으로 올린다 (10-07 실측)
+# httpx는 INFO에서 요청 주소 전체(serviceKey 포함)를 찍는다. 키가 로그에 남지 않게 WARNING으로 올린다
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
@@ -32,7 +32,7 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _client = httpx.Client(timeout=UPSTREAM_TIMEOUT_SEC)
 
 
-# Cloud Run은 /healthz 경로를 자기 쪽에서 가로채 404를 낸다 (10-07 실측). 그래서 /health로 둔다
+# Cloud Run은 /healthz 경로를 자기 쪽에서 가로채 404를 낸다. 그래서 /health로 둔다
 @app.get("/health")
 def healthz() -> Response:
     return Response("ok", media_type="text/plain")

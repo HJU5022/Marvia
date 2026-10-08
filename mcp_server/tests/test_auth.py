@@ -55,7 +55,7 @@ async def test_health_is_public():
 
 
 def test_without_token_open_only_in_replay_mode(monkeypatch):
-    """토큰이 없으면 REPLAY_MODE일 때만 그대로 연다. 가공 응답만 읽어 키·호출 한도가 걸린 게 없다 (10-06 점검)."""
+    """토큰이 없으면 REPLAY_MODE일 때만 그대로 연다. 가공 응답만 읽어 키·호출 한도가 걸린 게 없다."""
     monkeypatch.setenv("REPLAY_MODE", "true")
     sentinel = object()
     assert protect(sentinel, token="") is sentinel
@@ -80,7 +80,7 @@ async def _post_from(app, client_ip: str) -> int:
 
 @pytest.mark.anyio
 async def test_without_token_refuses_outside_requests(monkeypatch):
-    """토큰도 REPLAY_MODE도 없으면 루프백이 아닌 요청은 401 (10-06 점검: 전에는 누구에게나 열렸다)."""
+    """토큰도 REPLAY_MODE도 없으면 루프백이 아닌 요청은 401 (전에는 누구에게나 열렸다)."""
     monkeypatch.delenv("REPLAY_MODE", raising=False)
     inner = Starlette(routes=[Route("/mcp", lambda request: PlainTextResponse("ok"), methods=["POST"])])
     app = protect(inner, token="")
@@ -109,7 +109,7 @@ async def test_without_token_health_stays_public(monkeypatch):
 
 def test_no_token_server_accepts_compose_service_host():
     """토큰이 없을 때 Host 허용 목록에 compose 서비스 이름(api)이 있다. worker의 MCP_URL=http://api:8000/mcp가 421로
-    막히지 않게 한다 (10-06 점검). 토큰이 있으면 Host 검사를 끄고 토큰이 막는다."""
+    막히지 않게 한다. 토큰이 있으면 Host 검사를 끄고 토큰이 막는다."""
     from mcp_server.server import create_mcp
 
     no_token = create_mcp(token="").settings.transport_security

@@ -1,4 +1,4 @@
-"""운영자·이력의 평문 이메일을 지문·암호문·가린 값으로 옮기고 평문을 비운다 (013, docs/specs/operator-admin.md, 10-01).
+"""운영자·이력의 평문 이메일을 지문·암호문·가린 값으로 옮기고 평문을 비운다 (013, docs/specs/operator-admin.md).
 
 마이그레이션(SQL)은 열쇠로 잠글 수 없어서 기존 행은 이 스크립트가 옮긴다. 새 행은 코드가 처음부터 평문을 쓰지 않는다.
 한 트랜잭션이다. 하나라도 잠그지 못하면(열쇠 없음) 전부 되돌린다. 다시 돌려도 평문이 남은 행만 건드린다.
@@ -31,7 +31,7 @@ def main() -> int:
     with connect() as conn:
         apply_migrations(conn)
         # 018_db_cleanup이 평문 이메일 칸(operators.email 등)을 지웠다. 그 뒤에는 옮길 평문이 없고 아래 SQL이 칸을 못 찾아 실패한다.
-        # 칸이 없으면 이미 끝난 이전이라 알리고 끝낸다 (10-06 점검)
+        # 칸이 없으면 이미 끝난 이전이라 알리고 끝낸다
         if not conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name = 'operators' AND column_name = 'email'").fetchone():
             print("018 이후라 평문 이메일 칸이 없습니다. 옮길 것이 없습니다")
             return 0

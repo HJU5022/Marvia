@@ -1,4 +1,4 @@
-"""라이브 시연용 데모 화물 10건의 시나리오 목록과, 그것을 재생 문항(evals/fixtures/demo_live.jsonl)으로 펼치는 빌더 (10-06 정운 결정).
+"""라이브 시연용 데모 화물 10건의 시나리오 목록과, 그것을 재생 문항(evals/fixtures/demo_live.jsonl)으로 펼치는 빌더.
 
     python -m scripts.demo.demo_live        # 아래 SPECS를 펼쳐 evals/fixtures/demo_live.jsonl을 다시 쓴다 (고치고 나면 한 번 돌린다)
 
@@ -62,7 +62,7 @@ PORTS = {
     "QINGDAO": ("CNTAO", "CN"), "SHANGHAI": ("CNSHA", "CN"), "NINGBO": ("CNNGB", "CN"), "HO CHI MINH": ("VNSGN", "VN"),
     "TIANJIN XINGANG": ("CNTSN", "CN"), "DALIAN": ("CNDLC", "CN"), "KAOHSIUNG": ("TWKHH", "TW"), "HAIPHONG": ("VNHPH", "VN"),
 }
-# 세관 국적 코드 -> (ShipFinder 국적, 국적 이름). ShipFinder는 실제로 ISO 이름을 준다 (09-28 실측). 라우터가 pycountry로 코드와 맞춘다 (_same_nationality)
+# 세관 국적 코드 -> (ShipFinder 국적, 국적 이름). ShipFinder는 실제로 ISO 이름을 준다. 라우터가 pycountry로 코드와 맞춘다 (_same_nationality)
 FLAGS = {"PA": ("Panama", "파나마"), "KR": ("Korea, Republic of", "대한민국"), "LR": ("Liberia", "라이베리아"),
          "SG": ("Singapore", "싱가포르"), "MH": ("Marshall Islands", "마셜제도"), "HK": ("Hong Kong", "홍콩")}
 
