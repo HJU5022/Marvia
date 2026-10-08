@@ -303,7 +303,7 @@ export function WatchMap() {
                 <button type="button" className="icon-button" onClick={() => setCluster(null)} aria-label="닫기" autoFocus><X size={16}/></button></div>
               <ul>{cluster.map(k => { const v = spots[k]?.vessel; if (v) return <li key={`v${v.mmsi}`}>
                 <div className="cluster-item-head"><span className="watch-chip vessel-only">{markerLetter(k)}</span>
-                  <span className="watch-main"><strong>{v.name}</strong><small>배만 지켜보는 중 (B/L 없음, 판정 없음)</small></span>
+                  <span className="watch-main"><strong>{v.name}</strong><small className="vessel-only-note">배만 지켜보는 중 (B/L 없음, 판정 없음)</small></span>
                   <button type="button" className="cluster-go" onClick={() => focus.current(k)} aria-label={`${v.name} 위치로 지도 이동`} title="지도에서 보기"><LocateFixed size={18} strokeWidth={1.9} aria-hidden="true"/></button></div>
                 <dl><div><dt>위치 받은 시각</dt><dd>{v.position_at ? dateTime(v.position_at, true) : '확인 안 됨'}</dd></div>
                   {v.sog != null && <div><dt>속력·침로</dt><dd>{`${v.sog}노트${v.cog != null ? ` · ${Math.round(v.cog)}°` : ''}`}</dd></div>}</dl>
