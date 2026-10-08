@@ -37,6 +37,7 @@ from backend.app.db import connect
 from backend.app.observability.langfuse import tool_span
 from backend.app.observability.logging import log_failure
 from backend.app.schemas.agent import VOYAGE_PATTERN, AgentRequest, AgentResponse
+from backend.app.schemas.customs import mask_bl
 from backend.app.services import bl_parse, cargo, guard, llm, mcp_client, memory, progress, referrals, validate, vessel_pick
 from backend.app.services import citations as cite
 from backend.app.services.verdict import VERDICT_LABEL
@@ -169,10 +170,24 @@ _SHIP_NAMED_TAIL = re.compile(r"(?:이야|이에요|입니다|이라고|라고|�
 _SHIP_TALK = re.compile(r"배\s*이름|선박\s*명|선명|배\s*명")  # "배이름이야"처럼 이름은 앞 말에 있고 이번 말은 가리키기만 하는 문장
 
 
+# "EVER GIVEN 위치", "애플 어디야": 호 없이 이름 뒤에 위치·어디가 붙은 말 (10-08 E2E: 이런 말이 입항 목록 전체로 답해졌다).
+# 영문은 낱말 1~3개, 한글은 2~8자. 화물·배 같은 일반 낱말과 지시어는 이름이 아니다
+_SHIP_LOC = re.compile(r"(?<![A-Za-z0-9\[])((?:[A-Za-z][A-Za-z0-9]+\s+){0,2}[A-Za-z][A-Za-z0-9]+|[가-힣]{2,8})\s*(?:호\s*)?(?:배\s*)?(?:위치|어디)")
+_SHIP_LOC_END = ("는", "은", "에서", "의", "도", "를", "을", "로", "한테", "에게", "랑", "이랑")
+_SHIP_LOC_NOT = {"화물", "선박", "내배", "이배", "그배", "저배", "지금", "현재", "내화물", "이화물", "그화물", "컨테이너", "내컨테이너", "위치", "어디",
+                 "그럼", "근데", "혹시", "정확히", "대략", "도대체", "이거", "그거", "저거", "마지막", "최근", "배는", "배가"}
+
+
 def _ship_name_in(text: str) -> str | None:
     for m in _SHIP_HO.finditer(text):
         if not m.group(1).endswith(_SHIP_HO_NOT):
             return m.group(1) + "호"
+    m = _SHIP_LOC.search(text)
+    if m:
+        cand = m.group(1).strip()
+        # 조사·서술어 끝 낱말("오는", "중국에서")과 식별자 모양(TEST41: B/L 오타일 수 있어 되묻는다)은 배 이름으로 보지 않는다
+        if (re.sub(r"\s+", "", cand) not in _SHIP_LOC_NOT and not cand.endswith(_SHIP_LOC_END) and not _ID_LIKE.search(cand)):
+            return cand
     m = _SHIP_NAMED.search(text)
     if m:
         name = _SHIP_NAMED_TAIL.sub("", m.group(1))
@@ -614,7 +629,23 @@ def _ship_list_lines(vessels: list[dict]) -> str:
 
 def _period_text(days: int) -> str:
     """기간을 사람 말로: 14일은 "2주", 그 밖에는 "N일"."""
+    if days == 1:
+        return "오늘부터 1일"  # "1일 안에"만 쓰면 내일 하루만 보여 주는 것으로 읽힌다 (10-08 E2E). 오늘부터 하루 안이라고 밝힌다
     return f"{days // 7}주" if days % 7 == 0 else f"{days}일"
+
+
+ARRIVALS_LIMIT_NOTE = "입항 예정은 오늘부터 최대 {n}일까지만 보여 드릴 수 있어요."
+_ASKED_SPAN = re.compile(r"(\d+|한|두|세|네)\s*(일|주일|주|달|개월)")
+
+
+def asked_days(text: str) -> int | None:
+    """사용자 글이 입항 목록의 기간을 며칠로 말했는가 (가장 긴 것). "30일", "2주", "한 달", "3개월". 기간 말이 없으면 None.
+    DAYS_MAX를 넘는 요청에 한계를 밝히는 데 쓴다 (search_vessels는 말없이 DAYS_MAX로 줄였다, 10-08 E2E)."""
+    spans = []
+    for m in _ASKED_SPAN.finditer(text or ""):
+        n = int(m.group(1)) if m.group(1).isdigit() else {"한": 1, "두": 2, "세": 3, "네": 4}[m.group(1)]
+        spans.append(n * {"일": 1, "주일": 7, "주": 7, "달": 30, "개월": 30}[m.group(2)])
+    return max(spans) if spans else None
 
 
 def search_vessels(place: str | None, days: int | None, label: str | None = None) -> ChatResult:
@@ -778,19 +809,19 @@ def _classic(masked: str, refs: dict[str, str], mrn: str | None, session_id: str
     # LLM이 "[BL1] 화물 조회해줘"를 follow_up으로 골라 이전 화물 답과 카드가 나왔다). LLM이 낸 의도를 코드가 덮어쓴다
     new_bls = [bl for bl in refs.values() if context is None or bl != context.bl_no]
     if new_bls and route.intent in ("follow_up", "other"):
-        return _classic_cargo(new_bls, route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, mrn, user_id)
+        return _classic_cargo(new_bls, route.bl_type, sale_if_given(route.sale_due_date, masked), session_id, context, run_agent, mrn, user_id)
 
     if route.intent == "cargo":
         if len(set(refs.values())) > 1:
             # B/L이 여럿이면 LLM이 고른 하나가 아니라 문장에 나온 순서대로 모두 본다 (에이전트와 같은 기준, 10-06 점검)
-            return _classic_cargo(list(refs.values()), route.bl_type, _valid_date(route.sale_due_date), session_id, context,
+            return _classic_cargo(list(refs.values()), route.bl_type, sale_if_given(route.sale_due_date, masked), session_id, context,
                                   run_agent, mrn, user_id)
         bl = refs.get(route.bl_ref or "") or (next(iter(refs.values())) if refs else None)
         if not bl:
             if context is None:
                 return ChatResult(kind="message", reply=NEED_BL)  # EC-02
             bl = context.bl_no
-        return _cargo(bl, route.bl_type, _valid_date(route.sale_due_date), session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
+        return _cargo(bl, route.bl_type, sale_if_given(route.sale_due_date, masked), session_id, context, run_agent, note=None, mrn=mrn, user_id=user_id)
 
     if route.intent == "follow_up":
         if context is None:
@@ -863,7 +894,23 @@ def _classic_cargo(bls: list[str], bl_type: str | None, sale_due_date: str | Non
 
 CARGO_CALLS_PER_TURN = 1  # 한 문장에서 화물 도구 호출은 한 번만. 한 문장에 B/L이 여러 개면 그 한 번 안에서 코드가 모두 조회한다 (아래 MAX_BLS_PER_TURN)
 MAX_BLS_PER_TURN = 3  # 한 문장에서 한꺼번에 조회하는 B/L 수 상한. 판정 흐름마다 UNI-PASS·LLM을 부르므로 비용·지연이 B/L 수만큼 는다 (10-05 정운 결정)
-DATE_HINTS = ("오늘", "내일", "모레", "글피", "다음", "이번", "주", "월", "일")  # 포워더 도착일을 사용자가 말했다고 볼 낱말 (숫자가 없을 때)
+# 사용자가 날짜를 말했다고 볼 모양. 전에는 숫자 아무거나(B/L 토큰 [BL1]의 1, "2건"의 2)와 "일"·"주" 한 글자도 날짜로 쳐서,
+# 날짜를 말하지 않았는데 LLM이 지어낸 판매일·입항일이 그대로 조회에 들어갔다 (10-08 E2E). 날짜 모양만 센다
+_DATE_GIVEN = re.compile(
+    r"\d\s*월|\d\s*일|\d{4}\s*[-./]\s*\d{1,2}|(?<!\d)\d{1,2}\s*[/.]\s*\d{1,2}(?!\d)|(?<!\d)20\d{2}[01]\d[0-3]\d(?!\d)|"
+    r"오늘|내일|모레|글피|어제|(?:이번|다음|담)\s*주|[월화수목금토일]요일|주\s*(?:뒤|후)")
+
+
+def user_gave_date(text: str) -> bool:
+    """사용자 글에 날짜 모양이 있는가. [BLn] 번호표는 먼저 뺀다 (번호표 속 숫자는 날짜가 아니다)."""
+    return bool(_DATE_GIVEN.search(re.sub(r"\[BL\d+\]", " ", text or "")))
+
+
+def sale_if_given(value, text: str) -> str | None:
+    """LLM이 낸 판매일(YYYY-MM-DD)을 사용자가 날짜를 말한 문장에서만 쓴다. 말하지 않았으면 버린다 (LLM이 지어낸 날짜 방지)."""
+    return _valid_date(value) if user_gave_date(text) else None
+
+
 FAILED_LOOKUP = "조회하지 못했어요. 잠시 뒤 다시 물어봐 주세요."  # 고른 도구가 모두 실패했을 때
 HISTORY_TURNS = 6  # LLM에 넘길 최근 대화 줄 수. "이건", "그 배"가 가리키는 것은 보통 바로 앞 두세 턴에 있다
 SHIP_LIST_SHOWN = 5  # 입항 선박 검색 답 문장에 이름을 적는 척 수. 전체 표는 화면이 그린다 (10-07 실사용 34)
@@ -1014,6 +1061,16 @@ _DATE_ISO = re.compile(r"\d{4}-\d{1,2}-\d{1,2}")
 _PHONE_IN_TEXT = re.compile(r"\+?\d[\d\- ]{6,}\d")
 
 
+# 저장 부탁 말 ("우리 포워더는 테스트물류야. 기억해 줘"). 물음표가 있으면 물어보는 말("기억해?")이라 저장 부탁이 아니다
+SAVE_REQUEST = re.compile(r"기억\s*해\s*(?:줘|주세요|둬|두|라|놔)|저장\s*해|메모\s*해|적어\s*(?:둬|두|놔)|외워\s*(?:줘|둬|두)|잊지\s*말")
+MEMO_SAVE_LEAD = "알려 주신 내용은 메모로 기억해 둘게요."
+
+
+def is_save_request(masked: str) -> bool:
+    """이번 문장이 새 사실을 저장해 달라는 부탁인가. 저장 부탁에는 꺼내 보기 답(MEMO_NONE)을 내지 않는다 (10-08 운영 점검)."""
+    return bool(SAVE_REQUEST.search(masked)) and not re.search(r"[?？]", masked)
+
+
 def is_memo_question(masked: str) -> bool:
     """이번 문장이 전에 저장한·말한 것을 묻는가 (메모 꺼내 보기 대상). 웹 검색 재질문을 메모 안내로 바꾸고, 웹 검색을 막을 때만 쓴다."""
     return bool(MEMO_REF.search(masked) or (MEMO_CONTACT.search(masked) and MEMO_RECALL_END.search(masked)))
@@ -1137,8 +1194,12 @@ WEB_SOURCES_SHOWN = 3  # "웹 참고" 줄에 올리는 출처 수 상한 (검색
 # 세액·관세율·통관 가능 여부 주제. 이 낱말이 질문(검색어)에 있으면 웹 검색을 막고, 답이나 근거 조각에 있으면 웹 답을 내보내지 않는다.
 # 관세사는 제외한다 ("관세사가 누군지"는 실무 질문이다). 웹에 답이 있어도 이 주제는 관세사에게 묻게 한다 (PRD 4절, 10-05 결정)
 BROKER_TOPIC = re.compile(r"관세(?!사)|세율|세금|세액|부가세|부가가치세|과세|면세|환급|HS\s*코드|품목\s*분류|FTA|원산지|"
-                          r"통관\s*(?:이|은|도)?\s*(?:될|되|가능|불가|안\s*되|문제|막|걸리|거부)", re.IGNORECASE)
+                          r"통관\s*(?:이|은|도)?\s*(?:될|되|가능|불가|안\s*되|문제|막|걸리|거부|돼(?!\s*있))|"
+                          r"관세사\S*\s*맡|(?:내가|직접)\s*(?:통관\s*)?신고", re.IGNORECASE)
 # 뒤에 공식 창구 줄을 붙인다. 주소·전화는 skills/referrals/rules.md broker_referral에만 있다 (docs/specs/referral-guide.md, 10-06)
+# "언제 찾을 수 있어?" 같은 반출·수령 날짜 확답 요청. 날짜를 약속하는 문장은 코드도 모델도 만들지 않는다 (PRD 4절)
+DATE_PROMISE_ASK = re.compile(r"(?:반출|찾|받|인수|나가|출고)\S*.*(?:언제|날짜|며칠|몇\s*일|확답|약속)|(?:언제|날짜|며칠|몇\s*일|확답|약속).*(?:반출|찾|받|인수|나가|출고)")
+DATE_PROMISE_NOTE = "반출이나 수령 날짜는 약속드릴 수 없어요. 위 통관 단계를 확인해 주세요."
 BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않아요. 관세사에게 문의해 주세요.\n" + referrals.broker_tail()
 WEB_NOTE = "웹 참고: "  # 웹 근거 답 뒤에 코드가 붙이는 줄의 머리. 출처 제목과 주소는 가져온 결과에서만 온다
 WEB_TITLE_MAX = 30  # 링크 글자(출처 제목) 길이 상한. 긴 주소를 그대로 보이던 것을 짧은 제목 링크로 바꿨다 (10-07 정운 실사용 4)
@@ -1329,6 +1390,9 @@ ROW_NOTE_MORE_INFO = "정보 더 필요"
 ROW_SAY_SAME_NAME = "{bl}는 같은 이름의 배가 여러 척이라 항차 번호나 포워더 입항 예정일이 필요해요."
 ROW_SAY_STILL_SAME = "{bl}는 알려 주신 항차나 입항 예정일로도 어느 배인지 가르지 못했어요."
 ROW_SAY_NOT_FOUND = "{bl}는 조회 결과가 없어요. B/L 번호와 마스터·하우스 구분을 확인해 주세요."
+SALE_PAST = "입력하신 판매일 {m}월 {d}일은 이미 지난 날짜예요."
+SALE_UNREADABLE = "판매일을 날짜로 읽지 못해서 쓰지 않았어요."
+_SAYS_NOT_FOUND = re.compile(r"찾지 못|조회되지|조회 결과|결과가 없|없어요|없습니다")  # LLM 문장이 "조회 안 됨"을 말하는지 (ROW_SAY_NOT_FOUND와 겹침 판단)
 ROW_SAY_MORE_INFO = "{bl}는 판정에 필요한 정보가 더 필요해요."
 # B/L로 읽지 못한 식별자 모양 글자 안내 (10-06 정운 화면: "tesbl41"이 말없이 빠졌다)
 UNREAD_NOTICE = "(B/L 번호로 읽지 못한 글자가 있어요: {names}. 번호를 확인해 주세요.)"
@@ -1593,6 +1657,20 @@ def watch_offer_text(response: AgentResponse, logged_in: bool, worry: str | None
     return f"{reason} {WATCH_ASK}" + ("" if logged_in else f" {WATCH_LOGIN_TAIL}")
 
 
+_BL_TOKEN = re.compile(r"\[BL\d+\]")
+UNKNOWN_BL_WORD = "해당 B/L"  # 번호표에 없는 토큰(모델이 지어낸 [BL9] 등)을 바꿀 말
+
+
+def hide_bl_tokens(reply: str, refs: dict[str, str]) -> str:
+    """답에 남은 내부 번호표 [BL1] 같은 글자를 사용자가 알아볼 수 있는 가린 B/L(TE****01)로 바꾼다.
+
+    왜: LLM은 B/L 대신 [BLn]만 보므로(CLAUDE.md "B/L 번호를 LLM에 넘기지 않는다"), 지난 대화를 보고 "B/L 번호가 뭐였지?"에 답하면
+    번호표가 그대로 화면에 나갔다 (10-08 E2E). 원문이 아니라 가운데를 가린 값으로 되돌린다(SDD 3.5, schemas/customs.mask_bl):
+    사용자는 어느 화물인지 알아보고, 원문은 새 곳에 퍼지지 않는다. 표에 없는 토큰은 일반 말로 바꾼다.
+    여러 B/L 표 답은 _agent_turn이 이미 사용자가 쓴 B/L로 되돌려 둔 뒤라 여기서는 남은 토큰만 본다."""
+    return _BL_TOKEN.sub(lambda m: mask_bl(refs[m.group(0)]) if m.group(0) in refs else UNKNOWN_BL_WORD, reply or "")
+
+
 def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, context: AgentRequest | None,
            run_agent, user_id: str | None, history: list[dict], run_tool: Callable[[str, dict], dict] | None,
            today: str, watch: WatchHooks | None = None, kakao: KakaoHooks | None = None,
@@ -1601,6 +1679,7 @@ def _agent(masked: str, refs: dict[str, str], mrn: str | None, session_id: str, 
     본 처리가 문장 끝 여러 곳에서 돌아 나가서, 한 곳에서 붙이려고 감쌌다."""
     signals: dict = {}
     result = _agent_turn(masked, refs, mrn, session_id, context, run_agent, user_id, history, run_tool, today, watch, signals, kakao, on_screen)
+    result = replace(result, reply=hide_bl_tokens(result.reply, signals.get("refs") or refs))
     result = _with_citations(result, signals)  # 뒤에 붙는 코드 문장(지켜보기·카톡·제안)은 모두 글 끝에 더해지므로 표시 자리는 그대로 맞다
     done_kakao = signals.get("kakao") or {}
     if done_kakao.get("msg") and done_kakao["msg"] not in result.reply:
@@ -1699,6 +1778,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     # 이번 문장의 B/L로 착각해 엉뚱한 화물을 조회한다 (10-05 검토)
     refs = dict(refs)
     turns = _masked_history(history, refs)
+    signals["refs"] = refs  # 대화 기록의 번호표까지 든 표. _agent가 답에 남은 [BLn]을 가릴 때 쓴다 (reveal_tokens)
     screen = _masked_screen(on_screen)  # 화면에 떠 있는 배들 (10-08 정운 실사용 36번). 비었으면 None이고 LLM 입력에 칸이 안 생긴다
     offered_prev = bool(turns) and turns[-1]["role"] == "assistant" and _offered(turns[-1]["text"])  # 바로 앞 답이 우리 제안이었나
     # 답 검사에서 "사용자가 쓴 글"로 칠 것: 이번 문장과 앞에서 사용자가 쓴 줄. 사용자가 앞 턴에 말한 날짜를 되짚는 답이
@@ -1712,7 +1792,28 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     seen: dict[str, dict] = {}  # 같은 도구·같은 인자는 다시 실행하지 않고 앞 결과를 돌려준다 (프롬프트 규칙을 코드로)
     # 사용자가 이번 문장이나 앞 줄에서 날짜를 말했는가. 포워더 도착일은 판정 근거(trusted_eta)가 되므로
     # LLM이 지어낸 날짜를 받지 않으려고 본다 (10-05 검토, CLAUDE.md trusted_eta)
-    user_gave_date = bool(re.search(r"\d", user_text)) or any(w in user_text for w in DATE_HINTS)
+    gave_date = user_gave_date(user_text)
+    date_notes: list[str] = []  # 판매일에 붙는 코드 문장 (지난 날짜, 읽지 못함). 판정·days_margin은 바꾸지 않고 사실만 알린다 (10-08 E2E)
+
+    def sale_from(args: dict) -> str | None:
+        """check_cargo 인자의 판매일을 조회에 쓸 값으로. 사용자가 날짜를 말하지 않았으면 LLM 값은 버린다.
+        쓰는 날짜가 오늘(KST)보다 앞이면 지난 날짜라고, 날짜 모양이 있는데 읽지 못했으면 쓰지 않았다고 문장으로 알린다."""
+        raw = args.get("sale_due_date")
+        value = sale_if_given(raw, user_text)
+        unreadable = bool(raw) and value is None and gave_date  # LLM이 낸 값이 실제 없는 날짜 (2026-13-45 등)
+        for m in re.finditer(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", masked):  # 문장에 "13월 45일"처럼 없는 날짜가 있다
+            try:
+                date(2024, int(m.group(1)), int(m.group(2)))  # 윤년으로 확인: 2월 29일은 읽는다
+            except ValueError:
+                unreadable = unreadable or value is None
+        if unreadable and SALE_UNREADABLE not in date_notes:
+            date_notes.append(SALE_UNREADABLE)
+        if value and value < today:
+            d = date.fromisoformat(value)
+            note = SALE_PAST.format(m=d.month, d=d.day)
+            if note not in date_notes:
+                date_notes.append(note)
+        return value
 
     # 한 문장에 B/L이 2~3개일 때의 조회 결과 (10-05 결정): {"results": [ChatResult...], "over": 상한 초과, "failed": 일부 실패}
     multi_state: dict = {}
@@ -2166,7 +2267,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             if len(distinct) >= 2:
                 # 한 문장에 서로 다른 B/L이 2~3개: 모두 조회하고 함께 보여 준다 (10-05 정운 결정). bl_ref는 무시한다: 모든 B/L이 대상이다
                 bl_type = args.get("bl_type") if args.get("bl_type") in ("MASTER", "HOUSE") else None
-                summaries = look_up_many(distinct, bl_type, _valid_date(args.get("sale_due_date")))
+                summaries = look_up_many(distinct, bl_type, sale_from(args))
                 if not summaries:
                     return _tool_error("tool_failed", "This lookup failed.")
                 return {"cargos": summaries}
@@ -2182,12 +2283,12 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 voyage = None
             if voyage and re.sub(r"\s+", "", voyage) not in re.sub(r"\s+", "", masked):
                 voyage = None
-            eta = _valid_date(args.get("forwarder_eta")) if user_gave_date else None
-            result = _cargo(bl, bl_type, _valid_date(args.get("sale_due_date")), session_id, context, run_agent,
+            eta = _valid_date(args.get("forwarder_eta")) if gave_date else None
+            result = _cargo(bl, bl_type, sale_from(args), session_id, context, run_agent,
                             note=None, mrn=mrn, user_id=user_id, voyage_no=voyage, forwarder_eta=eta)
             parts = glued_parts(result, bl)
             if parts:  # 붙여 쓴 번호였다: 나눈 B/L들을 여러 건 조회 길로 돌린다
-                summaries = look_up_many(parts, bl_type, _valid_date(args.get("sale_due_date")))
+                summaries = look_up_many(parts, bl_type, sale_from(args))
                 return {"cargos": summaries} if summaries else _tool_error("tool_failed", "This lookup failed.")
             if eta:  # LLM이 풀어낸 날짜라 사용자가 맞는지 볼 수 있게 답에 밝힌다 (근거 카드에도 있다, services/evidence.py)
                 result = replace(result, reply=f"{result.reply}\n(포워더가 알려 준 입항일 {eta}로 조회했어요.)")
@@ -2217,6 +2318,22 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 return _tool_error("place_is_destination", "place means where the ships come from (previous port), not Busan or "
                                    "Korea. Use null for all arrivals, or a foreign country or port. If the message is not asking "
                                    "which ships come from somewhere, do not call search_arrivals.")
+            # 입항 목록 속 배 이름이 문장에 통째로 있으면 목록이 아니라 그 배를 찾는다 (10-08 E2E: "EVER GIVEN 위치"가 전체 목록으로 답해졌다)
+            try:
+                upper = masked.upper()
+                names = sorted({(p.ship_name or "").strip().upper() for p in _arrivals(DAYS_MAX)}, key=len, reverse=True)
+            except MofError:
+                names, upper = [], ""
+            hit = next((n for n in names if len(n) >= 3 and re.search(rf"(?<![A-Z0-9]){re.escape(n)}(?![A-Z0-9])", upper)), None)
+            if hit:
+                found = search_ship_name(hit)
+                if found is not None:
+                    done.append(found)
+                    return {"reply": found.reply, "total": len(found.vessels)}
+            # place가 없는 위치·어디 질문은 목록 질문이 아니다. 지명 없이 "배 위치"만 물으면 배 이름을 찾는 도구로 보낸다
+            if not args.get("place") and re.search(r"위치|어디", masked) and not re.search(r"들어오|입항|오는\s*배|목록|들어와", masked):
+                return _tool_error("not_a_list_question", "search_arrivals lists ships arriving at Busan; it cannot find where one ship is. "
+                                   "To find a named ship use get_vessel_candidates, then get_live_position.")
             if place and (not _PLACE.match(place) or len(place.split()) > 4 or guard.looks_like_injection(place)):
                 place = None
             label = args.get("place_label")
@@ -2225,6 +2342,9 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             # bool도 int라서 따로 막는다 (true가 "앞으로 True일"로 답에 들어갔다, 10-05 테스트에서 발견)
             days = args.get("days") if isinstance(args.get("days"), int) and not isinstance(args.get("days"), bool) else None
             result = search_vessels(place, days, label)
+            span = asked_days(masked)
+            if span and span > DAYS_MAX and result.kind == "vessels":  # 사용자가 더 긴 기간을 물었다: 줄여 보여 준 것을 말한다
+                result = replace(result, reply=f"{result.reply}\n{ARRIVALS_LIMIT_NOTE.format(n=DAYS_MAX)}")
             done.append(result)
             shown = [{k: v[k] for k in ("ship_name", "call_sign", "nationality", "previous_port", "expected_arrival", "is_cargo")}
                      for v in result.vessels[:ARRIVALS_SHOWN]]
@@ -2485,6 +2605,11 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
 
     looked_up = [c for c in calls if c["name"] in mcp_names and "error" not in (c["result"] or {})]
     lookups = " ".join(str(c["result"]) for c in looked_up)
+    if recall_state and not done and not looked_up and user_id and is_save_request(masked):
+        # 저장 부탁인데 에이전트가 recall_memo도 불렀다 ("포워더는 X야. 기억해 줘"). 꺼내 보기 답("저장된 메모에서 찾지 못했어요")을 내면
+        # 저장 결과 앞에 엉뚱한 말이 붙는다. 꺼내 보기 결과는 버리고 짧은 안내만 낸다. 저장 결과 문장은 기억 뽑기가 뒤에 붙인다 (handle).
+        # 로그인 안 한 사용자는 저장이 안 되므로 이 길을 타지 않고 로그인 안내(memo_reply_text)가 나간다
+        return ChatResult(kind="message", reply=MEMO_SAVE_LEAD)
     if recall_state and not done and not looked_up:
         # 메모 꺼내 보기를 한 문장이다 (10-08 정운 실사용 81). 답은 메모 항목에서만 나온다
         found_text = recall_reply(text)
@@ -2506,10 +2631,15 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             # 그대로 두면 "[BL1] 화물은…"이 화면에 보이고, 표 순서("첫 번째")로 바꾸면 어느 화물인지 헷갈린다. 화면에만 가는 문장이라 LLM에는 새지 않는다
             for token, bl in refs.items():
                 said = said.replace(token, bl)
-            lines = [said or MULTI_TABLE_LEAD.format(n=len(found))]
             need_lines, rows, chosen = _multi_table(found)  # 표 줄과 판정 못 낸 줄 안내 (전 방식과 같이 쓴다, 10-06 점검)
+            # 조회 결과가 없는 줄은 코드가 "~는 조회 결과가 없어요" 줄을 따로 쓴다. LLM 문장도 같은 말("통관 시스템에서 찾지 못했어요")을
+            # 하면 한 답에 두 번 나온다 (10-08 E2E). 그 경우 LLM 문장은 버리고 코드 줄과 표가 답한다
+            if said and any(ROW_SAY_NOT_FOUND.format(bl=r.request.bl_no) in need_lines for r in found) and _SAYS_NOT_FOUND.search(said):
+                said = ""
+            lines = [said or MULTI_TABLE_LEAD.format(n=len(found))]
             lines.extend(need_lines)
             lines.extend(notices)
+            lines.extend(date_notes)
             unread = unread_ids(masked, message_bls)
             if unread:
                 lines.append(UNREAD_NOTICE.format(names=", ".join(f"'{u}'" for u in unread)))
@@ -2519,6 +2649,13 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 and not _repeats_reply(text, replies):
             replies.append(text)
         replies.extend(notices)  # B/L이 상한을 넘었거나 일부만 조회됐을 때 코드가 쓴 안내 (10-05)
+        replies.extend(date_notes)
+        # B/L과 함께 온 질문 중 코드가 못 답하는 것은 조회 답 뒤에 고정 문장으로 막는다 (10-08 E2E). 조회는 그대로 돈다:
+        # 앞에서 가로채면 B/L을 넣은 문장이 조회되지 않는다 (test_chat_guard_a3 test_message_with_bl_is_not_intercepted)
+        if BROKER_TOPIC.search(masked):
+            replies.append(fixed(BROKER_ONLY))
+        if DATE_PROMISE_ASK.search(masked):
+            replies.append(DATE_PROMISE_NOTE)
         return replace(done[-1], reply="\n\n".join(replies), map=_map_payload(calls, done, started))
     if looked_up and all(c["name"] == "get_vessel_candidates" and isinstance(c["result"], dict) and c["result"].get("candidates") == []
                          for c in looked_up):

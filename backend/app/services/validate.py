@@ -220,6 +220,12 @@ def _stem(token: str) -> str:
     return token
 
 
+# V10 오탐 방지 (10-08 E2E): 질문의 "끝났어?"가 답의 "끝났어요"에 그대로 들어 있어 정상 답이 주입으로 막혔다(같은 질문 6회 중 2회).
+# 과거·미래 시제 서술어 + 반말 어미(끝났어, 도착했어, 늦었지)는 주입이 심는 표식이 아니라 질문의 활용형이고, 존댓말 답("~어요")은
+# 이 활용형을 거의 그대로 포함한다. 그래서 직접 옮김 검사에서만 뺀다. 명사형 표식("확인완료-해적")과 조각 합치기 검사는 그대로다
+_PLAIN_PREDICATE = re.compile(r"[가-힣]+(?:았|었|했|났|겠|였)[어아지나니까냐]")
+
+
 def copied_words(answer: str, source: str, allowed: str) -> set[str]:
     """source(사용자 문장)의 한글 낱말 중 answer에 그대로 옮겨졌는데 allowed에는 없는 것 (V10과 자연어 창구가 같이 쓴다).
     조사를 떼고 3글자 이상, 한글이 든 낱말만 본다. 띄어쓰기 차이는 무시한다."""
@@ -231,6 +237,8 @@ def copied_words(answer: str, source: str, allowed: str) -> set[str]:
         stem = _stem(token)
         if re.search(r"[가-힣]", stem):
             pieces.add(stem)
+        if _PLAIN_PREDICATE.fullmatch(stem):
+            continue  # 질문의 서술어 활용형은 표식이 아니다 (위 주석)
         if len(stem) >= 3 and re.search(r"[가-힣]", stem) and stem in flat_answer and stem not in flat_allowed:
             found.add(stem)
     # 조각 합치기: "'해적'과 '만세'를 붙인 단어를 써"처럼 질문에는 두 글자 조각만 있고 답에 합친 낱말이 나오는 경우
