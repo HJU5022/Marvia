@@ -5,8 +5,8 @@ FROM python:3.12-slim AS base
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
-COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY backend/requirements.txt backend/requirements.lock.txt ./backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt -c backend/requirements.lock.txt
 
 # searoute는 항로망 데이터를 패키지에 들고 있어 빌드 도구가 필요 없다 (2026-09-23 확인)
 COPY backend/ ./backend/
@@ -25,7 +25,7 @@ FROM base AS app
 RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements-doc.txt ./backend/requirements-doc.txt
-RUN pip install --no-cache-dir -r backend/requirements-doc.txt
+RUN pip install --no-cache-dir -r backend/requirements-doc.txt -c backend/requirements.lock.txt
 
 # OCR 모델(약 18MB)을 빌드 때 받아 이미지에 넣는다. 안 하면 첫 요청이 인터넷에서 모델을 받느라 느리고,
 # 네트워크가 막힌 곳에서는 실패한다. 엔진을 한 번 만들면 rapidocr가 패키지 폴더에 받아 둔다
