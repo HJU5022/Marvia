@@ -18,14 +18,19 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 
 **지금 살아있는지 확인**
 
-```bash
-curl -s https://marvia-api-production.up.railway.app/health     # {"status":"ok","db":"ok"}
-```
+브라우저로는 아래 주소를 열면 된다. 터미널에서는 `curl`로 같은 주소를 부른다.
+
+| 방법 | 주소 또는 명령 |
+|---|---|
+| 브라우저 | https://marvia-api-production.up.railway.app/health |
+| 터미널 | `curl -s https://marvia-api-production.up.railway.app/health` |
+| API 문서 (브라우저) | https://marvia-api-production.up.railway.app/docs |
 
 | 결과 | 뜻 |
 |---|---|
 | `{"status":"ok","db":"ok"}` | API와 DB가 모두 응답한다 |
 | HTTP 503 | API는 떠 있고 DB 연결이 끊겼다 (`/health`가 DB를 확인한다) |
+| 주소만(`/`) 열면 `Not Found`, `/api/agent`를 브라우저로 열면 `Method Not Allowed` | 정상이다. API 서버라 첫 화면이 없고, `/api/agent`는 B/L을 보내는 POST 요청만 받는다. 화면은 위 표의 웹 주소에서 쓴다 |
 | 응답 없음 · 타임아웃 | 배포 서버가 내려가 있다. 로컬에서 [키 없이 데모](#키-없이-데모-13건-10분-재현)로 같은 화면과 판정을 재현할 수 있다 |
 
 ## 데모
