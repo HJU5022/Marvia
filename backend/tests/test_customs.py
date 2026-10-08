@@ -6,7 +6,7 @@ import pytest
 
 from backend.app.schemas.customs import mask_bl
 from backend.app.services.judge.customs import CustomsError, UnipassClient
-from backend.app.services import llm_config as llm_llm_config
+from backend.app.services import llm_config
 
 FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "fixtures" / "unipass"
 
@@ -173,7 +173,7 @@ def test_multiple_containers_are_joined_once_each():
 
 
 def test_judge_input_has_no_container_forwarder_or_carrier():
-    """판정 LLM 입력에는 컨테이너 번호(화물을 특정하는 번호)가 가지 않는다. 판정에 안 쓰는 포워더·선사 이름도 뺀다 (llm_llm_config.JUDGE_CUSTOMS_EXCLUDE)"""
+    """판정 LLM 입력에는 컨테이너 번호(화물을 특정하는 번호)가 가지 않는다. 판정에 안 쓰는 포워더·선사 이름도 뺀다 (llm_config.JUDGE_CUSTOMS_EXCLUDE)"""
     import json
 
     from backend.app.schemas.signals import SignalSet
@@ -197,7 +197,7 @@ def test_empty_goods_name_becomes_none():
 
 
 def test_judge_input_has_no_goods_name():
-    """품명은 판정에 쓰지 않아 판정 LLM 입력에서 뺀다 (llm_llm_config.JUDGE_CUSTOMS_EXCLUDE). 채팅 에이전트만 받는다"""
+    """품명은 판정에 쓰지 않아 판정 LLM 입력에서 뺀다 (llm_config.JUDGE_CUSTOMS_EXCLUDE). 채팅 에이전트만 받는다"""
     import json
 
     from backend.app.schemas.signals import SignalSet

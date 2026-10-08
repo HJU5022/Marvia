@@ -15,7 +15,7 @@ from backend.app.main import app
 from backend.app.routers import agent as agent_router
 from backend.app.schemas.agent import AgentResponse, CustomsInfo, Evidence
 from backend.app.services import llm
-from backend.app.services import llm_support as llm_llm_support
+from backend.app.services import llm_support
 
 NOW = datetime(2026, 10, 6, tzinfo=timezone.utc)
 ONE = "TSTU1234560"
@@ -138,7 +138,7 @@ def test_no_container_changes_nothing(monkeypatch):
 
 def test_unknown_token_is_left_as_is():
     """LLM이 지어낸 번호표는 되돌리지 않는다 (없는 번호를 만들어 내지 않는다)."""
-    assert llm_llm_support.restore_containers("[CNTR9]입니다", {"[CNTR1]": ONE}) == "[CNTR9]입니다"
+    assert llm_support.restore_containers("[CNTR9]입니다", {"[CNTR1]": ONE}) == "[CNTR9]입니다"
 
 
 def test_question_with_container_number_is_tokenized(monkeypatch):

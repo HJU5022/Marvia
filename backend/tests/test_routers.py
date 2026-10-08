@@ -13,7 +13,9 @@ from backend.app.routers import history as history_router
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import Signal, SignalSet
 from backend.app.services import llm
-from backend.app.services import llm_schemas as llm_llm_schemas
+from backend.app.services import llm_schemas
+from backend.app.services.judge import answers as agent_answers
+from backend.app.services.judge import builders as agent_builders
 
 NOW = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
 
@@ -173,7 +175,7 @@ def test_llm_keeps_wrong_verdict_falls_back_to_table(fake, monkeypatch):
         body = client.post("/api/agent", json=_request()).json()
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("partial", "fine", "rule")
-    assert body["answer"] == agent_router.TABLE_FALLBACK.format(label="순항")
+    assert body["answer"] == agent_answers.TABLE_FALLBACK.format(label="순항")
 
 
 def test_gray_zone_llm_failure_gives_no_verdict(fake, monkeypatch):
@@ -230,7 +232,7 @@ def test_position_not_found_holds_and_asks_forwarder_eta(fake, monkeypatch):
     assert (body["status"], body["verdict"], body["vessel_match"]) == ("insufficient", None, "confirmed")
     assert body["missing_inputs"] == ["forwarder_eta"]
     assert body["days_margin"] is None  # 해수부 예정만으로 센 여유 일수를 내지 않는다
-    assert body["answer"] == agent_router.POSITION_MISSING
+    assert body["answer"] == agent_answers.POSITION_MISSING
 
 
 def test_position_not_found_after_forwarder_eta_is_partial(fake, monkeypatch):
@@ -255,7 +257,7 @@ def test_position_tool_failure_is_partial_without_asking(fake, monkeypatch):
 
     assert (body["status"], body["verdict"], body["days_margin"]) == ("partial", None, None)
     assert body["missing_inputs"] == []
-    assert body["answer"] == agent_router.POSITION_TOOL_FAILED
+    assert body["answer"] == agent_answers.POSITION_TOOL_FAILED
 
 
 def test_cached_position_is_judged_but_partial(fake, monkeypatch):
@@ -1329,7 +1331,7 @@ def test_party_fields_reach_response_judged_path():
     record = CustomsRecord(ship_name="TEST STAR", stage_name="반입신고", forwarder_name="테스트포워딩(주)",
                            carrier_name="테스트선사(주)", container_no="TSTU1234560, TSTU7654321",
                            bl_masked="TEST****0001", fetched_at=NOW)
-    info = agent_router._customs_info(record, llm_llm_schemas.CustomsExplanation(plain_explanation="터미널에 들어갔습니다.", next_stage="수입신고"))
+    info = agent_builders._customs_info(record, llm_schemas.CustomsExplanation(plain_explanation="터미널에 들어갔습니다.", next_stage="수입신고"))
     assert (info.forwarder_name, info.carrier_name, info.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560, TSTU7654321")
 
 
@@ -1362,11 +1364,11 @@ def test_trusted_vessel_is_not_set_for_user_requests():
 def test_tool_failed_text_says_tomorrow_when_quota_exhausted(monkeypatch):
     """ShipFinder 하루 한도를 다 쓴 날은 "잠시 뒤"가 아니라 "내일 다시"라고 알린다 (status 38, 10-06 점검)."""
     monkeypatch.setattr(agent_router.shipfinder_client, "quota_blocked", lambda: False)
-    assert agent_router._tool_failed_text(agent_router.POSITION_TOOL_FAILED) == agent_router.POSITION_TOOL_FAILED
-    text = agent_router._tool_failed_text(agent_router.POSITION_TOOL_FAILED, "quota_exhausted")
-    assert "잠시 뒤" not in text and text.endswith(agent_router.QUOTA_EXHAUSTED_TAIL)
+    assert agent_router._tool_failed_text(agent_answers.POSITION_TOOL_FAILED) == agent_answers.POSITION_TOOL_FAILED
+    text = agent_router._tool_failed_text(agent_answers.POSITION_TOOL_FAILED, "quota_exhausted")
+    assert "잠시 뒤" not in text and text.endswith(agent_answers.QUOTA_EXHAUSTED_TAIL)
     monkeypatch.setattr(agent_router.shipfinder_client, "quota_blocked", lambda: True)
-    assert agent_router._tool_failed_text(agent_router.VESSEL_TOOL_FAILED).endswith(agent_router.QUOTA_EXHAUSTED_TAIL)
+    assert agent_router._tool_failed_text(agent_router.VESSEL_TOOL_FAILED).endswith(agent_answers.QUOTA_EXHAUSTED_TAIL)
 
 
 def test_follow_up_rules_include_sale_date_check():

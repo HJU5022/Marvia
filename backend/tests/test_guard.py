@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.routers import agent as agent_router
 from backend.app.services.judge import guard
-from backend.app.services import llm_config as llm_llm_config
+from backend.app.services import llm_config
 
 ATTACKS = [
     # 10-01 측정 8종 (후속 질문 채널)
@@ -385,5 +385,5 @@ def test_injected_stage_name_is_hidden_from_judge_llm():
     signals = SignalSet(signals=[], freshness="fresh", distance_nm=None, calc_eta=None, eta_gap_hours=None, computed_at=now)
     data = json.loads(llm._judge_input(signals, customs, 5))
     assert bad not in json.dumps(data, ensure_ascii=False)
-    assert data["customs"]["stage_name"] == llm_llm_config.STAGE_SUSPECT
-    assert [s["name"] for s in data["customs"]["stage_history"]] == [llm_llm_config.STAGE_SUSPECT, "입항보고"]
+    assert data["customs"]["stage_name"] == llm_config.STAGE_SUSPECT
+    assert [s["name"] for s in data["customs"]["stage_history"]] == [llm_config.STAGE_SUSPECT, "입항보고"]

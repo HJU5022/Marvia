@@ -14,6 +14,7 @@ from backend.app.schemas.agent import AgentRequest, AgentResponse
 from backend.app.schemas.customs import CustomsDetailRow
 from backend.app.services import llm
 from backend.app.services.judge.customs import UnipassClient
+from backend.app.services.judge import saved as agent_saved
 
 XML = """<?xml version="1.0" encoding="UTF-8"?><cargCsclPrgsInfoQryRtnVo><tCnt>1</tCnt>
 <cargCsclPrgsInfoQryVo><shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><cargMtNo>26TEST0099I00010001</cargMtNo>
@@ -176,7 +177,7 @@ def test_history_seals_container_and_previous_response_opens_it(monkeypatch, bl_
     agent_router._logged(request, _response_with_container())
 
     stored = saved["response"]
-    assert "TCNU0000001" not in json.dumps(stored, ensure_ascii=False) and stored[agent_router.SEALED_CONTAINER_KEY]
+    assert "TCNU0000001" not in json.dumps(stored, ensure_ascii=False) and stored[agent_saved.SEALED_CONTAINER_KEY]
     monkeypatch.setattr(agent_router, "recent_responses", lambda *a, **k: [(stored, None)])
     previous = agent_router._previous_response(request)
     assert previous.customs.container_no == "TCNU0000001"
@@ -201,5 +202,5 @@ def test_history_without_key_drops_container_instead_of_plain_text(monkeypatch):
     """열쇠가 없으면 잠근 칸 없이 저장한다. 원문을 남기지 않는다"""
     monkeypatch.delenv("BL_ENCRYPTION_KEY", raising=False)
     stored = agent_router._seal_containers(_response_with_container())
-    assert agent_router.SEALED_CONTAINER_KEY not in stored and "TCNU0000001" not in json.dumps(stored, ensure_ascii=False)
+    assert agent_saved.SEALED_CONTAINER_KEY not in stored and "TCNU0000001" not in json.dumps(stored, ensure_ascii=False)
     assert agent_router._open_containers(stored)["customs"].get("container_no") is None

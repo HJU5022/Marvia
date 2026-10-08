@@ -9,7 +9,7 @@ from backend.app.services.judge import bl_parse
 from backend.app.services import llm
 from backend.app.services.chat import chat as svc
 from backend.tests.test_chat_agent import _agent, _out, agent_path, web_off  # noqa: F401 (fixture)
-from backend.app.services import llm_schemas as llm_llm_schemas
+from backend.app.services import llm_schemas
 
 CTX = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="old")
 
@@ -41,7 +41,7 @@ def test_fallback_points_to_guide_not_only_bl():
 
 
 def test_kinds_include_help_and_greeting():
-    assert {"help", "greeting"} <= set(llm_llm_schemas.CHAT_AGENT_KINDS)
+    assert {"help", "greeting"} <= set(llm_schemas.CHAT_AGENT_KINDS)
     llm.ChatAgentOutput(reply="", answer_kind="help")
 
 

@@ -23,6 +23,7 @@ from backend.app.routers import agent as agent_router
 from backend.app.schemas.agent import AgentRequest, Evidence
 from backend.app.services.account import quota
 from backend.app.services.watch import vessel_detail
+from backend.app.services.judge import saved as agent_saved
 
 NOW = datetime(2026, 10, 6, 3, tzinfo=timezone.utc)
 
@@ -124,17 +125,17 @@ def test_logged_out_history_does_not_mix_same_mask(bl_key):
     resp = agent_router._response(answer="x")
     other_row = agent_router._seal_containers(resp.model_copy(update={"answer": "남의 화물"}), other)
     my_row = agent_router._seal_containers(resp.model_copy(update={"answer": "내 화물"}), mine)
-    assert agent_router.BL_FINGERPRINT_KEY in my_row and mine not in json.dumps(my_row)
+    assert agent_saved.BL_FINGERPRINT_KEY in my_row and mine not in json.dumps(my_row)
     assert agent_router._same_cargo([(other_row, None), (my_row, None)], mine)["answer"] == "내 화물"
     assert agent_router._same_cargo([(other_row, None)], mine) is None
     # 읽을 때 지문 칸은 지운다
-    assert agent_router.BL_FINGERPRINT_KEY not in agent_router._open_containers(my_row)
+    assert agent_saved.BL_FINGERPRINT_KEY not in agent_router._open_containers(my_row)
 
 
 def test_without_key_history_lookup_stays_as_before(monkeypatch):
     monkeypatch.delenv("BL_ENCRYPTION_KEY", raising=False)
     row = agent_router._seal_containers(agent_router._response(answer="옛 방식"), "TESTBL01")
-    assert agent_router.BL_FINGERPRINT_KEY not in row
+    assert agent_saved.BL_FINGERPRINT_KEY not in row
     assert agent_router._same_cargo([(row, None)], "TEXYZW01")["answer"] == "옛 방식"
 
 
