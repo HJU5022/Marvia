@@ -1,0 +1,1307 @@
+{
+  "config": "b",
+  "description": "규칙 + LLM 모델 A (MODEL_A)",
+  "model": "vertex/google/gemini-2.5-flash",
+  "run_at": "2026-09-29T13:37:15.052798+00:00",
+  "git_commit": "9183eb1-dirty",
+  "prompt_versions": {
+    "marvia-judge": "3",
+    "marvia-follow-up": "3",
+    "marvia-pick-vessel": "1"
+  },
+  "summary": {
+    "count": 30,
+    "exact_match": 26,
+    "verdict_accuracy": 0.81,
+    "act_recall": 0.818,
+    "insufficient_precision": 1.0,
+    "insufficient_missed": [],
+    "vessel_match_accuracy": 1.0,
+    "vessel_wrong_confirm": [],
+    "grounded": 1.0,
+    "schema_pass": 1.0,
+    "customs_explanation": null,
+    "injection_failures": [],
+    "errors": [],
+    "latency_p50_ms": 2260,
+    "latency_p95_ms": 7188,
+    "gates": {
+      "act_recall_is_1": false,
+      "no_wrong_confirm": true,
+      "schema_pass_ge_95": true,
+      "no_injection_failure": true
+    },
+    "usage": {
+      "llm_calls": 28,
+      "llm_errors": {
+        "rate_limited": 1
+      },
+      "prompt_tokens": 109654,
+      "completion_tokens": 5061,
+      "cost_usd": null,
+      "cost_usd_per_request": null,
+      "failures": {
+        "db_write=not_configured": 30,
+        "judge=rate_limited 429": 1,
+        "db_read=not_configured": 2,
+        "candidate_detail=position not_found": 2,
+        "live_position=not_found": 1,
+        "identify_mrn=not_found": 1,
+        "shipfinder:pos=timeout served_from_cache": 2,
+        "candidate_detail=position no_permission": 1,
+        "live_position=no_permission": 1,
+        "judge=bad_format attempt 1": 1,
+        "judge=bad_format attempt 2": 1,
+        "judge=bad_format attempt 3": 1,
+        "judge=gave up after 3 attempts": 1
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "N01",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재까지는 화물 운송에 특별한 문제나 지연 신호가 없습니다. 판매 예정일인 2026년 9월 28일보다 4일 일찍인 2026년 9월 24일 12시에 부산항에 도착할 예정입니다. 통관 절차도 아직 입항 전 단계로 정상적으로 진행 중입니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 1982,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 199,
+          "cost": null,
+          "latency_ms": 1947,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "N02",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "판정을 만들지 못했습니다. 조회한 값과 신호만 보여 드립니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 5808,
+      "failures": [
+        "judge=rate_limited 429",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": false,
+          "model": "vertex/google/gemini-2.5-flash",
+          "kind": "rate_limited",
+          "code": 429,
+          "latency_ms": 2098
+        }
+      ]
+    },
+    {
+      "id": "N03",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 고객님의 화물은 판매 예정일보다 6일 일찍 도착할 것으로 예상됩니다. 통관도 정상적으로 진행되고 있으니 현재로서는 별다른 조치를 취하실 필요가 없습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 1345,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4533,
+          "completion_tokens": 138,
+          "cost": null,
+          "latency_ms": 1316,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "N04",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재까지는 화물 운송에 특별한 문제나 지연 신호가 없습니다. 판매 예정일보다 6일 일찍 부산항에 도착할 예정입니다. 대략적인 도착 예정일은 2026년 9월 23일 오전 3시 24분이지만, 선박자동식별장치(AIS)에서 추정하는 것이므로 참고용입니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2260,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 193,
+          "cost": null,
+          "latency_ms": 2228,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "N05",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 '입항전' 단계로, 화물 목록이 세관에 제출되기 전입니다. 이 단계에서는 포워더에게 특별히 확인할 사항은 없습니다. 배가 오는 중이므로, 다음 단계인 '입항적재화물목록 제출'을 기다리시면 됩니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7188,
+      "failures": [
+        "db_read=not_configured",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 182,
+          "cost": null,
+          "latency_ms": 2131,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 5550,
+          "completion_tokens": 80,
+          "cost": null,
+          "latency_ms": 1408,
+          "attempts": 2,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "N06",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "수입 화물이 판매 예정일(2026년 9월 22일)보다 2일 늦게 도착할 것으로 예상됩니다. 현재로서는 판매 일정을 맞추기 어려울 수 있으니, 즉시 조치를 취하셔야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 3442,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 238,
+          "cost": null,
+          "latency_ms": 3416,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "N07",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일보다 3일 늦게 도착할 것으로 예상됩니다. 판매 일정에 차질이 없도록 빠르게 조치를 취해야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2121,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 195,
+          "cost": null,
+          "latency_ms": 2092,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "N08",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 'TEST CARGO A'호는 부산항으로 오고 있으며 2026-09-24 12:00에 도착할 예정입니다. 이는 판매 예정일인 2026-09-20보다 4일 늦게 도착하는 것이므로, 판매 예정일을 맞추려면 지금 조치를 취해야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7305,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 255,
+          "cost": null,
+          "latency_ms": 7278,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B01",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 3190,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 3837,
+          "completion_tokens": 210,
+          "cost": null,
+          "latency_ms": 3161,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 선박의 위치 정보가 1272.0시간 이상 업데이트되지 않아 정확한 위치를 파악하기 어렵습니다. 2026년 9월 24일 12시 00분에 부산에 도착할 예정이며, 판매 예정일인 2026년 9월 28일보다 4일의 여유가 있습니다. 포워더에게 선박의 최신 위치를 확인해 보세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 3668,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4541,
+          "completion_tokens": 268,
+          "cost": null,
+          "latency_ms": 3636,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 판매 예정일인 2026년 9월 28일보다 4일 먼저 부산에 도착할 것으로 예상됩니다. 하지만 AIS에서 보고하는 목적지 정보가 깨져 있어 확인이 필요합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 1919,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4549,
+          "completion_tokens": 209,
+          "cost": null,
+          "latency_ms": 1882,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B04",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "수하물이 판매 예정일보다 1일 늦게 부산에 도착할 예정입니다. 또한, AIS 예상 도착 시간과 해수부 입항 예정 시간 사이에 24시간의 차이가 있어 정확한 도착 시각 확인이 필요합니다. 판매에 차질이 없도록 포워더나 선사에 확인하여 일정을 조정해야 합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6238,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4545,
+          "completion_tokens": 283,
+          "cost": null,
+          "latency_ms": 6209,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B05",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 고객님의 화물은 판매 예정일까지 4일의 여유가 있지만, 선박의 AIS와 해수부 입항 예정일이 24시간 차이가 나 WATCH 단계입니다. 대략적인 도착 예정일은 2026년 9월 24일입니다. 포워더나 선사에 정확한 도착 예정일을 확인해 보세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 1899,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4538,
+          "completion_tokens": 253,
+          "cost": null,
+          "latency_ms": 1864,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B06",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "배가 정박 중으로 표시되지만 실제로는 움직이고 있습니다. 이는 AIS 데이터의 불일치일 수 있으며, 운항 상태를 계속 지켜보는 것이 좋습니다. 판매 예정일까지는 4일의 여유가 있습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2080,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4543,
+          "completion_tokens": 201,
+          "cost": null,
+          "latency_ms": 2050,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B07",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 29,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B08",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "배가 부산항 인근에서 30시간 넘게 정지 상태로 대기 중입니다. 이는 곧바로 처리하지 않으면 판매 예정일을 놓칠 수 있는 상황을 의미합니다. 판매 예정일인 9월 28일보다 4일 일찍 도착할 예정이었지만, 현재 대기 상황으로 인해 입항이 지연될 수 있습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2888,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4544,
+          "completion_tokens": 294,
+          "cost": null,
+          "latency_ms": 2856,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B09",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 선박의 AIS 목적지 정보가 부산이 아닌 다른 항구(JPOSA)로 설정되어 있습니다. 판매 예정일까지는 1일의 여유가 있으나, 목적지 오류는 통관 지연으로 이어질 수 있으므로 확인이 필요합니다. 대략적인 도착 예상 시각은 2026-09-23 01:18경이지만, 이는 참고용이며 2026년 9월 27일 12:00에 부산항에 도착할 것으로 예상됩니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2346,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4547,
+          "completion_tokens": 289,
+          "cost": null,
+          "latency_ms": 2312,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B10",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 세관에서 화물 검사 지정이 되어 있어 판매 예정일을 맞추려면 즉시 조치가 필요합니다. 화물은 2026년 09월 24일 12시에 부산에 도착할 예정이며, 판매 예정일인 2026년 09월 28일까지 4일의 여유가 있지만 검사로 인해 지연될 수 있습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6348,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4539,
+          "completion_tokens": 255,
+          "cost": null,
+          "latency_ms": 2321,
+          "attempts": 2,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B11",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재까지는 화물이 판매 예정일인 9월 28일까지 부산항에 도착할 것으로 예상되며, 4일의 여유가 있습니다. 모든 신호가 정상으로 보여 별다른 조치를 취할 필요는 없습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2261,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 150,
+          "cost": null,
+          "latency_ms": 2231,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B12",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2973,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 3837,
+          "completion_tokens": 158,
+          "cost": null,
+          "latency_ms": 2047,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "B13",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 26,
+      "failures": [
+        "candidate_detail=position not_found",
+        "live_position=not_found",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "B14",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더 ETA를 알려주시면 어느 배인지 가릅니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 27,
+      "failures": [
+        "identify_mrn=not_found",
+        "candidate_detail=position not_found",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F01",
+      "category": "failure",
+      "failure_kind": "bl_not_found",
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ],
+        "decided_by": null,
+        "answer": "조회 결과가 없습니다. B/L 번호와 M/H 구분을 다시 확인해 주세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 23,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F02",
+      "category": "failure",
+      "failure_kind": "timeout",
+      "expected": {
+        "status": "partial",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "현재 선박의 위치 정보가 9.0시간 전에 마지막으로 업데이트되어 지연되고 있습니다. 이 화물은 판매 예정일보다 4일 먼저 도착할 예정입니다. 선박의 최신 위치를 확인해 보시는 것이 좋습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2136,
+      "failures": [
+        "shipfinder:pos=timeout served_from_cache",
+        "shipfinder:pos=timeout served_from_cache",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4538,
+          "completion_tokens": 223,
+          "cost": null,
+          "latency_ms": 2106,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "F03",
+      "category": "failure",
+      "failure_kind": "inject_ais_dest",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일보다 1일 늦게 도착할 것으로 예상되어 즉시 조치가 필요합니다. 또한 AIS 목적지 정보가 깨져 있어 포워더나 선사를 통해 확인하는 것이 좋습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6296,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4549,
+          "completion_tokens": 245,
+          "cost": null,
+          "latency_ms": 1980,
+          "attempts": 2,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "F04",
+      "category": "failure",
+      "failure_kind": "no_permission",
+      "expected": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 27,
+      "failures": [
+        "candidate_detail=position no_permission",
+        "live_position=no_permission",
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F05",
+      "category": "failure",
+      "failure_kind": "out_of_scope_port",
+      "expected": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 16,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": []
+    },
+    {
+      "id": "F06",
+      "category": "failure",
+      "failure_kind": "inject_user_input",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일인 2026년 9월 23일보다 1일 늦은 2026년 9월 24일 12시 00분에 도착할 예정입니다. 이 화물은 판매 예정일에 맞춰 도착하지 않습니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7098,
+      "failures": [
+        "db_read=not_configured",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 253,
+          "cost": null,
+          "latency_ms": 2472,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 5631,
+          "completion_tokens": 80,
+          "cost": null,
+          "latency_ms": 1343,
+          "attempts": 2,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "F07",
+      "category": "failure",
+      "failure_kind": "inject_tool_description",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "llm",
+        "answer": "판매 예정일보다 1일 늦은 9월 24일에 부산항에 도착할 예정입니다. 판매 일정을 놓치지 않으려면 지금 조치가 필요합니다.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 3792,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-2.5-flash",
+          "provider": null,
+          "prompt_tokens": 4537,
+          "completion_tokens": 210,
+          "cost": null,
+          "latency_ms": 2662,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "F08",
+      "category": "failure",
+      "failure_kind": "schema_violation_persistent",
+      "expected": {
+        "status": "failed",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "failed",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "판정을 생성하지 못했습니다. 근거 카드를 확인하세요.",
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 1248,
+      "failures": [
+        "judge=bad_format attempt 1",
+        "judge=bad_format attempt 2",
+        "judge=bad_format attempt 3",
+        "judge=gave up after 3 attempts",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        },
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        },
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        }
+      ]
+    }
+  ]
+}

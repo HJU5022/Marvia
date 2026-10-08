@@ -260,7 +260,7 @@ let selectedFixture: string | null = null;
 let previous: { key: string; response: AgentResponse } | null = null;
 const pause = () => new Promise<void>(resolve => setTimeout(resolve, 1050));
 
-/** 저장된 예시 B/L을 그 예시의 조건 그대로만 재생한다. 새 입력에 맞춰 판정을 지어내지 않는다 (NOTES.md). */
+/** 저장된 예시 B/L을 그 예시의 조건 그대로만 재생한다. 새 입력에 맞춰 판정을 지어내지 않는다 (SDD 5.13 데모 모드). */
 async function demoAgentResponse(req: AgentRequest): Promise<AgentResponse> {
   await pause();
   const normalized = req.bl_no.replace(/\s/g, '').toUpperCase();
@@ -776,7 +776,7 @@ export function selectFixture(id: string | null) {
 }
 
 /** 이력 행의 저장된 판정 다시 보기. GET /api/history는 요약만 주므로 실제 모드에서는 상세가 없다(null).
- * 새로 POST해서 과거 결과인 척하지 않는다. 실제 재생은 상세 endpoint가 생겨야 한다 (NOTES.md).
+ * 새로 POST해서 과거 결과인 척하지 않는다. 실제 재생은 상세 endpoint가 생겨야 한다.
  */
 export function getReplaySnapshot(requestId: string) {
   if (isLive) return null;

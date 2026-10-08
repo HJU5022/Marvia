@@ -126,7 +126,7 @@ class FakeConn:
 # ── 마스킹 ──
 
 def test_mask_email_keeps_only_hints():
-    assert ops.mask_email("kim.seunguk@gmail.com") == "ki***@g***.com"
+    assert ops.mask_email("test.operator@example.com") == "te***@e***.com"
     assert ops.mask_email("ab@naver.co.kr") == "a***@n***.kr"  # 2자 아이디는 1자만
     assert ops.mask_email(None) is None and ops.mask_email("not-an-email") is None
 

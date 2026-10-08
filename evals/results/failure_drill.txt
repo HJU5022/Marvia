@@ -1,0 +1,180 @@
+에러 로깅 실패 훈련 · 전체 (LLM 시나리오는 MODEL_A를 실제로 부른다) · 기본 문항 N02
+
+[judge_truncated]  LLM 필요 · 출처: 평가셋 N02
+  바꾼 것 : llm.chat에 max_tokens=50을 끼워 넣음
+  기대    : stage=judge error=truncated
+  참고    : Gemini 생각(reasoning) 토큰이 한도를 먼저 먹으면 본문 없이 잘린다. 3번 다 잘리면 gave up 줄도 나온다
+  잡힌 줄 : stage=judge error=truncated attempt 1
+            stage=judge error=truncated attempt 2
+            stage=judge error=truncated attempt 3
+            stage=judge error=gave up after 3 attempts
+            stage=db_write error=not_configured
+  응답    : status=failed
+  결과    : O
+
+[judge_bad_request]  LLM 필요 · 출처: 평가셋 N02
+  바꾼 것 : MODEL_A=vertex/google/gemini-drill-no-such-model
+  기대    : stage=judge error=bad_request
+  잡힌 줄 : stage=judge error=bad_request 404
+            stage=db_write error=not_configured
+  응답    : status=partial
+  결과    : O
+
+[judge_auth]  LLM 필요 · 출처: 평가셋 N02
+  바꾼 것 : GOOGLE_CLOUD_PROJECT=marvia-drill-no-such-project (Vertex 로그인 캐시 비움)
+  기대    : stage=judge error=<나온 kind 그대로 기록>
+  참고    : auth 403을 예상하지만 Vertex가 다른 코드로 답할 수 있다. 억지로 맞추지 않고 나온 kind를 그대로 기록한다 (judge 줄이 있으면 O)
+  잡힌 줄 : stage=judge error=auth 403
+            stage=db_write error=not_configured
+  응답    : status=partial
+  결과    : O
+
+[judge_connection]  LLM 필요 · 출처: 평가셋 N02
+  바꾼 것 : llm.TIMEOUT_SEC=0.001
+  기대    : stage=judge error=connection
+  잡힌 줄 : stage=judge error=connection
+            stage=db_write error=not_configured
+  응답    : status=partial
+  결과    : O
+
+[judge_rate_limited]  LLM 필요 · 출처: SKIP
+  바꾼 것 : 없음 (일부러 만들 수 없다)
+  기대    : stage=judge error=rate_limited 429
+  결과    : SKIP (natural only: 요청이 몰릴 때만 Vertex·OpenRouter가 429를 준다. 부하 중 평가 실행(run_eval b·c) 로그에서 확인)
+
+[judge_not_configured]  LLM 불필요 · 출처: 평가셋 N02
+  바꾼 것 : MODEL_A 비움
+  기대    : stage=judge error=not_configured
+  잡힌 줄 : stage=judge error=not_configured
+            stage=db_write error=not_configured
+  응답    : status=partial
+  결과    : O
+
+[judge_gave_up_f08]  LLM 불필요 · 출처: 평가셋 F08 (가짜 chat)
+  바꾼 것 : 평가셋 F08 (평가 실행기가 llm.chat을 '{}' 가짜로 바꿈)
+  기대    : stage=judge error=bad_format attempt 1 / stage=judge error=gave up after 3 attempts
+  참고    : F08은 실제 LLM이 아니라 가짜 chat이다. JSON 검사와 3회 재시도 경로만 진짜
+  잡힌 줄 : stage=judge error=bad_format attempt 1
+            stage=judge error=bad_format attempt 2
+            stage=judge error=bad_format attempt 3
+            stage=judge error=gave up after 3 attempts
+            stage=db_write error=not_configured
+  응답    : status=failed
+  결과    : O
+
+[validate_gave_up]  LLM 불필요 · 출처: constructed
+  바꾼 것 : llm.chat을 V7 위반 답(근거에 없는 숫자)을 주는 가짜로
+  기대    : stage=validate error=V7 / stage=judge error=gave up after 3 attempts
+  참고    : 실제 모델의 validate 위반은 마음대로 일으킬 수 없다 (natural only). 검증·재시도 경로는 진짜
+  잡힌 줄 : stage=validate error=V2,V7 attempt 1
+            stage=validate error=V2,V7 attempt 2
+            stage=validate error=V2,V7 attempt 3
+            stage=judge error=gave up after 3 attempts
+            stage=db_write error=not_configured
+  응답    : status=failed
+  결과    : O
+
+[db_write_not_configured]  LLM 불필요 · 출처: 평가셋 N02
+  바꾼 것 : DATABASE_URL 비움 (규칙 판정기)
+  기대    : stage=db_write error=not_configured
+  잡힌 줄 : stage=db_write error=not_configured
+  응답    : status=ok
+  결과    : O
+
+[db_write_bad_url]  LLM 불필요 · 출처: 평가셋 N02
+  바꾼 것 : DATABASE_URL=postgresql://127.0.0.1:1/drill?connect_timeout=2 (규칙 판정기)
+  기대    : stage=db_write error=OperationalError
+  잡힌 줄 : stage=db_write error=OperationalError
+  응답    : status=ok
+  결과    : O
+
+[history_read_not_configured]  LLM 불필요 · 출처: constructed (TestClient)
+  바꾼 것 : DATABASE_URL 비움, GET /api/history
+  기대    : stage=history_read error=not_configured
+  잡힌 줄 : stage=history_read error=not_configured
+  응답    : available=False, items=0
+  결과    : O
+
+[history_read_bad_url]  LLM 불필요 · 출처: constructed (TestClient)
+  바꾼 것 : DATABASE_URL=postgresql://127.0.0.1:1/drill?connect_timeout=2, GET /api/history
+  기대    : stage=history_read error=OperationalError
+  잡힌 줄 : stage=history_read error=OperationalError
+  응답    : available=False, items=0
+  결과    : O
+
+[tool_timeout_f02]  LLM 불필요 · 출처: 평가셋 F02
+  바꾼 것 : 평가셋 F02 (위치 조회 타임아웃 재생, 캐시 위치로 대체, 규칙 판정기)
+  기대    : stage=shipfinder:pos error=timeout served_from_cache
+  잡힌 줄 : stage=shipfinder:pos error=timeout served_from_cache
+            stage=shipfinder:pos error=timeout served_from_cache
+            stage=db_write error=not_configured
+  응답    : status=partial
+  결과    : O
+
+[tool_no_permission_f04]  LLM 불필요 · 출처: 평가셋 F04
+  바꾼 것 : 평가셋 F04 (위치 조회 권한 없음 status 21, 규칙 판정기)
+  기대    : stage=live_position error=no_permission / stage=candidate_detail error=position no_permission
+  잡힌 줄 : stage=candidate_detail error=position no_permission
+            stage=live_position error=no_permission
+            stage=db_write error=not_configured
+  응답    : status=partial
+  결과    : O
+
+[identify_mrn_not_found]  LLM 불필요 · 출처: 평가셋 B14
+  바꾼 것 : 평가셋 B14 (MRN에 맞는 입항 신고 없음, 규칙 판정기)
+  기대    : stage=identify_mrn error=not_found
+  잡힌 줄 : stage=identify_mrn error=not_found
+            stage=candidate_detail error=position not_found
+            stage=db_write error=not_configured
+  응답    : status=insufficient
+  결과    : O
+
+[candidate_detail_not_found]  LLM 불필요 · 출처: 평가셋 B13
+  바꾼 것 : 평가셋 B13 (후보 위치 재생 파일 없음, 규칙 판정기)
+  기대    : stage=candidate_detail error=position not_found
+  잡힌 줄 : stage=candidate_detail error=position not_found
+            stage=live_position error=not_found
+            stage=db_write error=not_configured
+  응답    : status=insufficient
+  결과    : O
+
+[langfuse_fallback]  LLM 불필요 · 출처: 평가셋 N02
+  바꾼 것 : Langfuse 키는 가짜 값, langfuse import만 실패 (MODEL_A 비움)
+  기대    : stage=langfuse_prompt error=fallback=local_file / stage=langfuse_trace_start error=no_trace
+  잡힌 줄 : stage=langfuse_prompt error=ModuleNotFoundError fallback=local_file
+            stage=langfuse_trace_start error=ModuleNotFoundError no_trace
+            stage=judge error=not_configured
+            stage=db_write error=not_configured
+  응답    : status=partial
+  결과    : O
+
+[langfuse_trace_end]  LLM 불필요 · 출처: constructed
+  바꾼 것 : update가 실패하는 가짜 generation을 end_generation에 넘김
+  기대    : stage=langfuse_trace_end error=RuntimeError
+  잡힌 줄 : stage=langfuse_trace_end error=RuntimeError
+  결과    : O
+
+[shipfinder_served_from_cache]  LLM 불필요 · 출처: constructed
+  바꾼 것 : ShipFinder 위치: 성공 → 빈도 초과(29) (MockTransport)
+  기대    : stage=shipfinder:pos error=rate_limited served_from_cache
+  잡힌 줄 : stage=shipfinder:pos error=rate_limited served_from_cache
+  결과    : O
+
+[mof_page_cap_hit]  LLM 불필요 · 출처: constructed
+  바꾼 것 : 해수부 두 API: 페이지 2건·최대 2페이지, 매번 꽉 찬 페이지 (MockTransport)
+  기대    : stage=mof_control error=page_cap_hit 2 / stage=mof_sailing error=page_cap_hit 2
+  잡힌 줄 : stage=mof_control error=page_cap_hit 2
+            stage=mof_sailing error=page_cap_hit 2
+  결과    : O
+
+[llm_overloaded]  LLM 불필요 · 출처: SKIP
+  바꾼 것 : 없음
+  기대    : stage=judge error=overloaded 5xx
+  결과    : SKIP (Gemini/Vertex의 5xx는 일부러 일으킬 수 없다. kind 매핑은 단위 테스트(_status_kind)가 본다)
+
+[llm_no_choices]  LLM 불필요 · 출처: SKIP
+  바꾼 것 : 없음
+  기대    : stage=judge error=no_choices
+  결과    : SKIP (200 안에 choices 없이 error만 오는 것은 OpenRouter 전용이다. MODEL_A는 Vertex라 나올 수 없다. 단위 테스트가 본다)
+
+요약: O 19 · X 0 · SKIP 3 (총 22)

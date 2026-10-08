@@ -3,7 +3,6 @@
 #
 # PR 때만 돈다. secret-scan.yml과 같은 이유로 push 이벤트는 걸지 않는다(Actions 무료 한도, 2026-08-21).
 # 실제 API·LLM을 부르는 평가(run_eval --config b|c)와 레드팀은 돈이 들어 여기서 돌리지 않는다.
-# test_baseline.py는 main에서부터 import 오류(evals.baseline_rules.decide 없음)라 고쳐질 때까지 뺀다.
 name: Tests
 
 on:
@@ -26,4 +25,4 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
       - run: pip install -r backend/requirements.txt -r backend/requirements-doc.txt
       - name: pytest
-        run: python -m pytest -q backend/tests mcp_server/tests --ignore=backend/tests/test_baseline.py -p no:warnings
+        run: python -m pytest -q backend/tests mcp_server/tests -p no:warnings
