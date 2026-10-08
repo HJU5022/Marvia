@@ -1,4 +1,4 @@
-"""API 서버 안의 /mcp 경로 테스트 (09-29 결정: 서버 하나로 합침, SDD 5.9).
+"""API 서버 안의 /mcp 경로 테스트 (서버 하나로 합침, SDD 5.9).
 
 - 토큰이 있으면 토큰 없이 401, 토큰이 맞으면 MCP initialize가 된다
 - Cloud Run처럼 localhost가 아닌 Host로 와도 막히지 않는다 (토큰이 있을 때 Host 검사를 끈다)

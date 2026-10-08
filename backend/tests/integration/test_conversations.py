@@ -1,4 +1,4 @@
-"""대화 목록 테스트 (services/chat/conversations.py, routers/conversations.py, routers/chat.py 저장 연결, services/account/account.py, 10-06 결정).
+"""대화 목록 테스트 (services/chat/conversations.py, routers/conversations.py, routers/chat.py 저장 연결, services/account/account.py).
 
 DB·LLM·키 없이 돈다. 연결은 SQL과 값을 기록하는 가짜, LLM·뒤 일꾼은 바꿔 끼운다. B/L은 모의값이다.
 진짜 SQL은 migrations/018을 임시 Postgres에 한 번 돌려 확인했다 (이 파일은 코드 흐름만 본다).
@@ -143,7 +143,7 @@ def test_job_sets_title_only_for_new_conversation(keys, monkeypatch):
 
 
 def test_greeting_start_waits_for_first_real_question(keys, monkeypatch):
-    """"안녕"으로 시작한 대화는 제목을 "새 대화"로 두고, 첫 진짜 질문으로 짓는다 (10-06 정운 화면: 대화 둘이 모두 "인사")."""
+    """"안녕"으로 시작한 대화는 제목을 "새 대화"로 두고, 첫 진짜 질문으로 짓는다 (대화 둘이 모두 "인사")."""
     conn = FakeConn()
     monkeypatch.setattr(conv, "connect", lambda: conn)
     titles = []

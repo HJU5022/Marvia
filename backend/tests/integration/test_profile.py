@@ -127,7 +127,7 @@ def test_operator_sees_only_masked_profile(db, monkeypatch):
 
 @pytest.mark.parametrize("method,path", [("PUT", "/api/profile"), ("DELETE", "/api/history"), ("POST", "/api/admin/operators")])
 def test_browser_preflight_allows_methods_the_screen_uses(method, path):
-    """화면이 쓰는 메서드가 CORS에서 빠지면 브라우저는 사전 요청(OPTIONS)에서 막고 '연결 실패'로 보인다 (10-01 PUT 누락)."""
+    """화면이 쓰는 메서드가 CORS에서 빠지면 브라우저는 사전 요청(OPTIONS)에서 막고 '연결 실패'로 보인다 (PUT 누락)."""
     with TestClient(app) as client:
         r = client.options(path, headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": method,
                                           "Access-Control-Request-Headers": "authorization,content-type"})
@@ -135,7 +135,7 @@ def test_browser_preflight_allows_methods_the_screen_uses(method, path):
 
 
 def test_pii_key_is_separate_from_bl_key(monkeypatch):
-    """개인정보는 PII 열쇠로만 잠근다. B/L 열쇠만 있으면 저장하지 않는다 (10-01 분리)."""
+    """개인정보는 PII 열쇠로만 잠근다. B/L 열쇠만 있으면 저장하지 않는다."""
     from backend.app import crypto
     monkeypatch.delenv("PII_ENCRYPTION_KEY", raising=False)
     monkeypatch.setenv("BL_ENCRYPTION_KEY", Fernet.generate_key().decode())

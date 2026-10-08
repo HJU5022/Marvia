@@ -1,7 +1,7 @@
-"""서류 대조 데모 10건 테스트 (임시, 10-05). evals/fixtures/demo_papers.jsonl을 키 없이 실제 요청 경로로 돌린다.
+"""서류 대조 데모 10건 테스트 (임시). evals/fixtures/demo_papers.jsonl을 키 없이 실제 요청 경로로 돌린다.
 
 scripts/demo/make_demo.build_with_papers가 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo.py와 같은 방식).
-10-06부터 서버 데모(build_all)는 라이브 10건이라 이 10건을 안 쓴다. 서류 대조 기능 확인용으로 여기서만 쓴다.
+지금 서버 데모(build_all)는 라이브 10건이라 이 10건을 안 쓴다. 서류 대조 기능 확인용으로 여기서만 쓴다.
 LLM 키가 없어 판정 문장은 녹화 답이나 폴백이 될 수 있다. 그래서 식별 단계 결과(status, vessel_match,
 확정한 MMSI와 근거 한 줄)만 본다. 판정 등급은 보지 않는다.
 재생 폴더는 tmp_path에 만든다. 레포의 evals/fixtures/replay/는 건드리지 않는다.
@@ -76,7 +76,7 @@ def test_papers_case(demo, case):
 
 
 def test_korean_mof_name_keeps_mof_eta(demo):
-    # P48: 해수부 선명이 한글(국적선)이어도 호출부호로 이은 입항 예정을 버리지 않는다 (10-05, port_schedule._same_ship).
+    # P48: 해수부 선명이 한글(국적선)이어도 호출부호로 이은 입항 예정을 버리지 않는다 (port_schedule._same_ship).
     # 전에는 선명으로 다시 걸러 해수부 입항 예정이 빠지고 partial로 끝났다
     _, papers = demo
     response = _ask(papers["P48"])
@@ -85,7 +85,7 @@ def test_korean_mof_name_keeps_mof_eta(demo):
 
 
 def test_confirmed_response_fills_vessel(demo):
-    # 확정한 배는 vessel 칸(C1 VesselInfo)에 담긴다 (10-05 전에는 확정 경로에서 늘 null, routers/agent._vessel_info)
+    # 확정한 배는 vessel 칸(C1 VesselInfo)에 담긴다 (전에는 확정 경로에서 늘 null, routers/agent._vessel_info)
     _, papers = demo
     vessel = _ask(papers["P48"]).vessel
     assert (vessel.mmsi, vessel.call_sign, vessel.name, vessel.flag) == (440999481, "TST481", "TEST TWIN 48", "KR")

@@ -1,4 +1,4 @@
-"""채팅 답 버그 수정 테스트 (10-07 정운 실사용 34·35·52·54, services/chat/chat.py).
+"""채팅 답 버그 수정 테스트 (services/chat/chat.py).
 
 LLM·MCP·해수부·판정 흐름은 부르지 않는다. test_chat_agent.py의 가짜 llm.chat_agent와 MCP 가짜를 그대로 쓴다.
 배 이름·B/L은 모두 모의값이다.
@@ -88,7 +88,7 @@ def test_34_arrival_search_names_the_ships(monkeypatch):
     names = [v["ship_name"] for v in r.vessels if v["is_cargo"]] or [v["ship_name"] for v in r.vessels]
     assert r.vessels and names[0] in r.reply
     assert "입니다" not in r.reply and "습니다" not in r.reply
-    # 10-08 정운 실사용 61번: 첫 줄은 결론만, 배는 한 척에 한 줄, 마지막은 출처 한 줄
+    # 첫 줄은 결론만, 배는 한 척에 한 줄, 마지막은 출처 한 줄
     lines = r.reply.split("\n")
     assert lines[0].endswith("척이에요.") or "수입 화물선은 없고" in lines[0]
     assert lines[-1] == svc.PREV_PORT_NOTE

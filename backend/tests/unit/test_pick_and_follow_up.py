@@ -57,7 +57,7 @@ def test_pick_sends_customs_and_candidates_without_bl(monkeypatch):
 
 
 def test_pick_sends_hours_since_last_computed_by_code(monkeypatch):
-    """LLM은 지금 시각을 모른다. 경과 시간은 코드가 계산해 넣는다 (09-27 스모크 테스트에서 발견)."""
+    """LLM은 지금 시각을 모른다. 경과 시간은 코드가 계산해 넣는다 (스모크 테스트에서 발견)."""
     calls = _fake_chat(monkeypatch, {"choice": None, "confidence": "low", "reasons_per_candidate": []})
     llm.pick_vessel(_candidates(), _customs(), now=NOW.replace(hour=3))
 
@@ -104,7 +104,7 @@ def test_follow_up_reads_out_of_scope(monkeypatch):
 
 
 def test_follow_up_drops_ais_destination_text():
-    """후속 질문 LLM은 AIS 목적지 원문을 받지 않는다 (SDD 7절, 10-01 역할 재설정 주입 측정).
+    """후속 질문 LLM은 AIS 목적지 원문을 받지 않는다 (SDD 7절, 역할 재설정 주입 측정).
     destcode로 계산한 신호 카드(rule)와 다른 근거 카드는 남는다."""
     from backend.app.schemas.agent import Evidence
 
@@ -131,7 +131,7 @@ def test_follow_up_drops_ais_destination_text():
 @pytest.mark.parametrize("name", ["marvia-judge", "marvia-follow-up", "marvia-pick-vessel", "marvia-doc-extract",
                                   "marvia-judge-eval"])
 def test_every_prompt_ends_with_role_lock(name):
-    """모든 프롬프트 끝에 역할 고정 문장이 있다 (SDD 7절, 10-01). 공격 예시는 나열하지 않는다:
+    """모든 프롬프트 끝에 역할 고정 문장이 있다 (SDD 7절). 공격 예시는 나열하지 않는다:
     약한 모델에서 예시 나열이 오히려 뚫림을 늘렸다."""
     from backend.app.observability.langfuse import PROMPT_DIR
 

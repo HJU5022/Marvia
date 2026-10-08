@@ -1,4 +1,4 @@
-"""services/judge/identify.match_by_papers 테스트 (10-05 서류 대조 확정).
+"""services/judge/identify.match_by_papers 테스트 (서류 대조 확정).
 
 동명 선박이 여럿이고 사용자가 항차·포워더 입항 예정일을 안 줬을 때, 세관 입항일·적재항과 후보별 해수부 입항 신고가
 둘 다 맞는 배가 정확히 1척이면 확정하는지 본다. 해수부는 가짜 클라이언트로 바꿔 끼워 키 없이 돈다.
@@ -129,7 +129,7 @@ def test_compares_by_kst_date_not_utc_date():
     ("NINGBO PT", "ningbo", True),
     ("Qingdao", "QINGDAO", True),
     ("Ningbo", "SHANGHAI", False),
-    # 가운데에만 들어 있으면 같은 항구로 보지 않는다 (앞부분 비교, 10-05 검토)
+    # 가운데에만 들어 있으면 같은 항구로 보지 않는다 (앞부분 비교, 검토)
     ("Ningbo", "XINGANG NINGBO", False),
     ("Busan", "NEW BUSAN", False),
     ("Ningbo", "", False),
@@ -206,7 +206,7 @@ def test_candidate_without_call_sign_excluded_by_nationality_does_not_block():
 
 
 def test_same_call_sign_is_queried_once():
-    """호출부호가 같은 줄이 둘이면 해수부는 한 번만 부른다. MMSI가 서로 다르면 어느 MMSI인지 근거가 없어 확정하지 않는다 (10-05 2차 검토)."""
+    """호출부호가 같은 줄이 둘이면 해수부는 한 번만 부른다. MMSI가 서로 다르면 어느 MMSI인지 근거가 없어 확정하지 않는다 (2차 검토)."""
     mof = FakeMof({"TST01": [_arrive(24)]})
     got = _match(_customs(), _rows((440999001, "TST01"), (440999011, " tst01 ")), mof)
     assert [c[2] for c in mof.calls] == ["TST01"] and got is None
@@ -325,7 +325,7 @@ def test_router_does_not_confirm_vessel_missing_from_candidates(fake, monkeypatc
 
 
 
-# ── 10-05 2차 검토 반영 ──
+# ── 2차 검토 반영 ──
 
 def test_unknown_flag_name_is_not_excluded():
     """국적 이름을 알아볼 수 없으면(ISO 이름과 다른 모양) 빼지 않는다. 진짜 배를 대조 전에 지우지 않게."""

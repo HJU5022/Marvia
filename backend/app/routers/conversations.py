@@ -1,4 +1,4 @@
-"""대화 목록 창구 (ChatGPT·Claude식, 10-06 정운 결정, services/chat/conversations.py, migrations/018).
+"""대화 목록 창구 (ChatGPT·Claude식, services/chat/conversations.py, migrations/018).
 
 GET /api/conversations         내 대화 목록 (최근순 50건)
 GET /api/conversations/{id}    대화 하나: 말풍선, 마지막 판정(context·result)

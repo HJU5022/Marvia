@@ -1,4 +1,4 @@
-"""화물 비서 기억 창구 테스트 (routers/memory.py, schemas/memory.py, docs/specs/memory.md "API", 10-02 결정 7).
+"""화물 비서 기억 창구 테스트 (routers/memory.py, schemas/memory.py, docs/specs/memory.md "API", 결정 7).
 
 DB 없이 돈다. connect와 서비스 함수를 가짜로 끼운다. B/L은 모의값이다.
 """
@@ -80,7 +80,7 @@ def test_view_without_db_is_unavailable(monkeypatch):
 def test_delete_all_and_one(monkeypatch, db):
     headers = _login(monkeypatch)
     asked = []
-    # 메모장 전부 지우기는 메모장만 지운다 (10-02 결정 D2). 화물 표를 지우는 forget_user는 부르지 않는다
+    # 메모장 전부 지우기는 메모장만 지운다 (결정 D2). 화물 표를 지우는 forget_user는 부르지 않는다
     monkeypatch.setattr(memory_router.memory, "forget_user", lambda *a: pytest.fail("화물 표는 지우지 않는다"))
     monkeypatch.setattr(memory_router.memory, "delete_all", lambda conn, user_id: asked.append(user_id) or 3)
     status = {"c1": "deleted", "c9": "missing", "c5": "conflict"}
@@ -108,7 +108,7 @@ def test_delete_failure_is_not_hidden(monkeypatch):
 
 
 def test_document_facts_saves_conditions_and_contact(monkeypatch, db):
-    """확인한 B/L 조건은 화물 표에, 거래처는 출처 B/L 메모로 (10-02 결정 7)."""
+    """확인한 B/L 조건은 화물 표에, 거래처는 출처 B/L 메모로 (결정 7)."""
     headers = _login(monkeypatch)
     calls = []
     monkeypatch.setattr(memory_router.cargo, "apply_document_facts",

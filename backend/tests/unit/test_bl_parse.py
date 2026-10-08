@@ -1,4 +1,4 @@
-"""bl_parse: 흐트러진 B/L 후보 만들기 + 세관 확인 (10-05 결정). exists는 가짜라 네트워크가 필요 없다."""
+"""bl_parse: 흐트러진 B/L 후보 만들기 + 세관 확인. exists는 가짜라 네트워크가 필요 없다."""
 from backend.app.services.judge import bl_parse
 from backend.app.services.judge.bl_parse import (NOTE_GLUED, NOTE_SPACE, NOTE_SYMBOL, repair_message, resolve,
                                            separator_candidates, split_candidates, split_not_found)

@@ -42,7 +42,7 @@ def with_retry(call: Callable[[], T], *, name: str, attempts: int = MAX_ATTEMPTS
         name: 로그에 남길 이름. 예: shipfinder:VesselSearch
         attempts: 최초 호출을 포함한 총 시도 횟수
         backoff: 첫 대기 시간(초). 시도마다 곱절로 늘린다. 생략하면 모듈 기본값(테스트는 0으로 바꾼다)
-        stats: 주면 stats["attempts"]에 실제로 부른 횟수를 적는다. 성공·실패 모두. Langfuse 구간 span의 metadata용이다 (10-07)
+        stats: 주면 stats["attempts"]에 실제로 부른 횟수를 적는다. 성공·실패 모두. Langfuse 구간 span의 metadata용이다
     """
     wait_base = BACKOFF_SEC if backoff is None else backoff
     last: Exception | None = None

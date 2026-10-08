@@ -1,4 +1,4 @@
-"""컨테이너 번호로 화물 찾기 테스트 (10-06, services/chat/chat.py _swap_containers·mask_containers, services/watch/cargo.find_by_container).
+"""컨테이너 번호로 화물 찾기 테스트 (services/chat/chat.py _swap_containers·mask_containers, services/watch/cargo.find_by_container).
 
 DB·LLM·판정 흐름은 부르지 않는다. 가짜 연결과 가짜 llm.chat_agent를 끼운다.
 B/L과 컨테이너 번호는 모두 모의값이다(실제 번호 아님). 컨테이너는 검산 숫자를 아래 _make가 따로 계산해 만든다.
@@ -40,7 +40,7 @@ def agent_path(monkeypatch):
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     monkeypatch.setattr(svc.memory, "lookup_notes", lambda user_id, bl: [])
-    # 못 찾은 컨테이너는 세관에 같은 번호 B/L이 있는지 본다 (10-06 보완). 기본은 "세관에 없음"으로 두고 필요한 테스트만 바꾼다
+    # 못 찾은 컨테이너는 세관에 같은 번호 B/L이 있는지 본다 (보완). 기본은 "세관에 없음"으로 두고 필요한 테스트만 바꾼다
     monkeypatch.setattr(svc.bl_parse, "exists_in_customs", lambda bl: False)
 
 
@@ -251,7 +251,7 @@ def test_history_turns_mask_containers(monkeypatch):
     assert svc._masked_history(history, {})[0]["text"] == "[CNTR1] 어디야?"
 
 
-# ── 컨테이너 모양인데 실제로는 B/L (10-06 보완: B/L을 넣었는데 "못 찾음"이 뜨면 안 된다) ──
+# ── 컨테이너 모양인데 실제로는 B/L (보완: B/L을 넣었는데 "못 찾음"이 뜨면 안 된다) ──
 
 def test_container_shaped_bl_in_customs_goes_to_bl_flow(monkeypatch, bl_key):
     """내 화물에 없는 컨테이너 모양 번호가 세관에 B/L로 있으면, 막지 않고 B/L로 조회한다. LLM에는 [BL1]로만 간다"""

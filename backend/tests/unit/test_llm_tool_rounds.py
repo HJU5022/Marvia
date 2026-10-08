@@ -1,4 +1,4 @@
-"""llm._ask_json 도구 라운드의 response_format 처리와 _call_once의 전체 시간 상한 테스트 (10-05). 키 없이 돈다.
+"""llm._ask_json 도구 라운드의 response_format 처리와 _call_once의 전체 시간 상한 테스트. 키 없이 돈다.
 
 - 도구가 열린 라운드에는 response_format을 보내지 않는다 (deepseek-v4-flash는 둘이 같이 오면 도구를 안 부른다)
 - 도구 없이 낸 본문이 JSON이면(코드 울타리 포함) 두 번째 호출 없이 쓴다. 못 읽으면 response_format + tool_choice=none으로 딱 한 번 더 묻는다
@@ -78,7 +78,7 @@ def test_unparseable_content_makes_exactly_one_extra_call(monkeypatch):
 
 
 def test_extra_call_that_is_still_bad_raises_format_error(monkeypatch):
-    # 실제 제공사 답은 정상 종료면 finish_reason="stop"을 단다. 없으면(None) 끊긴 답으로 보고 한 번 더 묻는다 (10-06, test_doc_extract_retry.py)
+    # 실제 제공사 답은 정상 종료면 finish_reason="stop"을 단다. 없으면(None) 끊긴 답으로 보고 한 번 더 묻는다 (test_doc_extract_retry.py)
     stopped = lambda content: llm.LLMResult(content=content, model="test/model", finish_reason="stop")  # noqa: E731
     _script(monkeypatch, [stopped("아님"), stopped("여전히 아님")])
     with pytest.raises(llm.LLMFormatError):
@@ -122,7 +122,7 @@ def test_call_once_still_reraises_sdk_errors(monkeypatch):
 
 
 def test_generation_records_usage_summed_over_tool_rounds(monkeypatch):
-    """10-06 점검: 도구 고리는 chat()을 여러 번 부르는데 Langfuse에는 마지막 라운드 토큰만 남았다. 모든 라운드의 합을 남긴다."""
+    """도구 고리는 chat()을 여러 번 부르는데 Langfuse에는 마지막 라운드 토큰만 남았다. 모든 라운드의 합을 남긴다."""
     call = {"id": "c1", "name": "get_live_position", "arguments": "{}"}
     _script(monkeypatch, [
         llm.LLMResult(content=None, tool_calls=[call], model="m", prompt_tokens=100, completion_tokens=10, cost=0.001,
@@ -151,7 +151,7 @@ def test_single_round_usage_is_unchanged(monkeypatch):
 
 
 def test_tool_call_extra_content_is_sent_back(monkeypatch):
-    """10-08 Vertex 실험: Gemini 3.x는 도구 호출마다 thought_signature(extra_content)를 주고, 결과를 돌려줄 때 그대로 되돌려 받는다.
+    """Vertex 실험: Gemini 3.x는 도구 호출마다 thought_signature(extra_content)를 주고, 결과를 돌려줄 때 그대로 되돌려 받는다.
     없으면 HTTP 400. 값이 없는 제공사(OpenRouter 등)는 칸 자체를 넣지 않는다."""
     sent = []
     extra = {"google": {"thought_signature": "SIG"}}

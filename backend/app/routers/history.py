@@ -83,7 +83,7 @@ class DeleteResponse(BaseModel):
 def delete_history(user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DeleteResponse:
     """로그인한 사용자가 자기 조회 기록과 화물 비서 기억을 전부 지운다 (삭제 2단계, 개인정보보호법 제36조 삭제 요구).
 
-    로그인 필수다(09-30). 로그인 기능이 꺼진 채점 환경은 사용자가 없어 401이다. 그 환경의 기록은 90일 자동 삭제(008)로 정리된다.
+    로그인 필수다. 로그인 기능이 꺼진 채점 환경은 사용자가 없어 401이다. 그 환경의 기록은 90일 자동 삭제(008)로 정리된다.
     조회(GET)와 달리 실패를 빈 결과로 숨기지 않는다. 지운 줄 알았는데 남아 있으면 안 되므로 503으로 알린다.
     """
     if not user_id:
@@ -93,12 +93,12 @@ def delete_history(user_id: Annotated[str | None, Depends(current_user_id)] = No
         log_failure("history_delete", "not_configured")
         raise HTTPException(status_code=503, detail="기록 저장소에 연결하지 못해 삭제하지 못했습니다. 잠시 뒤 다시 시도하세요")
     try:
-        with connect() as conn, atomic(conn):  # 조회 기록과 기억을 한 트랜잭션으로 지운다 (10-02)
+        with connect() as conn, atomic(conn):  # 조회 기록과 기억을 한 트랜잭션으로 지운다
             deleted = delete_user_queries(conn, user_id)
             # 화물 비서 기억(화물 표·메모장)도 내 기록이라 같이 지운다 (docs/specs/memory.md "개인정보").
             # 알리는 숫자는 지금처럼 조회 기록 줄 수다 (응답 모양을 바꾸지 않는다)
             forget_user(conn, user_id)
-            # 대화 목록(대화방·말풍선)도 내 기록이다. 기록 삭제를 눌렀는데 대화가 남으면 안 된다 (10-06 결정)
+            # 대화 목록(대화방·말풍선)도 내 기록이다. 기록 삭제를 눌렀는데 대화가 남으면 안 된다
             conversations.delete_all(conn, user_id)
     except Exception as e:
         log_failure("history_delete", type(e).__name__)

@@ -65,7 +65,7 @@ def test_llm_usage_is_attached_to_log(caplog):
 
 def test_http_client_request_urls_are_not_logged(capsys):
     """외부 API 주소에는 키(crkyCn·serviceKey·key)와 B/L 번호가 들어 있다. httpx가 INFO로 주소 전체를
-    남기면 로그에 그대로 쌓인다(09-28 실제 B/L 호출에서 발견). 주소를 남기는 로거는 WARNING 이상만 남긴다."""
+    남기면 로그에 그대로 쌓인다(실제 B/L 호출에서 발견). 주소를 남기는 로거는 WARNING 이상만 남긴다."""
     import httpx
 
     setup_logging()

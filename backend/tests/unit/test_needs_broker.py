@@ -1,4 +1,4 @@
-"""관세사 필요 여부(needs_broker)를 코드가 정한다 (10-01 강사 피드백: 결정마다 권한자 하나).
+"""관세사 필요 여부(needs_broker)를 코드가 정한다 (강사 피드백: 결정마다 권한자 하나).
 
 - 정상 단계 목록은 customs-stages/rules.md customs_stages에서 읽는다 (코드에 따로 적지 않는다)
 - 검사·보류 같은 단계, 목록에 없는 단계는 true. 목록의 todo에 관세사가 나와도 정상 단계는 false
@@ -16,7 +16,7 @@ from backend.app.services.judge.signals import needs_broker
 
 def test_stage_names_come_from_rules_yaml():
     names = customs_stage_names()
-    # customs-stages/rules.md customs_stages의 10개 단계 (10-01: SKILL.md 표에서 YAML 목록으로 옮김)
+    # customs-stages/rules.md customs_stages의 10개 단계 (SKILL.md 표에서 YAML 목록으로 옮김)
     assert len(names) == 10
     assert stage_key("입항적재화물목록 제출") in names
     assert stage_key("반출신고") in names

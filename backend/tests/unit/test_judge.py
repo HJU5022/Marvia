@@ -65,7 +65,7 @@ def _fake_chat(monkeypatch, content: str):
 
 
 def test_system_has_prompt_and_judge_skills(monkeypatch):
-    """판정에는 AIS 신뢰도 · 통관 단계 · 등급 설명(cargo-verdict) Skill만 넣는다. 판정 입력에 하역 장소가 없어 부두 Skill은 뺀다 (09-30, 10-01)."""
+    """판정에는 AIS 신뢰도 · 통관 단계 · 등급 설명(cargo-verdict) Skill만 넣는다. 판정 입력에 하역 장소가 없어 부두 Skill은 뺀다."""
     calls = _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
     llm.judge(_signals(), _customs(), days_margin=5)
 
@@ -80,7 +80,7 @@ def test_system_has_prompt_and_judge_skills(monkeypatch):
 @pytest.mark.parametrize("folders, present, absent", [
     (llm.PICK_SKILLS, ["ais-reliability/SKILL.md"],
      ["customs-stages/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/", "import-basics/"]),
-    # 채점 기준인 단계 목록은 customs-stages/rules.md에 있다 (10-01)
+    # 채점 기준인 단계 목록은 customs-stages/rules.md에 있다
     (llm.GRADE_SKILLS, ["customs-stages/SKILL.md", "customs-stages/rules.md"],
      ["ais-reliability/SKILL.md", "port-busan/SKILL.md", "cargo-verdict/"]),
     (llm.FOLLOW_UP_SKILLS, ["ais-reliability/SKILL.md", "customs-stages/SKILL.md", "port-busan/SKILL.md",
@@ -89,7 +89,7 @@ def test_system_has_prompt_and_judge_skills(monkeypatch):
     (llm.JUDGE_SKILLS, ["ais-reliability/SKILL.md"], ["import-basics/"]),
 ])
 def test_skills_per_call(folders, present, absent):
-    """호출마다 필요한 Skill 폴더만 붙인다 (09-30). 붙이는 문서는 통째로다."""
+    """호출마다 필요한 Skill 폴더만 붙인다. 붙이는 문서는 통째로다."""
     text = llm._skills_text(folders)
     assert all(f"skills/{f}" in text for f in present) and not any(f"skills/{f}" in text for f in absent)
 
@@ -147,7 +147,7 @@ def test_null_verdict_and_customs_are_allowed(monkeypatch):
 
 @pytest.mark.parametrize("bad", ["판정: watch", json.dumps({**GOOD_ANSWER, "verdict": "maybe"})])
 def test_bad_shape_raises_llm_error(monkeypatch, bad):
-    """모양이 틀린 답은 LLMFormatError. 라우터가 다시 물을 때 붙일 설명(detail)을 들고 있다 (09-28)."""
+    """모양이 틀린 답은 LLMFormatError. 라우터가 다시 물을 때 붙일 설명(detail)을 들고 있다."""
     _fake_chat(monkeypatch, bad)
     with pytest.raises(llm.LLMFormatError) as e:
         llm.judge(_signals(), _customs(), days_margin=5)
@@ -170,7 +170,7 @@ def test_ais_destination_text_never_reaches_judge():
 
 def test_cut_off_answer_is_truncated_not_bad_format(monkeypatch):
     """토큰 한도에서 잘린 답(finish_reason=length)은 모양 오류(bad_format)와 따로 센다.
-    잘림은 한도·생각 설정을, 모양 오류는 프롬프트를 고쳐야 해서 해결책이 다르다 (09-29)."""
+    잘림은 한도·생각 설정을, 모양 오류는 프롬프트를 고쳐야 해서 해결책이 다르다."""
     monkeypatch.setattr(llm, "chat", lambda messages, **k: llm.LLMResult(
         content='{"verdict": "act", "rea', model="test/model", finish_reason="length"))
     with pytest.raises(llm.LLMFormatError) as e:
@@ -197,13 +197,13 @@ def test_empty_cut_off_answer_is_truncated(monkeypatch):
 
 def test_chosen_source_is_limited_to_evidence_sources():
     """믿은 출처(chosen)는 근거 카드의 출처 이름 중에서만 고르게 한다 (V6).
-    목록이 없을 때 Gemini가 "해수부 입항 예정"을 써서 act가 맞는데도 3번 탈락했다 (09-29 평가 B04·B09)."""
+    목록이 없을 때 Gemini가 "해수부 입항 예정"을 써서 act가 맞는데도 3번 탈락했다 (평가 B04·B09)."""
     chosen = llm.JUDGE_SCHEMA["properties"]["conflicts"]["items"]["properties"]["chosen"]
     assert sorted(chosen["enum"]) == ["mof", "rule", "searoute", "shipfinder", "unipass"]
 
 
 def test_single_signal_conflict_is_valid():
-    """eta_conflict 하나만으로도 상충이다 (AIS와 해수부가 다름). 전에는 2개 이상을 요구해 형식 오류로 탈락했다 (09-29)."""
+    """eta_conflict 하나만으로도 상충이다 (AIS와 해수부가 다름). 전에는 2개 이상을 요구해 형식 오류로 탈락했다."""
     answer = {**GOOD_ANSWER, "verdict": "act",
               "conflicts": [{"signals": ["eta_conflict"], "chosen": "mof", "why": "해수부 입항 신고를 믿음"}]}
     out = llm.JudgeOutput.model_validate(answer)
@@ -226,7 +226,7 @@ def test_memory_blocks_go_between_fixed_prompt_and_lookup_data(monkeypatch):
 
 
 def test_memory_blocks_are_kept_in_trace_input(monkeypatch):
-    """10-02 결정 8: 트레이스에는 기억 블록을 가리지 않고 남긴다 (운영 기록)."""
+    """결정 8: 트레이스에는 기억 블록을 가리지 않고 남긴다 (운영 기록)."""
     _fake_chat(monkeypatch, json.dumps(GOOD_ANSWER))
     seen = []
     monkeypatch.setattr(llm, "start_generation", lambda name, input, prompt=None: seen.append(input))
@@ -243,7 +243,7 @@ def test_follow_up_gets_memory_in_same_place(monkeypatch):
 
 
 def test_write_memory_needs_memory_model(monkeypatch):
-    """MEMORY_MODEL이 없으면 부르지 않고 not_configured (10-02 결정 10). LLM_MODEL로 대신하지 않는다."""
+    """MEMORY_MODEL이 없으면 부르지 않고 not_configured (결정 10). LLM_MODEL로 대신하지 않는다."""
     monkeypatch.delenv("MEMORY_MODEL", raising=False)
     monkeypatch.setenv("LLM_MODEL", "test/model")
     monkeypatch.setattr(llm, "chat", lambda *a, **k: pytest.fail("부르면 안 된다"))

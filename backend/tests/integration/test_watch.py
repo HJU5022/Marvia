@@ -1,4 +1,4 @@
-"""화물 지켜보기 서비스 테스트 (services/watch/watch.py, G5 10-05 결정).
+"""화물 지켜보기 서비스 테스트 (services/watch/watch.py, G5).
 
 DB·카카오·LLM·ShipFinder는 부르지 않는다. user_cargo 표를 흉내 내는 가짜 연결, 판정 함수(assess) 가짜,
 카카오 보내기 가짜, 테스트용 열쇠를 쓴다. B/L은 모의값이다(실제 번호 아님).
@@ -224,7 +224,7 @@ def test_pending_changes_and_mark_seen():
 
 
 def test_pending_changes_reason_from_stored_margin_and_stage():
-    """이유는 화물 표에 저장된 마지막 여유 일수·통관 단계만으로 코드가 쓴다. 한쪽만 있어도 있는 것만 쓴다 (10-06)."""
+    """이유는 화물 표에 저장된 마지막 여유 일수·통관 단계만으로 코드가 쓴다. 한쪽만 있어도 있는 것만 쓴다."""
     conn = FakeConn()
     conn.add(bl="MOCKBL20261001", change_seen=False, changed_at=NOW, last_days_margin=-2, last_stage="수입신고")
     conn.add(bl="MOCKBL20261002", change_seen=False, changed_at=datetime(2026, 10, 4, tzinfo=timezone.utc), last_days_margin=3)
@@ -393,7 +393,7 @@ def test_default_assess_is_the_user_lookup_path(upserts, sent, monkeypatch):
     assert svc.run_watch(conn, now=NOW)["checked"] == 1 and seen == [(BL, None)]
 
 
-# ── 하루 토큰 한도 (10-06 점검). 재판정도 그 사용자의 LLM 사용량이다 ──
+# ── 하루 토큰 한도. 재판정도 그 사용자의 LLM 사용량이다 ──
 
 def test_rejudge_is_scoped_to_the_cargo_owner(upserts, sent, monkeypatch):
     """session_scope에 user_id를 넘겨 토큰이 그 사람 몫으로 쌓인다 (services/account/quota.py owner_var)."""
@@ -421,7 +421,7 @@ def test_rejudge_skipped_when_owner_is_over_quota(upserts, sent, monkeypatch):
 
 
 def test_known_vessel_only_skips_cargo_without_vessel(upserts, sent):
-    """워커 예산 안에서 돌 때(known_vessel_only)는 배를 모르는 화물을 다시 판정하지 않고 skipped_no_vessel로 센다 (10-06 점검).
+    """워커 예산 안에서 돌 때(known_vessel_only)는 배를 모르는 화물을 다시 판정하지 않고 skipped_no_vessel로 센다.
     배를 모르면 후보 검색으로 ShipFinder를 최대 11회 써서 화물당 1회로 떼어 둔 예산을 깬다."""
     conn = FakeConn()
     _watched(conn, bl="MOCKBL20261001", vessel_mmsi=None, last_checked_at=None)

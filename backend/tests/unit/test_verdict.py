@@ -1,4 +1,4 @@
-"""판정 표의 허용 범위 테스트 (09-30 D7, services/judge/verdict.py). 표 등급 자체는 test_baseline_rules.py가 본다."""
+"""판정 표의 허용 범위 테스트 (D7, services/judge/verdict.py). 표 등급 자체는 test_baseline_rules.py가 본다."""
 import pytest
 
 from backend.app.services.judge import verdict

@@ -1,4 +1,4 @@
-"""지켜보는 화물 재판정 실행기 테스트 (worker/watch.py, worker/run.py의 WATCH_ENABLED, G5 10-05 결정).
+"""지켜보는 화물 재판정 실행기 테스트 (worker/watch.py, worker/run.py의 WATCH_ENABLED, G5).
 
 DB·판정·수집은 부르지 않는다. connect와 run_watch를 가짜로 끼운다.
 """
@@ -75,7 +75,7 @@ def _sf_stubs(monkeypatch, seen: dict):
 
 
 def test_watch_budget_is_reserved_before_collection(collect_stubs, monkeypatch):
-    """재판정은 Budget 밖에서(api의 MCP로) ShipFinder를 부르므로 화물 수 x 화물당 호출 수만큼 먼저 떼어 둔다 (10-06 점검).
+    """재판정은 Budget 밖에서(api의 MCP로) ShipFinder를 부르므로 화물 수 x 화물당 호출 수만큼 먼저 떼어 둔다.
     합이 실행 예산을 넘지 않는다. 워커 재판정은 배를 아는 화물만 고른다."""
     monkeypatch.setenv("WATCH_ENABLED", "on")
     seen: dict = {}
@@ -116,7 +116,7 @@ def test_watch_budget_only_for_cargo_with_known_vessel(collect_stubs, monkeypatc
 
 
 def test_purges_watch_positions(collect_stubs, monkeypatch):
-    """감시 위치(watch_positions)도 실행마다 정리한다 (migrations/021, 10-06 점검)."""
+    """감시 위치(watch_positions)도 실행마다 정리한다 (migrations/021)."""
     monkeypatch.delenv("WATCH_ENABLED", raising=False)
     monkeypatch.setattr(run, "purge_watch_positions", lambda c: 3)
     assert run.run_once(0)["watch_positions_purged"] == 3

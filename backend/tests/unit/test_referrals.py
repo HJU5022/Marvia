@@ -1,4 +1,4 @@
-"""안내처(다음 행선지) 붙이기 (services/chat/referrals.py, docs/specs/referral-guide.md, 10-06).
+"""안내처(다음 행선지) 붙이기 (services/chat/referrals.py, docs/specs/referral-guide.md).
 
 - 판정: 켜진 신호마다 확인처 한 줄. 위험한 순서로 두 개까지, 괜찮음과 입력 오류 신호에는 붙이지 않는다
 - 판정 응답: LLM 검증을 통과한 뒤 할 일 끝에 붙고, LLM이 끝내 실패한 표 등급 응답에도 붙는다
@@ -143,7 +143,7 @@ def test_broker_only_has_official_tail():
 
 
 def test_chat_broker_topic_without_cargo_is_fixed_even_without_agent(monkeypatch):
-    """에이전트를 못 쓰는 전 방식에서도 세액 질문은 관세사 고정 안내다 (10-06 재생 서버 실측)."""
+    """에이전트를 못 쓰는 전 방식에서도 세액 질문은 관세사 고정 안내다 (재생 서버 실측)."""
     from backend.app.services.chat import chat as svc
     monkeypatch.setattr(svc, "agent_enabled", lambda: False)
     monkeypatch.setattr(svc, "_classic", lambda *a, **k: pytest.fail("세액 질문은 전 방식으로 가지 않는다"))

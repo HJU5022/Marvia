@@ -1,4 +1,4 @@
-"""후속 질문에서 LLM이 읽기 전용 MCP 도구를 직접 고르는 흐름 테스트 (10-02, D9 B안). 키 없이 돈다.
+"""후속 질문에서 LLM이 읽기 전용 MCP 도구를 직접 고르는 흐름 테스트 (D9 B안). 키 없이 돈다.
 
 - llm._ask_json: 도구를 부르면 결과를 돌려주며 다시 묻고, 상한(MAX_TOOL_ROUNDS)에 닿으면 도구 없이 답하게 한다
 - mcp_client.read_only_tools: MCP tools/list로 받고 읽기 전용 표시가 있는 도구만 넘긴다
@@ -165,7 +165,7 @@ def test_follow_up_answer_with_tool_number_passes(monkeypatch):
 
 
 def test_tools_rejected_falls_back_without_tools(monkeypatch):
-    """도구를 붙인 요청을 모델·제공사가 거절(bad_request)하면 도구 없이 다시 묻는다. 후속 답이 막히지 않는다 (10-02 실측)."""
+    """도구를 붙인 요청을 모델·제공사가 거절(bad_request)하면 도구 없이 다시 묻는다. 후속 답이 막히지 않는다."""
     saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", days_margin=5,
                                    answer="한 번 확인이 필요합니다.")
     monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)

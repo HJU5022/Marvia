@@ -1,4 +1,4 @@
-"""채팅 응답의 미니 지도 자료 테스트 (10-05, services/chat/chat._map_payload, routers/chat.ChatMap).
+"""채팅 응답의 미니 지도 자료 테스트 (services/chat/chat._map_payload, routers/chat.ChatMap).
 
 에이전트가 이번 문장에서 선박 실시간 위치를 실제로 조회했을 때만 map이 붙고, 좌표는 도구 결과에서만 온다.
 LLM·MCP·판정 흐름은 부르지 않는다: llm.chat_agent와 run_tool을 가짜로 끼운다 (test_chat_agent.py와 같은 방식).
@@ -110,7 +110,7 @@ def test_api_chat_response_has_map_key(monkeypatch):
 
 
 def test_follow_up_answer_citing_stored_position_gets_map():
-    """(c) 후속 답이 도구 없이 지난 결과의 위치를 말하면 그 좌표로 지도를 붙인다. 좌표를 말하지 않으면 붙이지 않는다 (10-05)."""
+    """(c) 후속 답이 도구 없이 지난 결과의 위치를 말하면 그 좌표로 지도를 붙인다. 좌표를 말하지 않으면 붙이지 않는다."""
     from datetime import datetime, timezone
     from backend.app.routers.agent import _response
     from backend.app.schemas.agent import Position

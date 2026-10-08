@@ -11,7 +11,7 @@ LLM은 여기서 재생하지 않는다. LLM_MODEL이 비어 있으면 services/
   shipfinder/<엔드포인트>/<키>.json   VesselSearch는 keywords, VesselPositionSingle·VesselFlagInfo는 mmsi가 키
   mof/<API>/<호출부호>.xml            CntlVssl2(관제), VsslEtrynd5(선박운항정보). 호출부호가 없으면 _ALL.xml
   unipass/<B/L 번호>.xml              mblNo 또는 hblNo. 모의 번호만 쓴다
-  positions/<MMSI>.json               워커가 6시간마다 모은 위치 이력 [{"at","lat","lng","sog"}] (10-06, 라이브 데모용. position_history)
+  positions/<MMSI>.json               워커가 6시간마다 모은 위치 이력 [{"at","lat","lng","sog"}] (라이브 데모용. position_history)
 파일이 없으면 "그런 대상 없음"으로 답한다. 검색은 빈 목록, 위치·국적은 status 3, 해수부는 빈 결과, UNI-PASS는 tCnt 0.
 실제 API가 모르는 배에 답하는 모양과 같아서, 라우터는 0척 되묻기 같은 평소 경로를 탄다.
 """
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import httpx
 
-# REPLAY_FIXTURE_DIR이 있으면 그 폴더를 읽는다 (10-07 데모용). 실제 응답을 찍어 둔 로컬 스냅숏(.local/demo_replay/<시각>/)을
+# REPLAY_FIXTURE_DIR이 있으면 그 폴더를 읽는다 (데모용). 실제 응답을 찍어 둔 로컬 스냅숏(.local/demo_replay/<시각>/)을
 # 코드 수정·커밋 없이 가리키려는 것이다. 모듈을 불러올 때 한 번 읽으므로 서버를 켜기 전에 정해 둔다.
 REPLAY_DIR = Path(os.environ.get("REPLAY_FIXTURE_DIR") or Path(__file__).resolve().parents[3] / "evals" / "fixtures" / "replay")
 
@@ -62,7 +62,7 @@ def _read(path: Path) -> str | None:
 
 
 def position_history(mmsi: int) -> list[dict] | None:
-    """재생 폴더의 위치 이력(positions/<MMSI>.json)을 읽는다. 파일이 없으면 None (10-06 정운 결정, 라이브 데모 10건).
+    """재생 폴더의 위치 이력(positions/<MMSI>.json)을 읽는다. 파일이 없으면 None (라이브 데모 10건).
 
     왜 필요한가: 서버는 이력을 DB(positions 표, 워커 6시간 수집)에서 읽는데, 재생 모드 서버에는 데모 배의 이력이 없다.
     그러면 부산 앞에서 30시간 멈춘 배(데모 5번)도 anchor_wait이 "정지 시간 미확인"(unknown)이 되어 긴급이 안 나온다.
@@ -126,7 +126,7 @@ def unipass_transport() -> httpx.MockTransport:
         body = None
         if bl_no:
             # 구분별 파일(<번호>.mbl.xml / <번호>.hbl.xml)을 먼저 본다. 실제 UNI-PASS는 마스터·하우스 번호가 서로 달라
-            # 같은 번호를 다른 구분으로 부르면 "없음"이 온다. 구분 없는 <번호>.xml은 예전처럼 둘 다에 답한다 (10-07)
+            # 같은 번호를 다른 구분으로 부르면 "없음"이 온다. 구분 없는 <번호>.xml은 예전처럼 둘 다에 답한다
             kind = "mbl" if mbl else "hbl"
             key = file_key(bl_no)
             body = _read(REPLAY_DIR / "unipass" / f"{key}.{kind}.xml") or _read(REPLAY_DIR / "unipass" / f"{key}.xml")

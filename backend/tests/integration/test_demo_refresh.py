@@ -1,4 +1,4 @@
-"""재생 모드 데모 파일 자동 갱신 (scripts/demo/make_demo.refresh, backend/app/main.py, 10-05 결정)."""
+"""재생 모드 데모 파일 자동 갱신 (scripts/demo/make_demo.refresh, backend/app/main.py)."""
 from datetime import datetime, timezone
 
 from scripts.demo import make_demo

@@ -65,7 +65,7 @@ def test_bad_shape_is_format_error(monkeypatch):
 
 
 def test_etd_is_read_and_defaults_to_none(monkeypatch):
-    """etd(10-06): 프롬프트가 Langfuse에 등록되기 전에는 LLM이 null을 내도, 칸이 없는 옛 모양이어도 읽힌다."""
+    """etd: 프롬프트가 Langfuse에 등록되기 전에는 LLM이 null을 내도, 칸이 없는 옛 모양이어도 읽힌다."""
     _fake_chat(monkeypatch, {**ANSWER, "etd": "2026-09-28"})
     assert llm.extract_doc_fields("[BL]").output.etd == "2026-09-28"
     _fake_chat(monkeypatch, {**ANSWER, "etd": None})

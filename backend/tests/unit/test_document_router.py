@@ -90,7 +90,7 @@ def test_too_large_is_400(monkeypatch):
 
 
 def test_conditions_and_contact_are_returned_and_checked(monkeypatch):
-    """10-02 결정 6: 조건·연락처 칸을 돌려준다. 서류에 없는 근거 글은 not_in_text, 서류 종류는 B/L·A/N 이름으로."""
+    """결정 6: 조건·연락처 칸을 돌려준다. 서류에 없는 근거 글은 not_in_text, 서류 종류는 B/L·A/N 이름으로."""
     _fake_extract(monkeypatch, {**ANSWER, "doc_kind": "arrival_notice", "freight_term": "collect",
                                 "freight_term_text": "FREIGHT COLLECT", "contact_phone": "010-1234-5678"})
     body = _post().json()
@@ -111,7 +111,7 @@ def test_old_shape_answer_keeps_needs_review_false(monkeypatch):
 
 
 def test_etd_same_day_is_returned_and_missing_etd_is_not_flagged(monkeypatch):
-    """etd(10-06): 서류에 있는 날짜면 그대로 돌려주고, null이어도(Langfuse 프롬프트에 아직 없을 때) 확인 필요를 올리지 않는다."""
+    """etd: 서류에 있는 날짜면 그대로 돌려주고, null이어도(Langfuse 프롬프트에 아직 없을 때) 확인 필요를 올리지 않는다."""
     _fake_extract(monkeypatch, {**ANSWER, "etd": "2026-10-02"})  # 가공 통지서에 있는 날짜(입항일과 같은 날)
     body = _post().json()
     assert body["fields"]["etd"] == {"value": "2026-10-02", "checks": []}
@@ -130,7 +130,7 @@ def test_invented_etd_needs_review(monkeypatch):
     assert body["needs_review"] is True
 
 
-# ---- POST /api/document/bl: B/L만 찾기 (10-08 정운 실사용 73번) ----
+# ---- POST /api/document/bl: B/L만 찾기 ----
 
 def _post_bl(name="notice_phone.jpg", content=None):
     data = content if content is not None else (DOCS / name).read_bytes()
@@ -174,7 +174,7 @@ def _white_png(side):
 
 @pytest.mark.parametrize("path", ["/api/document", "/api/document/bl"])
 def test_decompression_bomb_is_400_not_500(monkeypatch, path):
-    """PIL 한도의 2배를 넘는 그림(14000x14000, 약 200KB)은 500이 아니라 해상도 초과 400이다 (10-08 점검 5번)."""
+    """PIL 한도의 2배를 넘는 그림(14000x14000, 약 200KB)은 500이 아니라 해상도 초과 400이다 (5번)."""
     _fake_extract(monkeypatch)
     res = client.post(path, files={"file": ("bomb.png", _white_png(14000), "image/png")})
     assert res.status_code == 400 and res.json()["detail"] == document_router.IMAGE_TOO_LARGE_MESSAGE
@@ -182,7 +182,7 @@ def test_decompression_bomb_is_400_not_500(monkeypatch, path):
 
 @pytest.mark.parametrize("path", ["/api/document", "/api/document/bl"])
 def test_too_many_pixels_is_400_before_ocr(monkeypatch, path):
-    """폭탄 한도 밑이라도 MAX_IMAGE_PIXELS를 넘으면 OCR 전에 400이다 (10-08 점검 14번). OCR이 불리면 실패한다."""
+    """폭탄 한도 밑이라도 MAX_IMAGE_PIXELS를 넘으면 OCR 전에 400이다 (14번). OCR이 불리면 실패한다."""
     _fake_extract(monkeypatch)
     monkeypatch.setattr(doc_ocr, "_ocr_image", lambda *a, **k: (_ for _ in ()).throw(AssertionError("OCR must not run")))
     res = client.post(path, files={"file": ("big.png", _white_png(10000), "image/png")})

@@ -1,4 +1,4 @@
-"""서비스가 MCP 도구를 MCP 프로토콜로 부르는 곳 테스트 (services/mcp_client.py, 10-02).
+"""서비스가 MCP 도구를 MCP 프로토콜로 부르는 곳 테스트 (services/mcp_client.py).
 
 - MCP_URL이 없으면 메모리 통로로 붙고, 결과가 도구를 직접 부른 값과 같다
 - None 인자는 빠지고, 도구가 돌려준 {error}는 그대로 온다
@@ -35,7 +35,7 @@ def test_none_args_dropped_and_tool_error_passed_through(monkeypatch):
     assert result["error"]["code"] == "bad_input"
 
 
-# 이벤트 루프가 이미 도는 곳에서 불러도 도구가 돌아야 한다 (10-02).
+# 이벤트 루프가 이미 도는 곳에서 불러도 도구가 돌아야 한다.
 # 평가 실행기의 Langfuse run_experiment가 루프 안에서 문항을 돌려, asyncio.run이 RuntimeError를 내고 도구가 전부 mcp_failed였다
 def test_call_inside_running_event_loop(monkeypatch):
     monkeypatch.delenv("MCP_URL", raising=False)
@@ -57,7 +57,7 @@ def test_transport_failure_returns_error_dict(monkeypatch):
     assert result["error"]["retryable"] is True
 
 
-# 입력 스키마 위반(위도 999)은 다시 불러도 같으니 bad_input·retryable=False여야 한다 (10-02 점검: 전엔 mcp_failed·True)
+# 입력 스키마 위반(위도 999)은 다시 불러도 같으니 bad_input·retryable=False여야 한다 (전엔 mcp_failed·True)
 def test_schema_violation_is_bad_input(monkeypatch):
     monkeypatch.delenv("MCP_URL", raising=False)
     result = mcp_client.estimate_distance(999, 999)
@@ -65,7 +65,7 @@ def test_schema_violation_is_bad_input(monkeypatch):
     assert result["error"]["retryable"] is False
 
 
-# 토큰이 틀려 401이면 unauthorized·retryable=False여야 한다 (10-02 점검: 전엔 ExceptionGroup·mcp_failed·True).
+# 토큰이 틀려 401이면 unauthorized·retryable=False여야 한다 (전엔 ExceptionGroup·mcp_failed·True).
 # MCP 클라이언트가 HTTP 오류를 ExceptionGroup에 싸서 던지는 모양을 그대로 만들어 넣는다
 def test_unauthorized_is_not_retryable(monkeypatch):
     import httpx

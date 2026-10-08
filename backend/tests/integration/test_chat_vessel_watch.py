@@ -1,4 +1,4 @@
-"""배 지켜보기·지도 점선 테스트 (10-08 정운 실사용 79, services/chat/chat.py watch_vessel·is_action_request).
+"""배 지켜보기·지도 점선 테스트 (services/chat/chat.py watch_vessel·is_action_request).
 
 LLM·DB·ShipFinder는 부르지 않는다. llm.chat_agent를 가짜로 끼우고 배 저장소는 가짜 VesselHooks로 둔다. 배 이름·호출부호·MMSI는 모의값이다.
 """

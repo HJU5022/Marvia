@@ -1,4 +1,4 @@
-"""화물 조회 없는 채팅 턴도 기억 뽑기에 간다 (services/account/memory.remember_chat_later, services/chat/chat.handle, 10-06 정운 결정).
+"""화물 조회 없는 채팅 턴도 기억 뽑기에 간다 (services/account/memory.remember_chat_later, services/chat/chat.handle).
 
 배경: 기억 뽑기는 화물 조회·후속 질문 뒤에만 돌아, "우리 포워더는 가온 김과장이야" 같은 말이 B/L 없는 평범한 대화에서 버려졌다.
 외부 API·DB·LLM 없이 돈다. DB는 test_memory.py의 FakeMemoryDB, 기억 뽑기 LLM은 가짜 함수다. B/L은 모의값이다.
@@ -79,7 +79,7 @@ def test_writer_masks_bl_even_if_text_slips_through(monkeypatch):
 
 def test_cargo_turn_calls_writer_twice_with_split_roles(monkeypatch):
     """화물 조회 턴: 턴 시작에 먼저 도는 호출(화물 없음, 이 사람에 대해 종류)과 조회 뒤 호출(화물 있음, 화물에 묶인 것)이 하나씩.
-    대화용 기억 뽑기가 세 번째로 또 가지는 않는다 (turn.fired, 10-08 정운 실사용 76)."""
+    대화용 기억 뽑기가 세 번째로 또 가지는 않는다 (turn.fired)."""
     _db(monkeypatch)
     seen = _writer(monkeypatch)
     _route(monkeypatch, intent="cargo", bl_ref="[BL1]", bl_type="MASTER")
@@ -111,7 +111,7 @@ def test_no_database_means_nothing(monkeypatch):
 
 
 def test_without_memory_model_is_skipped_quietly(monkeypatch, caplog):
-    """MEMORY_MODEL이 비어 있으면 LLM을 부르지 않고 채팅 답은 그대로 나간다 (10-02 결정 10)."""
+    """MEMORY_MODEL이 비어 있으면 LLM을 부르지 않고 채팅 답은 그대로 나간다 (결정 10)."""
     monkeypatch.setenv("MEMORY_MODEL", "")
     _db(monkeypatch)
     monkeypatch.setattr(memory.llm, "write_memory", lambda *a, **k: pytest.fail("모델이 없으면 부르지 않는다"))
@@ -123,7 +123,7 @@ def test_without_memory_model_is_skipped_quietly(monkeypatch, caplog):
 
 
 def test_injection_sentence_not_sent_to_writer(monkeypatch):
-    """주입 모양 문장은 기억 뽑기 LLM에 가지 않는다 (SDD 7절 10-01)."""
+    """주입 모양 문장은 기억 뽑기 LLM에 가지 않는다 (SDD 7절)."""
     _db(monkeypatch)
     monkeypatch.setattr(memory.llm, "write_memory", lambda *a, **k: pytest.fail("공격문은 LLM에 보내지 않는다"))
     monkeypatch.setattr(llm, "route_chat", lambda *a, **k: pytest.fail("공격문은 의도 분류에도 가지 않는다"))

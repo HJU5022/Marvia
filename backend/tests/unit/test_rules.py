@@ -1,7 +1,7 @@
-"""skills/*/rules.md 합쳐 읽기 (services/judge/rules.py, 10-01 Skill 구조).
+"""skills/*/rules.md 합쳐 읽기 (services/judge/rules.py, Skill 구조).
 
 - 폴더마다 rules.md 프론트매터를 한 dict로 합친다. 부르는 쪽은 키가 어느 파일에 있는지 몰라도 된다
-- 같은 키가 두 파일에 있으면 실패한다 (결정마다 권한자 하나, 10-01 강사 피드백)
+- 같은 키가 두 파일에 있으면 실패한다 (결정마다 권한자 하나, 강사 피드백)
 - 통관 정상 단계 목록은 customs-stages/rules.md YAML에서 읽는다
 - 부산 항구 코드는 코드 상수가 아니라 port-busan/rules.md busan_port_code다
 - Skill 폴더마다 SKILL.md와 rules.md가 있고, SKILL.md 프론트매터 name은 폴더 이름과 같다 (Agent Skills 규격)

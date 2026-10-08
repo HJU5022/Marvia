@@ -1,4 +1,4 @@
-"""채팅 "지금 상태 카카오톡으로 보내기" 테스트 (10-06 결정, services/chat/chat.py send_kakao·KakaoHooks, routers/chat._kakao_hooks).
+"""채팅 "지금 상태 카카오톡으로 보내기" 테스트 (services/chat/chat.py send_kakao·KakaoHooks, routers/chat._kakao_hooks).
 
 LLM·DB·카카오는 부르지 않는다. 가짜 llm.chat_agent와 가짜 KakaoHooks를 끼운다. B/L은 모의값이다.
 확인하는 것: 보내기는 분명한 말에서만 실행 · 보내기 말이 지켜보기를 바꾸지 않음 · 5분 쿨다운 · 이미 지켜보는 중 문장 ·

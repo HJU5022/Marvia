@@ -116,7 +116,7 @@ def test_vessel_source_only_for_mrn_or_user():
 
 
 def test_previous_line_is_code_written():
-    """10-02 결정 4: 덮기 전 줄로 한 줄. 날짜는 한국 날짜, 등급은 화면 이름. 받침에 맞춰 "이었/였"을 고른다 (10-02 검증)."""
+    """결정 4: 덮기 전 줄로 한 줄. 날짜는 한국 날짜, 등급은 화면 이름. 받침에 맞춰 "이었/였"을 고른다 (검증)."""
     row = {"last_verdict": "watch", "last_checked_at": datetime(2026, 9, 30, 20, tzinfo=timezone.utc),
            "last_days_margin": 3}
     assert cargo.previous_line(row) == (f"지난 조회(10.01)에서는 '{VERDICT_LABEL['watch']}'였고, "
@@ -144,7 +144,7 @@ def test_block_line_has_masked_number_and_conditions_but_no_ids():
 
 
 def test_document_facts_keep_unknown_values(bl_key):
-    """서류에서 확인한 조건만 덮고, 모름(None)은 기존 값을 지우지 않는다 (10-02 결정 7)."""
+    """서류에서 확인한 조건만 덮고, 모름(None)은 기존 값을 지우지 않는다 (결정 7)."""
     conn = FakeConn()
     key = cargo.apply_document_facts(conn, "u1", BL, "HOUSE", {"original_bl": "surrendered", "to_order_bank": None,
                                                                "freight_term": "collect", "incoterm": None})
@@ -155,7 +155,7 @@ def test_document_facts_keep_unknown_values(bl_key):
 
 
 def test_pending_is_one_atomic_update():
-    """확인 대기는 읽고 고쳐 쓰지 않고 UPDATE 한 문장으로 바꾼다. 같은 칸은 빼고 새 값을 붙인다 (10-02 검증)."""
+    """확인 대기는 읽고 고쳐 쓰지 않고 UPDATE 한 문장으로 바꾼다. 같은 칸은 빼고 새 값을 붙인다 (검증)."""
     conn = FakeConn(rowcount=1)
     assert cargo.add_pending(conn, "u1", "k", [{"field": "label", "value": "고추", "noted_at": "2026-10-02"}]) == 1
     assert len(conn.calls) == 1
@@ -166,7 +166,7 @@ def test_pending_is_one_atomic_update():
 
 
 def test_injection_shaped_stage_is_not_stored_or_rendered(bl_key):
-    """UNI-PASS 단계명이 주입 모양이면 저장도 블록도 STAGE_SUSPECT (llm._clean_customs와 같은 기준, 10-02 검증)."""
+    """UNI-PASS 단계명이 주입 모양이면 저장도 블록도 STAGE_SUSPECT (llm._clean_customs와 같은 기준, 검증)."""
     from backend.app.schemas.agent import CustomsInfo
     from backend.app.services.llm_config import STAGE_SUSPECT
 
@@ -194,7 +194,7 @@ def test_done_summary_uses_code_values_only():
     assert cargo.done_summary(row) == "09.22 MOC*******1002 반출 완료"
 
 
-# ── 품명 (020, 10-06 오후 정운 결정: 저장하고 화물 목록으로 LLM에도 준다) ──
+# ── 품명 (020, 저장하고 화물 목록으로 LLM에도 준다) ──
 
 def _customs_info(goods_name):
     from backend.app.schemas.agent import CustomsInfo
@@ -229,7 +229,7 @@ def test_block_line_shows_goods_name():
     assert "품명" not in cargo.cargo_line({"bl_masked": "MOC*******1002", "bl_type": "MASTER"})  # 없으면 안 붙인다
 
 
-# ── 선명·국적과 위치 한 점 (021, 감시 목록 10-06) ──
+# ── 선명·국적과 위치 한 점 (021, 감시 목록) ──
 
 def _confirmed_response(**over):
     from backend.app.schemas.agent import Position, VesselCandidate, VesselInfo

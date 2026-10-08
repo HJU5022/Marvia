@@ -36,7 +36,7 @@ def test_general_answer_passes_without_quote_and_gets_fixed_tag(monkeypatch):
     _no_classic(monkeypatch)
     r = _ask("마스터 b/l 하우스 b/l? 그게 뭐야?")
     assert len(calls) == 1 and r.kind == "message"
-    assert r.reply == GENERAL  # 근거 조각(skill_quote)이 빈 문자열이어도 나간다. 꼬리표는 없다 (10-07, 이용약관으로 이동)
+    assert r.reply == GENERAL  # 근거 조각(skill_quote)이 빈 문자열이어도 나간다. 꼬리표는 없다 (이용약관으로 이동)
     assert not hasattr(svc, "GENERAL_TAG") and not hasattr(svc, "CLEARANCE_TAG")
 
 
@@ -77,7 +77,7 @@ def test_general_answer_may_use_common_shipping_terms(monkeypatch):
 def test_broker_topic_stays_broker_only_even_if_model_answers_general(monkeypatch):
     calls = _agent(monkeypatch, [], [_general("관세율은 품목마다 달라요.")])
     r = _ask("이 품목 관세율 몇 %야?")
-    assert r.reply == svc.BROKER_ONLY and len(calls) == 0  # 모델을 아예 부르지 않는다 (A3, 10-08 실험)
+    assert r.reply == svc.BROKER_ONLY and len(calls) == 0  # 모델을 아예 부르지 않는다 (A3, 실험)
     # 질문은 평범한데 답이 세액을 말하면 막는다
     _agent(monkeypatch, [], [_general("수입 서류는 세율에 따라 달라요."), _general("수입 서류는 세율에 따라 달라요.")])
     assert _ask("수입 서류가 뭐야?").reply == svc.NOT_IN_SKILLS
@@ -147,7 +147,7 @@ def test_skill_answer_is_still_tier_one(monkeypatch):
 # ── 잡담: 한 문장 직접 답 ──
 
 def test_chit_chat_gets_short_direct_answer(monkeypatch):
-    # 오늘 날짜는 실제 시계로 만든다. 날짜를 박아 두면 다음 날 깨진다 (10-06 자정 넘어 실패)
+    # 오늘 날짜는 실제 시계로 만든다. 날짜를 박아 두면 다음 날 깨진다 (자정 넘어 실패)
     today = datetime.now(svc.KST).date().isoformat()
     calls = _agent(monkeypatch, [], [(f"저는 시계를 볼 수 없어요. 오늘은 {today}예요.", "unrelated", "")])
     r = _ask("지금 몇시쯤이지?")

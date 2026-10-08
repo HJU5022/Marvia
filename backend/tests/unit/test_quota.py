@@ -1,4 +1,4 @@
-"""1명당 하루 LLM 토큰 한도 테스트 (docs/specs/token-quota.md, 10-02). 키·DB 없이 메모리 저장으로 돈다.
+"""1명당 하루 LLM 토큰 한도 테스트 (docs/specs/token-quota.md). 키·DB 없이 메모리 저장으로 돈다.
 
 지키는 것
 - LLM 호출마다 그 사람 사용량에 입력+출력 토큰이 쌓인다
@@ -119,7 +119,7 @@ def test_agent_route_returns_429_when_exhausted():
 
 
 def test_operator_is_not_blocked(monkeypatch):
-    """운영자는 한도를 다 써도 막지 않는다 (10-02 결정). 운영자 판단은 로그인 이메일로 한다."""
+    """운영자는 한도를 다 써도 막지 않는다. 운영자 판단은 로그인 이메일로 한다."""
     from backend.app.observability.logging import request_user_var
     from backend.app.services.account import operators
 

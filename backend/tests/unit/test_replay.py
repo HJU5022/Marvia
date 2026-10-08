@@ -133,7 +133,7 @@ def test_unipass_missing_bl_is_none(replay_dir, monkeypatch):
 
 
 def test_unipass_kind_specific_file_wins(replay_dir, monkeypatch):
-    """<번호>.hbl.xml이 "없음"이고 <번호>.mbl.xml이 있으면, 하우스는 못 찾고 마스터만 찾는다 (실제 마스터 B/L의 모양, 10-07)."""
+    """<번호>.hbl.xml이 "없음"이고 <번호>.mbl.xml이 있으면, 하우스는 못 찾고 마스터만 찾는다 (실제 마스터 B/L의 모양)."""
     monkeypatch.delenv("UNIPASS_KEY", raising=False)
     _put(replay_dir, "unipass/TESTBL01.mbl.xml", FIXTURES / "unipass" / "progress_ok.xml")
     _put(replay_dir, "unipass/TESTBL01.hbl.xml", FIXTURES / "unipass" / "not_found.xml")
@@ -143,7 +143,7 @@ def test_unipass_kind_specific_file_wins(replay_dir, monkeypatch):
 
 
 def test_replay_fixture_dir_env_overrides_default(tmp_path):
-    """REPLAY_FIXTURE_DIR을 주면 모듈을 불러올 때 그 폴더를 읽는다 (10-07). 서버를 켜기 전에 정한다."""
+    """REPLAY_FIXTURE_DIR을 주면 모듈을 불러올 때 그 폴더를 읽는다. 서버를 켜기 전에 정한다."""
     import subprocess, sys
     code = "from backend.app.clients import replay; print(replay.REPLAY_DIR)"
     env = {**__import__("os").environ, "REPLAY_FIXTURE_DIR": str(tmp_path)}

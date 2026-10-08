@@ -63,7 +63,7 @@ def test_response_ok_example_validates():
 
 
 def test_response_insufficient_example_validates():
-    """되묻기: verdict 없음, 후보 목록 채움 (SDD 8절, 09-22 결정)."""
+    """되묻기: verdict 없음, 후보 목록 채움 (SDD 8절)."""
     d = _ok_response()
     d.update({"status": "insufficient", "verdict": None, "vessel_match": "uncertain", "vessel": None,
               "days_margin": None, "decided_by": None, "reasons": [], "conflicts": [],
@@ -116,14 +116,14 @@ def test_signal_set_accepts_seven_ids_and_rejects_unknown():
 
 def test_customs_record_has_no_sensitive_fields():
     rec = CustomsRecord(ship_name="TEST CARGO A", ship_nat="KR", bl_masked=mask_bl("TESTBL0001"), fetched_at=NOW)
-    assert rec.bl_masked == "TE*****001"  # 가운데 절반을 가린다 (SDD 3.5, 10-01). 홀수 남는 자리는 뒤로
-    # 품명은 10-06 오후부터 goods_name으로 둔다 (정운 결정). 중량·화주·세관명은 여전히 자리가 없다
+    assert rec.bl_masked == "TE*****001"  # 가운데 절반을 가린다 (SDD 3.5). 홀수 남는 자리는 뒤로
+    # 품명은 오후부터 goods_name으로 둔다. 중량·화주·세관명은 여전히 자리가 없다
     for banned in ("prnm", "wght", "consignee", "customs_office"):
         assert banned not in CustomsRecord.model_fields
 
 
 def test_mask_bl_short_keeps_ends_readable():
-    """10-01 변경: 8자 이하도 전부 가리지 않는다. 조회 이력에서 알아볼 수 있게 가운데 절반만"""
+    """변경: 8자 이하도 전부 가리지 않는다. 조회 이력에서 알아볼 수 있게 가운데 절반만"""
     assert mask_bl("ABCD1234") == "AB****34"
 
 

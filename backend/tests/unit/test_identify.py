@@ -32,7 +32,7 @@ class Plan:
 def test_call_sign_found_by_mrn_around_entry_date():
     mof = FakeMof(result=Plan())
     assert identify.call_sign_from_mrn(_customs(), mof) == "TEST11"
-    # UNI-PASS 입항(예정)일 앞뒤 하루만 훑는다 (09-28 실제 B/L 1건이 이 범위에서 찾아짐)
+    # UNI-PASS 입항(예정)일 앞뒤 하루만 훑는다 (실제 B/L 1건이 이 범위에서 찾아짐)
     assert mof.calls == [("26TEST0011I", date(2026, 9, 23), date(2026, 9, 25))]
 
 

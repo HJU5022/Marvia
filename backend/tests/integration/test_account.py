@@ -94,11 +94,11 @@ def _db(monkeypatch, steps: list, fail: bool = False):
     monkeypatch.setattr(account_service, "delete_profile", lambda conn, user_id: steps.append(("profile", user_id)) or 1)
     # 화물 비서 기억(화물 표·메모장)도 같은 단계에서 지운다 (docs/specs/memory.md "개인정보")
     monkeypatch.setattr(account_service, "forget_user", lambda conn, user_id: steps.append(("memory", user_id)) or 2)
-    # 대화 목록도 같은 단계에서 지운다 (10-06)
+    # 대화 목록도 같은 단계에서 지운다
     monkeypatch.setattr(account_service, "delete_conversations", lambda conn, user_id: steps.append(("conversations", user_id)) or 1)
-    # 카카오톡 알림 토큰도 같은 단계에서 지운다 (10-02)
+    # 카카오톡 알림 토큰도 같은 단계에서 지운다
     monkeypatch.setattr(account_service, "delete_kakao_link", lambda conn, user_id: steps.append(("kakao", user_id)) or 1)
-    # 하루 토큰 사용량 줄도 같은 단계에서 지운다 (10-06 점검)
+    # 하루 토큰 사용량 줄도 같은 단계에서 지운다
     monkeypatch.setattr(account_service.quota, "forget_user", lambda conn, user_id: steps.append(("quota", user_id)))
 
 
@@ -153,7 +153,7 @@ def test_withdraw_needs_login(monkeypatch):
 
 
 def test_browser_may_send_delete():
-    """CORS가 DELETE를 허용해야 화면에서 내 기록 삭제·탈퇴를 부를 수 있다 (09-30 전엔 GET·POST만)."""
+    """CORS가 DELETE를 허용해야 화면에서 내 기록 삭제·탈퇴를 부를 수 있다 (전엔 GET·POST만)."""
     with TestClient(app) as client:
         resp = client.options("/api/account", headers={"Origin": "http://localhost:3000",
                                                        "Access-Control-Request-Method": "DELETE"})

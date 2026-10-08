@@ -41,7 +41,7 @@ def test_retries_once_on_overload_then_succeeds(monkeypatch):
 
 
 def test_retries_once_on_500_then_succeeds(monkeypatch):
-    """Vertex는 과부하를 500으로 준다 (09-29 평가 3.8 Flash B09). 503과 같이 한 번 더 부른다."""
+    """Vertex는 과부하를 500으로 준다 (평가 3.8 Flash B09). 503과 같이 한 번 더 부른다."""
     calls = _fake(monkeypatch, [llm.LLMError("overloaded", code=500), llm.LLMResult(content="ok")])
     result = llm.chat([{"role": "user", "content": "hi"}])
     assert result.content == "ok" and result.attempts == 2
@@ -70,7 +70,7 @@ def test_uses_model_a_when_model_omitted(monkeypatch):
 
 
 def test_missing_key_or_model_is_llm_error(monkeypatch):
-    """키나 모델이 없으면 서버가 500을 내지 않고 LLMError로 올린다. 라우터가 partial로 받는다 (09-23 결정)."""
+    """키나 모델이 없으면 서버가 500을 내지 않고 LLMError로 올린다. 라우터가 partial로 받는다."""
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(llm.LLMError):
         llm.chat([{"role": "user", "content": "hi"}])
@@ -80,7 +80,7 @@ def test_missing_key_or_model_is_llm_error(monkeypatch):
         llm.chat([{"role": "user", "content": "hi"}])
 
 
-# ── 어디로 보내나: "vertex/" 앞머리면 Vertex AI, 아니면 OpenRouter (09-28) ──────────
+# ── 어디로 보내나: "vertex/" 앞머리면 Vertex AI, 아니면 OpenRouter ──────────
 
 class _FakeClient:
     """create()에 들어온 인자를 기억하고, 최소 모양의 응답을 돌려주는 가짜 OpenAI 클라이언트."""
@@ -98,7 +98,7 @@ class _FakeClient:
 
 
 def _usage(prompt, completion, reasoning):
-    """09-28 Vertex curl 응답과 같은 모양: 생각 토큰은 completion_tokens_details에 따로 온다."""
+    """Vertex curl 응답과 같은 모양: 생각 토큰은 completion_tokens_details에 따로 온다."""
     return SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion,
                            completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning))
 
@@ -115,7 +115,7 @@ def test_vertex_prefix_goes_to_vertex_without_openrouter_options(monkeypatch):
 
 
 def test_vertex_thinking_budget_is_sent_only_when_set(monkeypatch):
-    """VERTEX_THINKING_BUDGET=0이면 생각을 끄는 Google 전용 칸을 붙인다 (09-29 실측: 597 → 0토큰)."""
+    """VERTEX_THINKING_BUDGET=0이면 생각을 끄는 Google 전용 칸을 붙인다 (597 → 0토큰)."""
     fake = _FakeClient()
     monkeypatch.setattr(llm, "_vertex_client", lambda: fake)
     monkeypatch.setenv("VERTEX_THINKING_BUDGET", "0")
@@ -158,7 +158,7 @@ def test_openrouter_does_not_add_reasoning_tokens(monkeypatch):
 
 
 def test_cached_tokens_are_read_from_prompt_details(monkeypatch):
-    """캐시에서 읽은 입력 토큰을 prompt_tokens_details.cached_tokens에서 꺼낸다 (09-30 실측: 4,348 중 3,514)."""
+    """캐시에서 읽은 입력 토큰을 prompt_tokens_details.cached_tokens에서 꺼낸다 (4,348 중 3,514)."""
     usage = SimpleNamespace(prompt_tokens=4348, completion_tokens=238, completion_tokens_details=None,
                             prompt_tokens_details=SimpleNamespace(cached_tokens=3514))
     monkeypatch.setattr(llm, "_vertex_client", lambda: _FakeClient(usage=usage))
@@ -173,7 +173,7 @@ def test_no_cache_details_means_none(monkeypatch):
 
 
 def test_vertex_without_login_is_llm_error(monkeypatch):
-    """ADC 로그인 정보가 없으면 LLMError. OpenRouter 키가 없을 때와 같이 라우터가 partial로 받는다 (09-23 결정)."""
+    """ADC 로그인 정보가 없으면 LLMError. OpenRouter 키가 없을 때와 같이 라우터가 partial로 받는다."""
     import google.auth
     import google.auth.exceptions
 
@@ -189,7 +189,7 @@ def test_vertex_without_login_is_llm_error(monkeypatch):
 @pytest.mark.parametrize("status, kind", [(429, "rate_limited"), (503, "overloaded"), (500, "overloaded"),
                                           (401, "auth"), (403, "auth"), (400, "bad_request")])
 def test_http_status_maps_to_failure_kind(status, kind):
-    """로그에 남길 LLM 실패 종류. 해결책이 종류마다 달라서 코드 대신 이름으로 나눈다 (09-29)."""
+    """로그에 남길 LLM 실패 종류. 해결책이 종류마다 달라서 코드 대신 이름으로 나눈다."""
     assert llm._status_kind(status) == kind
 
 
@@ -201,7 +201,7 @@ def test_missing_model_is_not_configured(monkeypatch):
 
 
 def test_vertex_answer_without_message_is_empty_not_crash(monkeypatch):
-    """Gemini가 생각 토큰으로 한도를 다 쓰면 message 없이 finish_reason=length만 온다 (09-29 실패 훈련 judge_truncated).
+    """Gemini가 생각 토큰으로 한도를 다 쓰면 message 없이 finish_reason=length만 온다 (실패 훈련 judge_truncated).
     전에는 msg.tool_calls에서 AttributeError로 죽어 라우터가 못 잡고 500이 났다. 빈 답으로 받아 truncated로 가게 한다."""
     fake = _FakeClient()
     fake.chat.completions.create = lambda **kwargs: SimpleNamespace(

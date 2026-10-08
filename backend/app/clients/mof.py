@@ -17,7 +17,7 @@
 선박운항정보에서 확인한 것 (2026-09-23, 부산 실측):
 - 신고 단계(reqstSeNm)는 최초/변경/최종. API는 이력을 주지 않고 현재 단계 값 하나만 준다
 - 입항 뒤 '최종' 신고가 되면 etryptDt가 실제 입항 시각과 거의 같아진다
-  (09-20~22 입항 238척 중 최종 175척, 그중 85%가 관제 입항 시각과 분 단위까지 일치).
+  (9월 20~22일 입항 238척 중 최종 175척, 그중 85%가 관제 입항 시각과 분 단위까지 일치).
   그래서 입항 "예정"으로 믿을 수 있는 것은 최초·변경 단계 값뿐이다 (SailingPlan.expected_arrival)
 - 입항 detail의 mrNum은 적하목록 관리번호(MRN). 입항은 끝이 I, 출항은 E로 번호가 다르다.
   UNI-PASS 화물관리번호(cargMtNo) 앞 11자리와 같아서 B/L에서 배를 특정하는 열쇠가 된다
@@ -44,10 +44,10 @@ DEFAULT_BASE_URL = "https://apis.data.go.kr"
 CONTROL_PATH = "/1192000/CntlVssl2/Info"
 SAILING_PATH = "/1192000/VsslEtrynd5/Info5"
 TIMEOUT_SEC = float(os.environ.get("MOF_TIMEOUT_SEC", 15))  # 환경변수로 조정 가능
-# 연결 단계만 따로 짧게 둔다. 연결이 안 되는 곳은 15초를 기다려도 안 된다 (10-07 정운)
+# 연결 단계만 따로 짧게 둔다. 연결이 안 되는 곳은 15초를 기다려도 안 된다
 CONNECT_TIMEOUT_SEC = 3.0
 # 연결 실패 뒤 이 시간 동안은 네트워크를 부르지 않고 바로 실패시킨다 (아래 회로 차단기)
-# 60초였으나 첫 질문 실패 뒤 1분 동안 모든 질문이 실패해 15초로 줄였다 (10-08 정운 실사용 33번)
+# 60초였으나 첫 질문 실패 뒤 1분 동안 모든 질문이 실패해 15초로 줄였다
 CIRCUIT_OPEN_SEC = 15.0
 BUSAN_PRT_AG_CD = "020"
 MAX_ROWS = 50  # API 상한
@@ -61,7 +61,7 @@ ARRIVAL_KINDS = ("입항", "접안")
 DEPARTURE_KINDS = ("출항", "이안")
 
 
-# 회로 차단기 (10-07 정운). Railway(싱가포르)에서 apis.data.go.kr는 해외 연결을 끊어
+# 회로 차단기. Railway(싱가포르)에서 apis.data.go.kr는 해외 연결을 끊어
 # ConnectTimeout이 난다(한국에서는 0.1초). 요청마다 기다리면 한 질문이 수십 초 걸리므로
 # 연결이 두 번 연달아 실패하면 CIRCUIT_OPEN_SEC 동안은 네트워크 없이 같은 오류(timeout)로 바로 실패시킨다.
 # 프로세스 안에서만 유효한 단순 변수다. 읽기 타임아웃·5xx에는 적용하지 않는다
@@ -84,7 +84,7 @@ class _Unreachable(Exception):
 
 def _log_page_cap(stage: str, max_pages: int) -> None:
     """페이지 상한까지 다 받았는데 마지막 페이지가 꽉 차 있었다 = 뒤에 더 있는데 못 봤다.
-    그 배가 목록에 없으면 "기록 없음"이 아니라 "못 본 것"일 수 있다 (09-28 실측: 이름 훑기 5페이지에서 잘림).
+    그 배가 목록에 없으면 "기록 없음"이 아니라 "못 본 것"일 수 있다 (이름 훑기 5페이지에서 잘림).
     한 페이지만 보는 호출(호출부호 조회)은 원래 한 페이지면 되니 남기지 않는다."""
     if max_pages > 1:
         log_failure(stage, f"page_cap_hit {max_pages}")
@@ -192,7 +192,7 @@ class MofClient:
             self._key = self._key or "replay"
         if not self._key:
             raise MofError("bad_key", "DATA_GO_KR_KEY가 비어 있습니다")
-        # 주소와 릴레이 토큰은 만들 때 읽는다 (테스트가 환경변수를 바꿀 수 있게). 10-07 정운
+        # 주소와 릴레이 토큰은 만들 때 읽는다 (테스트가 환경변수를 바꿀 수 있게).
         # MOF_BASE_URL: 해외 서버에서는 한국(서울) 릴레이 주소를 넣는다. relay/README.md 참고
         base = (os.environ.get("MOF_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")  # 빈 값(.env의 "MOF_BASE_URL=")도 기본 주소로
         self._control_url = base + CONTROL_PATH
@@ -231,7 +231,7 @@ class MofClient:
             try:
                 resp = self._http.get(url, params=params)
             except (httpx.ConnectTimeout, httpx.ConnectError):
-                # 잠깐 끊긴 경우를 살리려고 연결 실패는 한 번만 바로 다시 부른다 (10-08 정운 실사용 33번).
+                # 잠깐 끊긴 경우를 살리려고 연결 실패는 한 번만 바로 다시 부른다.
                 # 그래도 안 되면 막힌 것으로 보고 차단기를 연다. 연결 시간 3초라 최악 6초다
                 try:
                     resp = self._http.get(url, params=params)
@@ -313,7 +313,7 @@ class MofClient:
                           max_pages: int = MAX_PAGES, workers: int = 6) -> list[SailingPlan]:
         """기간 전체 입출항 신고를 빨리 받는다 (자연어 선박 검색, docs/specs/chat-search.md).
 
-        sailing_plans는 쪽을 하나씩 차례로 받아 부산 7일치(약 6쪽)에 5초쯤 걸렸다(10-01 실측 4.8초).
+        sailing_plans는 쪽을 하나씩 차례로 받아 부산 7일치(약 6쪽)에 5초쯤 걸렸다(4.8초).
         첫 쪽의 totalCount로 쪽 수를 알고 나머지 쪽을 동시에 받는다. 결과 순서는 쪽 순서 그대로다.
         쪽 수가 max_pages를 넘으면 앞쪽만 받고 로그를 남긴다 (sailing_plans와 같은 상한).
         """

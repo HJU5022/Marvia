@@ -1,4 +1,4 @@
-"""감시 목록 테스트 (GET /api/watch, services/watch/watch.watch_list, services/watch/cargo._keep_position, 10-06).
+"""감시 목록 테스트 (GET /api/watch, services/watch/watch.watch_list, services/watch/cargo._keep_position).
 
 DB 없이 돈다. 가짜 연결이 SQL 모양을 보고 정해 둔 줄을 돌려준다. B/L·배·좌표는 모두 모의값이다.
 """

@@ -57,8 +57,8 @@ def fake(monkeypatch):
         monkeypatch.setattr(agent_router, "get_vessel_candidates",
                             lambda **k: {"candidates": candidates or [], "source": "shipfinder", "fetched_at": NOW.isoformat()})
         monkeypatch.setattr(agent_router, "get_live_position", lambda mmsi: position or {"error": {"code": "not_found"}})
-        # 기본 해수부 일정에 입항 예정을 둔다. 도착일이 하나도 없으면 판매일 대비 판정을 보류하므로(09-29 D6)
-        # LLM 판정 흐름을 보는 테스트가 그 앞에서 멈추지 않게 한다. 판매일(10-05)까지 여유 7일
+        # 기본 해수부 일정에 입항 예정을 둔다. 도착일이 하나도 없으면 판매일 대비 판정을 보류하므로(D6)
+        # LLM 판정 흐름을 보는 테스트가 그 앞에서 멈추지 않게 한다. 판매일까지 여유 7일
         monkeypatch.setattr(agent_router, "get_port_schedule", lambda **k: schedule or {"planned_arrival": (NOW + timedelta(days=5)).isoformat(), "actual_arrival": None, "fetched_at": NOW.isoformat()})
         monkeypatch.setattr(agent_router, "_logged", lambda request, response, user_id=None: response)  # DB 없이
         # MRN으로 호출부호 찾기는 기본으로 실패(None) → 지금까지처럼 이름 검색. MRN 경로는 테스트마다 따로 켠다
@@ -118,7 +118,7 @@ def test_single_candidate_is_confirmed(fake, monkeypatch):
 
     assert body["vessel_match"] == "confirmed"
     assert body["position"]["lat"] == 35.1
-    assert body["status"] == "partial"  # LLM 실패면 partial. 등급은 판정 표 것을 낸다 (09-30 결정)
+    assert body["status"] == "partial"  # LLM 실패면 partial. 등급은 판정 표 것을 낸다
     assert body["decided_by"] == "rule" and body["answer"].startswith("판정 표 기준으로")
 
 
@@ -128,12 +128,12 @@ POSITION = {"mmsi": 440999001, "lat": 35.1, "lng": 129.05, "sog": 0.0, "cog": 10
 
 
 def _signals(monkeypatch, states: dict[str, str]):
-    """신호 상태를 정해 둔다. states에 없는 신호는 clear. 판정 표 경로를 보려고 (09-30 D7)."""
+    """신호 상태를 정해 둔다. states에 없는 신호는 clear. 판정 표 경로를 보려고 (D7)."""
     monkeypatch.setattr(agent_router.signals_service, "compute", lambda *a, **k: _signal_set(states))
 
 
 def test_table_verdict_with_llm_text(fake, monkeypatch):
-    """등급은 판정 표가 정하고(decided_by=rule), 문장·할 일·통관 해설은 LLM 것을 쓴다 (09-30 D7).
+    """등급은 판정 표가 정하고(decided_by=rule), 문장·할 일·통관 해설은 LLM 것을 쓴다 (D7).
     LLM에는 표 등급과 fixed 모드가 넘어간다."""
     fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED)
     _signals(monkeypatch, {"eta_conflict": "triggered"})  # 표: watch
@@ -146,7 +146,7 @@ def test_table_verdict_with_llm_text(fake, monkeypatch):
 
     assert (body["status"], body["verdict"], body["decided_by"]) == ("ok", "watch", "rule")
     assert (seen["table_verdict"], seen["verdict_mode"]) == ("watch", "fixed")
-    # LLM이 쓴 할 일 뒤에 켜진 신호의 확인처 줄을 코드가 붙인다 (services/chat/referrals.py, 10-06)
+    # LLM이 쓴 할 일 뒤에 켜진 신호의 확인처 줄을 코드가 붙인다 (services/chat/referrals.py)
     assert body["actions"][0] == "포워더에 확인" and body["answer"] == JUDGED["answer"]
     assert all(a.startswith("확인처: ") or a.startswith("진행 상황") for a in body["actions"][1:])
     assert body["customs"]["stage_name"] == "반입신고" and body["customs"]["next_stage"] == "수입신고"
@@ -222,7 +222,7 @@ def _judge_must_not_run(monkeypatch):
 
 
 def test_position_not_found_holds_and_asks_forwarder_eta(fake, monkeypatch):
-    """배는 찾았는데 위치 관측값이 없으면 LLM 없이 보류하고 포워더 입항 예정일을 묻는다 (09-29 결정, 평가셋 B13)."""
+    """배는 찾았는데 위치 관측값이 없으면 LLM 없이 보류하고 포워더 입항 예정일을 묻는다 (평가셋 B13)."""
     fake(candidates=[_candidate(440999001)], judge=JUDGED)  # position 기본값 = not_found
     _judge_must_not_run(monkeypatch)
 
@@ -248,7 +248,7 @@ def test_position_not_found_after_forwarder_eta_is_partial(fake, monkeypatch):
 
 
 def test_position_tool_failure_is_partial_without_asking(fake, monkeypatch):
-    """권한 없음 같은 도구 고장은 우리 쪽 문제라 되묻지 않고 partial, 판정 보류 (09-29 결정, 평가셋 F04)."""
+    """권한 없음 같은 도구 고장은 우리 쪽 문제라 되묻지 않고 partial, 판정 보류 (평가셋 F04)."""
     fake(candidates=[_candidate(440999001)], position={"error": {"code": "no_permission"}}, judge=JUDGED)
     _judge_must_not_run(monkeypatch)
 
@@ -261,7 +261,7 @@ def test_position_tool_failure_is_partial_without_asking(fake, monkeypatch):
 
 
 def test_cached_position_is_judged_but_partial(fake, monkeypatch):
-    """실시간 조회가 실패해 캐시 위치로 판정했으면 판정은 두고 status만 partial (09-29 결정, 평가셋 F02)."""
+    """실시간 조회가 실패해 캐시 위치로 판정했으면 판정은 두고 status만 partial (평가셋 F02)."""
     fake(candidates=[_candidate(440999001)], position={**POSITION, "cached_at": NOW.isoformat()}, judge=JUDGED)
     _signals(monkeypatch, {"eta_conflict": "triggered"})  # 표: watch
 
@@ -282,7 +282,7 @@ def _signal_set(states: dict[str, str], values: dict[str, str] | None = None) ->
 
 
 def test_sale_date_is_optional(fake, monkeypatch):
-    """판매일은 선택 입력이다 (09-29 결정). 없으면 판매일 초과 신호는 세지 않고 배 상태만으로 판정한다."""
+    """판매일은 선택 입력이다. 없으면 판매일 초과 신호는 세지 않고 배 상태만으로 판정한다."""
     fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": "fine", "reasons": []})
     monkeypatch.setattr(agent_router.signals_service, "compute",
                         lambda *a, **k: _signal_set({"sales_date_exceeded": "unknown"}, {"sales_date_exceeded": "판매 예정일 입력 없음"}))
@@ -297,7 +297,7 @@ def test_sale_date_is_optional(fake, monkeypatch):
 
 
 def test_no_arrival_date_holds_with_estimate(fake, monkeypatch):
-    """판매일은 있는데 믿을 도착일(해수부·AIS)이 없으면 LLM 없이 보류하고 대략값을 참고로 보여 준다 (09-29 D6)."""
+    """판매일은 있는데 믿을 도착일(해수부·AIS)이 없으면 LLM 없이 보류하고 대략값을 참고로 보여 준다 (D6)."""
     fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED,
          schedule={"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
     monkeypatch.setattr(agent_router.llm, "judge", lambda *a, **k: pytest.fail("도착일 없이 판정 LLM을 불렀다"))
@@ -313,20 +313,20 @@ def test_no_arrival_date_holds_with_estimate(fake, monkeypatch):
 
 
 def test_forwarder_eta_becomes_arrival_date(fake, monkeypatch):
-    """되묻기에 답한 포워더 A/N 입항 예정일로 여유 일수를 센다. 그래서 다시 보류하지 않고 판정한다 (09-29 D6)."""
+    """되묻기에 답한 포워더 A/N 입항 예정일로 여유 일수를 센다. 그래서 다시 보류하지 않고 판정한다 (D6)."""
     fake(candidates=[_candidate(440999001)], position=POSITION, judge=JUDGED,
          schedule={"planned_arrival": None, "actual_arrival": None, "fetched_at": NOW.isoformat()})
 
     with TestClient(app) as client:
         body = client.post("/api/agent", json=_request(forwarder_eta="2026-10-01")).json()
 
-    assert body["days_margin"] == 4  # 10-05 판매 - 10-01 A/N
+    assert body["days_margin"] == 4  # 판매 - A/N
     assert body["verdict"] == "watch" and body["status"] == "ok"
     assert any(card["field"] == "forwarder_eta" and card["value"] == "2026-10-01" for card in body["evidence"])
 
 
 def test_all_clear_but_tight_margin_is_watch(fake, monkeypatch):
-    """D4 (09-29 결정): 신호가 다 정상이어도 여유가 margin_act_days 미만이면 규칙으로 watch."""
+    """D4: 신호가 다 정상이어도 여유가 margin_act_days 미만이면 규칙으로 watch."""
     fake(candidates=[_candidate(440999001)], position=POSITION, judge={**JUDGED, "verdict": "watch", "reasons": []},
          schedule={"planned_arrival": datetime(2026, 10, 4, 3, tzinfo=timezone.utc).isoformat(), "actual_arrival": None,
                    "fetched_at": NOW.isoformat()})
@@ -341,7 +341,7 @@ def test_all_clear_but_tight_margin_is_watch(fake, monkeypatch):
 
 
 def test_judge_gets_dates(fake, monkeypatch):
-    """판정 LLM에 믿을 도착일과 판매일을 넘긴다 (09-29 D8)."""
+    """판정 LLM에 믿을 도착일과 판매일을 넘긴다 (D8)."""
     fake(candidates=[_candidate(440999001)], position=POSITION)
     seen = {}
 
@@ -396,7 +396,7 @@ def test_multiple_candidates_llm_sure_is_confirmed(fake):
 
 
 def test_multiple_candidates_without_user_evidence_skip_llm(fake, monkeypatch):
-    """동명 선박인데 항차·포워더 입항 예정일이 없으면 LLM이 high로 고를 수 있어도 부르지 않고 되묻는다 (10-01, 평가 B01·B12)."""
+    """동명 선박인데 항차·포워더 입항 예정일이 없으면 LLM이 high로 고를 수 있어도 부르지 않고 되묻는다 (평가 B01·B12)."""
     fake(candidates=[_candidate(440999001), _candidate(440999002, call_sign="TST02")],
          position={**POSITION, "mmsi": 440999002}, judge=JUDGED)
     calls = []
@@ -423,7 +423,7 @@ def test_multiple_candidates_forwarder_eta_lets_llm_pick(fake):
 
 
 def test_no_candidate_stops_before_judging(fake):
-    """후보가 0척이면 판정하지 않고 포워더 입항 예정일을 되묻는다 (SDD 4.1 3단계, 09-28 실제 B/L 버그).
+    """후보가 0척이면 판정하지 않고 포워더 입항 예정일을 되묻는다 (SDD 4.1 3단계, 실제 B/L 버그).
     LLM이 판정을 낼 수 있는 상태(judge=JUDGED)여도 거기까지 가면 안 된다."""
     fake(candidates=[], judge=JUDGED)
 
@@ -476,8 +476,8 @@ def test_non_busan_port_is_unsupported(fake, monkeypatch):
 
 
 def test_released_cargo_is_fine_by_rule_without_vessel(fake, monkeypatch):
-    """반출신고까지 끝난 화물은 배를 찾지 않고 LLM도 부르지 않고 규칙으로 fine (09-28 결정).
-    배를 찾으면 같은 배의 다음 항차로 여유 일수를 계산해 엉뚱한 act가 나왔다 (09-28 실제 B/L)."""
+    """반출신고까지 끝난 화물은 배를 찾지 않고 LLM도 부르지 않고 규칙으로 fine.
+    배를 찾으면 같은 배의 다음 항차로 여유 일수를 계산해 엉뚱한 act가 나왔다 (실제 B/L)."""
     fake(customs=CustomsRecord(ship_name="TEST STAR", discharge_port="KRPUS", stage_name="반출신고",
                                shed_name="모의 CY", bl_masked="TEST****0001", fetched_at=NOW),
          candidates=[_candidate(440999001)], judge=JUDGED)
@@ -499,7 +499,7 @@ def test_released_cargo_is_fine_by_rule_without_vessel(fake, monkeypatch):
 
 
 def test_not_yet_released_cargo_still_tracks_vessel(fake):
-    """반출 전 단계(수입신고수리)는 지금까지처럼 배를 찾는다. 건너뛰기는 반출신고부터만 (09-28 결정)."""
+    """반출 전 단계(수입신고수리)는 지금까지처럼 배를 찾는다. 건너뛰기는 반출신고부터만."""
     fake(customs=CustomsRecord(ship_name="TEST STAR", stage_name="수입신고수리",
                                bl_masked="TEST****0001", fetched_at=NOW),
          candidates=[_candidate(440999001)], position=POSITION)
@@ -532,7 +532,7 @@ def _search_by(by_call_sign: list, by_name: list, calls: list):
 
 
 def test_mrn_call_sign_confirms_without_llm(fake, monkeypatch):
-    """MRN으로 호출부호를 찾고 그 호출부호로 최근 배가 1척이면 코드가 확정한다. 이름 검색·LLM 선택 없음 (09-28)."""
+    """MRN으로 호출부호를 찾고 그 호출부호로 최근 배가 1척이면 코드가 확정한다. 이름 검색·LLM 선택 없음."""
     fake(position=POSITION, pick=None)
     calls, schedule_calls = [], []
     monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
@@ -564,7 +564,7 @@ def test_mrn_call_sign_without_live_vessel_falls_back_to_name(fake, monkeypatch)
 
 
 def test_name_candidate_with_other_call_sign_than_mrn_asks_back(fake, monkeypatch):
-    """MRN 호출부호는 TST09인데 이름으로 찾은 1척은 TST01이면 남의 배다. 확정하지 않고 되묻는다 (09-28 결정, 평가 B07)."""
+    """MRN 호출부호는 TST09인데 이름으로 찾은 1척은 TST01이면 남의 배다. 확정하지 않고 되묻는다 (평가 B07)."""
     fake(position=POSITION)
     calls = []
     monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
@@ -579,7 +579,7 @@ def test_name_candidate_with_other_call_sign_than_mrn_asks_back(fake, monkeypatc
 
 
 def test_single_candidate_with_other_nationality_asks_back(fake, monkeypatch):
-    """세관은 한국 배(KR)인데 이름으로 찾은 1척이 파나마 배면 확정하지 않고 되묻는다 (09-28 결정, 평가 B14)."""
+    """세관은 한국 배(KR)인데 이름으로 찾은 1척이 파나마 배면 확정하지 않고 되묻는다 (평가 B14)."""
     fake(customs=CustomsRecord(ship_name="TEST STAR", ship_nat="KR", bl_masked="TEST****0001", fetched_at=NOW),
          candidates=[_candidate(440999001)], position=POSITION)  # _candidate의 flag는 Panama
     searched = []
@@ -605,8 +605,8 @@ def test_nationality_code_matches_english_flag_name(fake):
 
 
 def test_resolved_mmsi_uses_mrn_call_sign_for_schedule(fake, monkeypatch):
-    """되묻기 답으로 배를 받았어도 MRN 호출부호가 있으면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초, 09-28 실측)."""
-    # 고른 배는 이 화물의 후보여야 확정한다 (10-06 점검). 후보 검색에 그 배가 나오게 둔다
+    """되묻기 답으로 배를 받았어도 MRN 호출부호가 있으면 해수부를 호출부호로 조회한다 (선명으로 훑으면 14초)."""
+    # 고른 배는 이 화물의 후보여야 확정한다. 후보 검색에 그 배가 나오게 둔다
     fake(position=POSITION, candidates=[_candidate(440999009, call_sign="TST09")])
     schedule_calls = []
     monkeypatch.setattr(agent_router.identify, "call_sign_from_mrn", lambda customs: "TST09")
@@ -656,7 +656,7 @@ def test_rule_violation_is_retried_with_detail(fake, monkeypatch):
 
 
 def test_three_violations_end_in_table_verdict(fake, monkeypatch):
-    """세 번 모두 위반이면 판정 표 등급 + 고정 문구로 partial. 근거 카드는 남긴다 (09-30 결정, 전에는 failed)."""
+    """세 번 모두 위반이면 판정 표 등급 + 고정 문구로 partial. 근거 카드는 남긴다 (전에는 failed)."""
     _signals(monkeypatch, {"eta_conflict": "triggered"})  # 확실한 신호 (표: watch). 회색 지대면 등급 없이 끝난다
     fake(candidates=[_candidate(440999001)], position=POSITION)
     calls = []
@@ -684,7 +684,7 @@ def _broken_then(answers: list, calls: list):
 
 
 def test_broken_format_is_retried_like_a_violation(fake, monkeypatch):
-    """형식이 깨진 답도 무엇이 틀렸는지 붙여 다시 묻는다. 전에는 바로 partial이었다 (09-28 결정, 평가 B09)."""
+    """형식이 깨진 답도 무엇이 틀렸는지 붙여 다시 묻는다. 전에는 바로 partial이었다 (평가 B09)."""
     fake(candidates=[_candidate(440999001)], position=POSITION)
     calls = []
     monkeypatch.setattr(agent_router.llm, "judge", _broken_then(["broken", JUDGED], calls))
@@ -697,7 +697,7 @@ def test_broken_format_is_retried_like_a_violation(fake, monkeypatch):
 
 
 def test_three_broken_formats_end_in_table_verdict(fake, monkeypatch):
-    """세 번 다 형식이 깨져도 판정 표 등급 + 고정 문구로 partial (09-30 결정, 평가셋 F08. 전에는 failed)."""
+    """세 번 다 형식이 깨져도 판정 표 등급 + 고정 문구로 partial (평가셋 F08. 전에는 failed)."""
     _signals(monkeypatch, {"eta_conflict": "triggered"})  # 확실한 신호 (표: watch). 회색 지대면 등급 없이 끝난다
     fake(candidates=[_candidate(440999001)], position=POSITION)
     calls = []
@@ -748,7 +748,7 @@ def test_unknown_bl_is_insufficient_not_failed(fake):
 
 
 def test_resolved_mmsi_among_candidates_is_confirmed(fake):
-    """되묻기 답으로 고른 배가 이 화물의 후보면 확정한다. 확정한 배 1척만 후보로 돌려준다 (10-06 점검 전에는 후보 확인 없이 확정했다)."""
+    """되묻기 답으로 고른 배가 이 화물의 후보면 확정한다. 확정한 배 1척만 후보로 돌려준다 (전에는 후보 확인 없이 확정했다)."""
     fake(candidates=[_candidate(440999009), _candidate(440999010, call_sign="TST10")])
 
     with TestClient(app) as client:
@@ -759,7 +759,7 @@ def test_resolved_mmsi_among_candidates_is_confirmed(fake):
 
 
 def test_resolved_mmsi_outside_candidates_is_not_confirmed(fake):
-    """후보에 없는 MMSI를 보내면 확정하지 않고 되묻는다. 전에는 아무 번호나 확정해 "배는 확인했지만"이 나왔다 (10-06 점검)."""
+    """후보에 없는 MMSI를 보내면 확정하지 않고 되묻는다. 전에는 아무 번호나 확정해 "배는 확인했지만"이 나왔다."""
     fake(candidates=[_candidate(1), _candidate(2, call_sign="TST02")])
 
     with TestClient(app) as client:
@@ -772,7 +772,7 @@ def test_resolved_mmsi_outside_candidates_is_not_confirmed(fake):
 
 
 def test_resolved_mmsi_outside_single_candidate_does_not_swap(fake):
-    """후보가 1척이어도 사용자가 고른 번호와 다르면 그 배로 바꿔 끼우지 않고 되묻는다 (10-06 점검)."""
+    """후보가 1척이어도 사용자가 고른 번호와 다르면 그 배로 바꿔 끼우지 않고 되묻는다."""
     fake(candidates=[_candidate(1)])
 
     with TestClient(app) as client:
@@ -783,7 +783,7 @@ def test_resolved_mmsi_outside_single_candidate_does_not_swap(fake):
 
 
 def test_resolved_mmsi_with_no_candidates_asks_forwarder_eta(fake):
-    """후보가 하나도 없으면 고른 배를 확인하지 못했다고 알리고 포워더 입항 예정일을 묻는다. vessel_match는 none (10-06 점검)."""
+    """후보가 하나도 없으면 고른 배를 확인하지 못했다고 알리고 포워더 입항 예정일을 묻는다. vessel_match는 none."""
     fake(candidates=[])
 
     with TestClient(app) as client:
@@ -794,7 +794,7 @@ def test_resolved_mmsi_with_no_candidates_asks_forwarder_eta(fake):
 
 
 def test_resolved_mmsi_from_previous_clarify_needs_no_search(fake, monkeypatch):
-    """지난 되묻기 응답(조회 이력)의 후보에 있으면 ShipFinder를 다시 부르지 않고 확정한다 (10-06 점검)."""
+    """지난 되묻기 응답(조회 이력)의 후보에 있으면 ShipFinder를 다시 부르지 않고 확정한다."""
     fake()
     asked = _response_dict_with_candidates([440999009, 440999010])
     monkeypatch.setattr(agent_router, "_saved_cargo_responses", lambda request: [asked])
@@ -848,7 +848,7 @@ def test_history_reads_session_rows(monkeypatch):
         def __exit__(self, *a):
             return False
 
-    # DB가 설정된 것처럼 둔다. 전에는 mcp_server/server.py가 import 때 .env를 읽어 진짜 DATABASE_URL로 통과했다 (09-29 발견)
+    # DB가 설정된 것처럼 둔다. 전에는 mcp_server/server.py가 import 때 .env를 읽어 진짜 DATABASE_URL로 통과했다
     monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
     monkeypatch.setattr(history_router, "connect", lambda *a, **k: FakeConn())
     monkeypatch.setattr(history_router, "recent_queries", lambda conn, session_id, limit, user_id=None: rows if session_id == "sess-1" else [])
@@ -941,9 +941,9 @@ def _fake_follow(monkeypatch, answer: dict | None):
 
 
 def test_follow_up_uses_saved_result(fake, monkeypatch):
-    """세션에 저장된 지난 결과가 있으면 다시 조회하지 않고 그 결과 안에서 답한다 (09-27 결정)."""
+    """세션에 저장된 지난 결과가 있으면 다시 조회하지 않고 그 결과 안에서 답한다."""
     fake(judge=JUDGED)
-    # 답의 "5"가 V7을 통과하도록 지난 결과에 여유 일수 5를 둔다 (후속 답도 V7 검증, 09-29)
+    # 답의 "5"가 V7을 통과하도록 지난 결과에 여유 일수 5를 둔다 (후속 답도 V7 검증)
     saved = agent_router._response(status="ok", verdict="watch", vessel_match="confirmed", days_margin=5, answer="지난 답")
     monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)
     monkeypatch.setattr(agent_router, "_assess", lambda request: pytest.fail("저장된 결과가 있으면 다시 조회하면 안 된다"))
@@ -971,7 +971,7 @@ def _follow_sequence(monkeypatch, answers: list[str]):
 
 
 def test_follow_up_with_stray_number_is_retried(fake, monkeypatch):
-    """후속 답에 근거 없는 숫자가 있으면 V7 내용을 붙여 다시 묻는다 (09-29, 평가 F06 "9월 23일")."""
+    """후속 답에 근거 없는 숫자가 있으면 V7 내용을 붙여 다시 묻는다 (평가 F06 "9월 23일")."""
     fake(judge=JUDGED)
     saved = agent_router._response(status="ok", verdict="act", vessel_match="confirmed", days_margin=-1, answer="지난 답")
     monkeypatch.setattr(agent_router, "_previous_response", lambda request, user_id=None: saved)
@@ -1136,7 +1136,7 @@ def test_logged_in_query_is_saved_with_user_id(fake, monkeypatch):
 
     with TestClient(app) as client:
         assert client.post("/api/agent", json=_request(), headers=headers).status_code == 200
-        assert client.post("/api/agent", json=_request()).status_code == 401  # 로그인 필수, 손님 없음 (09-30)
+        assert client.post("/api/agent", json=_request()).status_code == 401  # 로그인 필수, 손님 없음
 
     assert saved == ["user-123"]
 
@@ -1269,7 +1269,7 @@ def test_logged_in_user_deletes_own_history(monkeypatch):
     monkeypatch.setattr(history_router, "delete_user_queries", lambda conn, user_id: asked.append(user_id) or 3)
     # 화물 비서 기억도 같이 지운다 (docs/specs/memory.md "개인정보")
     monkeypatch.setattr(history_router, "forget_user", lambda conn, user_id: asked.append(("memory", user_id)) or 2)
-    # 대화 목록도 같이 지운다 (10-06 결정)
+    # 대화 목록도 같이 지운다
     monkeypatch.setattr(history_router.conversations, "delete_all", lambda conn, user_id: asked.append(("conversations", user_id)) or 1)
 
     with TestClient(app) as client:
@@ -1290,7 +1290,7 @@ def test_delete_needs_login(monkeypatch):
 
 
 def test_document_needs_login(monkeypatch):
-    """서류 사진도 사용자 기능이라 로그인 필수 (09-30). OCR까지 가지 않는다."""
+    """서류 사진도 사용자 기능이라 로그인 필수. OCR까지 가지 않는다."""
     from backend.app.routers import document as document_router
 
     _login(monkeypatch)
@@ -1316,14 +1316,14 @@ def test_delete_failure_is_reported_not_hidden(monkeypatch):
 
 
 def test_party_fields_reach_response_released_path():
-    """포워더·선사·컨테이너 번호가 C1 응답 customs에 그대로 실린다 (10-06). 반출 규칙 경로(_released).
+    """포워더·선사·컨테이너 번호가 C1 응답 customs에 그대로 실린다. 반출 규칙 경로(_released).
     HTTP를 거치지 않고 응답 만드는 함수를 직접 부른다: 라우터 테스트는 인증 설정에 기대지 않는 쪽이 환경에 덜 흔들린다"""
     record = CustomsRecord(ship_name="TEST STAR", discharge_port="KRPUS", stage_name="반출신고",
                            forwarder_name="테스트포워딩(주)", carrier_name="테스트선사(주)", container_no="TSTU1234560",
                            goods_name="TEST GOODS", bl_masked="TEST****0001", fetched_at=NOW)
     info = agent_router._released(record).customs
     assert (info.forwarder_name, info.carrier_name, info.container_no) == ("테스트포워딩(주)", "테스트선사(주)", "TSTU1234560")
-    assert info.goods_name == "TEST GOODS"  # 품명도 실린다 (10-06 오후)
+    assert info.goods_name == "TEST GOODS"  # 품명도 실린다
 
 
 def test_party_fields_reach_response_judged_path():
@@ -1343,7 +1343,7 @@ def test_party_fields_default_to_null():
 
 
 def test_trusted_vessel_from_watch_needs_no_search(fake, monkeypatch):
-    """지켜보기 재판정은 저장해 둔 확정 배를 후보 검색 없이 쓴다. 워커가 화물당 ShipFinder 1회만 떼어 두기 때문이다 (10-06 점검)."""
+    """지켜보기 재판정은 저장해 둔 확정 배를 후보 검색 없이 쓴다. 워커가 화물당 ShipFinder 1회만 떼어 두기 때문이다."""
     fake()
     monkeypatch.setattr(agent_router, "_saved_cargo_responses", lambda request: [])
     monkeypatch.setattr(agent_router, "get_vessel_candidates", lambda **k: pytest.fail("저장된 확정 배는 다시 찾지 않는다"))
@@ -1362,7 +1362,7 @@ def test_trusted_vessel_is_not_set_for_user_requests():
 
 
 def test_tool_failed_text_says_tomorrow_when_quota_exhausted(monkeypatch):
-    """ShipFinder 하루 한도를 다 쓴 날은 "잠시 뒤"가 아니라 "내일 다시"라고 알린다 (status 38, 10-06 점검)."""
+    """ShipFinder 하루 한도를 다 쓴 날은 "잠시 뒤"가 아니라 "내일 다시"라고 알린다 (status 38)."""
     monkeypatch.setattr(agent_router.shipfinder_client, "quota_blocked", lambda: False)
     assert agent_router._tool_failed_text(agent_answers.POSITION_TOOL_FAILED) == agent_answers.POSITION_TOOL_FAILED
     text = agent_router._tool_failed_text(agent_answers.POSITION_TOOL_FAILED, "quota_exhausted")
@@ -1372,5 +1372,5 @@ def test_tool_failed_text_says_tomorrow_when_quota_exhausted(monkeypatch):
 
 
 def test_follow_up_rules_include_sale_date_check():
-    """후속 답에도 "판매 예정일이 지났다"를 막는다 (V15, 10-06 점검)."""
+    """후속 답에도 "판매 예정일이 지났다"를 막는다 (V15)."""
     assert "V15" in agent_router.FOLLOW_UP_RULES

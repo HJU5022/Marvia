@@ -1,6 +1,6 @@
-"""V14 보강 (10-06): Skill 답의 핵심 낱말이 Skill 원문에 없으면 Skill 근거 답이 아니다 (validate.skill_unsupported_terms).
+"""V14 보강: Skill 답의 핵심 낱말이 Skill 원문에 없으면 Skill 근거 답이 아니다 (validate.skill_unsupported_terms).
 Skill 원문은 실제 skills/ 폴더(llm.CHAT_AGENT_SKILLS)를 쓴다. LLM 호출은 없다 (비용 0).
-근거: 10-06 실측 "B/L도 없고 포워더는 연락이 안 되는데" 답의 "화물 인도증"은 Skill 어디에도 없는데 꼬리표 없이 Skill 답으로 나갔다."""
+근거: "B/L도 없고 포워더는 연락이 안 되는데" 답의 "화물 인도증"은 Skill 어디에도 없는데 꼬리표 없이 Skill 답으로 나갔다."""
 import pytest
 
 from backend.app.services import llm
@@ -64,7 +64,7 @@ def test_words_from_the_question_are_not_counted():
     assert not validate.skill_unsupported(reply, SKILLS, "야적료 체화료 감면이 어때?")
 
 
-# (c) 10-06 오전 배포 실측: Skill 문장을 활용형으로 풀어 쓴 답이 "Skill에 없는 낱말"로 걸려 일반 설명으로 낮춰졌다.
+# (c) 배포 실측: Skill 문장을 활용형으로 풀어 쓴 답이 "Skill에 없는 낱말"로 걸려 일반 설명으로 낮춰졌다.
 # 걸린 낱말은 입력하·고치지·다르게(7번), 등급일·안내된·상태이고·사항(13번), 서쪽의·이용하(10번)처럼 뿌리는 Skill에 있는 말이다.
 # 명사만 보는 방식(Kiwi)으로 바꾼 뒤에는 run2_10(남아·아실 같은 활용형)도 같이 통과해야 한다.
 # 원본: 위키 프로젝트/Marvia-근거/skill_baseline_15q_20261006_1005.txt, kiwi_trial_20261006/cases.json
@@ -99,7 +99,7 @@ def test_grade_names_transliterated_are_flagged():
 
 
 def test_conjugations_are_not_counted_as_missing_words():
-    # 10-06 실측: 동사·형용사 활용형(남아·있거·올지·아실·넘길·살펴보고·고치지·입력하)은 명사가 아니라서 세지 않는다
+    # 동사·형용사 활용형(남아·있거·올지·아실·넘길·살펴보고·고치지·입력하)은 명사가 아니라서 세지 않는다
     reply = "값이 그대로 남아 있거나 어디로 올지 아실 수 있고, 날짜를 넘길 때는 살펴보고 고치지 않고 입력하세요."
     assert validate.skill_unsupported_terms(reply, "값 날짜 입력") == []
 

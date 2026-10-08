@@ -117,7 +117,7 @@ def test_missing_key_rejected(monkeypatch):
     assert e.value.code == "bad_key"
 
 
-# ── 하루 한도 소진 status 38 (10-06 점검) ──
+# ── 하루 한도 소진 status 38 ──
 
 def test_quota_exhausted_fixture_is_distinct_code():
     """38은 일반 error가 아니라 quota_exhausted다. 오늘은 다시 불러도 같아 retryable이 아니다."""

@@ -1,4 +1,4 @@
-"""기억 뽑기 명령 정리(칸 정리, 화물 없는 대화의 거래처 칸 옮기기) 테스트 (services/account/memory.check_ops, 10-06 정운 결정).
+"""기억 뽑기 명령 정리(칸 정리, 화물 없는 대화의 거래처 칸 옮기기) 테스트 (services/account/memory.check_ops).
 
 배경: 실제 모델(gpt-4o-mini)로 시험하니 판단은 맞는데 check_ops가 거의 모든 좋은 명령을 거절했다.
  - 엄격한 출력 스키마가 모든 칸 이름을 반드시 내게 해서, 모델이 안 쓰는 칸(text, source)을 채워 와 unknown_field로 거절
@@ -122,7 +122,7 @@ def test_contact_with_cargo_keeps_cargo_section():
 # ── 다른 거절은 그대로 ──
 
 @pytest.mark.parametrize("op, reason", [
-    (_op(kind="contact", section="about", fields={"role": "포워더", "source": "사용자"}), "missing_field"),  # 회사 이름 없음 (role은 이제 선택, 10-08 정운 실사용 76)
+    (_op(kind="contact", section="about", fields={"role": "포워더", "source": "사용자"}), "missing_field"),  # 회사 이름 없음 (role은 이제 선택)
     (_op(kind="schedule", section="about", fields={"cycle": "매달 말일", "text": "신용장 정리"}), "missing_field"),   # task 없음
     (_op(kind="contact", section="about", fields={"company": "가온로지스", "role": "은행", "source": "사용자"}), "bad_role"),
     (_op(kind="contact", section="about", fields={"company": "가온로지스", "role": "포워더", "source": "B/L"}), "bad_source"),

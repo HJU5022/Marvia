@@ -1,4 +1,4 @@
-"""B/L 없이 배만 지켜보기 테스트 (services/watch/vessel_watch.py, routers/watch.py /api/watch/vessels, 10-08 정운 실사용 57번).
+"""B/L 없이 배만 지켜보기 테스트 (services/watch/vessel_watch.py, routers/watch.py /api/watch/vessels).
 
 DB 없이 돈다. vessel_watch·watch_positions 두 표를 흉내 내는 가짜 연결을 쓴다. 배 번호·이름·좌표는 모의값이다.
 """

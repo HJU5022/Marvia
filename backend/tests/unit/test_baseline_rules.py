@@ -1,4 +1,4 @@
-"""evals/baseline_rules.py 판정 표 테스트. skills/cargo-verdict/rules.md 판정 표와 예외(09-29)를 그대로 따르는지 본다. 키 없이 돈다."""
+"""evals/baseline_rules.py 판정 표 테스트. skills/cargo-verdict/rules.md 판정 표와 예외를 그대로 따르는지 본다. 키 없이 돈다."""
 from datetime import datetime, timezone
 
 import pytest
@@ -42,7 +42,7 @@ def test_act_signal_still_wins():
 
 
 def test_all_clear_but_tight_margin_is_watch():
-    """D4 (09-29 결정): 켜진 신호가 없어도 여유가 margin_act_days(2) 미만이면 watch. 판매일이 없으면(None) fine."""
+    """D4: 켜진 신호가 없어도 여유가 margin_act_days(2) 미만이면 watch. 판매일이 없으면(None) fine."""
     assert verdict_for(_set(), margin=1) == "watch"
     assert verdict_for(_set(), margin=2) == "fine"
     assert verdict_for(_set(), margin=None) == "fine"

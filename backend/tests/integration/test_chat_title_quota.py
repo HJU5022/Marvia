@@ -1,4 +1,4 @@
-"""대화 저장(제목 LLM 포함)이 사용량 주인이 정해진 범위 안에서 맡겨지는지 (10-06 점검).
+"""대화 저장(제목 LLM 포함)이 사용량 주인이 정해진 범위 안에서 맡겨지는지.
 
 routers/chat.py가 _save_conversation을 session_scope 밖에서 부르면 뒤에서 도는 제목 LLM이 복사해 가는
 문맥에 사용량 주인(quota.owner_var)이 없어 토큰이 하루 한도에 안 쌓였다. /api/chat과 /api/chat/stream 둘 다 본다.

@@ -1,4 +1,4 @@
-"""대화로 지켜보기 + 먼저 제안 테스트 (10-06 결정, services/chat/chat.py WatchHooks·_with_offer·run_watch, routers/chat.py 계약).
+"""대화로 지켜보기 + 먼저 제안 테스트 (services/chat/chat.py WatchHooks·_with_offer·run_watch, routers/chat.py 계약).
 
 LLM·DB·판정 흐름은 부르지 않는다. llm.chat_agent를 가짜로 끼워 도구를 대본대로 부르게 하고, 지켜보기 저장소는 가짜 WatchHooks로 둔다.
 B/L은 모의값이다.
@@ -339,7 +339,7 @@ def test_router_worry_picks_latest_worry_of_that_cargo(monkeypatch):
     assert chat_router._watch_hooks(USER).worry("NOPE00001") is None
 
 
-# ── 지켜보기만 바라는 짧은 말은 LLM 없이 코드가 처리 (10-06 실측: "응 지켜봐 줘"에 엉뚱한 화물 답이 붙었다) ──
+# ── 지켜보기만 바라는 짧은 말은 LLM 없이 코드가 처리 ("응 지켜봐 줘"에 엉뚱한 화물 답이 붙었다) ──
 
 def _ctx():
     from backend.app.schemas.agent import AgentRequest

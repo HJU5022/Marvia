@@ -1,4 +1,4 @@
-"""근거 표시([E1]) 검증 테스트 (10-08 정운 실사용 58번). 키 없이 돈다. services/chat/citations.py의 규칙마다 통과·위반."""
+"""근거 표시([E1]) 검증 테스트. 키 없이 돈다. services/chat/citations.py의 규칙마다 통과·위반."""
 from datetime import datetime, timezone
 
 from backend.app.schemas.agent import Evidence

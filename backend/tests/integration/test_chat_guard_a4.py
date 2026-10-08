@@ -1,4 +1,4 @@
-"""10-08 실험 A4: 화면 화물의 "이 배"를 위치·거리 도구로 따로 찾지 않고 ask_cargo로 돌려 보낸다 (services/chat/chat.py _run_tool, 항상 켜짐).
+"""실험 A4: 화면 화물의 "이 배"를 위치·거리 도구로 따로 찾지 않고 ask_cargo로 돌려 보낸다 (services/chat/chat.py _run_tool, 항상 켜짐).
 
 화면에 화물이 있고(context) 화면의 배(on_screen.vessel)와 같은 MMSI로 get_live_position을 부르면, 그 호출은 ask_cargo가 대신 답한다.
 다른 배(이 배 말고 SAMPLE PINE)나 화물이 없는 화면은 건드리지 않는다. LLM·MCP는 부르지 않는다 (가짜).

@@ -1,7 +1,7 @@
 """카카오 클라이언트(clients/kakao.py) 단위 테스트.
 
 가짜 서버(httpx.MockTransport)와 가짜 환경변수(monkeypatch)만 쓴다. 진짜 카카오 호출도, 진짜 .env 읽기도 없다.
-값은 모두 테스트용 가공값이다. 출처: 카카오 로그인·카카오톡 메시지 REST API 문서, 10-02 결정.
+값은 모두 테스트용 가공값이다. 출처: 카카오 로그인·카카오톡 메시지 REST API 문서.
 """
 import json
 from urllib.parse import parse_qs, urlparse

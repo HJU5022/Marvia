@@ -1,4 +1,4 @@
-"""채팅 답 근거 표시([E1]) 연결 테스트 (10-08 정운 실사용 58번, services/chat/chat.py _with_citations·with_evidence, routers/chat.py, services/chat/conversations.py).
+"""채팅 답 근거 표시([E1]) 연결 테스트 (services/chat/chat.py _with_citations·with_evidence, routers/chat.py, services/chat/conversations.py).
 
 키·DB·LLM 없이 돈다. 순수 함수(parse_and_validate 등)는 test_citations.py가 본다. 여기서는 그 함수가 채팅 흐름에 제대로 걸렸는지만 본다:
 읽기 전용 도구 결과 -> 근거 목록 -> LLM에 evidence 글 -> 답의 표시 검사 -> 응답 칸. 값은 모두 가공값이다.

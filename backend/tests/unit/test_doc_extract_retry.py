@@ -1,10 +1,10 @@
-"""끊긴 LLM 답 재시도와 서류 응답의 llm_error 테스트 (10-06). 키 없이 돈다: llm.chat()을 가짜로 바꾼다.
+"""끊긴 LLM 답 재시도와 서류 응답의 llm_error 테스트. 키 없이 돈다: llm.chat()을 가짜로 바꾼다.
 
 배경: 서류 판독에서 HTTP 200인데 스트림이 JSON 중간(`{"vessel":`)에서 끊기고 finish_reason이 None인 답이 왔다.
 확인하는 것:
   - 끊긴 답(finish_reason 없음 + JSON 깨짐)은 같은 메시지로 한 번만 더 묻는다 (_ask_json)
   - 두 번 다 끊기면 LLMFormatError(bad_format)로 올리고, POST /api/document는 partial + llm_error를 돌려준다
-  - finish_reason="error"(제공사가 생성 중 멈춤, 10-06 판정 평가)도 끊김으로 보고 같은 방식으로 한 번 더 묻는다
+  - finish_reason="error"(제공사가 생성 중 멈춤, 판정 평가)도 끊김으로 보고 같은 방식으로 한 번 더 묻는다
   - finish_reason=length(토큰 한도)와 정상 답은 추가 호출이 없다
 """
 import json
@@ -20,7 +20,7 @@ DOCS = Path(__file__).parents[1] / "fixtures" / "documents"
 BL = "MRVA2026090001"  # 가공 번호
 ANSWER = {"vessel": "SEA STAR", "voyage": "0925W", "eta": "2026-10-02",
           "pol": "QINGDAO, CHINA", "pod": "부산 신항", "item": "건고추"}
-CUT = '{"vessel":'  # 10-06에 실제로 온 모양
+CUT = '{"vessel":'  # 실제로 온 모양
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +62,7 @@ def test_cut_then_valid_succeeds_with_one_retry(monkeypatch):
 
 
 def test_error_finish_then_valid_succeeds_with_one_retry(monkeypatch):
-    """제공사가 생성 중 멈춘 답(finish_reason="error", 10-06 판정 평가 실측)도 끊김으로 보고 한 번 더 묻는다."""
+    """제공사가 생성 중 멈춘 답(finish_reason="error", 판정 평가 실측)도 끊김으로 보고 한 번 더 묻는다."""
     calls = _fake_chat(monkeypatch, [('{\n  "verdict": "act",\n  "answer": "', "error"), GOOD])
     answer = llm.extract_doc_fields("[BL]")
     assert answer.output.vessel == "SEA STAR"

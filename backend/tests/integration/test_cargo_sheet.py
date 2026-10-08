@@ -335,7 +335,7 @@ def test_xlsx_company_and_container_columns():
 
 
 def test_xlsx_default_bl_is_original():
-    """기본값은 원본이다 (10-06 결정, SDD 3.5 예외). 수입자가 그 번호로 다른 곳에서 화물을 조회한다."""
+    """기본값은 원본이다 (SDD 3.5 예외). 수입자가 그 번호로 다른 곳에서 화물을 조회한다."""
     db = FakeConn()
     db.add("MOCKBL20261001")
     assert cargo_sheet.XLSX_BL_SOURCE == "original"
@@ -541,14 +541,14 @@ def test_delete_all_removes_lc_rows_too():
 
 
 def test_xlsx_goods_name_column():
-    """품명(10-06 오후)은 10번째 칸. UNI-PASS 외부 글자라 다른 회사 칸처럼 글자 형식으로 쓴다"""
+    """품명은 10번째 칸. UNI-PASS 외부 글자라 다른 회사 칸처럼 글자 형식으로 쓴다"""
     ws = _sheet(_father_sheet())
     assert ws["J2"].value == "MOCK GOODS" and ws["J2"].data_type == "s"
     assert ws["J3"].value is None  # 품명이 없는 줄은 빈칸
 
 
 def test_xlsx_vessel_columns_are_text_at_the_end():
-    """선명·국적(10-06 오후)은 맨 뒤 11·12번째 칸이다. 외부 글자라 글자 형식으로 쓰고, =로 시작해도 수식이 되지 않는다."""
+    """선명·국적은 맨 뒤 11·12번째 칸이다. 외부 글자라 글자 형식으로 쓰고, =로 시작해도 수식이 되지 않는다."""
     db = FakeConn()
     db.add("MOCKBL000000A1", vessel_name="MOCK VESSEL", vessel_flag="PA")
     db.add("MOCKBL000000B1", vessel_name="=1+1", vessel_flag=None)

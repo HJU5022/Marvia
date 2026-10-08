@@ -92,7 +92,7 @@ def test_cache_fallback_is_logged(caplog):
 
 
 def test_timeout_falls_back_to_last_success(monkeypatch, caplog):
-    """시간 초과도 마지막 성공 값으로 대신한다 (09-29 결정, 평가셋 F02). 대신했다는 사실은 로그와 last_cached_at에 남는다."""
+    """시간 초과도 마지막 성공 값으로 대신한다 (평가셋 F02). 대신했다는 사실은 로그와 last_cached_at에 남는다."""
     from backend.app.clients import retry
 
     monkeypatch.setattr(retry, "BACKOFF_SEC", 0)  # 재시도 대기를 없앤다
@@ -162,7 +162,7 @@ def _stale_client(error: str, monkeypatch) -> ShipFinderClient:
 
 
 def test_timeout_uses_cache_older_than_ttl(monkeypatch):
-    """시간 초과면 TTL(6시간)이 지난 캐시도 마지막 수신 위치로 쓴다 (09-29 결정 ①, 평가셋 F02)."""
+    """시간 초과면 TTL(6시간)이 지난 캐시도 마지막 수신 위치로 쓴다 (①, 평가셋 F02)."""
     client = _stale_client("timeout", monkeypatch)
     assert client.position(440999001).mmsi == 440999001
     assert client.last_cached_at is not None

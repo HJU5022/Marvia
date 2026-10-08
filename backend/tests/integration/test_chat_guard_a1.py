@@ -1,4 +1,4 @@
-"""10-08 실험 A1: 사람 이름 되풀이 막기 테스트 (services/chat/chat.py person_names·echoes_person_name, 항상 켜짐).
+"""실험 A1: 사람 이름 되풀이 막기 테스트 (services/chat/chat.py person_names·echoes_person_name, 항상 켜짐).
 
 화물·배와 상관없는 사람 이름("호준이", "민수 어디야?", "김대리한테 전달해야 돼")에 모델이 이름을 따라 쓴 답은 버리고
 고정 문장으로 누구를 말하는지 되묻는다. 저장한 메모를 묻는 말(거래처 이름 등)의 답은 건드리지 않는다. LLM은 부르지 않는다 (가짜 chat_agent).
@@ -45,7 +45,7 @@ def test_guard_keeps_a_reply_without_the_name(monkeypatch):
 
 
 def test_recall_memo_answer_with_company_name_is_untouched(monkeypatch):
-    """거래처 이름이 든 recall_memo 답은 A1이 건드리지 않는다 (10-08 실사용 81 기능 보호)."""
+    """거래처 이름이 든 recall_memo 답은 A1이 건드리지 않는다 (실사용 81 기능 보호)."""
     from backend.tests.integration.test_chat_recall_memo import ask
     r, _ = ask(monkeypatch, "삼성 전화번호 뭐였지", "테스트로지스의 전화번호는 051-000-0001이에요.", {"topic": "contact", "query": None})
     assert r.reply == "테스트로지스의 전화번호는 051-000-0001이에요." and r.reply != svc.PERSON_ASK

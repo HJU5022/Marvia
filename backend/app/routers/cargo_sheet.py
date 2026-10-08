@@ -1,4 +1,4 @@
-"""내 화물 현황 표 /api (019, 10-06 결정, 아버지가 손으로 쓰는 관리표 기준).
+"""내 화물 현황 표 /api (019, 아버지가 손으로 쓰는 관리표 기준).
 
 창구만 한다: 로그인 확인 → services.watch.cargo_sheet 부르기 → HTTP 응답. 묶는 규칙·신용장 처리·엑셀 만들기는 서비스에 있다.
 
@@ -103,7 +103,7 @@ def _write(user: CurrentUser | None, action: str, write) -> dict:
 @router.put("/sheet/{cargo_key}/lc")
 def put_lc(cargo_key: str, body: LcBody, user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> dict:
     """화물 한 건을 신용장에 잇거나(lc_no 있음) 푼다(lc_no null).
-    개설일: 요청에 opened_on 키가 없으면 기존 값을 두고, 명시적으로 null을 보내면 비운다 (model_fields_set으로 가른다, 10-06 S3)."""
+    개설일: 요청에 opened_on 키가 없으면 기존 값을 두고, 명시적으로 null을 보내면 비운다 (model_fields_set으로 가른다, S3)."""
     return _write(user, "cargo_sheet_lc", lambda conn, uid: svc.set_lc(conn, uid, cargo_key, body.lc_no, body.opened_on,
                                                     clear_opened="opened_on" in body.model_fields_set))
 

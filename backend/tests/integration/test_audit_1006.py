@@ -1,6 +1,6 @@
-"""10-06 점검 수정 테스트. 키·DB 없이 돈다.
+"""수정 테스트. 키·DB 없이 돈다.
 
-분당 횟수 제한·동시 요청 상한·선박 자세히 보기 하루 상한은 넣었다가 뺐다 (10-06 결정: 유료 전환 때 다시 정한다).
+분당 횟수 제한·동시 요청 상한·선박 자세히 보기 하루 상한은 넣었다가 뺐다 (유료 전환 때 다시 정한다).
 2. 선박 자세히 보기 캐시 상한·정규화 (services/watch/vessel_detail.py)
 4. AgentRequest voyage_no·session_id 제한 (schemas/agent.py)
 6. 후속 질문: 입력 날짜가 바뀌면 다시 판정, 로그인 없는 이력도 B/L 지문으로 가른다 (routers/agent.py)
@@ -117,7 +117,7 @@ def bl_key(monkeypatch):
 
 
 def test_logged_out_history_does_not_mix_same_mask(bl_key):
-    """가린 모양이 같은 두 B/L(TE****01). 로그인 없이 남긴 줄도 지문으로 갈라 내 화물 줄만 쓴다 (10-06 점검)."""
+    """가린 모양이 같은 두 B/L(TE****01). 로그인 없이 남긴 줄도 지문으로 갈라 내 화물 줄만 쓴다."""
     from backend.app.schemas.customs import mask_bl
 
     mine, other = "TESTBL01", "TEXYZW01"
@@ -229,7 +229,7 @@ def test_unverified_email_is_not_operator(monkeypatch):
     assert operators.is_operator(object(), user.email) is False
 
 
-# ── 선박 자세히 보기 10분 캐시 (10-07 승욱) ──
+# ── 선박 자세히 보기 10분 캐시 ──
 
 def test_vessel_detail_cache_expires_after_10_minutes(monkeypatch):
     """다른 배를 누르면 앞 배는 캐시에 남고, 10분이 지나면 지워져 다시 누를 때 API를 부른다."""

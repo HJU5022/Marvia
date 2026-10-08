@@ -1,4 +1,4 @@
-"""10-08 E2E 버그 수정 시험: V10 오탐(서술어 활용형), 답에 남은 [BLn] 번호표, 없는 B/L 문장 중복.
+"""E2E 버그 수정 시험: V10 오탐(서술어 활용형), 답에 남은 [BLn] 번호표, 없는 B/L 문장 중복.
 LLM·MCP는 test_chat_agent.py의 가짜를 그대로 쓴다. 키 없이 돈다."""
 from backend.app.routers import agent as agent_router
 from backend.app.routers.agent import _response
@@ -166,7 +166,7 @@ def test_unreadable_sale_date_gets_note(monkeypatch):
     assert svc.SALE_UNREADABLE in r.reply
 
 
-# ── 저장 부탁에는 꺼내 보기 답을 내지 않는다 (10-08 운영 점검) ──
+# ── 저장 부탁에는 꺼내 보기 답을 내지 않는다 (운영 점검) ──
 from backend.tests.integration.test_chat_recall_memo import ask  # noqa: E402
 from backend.app.services.chat import texts as chat_texts
 

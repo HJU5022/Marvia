@@ -1,4 +1,4 @@
-"""B/L 구분을 말하지 않았을 때 하우스 → 마스터 순서 조회 테스트 (10-08 정운 실사용 75, services/chat/chat.py _cargo).
+"""B/L 구분을 말하지 않았을 때 하우스 → 마스터 순서 조회 테스트 (services/chat/chat.py _cargo).
 
 LLM·DB·판정 흐름은 부르지 않는다. test_chat_watch.py의 가짜 llm.chat_agent·가짜 지켜보기 저장소를 그대로 쓴다. B/L은 모의값이다.
 """

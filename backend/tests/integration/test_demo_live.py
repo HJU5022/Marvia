@@ -1,4 +1,4 @@
-"""라이브 시연 데모 10건 테스트 (10-06 정운 결정). evals/fixtures/demo_live.jsonl을 키 없이 실제 요청 경로로 돌린다.
+"""라이브 시연 데모 10건 테스트. evals/fixtures/demo_live.jsonl을 키 없이 실제 요청 경로로 돌린다.
 
 scripts/demo/make_demo.build_all이 쓴 재생 파일로 routers/agent.run_agent를 부른다 (test_demo_papers.py와 같은 방식).
 판정 LLM은 쓰지 않는다. 평가 (a) 규칙만과 같이 llm.judge·llm.pick_vessel 자리에 evals/baseline_rules를 끼운다.

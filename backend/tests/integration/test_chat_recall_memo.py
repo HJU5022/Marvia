@@ -1,4 +1,4 @@
-"""메모 꺼내 보기 recall_memo 테스트 (10-08 정운 실사용 81, services/chat/chat.py select_memo·run_recall).
+"""메모 꺼내 보기 recall_memo 테스트 (services/chat/chat.py select_memo·run_recall).
 
 LLM·DB는 부르지 않는다. llm.chat_agent를 가짜로 끼우고, 메모 읽기(_load_memo)는 가짜 항목으로 바꾼다.
 회사 이름·배 이름·전화번호(051-000-0000 등)는 모두 모의값이다.
@@ -148,7 +148,7 @@ def test_ship_question_asks_which_one(monkeypatch):
 
 
 def test_exact_1007_sentence_routes_to_recall(monkeypatch):
-    """모델이 처음에 not_in_skills를 냈어도 재질문은 recall_memo를 가리킨다 (10-07 실사용)."""
+    """모델이 처음에 not_in_skills를 냈어도 재질문은 recall_memo를 가리킨다 (실사용)."""
     memo(monkeypatch)
     calls = _agent(monkeypatch, [], [("", "not_in_skills", "")], retry_script=[("recall_memo", {"topic": "contact", "query": "홍콩보야지"})])
     r = svc.handle(SENTENCE, "s1", None, lambda req: None, user_id=USER)

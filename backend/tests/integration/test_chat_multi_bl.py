@@ -1,5 +1,5 @@
-"""채팅 에이전트 버그 두 개 (10-05 버그 찾기, services/chat/chat.py _agent).
-1) 한 문장에 B/L이 2~3개: 모두 병렬로 조회해 표(cargos)로 돌려준다. 4개 이상이면 앞 셋과 코드 안내 (10-05 정운 결정).
+"""채팅 에이전트 버그 두 개 (버그 찾기, services/chat/chat.py _agent).
+1) 한 문장에 B/L이 2~3개: 모두 병렬로 조회해 표(cargos)로 돌려준다. 4개 이상이면 앞 셋과 코드 안내.
 2) 화물 답과 LLM 문장이 같은 문장을 되풀이하면 LLM 문장을 버린다.
 LLM·MCP는 test_chat_agent.py의 가짜를 그대로 쓴다."""
 import pytest
@@ -65,7 +65,7 @@ def test_valid_llm_sentence_is_used_and_bad_one_falls_back_to_lead(monkeypatch):
     r = svc.handle("TESTBL01 TESTBL02 어느 게 더 빨리 와?", "s1", None, run)
     assert "99" not in r.reply and "2건" in r.reply and len(r.cargos) == 2  # 표만 답
 
-    _agent(monkeypatch, CHECK, ["[BL1] 화물이 [BL2] 화물보다 더 빨리 옵니다."])  # 화면 문장엔 번호표 대신 사용자가 쓴 B/L (10-06 정운 결정)
+    _agent(monkeypatch, CHECK, ["[BL1] 화물이 [BL2] 화물보다 더 빨리 옵니다."])  # 화면 문장엔 번호표 대신 사용자가 쓴 B/L
     r = svc.handle("TESTBL01 TESTBL02 어느 게 더 빨리 와?", "s1", None, run)
     assert r.reply.startswith("TESTBL01 화물이 TESTBL02 화물보다") and "[BL" not in r.reply
 

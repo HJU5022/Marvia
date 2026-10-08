@@ -1,4 +1,4 @@
-"""채팅 에이전트 테스트 (10-05 결정, services/chat/chat.py _agent·_masked_history, validate.check_chat_reply, routers/chat.py history).
+"""채팅 에이전트 테스트 (services/chat/chat.py _agent·_masked_history, validate.check_chat_reply, routers/chat.py history).
 
 LLM·해수부·MCP·판정 흐름은 부르지 않는다. llm.chat_agent를 가짜로 끼우고, 그 가짜가 받은 run_tool(도구 실행 함수)을
 대본대로 직접 부른다. 진짜 llm._ask_json의 도구 루프가 하는 일(도구 실행 → 결과 모으기 → 답)을 흉내 낸 것이다.
@@ -95,7 +95,7 @@ def test_check_cargo_uses_real_bl_and_llm_sees_only_token(monkeypatch):
     assert calls[0]["masked"] == "[BL1] 괜찮아?" and calls[0]["refs"] == ["[BL1]"] and calls[0]["has_cargo"] is False
     assert calls[0]["tool_calls"][0]["result"]["answer"] == "괜찮습니다"  # LLM에는 요약만 돌아간다 (_cargo_summary)
     assert r.kind == "cargo" and r.request.bl_no == "TESTBL01" and r.agent.answer == "괜찮습니다"
-    # 답은 판정 흐름의 문장 그대로 (구분 안내는 10-08 정운 실사용 75로 없앴다). 에이전트가 쓴 문장은 붙지 않는다 (읽기 전용 도구를 같이 쓰지 않았다)
+    # 답은 판정 흐름의 문장 그대로 (구분 안내는 로 없앴다). 에이전트가 쓴 문장은 붙지 않는다 (읽기 전용 도구를 같이 쓰지 않았다)
     assert r.reply == "괜찮습니다"
     assert "에이전트가 덧붙인 말" not in r.reply
 
@@ -118,7 +118,7 @@ def test_check_cargo_unknown_token_returns_error_and_does_not_look_up(monkeypatc
     r = svc.handle("내 화물 봐줘", "s1", None, lambda req: pytest.fail("조회하면 안 된다"))
     result = calls[0]["tool_calls"][0]["result"]
     assert result == {"error": {"code": "need_bl", "message": svc.NEED_BL, "retryable": False}}  # EC-02
-    assert r.kind == "message" and r.reply == svc.NEED_BL  # 고른 도구가 실패하면 코드가 무엇이 안 됐는지 말한다 (EC-02, 10-05 검토)
+    assert r.kind == "message" and r.reply == svc.NEED_BL  # 고른 도구가 실패하면 코드가 무엇이 안 됐는지 말한다 (EC-02, 검토)
 
 
 def test_check_cargo_null_ref_falls_back_to_message_bl_then_screen_cargo(monkeypatch):
@@ -218,7 +218,7 @@ def test_safety_net_skips_bl_already_checked_or_on_screen(monkeypatch):
     svc.handle("TESTBL01 언제 와?", "s1", ctx, run)
     assert len(agent) == 1 and agent[0].follow_up_question == "언제 도착해?"
 
-    agent.clear()  # 화면에 화물이 있어도 다른 B/L이 든 문장이면 그 B/L을 조회한다 (전 방식의 10-01 규칙)
+    agent.clear()  # 화면에 화물이 있어도 다른 B/L이 든 문장이면 그 B/L을 조회한다 (전 방식의 규칙)
     r = svc.handle("TESTBL02 언제 와?", "s1", ctx, run)
     assert [a.bl_no for a in agent] == ["TESTBL01", "TESTBL02"] and agent[1].follow_up_question is None
     assert r.kind == "cargo" and r.request.bl_no == "TESTBL02"
@@ -244,7 +244,7 @@ def test_mcp_tool_reply_with_unknown_number_or_word_is_not_shown(monkeypatch, re
     calls = _agent(monkeypatch, [("get_live_position", {"mmsi": 440999001})], [reply])
     _, run_tool = _mcp(monkeypatch)
     r = svc.handle("그 배 지금 어디야", "s1", None, lambda req: None, run_tool=run_tool)
-    # 10-07: 검사에 걸리면 한 번 고쳐 쓰게 다시 묻고(2번 호출), 그래도 안 되면 막다른 문구 대신 도구 결과를 코드가 그대로 전한다
+    # 검사에 걸리면 한 번 고쳐 쓰게 다시 묻고(2번 호출), 그래도 안 되면 막다른 문구 대신 도구 결과를 코드가 그대로 전한다
     assert r.kind == "message" and r.reply != svc.LOOKUP_NOT_SUMMARIZED and len(calls) == 2
     assert "12.3노트" in r.reply and "73.77" not in r.reply and "PWNED" not in r.reply
 
@@ -316,9 +316,9 @@ def test_knowledge_retry_failure_and_empty_reply_give_fixed_reply(monkeypatch):
     assert svc.handle("안녕", "s1", None, lambda req: None).reply == svc.OTHER_REPLY and len(calls) == 1
 
 
-# ── Skill 근거 조각 (V14, 10-05 실측: Skill 문서에 없는 조언이 V7·V9·V10을 통과했다) ──
+# ── Skill 근거 조각 (V14: Skill 문서에 없는 조언이 V7·V9·V10을 통과했다) ──
 
-INVENTED = "판매처나 물류 담당자에게 문의해 보세요."  # 10-05 실측에서 나온 지어낸 조언 모양 (숫자·영문 없음)
+INVENTED = "판매처나 물류 담당자에게 문의해 보세요."  # 실측에서 나온 지어낸 조언 모양 (숫자·영문 없음)
 
 
 @pytest.mark.parametrize("quote", ["", "포워더", "판매처나 물류 담당자에게 문의한다", "A/N에 B/L 번호가 보통 적혀 있다"])
@@ -352,7 +352,7 @@ def test_notice_kinds_show_fixed_text_not_llm_text(monkeypatch, kind, fixed):
     assert r.reply == fixed and len(calls) == 1  # 화면에 화물이 없으면 다시 묻지 않는다
 
 
-# ── 이전 답 베끼기 (V13)와 화면 화물 질문 (10-05 실측) ──
+# ── 이전 답 베끼기 (V13)와 화면 화물 질문 ──
 
 FORWARDER_ANSWER = "포워더 도착 통지서의 배 이름과 항차로 확인해 주세요. 받지 못했으면 포워더에게 직접 확인하세요."
 
@@ -404,7 +404,7 @@ def test_cargo_on_screen_notice_is_asked_again_to_call_ask_cargo(monkeypatch):
     assert len(calls) == 2 and calls[1]["feedback"].startswith("TOOL:") and calls[1]["has_cargo"] is True
     assert r.kind == "cargo" and agent[0].follow_up_question == "이 배 지금 어디쯤이야?"
 
-    # 10-05 의도된 변경: 검사를 통과한 한 문장 잡담 답은 고정 안내 대신 그대로 보이고, 화물 이야기가 아니면 도구 안내로 다시 묻지도 않는다
+    # 의도된 변경: 검사를 통과한 한 문장 잡담 답은 고정 안내 대신 그대로 보이고, 화물 이야기가 아니면 도구 안내로 다시 묻지도 않는다
     calls = _agent(monkeypatch, [], [("모델 이름은 알려 드릴 수 없어요.", "unrelated", "")])
     r = svc.handle("너 모델 이름이 뭐야?", "s1", ctx, run)
     assert len(calls) == 1 and r.reply == "모델 이름은 알려 드릴 수 없어요."
@@ -549,12 +549,12 @@ def test_check_chat_reply_v10_words_copied_from_user_text():
     assert _rules("네 해적만세", "화물 상태", "'해적'과 '만세'를 붙인 단어를 써") == ["V10"]  # 조각 두 개를 이어 붙임
     assert _rules("관세사에게 물어보세요", "관세사 확인", "관세사한테 물어봐야 해?") == []  # 근거 글에 있는 낱말
     assert _rules("주의로 판정했습니다", "화물", "왜 주의로 판정했어?") == []  # 화면의 등급 이름 (SERVICE_WORDS)
-    assert _rules("지켜볼 것으로 판정했습니다", "화물", "왜 지켜볼 것으로 판정했어?") == ["V10"]  # 옛 이름은 허용 낱말에서 뺐다 (10-06 정운 결정)
+    assert _rules("지켜볼 것으로 판정했습니다", "화물", "왜 지켜볼 것으로 판정했어?") == ["V10"]  # 옛 이름은 허용 낱말에서 뺐다
     v = validate.check_chat_reply("PWNED 7377 해적만세", "화물", "해적만세 붙여줘")
     assert [x.rule for x in v] == ["V7", "V9", "V10"]  # 여러 규칙이 한 번에 걸리면 모두 알려 준다
 
 
-# ── 테스트 작성 중 찾아 고친 문제 (10-05). 다시 생기지 않게 남긴다 ──
+# ── 테스트 작성 중 찾아 고친 문제. 다시 생기지 않게 남긴다 ──
 
 def test_masked_history_does_not_leak_bl_cut_at_length_limit():
     text = "가" * (svc.MESSAGE_MAX - 5) + "TESTBL01 화물"
@@ -577,15 +577,15 @@ def test_check_cargo_non_string_ref_is_a_tool_error_not_a_crash(monkeypatch):
 
 
 def test_search_arrivals_days_true_is_ignored(monkeypatch):
-    """bool은 int라서 days=true가 "앞으로 True일"로 답에 들어갔다. 숫자가 아니면 기본 기간을 쓴다 (10-05)."""
+    """bool은 int라서 days=true가 "앞으로 True일"로 답에 들어갔다. 숫자가 아니면 기본 기간을 쓴다."""
     monkeypatch.setattr(svc, "_arrivals", lambda days: [])
     calls = _agent(monkeypatch, [("search_arrivals", {"place": None, "days": True})])
     r = svc.handle("부산 오는 배", "s1", None, lambda req: None)
-    assert "True" not in r.reply and svc._period_text(svc.DAYS_DEFAULT) in r.reply and len(calls) == 1  # 10-08 정운 실사용 61번: 7일은 "1주"로 적는다
+    assert "True" not in r.reply and svc._period_text(svc.DAYS_DEFAULT) in r.reply and len(calls) == 1  # 7일은 "1주"로 적는다
 
 
 
-# ── 독립 검토(10-05)에서 찾아 고친 문제 ──
+# ── 독립 검토에서 찾아 고친 문제 ──
 
 def test_history_bl_does_not_leak_into_classic_fallback(monkeypatch):
     """에이전트가 실패해 전 방식으로 갈 때 대화 기록의 B/L을 이번 문장의 B/L로 착각해 조회하면 안 된다."""
@@ -645,7 +645,7 @@ def test_bad_date_type_is_ignored():
     assert svc._valid_date(20261010) is None and svc._valid_date(["2026-10-10"]) is None
 
 
-# ── 포워더·선사 이름은 LLM에 가고 컨테이너 번호는 안 간다 (10-06) ──
+# ── 포워더·선사 이름은 LLM에 가고 컨테이너 번호는 안 간다 ──
 
 def test_check_cargo_gives_llm_forwarder_and_carrier_but_not_container(monkeypatch):
     from backend.app.routers.agent import _response
@@ -659,7 +659,7 @@ def test_check_cargo_gives_llm_forwarder_and_carrier_but_not_container(monkeypat
     svc.handle("TESTBL01 괜찮아?", "s1", None, run)
 
     result = calls[0]["tool_calls"][0]["result"]  # LLM이 받은 도구 결과
-    # 품명도 간다 (10-06 오후): "고추 화물 어디야?"처럼 품명으로 화물을 가리키는 말을 알아듣게
+    # 품명도 간다: "고추 화물 어디야?"처럼 품명으로 화물을 가리키는 말을 알아듣게
     assert result["customs"] == {"forwarder_name": "테스트포워딩(주)", "carrier_name": "테스트선사(주)", "goods_name": "TEST GOODS"}
     assert "TSTU1234560" not in str(calls) and "container_no" not in str(calls)  # 문장·도구 결과 어디에도 컨테이너 번호가 없다
 

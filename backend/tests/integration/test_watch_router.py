@@ -1,4 +1,4 @@
-"""화물 지켜보기 창구 테스트 (routers/watch.py, G5 10-05 결정).
+"""화물 지켜보기 창구 테스트 (routers/watch.py, G5).
 
 DB는 부르지 않는다. test_watch.FakeConn을 ops.open_conn 자리에 끼운다. B/L은 모의값이다.
 """
@@ -14,7 +14,7 @@ from backend.tests.integration.test_watch import BL, USER, FakeConn, env  # noqa
 
 ENDPOINTS = [("post", "/api/cargo/watch/state", {"bl_no": BL}), ("put", "/api/cargo/watch", {"bl_no": BL, "on": True}),
              ("get", "/api/watch/changes", None), ("post", "/api/watch/changes/seen", None),
-             ("get", "/api/watch", None)]  # 감시 목록 (10-06)
+             ("get", "/api/watch", None)]  # 감시 목록
 
 
 @pytest.fixture

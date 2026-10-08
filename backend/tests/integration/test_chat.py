@@ -65,7 +65,7 @@ def test_llm_never_sees_bl(monkeypatch):
     agent, run = _agent_calls()
     r = svc.handle("TESTBL01 괜찮아?", "s1", None, run)
     assert "TESTBL01" not in calls[0]["masked"] and agent[0].bl_no == "TESTBL01"
-    assert agent[0].bl_type == "HOUSE" and "하우스 B/L" not in r.reply  # 구분을 말하지 않으면 HOUSE로 먼저 조회하고, 안내는 붙이지 않는다 (10-08 정운 실사용 75)
+    assert agent[0].bl_type == "HOUSE" and "하우스 B/L" not in r.reply  # 구분을 말하지 않으면 HOUSE로 먼저 조회하고, 안내는 붙이지 않는다
 
 
 def test_cargo_uses_stated_type_and_valid_date_only(monkeypatch):
@@ -155,7 +155,7 @@ def test_port_match_is_cached_per_place_and_list(monkeypatch):
 
 
 def test_new_bl_overrides_follow_up(monkeypatch):
-    """화면에 화물이 있어도 다른 B/L이 든 문장은 새 조회다. LLM이 follow_up을 골라도 코드가 덮어쓴다 (10-01)."""
+    """화면에 화물이 있어도 다른 B/L이 든 문장은 새 조회다. LLM이 follow_up을 골라도 코드가 덮어쓴다."""
     _route(monkeypatch, intent="follow_up", bl_ref="[BL1]", question="조회해줘")
     agent, run = _agent_calls()
     ctx = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s")
@@ -169,13 +169,13 @@ def test_new_bl_overrides_follow_up(monkeypatch):
 
 
 def test_cargo_ship_flag_follows_skill_list():
-    """선종·목적 목록은 skills/port-busan/cargo-vessels.md에서 읽는다 (10-01)."""
+    """선종·목적 목록은 skills/port-busan/cargo-vessels.md에서 읽는다."""
     assert chat_ids.is_cargo_ship("풀컨테이너선", "양적하") and chat_ids.is_cargo_ship("냉동.냉장선", "양하")
     assert not chat_ids.is_cargo_ship("원양 어선", "양하") and not chat_ids.is_cargo_ship("풀컨테이너선", "급유")
     assert not chat_ids.is_cargo_ship(None, None)
 
 
-# ── 전 방식의 B/L 여러 개 (10-06 점검: 첫 B/L만 조회하고 나머지는 말없이 버렸다) ──
+# ── 전 방식의 B/L 여러 개 (첫 B/L만 조회하고 나머지는 말없이 버렸다) ──
 def test_classic_looks_up_every_bl_up_to_three_with_table(monkeypatch):
     _route(monkeypatch, intent="cargo", bl_ref="[BL1]")
     agent, run = _agent_calls()
@@ -203,7 +203,7 @@ def test_classic_llm_down_still_looks_up_every_bl(monkeypatch):
 
 
 def test_voyage_pattern_guard_matches_schema():
-    """채팅이 사용자 문장의 항차를 요청에 넣기 전에 계약(schemas/agent.py)과 같은 규칙으로 본다 (10-06 점검).
+    """채팅이 사용자 문장의 항차를 요청에 넣기 전에 계약(schemas/agent.py)과 같은 규칙으로 본다.
     안 맞는 항차를 넣으면 AgentRequest가 ValidationError로 터진다."""
     from backend.app.schemas.agent import AgentRequest
     for good in ("V12", "0123E", "2609W/1"):

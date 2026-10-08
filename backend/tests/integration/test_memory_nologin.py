@@ -1,4 +1,4 @@
-"""로그인이 꺼진 환경(user_id 없음)에서는 기억을 읽지도 쓰지도 않는다 (docs/specs/memory.md EC-08, 10-02 검증).
+"""로그인이 꺼진 환경(user_id 없음)에서는 기억을 읽지도 쓰지도 않는다 (docs/specs/memory.md EC-08, 검증).
 
 대상 세 길: POST /api/chat, POST /api/chat/stream, run_agent의 후속 질문.
 DATABASE_URL을 켜 둔 채로 보는 것이 핵심이다. DB가 없어서가 아니라 "사용자가 없어서" 안 하는지를 본다.
