@@ -25,3 +25,4 @@ Marvia의 구조를 정한 결정을 한 건씩 기록한다. 번호는 읽는 �
 | [0017](0017-memory-feature-decisions.md) | 화물 비서 기억은 화물 표와 메모장 두 개, 등급에는 쓰지 않는다 | 채택 | specs/memory.md |
 | [0018](0018-daily-token-quota.md) | 남용 방어는 로그인과 1명당 하루 토큰 한도로 한다 | 채택 | specs/token-quota.md / SDD 5.20 |
 | [0019](0019-watch-user-opt-in-limit.md) | 지켜보기는 사용자가 켠 화물만, 사용자당 최대 5건 | 채택 | specs/cargo-watch.md / SDD 5.10 |
+| [0020](0020-remove-web-search-use-skill.md) | 채팅 에이전트의 웹 검색 도구를 없애고 수입 실무 기초는 Skill 문서로 둔다 | 채택 (웹 검색 도구 구조 대체) | 가이드 표 2·3 / prompt_versions.md chat-agent 16 / skills/import-basics |

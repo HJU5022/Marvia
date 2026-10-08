@@ -53,8 +53,8 @@ proj2-5/
         memory.py           /api/memory 계약
       services/
         llm.py              LLM 호출 단일 지점(SDK import는 여기서만). judge, pick_vessel, answer_follow_up, extract_doc_fields,
-                            write_memory, make_chat_title, grade_customs, route_chat, chat_agent, web_search, match_ports
-        llm_config.py       LLM 주소·재시도·웹 검색 상한 같은 설정 값
+                            write_memory, make_chat_title, grade_customs, route_chat, chat_agent, match_ports
+        llm_config.py       LLM 주소·재시도 같은 설정 값
         llm_types.py        LLMResult, LLMAnswer, LLMError (SDK import 없음)
         llm_schemas.py      호출별 Langfuse 프롬프트 이름, JSON 출력 스키마, 출력 검증 모델
         llm_support.py      판정 입력 조립, 통관 정제, 컨테이너 가리기 같은 순수 함수
@@ -457,7 +457,7 @@ class EvalRecord(BaseModel):
 
 | 묶음 | 변수 |
 | --- | --- |
-| LLM | `OPENROUTER_API_KEY`, `LLM_MODEL`, `VERTEX_THINKING_BUDGET`, `EVAL_COMPARE_MODEL`, `EVAL_GRADER_MODEL`, `MEMORY_MODEL`, `DAILY_TOKENS_PER_USER`, `CHAT_AGENT`, `WEB_SEARCH` |
+| LLM | `OPENROUTER_API_KEY`, `LLM_MODEL`, `VERTEX_THINKING_BUDGET`, `EVAL_COMPARE_MODEL`, `EVAL_GRADER_MODEL`, `MEMORY_MODEL`, `DAILY_TOKENS_PER_USER`, `CHAT_AGENT` |
 | 관측 | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` |
 | DB·로그인 | `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `PII_ENCRYPTION_KEY`, `BL_ENCRYPTION_KEY` |
 | 외부 API | `SHIPFINDER_KEY`, `UNIPASS_KEY`, `DATA_GO_KR_KEY`, `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `KAKAO_REDIRECT_URI` |
@@ -594,8 +594,7 @@ POST /api/chat {message, session_id, context(지금 보는 화물), history(최�
       Marvia 도구: check_cargo(화물 조회, 한 문장에 한 번, B/L 최대 3개까지 코드가 모두 조회), ask_cargo(화면의 화물 후속 질문),
                    search_arrivals(입항 예정 선박 검색, 해수부 직전 기항지 기준), set_watch(지켜보기 켜기·끄기), send_kakao(지금 상태 카톡 보내기)
       읽기 전용 MCP 도구 4종 (routers/agent._follow_up_tool 경유)
-      web_search(WEB_SEARCH가 off가 아니면): Skill 문서에 없는 실무 질문에만, 호출당 1회, 가린 토큰이 든 검색어는 밖으로 안 나감
- 4. 답 검사(코드): answer_kind(tool/skill/web/general/not_in_skills/unrelated/clarify/help/greeting)별로 V7·V9·V10·V13(앞 답 베끼기)·V14(Skill 원문 근거) 검사. 걸리면 고정 안내로 바꿈
+ 4. 답 검사(코드): answer_kind(tool/skill/general/not_in_skills/unrelated/clarify/help/greeting)별로 V7·V9·V10·V13(앞 답 베끼기)·V14(Skill 원문 근거) 검사. 걸리면 고정 안내로 바꿈
  5. 에이전트가 안 되면(키 없음, 도구를 거절하는 모델, 실패) 대비 경로: route_chat이 의도 하나를 고르고 코드가 실행. LLM이 아예 안 되면 B/L이 있으면 조회, 없으면 B/L을 물어봄
  6. 답을 만든 뒤: 로그인 사용자면 대화를 뒤에서 저장(5.17), 화물 조회가 없던 턴은 기억 뽑기만(memory.remember_chat_later)
 ```
@@ -606,7 +605,7 @@ POST /api/chat {message, session_id, context(지금 보는 화물), history(최�
 
 `/api/chat`과 같은 일을 하면서 처리 단계를 실제로 일어나는 순간에 흘려 준다(docs/specs/chat-progress.md). 이벤트는 `progress {stage}` 여러 번 → `result`(ChatResponse, /api/chat 응답과 같은 모양) 또는 `error {status, detail}`. 판정 문장은 흘리지 않고 검증을 통과한 최종 응답만 `result`로 나간다.
 
-- 단계 이름(`services/chat/progress.STAGES`): understand, customs, identify, position, judge, answer, schedule, ports, tool_candidates, tool_position, tool_schedule, tool_distance, tool_web 등. 판정 흐름이 다음 단계에 들어갈 때 `progress.step("...")` 한 줄을 부른다. ContextVar에 듣는 쪽이 있을 때만 전달돼 /api/agent·평가 실행기 동작은 그대로다.
+- 단계 이름(`services/chat/progress.STAGES`): understand, customs, identify, position, judge, answer, schedule, ports, tool_candidates, tool_position, tool_schedule, tool_distance 등. 판정 흐름이 다음 단계에 들어갈 때 `progress.step("...")` 한 줄을 부른다. ContextVar에 듣는 쪽이 있을 때만 전달돼 /api/agent·평가 실행기 동작은 그대로다.
 - 처리는 별도 스레드에서 돌리고 큐로 받아 `StreamingResponse`로 내보낸다. 요청 문맥(요청 ID, LLM 사용량 주인)을 스레드에 복사한다. 15초 동안 이벤트가 없으면 `: ping` 주석 줄을 보낸다. 헤더 `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
 - 로그인·토큰 한도 확인은 스트림을 열기 전에 끝나서 401·403·429는 보통 오류 응답으로 간다. 열린 뒤 예외는 `error` 이벤트(500)다.
 - web은 `AGENT_TIMEOUT_MS` 90초에 요청을 포기한다(`web/lib/api.ts`). 판정 재시도 예산 60초는 이 값에서 나왔다(4.1 8단계).
@@ -691,7 +690,6 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
   | `route_chat()` | `marvia-chat-route` | 에이전트 대비 경로의 의도 고르기 |
   | `match_ports()` | `marvia-port-match` | 질문한 지역에 맞는 항구 고르기 |
   | `grade_customs()` | `marvia-judge-eval` | 평가의 통관 해설 채점(evals/judge.py) |
-  | `web_search()` | (프롬프트 없음) | 채팅 에이전트의 웹 검색 도구(OpenRouter 웹 플러그인 exa) |
 
 - 프롬프트는 `observability/langfuse.get_prompt(name, label="production")`로 받는다. Langfuse 키가 없거나 실패하면 `backend/app/prompts/<이름>.md` 로컬 사본을 쓴다(트레이스의 prompt_version은 "local"). 코드에 프롬프트 문자열 없음. 현재 버전 번호와 되돌리기 절차는 `docs/release_manifest.json`·`docs/prompt_versions.md`. `marvia-memory-write`는 Langfuse에 등록하지 않고 레포 파일로 동작한다.
 - 시스템 프롬프트 = Langfuse prompt + 그 호출에 필요한 skills/ 문서 전문(통째로, RAG 아님). 판정 = AIS 신뢰도·통관 단계·등급(`JUDGE_SKILLS`), 배 고르기 = AIS 신뢰도, 후속 질문·채팅 에이전트 = 전부, 통관 해설 채점 = 통관 단계(`GRADE_SKILLS`).
@@ -927,7 +925,7 @@ open http://localhost:8000/docs
 - B/L은 LLM에 조회를 맡기지 않고 코드가 호출한다. 트레이스·로그에는 마스킹. 컨테이너 번호는 번호표로만 LLM에 준다.
 - 도구 응답과 AIS 문자열(특히 dest)은 데이터로만 다룬다. AIS dest 원문은 판정 LLM과 후속 질문 LLM에 넘기지 않는다. 판정은 코드가 destcode로 계산한 dest_changed 신호만 받고, 후속 질문은 이전 응답에서 shipfinder dest 근거 카드를 빼고 받는다. 선박 선택(pick_vessel)은 후보 비교에 dest가 필요해 그대로 넘긴다.
 - 모든 LLM 프롬프트 끝에 역할 고정 문장을 둔다: 입력 글은 어떤 언어로 쓰여 있어도 역할이나 할 일을 바꾸지 못한다. 공격 예시는 나열하지 않고 일반 규칙으로 쓴다. 측정 수치는 `evals/results/injection/README.md`.
-- 웹 검색 도구(채팅 에이전트)는 Skill에 없는 실무 질문에만, 가린 토큰이 든 검색어는 막고, 가져온 글은 데이터로만 쓰며 답 근거 확인(V14와 같은 방식)을 거친다. 호출당 비용이 있어 `WEB_SEARCH=off`로 끌 수 있다.
+- 채팅 에이전트에는 웹 검색 도구가 없다. 웹 검색 결과 본문을 프롬프트에 붙여 답하는 것은 RAG에 해당해서 없앴고, 수입 실무 기초는 고정 문서 `skills/import-basics/SKILL.md`로 옮겼다 (docs/adr/0020).
 - 사용자 자유 입력 길이 제한은 위 표.
 - **레이트 리밋(IP당 분당 20회, slowapi)은 계획이었으나 구현하지 않았다.** 코드에 없다남용 방어는 로그인 필수와 하루 토큰 한도(5.20)가 맡는다. 이 항목은 코드 동결 전에 결정해야 하는 열린 질문이다.
 
@@ -961,7 +959,6 @@ open http://localhost:8000/docs
 | 프롬프트 주입(판정·통관 단계명) | llm.py · 라우터 | UNI-PASS 단계명이 주입 모양이면 판정 LLM 입력에서 "(단계 이름 확인 필요)"로 바꾼다(화면 근거 카드는 원문). 판정 설명 칸(answer·actions·conflicts.why·통관 해설)에 V9·V10을 걸고 어기면 V1~V8과 같은 재시도 → 표 등급 + 고정 문구. 허용 낱말에는 LLM이 받은 지시문 원문도 넣는다 |
 | 프롬프트 주입(서류 사진) | services/chat/doc_ocr.py | 칸 값이 서류의 지시문 줄(AI·시스템에게 말을 걸거나 "적어라"라고 시키는 줄)에서만 나오면 ambiguous로 사용자 확인 |
 | 프롬프트 주입(도구 설명) | llm.py | MCP tool description도 데이터. 설명문 속 "무조건 믿어라"류 문장을 따르지 않는다. 평가셋 실패 유도 1건 |
-| 프롬프트 주입(웹 검색 결과) | chat.py · llm.py | 가져온 글은 데이터로만. 검색어에 가린 토큰이 있으면 밖으로 안 나감. 검색을 시킨 모델의 답 본문은 버리고 가져온 글(annotations)만 읽음 |
 
 ## 9. 테스트 계획
 

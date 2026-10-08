@@ -156,9 +156,9 @@ flowchart TD
 | 판정은 2층 | 1층은 코드가 신호 7종(위치 6시간 끊김, AIS ETA와 해수부 예정 12시간 차이, 부산 인근 24시간 정박, 목적지 변경·깨짐, 항해상태·속도 불일치, 통관 검사·보류, 신뢰 ETA가 판매 예정일을 넘김)을 triggered / clear / unknown으로 판정한다. 2층은 LLM이 신호가 어긋날 때 어느 출처를 왜 믿는지 설명한다 |
 | 숫자는 코드가 계산 | 여유 일수, 거리, freshness는 코드가 계산하고 LLM은 덮어쓰지 못한다. 임계값 원본은 `skills/*/rules.md` 프론트매터 |
 | 코드가 LLM을 막는다 | 위치가 오래됐으면 "현재 위치" 표현 금지, 식별 불확정이면 판정 금지, 근거에 없는 숫자 거부 같은 출력 검증 규칙(V1~V15). 위반하면 재시도 3단계 후 폴백. 등급은 코드의 판정 표가 정한다 |
-| RAG 아님 | 지식은 Skill 문서를 통째로 넣고, 실시간 데이터는 MCP 도구로 가져온다. LangGraph와 RAG는 쓰지 않는다 |
+| RAG 아님 | 지식은 Skill 문서를 통째로 넣고, 실시간 데이터는 MCP 도구로 가져온다. LangGraph와 RAG는 쓰지 않는다. 채팅 에이전트의 웹 검색 도구는 가이드가 RAG로 보는 "웹 검색 결과 본문을 프롬프트에 붙여 답변 생성"이라 없앴고, 수입 실무 기초는 고정 Skill 문서(`import-basics`)로 옮겼다 ([ADR 0020](docs/adr/0020-remove-web-search-use-skill.md)) |
 
-#### Skill 5종 (`skills/`)
+#### Skill 6종 (`skills/`)
 
 각 폴더의 `SKILL.md`(도메인 지식·설명법)와 `rules.md`(코드가 읽는 재료)를 통째로 호출에 넣는다. 어느 호출이 어느 Skill을 받는지는 `backend/app/services/llm.py`의 `JUDGE_SKILLS` 등 상수가 정한다. 폴더 설명은 [skills/README.md](./skills/README.md).
 
@@ -168,6 +168,7 @@ flowchart TD
 | `customs-stages` | UNI-PASS 통관 단계의 뜻·다음 단계·할 일 설명법과 관세사 안내 | 판정, 후속 답, 채팅 에이전트, 통관 해설 채점(평가) |
 | `cargo-verdict` | 코드가 낸 등급과 되묻기·보류·실패 결과를 설명하는 법 | 판정, 후속 답, 채팅 에이전트 |
 | `port-busan` | 부두·정박지 이름의 뜻과 하역 장소를 한 문장으로 말하는 법 | 후속 답, 채팅 에이전트 (판정에는 넣지 않음) |
+| `import-basics` | 수입 실무 기초(B/L 번호를 찾는 곳, 포워더 확인, A/N 같은 낱말). 웹 검색을 없애고 고정 문서로 옮겼다 | 후속 답, 채팅 에이전트 (판정에는 넣지 않음) |
 | `referrals` | 마르비아가 답하지 않는 부분을 누구에게 어느 공식 창구에서 확인하게 하는지 | LLM에 넣지 않고 채팅 코드(`services/chat/referrals.py`)가 `rules.md`를 읽어 고정 문구 뒤에 붙임 |
 
 ---

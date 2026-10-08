@@ -43,7 +43,7 @@ SDD 5절과 작업 리스트에 없는 기능은 Spec을 먼저 쓴다(CLAUDE.md
 |---|---|
 | [backend/](../backend/README.md) | FastAPI 앱 구조 |
 | [mcp_server/](../mcp_server/README.md) | MCP 도구 4종 |
-| [skills/](../skills/README.md) | Skill 5종 |
+| [skills/](../skills/README.md) | Skill 6종 |
 | [relay/](../relay/README.md) | 해수부 릴레이 |
 | [web/](../web/README.md) | 화면 |
 | [evals/](../evals/README.md) | 평가셋 |
