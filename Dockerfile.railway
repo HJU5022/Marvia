@@ -1,4 +1,4 @@
-# Railway 배포용 API 서버 이미지 (10-02 결정: 백엔드는 Railway, 화면은 Vercel).
+# Railway 배포용 API 서버 이미지 (백엔드와 화면 모두 Railway, Vercel은 쓰지 않는다).
 # Railway는 Dockerfile의 마지막 단계만 빌드하고 단계(target)를 고를 수 없다(docs.railway.com/guides/dockerfiles).
 # 기본 Dockerfile의 마지막 단계는 worker라서, app 단계(base + app)만 옮긴 이 파일을 RAILWAY_DOCKERFILE_PATH로 지정한다.
 # 로컬 `docker compose up`은 그대로 Dockerfile을 쓴다. 기본 Dockerfile의 base · app 단계를 고치면 이 파일도 같이 고친다.
