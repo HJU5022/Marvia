@@ -385,20 +385,83 @@ Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout
 
 ## 디렉토리 구조
 
-레포 루트가 Docker 빌드 컨텍스트다. 처음 계획(SDD 1.1)의 `app/`, `eval/`은 각각 `backend/app/`, `evals/`로 옮겨 만들었다. 폴더마다 하는 일과 하지 않는 일은 CLAUDE.md "폴더" 표에 있다.
+레포 루트가 Docker 빌드 컨텍스트다. 폴더 안 파일 하나하나의 설명은 각 폴더 README에 있다 ([backend](./backend/README.md) · [mcp_server](./mcp_server/README.md) · [skills](./skills/README.md) · [web](./web/README.md) · [relay](./relay/README.md) · [evals](./evals/README.md) · [docs](./docs/README.md)).
 
-| 폴더 | 내용 | 설명 |
-|---|---|---|
-| `backend/` | FastAPI. `app/routers`(요청), `schemas`(계약 C1~C5), `services`(`judge/` 판정, `chat/` 채팅, `account/` 기억·회원, `watch/` 지켜보기, `llm*.py`), `clients`(외부 API), `observability`, `db/migrations`(001~023 자동 적용), `prompts`(Langfuse 실패 때 쓰는 사본), `tests`(`unit/` `integration/` `contract/`) | [backend/README.md](./backend/README.md) |
-| `mcp_server/` | FastMCP. 선박 후보·실시간 위치·입항 일정·남은 거리 도구 4개 | [mcp_server/README.md](./mcp_server/README.md) |
-| `skills/` | `ais-reliability`, `customs-stages`, `port-busan`, `cargo-verdict`, `referrals`. 폴더마다 `SKILL.md` + `rules.md` | [skills/README.md](./skills/README.md) |
-| `worker/` | `collector.py`(위치·입항 실적 수집), `watch.py`(지켜보는 화물 재판정), `run.py` | |
-| `relay/` | 해수부 API 릴레이 (서울 Cloud Run) | [relay/README.md](./relay/README.md) |
-| `evals/` | 평가셋 30건(`dataset.jsonl`)·서류 12건, `fixtures/`(재생 파일), `results/`, 실행기·채점 | [evals/README.md](./evals/README.md) |
-| `web/` | Next.js 16. 경로 `/`, `/watch`, `/cargo`, `/history`, `/settings`, `/admin`, `/metrics`, `/about`. `public/basemap/`에 미리 구운 지도 타일 | [web/README.md](./web/README.md) |
-| `scripts/` | 손으로 돌리는 스크립트. ops/ 실제 DB·계정 변경, eval/ 평가·측정, demo/ 데모 (make_demo, demo_live, mcp_check, langfuse_evidence 등) | |
-| `docs/` | PRD, SDD, 작업 리스트, ERD, 릴리스 manifest, 프롬프트 버전, specs, evidence | [docs/README.md](./docs/README.md) |
-| 루트 | `EVAL_REPORT.md`, `Dockerfile`(base / app / worker), `Dockerfile.railway`, `docker-compose.yml`(api + worker + postgres 16), `.env.example`, `CLAUDE.md` · `AGENTS.md`(AI 코딩 도구 작업 지침) | |
+```
+proj2-5/
+├── README.md                  채점자용 소개 · 실행법 · 지표 (이 파일)
+├── EVAL_REPORT.md             관측과 평가 제출물. 실행한 숫자만 적는다
+├── CLAUDE.md · AGENTS.md      AI 작업 규칙 (AGENTS.md는 CLAUDE.md를 가리킨다)
+├── Dockerfile                 로컬 compose용 멀티스테이지 (base / app / worker)
+├── Dockerfile.railway         Railway 배포용 API 이미지 (마지막 단계만 빌드하는 Railway 제약 때문)
+├── docker-compose.yml         api(/mcp 포함) + worker + postgres 16. `docker compose up` 한 줄
+├── pyproject.toml             프로젝트 정보. 설치 기준은 backend/requirements.txt
+├── .env.example               환경변수 이름과 설명 (값 없음)
+│
+├── backend/                   FastAPI 서버
+│   ├── requirements*.txt      의존성 · requirements.lock.txt(테스트한 버전 고정)
+│   ├── app/
+│   │   ├── main.py            앱 시작 · 라우터 등록 · /health · 마이그레이션 자동 적용 · /mcp 마운트
+│   │   ├── routers/           요청 입구. 검증 → 서비스 호출 → 응답 (agent, chat, document, watch, history ...)
+│   │   ├── schemas/           출력 계약 원본 (C1~C5). 필드는 여기서만 정한다
+│   │   ├── services/
+│   │   │   ├── llm.py         LLM 게이트웨이. LLM SDK는 이 파일에서만 부른다 (재시도 · 검증 · 관측)
+│   │   │   ├── llm_*.py       LLM 설정 · 결과 타입 · 출력 스키마 · 보조 함수
+│   │   │   ├── judge/         판정: UNI-PASS 조회 · 선박 식별 · 신호 계산 · 판정 표 · 검증 V1~V15 · 근거 카드
+│   │   │   ├── chat/          채팅: 도구 고르는 에이전트 · 정해진 문구 · 서류 읽기(OCR) · 진행 단계
+│   │   │   ├── account/       회원: 기억(메모) · 하루 토큰 한도 · 개인정보 · 운영자
+│   │   │   └── watch/         지켜보기: 화물 재판정 · 카카오 알림 · 화물 현황표 · 배 상세
+│   │   ├── clients/           외부 API 클라이언트 (ShipFinder, 해수부, 카카오, 재생 파일, 캐시, 재시도)
+│   │   ├── observability/     Langfuse 트레이스 · 구조화 로그
+│   │   ├── db/migrations/     001~023 SQL. 서버가 켜질 때 순서대로 자동 적용
+│   │   └── prompts/           Langfuse를 못 읽을 때 쓰는 프롬프트 사본 (marvia-*.md)
+│   └── tests/                 pytest, 키 없이 돈다
+│       ├── unit/              함수 단위 (신호 · 판정 표 · 검증 규칙 · 파서)
+│       ├── integration/       라우터 경로 · 채팅 · 스트림 · 데모 (가짜 LLM, 재생 파일)
+│       └── contract/          계약 검사 (스키마 · 평가셋 형식 · 프롬프트 필수 규칙)
+│
+├── mcp_server/                FastMCP 서버 (/mcp, Bearer 토큰)
+│   └── tools/                 선박 후보 · 실시간 위치 · 입항 일정 · 남은 거리 (도구 4종, 읽기 전용)
+├── skills/                    LLM이 읽는 도메인 지식 (RAG 아님, 문서를 통째로 넣는다)
+│   ├── ais-reliability/       AIS 값이 틀리는 경우 읽는 법
+│   ├── customs-stages/        통관 단계의 뜻 · 다음 단계 · 할 일
+│   ├── port-busan/            부산항 부두 · 정박지
+│   ├── cargo-verdict/         등급(순항 · 주의 · 긴급)을 설명하는 법
+│   ├── referrals/             마르비아가 답하지 않는 것은 어디에 물을지
+│   └── import-basics/         수입 실무 기초 FAQ (B/L 번호 · A/N · 반출 · 보관료 · 신고)
+│                              폴더마다 SKILL.md(설명법) + rules.md(코드가 읽는 임계값 · 목록)
+├── worker/                    위치 · 입항 실적 수집, 지켜보는 화물 재판정 (배포에서는 꺼 둠)
+├── relay/                     해수부 API 중계 (서울 Cloud Run). Railway 싱가포르에서 해수부가 막혀서 둔다
+│
+├── evals/                     평가
+│   ├── dataset.jsonl          판정 평가셋 30건 (정상 8 · 경계 14 · 실패 유도 8, 사람이 정답 확정)
+│   ├── doc_dataset.jsonl      서류 사진 평가 12건
+│   ├── run_eval.py · judge.py 실행기 · LLM-as-judge 채점
+│   ├── fixtures/              외부 API 재생 파일 (가공값). 키 없이 재현
+│   └── results/               실행 결과 원본 (EVAL_REPORT 숫자의 근거)
+├── scripts/                   손으로 돌리는 스크립트
+│   ├── demo/                  데모 데이터 만들기 · MCP 연결 확인 · 실제 응답 수집
+│   ├── eval/                  측정 도구 (A/B, 주입 레드팀, Langfuse 집계)
+│   └── ops/                   ⚠ 실제 DB · 계정을 바꾼다. 실행 전 ops/README.md
+│
+├── web/                       Next.js 16 화면 (Railway marvia-web)
+│   ├── app/                   화면 경로: / (대화) · /watch · /cargo · /history · /settings · /admin · /metrics · /about
+│   ├── components/            화면 조각 (결과 카드 · 지도 · 채팅 입력 · 이력 표 ...)
+│   ├── lib/                   API 호출 · 데모 fixture · 형식 함수
+│   └── scripts/verify.mjs     화면 e2e (데모 모드, 접근성 검사 포함)
+│
+└── docs/                      문서 (지도는 docs/README.md)
+    ├── Marvia_PRD.md          왜 만드나 · 범위 · 만들지 않는 것
+    ├── Marvia_SDD.md          구현 명세 (계약 · 흐름 · 파일 책임 · 실패 처리 · 배포)
+    ├── Marvia_개발_작업_리스트.md  작업 ID · 완료 기준 · 일정
+    ├── ERD.md                 DB 표 구조
+    ├── adr/                   설계 결정 기록 (왜 이렇게 만들었나, 결정 하나당 한 장)
+    ├── specs/                 기능별 명세
+    ├── evidence/              Langfuse 캡처 · 집계 · MCP 연결 캡처
+    ├── assets/gif/            README 데모 GIF
+    ├── prompt_versions.md     프롬프트 버전별 변경 · 이유 · 결과
+    └── release_manifest.json  배포 단위 고정 (모델 · 프롬프트 버전 · 코드 · 되돌리기)
+```
 
 ---
 
