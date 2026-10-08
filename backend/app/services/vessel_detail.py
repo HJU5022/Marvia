@@ -6,7 +6,7 @@
 - searoute: 부산까지 남은 바닷길과 지금 속력으로 걸리는 시간 (estimate_distance)
 판정은 하지 않는다. 도구 하나가 실패해도 나머지는 보여 주고, 실패는 errors에 출처별로 남긴다 (SDD 8절 partial 원칙).
 위치가 오래됐는지는 rules.md position_stale_hours로 코드가 정한다 (화면이 정하지 않는다).
-ShipFinder는 하루 호출 한도가 있어 같은 배는 10분 동안 다시 부르지 않는다.
+ShipFinder는 하루 호출 한도가 있어 같은 배는 10분 동안 다시 부르지 않는다. 10분이 지나면 지우고, 다시 누르면 API를 부른다.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
 from backend.app.services.rules import rule
+from backend.app.services.vessel_pick import rank
 # MCP 도구 4종은 /mcp를 거쳐 부른다 (10-02, services/mcp_client.py).
 # route_points는 지도에 그릴 항로 좌표를 만드는 도우미라 MCP 도구가 아니다. 그래서 직접 부른다
 from backend.app.services.mcp_client import (
@@ -55,8 +56,13 @@ def _cache_get(key: tuple[str, str]) -> dict | None:
 
 
 def _cache_put(key: tuple[str, str], value: dict) -> None:
+    """한 척을 담는다. 담을 때 10분(CACHE_SEC)이 지난 배를 먼저 지운다 (10-07 승욱: 다른 배를 누르면 앞 배는 캐시에 남았다가
+    10분 뒤 지워지고, 그 뒤 다시 누르면 API를 부른다). 꺼낼 때(_cache_get)도 지난 값은 지우므로 둘 다에서 정리된다."""
+    now = time.monotonic()
     with _cache_lock:
-        _cache[key] = (time.monotonic(), value)
+        for old in [k for k, (at, _v) in _cache.items() if now - at >= CACHE_SEC]:
+            del _cache[old]
+        _cache[key] = (now, value)
         _cache.move_to_end(key)
         while len(_cache) > CACHE_MAX:
             _cache.popitem(last=False)
@@ -105,7 +111,10 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
     if (e := _err("shipfinder", found)):
         errors.append(e)
     else:
-        cands = found.get("candidates") or []
+        # 같은 호출부호의 여러 배 중 지켜보기(services/vessel_watch.resolve_mmsi)와 같은 규칙으로 고른다:
+        # 이름이 같은 배 먼저, 그다음 마지막 신호가 가장 최근인 배 (10-08 정운 실사용 64번, services/vessel_pick.py).
+        # 그래야 자세히 보기에 보이는 배와 지켜보기에 올라가는 배가 같다
+        cands = rank(found.get("candidates") or [], ship_name, lambda c: c.get("name"), lambda c: c.get("last_time"))
         vessel = cands[0] if cands else None
         if vessel is None:
             errors.append({"source": "shipfinder", "code": "not_found", "message": "AIS에서 이 배를 찾지 못했습니다"})
@@ -131,5 +140,40 @@ def detail(call_sign: str | None, ship_name: str | None) -> dict:
               "distance": distance, "schedule": schedule, "errors": errors,
               # 이 결과를 만든 시각. 10분 캐시에서 다시 나가도 그대로라 화면이 "몇 시 기준"인지 보여 줄 수 있다 (10-06)
               "cached_at": datetime.now(timezone.utc).isoformat()}
-    _cache_put(key, result)
+    # 위치를 못 받은 결과는 담지 않는다 (10-07 승욱). 담으면 ShipFinder가 잠깐 실패했을 때 10분 동안 그 실패를 보여 준다.
+    # 다음에 누르면 다시 부른다. 해수부만 실패한 경우는 위치가 있으니 담는다
+    if not any(e["source"] == "shipfinder" for e in errors):
+        _cache_put(key, result)
     return result
+
+
+def cached_result(call_sign: str | None, ship_name: str | None) -> dict | None:
+    """10분 캐시 안에 이 배의 자세히 보기 결과가 있으면 그것을, 없으면 None. 외부 호출을 하지 않는다.
+    지켜보기를 켤 때 이미 받은 위치를 다시 받지 않고 쓰려고 부른다 (10-08 정운 실사용 66번, services/vessel_watch.py)."""
+    return _cache_get(_key(call_sign, ship_name))
+
+
+def live_position(mmsi: int, call_sign: str | None = None, ship_name: str | None = None) -> dict | None:
+    """MMSI 한 척의 현재 위치(get_live_position 응답 모양)를 돌려준다. 못 받으면 None (예외를 던지지 않는다).
+
+    지켜보기 목록이 오래된 위치를 새로 채울 때 쓴다 (10-08 정운 실사용 66번). ShipFinder 하루 한도를 아끼려고 순서대로:
+      1. 자세히 보기 10분 캐시에 같은 MMSI의 위치가 있으면 그것
+      2. MMSI별 10분 캐시
+      3. get_live_position 한 번 (성공하고 캐시 대체값이 아닐 때만 2번에 담는다)
+    """
+    hit = cached_result(call_sign, ship_name)
+    if hit and (hit.get("vessel") or {}).get("mmsi") == mmsi and hit.get("position"):
+        return hit["position"]
+    mkey = ("#MMSI", str(mmsi))
+    hit = _cache_get(mkey)
+    if hit is not None:
+        return hit["position"]
+    try:
+        pos = get_live_position(mmsi)
+    except Exception:  # MCP 호출 자체의 실패도 목록을 막지 않는다
+        return None
+    if _err("shipfinder", pos) or not isinstance(pos, dict) or pos.get("lat") is None:
+        return None
+    if not pos.get("cached_at"):  # 한도에 걸려 옛 값을 받은 것은 새 값처럼 담지 않는다
+        _cache_put(mkey, {"position": pos})
+    return pos

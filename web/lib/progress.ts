@@ -3,7 +3,7 @@
  * 화면은 서버가 보낸 단계만 그린다. 타이머로 단계를 넘기거나 퍼센트를 만들지 않는다 (가이드 8-3, 10-02 결정).
  */
 export type ProgressStage = 'understand' | 'customs' | 'identify' | 'position' | 'judge' | 'answer' | 'schedule' | 'ports'
-  | 'tool_candidates' | 'tool_position' | 'tool_schedule' | 'tool_distance' | 'tool_web';
+  | 'tool_candidates' | 'tool_position' | 'tool_schedule' | 'tool_distance' | 'tool_web' | 'memory';
 
 export const stageLabels: Record<ProgressStage, string> = {
   understand: '질문 이해',
@@ -20,6 +20,8 @@ export const stageLabels: Record<ProgressStage, string> = {
   tool_schedule: '부산 입항 기록 조회',
   tool_distance: '남은 항로 거리 계산',
   tool_web: '웹 검색',
+  // 기억 뽑기가 저장할 내용을 찾았을 때만 서버가 보낸다 (거래처·선호·일정 등 모든 메모 종류에 맞는 말)
+  memory: '메모 저장 중',
 };
 
 export function isStage(value: unknown): value is ProgressStage {

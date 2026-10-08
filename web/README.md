@@ -2,9 +2,9 @@
 
 B/L 하나로 내 화물이 제때 오는지 판정하고, 왜 그런지 근거까지 보여주는 프론트엔드입니다.
 **Next.js 16 App Router + React 19 + TypeScript. 기본은 로컬 fixture 데모, `NEXT_PUBLIC_API_BASE`를 주면 실제 백엔드에 연결.**
-배포는 Railway `marvia-web`입니다. Vercel은 쓰지 않습니다 (10-05 결정, 루트 README "배포").
+배포는 Railway `marvia-web`입니다. Vercel은 쓰지 않습니다 (루트 README "배포").
 
-문서 현행화: 2026-10-06 (코드 기준). 10-06 화면 전면 개편(토스형, 대화 + 상세 40:60) 이후 상태입니다.
+하지 않는 것: 외부 API 직접 호출, 서버 비밀 키 보유. 화면은 백엔드 API(`lib/api.ts`)만 부릅니다.
 
 ## 바로 실행
 
@@ -42,7 +42,7 @@ npm start
 | `/admin` | 관리: 고객 관리(수정·정지·강제 탈퇴·가린 정보 보기), 운영자 관리 | 운영자만 |
 | `/about` | 제품 소개 (로그인 전에도 보임) | 누구나 |
 
-일반 사용자 사이드바는 내 화물(화물 조회 `/`, 지켜보는 화물 `/watch` 하위 메뉴), 화물 현황, 조회 이력, 설정이고, 운영자에게는 평가 지표와 관리가 더해집니다 (`components/Shell.tsx`, `GET /api/me`). 레일은 접을 수 있고, 로그인 사용자에게는 왼쪽에 대화 목록(`conversations`)이 붙습니다. 대화가 40:60으로 나뉘면 목록은 접히고 상단바 "대화" 버튼으로 엽니다.
+일반 사용자 사이드바는 새 대화와 대화 목록(`conversations`, 대화 화면 `/`)이 가운데에 있고, 아래 "화물" 묶음(감시 화물 `/watch`, 화물 현황 `/cargo`, 조회 이력 `/history`)과 Marvia 소개, 계정 메뉴가 있습니다. 운영자에게는 평가 지표와 관리가 더해집니다 (`components/Shell.tsx`, `GET /api/me`). 대화가 40:60으로 나뉘어도 대화 목록은 그대로 보이고, 사이드바를 접었거나 좁은 화면이면 대화 칸 왼쪽 위 단추가 목록 패널을 엽니다.
 
 ## 예시와 상태 전환 (데모 모드)
 
@@ -62,7 +62,7 @@ npm start
 | MRVDEMO1106 | 2026-10-25 | ok / watch / stale 위치 |
 | MRVDEMO1107 | 2026-10-20 | ok / act |
 
-(`verdict` 값은 `fine`, `watch`, `act`이고 화면 이름은 순항, 주의, 긴급입니다. 10-06 변경, `lib/format.ts verdictLabels`.)
+(`verdict` 값은 `fine`, `watch`, `act`이고 화면 이름은 순항, 주의, 긴급입니다. `lib/format.ts verdictLabels`.)
 
 후보 선택: insufficient에서 첫 후보를 선택하거나 후보 미선택 상태로 항차·포워더 ETA를 입력하면 정상 예시로 이어집니다. 후속 질문은 질문에 관계없이 저장된 답변을 돌려주며 화면에 재생임을 표시합니다.
 
@@ -71,14 +71,15 @@ npm start
 ```text
 app/                   App Router 페이지 (/, /watch, /cargo, /history, /settings(+/kakao), /metrics, /admin, /about),
                        공통 layout, globals.css(토큰 + 공통 규칙), icon.svg
-app/styles/            화면별 CSS 아홉 파일: chat, detail, compare-vessel, document, cargo-sheet, watch, settings, admin, entry
-                       (layout.tsx가 globals.css 뒤에 이 순서로 불러온다. 뒤 파일이 앞의 같은 선택자를 덮는다)
-components/            화면 컴포넌트 38개 (아래 표)
+app/styles/            화면별 CSS 열네 파일: admin, brand, cargo-sheet, chat, compare-vessel, detail, document, entry, evidence,
+                       landing, metrics, settings, sidebar, watch (layout.tsx가 globals.css 뒤에 불러온다. 뒤 파일이 앞의 같은 선택자를 덮는다)
+components/            화면 컴포넌트 47개 (아래 표)
 lib/types.ts           백엔드 Pydantic 직렬화 계약을 옮긴 타입
 lib/api.ts             요청 함수 전부 + 로컬 데모 접근 함수 (isLive로 분기)
 lib/auth.ts            Supabase 로그인
 lib/basemap.ts         지도 바탕 세 단계 (아래 "지도 바탕")
 lib/format.ts          KST 날짜, B/L 마스킹, 표시용 라벨(verdictLabels 등)
+lib/evidenceTypes.ts, shipList.ts, watchVessel.ts  근거 종류, 선박 목록, 선박 지켜보기 보조
 lib/progress.ts        서버 처리 단계 이름·라벨과 SSE 해석 (docs/specs/chat-progress.md)
 lib/composer.ts        다른 카드에서 AI 입력창으로 돌아가는 통로
 lib/fixtures/          데모 응답(ok, partial, insufficient, failed, unsupported, watch, act), history, demo, document,
@@ -89,7 +90,6 @@ public/brand, about/   로고, 소개 페이지 캡처 이미지
 scripts/               verify.mjs, verify-contract.mjs, bake-basemap.mjs, copy-maplibre-worker.mjs, backend-contract.json
 screenshots/           verify.mjs가 찍는 캡처 (git 제외, 로컬에서 만들어진다)
 DESIGN.md              디자인 방향과 이유
-NOTES.md               스키마·문서 차이, 알려진 한계, 미확인 값
 THIRD_PARTY.md         지도·폰트 출처와 라이선스
 ```
 
@@ -98,11 +98,12 @@ THIRD_PARTY.md         지도·폰트 출처와 라이선스
 | 묶음 | 파일 |
 | --- | --- |
 | 틀·세션 | `AppProvider`(세션·로그인·사용량·대화 상태), `Shell`(레일·상단바·로그인/정지/회원정보 관문), `Drawer`, `Shared`, `OperatorOnly` |
-| 대화 | `ChatBar`(입력창, `POST /api/chat/stream`), `ConversationList`, `ChatCargoTable`, `ChatMiniMap`, `WatchOfferAction` |
+| 대화 | `ChatBar`(입력창, `POST /api/chat/stream`), `ConversationList`, `ChatCargoTable`, `ChatVesselTable`, `ChatCandidateChips`, `ChatMiniMap`, `ConversationEvidence`, `EvidencePopover`, `WatchOfferAction` |
 | 화물 결과 | `VerdictCard`, `VesselCard`, `EtaCompare`, `MapPanel`, `CustomsTimeline`, `CustomsDetailTable`, `EvidenceCards`, `CandidatePicker`, `FailureBanner` |
 | 선박 | `VesselList`, `VesselDetail`, `VesselMap` |
 | 서류 | `DocumentPanel`(사진·PDF 확인 화면) |
 | 지켜보기·현황 | `WatchMap`, `WatchToggle`, `CargoSheet` |
+| 소개·약관 | `IntroContent`, `LegalLinks`, `LegalModal` |
 | 설정·계정 | `SettingsPage`, `ProfileForm`, `HistoryTable`, `MemoryPanel`, `KakaoPanel`, `AccountPanel`, `LoginScreen` |
 | 운영 | `AdminPage`, `CustomerActions`(고객 한 명에 대한 수정·정지·탈퇴·가린 정보 보기), `MetricsPage` |
 | 쓰지 않음 | `TopBar`, `AskPanel` (옛 입력 폼. 어디서도 불러오지 않지만 지우지 않았다) |
@@ -110,7 +111,7 @@ THIRD_PARTY.md         지도·폰트 출처와 라이선스
 ## 화면 틀과 스타일
 
 - 토큰은 `app/globals.css`의 `:root`입니다. 바탕 연회색 `#F2F4F6`, 카드 흰색, 파랑 `#2962F5`(hover `#1D4FD7`)는 누를 수 있는 것에만, 신호등 색은 판정 등급에만 씁니다. 글자 크기는 14·16·20·26 네 단계입니다. 자세한 것은 DESIGN.md.
-- `globals.css` 맨 끝 "Marvia 토스형 프레임" 구역이 옛 규칙(10-02 Ocean)을 덮고, 화면별 규칙은 `app/styles/*.css`가 뒤에서 덮습니다.
+- `globals.css` 맨 끝 "Marvia 토스형 프레임" 구역이 옛 규칙(Ocean)을 덮고, 화면별 규칙은 `app/styles/*.css`가 뒤에서 덮습니다.
 - 내 화물 화면(`app/page.tsx`)은 대화 칸 `clamp(380px, 40%, 720px)` + 상세 칸입니다 (`styles/chat.css`). 선박 표(열이 많음)일 때는 대화 칸이 `clamp(360px, 32%, 560px)`로 좁아집니다. 이 화면에서만 페이지 전체가 아니라 안쪽 칸이 스크롤합니다(`body[data-fit]`).
 - 900px 이하에서는 상세가 아래에서 올라오는 시트가 되고(손잡이 줄만 보이게 접힘), 입력창을 누르면 시트가 접힙니다. 700px 이하에서는 사이드바가 위 띠로 바뀌어 틀을 세로로 쌓습니다 (`styles/chat.css`).
 
@@ -203,7 +204,7 @@ npm run test:contracts
 npm run build
 ```
 
-`typecheck`와 `test:contracts`는 10-06에 이 문서를 고칠 때 실제로 돌려 통과를 확인했습니다 (`test:contracts`는 가공 fixture 7개와 이력·서류·기억 fixture, SSE 해석, 단계 이름 일치, 화물 표 칸, 대화 목록 타입, 로그인 복귀 주소를 봅니다). 아래 e2e는 이번 현행화에서는 돌리지 않았습니다.
+`test:contracts`는 가공 fixture 7개와 이력·서류·기억 fixture, SSE 해석, 단계 이름 일치, 화물 표 칸, 대화 목록 타입, 로그인 복귀 주소를 봅니다.
 
 ### e2e (`scripts/verify.mjs`)
 
@@ -236,4 +237,3 @@ MARVIA_LIVE_TEST_URL=http://127.0.0.1:3101 npm run test:e2e
 
 `npm run test:contracts`. 원본 Python 스키마를 읽어 생성한 `scripts/backend-contract.json` 스냅샷으로 가공 fixture를 검사하므로 원본 저장소·Python·API 없이 실행됩니다. 백엔드 `schemas/*`가 바뀌면 이 스냅샷도 다시 만들어야 합니다 (`AgentResponse`의 필드가 바뀌면 이 검사가 먼저 깨집니다).
 
-원본과의 차이 및 데모 범위는 **NOTES.md**를 먼저 확인해 주세요.

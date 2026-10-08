@@ -76,16 +76,17 @@ def test_writer_masks_bl_even_if_text_slips_through(monkeypatch):
     assert len(seen) == 1 and "TESTBL0000001" not in seen[0] and "[BL1]" in seen[0]
 
 
-def test_cargo_turn_calls_writer_only_once(monkeypatch):
-    """화물 조회 턴: remember_later가 이미 맡겼다. 대화용 기억 뽑기는 같은 문장을 다시 보내지 않는다 (turn.fired)."""
+def test_cargo_turn_calls_writer_twice_with_split_roles(monkeypatch):
+    """화물 조회 턴: 턴 시작에 먼저 도는 호출(화물 없음, 이 사람에 대해 종류)과 조회 뒤 호출(화물 있음, 화물에 묶인 것)이 하나씩.
+    대화용 기억 뽑기가 세 번째로 또 가지는 않는다 (turn.fired, 10-08 정운 실사용 76)."""
     _db(monkeypatch)
     seen = _writer(monkeypatch)
     _route(monkeypatch, intent="cargo", bl_ref="[BL1]", bl_type="MASTER")
 
     svc.handle("TESTBL0000001 10/3까지 받아야 해", "s1", None, _lookup_run(), user_id="u1")
 
-    assert len(seen) == 1
-    assert json.loads(seen[0])["cargo"] is not None  # 조회 뒤 쪽 호출(화물 정보가 있다)이 남았다
+    assert len(seen) == 2
+    assert sorted(json.loads(c)["cargo"] is None for c in seen) == [False, True]
 
 
 def test_not_logged_in_never_runs_writer(monkeypatch):

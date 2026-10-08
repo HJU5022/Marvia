@@ -13,6 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from PIL import UnidentifiedImageError
+from pydantic import BaseModel, Field
 
 from backend.app.auth import current_user_id
 from backend.app.observability.langfuse import request_span, session_scope
@@ -30,6 +31,47 @@ LLM_FIELDS = ("vessel", "voyage", "eta", "pol", "pod", "item", "etd")  # etd: 10
 DOC_KIND = {"bl": "B/L", "arrival_notice": "A/N"}
 
 
+def _ocr_upload(file: UploadFile) -> doc_ocr.OcrResult:
+    """올린 파일을 읽어 OCR 결과를 돌려준다. 전체 판독(/api/document)과 B/L만 찾기(/api/document/bl)가 같이 쓴다.
+    크기·형식 오류는 400이다. PDF 여부는 앞 4바이트로 가른다. 파일 이름·content-type은 믿지 않는다 (10-06 결정)."""
+    data = file.file.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise HTTPException(status_code=400, detail="too_large")
+    if doc_ocr.is_pdf(data):
+        try:
+            return doc_ocr.read_pdf(data)
+        except doc_ocr.InvalidPdf:
+            raise HTTPException(status_code=400, detail="invalid_pdf")
+    try:
+        return doc_ocr.read_lines(data)
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(status_code=400, detail="invalid_image")
+
+
+class DocumentBlResponse(BaseModel):
+    """B/L만 찾기 응답. 채팅 첨부가 쓴다 (10-08 정운 실사용 73번). 코드가 뽑은 값만 담고 LLM 필드는 없다."""
+    bl_no: str | None = Field(description="코드(doc_ocr.take_bl)가 뽑은 B/L. 못 찾으면 null")
+    mrn: str | None = Field(default=None, description="코드(doc_ocr.take_mrn)가 뽑은 MRN. 없으면 null")
+    ocr: OcrInfo
+    trace_id: str
+
+
+@router.post("/document/bl", response_model=DocumentBlResponse)
+def read_document_bl(file: UploadFile = File(...), session_id: str | None = Form(None),
+                     user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DocumentBlResponse:
+    """서류에서 B/L 번호(와 MRN)만 코드로 뽑는다. 10-08 정운 실사용 73번: 채팅 첨부는 "보내기"를 눌렀을 때만 이 길로 읽고,
+    뽑은 B/L로 바로 채팅 조회를 보낸다. 선박·항차·날짜·연락처 같은 LLM 칸은 읽지 않는다: 토큰과 시간이 들고,
+    조회가 UNI-PASS 등에서 더 정확한 값을 가져오기 때문이다. 그래서 LLM을 부르지 않고 B/L도 LLM에 보내지 않는다 (CLAUDE.md).
+    OCR만 돌리므로 보통 1~3초다. 전체 7칸 판독은 POST /api/document가 그대로 맡는다."""
+    with request_span("/api/document/bl"):
+        quota_guard(session_id, user_id)  # 토큰은 안 쓰지만 한도를 다 쓴 사용자는 채팅이 막히므로 같은 문턱을 둔다
+        ocr = _ocr_upload(file)
+        return DocumentBlResponse(
+            bl_no=doc_ocr.take_bl(ocr.lines), mrn=doc_ocr.take_mrn(ocr.lines),
+            ocr=OcrInfo(lines=len(ocr.lines), rotation=ocr.rotation, runs=ocr.runs, ocr_ms=ocr.ocr_ms),
+            trace_id=current_request_id())
+
+
 @router.post("/document", response_model=DocumentResponse)
 def read_document(file: UploadFile = File(...), session_id: str | None = Form(None),
                   user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DocumentResponse:
@@ -44,19 +86,7 @@ def _read_document(file: UploadFile, session_id: str | None, user_id: str | None
     """read_document의 실제 처리. 루트 span 안에서 불린다."""
     # 서류 판독도 LLM을 부르므로 하루 토큰 한도를 확인한다 (docs/specs/token-quota.md)
     quota_guard(session_id, user_id)
-    data = file.file.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES:
-        raise HTTPException(status_code=400, detail="too_large")
-    if doc_ocr.is_pdf(data):  # 앞 4바이트로 가른다. 파일 이름·content-type은 믿지 않는다 (10-06 결정)
-        try:
-            ocr = doc_ocr.read_pdf(data)
-        except doc_ocr.InvalidPdf:
-            raise HTTPException(status_code=400, detail="invalid_pdf")
-    else:
-        try:
-            ocr = doc_ocr.read_lines(data)
-        except (UnidentifiedImageError, OSError):
-            raise HTTPException(status_code=400, detail="invalid_image")
+    ocr = _ocr_upload(file)
 
     bl = doc_ocr.take_bl(ocr.lines)
     values: dict[str, str | None] = {"bl_no": bl, **{k: None for k in LLM_FIELDS}}

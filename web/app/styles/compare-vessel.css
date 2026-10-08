@@ -290,3 +290,16 @@
 /* 선박 자세히의 구역 제목(부산항 일정·선박 위치)을 다른 표 제목처럼 작은 흐린 라벨로 (10-07 정운 엘레강스) */
 .vessel-detail.vd section h4{font-size:12px;font-weight:400;letter-spacing:.06em;color:var(--muted);display:flex;align-items:center;gap:6px}
 .vessel-detail.vd section h4 svg{width:13px;height:13px}
+
+/* 10-08 정운 실사용 77번: 선박 표 머리글. 건수·기간·시각 기준은 한 줄, 직전 기항지는 따로 접어 두고 칩으로 보인다 */
+.vl-head .vl-meta{margin:6px 0 0;font-size:var(--fs-md,15px);line-height:1.6;color:var(--text-2,var(--muted))}
+.vl-ports{margin-top:8px;font-size:var(--fs-md,15px);line-height:1.6;color:var(--text-2,var(--muted))}
+.vl-ports summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;min-height:36px;list-style:none}
+.vl-ports summary::-webkit-details-marker{display:none}
+.vl-ports summary b{font-weight:600;color:var(--text)}
+.vl-ports summary .vl-ports-btn{color:var(--rail,var(--brand,#2962f5));font-weight:500;text-decoration:underline;text-underline-offset:3px}
+.vl-ports-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.vl-ports-line b{font-weight:600;color:var(--text);margin-right:2px}
+.vl-chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0;padding:0;list-style:none}
+.vl-ports-line .vl-chips{margin:0}
+.vl-chips li{padding:4px 12px;border-radius:999px;background:var(--soft,#f2f4f6);color:var(--text);font-size:14px;line-height:1.5}

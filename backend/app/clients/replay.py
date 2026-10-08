@@ -22,7 +22,9 @@ from pathlib import Path
 
 import httpx
 
-REPLAY_DIR = Path(__file__).resolve().parents[3] / "evals" / "fixtures" / "replay"
+# REPLAY_FIXTURE_DIR이 있으면 그 폴더를 읽는다 (10-07 데모용). 실제 응답을 찍어 둔 로컬 스냅숏(.local/demo_replay/<시각>/)을
+# 코드 수정·커밋 없이 가리키려는 것이다. 모듈을 불러올 때 한 번 읽으므로 서버를 켜기 전에 정해 둔다.
+REPLAY_DIR = Path(os.environ.get("REPLAY_FIXTURE_DIR") or Path(__file__).resolve().parents[3] / "evals" / "fixtures" / "replay")
 
 # 엔드포인트별로 어느 파라미터가 파일 이름이 되는가
 _SHIPFINDER_KEY_PARAM = {"VesselSearch": "keywords", "VesselPositionSingle": "mmsi", "VesselFlagInfo": "mmsi"}
@@ -119,8 +121,15 @@ def unipass_transport() -> httpx.MockTransport:
     """
 
     def handle(request: httpx.Request) -> httpx.Response:
-        bl_no = request.url.params.get("mblNo") or request.url.params.get("hblNo") or ""
-        body = _read(REPLAY_DIR / "unipass" / f"{file_key(bl_no)}.xml") if bl_no else None
+        mbl, hbl = request.url.params.get("mblNo"), request.url.params.get("hblNo")
+        bl_no = mbl or hbl or ""
+        body = None
+        if bl_no:
+            # 구분별 파일(<번호>.mbl.xml / <번호>.hbl.xml)을 먼저 본다. 실제 UNI-PASS는 마스터·하우스 번호가 서로 달라
+            # 같은 번호를 다른 구분으로 부르면 "없음"이 온다. 구분 없는 <번호>.xml은 예전처럼 둘 다에 답한다 (10-07)
+            kind = "mbl" if mbl else "hbl"
+            key = file_key(bl_no)
+            body = _read(REPLAY_DIR / "unipass" / f"{key}.{kind}.xml") or _read(REPLAY_DIR / "unipass" / f"{key}.xml")
         return httpx.Response(200, text=body if body is not None else _UNIPASS_NOT_FOUND)
 
     return httpx.MockTransport(handle)

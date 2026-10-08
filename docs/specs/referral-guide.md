@@ -1,8 +1,8 @@
-# 안내처 표 (10-06 구현, 같은 날 코드와 대조)
+# 안내처 표
 
-상태: 1(신호별 다음 행선지)과 2(범위 밖 질문)를 10-06에 구현했다 (PR #71). 재료는 `skills/referrals/rules.md`(새 skills 폴더, "정해야 할 것" 3번의 답), 코드는 `backend/app/services/referrals.py`, 테스트는 `backend/tests/test_referrals.py`. 문장과 주소는 팀이 다시 확인한다.
+상태: 1(신호별 다음 행선지)과 2(범위 밖 질문)를 구현했다 (PR #71). 재료는 `skills/referrals/rules.md`(새 skills 폴더, "정해야 할 것" 3번의 답), 코드는 `backend/app/services/referrals.py`, 테스트는 `backend/tests/test_referrals.py`.
 
-### 구현 상태 (10-06 코드 확인)
+### 구현 상태
 
 | 항목 | 설계 | 실제 |
 |---|---|---|
@@ -12,7 +12,7 @@
 | 범위 밖 질문 | 5개 주제를 고정 문장으로 | 5개 구현: air_land, warehouse_date, schedule_change(`require`가 있어야 걸림), weather, import_requirement. B/L이 있는 문장은 건너뛴다 (`services/chat._route`). 주제는 LLM 분류가 아니라 정규식(rules.md `out_of_scope`)이다 |
 | 세액·통관 가부 | `BROKER_ONLY`에 확인처 | 구현. `broker_referral`을 `BROKER_ONLY` 끝에 붙인다 (`referrals.broker_tail`) |
 | 품목별 요건 답의 한국관세사회 링크 | 붙임 | 안 붙였다. 현재 답은 관세사에게 확인하라는 문장만 있다. 아래 "공식 창구" 표의 `broker_search`는 코드에 쓰이지 않는다 |
-| `NOT_IN_SKILLS`, `BROKER_SHORT`에 확인처 | 붙이거나 맞춤 | 바뀌지 않았다 (`services/chat.py`). 아래 "기존 고정 문구와의 관계" 표의 이 줄들은 아직 안 했다. `CLEARANCE_TAG`는 10-07에 없앴다 (아래 표) |
+| `NOT_IN_SKILLS`, `BROKER_SHORT`에 확인처 | 붙이거나 맞춤 | 바뀌지 않았다 (`services/chat.py`). 아래 "기존 고정 문구와의 관계" 표의 이 줄들은 반영하지 않았다. `CLEARANCE_TAG`는 없앴다 (아래 표) |
 | 링크 확인 스크립트 | `scripts/`에 둠 | 만들지 않았다 (scripts/에 없음) |
 | 범위 밖 질문 평가 5~10건 | 사람이 따로 | evals/에서 확인하지 못했다 |
 
@@ -21,7 +21,7 @@
 마르비아는 답하지 않는 영역이 정해져 있다. 세액·통관 가부 판단, 창고 수령일 예측이 그렇다 (PRD 4절).
 지금은 그런 질문에 "관세사에게 문의해 주세요", "자료에 없습니다"로 끝난다 (services/chat.py 고정 문구).
 사람만 안내하고 공식 창구는 알려 주지 않는다.
-웹 검색 답에는 출처 링크가 붙지만(10-06 caf412a), 검색 결과에 따라 매번 달라서 공식 창구가 나온다는 보장이 없다.
+웹 검색 답에는 출처 링크가 붙지만(caf412a), 검색 결과에 따라 매번 달라서 공식 창구가 나온다는 보장이 없다.
 판정 답에도 신호가 켜졌을 때 누구에게 무엇을 물어야 하는지가 일정하게 붙지 않는다.
 
 그래서 두 가지를 고정한다.
@@ -41,14 +41,14 @@
 - "괜찮음"(켜진 신호 없음)에는 붙이지 않는다. 불필요한 행동을 시키지 않는다
 - 화면은 이미 http·https 주소를 링크로 바꾼다 (web/components/ChatBar.tsx). 웹 수정은 필요 없다
 
-## 공식 창구 (10-06 접속 확인)
+## 공식 창구
 
 | 키 | 이름 | 주소·전화 | 무엇을 하는 곳 | 확인 |
 |---|---|---|---|---|
-| unipass_cargo | UNI-PASS 화물진행정보 | https://unipass.customs.go.kr/csp/index.do | B/L로 통관 진행 단계를 직접 조회 | 10-06 접속 200 |
-| customs_call | 관세청 고객지원센터 | 전화 125 (평일 09:00~18:00) / https://www.customs.go.kr/call/main.do | 수입 통관·과세가격·품목분류·보세화물 상담 | 10-06 접속 200, 운영 시간은 관세청 안내 기준 |
-| tariff_portal | 관세법령정보포털 | https://unipass.customs.go.kr/clip/index.do | 관세율·품목분류 법령 조회 | 10-06 접속 200 |
-| broker_search | 한국관세사회 등록 관세사 찾기 | https://krcaa.or.kr/_Document/Intro/I10203V.aspx?MenuCode=I10203 | 지역별 등록 관세사 검색. 거래하는 관세사가 없을 때 | 10-06 접속 200. 옛 주소 kcba.or.kr는 응답 없음 |
+| unipass_cargo | UNI-PASS 화물진행정보 | https://unipass.customs.go.kr/csp/index.do | B/L로 통관 진행 단계를 직접 조회 | 접속 200 |
+| customs_call | 관세청 고객지원센터 | 전화 125 (평일 09:00~18:00) / https://www.customs.go.kr/call/main.do | 수입 통관·과세가격·품목분류·보세화물 상담 | 접속 200, 운영 시간은 관세청 안내 기준 |
+| tariff_portal | 관세법령정보포털 | https://unipass.customs.go.kr/clip/index.do | 관세율·품목분류 법령 조회 | 접속 200 |
+| broker_search | 한국관세사회 등록 관세사 찾기 | https://krcaa.or.kr/_Document/Intro/I10203V.aspx?MenuCode=I10203 | 지역별 등록 관세사 검색. 거래하는 관세사가 없을 때 | 접속 200. 옛 주소 kcba.or.kr는 응답 없음 |
 
 넣지 않기로 한 후보:
 - 식약처 수입식품정보마루 등 품목별 기관: 품목 특화라 뺀다 (위 원칙)
@@ -135,7 +135,7 @@ referral_max: 2
 | 품목별 수입 요건 | 이거 수입하려면 인증 필요해? | 품목별 수입 요건은 마르비아가 판단하지 않습니다. 신고를 맡은 관세사에게 요건을 확인해 주세요. 확인처: 한국관세사회 관세사 찾기 (https://krcaa.or.kr/_Document/Intro/I10203V.aspx?MenuCode=I10203) |
 | 자료에 없는 실무 질문 | (Skill·웹·일반 설명 어디에도 없을 때) | 그 내용은 마르비아가 가진 자료에 없습니다. 포워더에게 확인해 주세요. 확인처: 관세청 고객지원센터 125 |
 
-날씨 답은 원인을 단정하지 않는다. 마르비아의 판정은 관측값(위치·속력·입항 신고·통관 단계)에서 나오고, 날씨 영향은 관측할 수 없는 원인 추정이라 넣지 않는다 (10-06 결정 논의).
+날씨 답은 원인을 단정하지 않는다. 마르비아의 판정은 관측값(위치·속력·입항 신고·통관 단계)에서 나오고, 날씨 영향은 관측할 수 없는 원인 추정이라 넣지 않는다.
 
 rules.md 프론트매터 모양 (안):
 
@@ -154,20 +154,20 @@ out_of_scope:
 | 지금 문구 (services/chat.py) | 바뀌는 것 |
 |---|---|
 | BROKER_ONLY, BROKER_SHORT | 위 "세액·통관 가부" 답으로 맞추고 확인처 줄을 붙인다 |
-| CLEARANCE_TAG, GENERAL_TAG | 없앴다 (10-07 정운 실사용: 답마다 같은 꼬리표가 붙어 기계 같다). "안내용 정보, 실제 처리는 포워더·관세사 확인" 고지는 사이트 이용약관(web/components/LegalLinks.tsx)으로 옮겼다 |
+| CLEARANCE_TAG, GENERAL_TAG | 없앴다 (답마다 같은 꼬리표가 붙어 기계 같다는 실사용 지적). "안내용 정보, 실제 처리는 포워더·관세사 확인" 고지는 사이트 이용약관(web/components/LegalLinks.tsx)으로 옮겼다 |
 | NOT_IN_SKILLS, SHORT_NOTICE | 위 "자료에 없는 실무 질문" 답으로 맞춘다 |
 | follow-up in_scope=false | 그대로 (이 화물 결과 안에서만 답한다는 안내) |
 
-## 구현 범위 (정해지면)
+## 구현 범위
 
 - rules.md 프론트매터: signal_referrals, referral_order, referral_max, out_of_scope. 계약 파일 변경이라 PR 리뷰를 거친다
 - 판정 응답 조립(코드): 켜진 신호로 확인처 줄을 만들어 actions 뒤에 붙인다. LLM 출력 검증(V1~V7)은 붙이기 전에 끝난다
 - services/chat.py: 범위 밖 주제를 먼저 가르고 고정 문장으로 답한다. 기존 고정 문구는 위 표대로 맞춘다
 - 테스트(키 없이): 신호 조합마다 붙는 줄과 순서·개수, "괜찮음"엔 안 붙는 것, 범위 밖 질문마다 고정 문장, LLM 답에 주소가 없는 것
 - 평가: 판정 답 본문은 그대로라 기존 평가셋에는 영향이 없다. 범위 밖 질문 평가 5~10건은 사람이 써서 따로 둔다
-- 링크 확인 스크립트: scripts/에 공식 창구 주소가 살아 있는지 보는 스크립트를 둔다
+- 링크 확인 스크립트: scripts/에 공식 창구 주소가 살아 있는지 보는 스크립트는 없다 (위 구현 상태 표)
 
-## 정해야 할 것 (10-06 현재: 1·3은 구현으로 정해졌고 2·4·5는 열려 있다)
+## 정해야 할 것 (1·3은 구현으로 정해졌고 2·4·5는 열려 있다)
 
 1. 신호별 안내 문장과 순서
 2. 범위 밖 주제 목록과 답 문장. 날씨 답처럼 "B/L 번호를 알려 주시면" 꼬리를 다른 답에도 붙일지

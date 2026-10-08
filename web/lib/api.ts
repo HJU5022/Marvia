@@ -6,7 +6,7 @@
  * 화면 컴포넌트는 어느 모드인지 몰라도 된다. 요청·응답 모양은 backend/app/schemas/agent.py(C1, C2) 그대로다.
  * 서버 API 키는 여기에 두지 않는다. NEXT_PUBLIC_* 값은 브라우저에 그대로 보이기 때문이다 (SDD 7절).
  */
-import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, ChatOnScreen, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
+import type { AgentRequest, AgentResponse, CustomersResponse, DocumentFactsRequest, DocumentFactsResponse, DocumentResponse, DocumentBlResponse, HistoryResponse, KakaoLinkResult, KakaoStatus, MemoryResponse, MeResponse, OperatorsResponse, WatchChange, WatchState, ProfileData, UnmaskResponse, ActionItem, ChatResponse, ChatHistoryTurn, ChatDocument, ChatOnScreen, VesselDetailResponse, ConversationSummary, ConversationDetail, CargoSheet, CargoSheetRow } from './types';
 import type {Citation, EvidenceItem} from './evidenceTypes';
 import {accessToken} from './auth';
 import {createSseParser, isStage, type ProgressStage} from './progress';
@@ -238,6 +238,15 @@ async function liveDocument(file: File): Promise<DocumentResponse> {
   return res.json();
 }
 
+/** 서류에서 B/L(과 MRN)만 코드로 뽑는다 (POST /api/document/bl, 10-08 정운 실사용 73번). LLM을 안 부르므로 빠르다 */
+async function liveDocumentBl(file: File): Promise<DocumentBlResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('session_id', currentSessionId());
+  const res = await call('/api/document/bl', {method: 'POST', body: form}, DOCUMENT_TIMEOUT_MS);
+  return res.json();
+}
+
 /** 이력 삭제·탈퇴는 실패를 숨기지 않는다. 지운 줄 알았는데 남아 있으면 안 되므로 오류를 그대로 올린다 (routers/history.py). */
 async function liveDelete<T>(path: string): Promise<T> {
   const res = await call(path, {method: 'DELETE'}, HISTORY_TIMEOUT_MS);
@@ -251,7 +260,7 @@ let selectedFixture: string | null = null;
 let previous: { key: string; response: AgentResponse } | null = null;
 const pause = () => new Promise<void>(resolve => setTimeout(resolve, 1050));
 
-/** 저장된 예시 B/L을 그 예시의 조건 그대로만 재생한다. 새 입력에 맞춰 판정을 지어내지 않는다 (NOTES.md). */
+/** 저장된 예시 B/L을 그 예시의 조건 그대로만 재생한다. 새 입력에 맞춰 판정을 지어내지 않는다 (SDD 5.13 데모 모드). */
 async function demoAgentResponse(req: AgentRequest): Promise<AgentResponse> {
   await pause();
   const normalized = req.bl_no.replace(/\s/g, '').toUpperCase();
@@ -473,6 +482,15 @@ export async function readDocument(file: File): Promise<DocumentResponse> {
   if (file.size > DOCUMENT_MAX_BYTES) throw new Error('사진이 너무 커요. 10MB 이하로 올려 주세요.');
   if (file.type && !file.type.startsWith('image/') && file.type !== 'application/pdf') throw new Error('사진(JPG·PNG)이나 PDF만 올릴 수 있어요.');
   return isLive ? liveDocument(file) : demoDocument();
+}
+
+/** 채팅 첨부 보내기: 서류에서 B/L(과 MRN)만 읽는다. 데모 모드는 사진과 상관없이 가공 데모 B/L을 돌려준다 (fixture, 모의값). */
+export async function readDocumentBl(file: File): Promise<DocumentBlResponse> {
+  if (file.size > DOCUMENT_MAX_BYTES) throw new Error('사진이 너무 커요. 10MB 이하로 올려 주세요.');
+  if (file.type && !file.type.startsWith('image/') && file.type !== 'application/pdf') throw new Error('사진(JPG·PNG)이나 PDF만 올릴 수 있어요.');
+  if (isLive) return liveDocumentBl(file);
+  const r = await demoDocument();
+  return {bl_no: r.fields.bl_no.value, mrn: r.mrn ?? null, ocr: r.ocr, trace_id: r.trace_id};
 }
 
 /** DELETE /api/history. 로그인한 사용자의 조회 기록을 전부 지운다. 데모 모드에는 지울 실제 기록이 없다. */
@@ -758,7 +776,7 @@ export function selectFixture(id: string | null) {
 }
 
 /** 이력 행의 저장된 판정 다시 보기. GET /api/history는 요약만 주므로 실제 모드에서는 상세가 없다(null).
- * 새로 POST해서 과거 결과인 척하지 않는다. 실제 재생은 상세 endpoint가 생겨야 한다 (NOTES.md).
+ * 새로 POST해서 과거 결과인 척하지 않는다. 실제 재생은 상세 endpoint가 생겨야 한다.
  */
 export function getReplaySnapshot(requestId: string) {
   if (isLive) return null;

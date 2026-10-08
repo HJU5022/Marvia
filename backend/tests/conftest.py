@@ -21,3 +21,13 @@ def _no_real_db(monkeypatch):
         raise psycopg.OperationalError("테스트에서는 실제 DB에 붙지 않는다 (backend/tests/conftest.py)")
 
     monkeypatch.setattr(psycopg, "connect", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _clear_memory_notices():
+    """다음 답에 붙일 기억 알림(services/memory._notices)은 프로세스 메모리에 있다. 테스트끼리 새지 않게 비운다 (10-08 정운 실사용 76)."""
+    from backend.app.services import memory
+
+    memory._notices.clear()
+    yield
+    memory._notices.clear()

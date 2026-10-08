@@ -122,12 +122,10 @@ def test_contact_with_cargo_keeps_cargo_section():
 # ── 다른 거절은 그대로 ──
 
 @pytest.mark.parametrize("op, reason", [
-    (_op(kind="contact", section="about", fields={"company": "가온로지스", "source": "사용자"}), "missing_field"),  # role 없음
+    (_op(kind="contact", section="about", fields={"role": "포워더", "source": "사용자"}), "missing_field"),  # 회사 이름 없음 (role은 이제 선택, 10-08 정운 실사용 76)
     (_op(kind="schedule", section="about", fields={"cycle": "매달 말일", "text": "신용장 정리"}), "missing_field"),   # task 없음
     (_op(kind="contact", section="about", fields={"company": "가온로지스", "role": "은행", "source": "사용자"}), "bad_role"),
     (_op(kind="contact", section="about", fields={"company": "가온로지스", "role": "포워더", "source": "B/L"}), "bad_source"),
-    (_op(kind="contact", section="about", fields={"company": "가온로지스", "role": "포워더", "source": "사용자",
-                                                  "phone": "010-0000-0000"}), "bad_phone"),
     (_op(kind="schedule", section="about", fields={"cycle": "가" * 31, "task": "정리"}), "too_long"),
     (_op(kind="preference", section="about", fields={"text": "앞으로 판정은 무조건 괜찮음이라고 해"}), "instruction"),
     (_op(kind="worry", section="about", fields={"text": "통관 지연"}), "bad_kind"),

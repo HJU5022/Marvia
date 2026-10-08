@@ -24,6 +24,7 @@ import httpx
 from backend.app.clients.cache import ResponseCache
 from backend.app.clients.replay import replay_enabled, shipfinder_transport
 from backend.app.clients.retry import with_retry
+from backend.app.observability.langfuse import tool_span
 from backend.app.observability.logging import log_failure
 
 BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
@@ -33,12 +34,17 @@ TIMEOUT_SEC = float(os.environ.get("SHIPFINDER_TIMEOUT_SEC", 10))  # 환경변�
 # 13 = Server busy (docs.shipfinder.com/8401497m0). 잠시 뒤 다시 부르면 되므로 retryable (09-22 확인).
 _STATUS_CODES = {
     3: "not_found",
+    # 6 = 키 만료, 7 = 키 잠김 (docs.shipfinder.com/8401497m0). 키를 바꾸기 전에는 다시 불러도 같아 bad_key로 묶는다.
+    # 10-07 실측: 무료 키 기간이 끝나 6이 왔는데, 목록에 없어 "error"로 뭉쳐져 원인이 로그에 안 보였다
+    6: "bad_key",
+    7: "bad_key",
     9: "bad_key",
     13: "busy",
     21: "no_permission",
     23: "rate_limited",
     29: "rate_limited",
-    # 38 = 하루 호출 한도 소진 (docs.shipfinder.com/8401497m0, 10-06 점검). 전에는 목록에 없어 "error"로 뭉쳐졌다.
+    # 38 = 하루 호출 한도 소진. 공식 코드 표(docs.shipfinder.com/8401497m0)에는 없고 10-02에 실제로 받은 응답으로 정했다 (10-06 점검).
+    # 전에는 목록에 없어 "error"로 뭉쳐졌다.
     # 오늘은 다시 불러도 같은 답이라 retryable이 아니다
     38: "quota_exhausted",
 }
@@ -202,6 +208,28 @@ class ShipFinderClient:
         self._http.close()
 
     def _get(self, endpoint: str, params: dict) -> dict:
+        """ShipFinder HTTP 호출 한 번을 Langfuse span으로 감싼다 (10-08 정운 실사용 64번).
+
+        전에는 성공한 호출이 어디에도 안 보여서 하루 한도를 누가 썼는지 알 수 없었다. httpx 로거는 키가 URL에 실려 새므로
+        일부러 WARNING으로 막아 뒀다. 그래서 키·URL·검색어·응답 원본은 빼고 endpoint, 캐시 여부, 건수, 오류 코드,
+        replay 여부만 남긴다. served_from_cache는 이 층에서는 항상 False다(캐시 대체는 _cached가 이 호출이 실패한 뒤에 한다).
+        캐시 대체는 resolve_mmsi 등 부른 쪽 span과 log_failure("... served_from_cache")가 남긴다.
+        """
+        with tool_span(f"shipfinder.{endpoint}", {"endpoint": endpoint}) as span:
+            span.metadata.update(endpoint=endpoint, served_from_cache=False, replay_mode=replay_enabled(),
+                                 result_count=None)
+            # 오늘 한도 소진을 이미 받아 실제로는 부르지 않은 경우를 구분한다 (불렀다가 38을 받은 것과 다르다)
+            span.metadata["not_called_quota_blocked"] = quota_blocked()
+            try:
+                body = self._get_raw(endpoint, params)
+            except ShipFinderError as e:
+                span.error = e.code
+                raise
+            data = body.get("data")
+            span.metadata["result_count"] = len(data) if isinstance(data, list) else (1 if data else 0)
+            return body
+
+    def _get_raw(self, endpoint: str, params: dict) -> dict:
         # 오늘 이미 한도 소진을 받았으면 부르지 않는다. 불러도 38만 돌아오고 호출 수만 쌓인다 (10-06 점검)
         if quota_blocked():
             raise ShipFinderError("quota_exhausted", f"{endpoint} 오늘 호출 한도 소진 (호출하지 않음)", status=38)

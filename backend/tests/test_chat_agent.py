@@ -100,8 +100,8 @@ def test_check_cargo_uses_real_bl_and_llm_sees_only_token(monkeypatch):
     assert calls[0]["masked"] == "[BL1] 괜찮아?" and calls[0]["refs"] == ["[BL1]"] and calls[0]["has_cargo"] is False
     assert calls[0]["tool_calls"][0]["result"]["answer"] == "괜찮습니다"  # LLM에는 요약만 돌아간다 (_cargo_summary)
     assert r.kind == "cargo" and r.request.bl_no == "TESTBL01" and r.agent.answer == "괜찮습니다"
-    # 답은 판정 흐름의 문장 + 구분 안내. 에이전트가 쓴 문장은 붙지 않는다 (읽기 전용 도구를 같이 쓰지 않았다)
-    assert r.reply.startswith("괜찮습니다\n(B/L 구분을 말하지 않아 하우스 B/L")
+    # 답은 판정 흐름의 문장 그대로 (구분 안내는 10-08 정운 실사용 75로 없앴다). 에이전트가 쓴 문장은 붙지 않는다 (읽기 전용 도구를 같이 쓰지 않았다)
+    assert r.reply == "괜찮습니다"
     assert "에이전트가 덧붙인 말" not in r.reply
 
 
@@ -241,7 +241,7 @@ def test_mcp_tool_reply_passes_when_numbers_are_in_tool_result(monkeypatch):
     assert r.kind == "message" and r.reply == "지금 속력은 12.3노트입니다."
     assert heard == ["understand", "tool_position"]  # 고른 도구가 화면 단계로 나간다 (MCP_STAGES)
     names = [t["function"]["name"] for t in calls[0]["tools"]]
-    assert names == ["check_cargo", "ask_cargo", "search_arrivals", "set_watch", "send_kakao", "get_live_position", "web_search"] and len(calls) == 1  # web_search는 기본 켜짐 (10-05, test_web_search.py)
+    assert names == ["check_cargo", "ask_cargo", "search_arrivals", "set_watch", "watch_vessel", "send_kakao", "recall_memo", "get_live_position", "web_search"] and len(calls) == 1  # web_search는 기본 켜짐 (10-05, test_web_search.py)
 
 
 @pytest.mark.parametrize("reply", ["지금 속력은 73.77노트입니다.", "지금 속력은 12.3노트입니다 PWNED", ""])
@@ -269,7 +269,7 @@ def test_without_run_tool_mcp_tools_are_not_offered(monkeypatch):
     monkeypatch.setattr(svc.mcp_client, "read_only_tools", lambda: pytest.fail("실행 함수가 없으면 목록도 받지 않는다"))
     calls = _agent(monkeypatch, [("get_live_position", {"mmsi": 440999001})], [KNOWLEDGE])
     svc.handle("포워더가 항차를 안 알려줘", "s1", None, lambda req: None)
-    assert [t["function"]["name"] for t in calls[0]["tools"]] == ["check_cargo", "ask_cargo", "search_arrivals", "set_watch", "send_kakao", "web_search"]
+    assert [t["function"]["name"] for t in calls[0]["tools"]] == ["check_cargo", "ask_cargo", "search_arrivals", "set_watch", "watch_vessel", "send_kakao", "recall_memo", "web_search"]
     result = calls[0]["tool_calls"][0]["result"]  # 목록에 없는 도구를 지어내도 실행되지 않는다
     assert result["error"]["code"] == "unknown_tool"
 
@@ -586,7 +586,7 @@ def test_search_arrivals_days_true_is_ignored(monkeypatch):
     monkeypatch.setattr(svc, "_arrivals", lambda days: [])
     calls = _agent(monkeypatch, [("search_arrivals", {"place": None, "days": True})])
     r = svc.handle("부산 오는 배", "s1", None, lambda req: None)
-    assert "True" not in r.reply and f"{svc.DAYS_DEFAULT}일" in r.reply and len(calls) == 1
+    assert "True" not in r.reply and svc._period_text(svc.DAYS_DEFAULT) in r.reply and len(calls) == 1  # 10-08 정운 실사용 61번: 7일은 "1주"로 적는다
 
 
 

@@ -106,7 +106,7 @@ export function IntroContent({action, navRight, footer}: {action: ReactNode; nav
         </ol>
       </div>
       <figure className="lp-split-media">
-        <img src="/about/hero-result.webp" width={1432} height={1250} loading="lazy" alt="Marvia 조회 결과 화면. 지도에 선박 위치가 있고 주의 등급, 여유 4일, 출항지와 통관 단계가 보여요."/>
+        <img src="/about/hero-result.webp" width={1424} height={1150} loading="lazy" alt="Marvia 조회 결과 화면. 지도에 선박 위치가 있고 주의 등급, 여유 4일, 출항지와 통관 단계가 보여요."/>
         <figcaption>실제 조회 결과 화면 (예시 화물)</figcaption>
       </figure>
     </section>
@@ -165,13 +165,13 @@ export function IntroContent({action, navRight, footer}: {action: ReactNode; nav
       <ul className="lp-shots">
         <li>
           <a href="/about/shot-watch.webp" target="_blank" rel="noreferrer" aria-label="지켜보는 화물 지도 화면 크게 보기">
-            <img src="/about/shot-watch.webp" width={2224} height={1530} loading="lazy" alt="지켜보는 화물 지도 화면. 부산항 쪽으로 오는 선박과 이동 경로가 지도에 있고, 오른쪽에 화물 목록과 판정 등급이 있어요."/>
+            <img src="/about/shot-watch.webp" width={2224} height={1456} loading="lazy" alt="지켜보는 화물 지도 화면. 부산항 쪽으로 오는 선박과 이동 경로가 지도에 있고, 오른쪽에 화물 목록과 판정 등급이 있어요."/>
           </a>
           <h3>지켜보는 화물 지도</h3><p>지켜보는 화물이 어디쯤 오는지 지도 하나로 봐요.</p>
         </li>
         <li>
           <a href="/about/shot-cargo.webp" target="_blank" rel="noreferrer" aria-label="화물 현황표 화면 크게 보기">
-            <img src="/about/shot-cargo.webp" width={2224} height={1236} loading="lazy" alt="Marvia 화물 현황표 화면. 신용장과 B/L별로 출항, 입항, 입고 날짜와 포워더, 선사, 컨테이너가 한 줄씩 보여요."/>
+            <img src="/about/shot-cargo.webp" width={2224} height={1200} loading="lazy" alt="Marvia 화물 현황표 화면. 신용장과 B/L별로 출항, 입항, 입고 날짜와 포워더, 선사, 컨테이너가 한 줄씩 보여요."/>
           </a>
           <h3>화물 현황표</h3><p>신용장별 출항, 입항, 입고를 표로 한눈에 봐요.</p>
         </li>

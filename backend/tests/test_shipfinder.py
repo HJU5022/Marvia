@@ -86,7 +86,7 @@ def test_status_code_mapping_from_fixtures(fixture, code, status, retryable):
 
 @pytest.mark.parametrize(
     "status, code, retryable",
-    [(9, "bad_key", False), (23, "rate_limited", True), (13, "busy", True), (14, "error", False)],
+    [(6, "bad_key", False), (7, "bad_key", False), (9, "bad_key", False), (23, "rate_limited", True), (13, "busy", True), (14, "error", False)],
 )
 def test_status_code_mapping_other_codes(status, code, retryable):
     client = _client(handler=lambda r: httpx.Response(200, json={"status": status, "msg": ""}))

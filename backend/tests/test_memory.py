@@ -41,10 +41,6 @@ GOOD_TEXT = "10/3까지는 받아야 돼. 통관 늦을까 봐 걱정이야. 가
     (_op(kind="worry", section="cargo", fields={"text": "가" * 61}), "too_long"),                 # 60자 상한
     (_op(kind="contact", section="about", fields={"company": "가나다물류", "role": "은행", "source": "사용자"}), "bad_role"),
     (_op(kind="contact", section="about", fields={"company": "가나다물류", "role": "포워더", "source": "B/L"}), "bad_source"),
-    (_op(kind="contact", section="about", fields={"company": "가나다물류", "role": "포워더", "source": "사용자",
-                                                  "phone": "051 000 0000"}), "bad_phone"),
-    (_op(kind="contact", section="about", fields={"company": "가나다물류", "role": "포워더", "source": "사용자",
-                                                  "phone": "010-0000-0000"}), "bad_phone"),             # 개인 휴대폰
     (_op(kind="contact", section="about", fields={"company": "라마바해운", "role": "포워더", "source": "사용자"}),
      "company_not_in_text"),                                                                   # 사용자가 안 쓴 회사
     (_op(kind="todo", section="cargo", fields={"text": "10/9까지 은행 가기"}), "date_not_in_text"),

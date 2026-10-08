@@ -130,3 +130,23 @@ def test_unipass_missing_bl_is_none(replay_dir, monkeypatch):
     """재생 파일이 없는 B/L은 '없는 B/L'(tCnt 0). 라우터가 insufficient로 되묻는다 (SDD 4.1)."""
     monkeypatch.delenv("UNIPASS_KEY", raising=False)
     assert UnipassClient().fetch("TESTBL99", "MASTER") is None
+
+
+def test_unipass_kind_specific_file_wins(replay_dir, monkeypatch):
+    """<번호>.hbl.xml이 "없음"이고 <번호>.mbl.xml이 있으면, 하우스는 못 찾고 마스터만 찾는다 (실제 마스터 B/L의 모양, 10-07)."""
+    monkeypatch.delenv("UNIPASS_KEY", raising=False)
+    _put(replay_dir, "unipass/TESTBL01.mbl.xml", FIXTURES / "unipass" / "progress_ok.xml")
+    _put(replay_dir, "unipass/TESTBL01.hbl.xml", FIXTURES / "unipass" / "not_found.xml")
+    assert UnipassClient().fetch("TESTBL01", "HOUSE") is None
+    record = UnipassClient().fetch("TESTBL01", "MASTER")
+    assert record is not None and record.ship_name == "TEST STAR"
+
+
+def test_replay_fixture_dir_env_overrides_default(tmp_path):
+    """REPLAY_FIXTURE_DIR을 주면 모듈을 불러올 때 그 폴더를 읽는다 (10-07). 서버를 켜기 전에 정한다."""
+    import subprocess, sys
+    code = "from backend.app.clients import replay; print(replay.REPLAY_DIR)"
+    env = {**__import__("os").environ, "REPLAY_FIXTURE_DIR": str(tmp_path)}
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                         cwd=Path(__file__).resolve().parents[2]).stdout.strip()
+    assert out == str(tmp_path)

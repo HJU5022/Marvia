@@ -1,10 +1,10 @@
 # Spec: 세관에 아직 없는 화물은 MRN으로 배 상태까지 (MRN 대체 조회)
 
-작성 2026-10-01 김승욱. 사용자 결정(10-01). SDD에 없는 기능이라 Spec을 먼저 둔다.
+사용자 결정에 따른다. SDD에 없는 기능이라 Spec을 먼저 둔다.
 
 ## Why
 
-- 10-01 실제 도착 통지서(H B/L PCLU…7RG1, 10-03 입항 예정): UNI-PASS 화물통관진행은 H·M B/L, 2025·2026년, 화물관리번호 모두 0건이었다
+- 실제 도착 통지서(H B/L PCLU…7RG1, 10-03 입항 예정): UNI-PASS 화물통관진행은 H·M B/L, 2025·2026년, 화물관리번호 모두 0건이었다
 - 같은 통지서의 MRN 26PCLUVK37I는 해수부 입항 신고에 있었다(PANCON VICTORY, 10-03 09:00 감만부두 4선석). 배는 오는데 적하목록이 아직 세관에 없는 시점이다
 - 지금 흐름은 UNI-PASS에서 못 찾으면 "정보 확인 필요"로 멈춘다. 사용자는 배가 오고 있는지조차 못 본다
 
@@ -30,14 +30,14 @@
 
 ## How
 
-- schemas/agent.py(C2): mrn 선택 칸, 형식 ^[0-9]{2}[A-Z0-9]{8}[IE]$ (계약 변경, PR에서 알림)
+- schemas/agent.py(C2): mrn 선택 칸, 형식 ^[0-9]{2}[A-Z0-9]{8}[IE]$ (계약 변경)
 - schemas/document.py: DocumentResponse.mrn (선택, 코드가 뽑음)
 - services/mrn_fallback.py: 대체 응답 조립. 위치 신선도는 rules.md position_stale_hours, trusted_eta는 정하지 않는다(통관·판정 없음)
 - routers/agent.py: _assess에서 UNI-PASS가 insufficient이고 mrn이 있으면 대체를 시도
 - services/chat.py: MRN 정규식, ChatContext.mrn
 - 테스트: backend/tests/test_mrn_fallback.py
 
-## 구현 상태 (10-06 확인)
+## 구현 상태
 
 - 위 What·How는 모두 코드에 있다: `AgentRequest.mrn`(schemas/agent.py, 형식 `^[0-9]{2}[A-Z0-9]{8}[IE]$`), `DocumentResponse.mrn`(코드가 "MRN" 이름표 옆에서 뽑음, routers/document.py), `services/chat.extract_mrn`(자연어에서 뽑고 그 자리를 [MRN]으로 바꿔 LLM에는 안 보냄), `services/mrn_fallback.assess`, `routers/agent.py`의 insufficient 분기
 - 조회 기간은 입항 신고를 오늘 -3일 ~ +14일로 찾는다 (`mrn_fallback.LOOKBACK_DAYS`, `LOOKAHEAD_DAYS`)

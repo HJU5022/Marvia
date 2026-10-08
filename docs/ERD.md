@@ -1,7 +1,7 @@
 # Marvia DB ERD
 
-기준: `backend/app/db/migrations/001~022` (10-06 현행화, 파일 26개). 서버(`backend/app/main.py`)와 worker가 뜰 때 `db.apply_migrations`가 이름 순서대로 한 번씩 적용한다 (SDD 3.9, `backend/app/db/__init__.py`). 전체를 pg advisory lock으로 감싸고 파일 하나를 한 트랜잭션으로 묶어, 두 프로세스가 동시에 떠도 같은 파일을 두 번 적용하지 않는다 (10-06).
-번호가 겹치는 파일이 있다: 016(kakao_links, token_usage), 017(cargo_watch, watch_positions), 018(conversations, db_cleanup), 021(cargo_vessel_name, watch_positions_purge). 이름 순으로 적용하므로 문제 없다.
+기준: `backend/app/db/migrations/001~023` (023까지 포함, 파일 27개). 서버(`backend/app/main.py`)와 worker가 뜰 때 `db.apply_migrations`가 이름 순서대로 한 번씩 적용한다 (SDD 3.9, `backend/app/db/__init__.py`). 전체를 pg advisory lock으로 감싸고 파일 하나를 한 트랜잭션으로 묶어, 두 프로세스가 동시에 떠도 같은 파일을 두 번 적용하지 않는다.
+접두 번호가 같은 파일이 있다: 016(kakao_links, token_usage), 017(cargo_watch, watch_positions), 018(conversations, db_cleanup), 021(cargo_vessel_name, watch_positions_purge). 전체 파일 이름 순으로 적용하므로 문제 없다.
 DB는 Supabase Postgres(운영·개발)와 compose의 로컬 postgres다. 모든 표에 RLS를 켜고 규칙은 두지 않는다. 공개 키(Data API)로는 못 읽고, 백엔드만 표 주인 계정으로 읽고 쓴다 (005, 이후 새 표도 모두 같은 줄을 넣었다). pg_cron이 없는 DB(compose의 로컬 postgres)에서는 각 마이그레이션이 cron 등록만 건너뛰고 지우기 함수는 만든다.
 
 외래 키(FOREIGN KEY)는 두 곳뿐이다: `conversation_messages`→`conversations`(018, 대화를 지우면 말풍선도 함께), `user_cargo.lc_id`→`user_lc`(019, 신용장을 지워도 화물 줄은 남기려고 SET NULL). 나머지 선은 같은 값으로 이어 읽는 논리 연결이다.
@@ -24,6 +24,8 @@ erDiagram
     AUTH_USERS ||--o{ admin_actions : "target_user_id"
     user_lc ||--o{ user_cargo : "lc_id (FK)"
     user_cargo }o--o{ watch_positions : "vessel_mmsi = mmsi"
+    AUTH_USERS ||--o{ vessel_watch : "user_id"
+    vessel_watch }o--o{ watch_positions : "mmsi"
     conversations ||--o{ conversation_messages : "(user_id, id) (FK)"
     operators ||--o{ operator_audit : "email_hash"
 
@@ -45,6 +47,14 @@ erDiagram
                 text destcode
                 timestamptz ais_eta
                 jsonb raw }
+    vessel_watch { text user_id PK
+                   bigint mmsi PK
+                   text name
+                   text flag
+                   text dest
+                   text eta
+                   timestamptz created_at
+                   timestamptz updated_at }
     watch_positions { bigserial id PK
                       bigint mmsi
                       timestamptz ts
@@ -172,7 +182,7 @@ erDiagram
 
 `user_cargo`는 칸이 많아 그림에는 일부만 그렸다. 전체는 아래 표에 있다. `user_cargo`와 `watch_positions`의 선은 FK가 아니라 `vessel_mmsi = mmsi` 값 비교다.
 
-## 소스 사용 현황 (10-06 조사, 코드의 SQL 기준)
+## 소스 사용 현황 (코드의 SQL 기준)
 
 | 표 | 쓰는 곳 | 읽는 곳 | 상태 |
 |---|---|---|---|
@@ -194,19 +204,20 @@ erDiagram
 | kakao_links | services/kakao.py | services/kakao.py, routers/kakao.py | 사용 중 |
 | token_usage | services/quota.py | services/quota.py | 사용 중 |
 | watch_positions | worker/collector.py | services/watch.py, cargo.py | 사용 중 (지도 표시) |
+| vessel_watch | services/vessel_watch.py (routers/watch.py `/api/watch/vessels`와 채팅이 부른다) | 같은 서비스, worker/collector.py (SELECT_WATCHED) | 사용 중 (B/L 없이 배만 지켜보기, 023) |
 | conversations, conversation_messages | services/conversations.py | 같은 서비스 (routers/conversations.py가 부른다), 탈퇴 삭제 | 사용 중 |
 
-### 10-06 정리로 처리된 것
+### 정리로 처리된 것
 | 대상 | 처리 |
 |---|---|
 | query_log.retry_count, query_log.model | 018_db_cleanup이 칸에 값이 하나도 없을 때만 지운다. 값이 있으면 지우지 않고 NOTICE만 남긴다. `db/__init__.py`의 이력 응답은 model을 null로 내보낸다 |
 | operators.email, operator_audit.target_email·actor_email, admin_actions.actor_email | 013에서 지문·암호문으로 옮긴 뒤 비워 둔 옛 평문 칸. 018_db_cleanup이 비어 있을 때만 지운다. 018이 `operators.email_hash`를 NOT NULL 기본 키로 올린다(비어 있는 줄이 없을 때만) |
 | user_cargo, user_memory | 014 때는 표만 있었으나 화물 비서 기억(`services/memory.py`)이 만들어져 지금은 사용 중이다 (docs/specs/memory.md) |
 
-### 남은 후보 (팀 결정)
+### 정리 후보
 | 대상 | 이유 |
 |---|---|
-| arrival_reports, control_events | 서비스가 읽지 않는다. 입항 실적 연구(사후 적중, 작업 D6)에 쓸 계획이 없으면 수집을 멈추고 지운다 |
+| arrival_reports, control_events | 서비스가 읽지 않는다. 입항 실적 연구(사후 적중, 작업 D6)에 쓰지 않으면 수집을 멈추고 지울 수 있다 |
 | positions.cog·navistat·dest·destcode·ais_eta·raw | 서비스는 ts·lat·lng·sog만 읽는다. 연구용이면 유지, 아니면 raw(ShipFinder 원본)와 dest(자유 문장) 저장을 멈춘다 |
 | query_log.bl_encrypted | 저장하고 다시 조회(`latest_response` 계열)와 화물 시트가 읽는다. 개인 식별 값이라 쓰지 않는 사본은 줄이는 게 낫다 |
 | 008의 cron 등록 | purge_old_positions 등록을 002와 같은 이름으로 다시 한다. 동작에는 문제 없다 |
@@ -260,6 +271,20 @@ erDiagram
 인덱스: `watch_positions_mmsi_ts (mmsi, ts DESC)`. `positions`와 달리 dest·ais_eta·raw는 저장하지 않는다.
 30일이 지난 줄은 `purge_old_watch_positions()`가 지운다. 지금 지켜보는 진행 중 화물의 배 줄은 남긴다 (021, pg_cron `marvia-purge-watch-positions`, 매일 18:40 UTC).
 
+### vessel_watch: B/L 없이 배만 지켜보기 (023_vessel_watch)
+채팅의 도착 검색 목록이나 후보 배에서 "이 배 지켜볼래"를 누르면 사용자별로 한 줄이 생긴다. 화물 표(`user_cargo`)에 넣지 않은 이유는 `user_cargo`가 B/L 지문(cargo_key)이 열쇠이고 재판정·카카오톡 알림이 그 줄을 읽어서, B/L 없는 줄이 섞이면 재판정이 실패하기 때문이다. 판정도 통관도 없다. 위치는 worker가 `watch_positions`에 받아 두는 값을 같은 배 번호(mmsi)로 읽는다.
+| 칸 | 타입 | 설명 |
+|---|---|---|
+| user_id | TEXT NOT NULL | 로그인 사용자 ID. (user_id, mmsi)가 PK라 같은 배를 두 번 켜도 한 줄 |
+| mmsi | BIGINT NOT NULL | 배 번호 |
+| name | TEXT NOT NULL | 선명. 사용자가 채팅에서 본 값 |
+| flag | TEXT | 국적 |
+| dest | TEXT | 채팅에 보인 목적지 글 그대로 (자유 문장, 데이터로만 쓴다) |
+| eta | TEXT | 채팅에 보인 도착 예정 글 그대로 (자유 문장) |
+| created_at, updated_at | TIMESTAMPTZ NOT NULL | 만든 시각, 고친 시각 |
+
+RLS를 켜고 규칙은 두지 않는다. 같은 파일에서 `purge_old_watch_positions()`를 다시 정의해, 지켜보는 동안은 30일이 지나도 지도 경로를 남기고 끄면 30일 뒤 지운다.
+
 ### arrival_reports: 해수부 입항 신고 (001)
 | 칸 | 타입 | 설명 |
 |---|---|---|
@@ -300,11 +325,11 @@ erDiagram
 | bl_masked | TEXT | 가운데 절반을 *로 가린 B/L (SDD 3.5) |
 | bl_encrypted | TEXT | 서버 열쇠로 잠근 B/L 원본 (007, crypto.py). 로그인 사용자만, 다시 조회할 때 쓴다 |
 | status | TEXT | 응답 상태 (ok, partial, insufficient, failed, unsupported) |
-| verdict | TEXT | 판정 (fine=순항, watch=주의, act=긴급). 판정이 없으면 NULL. 저장 값은 영문, 화면 이름은 10-06부터 순항·주의·긴급 |
+| verdict | TEXT | 판정 (fine=순항, watch=주의, act=긴급). 판정이 없으면 NULL. 저장 값은 영문, 화면 이름은 순항·주의·긴급 |
 | vessel_match | TEXT | 선박 식별 결과 (confirmed, uncertain, none) |
 | decided_by | TEXT | 등급을 누가 정했나 (rule: 판정 표, llm: 회색 지대에서 LLM이 올림) |
 | trace_id | TEXT | Langfuse 트레이스 ID |
-| response | JSONB | 응답 전체 (004). 후속 질문이 꺼내 쓴다. 화면 전용 UNI-PASS 처리 내역(customs_detail)은 넣지 않는다. 컨테이너 번호 평문도 넣지 않는다: customs.container_no 칸은 빼고, 다른 글자 속 번호는 [CNTR1] 번호표로 바꾸고, 번호 자체는 잠가서 따로 둔다 (`routers/agent.py _seal_containers`, 10-06) |
+| response | JSONB | 응답 전체 (004). 후속 질문이 꺼내 쓴다. 화면 전용 UNI-PASS 처리 내역(customs_detail)은 넣지 않는다. 컨테이너 번호 평문도 넣지 않는다: customs.container_no 칸은 빼고, 다른 글자 속 번호는 [CNTR1] 번호표로 바꾸고, 번호 자체는 잠가서 따로 둔다 (`routers/agent.py _seal_containers`) |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | 조회 시각 |
 
 `retry_count`(SMALLINT)와 `model`(TEXT)은 003에서 만들었으나 쓰는 코드가 없어, 018_db_cleanup이 값이 하나도 없으면 지운다 (값이 있으면 남기고 NOTICE만 낸다).
@@ -336,7 +361,7 @@ erDiagram
 | bl_encrypted | TEXT | 잠근 B/L 원본. 줄이 지워질 때(완료 3년 뒤 purge_done_cargo, 사용자가 잊기·탈퇴) 함께 사라진다. 화물 시트의 엑셀 내려받기만 이 값을 열어 원본을 적는다 (SDD 3.5의 예외) |
 | bl_type | TEXT NOT NULL | MASTER, HOUSE |
 | label | TEXT | 사용자가 붙인 이름표 (예: 고추). 사용자가 준 것만 쓴다 |
-| goods_name | TEXT | UNI-PASS 품명 (020, 10-06). 화물 비서 채팅 LLM에는 주지만 판정 LLM에는 주지 않는다. 인젝션 의심 문구는 저장 전에 버린다 |
+| goods_name | TEXT | UNI-PASS 품명 (020). 화물 비서 채팅 LLM에는 주지만 판정 LLM에는 주지 않는다. 인젝션 의심 문구는 저장 전에 버린다 |
 | status | TEXT NOT NULL DEFAULT 'active' | active(진행 중), done(완료). CHECK (active, done) |
 | sale_due_date | DATE | 받아야 하는 날 |
 | sale_due_asked | BOOLEAN NOT NULL DEFAULT false | 받아야 하는 날을 이미 물어봤는지 |
@@ -356,7 +381,7 @@ erDiagram
 | to_order_bank | BOOLEAN | 지시식 선하증권의 은행 지시 여부 (015) |
 | freight_term | TEXT | 운임 조건. CHECK (prepaid, collect) (015) |
 | incoterm | TEXT | 인코텀즈. CHECK (CIF, FOB, CFR) (015) |
-| pending | JSONB NOT NULL DEFAULT '[]' | 대화에서 나온 값 변경 중 사용자가 아직 확인하지 않은 것 (015) |
+| pending | JSONB NOT NULL DEFAULT '[]' | 대화에서 나온 값 변경 중 사용자가 확인하지 않은 것 (015) |
 | watch | BOOLEAN NOT NULL DEFAULT false | 지켜보기 켬 (017_cargo_watch) |
 | changed_from | TEXT | 지켜보는 중 바뀐 것의 이전 값 (017_cargo_watch) |
 | changed_at | TIMESTAMPTZ | 바뀐 시각 (017_cargo_watch) |
@@ -505,5 +530,5 @@ ChatGPT식 대화 목록이다 (services/conversations.py, routers/conversations
 
 ## DB에 넣지 않는 것
 - B/L 원본 평문 (가린 값, 잠근 값, 지문만)
-- UNI-PASS 중량·세관명·화주 정보 (SDD 3.5, 7절). 화면 전용 처리 내역(customs_detail)도 저장하지 않는다. 예외로 품명(goods_name)은 10-06부터 `user_cargo.goods_name`에 저장한다 (로그인 사용자의 화물 비서 채팅용, 020)
+- UNI-PASS 중량·세관명·화주 정보 (SDD 3.5, 7절). 화면 전용 처리 내역(customs_detail)도 저장하지 않는다. 예외로 품명(goods_name)은 `user_cargo.goods_name`에 저장한다 (로그인 사용자의 화물 비서 채팅용, 020)
 - 회원 정보와 운영자 이메일 평문

@@ -5,7 +5,7 @@ python-dotenv>=1.0
 openai>=1.60          # OpenRouter도 이 SDK로 부릅니다(base_url만 교체)
 google-auth[requests]>=2.30  # MODEL_*=vertex/... 일 때 Vertex AI 토큰 발급 (llm.py, 09-28 설치본 2.58.1)
 langfuse>=4,<5         # 필수 조건 4. v4부터 트레이스 쓰는 법(OpenTelemetry 기반)이 달라져 범위를 묶는다 (09-28 설치본 4.15.6)
-mcp>=1.29,<2          # 필수 조건 5 — FastMCP (2.x는 MCPServer로 API 변경, 강의·SDD 기준 v1 고정)
+mcp>=1.29,<2          # 필수 조건 5 - FastMCP (2.x는 MCPServer로 API 변경, 강의·SDD 기준 v1 고정)
 httpx>=0.27          # 외부 API 호출 (ShipFinder 등)
 pytest>=8.0          # 단위 테스트
 freezegun>=1.5       # 평가 실행 때만 시계를 평가셋 clock으로 멈춘다 (evals/, 서버는 import 안 함. 09-28 설치본 1.5.5)

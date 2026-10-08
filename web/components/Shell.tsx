@@ -19,9 +19,9 @@ import {SUSPENDED_MESSAGE} from '@/lib/api';
 import {useApp} from './AppProvider';
 import {isLive} from '@/lib/api';
 
-// 화물 묶음(접는 메뉴). 이름은 정운 요청: 내 화물(조회) · 감시 화물 · 화물 현황 · 조회 이력 (29번). 경로는 그대로다
+// 화물 묶음(접는 메뉴): 감시 화물 · 화물 현황 · 조회 이력.
+// 10-08 정운 실사용 70번: "내 화물"은 "/"(대화 화면)로 가서 "새 대화"와 대화 목록과 겹쳤다. 같은 곳으로 가는 길이 셋이면 헷갈려서 뺐다. 대화는 "새 대화"와 목록으로 연다
 const cargoMenu = [
-  {href: '/', label: '내 화물', icon: Search},
   {href: '/watch', label: '감시 화물', icon: Radar},
   {href: '/cargo', label: '화물 현황', icon: Table2},
   {href: '/history', label: '조회 이력', icon: History},
@@ -48,7 +48,8 @@ function crumb(path: string, chatTitle?: string) {
   if (path === '/settings') return '내 정보와 설정';
   const hit = [...cargoMenu, ...operatorMenu, aboutItem].find(l => l.href === path);
   if (!hit) return 'Marvia';
-  return cargoPaths.includes(path) && path !== '/' ? `내 화물 / ${hit.label}` : hit.label;
+  // 10-08 정운 실사용 70번: "내 화물" 메뉴가 없어졌으니 앞에 붙이던 "내 화물 / "도 뺀다. 메뉴 이름 그대로 보인다
+  return hit.label;
 }
 
 export function Shell({children}: {children: React.ReactNode}) {
@@ -119,7 +120,7 @@ export function Shell({children}: {children: React.ReactNode}) {
     <a className="skip-link" href="#main">본문으로 건너뛰기</a>
     <aside className="sidebar sb" aria-label="사이드바" {...(narrow && !drawer ? {inert: true} : {})}>
       <div className="sb-head">
-        <Link href={toHref('/')} className="sb-brand" aria-label="Marvia 내 화물"><img src="/brand/marvia-symbol.svg" alt="" width={28} height={28}/><strong>Marvia</strong></Link>
+        <Link href={toHref('/')} className="sb-brand" aria-label="Marvia 대화"><img src="/brand/marvia-symbol.svg" alt="" width={28} height={28}/><strong>Marvia</strong></Link>
         <button type="button" className="sb-collapse" onClick={toggleRail} aria-label={collapsed ? '메뉴 펼치기' : '메뉴 접기'} aria-expanded={!collapsed} data-sbtip={collapsed ? '메뉴 펼치기' : '메뉴 접기'}>{collapsed ? <PanelLeftOpen size={18} strokeWidth={1.75}/> : <PanelLeftClose size={18} strokeWidth={1.75}/>}</button>
         <button type="button" className="sb-close" onClick={() => setDrawer(false)} aria-label="메뉴 닫기"><X size={18} strokeWidth={1.75}/></button>
       </div>

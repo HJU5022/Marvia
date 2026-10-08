@@ -11,7 +11,8 @@
 
   GET    /api/watch/vessels             → {"items"}            B/L 없이 배만 지켜보는 목록 (10-08 정운 실사용 57번)
   POST   /api/watch/vessels  {mmsi | call_sign, name, flag?, dest?, eta?} → {"mmsi", "watch": true}   배 지켜보기 켜기
-                                    (mmsi 없이 call_sign만 오면 ShipFinder 검색으로 MMSI를 정한다. 못 정하면 422, 검색 실패 503)
+                                    (mmsi 없이 call_sign만 오면 ShipFinder 검색으로 MMSI를 정한다. 여러 척이면 name이 같은 배, 그다음 최근 신호. 한 척도 없으면 422,
+                                    검색 실패 503, 하루 한도 소진은 503에 다른 안내문)
   DELETE /api/watch/vessels/{mmsi}      → {"mmsi", "watch": false}  배 지켜보기 끄기
 
 B/L 번호는 주소에 넣지 않고 요청 본문(JSON)으로만 받는다. 주소는 접속 로그·브라우저 기록에 남기 때문이다 (SDD 3.5).
@@ -144,6 +145,8 @@ _VESSEL_ERRORS = {
     "invalid": (422, "배 번호(MMSI) 또는 호출부호와 이름이 필요합니다"),
     "unknown_vessel": (422, "이 배의 선박 번호를 확인하지 못해 지켜볼 수 없어요."),
     "lookup_failed": (503, "선박 번호를 찾는 중 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요."),
+    # 하루 한도 소진은 다시 눌러도 오늘은 같으므로 안내를 따로 둔다 (10-08 정운 실사용 64번)
+    "quota_exhausted": (503, "오늘 선박 조회 한도를 다 썼어요. 내일 다시 시도해 주세요."),
 }
 
 
@@ -153,7 +156,8 @@ def get_vessel_watches(user: Annotated[CurrentUser | None, Depends(current_user)
     user = _login_required(user)
     try:
         with ops.open_conn() as conn:
-            return vsvc.list_vessels(conn, user.id)
+            # refresh: 위치가 없거나 오래된 배는 지금 받아 채운다 (10-08 정운 실사용 66번)
+            return vsvc.list_vessels(conn, user.id, refresh=True)
     except Exception as e:
         log_failure("vessel_watch_list", type(e).__name__)
         raise HTTPException(status_code=503, detail=DB_DOWN)
@@ -169,9 +173,10 @@ def add_vessel_watch(body: VesselBody, user: Annotated[CurrentUser | None, Depen
             # DB 연결을 열기 전에 찾는다: 외부 검색이 느려도 연결을 붙잡고 있지 않게
             if not (body.call_sign or "").strip():
                 raise vsvc.VesselWatchError("invalid")
-            mmsi = vsvc.resolve_mmsi(body.call_sign)
+            # name은 같은 호출부호의 여러 배 중 이름이 같은 배를 고르는 데 쓴다 (10-08 정운 실사용 64번)
+            mmsi = vsvc.resolve_mmsi(body.call_sign, body.name)
         with ops.open_conn() as conn:
-            return vsvc.add_vessel(conn, user.id, mmsi, body.name, body.flag, body.dest, body.eta)
+            return vsvc.add_vessel(conn, user.id, mmsi, body.name, body.flag, body.dest, body.eta, body.call_sign)
     except vsvc.VesselWatchError as e:
         log_failure("vessel_watch_add", e.kind)
         status, detail = _VESSEL_ERRORS[e.kind]

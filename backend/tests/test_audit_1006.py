@@ -225,3 +225,29 @@ def test_unverified_email_is_not_operator(monkeypatch):
     user = auth.current_user(authorization="Bearer t")
     assert user.id == "u-9" and user.email is None
     assert operators.is_operator(object(), user.email) is False
+
+
+# ── 선박 자세히 보기 10분 캐시 (10-07 승욱) ──
+
+def test_vessel_detail_cache_expires_after_10_minutes(monkeypatch):
+    """다른 배를 누르면 앞 배는 캐시에 남고, 10분이 지나면 지워져 다시 누를 때 API를 부른다."""
+    clock = [1000.0]
+    monkeypatch.setattr(vessel_detail.time, "monotonic", lambda: clock[0])
+    vessel_detail._cache_put(vessel_detail._key("AAA1", None), {"v": "a"})
+    clock[0] += 300
+    vessel_detail._cache_put(vessel_detail._key("BBB2", None), {"v": "b"})
+    assert vessel_detail.cached("AAA1", None)  # 5분 뒤: 앞 배 그대로
+    clock[0] += vessel_detail.CACHE_SEC - 299
+    vessel_detail._cache_put(vessel_detail._key("CCC3", None), {"v": "c"})  # 담을 때 10분 지난 배를 지운다
+    assert ("AAA1", "") not in vessel_detail._cache
+    assert vessel_detail.cached("BBB2", None) and vessel_detail.cached("CCC3", None)
+
+
+def test_vessel_detail_failed_shipfinder_is_not_cached(monkeypatch):
+    """ShipFinder가 실패한 결과는 담지 않아 다음에 누르면 다시 부른다."""
+    calls = []
+    monkeypatch.setattr(vessel_detail, "get_port_schedule", lambda **k: {"error": {"code": "timeout", "message": "x"}})
+    monkeypatch.setattr(vessel_detail, "get_vessel_candidates", lambda **k: calls.append(1) or {"error": {"code": "quota_exhausted", "message": "x"}})
+    vessel_detail.detail("ZZZ9", None)
+    vessel_detail.detail("ZZZ9", None)
+    assert len(calls) == 2 and not vessel_detail.cached("ZZZ9", None)

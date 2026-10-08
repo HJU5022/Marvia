@@ -204,7 +204,7 @@ def test_no_raw_bl_to_llm(monkeypatch):
 def test_already_watching_message():
     store = Hooks(watching=True)
     r = _handle("이거 지켜봐 줘", watch=store)
-    assert r.reply == svc.WATCH_ALREADY_ON and store.tool_calls == [] and r.watch_set is None
+    assert r.reply == svc.WATCH_ALREADY_ON + "\n" + svc.WATCH_PAGE_LINE and store.tool_calls == [] and r.watch_set is None
 
 
 def test_already_off_message():

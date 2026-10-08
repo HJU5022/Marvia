@@ -109,6 +109,11 @@ export function dateTime(value: string | null | undefined, short = false) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Seoul', year:'numeric', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).formatToParts(d).map(x => [x.type, x.value]));
   return `${short ? '' : `${p.year}년 `}${p.month}월 ${p.day}일 ${p.hour}:${p.minute}`;
 }
+/** 서버·채팅이 준 시각 글이 ISO면 "10월 8일 08:00"(한국 시간)으로, 아니면 보인 글 그대로 (10-08 정운 실사용 67번: 도착 예정이 2026-10-08T08:00:00+09:00로 그대로 나왔다) */
+export function timeOrRaw(value: string | null | undefined) {
+  if (!value) return '확인 안 됨';
+  return ISO_TIME.test(value.trim()) ? dateTime(value, true) : value;
+}
 export function day(value: string | null | undefined) { return value ? `${value.slice(0,4)}년 ${Number(value.slice(5,7))}월 ${Number(value.slice(8,10))}일` : '확인 안 됨'; }
 export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '확인 안 됨' : String(value); }
 /** 판매 예정일까지 여유. days_margin = 판매 예정일 - 신뢰 입항 예정일 (VerdictCard와 같은 말: 음수는 "입항이 판매일보다 늦다") */
