@@ -1,5 +1,5 @@
 /** End-to-end acceptance for the current AI-composer home (10-02 rewrite; the old #bl form flow no longer exists).
- * 1) Demo mode: `npm run dev -- --port 3100` must be running at MARVIA_TEST_URL (default :3100). Fixtures only, no API.
+ * 1) Demo mode: `npm run dev -- --port 3100` must be running at MARVIA_TEST_URL (default http://localhost:3100; 127.0.0.1 makes the Next dev server block dev resources, so the first step times out). Fixtures only, no API.
  * 2) Live mode (optional): a production build made with NEXT_PUBLIC_API_BASE=http://127.0.0.1:3199 running at MARVIA_LIVE_TEST_URL.
  *    This script starts a fake API on :3199 itself, so the browser receives real SSE over the network (docs/specs/chat-progress.md).
  *    Without MARVIA_LIVE_TEST_URL the live checks are reported as SKIP, never as PASS.
@@ -15,7 +15,7 @@ import {chromium} from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
 const SHOTS77 = process.env.MARVIA_SHOT_DIR ?? 'screenshots';  // 10-08 정운 실사용 77번 스크린샷 자리
-const base = process.env.MARVIA_TEST_URL ?? 'http://127.0.0.1:3100';
+const base = process.env.MARVIA_TEST_URL ?? 'http://localhost:3100';
 const live = process.env.MARVIA_LIVE_TEST_URL ?? '';
 const MOCK_PORT = Number(process.env.MARVIA_MOCK_API_PORT ?? 3199);
 const mockOrigin = `http://127.0.0.1:${MOCK_PORT}`;

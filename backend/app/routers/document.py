@@ -26,6 +26,8 @@ router = APIRouter(prefix="/api", tags=["document"])
 
 # 사진 한 장 상한. 폰 사진이 보통 2~5MB라 넉넉히 잡되, 큰 파일로 서버 메모리를 쓰게 두지 않는다 (Spec EC-02, 임시값)
 MAX_BYTES = 10 * 1024 * 1024
+# 해상도 초과 안내 (상한은 doc_ocr.MAX_IMAGE_PIXELS). 용량이 작아도 픽셀이 너무 많으면 읽는 데 오래 걸려 거절한다
+IMAGE_TOO_LARGE_MESSAGE = "사진 해상도가 너무 커요. 5000만 화소(약 7000x7000) 이하로 줄여서 올려 주세요."
 LLM_FIELDS = ("vessel", "voyage", "eta", "pol", "pod", "item", "etd")  # etd: 10-06, 없으면 null (프롬프트에 아직 없을 때도 안전)
 # 서류 종류 → 거래처 출처 이름 (메모장 거래처 출처 목록, docs/specs/memory.md)
 DOC_KIND = {"bl": "B/L", "arrival_notice": "A/N"}
@@ -44,6 +46,9 @@ def _ocr_upload(file: UploadFile) -> doc_ocr.OcrResult:
             raise HTTPException(status_code=400, detail="invalid_pdf")
     try:
         return doc_ocr.read_lines(data)
+    except doc_ocr.ImageTooLarge:
+        # 해상도 초과·압축 폭탄. 프론트는 400의 detail 글을 그대로 보여 주므로 한국어 문장을 담는다
+        raise HTTPException(status_code=400, detail=IMAGE_TOO_LARGE_MESSAGE)
     except (UnidentifiedImageError, OSError):
         raise HTTPException(status_code=400, detail="invalid_image")
 

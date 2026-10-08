@@ -106,6 +106,16 @@ def _ocr_threads() -> int:
     return max(1, min(cpus, OCR_THREADS_MAX))
 
 
+# 사진 한 장의 가로x세로 상한(픽셀). 파일은 10MB 이하여도 흰 바탕 PNG는 수백 KB에 1억 픽셀이 들어가
+# 풀고 OCR하는 데 8~10초 CPU를 쓴다(10-08 점검: 10000~13000px 정사각형, 120~190KB). 그래서 용량이 아니라 픽셀 수로도 막는다.
+# 50MP는 휴대폰 최대 사진(48MP, 8000x6000)과 PDF 쪽 그림(PDF_MAX_PIXELS 12MP)을 모두 통과시키고, 1억 픽셀대는 막는 값이다 [추정, 실측 아님]
+MAX_IMAGE_PIXELS = 50_000_000
+
+
+class ImageTooLarge(Exception):
+    """사진 해상도가 MAX_IMAGE_PIXELS를 넘음(압축 폭탄 포함). 라우터가 400으로 바꾼다."""
+
+
 @dataclass
 class OcrResult:
     lines: list[str]   # 읽은 순서대로의 글자 줄
@@ -176,8 +186,15 @@ def read_lines(image_bytes: bytes, engine=None) -> OcrResult:
     반대쪽으로 누운 사진은 270°, 뒤집힌 사진은 180°가 맡는다 (09-29 실험, 90° 회전 사진 0/8 → 8/8).
     Raises:
         PIL.UnidentifiedImageError: 이미지가 아닐 때. 라우터가 400으로 바꾼다
+        ImageTooLarge: 가로x세로 픽셀이 MAX_IMAGE_PIXELS를 넘을 때(압축 폭탄 포함). 라우터가 400으로 바꾼다
     """
-    return _ocr_image(Image.open(BytesIO(image_bytes)), engine)
+    try:
+        image = Image.open(BytesIO(image_bytes))  # 헤더만 읽는다. 크기는 여기서 알 수 있고 픽셀은 아직 풀지 않는다
+    except Image.DecompressionBombError as e:  # PIL 기본 한도(89.5MP)의 2배 초과. 풀기 전에 막는다 (이전엔 500이었다)
+        raise ImageTooLarge("decompression_bomb") from e
+    if image.width * image.height > MAX_IMAGE_PIXELS:
+        raise ImageTooLarge(f"{image.width}x{image.height}")
+    return _ocr_image(image, engine)
 
 
 def _ocr_image(image: Image.Image, engine=None) -> OcrResult:

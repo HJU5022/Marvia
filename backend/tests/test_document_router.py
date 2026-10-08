@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.main import app
 from backend.app.routers import document as document_router
-from backend.app.services import llm
+from backend.app.services import doc_ocr, llm
 
 pytest.importorskip("rapidocr")
 
@@ -160,3 +160,40 @@ def test_bl_mode_bad_inputs_are_400(monkeypatch):
     monkeypatch.setattr(document_router, "MAX_BYTES", 1000)
     res = _post_bl()
     assert res.status_code == 400 and res.json()["detail"] == "too_large"
+
+
+def _white_png(side):
+    """흰 바탕 정사각형 PNG 바이트. 용량은 작고 픽셀은 많다 (압축 폭탄 모양)."""
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("L", (side, side), 255).save(buf, "PNG")
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("path", ["/api/document", "/api/document/bl"])
+def test_decompression_bomb_is_400_not_500(monkeypatch, path):
+    """PIL 한도의 2배를 넘는 그림(14000x14000, 약 200KB)은 500이 아니라 해상도 초과 400이다 (10-08 점검 5번)."""
+    _fake_extract(monkeypatch)
+    res = client.post(path, files={"file": ("bomb.png", _white_png(14000), "image/png")})
+    assert res.status_code == 400 and res.json()["detail"] == document_router.IMAGE_TOO_LARGE_MESSAGE
+
+
+@pytest.mark.parametrize("path", ["/api/document", "/api/document/bl"])
+def test_too_many_pixels_is_400_before_ocr(monkeypatch, path):
+    """폭탄 한도 밑이라도 MAX_IMAGE_PIXELS를 넘으면 OCR 전에 400이다 (10-08 점검 14번). OCR이 불리면 실패한다."""
+    _fake_extract(monkeypatch)
+    monkeypatch.setattr(doc_ocr, "_ocr_image", lambda *a, **k: (_ for _ in ()).throw(AssertionError("OCR must not run")))
+    res = client.post(path, files={"file": ("big.png", _white_png(10000), "image/png")})
+    assert res.status_code == 400 and res.json()["detail"] == document_router.IMAGE_TOO_LARGE_MESSAGE
+
+
+def test_pixel_limit_boundary_is_inclusive(monkeypatch):
+    """상한과 같은 픽셀 수는 통과하고, 한 픽셀 더 많으면 막는다."""
+    data = _white_png(100)
+    monkeypatch.setattr(doc_ocr, "_ocr_image", lambda image, engine=None: doc_ocr.OcrResult(lines=[], rotation=0, runs=1, ocr_ms=0))
+    monkeypatch.setattr(doc_ocr, "MAX_IMAGE_PIXELS", 100 * 100)
+    assert doc_ocr.read_lines(data).runs == 1
+    monkeypatch.setattr(doc_ocr, "MAX_IMAGE_PIXELS", 100 * 100 - 1)
+    with pytest.raises(doc_ocr.ImageTooLarge):
+        doc_ocr.read_lines(data)
