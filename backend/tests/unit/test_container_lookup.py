@@ -37,7 +37,6 @@ C_BAD = C1[:-1] + str((int(C1[-1]) + 1) % 10)  # 검산 숫자만 틀린 번호
 @pytest.fixture(autouse=True)
 def agent_path(monkeypatch):
     monkeypatch.setenv("CHAT_AGENT", "on")
-    monkeypatch.setenv("WEB_SEARCH", "off")
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     monkeypatch.setattr(svc.memory, "lookup_notes", lambda user_id, bl: [])

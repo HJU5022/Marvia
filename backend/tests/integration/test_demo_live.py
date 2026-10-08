@@ -50,7 +50,6 @@ def demo(request, tmp_path_factory):
             mp.delenv(key, raising=False)
         mp.setenv("REPLAY_MODE", "true")
         mp.setenv("HTTP_BACKOFF_SEC", "0")
-        mp.setenv("WEB_SEARCH", "off")
         mp.setattr(replay, "REPLAY_DIR", out)
         (out / "llm").mkdir()
         shutil.copy(RECORDING, out / "llm" / RECORDING.name)

@@ -42,15 +42,14 @@ function scrollBehavior(): ScrollBehavior {
 }
 
 /** 답 글 속 http(s) 주소를 누를 수 있는 링크로 바꾼다. 단 코드가 붙인 줄만이다 (10-06 점검: LLM 문장 속 주소까지 링크가 되어,
- * 도구 결과·서류 글에 심은 주소가 답에 옮겨지면 누를 수 있는 링크로 보였다). 링크로 만드는 줄은 머리가 아래 셋인 줄뿐이다:
- *   "웹 참고: 제목 (주소)"            services/chat.py WEB_NOTE. 주소는 서버가 가져온 검색 결과에서만 온다
+ * 도구 결과·서류 글에 심은 주소가 답에 옮겨지면 누를 수 있는 링크로 보였다). 링크로 만드는 줄은 머리가 아래인 줄뿐이다:
  *   "확인처: ...", "진행 상황 직접 보기: ..."  services/referrals.py, 문구 원본은 skills/referrals/rules.md
  * 그 밖의 줄의 주소는 글자 그대로 둔다. 링크도 http·https만 만들고 새 탭으로 연다(noopener: 열린 쪽이 이 창을 못 건드리게).
  * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
 const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
 // [제목](주소) 마크다운 링크: 제목만 보이고 주소는 숨긴다 (10-07 정운 실사용 4번). 제목 속 대괄호·주소 속 공백·괄호는 받지 않는다
 const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/[a-z][a-z0-9\-/]*)\)/g;  // 사이트 안 경로(/watch)도 받는다: 감시 화물 링크 (10-08 정운 실사용 79)
-const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: ', '감시 화물에서 보기: '];
+const LINK_LINE_PREFIXES = ['확인처: ', '진행 상황 직접 보기: ', '감시 화물에서 보기: '];
 function linkifyLine(line: string, key: number) {
   if (!LINK_LINE_PREFIXES.some(prefix => line.trimStart().startsWith(prefix))) return line;
   const out: ReactNode[] = [];

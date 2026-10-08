@@ -326,15 +326,13 @@ CHAT_AGENT_PROMPT = "marvia-chat-agent"
 #     같은 날 진단에서 deepseek-v4-flash(OpenRouter)는 strict response_format을 붙이면 도구를 전혀 부르지 않고 이 모양만 냈다
 #     (붙이지 않으면 search_arrivals·ask_cargo를 바로 불렀다). 그 문제는 _ask_json 쪽이고, 여기서는 tool을 낸 답을 코드가 알아보게만 한다
 # 도구를 쓴 답이면 근거 칸은 보지 않는다. 종류를 잘못 골라도 결과는 고정 문구 중 하나라 지어낸 조언이 화면에 가지 않는다
-#   web: 웹 검색 도구(chat.WEB_TOOL)로 받은 결과로 답했다 (10-05 결정). skill_quote는 웹 검색 결과 원문 한 조각이고,
-#     코드가 가져온 웹 글에 그대로 있는지 본다 (V14와 같은 방식, chat._web_violations)
-#   general: 3층 (10-05 결정). 교과서 수준의 일반 해운 설명(용어 뜻, 일반 절차)을 모델 지식으로 답했다. 근거 조각 없이 내보내되
+#   general: 2층 (10-05 결정). 교과서 수준의 일반 해운 설명(용어 뜻, 일반 절차)을 모델 지식으로 답했다. 근거 조각 없이 내보내되
 #     숫자·세액·특정 화물·배 이야기는 안 되고 꼬리표는 없다: 고지는 이용약관으로 옮겼다 (10-07, chat._agent). 검사는 V7·V9(허용 용어 확장)·V10·V13
 #   unrelated: 이제 한 문장짜리 직접 답을 낼 수 있다 (날짜·"마르비아가 뭐야?" 같은 잡담). 검사에 걸리면 고정 안내로 바뀐다
 #   clarify: 사용자가 쓴 식별자(예: TEST41)가 B/L 번호인지 배 이름인지 모르겠다 (10-05 실측). 코드가 고정 문장으로 되묻는다
 #     (chat.clarify_reply). reply는 비운다: LLM 글은 화면에 가지 않고 식별자도 코드가 문장에서 직접 뽑는다
 # help·greeting: 사용법 질문과 인사. 문장은 services/chat/chat.py가 고정 문구로 낸다 (10-05 결정)
-CHAT_AGENT_KINDS = ("tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting")
+CHAT_AGENT_KINDS = ("tool", "skill", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting")
 
 CHAT_AGENT_SCHEMA = {
     "type": "object",
@@ -351,8 +349,8 @@ CHAT_AGENT_SCHEMA = {
 class ChatAgentOutput(BaseModel):
     reply: str  # 화면에 내보내기 전에 services/chat/chat.py가 검사한다
     # 기본값은 도구를 쓴 답(두 칸을 보지 않음)과 예전 녹화 답이 그대로 읽히게 둔 것이다. 실제 호출은 strict 스키마라 늘 채워 온다
-    answer_kind: Literal["tool", "skill", "web", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting"] = "unrelated"
-    skill_quote: str = ""  # answer_kind가 skill이면 Skill 문서, web이면 웹 검색 결과 원문 그대로의 한 조각
+    answer_kind: Literal["tool", "skill", "general", "not_in_skills", "unrelated", "clarify", "help", "greeting"] = "unrelated"
+    skill_quote: str = ""  # answer_kind가 skill이면 Skill 문서 원문 그대로의 한 조각
     # 사용자 말에 걱정·기한 압박이 묻어 있나 (10-06 결정 "먼저 제안"). 신호일 뿐이다: 제안할지는 services/chat/chat.py가 정한다.
     # 기본값 False는 예전 녹화 답이 그대로 읽히게 둔 것이다 (실제 호출은 strict 스키마라 늘 채워 온다)
     watch_cue: bool = False

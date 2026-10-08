@@ -9,7 +9,7 @@ LLM이 낸 칸은 믿기 전에 다시 본다: bl_ref는 가린 목록 안의 �
 화물 비서 기억 (docs/specs/memory.md, 10-02 결정 2·4): 의도 구조는 그대로다. 로그인 사용자의 화물 조회 답에는
 코드가 쓴 "지난 조회" 한 줄을 붙이고, 가린 사용자 문장을 기억 뽑기 재료로 판정 흐름에 넘긴다 (memory.user_text).
 채팅 에이전트 (10-05 결정): 의도 넷에 안 맞는 실무 질문이 전부 고정 안내로 가고, 앞 대화를 몰라 "이건"을 못 알아듣던 문제를 고친다.
-도구는 화물 조회·화물 질문·입항 선박 검색과 읽기 전용 MCP 도구, 그리고 좁은 범위의 웹 검색(WEB_TOOL, 10-05)이다. 등급·여유 일수는 지금처럼 판정 흐름(코드)이 정한다.
+도구는 화물 조회·화물 질문·입항 선박 검색과 읽기 전용 MCP 도구, 이다. 등급·여유 일수는 지금처럼 판정 흐름(코드)이 정한다.
 컨테이너 번호로 찾기 (10-06): 문장 속 컨테이너 번호(ISO 6346)는 B/L처럼 LLM에 원문을 주지 않는다. 로그인 사용자의 화물 표에서
 그 번호를 찾으면 코드가 원본 B/L로 바꿔 기존 B/L 흐름에 넘기고, 못 찾으면 [CNTR1] 번호표로 가린다 (_swap_containers).
 """
@@ -61,7 +61,6 @@ from backend.app.services.chat.limits import (
     SEND_ONLY_MAX,
     UNRELATED_MAX_CHARS,
     WATCH_ONLY_MAX,
-    WEB_SOURCES_SHOWN,
 )
 from backend.app.services.chat.texts import (
     ARRIVALS_LIMIT_NOTE,
@@ -139,8 +138,6 @@ from backend.app.services.chat.texts import (
     WATCH_ON_PLAIN,
     WATCH_ON_REPLY,
     WATCH_PAGE_LINE,
-    WEB_HINT,
-    WEB_STAGE,
 )
 from backend.app.services.chat.patterns import (
     AFFIRM,
@@ -188,9 +185,6 @@ from backend.app.services.chat.screen import _cargo_summary, _masked_history, _m
 from backend.app.services.chat.tools import (
     AGENT_TOOLS,
     MCP_STAGES,
-    WEB_TOOL,
-    web_note_line,
-    web_search_enabled,
 )
 from backend.app.services.chat.replies import (
     _copies_user_marker,
@@ -764,8 +758,8 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
     - 화물 조회·화물 질문·선박 검색이 돌았으면 그 답을 그대로 쓴다. 판정 흐름과 코드가 이미 검증한 문장이다.
       읽기 전용 도구도 같이 썼을 때만 LLM 문장을 검사해 뒤에 붙인다
     - 읽기 전용 도구만 썼으면 LLM 문장을 검사해 내보낸다. 걸리면 정리하지 못했다고 한다
-    - 도구를 안 썼으면 세 층(10-05 결정) 중 하나이거나 안내다. 1층 실무 답(answer_kind=skill)은 Skill 원문 근거 조각(skill_quote)이
-      원문에 그대로 있어야 내보낸다 (V14). 1층이 안 되면 웹 검색을 한 번 시킨다(2층). 그것도 안 되면 3층 일반 설명(general)을
+    - 도구를 안 썼으면 두 층 중 하나이거나 안내다. 1층 실무 답(answer_kind=skill)은 Skill 원문 근거 조각(skill_quote)이
+      원문에 그대로 있어야 내보낸다 (V14). 1층이 안 되면 2층 일반 설명(general)을
       검사(숫자·특정 화물·세액 금지 등) 통과 시 내보낸다 (고정 꼬리표는 10-07에 없앴다). 한 문장 잡담 답(unrelated)도 검사를 통과하면 쓴다.
       그 밖의 안내는 LLM 문장 대신 고정 문구를 쓴다. 앞 답을 베꼈거나(V13) 화면에 화물이 있는데
       도구를 안 불렀으면 한 번 다시 묻는다 (10-05 실측)
@@ -863,43 +857,6 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             message_bls[:] = [b for b in message_bls if b != bl] + [p for p in parts if p not in message_bls]
             multi_state["glued"] = True
         return parts
-
-    web_state: dict = {}  # 이 문장의 웹 검색: {"reply": 에이전트에 돌려준 결과, "results": 가져온 [{title,url,text}]}. 한 문장에 한 번만 간다
-
-    def run_web(args: dict) -> dict:
-        """웹 검색 도구. 막는 것: 이미 다른 도구가 돌았다(화물·선박 질문은 그 도구 몫), 세액·통관 주제, 검색어에 B/L·MRN 토큰.
-        한 문장에 한 번만 나간다: 다시 불러도 첫 결과를 돌려준다 (검사에 걸려 다시 묻는 경우 같은 검색을 또 하지 않게)."""
-        if "reply" in web_state:
-            return web_state["reply"]
-        if any(r["name"] != "web_search" for r in ran):
-            return _tool_error("web_not_allowed", "A cargo or ship tool already ran. Answers about a specific cargo or ship never use the web.")
-        if is_memo_question(masked):  # 사용자가 전에 저장한·말한 것을 묻는다 (10-08 정운 실사용 81). 웹이 아니라 recall_memo다
-            return _tool_error("memo_question", "The user asks about something they saved or told Marvia before. Call recall_memo instead of searching the web.")
-        query = args.get("query")
-        query = " ".join(query.split()) if isinstance(query, str) else ""
-        if not 2 <= len(query) <= llm.WEB_QUERY_CHARS or re.search(r"\[(?:BL|MRN)", query, re.IGNORECASE) or guard.looks_like_injection(query):
-            return _tool_error("bad_query", "The query must be short, generic, and contain no B/L or MRN token.")
-        if BROKER_TOPIC.search(query) or BROKER_TOPIC.search(masked):
-            # 웹에 답이 있어도 이 주제는 찾지 않는다. 마지막 답은 코드의 고정 문구다 (BROKER_ONLY)
-            web_state["reply"] = _tool_error("broker_topic", "Duty, tariff, tax, and clearance questions are for a customs broker.")
-            return web_state["reply"]
-        progress.step(WEB_STAGE)
-        try:
-            found = llm.web_search(query)
-        except llm.LLMError as e:
-            log_failure("chat_agent_web", e.kind)
-            web_state["reply"] = _tool_error("web_failed", "The web search failed.")
-            return web_state["reply"]
-        # 웹 글은 자료다. 지시 모양 글이 든 결과는 통째로 버린다 (프롬프트 Trust boundary와 같은 이중 방어)
-        kept = [r for r in found if not guard.looks_like_injection(r["text"]) and not guard.looks_like_injection(r["title"])]
-        if len(kept) < len(found):
-            log_failure("chat_agent_web", "injection_dropped")
-        if not kept:
-            web_state["reply"] = _tool_error("no_results", "The web search returned nothing usable.")
-            return web_state["reply"]
-        web_state["results"] = kept
-        web_state["reply"] = {"results": kept}
-        return web_state["reply"]
 
     recall_state: dict = {}  # 이번 문장의 메모 꺼내 보기 결과 (select_memo가 돌려준 모양). 최종 답을 코드가 고른다
 
@@ -1165,16 +1122,15 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                           watch_vessel_set=watch_out.get("vessel_set"))
 
     # 이번 문장의 근거 목록 (10-08 정운 실사용 58번). 도구마다 근거 카드를 모아 E1, E2... id를 붙인다 (services/chat/citations.py).
-    # exposed: LLM에게 보여 준 id. LLM이 문장을 쓰는 도구(여러 B/L 비교, 읽기 전용 조회, 웹)만 보여 준다. 화물 한 건의 답은 코드가 쓰는 문장이라
+    # exposed: LLM에게 보여 준 id. LLM이 문장을 쓰는 도구(여러 B/L 비교, 읽기 전용 조회)만 보여 준다. 화물 한 건의 답은 코드가 쓰는 문장이라
     # LLM 입력에는 근거를 안 넣는다 (UNI-PASS 값을 LLM에 더 넘기지 않으려고, CLAUDE.md). 그 근거는 화면 칩용으로 모으기만 한다
     turn_items: list[dict] = []
     exposed_ids: set[str] = set()
-    ev_state: dict = {}
     signals["evidence"], signals["exposed"] = turn_items, exposed_ids
 
-    def register(cards: list, web: list[dict] | None, expose: bool) -> str | None:
+    def register(cards: list, expose: bool) -> str | None:
         """카드를 목록에 더한다. id는 이번 문장 전체에서 이어서 센다. expose면 LLM에 줄 줄 묶음 글을 돌려준다."""
-        items = cite.build_evidence_list(cards, web)
+        items = cite.build_evidence_list(cards)
         for item in items:
             item["id"] = f"E{len(turn_items) + 1}"
             turn_items.append(item)
@@ -1204,22 +1160,17 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             # 여러 B/L: 줄마다 어느 화물 값인지 [BLn] 번호표를 칸 이름 앞에 붙인다 (원문 B/L은 쓰지 않는다)
             cards = [{"source": c.source, "field": f"{row.get('bl_ref') or ''} {c.field}".strip(), "value": c.value, "fetched_at": c.fetched_at}
                      for row, r in zip(result["cargos"], multi_state.get("results", [])) if r.agent is not None for c in r.agent.evidence]
-            block = register(cards, None, True)
+            block = register(cards, True)
         elif name in ("check_cargo", "ask_cargo"):
             if done and done[-1].agent is not None:
-                register(list(done[-1].agent.evidence), None, False)
+                register(list(done[-1].agent.evidence), False)
         elif name == "search_arrivals":
             # 해수부 입항 예정 목록. 목록은 10분 캐시라 조회 시각은 이 요청 시각으로 적는다
             cards = [{"source": "mof", "field": f"{v['ship_name']} {k}", "value": v.get(k), "fetched_at": now}
                      for v in (done[-1].vessels[:ARRIVALS_SHOWN] if done else []) for k in ("expected_arrival", "previous_port")]
-            register(cards, None, False)
-        elif name == "web_search":
-            if "block" not in ev_state:  # 한 문장에 웹 검색은 한 번이다. 다시 불려도 같은 근거를 다시 모으지 않는다
-                sources = [{"title": r["title"], "url": r["url"], "snippet": r["text"], "fetched_at": now} for r in web_state.get("results", [])]
-                ev_state["block"] = register([], sources, True)
-            block = ev_state["block"]
+            register(cards, False)
         elif name in mcp_names:
-            block = register(mcp_cards(name, result), None, True)
+            block = register(mcp_cards(name, result), True)
         return {**result, "evidence": block} if block else result
 
     rerouted: dict = {}  # 10-08 실험 A4: 화면 화물의 배를 묻는 위치 호출을 ask_cargo로 돌렸는가 {"own": True}
@@ -1357,8 +1308,6 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             return run_kakao(args)
         if name == "recall_memo":
             return run_recall(args)
-        if name == "web_search" and web_search_enabled():
-            return run_web(args)
         if name in mcp_names:
             if context is not None and name in ("get_live_position", "estimate_distance") and is_cargo_vessel_call(name, args):
                 # 10-08 실험 A4 (항상 켜짐): 화면 화물의 배("이 배")를 위치·거리 도구로 따로 찾지 않는다. 그 배의 위치는 화물 조회 결과(ask_cargo)가 이미 알고 있고
@@ -1371,14 +1320,14 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         log_failure("chat_agent_tool", f"unknown_tool {name}")
         return _tool_error("unknown_tool", f"no tool named {name}")
 
-    tools = AGENT_TOOLS + mcp_tools + ([WEB_TOOL] if web_search_enabled() else [])
+    tools = AGENT_TOOLS + mcp_tools
     skills = llm.skills_reference(llm.CHAT_AGENT_SKILLS)  # V14 근거 조각을 찾는 원문. 지시문은 넣지 않는다 (도메인 지식의 출처가 아니다)
     reference = llm.skills_reference(llm.CHAT_AGENT_SKILLS, llm.CHAT_AGENT_PROMPT) + " " + today
     grounded = reference + OTHER_REPLY  # 도구 없는 답의 V7·V9·V10 근거. OTHER_REPLY의 낱말은 써도 된다
     # 이 대화에서 앞서 보여 준 답. 같은 답을 되풀이하면 이번 질문을 처리하지 않은 것이다 (V13, 10-05 실측)
     earlier = [t["text"] for t in turns if t["role"] == "assistant"]
 
-    # 3층(일반 설명)과 잡담 답의 근거 글. 고정 문구와 오늘 날짜뿐이다: Skill 문서와 지시문에 든 숫자는 근거가 아니다 (V7이 엄격하게 남는다)
+    # 2층(일반 설명)과 잡담 답의 근거 글. 고정 문구와 오늘 날짜뿐이다: Skill 문서와 지시문에 든 숫자는 근거가 아니다 (V7이 엄격하게 남는다)
     general_grounded = OTHER_REPLY
     unrelated_grounded = OTHER_REPLY + " " + today
     skills_only = llm.skills_reference(llm.CHAT_AGENT_SKILLS)
@@ -1407,7 +1356,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return reply
 
     def general_violations(text: str) -> list[validate.Violation]:
-        """3층 답(answer_kind=general)을 내보내도 되는지. 빈 목록이면 통과. 근거 조각이 없는 답이라 다음을 모두 건다:
+        """2층 답(answer_kind=general)을 내보내도 되는지. 빈 목록이면 통과. 근거 조각이 없는 답이라 다음을 모두 건다:
         특정 화물·배 질문이나 B/L 토큰이 아님, 세액·통관 가능 여부 낱말 없음, 주입 모양 아님,
         V7(숫자는 사용자가 쓴 것만), V9(영문은 고정 문구·일반 해운 약어만), V10(사용자 글에만 있는 낱말 옮기기 금지), V13(앞 답 베끼기)."""
         if CARGO_TALK.search(masked) or re.search(r"\[(?:BL|MRN)", text):
@@ -1421,16 +1370,16 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                                          extra_words=validate.GENERAL_WORDS, copy_allowed=skills_only + " " + validate.GENERAL_TERMS)
 
     def general_reply(out: llm.ChatAgentOutput | None, text: str) -> str | None:
-        """3층 답이 검사를 통과하면 최종 문장. 아니면 None (고정 안내로 간다). 꼬리표는 붙이지 않는다 (10-07, 이용약관으로 이동)."""
+        """2층 답이 검사를 통과하면 최종 문장. 아니면 None (고정 안내로 간다). 꼬리표는 붙이지 않는다 (10-07, 이용약관으로 이동)."""
         if out is None or out.answer_kind != "general" or not text or BROKER_TOPIC.search(masked) or general_violations(text):
             return None
         return _strip_notice(text)
 
     def skill_or_general(text: str) -> str | None:
         """Skill 근거라고 낸 답을 내보내기 직전 한 번 더 본다 (10-06 결정). 근거 조각은 맞았는데 답의 핵심 낱말이
-        Skill 문서에 2개 이상 없으면(validate.skill_unsupported) 모델 지식이 섞인 것이다. 버리지 않고 3층(일반 설명)으로 낮춰
+        Skill 문서에 2개 이상 없으면(validate.skill_unsupported) 모델 지식이 섞인 것이다. 버리지 않고 2층(일반 설명)으로 낮춰
         내보낸다 (꼬리표는 10-07에 없앴다). 10-06 재현: "B/L도 없고 포워더 연락 안 돼"에 Skill에 없는 "화물 인도증"이 Skill 답으로 나갔다.
-        3층 검사(general_violations, 세액 주제)에 걸리면 None (고정 안내로 간다)"""
+        2층 검사(general_violations, 세액 주제)에 걸리면 None (고정 안내로 간다)"""
         if not validate.skill_unsupported(text, skills_only, user_text):
             return text
         if BROKER_TOPIC.search(text) or general_violations(text):
@@ -1469,52 +1418,29 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
             found.append(validate.Violation("TOOL", CARGO_ON_SCREEN_HINT))
         return found
 
-    def web_violations(out: llm.ChatAgentOutput, text: str) -> list[validate.Violation]:
-        """웹 검색 결과를 받은 뒤 낸 답을 내보내도 되는지. 빈 목록이면 통과 (10-05 웹 검색 결정).
-        web: 근거 조각이 가져온 웹 글에 그대로 있어야 하고(V14 방식), 숫자·영문·옮긴 낱말은 Skill 문서와 웹 글 안에 있어야 한다 (V7·V9·V10).
-        앞 답 베끼기(V13)도 같이 본다. skill: 웹 검색을 불렀어도 Skill 근거로 답했으면 Skill 근거 조각 검사를 한다.
-        tool: 웹 검색 뒤에는 web으로 내야 한다고 다시 묻는다."""
-        web_text = " ".join(r["text"] for r in web_state["results"])
-        if out.answer_kind == "web":
-            return _reply_violations(text, skills + " " + web_text, user_text, earlier, out.skill_quote, web_text,
-                                     copy_allowed=validate.GENERAL_TERMS, web=True) if text else []
-        if out.answer_kind == "skill":
-            return _reply_violations(text, grounded, user_text, earlier, out.skill_quote, skills) if text else []
-        if out.answer_kind == "tool":
-            return [validate.Violation("TOOL", "You called web_search, so set answer_kind to web, reply from the web results, and "
-                                               "copy one sentence of the web text into skill_quote. If they do not answer the "
-                                               "question, set answer_kind to not_in_skills.")]
-        return []
-
     def ok_lookups() -> list[dict]:
-        """성공한 읽기 전용 MCP 도구 호출 (위치·후보·일정·거리). 화물·검색·웹·지켜보기 도구는 아니다."""
+        """성공한 읽기 전용 MCP 도구 호출 (위치·후보·일정·거리). 화물·검색·지켜보기 도구는 아니다."""
         return [c for c in ran if c["name"] in mcp_names and "error" not in (c["result"] or {})]
 
     def lookup_violations(text: str) -> list[validate.Violation]:
         """읽기 전용 도구 결과를 요약한 문장을 다시 물어야 하는 이유. 빈 목록이면 그대로 쓰거나 다시 물을 이유가 없다.
-        비어 있으면 빈 답이라 위반 하나로 센다. 결과가 하나도 성공하지 않았거나 웹 검색이 섞였으면 보지 않는다."""
-        if not ok_lookups() or any(c["name"] == "web_search" for c in ran):
+        비어 있으면 빈 답이라 위반 하나로 센다. 결과가 하나도 성공하지 않았으면 보지 않는다."""
+        if not ok_lookups():
             return []
         if not text:
             return [validate.Violation("EMPTY", "The reply is empty. Write two or three Korean sentences that answer the question "
                                                 "from the tool results you already have. Do not call the same tool again.")]
         return _reply_violations(text, reference + " ".join(str(c["result"]) for c in ok_lookups()), user_text, earlier)
 
-    def web_only() -> bool:
-        """이번 문장에서 돌린 도구가 웹 검색뿐이고 쓸 만한 결과를 가져왔는가."""
-        return bool(web_state.get("results")) and all(r["name"] == "web_search" for r in ran)
-
     # 첫 답 + 다시 묻기. 다시 물을 때도 도구를 준다: 도구가 아직 하나도 안 돌았으므로 같은 조회를 두 번 하지 않는다.
     # 베낀 답·화물 질문은 다시 물어 도구를 부르게 하는 것이 고치는 길이다 (10-05 실측)
     # 다시 묻는 길은 둘이고 각각 한 번이다 (프롬프트·검사 비용 상한: 한 문장에 LLM 호출 최대 3번):
     #   fix: 검사에 걸린 답을 고쳐 쓰게 한다 (V7·V9·V10·V13·V14, 도구를 안 불렀다는 TOOL)
-    #   nudge: "자료에 없다"는 마지막 수단이다 (10-05 결정). Skill 문서로 못 답했다고 하면(not_in_skills, 또는 Skill 답이 검사에
-    #     끝내 걸림) 웹 검색을 아직 안 했고 켜져 있고 세액 주제가 아니면 웹 검색을 해 보라고 한 번 다시 묻는다. 웹 검색은 한 문장에 한 번
-    #     (run_web)이라 그 한도는 그대로다. 웹이 안 되면 모델은 3층(general)으로 답하거나 not_in_skills를 낸다
+    #   nudge: 사용자가 전에 저장한 것을 묻는데 "자료에 없다"로 답했으면(not_in_skills, 또는 Skill 답이 검사에 끝내 걸림)
+    #     recall_memo를 부르라고 한 번 다시 묻는다. 웹 검색 도구는 없앴다 (docs/adr/0020)
     fix_left = 1
-    memo_ask = is_memo_question(masked) and not is_action_request(masked)  # 저장한 것을 묻는다: 웹 검색 대신 recall_memo를 부르게 한 번 다시 묻는다 (10-08 정운 실사용 81)
-    nudge_left = 1 if (web_search_enabled() or memo_ask) and not BROKER_TOPIC.search(masked) and not is_action_request(masked) else 0
-    web_fix_left = 1
+    memo_ask = is_memo_question(masked) and not is_action_request(masked)  # 저장한 것을 묻는다: recall_memo를 부르게 한 번 다시 묻는다 (10-08 정운 실사용 81)
+    nudge_left = 1 if memo_ask and not BROKER_TOPIC.search(masked) and not is_action_request(masked) else 0
     lookup_fix_left = 1  # 읽기 전용 도구 결과 요약을 고쳐 쓰게 하는 기회 (한 문장에 LLM 호출 최대 3번 상한 안에서 fix·nudge와 겹치지 않는다: 도구가 돈 문장은 그 둘을 안 탄다)
     first = True
     out, text, violations, feedback = None, "", [], None
@@ -1538,18 +1464,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
                 text = ""  # 도구 결과만으로 답한다
             break  # 다시 묻기가 실패했으면 앞 답과 그 위반으로 아래에서 고정 문구를 고른다
         if ran:
-            if web_only():  # 웹 결과로 낸 답이 검사에 걸리면 한 번 다시 묻는다. 도구를 또 불러도 첫 검색 결과가 돌아온다 (run_web)
-                violations = web_violations(out, text)
-                if violations and web_fix_left:
-                    web_fix_left -= 1
-                    log_failure("chat_agent_reply", ",".join(v.rule for v in violations))
-                    feedback = "\n".join(f"{v.rule}: {v.detail}" for v in violations)
-                    # 웹 글이 답을 못 받치면 3층이 마지막 길이다 (10-05 결정). 모델이 알도록 같이 말해 준다
-                    feedback += ("\nIf the web results do not support an answer, answer with answer_kind general (textbook-level, no "
-                                 "digits) or, if that is not possible, not_in_skills.")
-                    first = False
-                    continue
-            elif lookup_fix_left and not done and (violations := lookup_violations(text)):
+            if lookup_fix_left and not done and (violations := lookup_violations(text)):
                 # 읽기 전용 도구만 돌았는데 문장이 비었거나 검사에 걸렸다. 전에는 여기서 바로 막다른 문구가 나갔다 (10-07 실사용 35·52).
                 # 고쳐 쓰게 한 번 다시 묻는다. 도구를 또 불러도 같은 인자는 앞 결과가 돌아온다 (run의 seen)
                 lookup_fix_left -= 1
@@ -1562,9 +1477,8 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         skill_failed = out.answer_kind == "skill" and bool(violations) and not fix_left
         if nudge_left and (out.answer_kind == "not_in_skills" or skill_failed):
             nudge_left -= 1
-            log_failure("chat_agent_reply", "web_nudge")
-            # 화면에 화물이 있으면 첫 답에서 놓친 도구 안내도 같이 준다 (not_in_skills가 화물 질문의 오답일 수 있다)
-            feedback = MEMO_HINT if memo_ask else WEB_HINT + (" " + CARGO_ON_SCREEN_HINT if first and context is not None else "")
+            log_failure("chat_agent_reply", "memo_nudge")
+            feedback = MEMO_HINT
             first = False
             continue
         first = False
@@ -1674,36 +1588,9 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         if earlier and _flat_text(reply) == _flat_text(earlier[-1]):
             reply = f"{LOOKUP_FALLBACK_SAME} {fallback}"
         return ChatResult(kind="message", reply=reply, map=_map_payload(calls, done, started))
-    if web_only():
-        # 웹 검색만 돌았다. 웹 글로 낸 답은 근거 조각 검사를 통과했을 때만 내보내고, 출처는 가져온 결과에서만 붙인다 (모델이 쓴 주소는 안 쓴다)
-        if out is not None and text and out.answer_kind in ("web", "skill"):
-            # 답 문장만 본다. 근거 조각(웹 글 그대로)에 "관세청 유니패스" 같은 기관 이름이 있다고 답을 버리면 B/L 번호 위치 같은
-            # 평범한 질문이 고정 안내로 끝난다 (10-06 실측: 같은 질문 3번 중 1번이 NOT_IN_SKILLS). 기관 이름 "관세청"도 세액 주제가 아니다
-            drifted = out.answer_kind == "web" and BROKER_TOPIC.search(text.replace("관세청", ""))
-            if drifted and BROKER_TOPIC.search(masked):
-                return ChatResult(kind="message", reply=fixed(BROKER_ONLY))  # 웹에 있어도 세액·통관 가능 여부는 관세사에게
-            # 질문은 세액 주제가 아닌데 웹 글을 옮긴 답에 세액·통관 가능 낱말이 섞였다: 관세사 안내로 바꾸지 않고 이 답만 버린다.
-            # 10-05 재현에서 "해결책이 없어? 선사에 꼭 물어봐야 해?"가 관세사 안내로 끝났다 (질문과 안 맞는 고정 안내)
-            if not drifted and not web_violations(out, text):
-                if out.answer_kind == "skill":
-                    checked = skill_or_general(text)
-                    return ChatResult(kind="message", reply=checked or fixed(NOT_IN_SKILLS))
-                sources = validate.quote_sources(out.skill_quote, web_state["results"])[:WEB_SOURCES_SHOWN]
-                return ChatResult(kind="message", reply=f"{_strip_notice(text)}\n\n{web_note_line(sources)}")
-        # 웹 결과가 답을 못 받쳤다. 3층(일반 설명)이 통과하면 그것, 아니면 고정 안내
-        log_failure("chat_agent_reply", f"kind={out.answer_kind if out is not None else 'none'}")  # 종류만 남긴다 (사용자 글은 로그에 없다)
-        general = general_reply(out, text)
-        if general:
-            return ChatResult(kind="message", reply=general)
-        return ChatResult(kind="message", reply=fixed(OTHER_REPLY if out is not None and out.answer_kind == "unrelated" else NOT_IN_SKILLS))
     if calls:
         # 도구를 골랐는데 모두 실패했다. LLM 문장 대신 코드가 무엇이 안 됐는지 말한다 (EC-02·EC-03 고정 안내 유지, 10-05 검토)
         codes = [c["result"]["error"]["code"] for c in calls if isinstance(c["result"], dict) and "error" in c["result"]]
-        if all(c["name"] == "web_search" for c in calls) and "broker_topic" not in codes:
-            # 웹 검색만 시도했고 실패했다(검색 오류, 결과 없음, 검색어 거절). 웹도 안 되면 3층 일반 설명이 마지막이다 (10-05 결정)
-            general = general_reply(out, text)
-            if general:
-                return ChatResult(kind="message", reply=general)
         if "need_bl" in codes and _ID_LIKE.search(masked):
             # B/L 모양은 아닌데 식별자 같은 글자가 있다(TESTBL4 같은 오타). 조회할 번호를 달라고만 하지 않고 그 글자를 되묻는다 (10-05 실측)
             return clarify_out()
@@ -1711,7 +1598,7 @@ def _agent_turn(masked: str, refs: dict[str, str], mrn: str | None, session_id: 
         return ChatResult(kind="message", reply=fixed(next((fixed_msgs[c] for c in codes if c in fixed_msgs), FAILED_LOOKUP)))
 
     # 도구를 하나도 쓰지 않았다. LLM 문장을 내보내는 것은 검사를 통과한 답뿐이다: Skill 근거 조각까지 통과한 실무 답(skill),
-    # 3층 일반 설명(general), 한 문장 잡담 답(unrelated). 나머지는 코드의 고정 문구다:
+    # 2층 일반 설명(general), 한 문장 잡담 답(unrelated). 나머지는 코드의 고정 문구다:
     # 문서에 없는 질문은 없다고(NOT_IN_SKILLS), 상관없는 말은 할 수 있는 일(OTHER_REPLY). 같은 안내가 연달아 나가지 않게 fixed()를 거친다
     if out is not None and out.answer_kind == "help":
         return ChatResult(kind="message", reply=USAGE_GUIDE)  # 사용법은 LLM이 쓰지 않는다 (없는 기능 방지, 10-05 결정)

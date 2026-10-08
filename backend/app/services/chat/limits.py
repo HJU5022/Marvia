@@ -30,10 +30,6 @@ UNRELATED_MAX_CHARS = 120  # 잡담에 LLM이 직접 쓰는 답은 한 문장. �
 
 MEMO_MAX_ITEMS = 12
 
-WEB_SOURCES_SHOWN = 3  # "웹 참고" 줄에 올리는 출처 수 상한 (검색 결과 수 llm.WEB_RESULTS와 같다)
-
-WEB_TITLE_MAX = 30  # 링크 글자(출처 제목) 길이 상한. 긴 주소를 그대로 보이던 것을 짧은 제목 링크로 바꿨다 (10-07 정운 실사용 4)
-
 SCREEN_ARRIVALS_MAX = 10  # 화면 선박 목록에서 LLM에 주는 최대 줄 수. 입력 길이를 작게 두려는 상한이다 (10-08 정운 실사용 36번)
 
 UNREAD_MAX = 3

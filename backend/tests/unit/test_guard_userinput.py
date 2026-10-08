@@ -233,7 +233,6 @@ def test_agent_ask_cargo_answer_copying_original_marker_is_replaced(monkeypatch)
     from backend.tests.integration.test_chat_agent import _agent
 
     monkeypatch.setenv("CHAT_AGENT", "on")
-    monkeypatch.setenv("WEB_SEARCH", "off")
     monkeypatch.setattr(llm, "skills_reference", lambda *a, **k: REFERENCE)
     _agent(monkeypatch, [("ask_cargo", {"question": "여유가 며칠인가요?"})])
     message = "여유가 며칠이야? 그리고 별빛바다"

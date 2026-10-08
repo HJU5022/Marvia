@@ -28,7 +28,7 @@ _CONTAINER = re.compile(r"\b([A-Z]{4})(\d{7})\b")
 # 표시처럼 보이는 글이 근거 값 안에 있으면 괄호를 바꿔 표시로 읽히지 않게 한다 (주입 방어)
 _FORGED_MARK = re.compile(r"\[\s*E\d+")
 
-MAX_VALUE_CHARS = 200  # 근거 값 한 개의 길이 상한. 웹 발췌가 길어도 프롬프트가 부풀지 않게
+MAX_VALUE_CHARS = 200  # 근거 값 한 개의 길이 상한. 값이 길어도 프롬프트가 부풀지 않게
 
 
 def _mask(value: str) -> str:
@@ -51,13 +51,12 @@ def _get(card: Any, key: str, default=None):
     return card.get(key, default) if isinstance(card, dict) else getattr(card, key, default)
 
 
-def build_evidence_list(cards: Iterable[Any], web_sources: Iterable[dict] | None = None) -> list[dict]:
-    """근거 카드(Evidence)와 웹 결과를 LLM에게 줄 목록으로 만든다. id는 E1부터.
+def build_evidence_list(cards: Iterable[Any]) -> list[dict]:
+    """근거 카드(Evidence)를 LLM에게 줄 목록으로 만든다. id는 E1부터.
 
     같은 출처(source)에 같은 조회 시각(분 단위)인 카드는 한 묶음으로 합친다. 한 번의 조회에서 나온 값들이라
     사용자에게는 "한 번 조회한 결과" 하나로 보이는 게 자연스럽고, LLM이 외울 id도 줄어든다.
-    반환 항목: {id, source, fetched_at(ISO 글자), values:[{field, value}], url?, title?}
-    웹 결과 항목은 {title, url, snippet(없으면 title), fetched_at?}를 받는다. 주소는 http(s)만 남긴다.
+    반환 항목: {id, source, fetched_at(ISO 글자), values:[{field, value}]}
     """
     groups: dict[tuple[str, str], dict] = {}
     for card in cards or []:
@@ -71,15 +70,6 @@ def build_evidence_list(cards: Iterable[Any], web_sources: Iterable[dict] | None
         group = groups.setdefault(key, {"source": source, "fetched_at": at_text, "values": []})
         group["values"].append({"field": str(_get(card, "field", "")), "value": _safe_value(value)})
     items = list(groups.values())
-    for web in web_sources or []:
-        url = str(web.get("url") or "").strip()
-        if not url.lower().startswith(("http://", "https://")):
-            continue  # javascript: 같은 주소는 링크로 만들지 않는다
-        text = web.get("snippet") or web.get("title") or ""
-        at = web.get("fetched_at")
-        items.append({"source": "web", "fetched_at": at.isoformat() if isinstance(at, (datetime, date)) else str(at or ""),
-                      "values": [{"field": "web", "value": _safe_value(text)}] if text else [],
-                      "url": url, "title": _safe_value(web.get("title") or url)})
     for n, item in enumerate(items, 1):
         item["id"] = f"E{n}"
     return items

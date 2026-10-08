@@ -117,16 +117,6 @@ SHORT_NOTICE_2 = "아직 확인할 자료가 없어요. \"어떻게 써?\"라고
 
 BROKER_SHORT = "그건 관세사에게 확인해 주세요."
 
-# 도구 없이 not_in_skills를 냈을 때 웹 검색을 한 번 해 보라고 다시 묻는 말 ("자료에 없다"는 마지막 수단, 10-05 결정)
-# 10-08 정운 실사용 79: 이 말이 "앞 질문의 주제"를 찾으라고 해서, "지금 지도에 보이는 배 추적현황에 넣어줘"에 앞 질문을 검색했다.
-# 검색은 이번 문장에 대해서만 한다. 기록은 짧은 정보 되묻기("없으면요?")의 대명사를 푸는 데만 쓴다. 이번 문장이 무언가를 해 달라는 말이면 검색하지 않는다
-WEB_HINT = ("The Skill documents do not answer this. Call web_search once now with a short generic Korean query about what the "
-            "CURRENT message asks. Never search for an earlier question from history. Use history only to resolve a pronoun in a "
-            "short information follow-up (for example 'what if I don't have it?': combine the previous topic with the follow-up so "
-            "the results answer the follow-up itself). If the current message asks you to do something (add, turn on or off, "
-            "watch, send), do not search: answer with answer_kind not_in_skills. If the web does not help, answer with "
-            "answer_kind general only if it is a textbook-level explanation with no numbers; otherwise not_in_skills.")
-
 # 화면에 화물이 있는데 도구 없이 안내만 냈을 때 한 번 다시 물으며 붙이는 말 (10-05 실측: "이 배 지금 어디쯤이야?"에 ask_cargo를 안 불렀다)
 CARGO_ON_SCREEN_HINT = ("You called no tool. has_current_cargo is true. If the message asks about this ship or this cargo "
                         "(where it is, when it arrives, customs, what to do), call ask_cargo. If it asks which ships come "
@@ -138,17 +128,13 @@ MEMO_NONE = "저장된 메모에서 찾지 못했어요."
 
 MEMO_HINT = ("The user asks about something they saved or told Marvia before (a contact, a phone number, a note). Call recall_memo "
              "now (topic contact for a company or phone number, otherwise any; query = the company, role, ship or cargo words the "
-             "user used). Do not use web_search and do not answer not_in_skills for this.")
+             "user used). Do not answer not_in_skills for this.")
 
 MEMO_SAVE_LEAD = "알려 주신 내용은 메모로 기억해 둘게요."
-
-WEB_STAGE = "tool_web"  # services/chat/progress.py STAGES, web/lib/progress.ts
 
 DATE_PROMISE_NOTE = "반출이나 수령 날짜는 약속드릴 수 없어요. 위 통관 단계를 확인해 주세요."
 
 BROKER_ONLY = "관세·세금·통관 가능 여부는 마르비아가 답하지 않아요. 관세사에게 문의해 주세요.\n" + referrals.broker_tail()
-
-WEB_NOTE = "웹 참고: "  # 웹 근거 답 뒤에 코드가 붙이는 줄의 머리. 출처 제목과 주소는 가져온 결과에서만 온다
 
 # 한 문장에 B/L이 여러 개일 때의 고정 문장 (10-05 결정). 번호는 적지 않는다: 코드가 쓴 문장에도 원문 B/L을 새로 내보내지 않으려고
 MULTI_BL_NOTICE = "(한 번에 최대 세 개까지 조회해요. 나머지는 따로 보내 주세요.)"

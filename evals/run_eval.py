@@ -241,8 +241,6 @@ def _setup_env() -> None:
     os.environ.pop("DATABASE_URL", None)
     # 재생에서 재시도 대기는 의미가 없다. 타임아웃 문항(F02)이 괜히 느려지지 않게
     os.environ["HTTP_BACKOFF_SEC"] = "0"
-    # 웹 검색은 끈다: 결과가 매번 달라 30건 평가를 다시 돌려도 같은 숫자가 안 나오고, 호출마다 돈이 든다 (10-05 웹 검색 결정, services/chat/chat.py web_search_enabled)
-    os.environ["WEB_SEARCH"] = "off"
 
 
 def _setup_config(config: str) -> None:

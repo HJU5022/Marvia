@@ -41,22 +41,3 @@ JUDGE_CUSTOMS_EXCLUDE = {"bl_masked", "mrn", "fetched_at", "forwarder_name", "ca
 STAGE_SUSPECT = "(단계 이름 확인 필요)"  # 주입 모양 단계명 대신 LLM에 넘기는 글자 (_clean_customs)
 
 REPLAY_LLM_DIR = "llm"  # replay.REPLAY_DIR 아래 폴더. 평가 실행기가 REPLAY_DIR를 바꿔 끼워도 같이 따라간다
-
-# ── 웹 검색 web_search() (10-05 결정) ──────────────────────────────
-# 채팅 에이전트의 좁은 웹 검색 도구가 쓴다 (services/chat/chat.py WEB_TOOL). Skill 문서가 못 받치는 실무 질문(B/L 번호 찾는 곳, 포워더 확인,
-# A/N 뜻)에만 쓰고, 판정·특정 화물·세액·통관 가능 여부에는 쓰지 않는다 (PRD 4절). 그 제한은 chat.py가 건다. 여기는 검색 호출만 한다.
-# OpenRouter 웹 플러그인을 engine=exa로 쓴다 (10-05 실측, 계정은 ZDR 제한이 있음):
-#   - engine 기본값(네이티브)은 Gemini의 구글 검색이라 출처가 vertexaisearch 리다이렉트 주소이고 원문이 안 온다. 검증할 글이 없어 못 쓴다
-#   - firecrawl은 ZDR 계정에서 400으로 막힌다
-#   - exa는 응답 annotations(url_citation)에 실제 주소·제목·가져온 원문(content)을 준다 -> 이것이 "가져온 웹 글"이다
-# 검색을 시키는 모델의 답 본문은 버린다 (max_tokens=16). 웹 글 속 지시가 모델을 움직여도 그 출력은 어디에도 안 쓰인다.
-# 에이전트가 읽는 것은 annotations의 글뿐이고, 그 글은 자료로만 간다 (프롬프트 Trust boundary)
-WEB_RESULTS = 3          # 한 번에 받는 결과 수. 비용(결과당 과금)과 에이전트 입력 길이를 같이 줄인다
-
-WEB_TEXT_CHARS = 1500    # 결과 하나에서 에이전트에 주는 글자 수 상한 (exa가 주는 길이가 대체로 이 안이다)
-
-WEB_QUERY_CHARS = 120    # 검색어 길이 상한
-
-WEB_FALLBACK_MODEL = "google/gemini-3.5-flash-lite"  # LLM_MODEL이 vertex/ 모델이면 OpenRouter 웹 플러그인을 못 쓴다. 그때 검색 호출만 이 모델로 한다
-
-WEB_BLOCKED_TOKENS = ("[BL", "[MRN")  # 가린 B/L·MRN 토큰이 든 검색어는 밖으로 안 나간다 (CLAUDE.md: B/L은 LLM·외부에 안 넘긴다)

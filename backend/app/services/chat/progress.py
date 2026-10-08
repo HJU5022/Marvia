@@ -32,7 +32,6 @@ STAGES = (
     "tool_position",    # 선박 실시간 위치 (get_live_position)
     "tool_schedule",    # 부산 입항 기록 (get_port_schedule)
     "tool_distance",    # 남은 항로 거리 (estimate_distance)
-    "tool_web",         # 웹 검색 (services/chat/chat.py WEB_TOOL, 10-05. Skill 문서에 없는 실무 질문만)
     # 기억 뽑기가 저장할 것을 찾았을 때만 (services/account/memory._write_from_text, 10-08 정운 실사용 76). 답 만들기와 같이 돌아 다른 단계와 겹칠 수 있다
     "memory",
 )

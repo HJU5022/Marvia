@@ -50,7 +50,7 @@ from pydantic import BaseModel, ValidationError
 
 from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
 from backend.app.services.account import quota  # 1명당 하루 토큰 한도 (docs/specs/token-quota.md)
-from backend.app.observability.langfuse import end_generation, end_web_search, get_prompt, start_generation
+from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
 from backend.app.schemas.agent import AgentResponse, VesselCandidate
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
@@ -64,11 +64,6 @@ from backend.app.services.llm_config import (
     VERTEX_PREFIX,
     VERTEX_SCOPES,
     VERTEX_URL,
-    WEB_BLOCKED_TOKENS,
-    WEB_FALLBACK_MODEL,
-    WEB_QUERY_CHARS,
-    WEB_RESULTS,
-    WEB_TEXT_CHARS,
 )
 from backend.app.services.llm_types import LLMAnswer, LLMError, LLMFormatError, LLMResult, _DeadlineExceeded
 from backend.app.services.llm_schemas import (
@@ -742,65 +737,6 @@ def chat_agent(masked_message: str, bl_refs: list[str], has_current_cargo: bool,
         data["evidence"] = evidence
     return _ask_json(CHAT_AGENT_PROMPT, json.dumps(data, ensure_ascii=False), "chat_agent", CHAT_AGENT_SCHEMA,
                      ChatAgentOutput, model, feedback=feedback, skills=CHAT_AGENT_SKILLS, tools=tools, run_tool=run_tool)
-
-
-def web_search(query: str) -> list[dict]:
-    """검색어 하나로 웹을 검색해 [{"title", "url", "text"}]를 돌려준다 (최대 WEB_RESULTS개). 결과가 없으면 빈 목록.
-
-    검색어는 가린 문장에서 만든 것이어야 하고, 호출하는 쪽(chat.py)이 B/L 토큰·MRN·주입 모양을 먼저 거른다. 여기서도 B/L·MRN 토큰은 한 번 더 막는다.
-    TIMEOUT_SEC 전체 시간 상한은 일반 호출과 같다 (_create_with_deadline). 키가 없으면 LLMError. 실패는 전부 LLMError다.
-    """
-    query = (query or "").strip()
-    if not query or len(query) > WEB_QUERY_CHARS or any(t in query.upper() for t in WEB_BLOCKED_TOKENS):
-        raise LLMError("web_search: 검색어가 비었거나 너무 길거나 B/L·MRN 토큰이 들어 있음", kind="bad_query")
-    model = os.environ.get("LLM_MODEL") or WEB_FALLBACK_MODEL
-    if model.startswith(VERTEX_PREFIX):
-        model = WEB_FALLBACK_MODEL
-    start = time.monotonic()
-    # 검색도 요청 트레이스에 generation으로 남긴다 (10-05): 비용(약 $0.008)과 결과가 Langfuse에서 안 보였다.
-    # 검색어는 위에서 B/L·MRN 토큰을 막은 가린 문장이다. 트레이스 실패는 검색을 막지 않는다 (start/end가 삼킨다)
-    generation = start_generation("web_search", query)
-    resp = None
-    try:
-        resp = _create_with_deadline(
-            _client(),
-            {"model": model, "messages": [{"role": "user", "content": query}], "max_tokens": 16},
-            {"plugins": [{"id": "web", "engine": "exa", "max_results": WEB_RESULTS}], "provider": {"require_parameters": True}})
-    except LLMError as e:  # 키 없음 등 _client()가 올린 것. 열어 둔 기록을 닫는다
-        end_web_search(generation, None, model=model, error=str(e))
-        raise
-    except _DeadlineExceeded:
-        end_web_search(generation, None, model=model, error=f"timeout after {TIMEOUT_SEC:g}s")
-        raise LLMError(f"web_search: {TIMEOUT_SEC:g}초 안에 답이 없음", kind="timeout") from None
-    except openai.APIStatusError as e:  # ZDR 거부 등. 메시지는 키를 담지 않는다
-        end_web_search(generation, None, model=model, error=f"HTTP {e.status_code} {e.message}")
-        raise LLMError(f"web_search: HTTP {e.status_code} {e.message}", code=e.status_code, kind=_status_kind(e.status_code)) from e
-    except openai.APIConnectionError as e:
-        end_web_search(generation, None, model=model, error=f"connection {type(e).__name__}")
-        raise LLMError(f"web_search: 연결 실패 {type(e).__name__}", kind="connection") from e
-    if not resp.choices:
-        end_web_search(generation, None, resp.usage, model, error="no_choices")
-        raise LLMError("web_search: 응답에 choices 없음", kind="no_choices")
-    message = resp.choices[0].message
-    notes = getattr(message, "annotations", None) or (getattr(message, "model_extra", None) or {}).get("annotations") or []
-    found, seen = [], set()
-    for note in notes:
-        note = note if isinstance(note, dict) else note.model_dump()
-        cite = note.get("url_citation") or {}
-        url, text = str(cite.get("url") or ""), str(cite.get("content") or "").strip()
-        if not url.startswith(("http://", "https://")) or not text or url in seen:
-            continue
-        seen.add(url)
-        found.append({"title": str(cite.get("title") or url)[:120], "url": url, "text": text[:WEB_TEXT_CHARS]})
-    logger.info("web_search results=%d latency_ms=%d cost=%s", len(found), int((time.monotonic() - start) * 1000),
-                getattr(resp.usage, "cost", None) if resp.usage else None)
-    found = found[:WEB_RESULTS]
-    end_web_search(generation, found, resp.usage, getattr(resp, "model", None) or model)
-    # 웹 검색도 하루 토큰 한도에 쌓는다. chat()을 거치지 않는 호출이라 여기서 따로 더한다 (services/account/quota.py, docs/specs/token-quota.md).
-    # 검색 결과가 입력에 붙으므로 prompt_tokens가 작지 않다. usage가 없으면 0으로 본다
-    usage = resp.usage
-    quota.add((getattr(usage, "prompt_tokens", 0) or 0) + (getattr(usage, "completion_tokens", 0) or 0) if usage else 0)
-    return found
 
 
 def match_ports(place: str, ports: list[str], *, model: str | None = None) -> LLMAnswer:

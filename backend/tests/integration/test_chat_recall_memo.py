@@ -147,26 +147,13 @@ def test_ship_question_asks_which_one(monkeypatch):
     assert r.reply == "저장된 거래처는 테스트로지스(포워더), 테스트수출(수출자)예요. 이 배 담당이 어느 쪽인가요?"
 
 
-def test_exact_1007_sentence_routes_to_recall_not_web(monkeypatch):
-    """모델이 처음에 not_in_skills를 냈어도 재질문은 웹이 아니라 recall_memo를 가리킨다 (10-07 실사용)."""
-    searched = []
-    monkeypatch.setattr(llm, "web_search", lambda q: searched.append(q) or [])
-    monkeypatch.delenv("WEB_SEARCH", raising=False)
+def test_exact_1007_sentence_routes_to_recall(monkeypatch):
+    """모델이 처음에 not_in_skills를 냈어도 재질문은 recall_memo를 가리킨다 (10-07 실사용)."""
     memo(monkeypatch)
     calls = _agent(monkeypatch, [], [("", "not_in_skills", "")], retry_script=[("recall_memo", {"topic": "contact", "query": "홍콩보야지"})])
     r = svc.handle(SENTENCE, "s1", None, lambda req: None, user_id=USER)
-    assert searched == [] and calls[1]["feedback"] == svc.MEMO_HINT
-    assert r.reply.startswith("저장된 거래처는") and "웹 참고" not in r.reply
-
-
-def test_web_search_is_blocked_for_memo_question(monkeypatch):
-    searched = []
-    monkeypatch.setattr(llm, "web_search", lambda q: searched.append(q) or [])
-    monkeypatch.delenv("WEB_SEARCH", raising=False)
-    memo(monkeypatch)
-    calls = _agent(monkeypatch, [("web_search", {"query": "홍콩보야지 담당부서 전화번호"})], [("", "not_in_skills", "")])
-    svc.handle(SENTENCE, "s1", None, lambda req: None, user_id=USER)
-    assert searched == [] and calls[0]["tool_calls"][0]["result"]["error"]["code"] == "memo_question"
+    assert calls[1]["feedback"] == svc.MEMO_HINT
+    assert r.reply.startswith("저장된 거래처는")
 
 
 @pytest.mark.parametrize("msg,expected", [
@@ -176,11 +163,12 @@ def test_is_memo_question(msg, expected):
     assert svc.is_memo_question(msg) is expected
 
 
-def test_web_questions_still_get_web_hint(monkeypatch):
+def test_company_phone_question_is_not_a_memo_question_and_gets_no_second_try(monkeypatch):
+    """"포워더 전화번호 알려줘"는 저장한 것을 묻는 말이 아니다. 웹 검색이 없으니 다시 묻지 않고 고정 안내로 끝난다."""
     memo(monkeypatch)
     calls = _agent(monkeypatch, [], [("", "not_in_skills", "")])
-    svc.handle("포워더 전화번호 알려줘", "s1", None, lambda req: None, user_id=USER)
-    assert calls[1]["feedback"].startswith(svc.WEB_HINT)
+    r = svc.handle("포워더 전화번호 알려줘", "s1", None, lambda req: None, user_id=USER)
+    assert len(calls) == 1 and r.reply == svc.NOT_IN_SKILLS
 
 
 # ── 도구·프롬프트 ──

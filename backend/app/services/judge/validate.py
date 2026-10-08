@@ -296,20 +296,6 @@ def _key_words(text: str) -> set[str]:
     return words
 
 
-# 10-08 정운 실사용 79: 웹 글은 거의 영어인데 quote_supports는 한글 낱말이 원문에 있는지 본다. 영어 원문에는 한글 낱말이 없어
-# 맞는 웹 답도 늘 걸려 NOT_IN_SKILLS로 끝났다. 근거 원문에서 한글이 이 비율보다 적으면 낱말 겹침 검사는 건너뛴다
-# (quote_found: 근거 조각이 가져온 글에 그대로 있어야 한다는 검사는 그대로 한다). Skill 원문은 한글이라 이 검사를 그대로 받는다.
-FOREIGN_SOURCE_HANGUL_RATIO = 0.2  # (한글 글자 수) / (한글 + 영문 글자 수) 가 이보다 작으면 "대부분 외국어 글"
-
-
-def is_mostly_foreign(text: str) -> bool:
-    """글에서 한글이 거의 없는가 (한글 비율 < FOREIGN_SOURCE_HANGUL_RATIO). 글자가 하나도 없으면 False."""
-    hangul = len(re.findall(r"[가-힣]", text or ""))
-    latin = len(re.findall(r"[A-Za-z]", text or ""))
-    total = hangul + latin
-    return total > 0 and hangul / total < FOREIGN_SOURCE_HANGUL_RATIO
-
-
 def quote_supports(reply: str, quote: str, source: str, user_text: str = "") -> bool:
     """V14 받침: 근거 조각(과 원문에서 그 앞뒤)이 답의 핵심 낱말을 하나라도 담고 있는가. 질문에 나온 낱말은 세지 않는다
     (질문 말만 겹치는 조각은 답을 받친 것이 아니다). 판단할 낱말이 적으면(SUPPORT_MIN_KEYS) 통과시킨다."""
@@ -335,7 +321,7 @@ def quote_supports(reply: str, quote: str, source: str, user_text: str = "") -> 
 # 명사(NNG 일반명사, NNP 고유명사)만 뽑으면 활용형은 애초에 세지 않는다. 연속한 명사를 합쳐 복합어로 보면 오탐이 늘어서(시험 중 확인) 명사 하나씩 본다.
 # 근거: 위키 프로젝트/Marvia-근거/kiwi_trial_20261006/ (15건 중 13건이 기대대로, 나머지 하나는 자동식별장치처럼 Skill에 없는 진짜 용어).
 # 라이선스: kiwipiepy 0.24 이상은 Apache-2.0 (0.23.2 이하는 LGPL이라 requirements.txt에서 0.24대로 묶었다).
-# 버리지 않는다: 호출하는 쪽(chat.py)이 3층(일반 설명)으로 내려 꼬리표를 붙인다 (정운 결정). 느슨한 quote_supports와 달리 낱말마다 본다.
+# 버리지 않는다: 호출하는 쪽(chat.py)이 2층(일반 설명)으로 내려 꼬리표를 붙인다 (정운 결정). 느슨한 quote_supports와 달리 낱말마다 본다.
 UNSUPPORTED_MIN = 2  # Skill에 없는 핵심 낱말이 이만큼 이상이면 Skill 근거 답이 아니다 (한 개는 말투·조사 변형일 수 있어 봐 준다)
 _UNSUPPORTED_STOP = set("""여러 모든 어떤 아래 직접 바로 먼저 우선 함께 다시 아직 이미 매우 조금 정말 가장 자주 보통 대략 참고 상황 상태 결과 여부
 도움 문제 질문 답변 말씀 사용자 서비스 마르비아 화면 조회 확인 안내 문의 연락 요청 정보 내용 사항 방법 절차 진행 처리 필요 가능 이용 경우 이후 이전 다음 때문 통해 위해
@@ -368,7 +354,7 @@ def _general_nouns() -> frozenset[str]:
 
 def skill_unsupported_terms(reply: str, skills_text: str, user_text: str = "") -> list[str]:
     """V14 보강: 답의 명사(Kiwi, 2글자 이상) 중 Skill 원문 어디에도 없는 것의 목록. 순서는 답에 나온 차례, 중복 없음.
-    제외: 사용자가 질문에 쓴 명사, 일반 해운 용어(GENERAL_TERMS: 3층도 허용하는 말), 흔한 말(_UNSUPPORTED_STOP·_SUPPORT_STOP).
+    제외: 사용자가 질문에 쓴 명사, 일반 해운 용어(GENERAL_TERMS: 2층도 허용하는 말), 흔한 말(_UNSUPPORTED_STOP·_SUPPORT_STOP).
     원문 비교는 quote_found처럼 공백·표시를 뺀 글에서 부분 문자열로 한다 ("선하증권"이 "선하증권을"에도 맞게)."""
     flat_source = _flat(skills_text)
     asked = set(_nouns(user_text))
@@ -384,16 +370,8 @@ def skill_unsupported_terms(reply: str, skills_text: str, user_text: str = "") -
 
 
 def skill_unsupported(reply: str, skills_text: str, user_text: str = "") -> bool:
-    """V14 보강: Skill에 없는 핵심 낱말이 UNSUPPORTED_MIN개 이상이면 True. True인 Skill 답은 chat.py가 3층(일반 설명)으로 내린다."""
+    """V14 보강: Skill에 없는 핵심 낱말이 UNSUPPORTED_MIN개 이상이면 True. True인 Skill 답은 chat.py가 2층(일반 설명)으로 내린다."""
     return len(skill_unsupported_terms(reply, skills_text, user_text)) >= UNSUPPORTED_MIN
-
-
-def quote_sources(quote: str, sources: list[dict]) -> list[dict]:
-    """웹 답의 "웹 참고" 줄에 올릴 출처를 고른다 (10-05 웹 검색 결정). 근거 조각이 통째로 든 결과만 남긴다.
-    조각이 여러 결과에 걸쳐 있어 하나도 단독으로 안 맞으면 가져온 결과 전부를 돌려준다. 출처는 코드가 가져온 결과에서만 나온다
-    (모델이 쓴 주소는 쓰지 않는다). sources: [{"title","url","text"}]."""
-    single = [s for s in sources if quote_found(quote, s.get("text", ""))]
-    return single or list(sources)
 
 
 def copies_earlier(reply: str, earlier: list[str]) -> bool:
@@ -411,7 +389,7 @@ def copies_earlier(reply: str, earlier: list[str]) -> bool:
     return False
 
 
-# V9·V10의 3층(모델 일반 지식, 10-05 결정) 전용 허용 목록. 3층 답은 근거 글이 없어서(grounded가 고정 문구뿐) 해운 약어와 낱말 뜻 설명에
+# V9·V10의 2층(모델 일반 지식, 10-05 결정) 전용 허용 목록. 2층 답은 근거 글이 없어서(grounded가 고정 문구뿐) 해운 약어와 낱말 뜻 설명에
 # 꼭 나오는 말이 V9·V10에 걸린다. 그래서 일반 해운 용어만 따로 허용한다. 주입이 끼워 넣는 표식(예: PWNED, 한국어 암호 낱말)은 여기 없어 계속 걸린다.
 # 영문(V9, 3글자 이상만 본다. B/L, A/N, D/O는 원래 안 본다): 마스터·하우스 B/L, 부두 작업장(CFS, CY), 컨테이너 단위, 무역 조건
 GENERAL_WORDS = {"master", "house", "cfs", "cy", "fcl", "lcl", "teu", "feu", "incoterms", "fob", "cif", "cfr", "exw", "dap", "ddp",
@@ -423,8 +401,7 @@ GENERAL_TERMS = ("마스터 하우스 포워더 선사 화주 수하인 선하�
 
 def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[str] | None = None,
                      quote: str | None = None, skills_text: str | None = None,
-                     extra_words: set[str] | None = None, copy_allowed: str = "",
-                     skip_support_if_foreign: bool = False) -> list[Violation]:
+                     extra_words: set[str] | None = None, copy_allowed: str = "") -> list[Violation]:
     """채팅 에이전트가 직접 쓴 답 문장 검사 (10-05, services/chat/chat.py). 후속 답의 V7·V9·V10과 같은 기준이다.
 
     이 문장은 판정 흐름을 거치지 않고 화면에 간다 (실무 질문 답, 읽기 전용 도구 결과 요약). 그래서 근거 글(grounded)에
@@ -433,11 +410,10 @@ def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[st
     - V9: 답의 영문 낱말(3글자 이상)은 근거 글이나 일반 약어에 있어야 한다. 주입이 끼워 넣는 표식을 잡는다
     - V10: 사용자 글에만 있는 낱말을 답이 그대로 옮기면 위반 (한국어 표식 주입)
     - V13: earlier(이 대화에서 앞서 보여 준 답들)를 거의 그대로 되풀이하면 위반 (10-05 실측, copies_earlier)
-    - extra_words·copy_allowed: 3층(일반 설명)만 준다. V9에 더 허용할 영문 낱말(GENERAL_WORDS), V10에 더 허용할 글(Skill 문서와 GENERAL_TERMS).
+    - extra_words·copy_allowed: 2층(일반 설명)만 준다. V9에 더 허용할 영문 낱말(GENERAL_WORDS), V10에 더 허용할 글(Skill 문서와 GENERAL_TERMS).
       숫자 검사(V7)는 그대로 엄격하다: grounded에 고정 문구뿐이면 사용자가 쓰지 않은 숫자는 모두 걸린다
     - V14: skills_text를 주면(도구 없이 Skill 문서로 답한 경우) quote가 그 원문에 그대로 있어야 한다 (10-05 실측, quote_found).
       Skill 문서에 없는 조언을 LLM이 지어내는 것을 막는 장치다. 지시문은 근거로 치지 않는다: 지시문은 도메인 지식의 출처가 아니다
-    - skip_support_if_foreign: 웹 답만 true (10-08 정운 실사용 79). 근거 원문이 대부분 외국어면 한글 낱말 겹침(quote_supports)은 못 보므로 건너뛴다
     """
     found = []
     allowed_numbers = set(_numbers(grounded)) | set(_numbers(user_text))
@@ -463,8 +439,7 @@ def check_chat_reply(reply: str, grounded: str, user_text: str, earlier: list[st
                                       "Copy one sentence or table cell from the Skill documents that supports your reply, "
                                       "and say only what that text says. If the Skill documents do not cover the question, "
                                       "set answer_kind to not_in_skills."))
-    elif skills_text is not None and not (skip_support_if_foreign and is_mostly_foreign(skills_text)) \
-            and not quote_supports(reply, quote or "", skills_text, user_text):
+    elif skills_text is not None and not quote_supports(reply, quote or "", skills_text, user_text):
         found.append(Violation("V14", "skill_quote does not support the reply: none of the reply's key words appear in or next to "
                                       "that text. Copy the sentence that your reply is based on, or answer only what it says."))
     return found

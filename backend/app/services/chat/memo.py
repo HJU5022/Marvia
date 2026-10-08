@@ -18,7 +18,7 @@ def is_save_request(masked: str) -> bool:
     return bool(SAVE_REQUEST.search(masked)) and not re.search(r"[?？]", masked)
 
 def is_memo_question(masked: str) -> bool:
-    """이번 문장이 전에 저장한·말한 것을 묻는가 (메모 꺼내 보기 대상). 웹 검색 재질문을 메모 안내로 바꾸고, 웹 검색을 막을 때만 쓴다."""
+    """이번 문장이 전에 저장한·말한 것을 묻는가 (메모 꺼내 보기 대상). "자료에 없다" 재질문을 메모 꺼내 보기로 바꿀 때만 쓴다."""
     return bool(MEMO_REF.search(masked) or (MEMO_CONTACT.search(masked) and MEMO_RECALL_END.search(masked)))
 
 def _norm_name(text: object) -> str:

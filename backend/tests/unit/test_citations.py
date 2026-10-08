@@ -71,10 +71,5 @@ def test_container_number_masked():
     assert "ABCD1234567" not in build_evidence_list(cards)[0]["values"][0]["value"]
 
 
-def test_web_source_only_http_links():
-    ev = build_evidence_list([], [{"title": "t", "url": "javascript:alert(1)"}, {"title": "ok", "url": "https://a.kr/x"}])
-    assert len(ev) == 1 and ev[0]["source"] == "web" and ev[0]["url"] == "https://a.kr/x"
-
-
 def test_strip_marks():
     assert strip_marks("10월 12일이에요[E1][E2]. 끝 [E3]") == "10월 12일이에요. 끝"

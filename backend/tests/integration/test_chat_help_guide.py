@@ -8,7 +8,7 @@ from backend.app.schemas.agent import AgentRequest
 from backend.app.services.judge import bl_parse
 from backend.app.services import llm
 from backend.app.services.chat import chat as svc
-from backend.tests.integration.test_chat_agent import _agent, _out, agent_path, web_off  # noqa: F401 (fixture)
+from backend.tests.integration.test_chat_agent import _agent, _out, agent_path  # noqa: F401 (fixture)
 from backend.app.services import llm_schemas
 
 CTX = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="old")
@@ -47,7 +47,7 @@ def test_kinds_include_help_and_greeting():
 
 # ── C 상황 설명은 unrelated가 아니다 ──
 
-def test_situation_without_bl_gets_general_answer_with_tag(monkeypatch, web_off):
+def test_situation_without_bl_gets_general_answer_with_tag(monkeypatch):
     _agent(monkeypatch, [], [kind("포워더 말고 선사에도 도착 통지서를 요청해 보세요.", "general")])
     r = svc.handle("B/L도 없고 포워더는 연락이 안 되는데 뭘 할 수 있을까?", "s1", None, lambda req: None)
     assert "일반 설명이에요" not in r.reply and r.reply != svc.OTHER_REPLY  # 꼬리표 없음 (10-07)
@@ -85,7 +85,7 @@ def test_clearance_timing_with_cargo_calls_ask_cargo(monkeypatch):
     assert calls[1]["feedback"].startswith("TOOL:") and "customs stage" in calls[1]["feedback"]
 
 
-def test_clearance_timing_without_cargo_uses_clearance_tag(monkeypatch, web_off):
+def test_clearance_timing_without_cargo_uses_clearance_tag(monkeypatch):
     _agent(monkeypatch, [], [kind("서류 심사가 끝나면 반출할 수 있어요.", "general")])
     r = svc.handle("언제 반출돼?", "s1", None, lambda req: None)
     assert r.reply == "서류 심사가 끝나면 반출할 수 있어요." and "일반 설명이에요" not in r.reply

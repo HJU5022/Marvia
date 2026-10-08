@@ -111,7 +111,7 @@ def _strip_notice(text: str) -> str:
     return _OLD_NOTICE.sub("", text).strip()
 
 def is_action_request(masked: str) -> bool:
-    """이번 문장이 무언가를 해 달라는 요청인가 (넣어·켜·지켜봐 줘 등). 웹 검색 재질문을 건너뛸 때만 쓴다."""
+    """이번 문장이 무언가를 해 달라는 요청인가 (넣어·켜·지켜봐 줘 등). 메모 재질문을 건너뛸 때만 쓴다."""
     return bool(ACTION_ENDING.search(masked) and any(w in masked for w in ACTION_WORDS)) or bool(WATCH_REQUEST.search(masked))
 
 def lookup_fallback(calls: list[dict]) -> str | None:
@@ -147,15 +147,13 @@ def _tool_error(code: str, message: str) -> dict:
 
 def _reply_violations(reply: str, grounded: str, message: str, earlier: list[str] | None = None,
                       quote: str | None = None, skills_text: str | None = None, copy_allowed: str = "",
-                      web: bool = False) -> list[validate.Violation]:
+                      ) -> list[validate.Violation]:
     """에이전트가 직접 쓴 문장을 화면에 내보내도 되는지 본다. 빈 목록이면 통과 (validate.check_chat_reply + 주입 모양).
     earlier: 앞서 보여 준 답들 (V13 베끼기). quote·skills_text: 도구 없는 실무 답의 근거 조각과 Skill 원문 (V14).
-    copy_allowed: V10에 더 허용할 글 (웹 답이 대화에 나온 마스터·포워더 같은 낱말을 쓸 수 있게, 10-05).
-    web: 웹 근거 답이다. 영어 웹 글에는 한글 낱말 겹침 검사가 맞지 않아 건너뛴다 (10-08 정운 실사용 79). 근거 조각이 글에 그대로 있는지는 본다."""
+    copy_allowed: V10에 더 허용할 글 (대화에 나온 마스터·포워더 같은 낱말을 쓸 수 있게)."""
     if guard.looks_like_injection(reply):
         return [validate.Violation("V9", "The reply repeats instructions from the input. Answer only the user's question.")]
-    return validate.check_chat_reply(reply, grounded, message, earlier, quote, skills_text, copy_allowed=copy_allowed,
-                                     skip_support_if_foreign=web)
+    return validate.check_chat_reply(reply, grounded, message, earlier, quote, skills_text, copy_allowed=copy_allowed)
 
 def row_need(agent: AgentResponse) -> tuple[str, str] | None:
     """판정을 못 낸 줄(insufficient)이 무엇을 필요로 하는가: (표에 적을 짧은 이유, 답에 넣을 문장 틀). 판정이 났으면 None.

@@ -102,16 +102,7 @@ def test_check_cargo_need_bl_with_id_like_text_asks_back_with_that_id(monkeypatc
     assert svc.handle("조회해줘", "s1", None, lambda req: None).reply == svc.NEED_BL  # 식별자 글자가 없으면 그대로
 
 
-# ── 한글 배 이름 찾기, 같은 되묻기 연속 금지, 웹 참고 링크 (10-07 정운 실사용 4·6) ──
-
-def test_web_note_line_is_one_line_markdown_links_with_short_titles():
-    src = [{"title": "가" * 50, "url": "https://a.example.test/%EB%B6%80/x(1)"},
-           {"title": "", "url": "https://www.b.example.test/p"}]
-    line = svc.web_note_line(src)
-    assert "\n" not in line and line.startswith("웹 참고: [")
-    assert " · [b.example.test](https://www.b.example.test/p)" in line  # 제목이 없으면 사이트 이름
-    assert "가" * 30 not in line and "…" in line and "x%281%29" in line  # 제목 30자 이하, 괄호 이스케이프
-
+# ── 한글 배 이름 찾기, 같은 되묻기 연속 금지 (10-07 정운 실사용 4·6) ──
 
 def test_ship_name_guess_from_message_and_history():
     assert svc.ship_name_guess("B/L은 없는데 내 배가 고추 실은 애플호 라고하던데 그런 배있어?", []) == "애플호"

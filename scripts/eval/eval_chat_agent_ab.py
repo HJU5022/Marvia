@@ -13,7 +13,6 @@
   - MCP 읽기 전용 도구(배 후보·위치·일정·거리): 가공 응답
   - 로그인·DB: 가짜 사용자와 메모리 지켜보기 함수 (배 찾기·넣기·빼기 포함). 카카오 보내기 함수는 없다: send_kakao는 "도구를 골랐는가"까지만 본다
   - 기억 뽑기(memory)는 끈다
-  - 웹 검색은 앱의 진짜 도구를 쓴다 (평가 대상 동작의 일부). 총 호출 수 상한을 둔다 (--web-cap)
   - Langfuse·DB 환경변수는 지운다: 트레이스·기억·사용량을 어디에도 쓰지 않는다
 
 결과
@@ -71,7 +70,6 @@ STOP_KRW = 195_600  # 예산의 80%. 장부 합계(상한값)가 이 값에 닿�
 LEDGER = ROOT / "experiments" / "vertex_1008" / "ledger.csv"
 LEDGER_FIELDS = ["time", "label", "model", "thinking", "variant", "runs", "jobs_done", "llm_calls", "prompt_tokens", "cached_tokens",
                  "completion_tokens", "usd_est", "usd_upper", "krw_est", "krw_upper", "cum_krw_upper"]
-NOT_JUDGED = {"phone-01", "phone-02", "phone-03"}  # 웹 검색이 있어야 맞는 문항. --no-web 실행에서는 채점하지 않는다 (verdict=skip)
 
 
 def model_prices() -> tuple[float, float, float]:
@@ -180,10 +178,6 @@ def fake_run_tool(name: str, args: dict) -> dict:
 
 PROMPT_TEXT: contextvars.ContextVar[str | None] = contextvars.ContextVar("prompt_text", default=None)
 RECORD: contextvars.ContextVar[dict | None] = contextvars.ContextVar("record", default=None)
-_web_lock = threading.Lock()
-_web_count = [0]
-WEB_CAP = [150]
-NO_WEB = [False]
 
 
 def fake_load_memo(user_id: str):
@@ -259,29 +253,6 @@ def install() -> None:
 
     llm.chat_agent = recorded_agent
 
-    orig_web = llm.web_search
-
-    def capped_web(query: str):
-        with _web_lock:
-            if _web_count[0] >= WEB_CAP[0]:
-                raise llm.LLMError("web cap", kind="web_cap")
-            _web_count[0] += 1
-        rec = RECORD.get()
-        if rec is not None:
-            rec["web_calls"] += 1
-        return orig_web(query)
-
-    llm.web_search = capped_web
-    if NO_WEB[0]:
-        # 10-08 Vertex 실험: 웹 검색은 OpenRouter 요금이 나가므로 막는다. 도구는 그대로 보이고 호출하면 실패로 돌아간다
-        def blocked_web(query: str):
-            rec = RECORD.get()
-            if rec is not None:
-                rec["web_calls"] += 1
-            raise llm.LLMError("web search disabled in this experiment", kind="web_disabled")
-
-        llm.web_search = blocked_web
-
 
 def _tools_once():
     try:
@@ -295,8 +266,8 @@ def _tools_once():
 
 def run_once(case: dict, variant: str, prompt_text: str, rep: int) -> dict:
     rec = {"variant": variant, "id": case["id"], "tag": case["tag"], "rep": rep, "message": case["message"], "calls": [], "errors": [],
-           "retries": 0, "web_calls": 0,
-           "no_web": NO_WEB[0], "thinking": os.environ.get("VERTEX_THINKING_BUDGET")}
+           "retries": 0,
+           "thinking": os.environ.get("VERTEX_THINKING_BUDGET")}
     token_p, token_r = PROMPT_TEXT.set(prompt_text), RECORD.set(rec)
     started = time.monotonic()
     context = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="ab") if case.get("has_current_cargo") else None
@@ -319,8 +290,6 @@ def run_once(case: dict, variant: str, prompt_text: str, rep: int) -> dict:
 
 def judge(case: dict, rec: dict) -> tuple[str, list[str]]:
     """pass / fail / code(LLM 없이 코드가 처리) / error(인프라 오류). 이유 목록을 같이 돌려준다."""
-    if rec.get("no_web") and case["id"] in NOT_JUDGED:
-        return "skip", ["웹 검색을 막은 실행이라 채점하지 않음"]
     if rec.get("exception") or rec["errors"]:
         return "error", [rec.get("exception") or "llm_error:" + ",".join(rec["errors"])]
     if not rec["calls"]:
@@ -330,8 +299,6 @@ def judge(case: dict, rec: dict) -> tuple[str, list[str]]:
     names = {t["name"] for t in tools}
     last = rec["calls"][-1]
     kind, reply = last["kind"], last["reply"] or ""
-    if any(c["kind"] == "web" for c in rec["calls"][-1:]) and "web_search" not in names:
-        reasons.append("answer_kind web인데 웹 검색을 안 함")
     if "tools" in ex and not set(ex["tools"]) <= names:
         reasons.append(f"필요한 도구 안 부름: {sorted(set(ex['tools']) - names)}")
     if "tools_any" in ex and not names & set(ex["tools_any"]):
@@ -374,9 +341,7 @@ def load_cases(only: str | None) -> list[dict]:
 
 
 def cmd_run(args) -> None:
-    install_args(args)
     install()
-    WEB_CAP[0] = args.web_cap
     out = Path(args.out)
     (out / "runs").mkdir(parents=True, exist_ok=True)
     variants = dict(v.split("=", 1) for v in args.variant)
@@ -428,7 +393,7 @@ def cmd_run(args) -> None:
                 spent["upper"] += c["usd_upper"]
             finished[0] += 1
             if finished[0] % 25 == 0:
-                print(f"  {finished[0]}/{len(jobs)} (web_blocked_calls={_web_count[0]}) spent_krw_upper={spent['upper'] * KRW_PER_USD:.0f}", flush=True)
+                print(f"  {finished[0]}/{len(jobs)} spent_krw_upper={spent['upper'] * KRW_PER_USD:.0f}", flush=True)
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         list(pool.map(work, jobs))
@@ -441,10 +406,6 @@ def cmd_run(args) -> None:
                        "completion_tokens": pv["o"], "usd_est": f"{pv['usd']:.4f}", "usd_upper": f"{pv['upper']:.4f}",
                        "krw_est": f"{pv['usd'] * KRW_PER_USD:.0f}", "krw_upper": f"{pv['upper'] * KRW_PER_USD:.1f}", "cum_krw_upper": f"{cum:.0f}"})
     print(f"끝: {finished[0]}건, 이 실행 비용 약 {spent['usd'] * KRW_PER_USD:.0f}원(상한 {spent['upper'] * KRW_PER_USD:.0f}원), 장부 누계(상한) {cum:.0f}원", flush=True)
-
-
-def install_args(args) -> None:
-    NO_WEB[0] = bool(args.no_web)
 
 
 # ── 보고서 ───────────────────────────────────────────────────
@@ -537,14 +498,14 @@ def cmd_report(args) -> None:
                 "avg_prompt_tokens": avg([c["prompt_tokens"] for c in calls if c["prompt_tokens"]]),
                 "avg_completion_tokens": avg([c["completion_tokens"] for c in calls if c["completion_tokens"]]),
                 "avg_cached_tokens": avg([c["cached_tokens"] for c in calls if c["cached_tokens"]]),
-                "retried_by_validation": sum(1 for c in calls if c["feedback"]), "web_calls": sum(r["web_calls"] for r in runs),
+                "retried_by_validation": sum(1 for c in calls if c["feedback"]),
                 "rate_limit_retries": sum(r["retries"] for r in runs)}
     lines += ["", "## 비용·지연·토큰 (LLM 답 1회 = chat_agent 호출 1번, 도구 라운드 합산)", "", f"| 항목 | {args.base} | {args.cand} |", "|---|---|---|"]
     sb, sc = stats(base), stats(cand)
     for k in sb:
         fmt = lambda v: "-" if v is None else (f"{v:.4f}" if k == "cost" else f"{v:.0f}" if isinstance(v, float) else str(v))  # noqa: E731
         lines.append(f"| {k} | {fmt(sb[k])} | {fmt(sc[k])} |")
-    lines += ["", f"합계 비용 {args.base}+{args.cand}: {((sb['cost'] or 0) + (sc['cost'] or 0)):.4f} (모델이 비용을 주지 않으면 0, 웹 검색 비용은 따로이며 포함 안 됨)"]
+    lines += ["", f"합계 비용 {args.base}+{args.cand}: {((sb['cost'] or 0) + (sc['cost'] or 0)):.4f} (모델이 비용을 주지 않으면 0)"]
     pend = [cid for cid in cases if cases[cid]["tag"] == "watch_vessel"]
     if pending:
         lines += ["", "## pending code: watch_vessel 문항은 도구가 없어 별도 취급", ", ".join(pend)]
@@ -561,8 +522,6 @@ def main() -> None:
     run.add_argument("--workers", type=int, default=8)
     run.add_argument("--out", required=True)
     run.add_argument("--only", help="문항 id나 tag를 쉼표로")
-    run.add_argument("--web-cap", type=int, default=150)
-    run.add_argument("--no-web", action="store_true", help="웹 검색을 막는다 (Vertex 실험: OpenRouter 요금 방지). 웹이 필요한 문항은 채점하지 않는다")
     run.add_argument("--label", help="장부에 적을 이름")
     run.add_argument("--fresh", action="store_true", help="이미 있는 결과를 무시하고 다시 돈다 (파일에 이어 쓴다)")
     rep = sub.add_parser("report")

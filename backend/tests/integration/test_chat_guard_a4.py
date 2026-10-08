@@ -9,7 +9,7 @@ from backend.app.routers.agent import _response
 from backend.app.schemas.agent import AgentRequest
 from backend.app.services.chat import chat as svc
 from backend.app.services import llm
-from backend.tests.integration.test_chat_agent import _mcp, _out, agent_path, web_off  # noqa: F401 (fixture)
+from backend.tests.integration.test_chat_agent import _mcp, _out, agent_path  # noqa: F401 (fixture)
 
 CONTEXT = AgentRequest(bl_no="TESTBL01", bl_type="HOUSE", session_id="s1")
 SCREEN = {"vessel": {"ship_name": "SAMPLE ORCHID", "flag": "LR", "mmsi": 440999001, "lat": 34.2, "lng": 128.9, "destination": "BUSAN"}}
@@ -42,7 +42,7 @@ def _run(monkeypatch, script, context=CONTEXT, screen=SCREEN):
     return r, seen, asked, done
 
 
-def test_own_vessel_position_call_is_rerouted_to_ask_cargo(monkeypatch, agent_path, web_off):  # noqa: F811
+def test_own_vessel_position_call_is_rerouted_to_ask_cargo(monkeypatch, agent_path):  # noqa: F811
     r, seen, asked, done = _run(monkeypatch, [("get_live_position", {"mmsi": 440999001}),
                                               ("estimate_distance", {"lat": 34.9, "lng": 129.3, "sog": 12.4})])
     assert seen == [] and len(asked) == 1  # 위치·거리 도구는 실행하지 않았고 화물 질문이 한 번 돌았다
@@ -50,11 +50,11 @@ def test_own_vessel_position_call_is_rerouted_to_ask_cargo(monkeypatch, agent_pa
     assert r.kind == "cargo" and "부산 앞바다" in r.reply
 
 
-def test_other_vessel_is_not_rerouted(monkeypatch, agent_path, web_off):  # noqa: F811
+def test_other_vessel_is_not_rerouted(monkeypatch, agent_path):  # noqa: F811
     _, seen, asked, _ = _run(monkeypatch, [("get_live_position", {"mmsi": 440999004})])
     assert seen == [("get_live_position", {"mmsi": 440999004})] and asked == []
 
 
-def test_no_cargo_on_screen_is_not_rerouted(monkeypatch, agent_path, web_off):  # noqa: F811
+def test_no_cargo_on_screen_is_not_rerouted(monkeypatch, agent_path):  # noqa: F811
     _, seen, asked, _ = _run(monkeypatch, [("get_live_position", {"mmsi": 440999001})], context=None)
     assert seen == [("get_live_position", {"mmsi": 440999001})] and asked == []
