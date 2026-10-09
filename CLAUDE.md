@@ -60,7 +60,7 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 - LLM 호출과 MCP 도구 호출마다 Langfuse span을 남긴다. user_id, session_id, model, tokens, latency, cost, retry_count, prompt_version (SDD 5.11)
 - 코드 파일마다 주석을 단다. 모듈 상단에 책임 한 줄, 함수마다 무엇을 왜 하는지, 규칙이나 숫자에는 출처 절(예: "SDD 5.4", "rules.md position_stale_hours"). 대화 기록 없이 파일만 읽는 팀원이 따라올 수 있어야 하고, 발표에서 "이거 왜 이렇게 했어요?"에 답하는 근거가 된다
 - 테스트는 키 없이 돈다. 외부 API는 evals/fixtures/의 가공 응답(공식 문서 예시 또는 실제와 형식만 같은 값)으로 대체한다. ShipFinder·UNI-PASS 약관상 실제 응답 원본은 레포에 커밋하지 않는다. 로컬 저장본은 .gitignore. 진짜 호출은 scripts/에 둔다
-- REPLAY_MODE=true면 외부 API 대신 evals/fixtures/를 읽어 데모 B/L이 키 없이 동작해야 한다 (SDD 6.1, 13건: 라이브 데모 DEMO.. 10건 + 평가셋 TESTBL01·04·26). 채점자 재현·키 없는 로컬 데모·평가용이다. 배포 서버는 실제 모드(REPLAY_MODE=false)다 (처음엔 배포도 replay였으나 실제 모드로 바꿨다)
+- REPLAY_MODE=true면 외부 API 대신 evals/fixtures/를 읽어 데모 B/L이 키 없이 동작해야 한다 (SDD 6.1, 13건: 라이브 데모 DEMO.. 10건 + 평가셋 TESTBL01·04·26). 키 없는 재현·로컬 데모·평가용이다. 배포 서버는 실제 모드(REPLAY_MODE=false)다 (처음엔 배포도 replay였으나 실제 모드로 바꿨다)
 - 새 기능을 붙이기 전에 PRD 4절 "안 만드는 것"을 확인한다. SDD 5절과 작업 리스트에 없는 기능은 docs/specs/에 Spec을 먼저 쓴다
 - 파일을 만들거나 고칠 때마다 무엇을 왜 했는지 한두 줄로 보고한다
 - 모르는 것은 추측하지 않고 묻는다. SDD와 다른 문서(PRD, 작업 리스트, 평가질문)가 어긋나면 코드를 짜기 전에 알린다
@@ -86,12 +86,12 @@ B/L 번호와 판매 예정일을 받아 "내 화물, 지금 신경 써야 하�
 
 ## 폴더
 
-레포 루트가 Docker 빌드 컨텍스트다. 최상위 이름은 강사 스캐폴드와 README가 쓰는 것(backend/, evals/, 루트 EVAL_REPORT.md)을 따르고, 안쪽 배치는 SDD 1.1을 따른다. SDD 1.1의 app/과 eval/은 각각 backend/app/, evals/로 읽는다.
+레포 루트가 Docker 빌드 컨텍스트다. 최상위 이름은 README가 쓰는 것(backend/, evals/, 루트 EVAL_REPORT.md)을 따르고, 안쪽 배치는 SDD 1.1을 따른다. SDD 1.1의 app/과 eval/은 각각 backend/app/, evals/로 읽는다.
 
 | 위치 | 무엇 |
 |---|---|
 | CLAUDE.md, AGENTS.md | AI 작업 규칙 (이 파일). AGENTS.md는 여기를 가리킨다 |
-| README.md, EVAL_REPORT.md | 채점자용 소개·실행법·지표, 관측과 평가 제출물 (실행한 숫자만) |
+| README.md, EVAL_REPORT.md | 프로젝트 소개·실행법·지표, 관측과 평가 기록 (실행한 숫자만) |
 | Dockerfile, Dockerfile.railway, docker-compose.yml | 로컬 compose용 멀티스테이지 / Railway API 이미지(app 단계만, 기본 Dockerfile의 base·app을 고치면 같이 고친다) / api·worker·db (override는 db 포트 5433) |
 | docs/ | 기준 문서, specs/, evidence/, release_manifest.json, prompt_versions.md. 지도는 docs/README.md |
 | backend/, mcp_server/, worker/, skills/, evals/, web/, relay/, scripts/ | 아래 표. 파일 단위 설명은 각 폴더 README |
