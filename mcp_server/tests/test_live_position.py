@@ -39,7 +39,7 @@ def test_returns_raw_values_and_both_times(use_fixture):
 
 
 def test_does_not_judge_freshness(use_fixture):
-    """freshness·stale 판정은 services/signals.py 몫이라 도구 출력에 없다 (작업 리스트 경계 정리)."""
+    """freshness·stale 판정은 services/judge/signals.py 몫이라 도구 출력에 없다 (작업 리스트 경계 정리)."""
     use_fixture("position_busan_anchored.json")
     r = get_live_position(440999001)
     assert "freshness" not in r and "stale" not in r
@@ -56,7 +56,7 @@ def test_failure_returns_tool_error_not_exception(fixture, code, retryable, use_
     assert r["error"]["message"]
 
 
-# ── 도구는 예외를 던지지 않는다 (C4, 10-06 점검) ──
+# ── 도구는 예외를 던지지 않는다 (C4) ──
 
 def test_missing_key_returns_bad_key_error(monkeypatch):
     """클라이언트 만들기에서 난 실패(키 없음)도 {error}로, 코드는 bad_key 그대로."""

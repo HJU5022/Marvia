@@ -1,5 +1,5 @@
 'use client';
-/** 한 문장에 B/L이 2~3개일 때 말풍선 아래에 그리는 비교 카드 (10-05 정운 결정, Manus 2-3 시안으로 다시 짬).
+/** 한 문장에 B/L이 2~3개일 때 말풍선 아래에 그리는 비교 카드.
  * 줄 하나가 조회한 화물 하나다. 줄을 누르면 결과 칸이 그 화물로 바뀐다: 서버가 줄마다 준 agent·request를 단일 화물 답과 똑같이 넣는다 (AppProvider.showCargo).
  * 지금 결과 칸에 보이는 화물(첫 줄이 기본)은 request.bl_no와 줄의 request.bl_no가 같은 줄로 표시한다.
  * B/L은 사용자가 입력한 값 그대로다. 값(배 이름, 도착, 여유 일수)은 서버가 준 그대로이고 없는 값은 지어내지 않는다.
@@ -32,7 +32,7 @@ export function ChatCargoTable({cargos}: {cargos: ChatCargo[]}) {
       <thead><tr><th scope="col">화물 · 조회 · 판정</th><th scope="col">선박과 도착 예정</th><th scope="col">여유 · 판매 예정일 · 메모</th></tr></thead>
       <tbody>{cargos.map(c => {
         const on = request.bl_no === c.request.bl_no;
-        // 판정을 못 낸 줄은 "판정 없음" 대신 "정보 필요"와 이유를 보인다 (10-06 정운 화면: 무엇이 필요한지 몰랐다)
+        // 판정을 못 낸 줄은 "판정 없음" 대신 "정보 필요"와 이유를 보인다 (무엇이 필요한지 몰랐다)
         const needs = c.status === 'insufficient';
         // 국적은 줄마다 따로 오지 않고 그 화물의 선박 정보(agent.vessel)에 있을 때만 보인다. 없으면 지어내지 않는다
         const flag = c.agent.vessel?.flag ? countryLabel(c.agent.vessel.flag) : null;
@@ -43,7 +43,7 @@ export function ChatCargoTable({cargos}: {cargos: ChatCargo[]}) {
               {needs ? <span className="verdict-badge neutral"><CircleHelp size={16}/>{ROW_STATUS.insufficient}</span> : <>{c.status !== 'ok' && <small>{ROW_STATUS[c.status] ?? c.status}</small>}<VerdictBadge verdict={c.verdict as ChatCargo['agent']['verdict']}/></>}</span>
           </button></th>
           <td>{needs ? <span className="cmp-none">-</span> : <><b className="cmp-ship">{c.ship_name ?? '선박 확인 안 됨'}</b>{flag && <small>{flag}</small>}<span className="cmp-eta">{dateTime(c.eta, true)}</span>
-            {/* 10-08 정운 실사용 57번: 배 번호(mmsi)는 그 화물의 agent.vessel에 있을 때만 단다. 없으면 지어내지 않는다. 줄 클릭(화물 바꾸기)과 섞이지 않게 클릭을 막는다 */}
+            {/* 배 번호(mmsi)는 그 화물의 agent.vessel에 있을 때만 단다. 없으면 지어내지 않는다. 줄 클릭(화물 바꾸기)과 섞이지 않게 클릭을 막는다 */}
             {c.agent.vessel?.mmsi ? <span className="cmp-watch" onClick={e => e.stopPropagation()}><WatchVesselButton mmsi={c.agent.vessel.mmsi} name={c.ship_name ?? c.agent.vessel.name} flag={c.agent.vessel.flag} eta={c.eta}/></span> : null}</>}</td>
           <td>{needs ? <span className="cmp-note">{c.note ?? '-'}</span> : <Margin c={c}/>}</td>
         </tr>;

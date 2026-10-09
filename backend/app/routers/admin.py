@@ -1,6 +1,6 @@
 """GET /api/me, /api/admin/* 운영자 관리 창구 (docs/specs/operator-admin.md).
 
-창구만 한다: 로그인 확인 → 운영자 확인 → services.operators 부르기 → HTTP 응답으로 바꾸기.
+창구만 한다: 로그인 확인 → 운영자 확인 → services.account.operators 부르기 → HTTP 응답으로 바꾸기.
 운영자인지는 서명 확인한 출입증의 email로 서버가 정한다. 화면이 관리 탭을 숨기는 것은 편의일 뿐이다 (EC-01).
 고객 목록 응답에는 가린 이메일·이름만 넣는다. 원문은 services 안에서 대조에만 쓰고 버린다.
 """
@@ -16,10 +16,10 @@ from pydantic import BaseModel
 from backend.app.auth import CurrentUser, current_user
 from backend.app.clients.supabase_admin import AdminError, list_users
 from backend.app.observability.logging import log_failure
-from backend.app.services import operators as ops
-from backend.app.services import customers as customers_svc
-from backend.app.services import profile as profile_svc
-from backend.app.services.account import WithdrawError
+from backend.app.services.account import operators as ops
+from backend.app.services.account import customers as customers_svc
+from backend.app.services.account import profile as profile_svc
+from backend.app.services.account.account import WithdrawError
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -265,7 +265,7 @@ def update_customer(user_id: str, body: CustomerProfileBody, user: Annotated[Cur
 
 @router.delete("/admin/customers/{user_id}", response_model=CustomerDeleteResponse)
 def delete_customer(user_id: str, user: Annotated[CurrentUser, Depends(require_operator)]) -> CustomerDeleteResponse:
-    """강제 탈퇴. 기록 → 회원 정보 → 계정 순서 (services/account.withdraw)."""
+    """강제 탈퇴. 기록 → 회원 정보 → 계정 순서 (services/account/account.withdraw)."""
     return CustomerDeleteResponse(deleted_records=_customer_call("admin_delete",
                                                                  lambda c: customers_svc.delete(c, user_id, user.id, user.email)))
 
@@ -296,6 +296,6 @@ def resume_customer(user_id: str, user: Annotated[CurrentUser, Depends(require_o
 
 @router.get("/metrics")
 def metrics(_: Annotated[CurrentUser, Depends(require_operator)]) -> dict:
-    """평가지표 화면용. evals/results의 구성별 최신 결과를 읽기만 한다 (services/metrics.py). 운영자 전용."""
-    from backend.app.services import metrics as metrics_svc  # 이 화면에서만 쓴다
+    """평가지표 화면용. evals/results의 구성별 최신 결과를 읽기만 한다 (services/account/metrics.py). 운영자 전용."""
+    from backend.app.services.account import metrics as metrics_svc  # 이 화면에서만 쓴다
     return metrics_svc.build()

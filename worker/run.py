@@ -5,9 +5,9 @@
     python -m worker.run                             # WORKER_SCHEDULE=on일 때만 주기 실행
     WATCH_ENABLED=on python -m worker.run --once     # 수집 뒤에 지켜보는 화물도 다시 판정 (python -m worker.watch --once는 그것만)
 
-스케줄러는 기본 꺼져 있다 (09-23 결정). ShipFinder 스타터 키가 하루 50회라서 개발 중에 계속 돌면
+스케줄러는 기본 꺼져 있다. ShipFinder 스타터 키가 하루 50회라서 개발 중에 계속 돌면
 테스트할 몫이 남지 않는다. 켜면 WORKER_INTERVAL_HOURS마다 돈다.
-주기 6시간, 한 번 실행에 ShipFinder 12회가 기본이다 (09-23 결정). 하루 4회 x 12 = 48회로 한도 50 안이고,
+주기 6시간, 한 번 실행에 ShipFinder 12회가 기본이다. 하루 4회 x 12 = 48회로 한도 50 안이고,
 추적 대상 12척(collector.MAX_TARGETS)이 매 실행 위치를 한 번씩 받는다.
 """
 from __future__ import annotations
@@ -23,10 +23,10 @@ from backend.app.clients.mof import MofClient, MofError
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 from backend.app.db import (apply_migrations, connect, purge_done_cargo, purge_old_conversations, purge_old_queries,
                             purge_watch_positions)
-from backend.app.services.watch import RUN_LIMIT, SHIPFINDER_CALLS_PER_KNOWN_VESSEL, known_vessel_due_count, run_watch
+from backend.app.services.watch.watch import RUN_LIMIT, SHIPFINDER_CALLS_PER_KNOWN_VESSEL, known_vessel_due_count, run_watch
 from worker.collector import Budget, collect_port, collect_positions, collect_watch_positions, purge_positions, select_targets
 
-DEFAULT_INTERVAL_HOURS = 6.0  # 09-23 결정. SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
+DEFAULT_INTERVAL_HOURS = 6.0  # SDD 5.10의 3시간에서 바꿨다 (위키 "문서와 달라진 점")
 DEFAULT_SHIPFINDER_CALLS = 12  # 위 설명 참고. 하루 한도 50회
 
 
@@ -37,7 +37,7 @@ def _log(event: str, **fields) -> None:
 
 
 def watch_enabled() -> bool:
-    """WATCH_ENABLED가 켜졌나. 기본은 꺼짐이다 (G5, 10-05). 켜면 수집 뒤에 지켜보는 화물을 다시 판정한다.
+    """WATCH_ENABLED가 켜졌나. 기본은 꺼짐이다 (G5). 켜면 수집 뒤에 지켜보는 화물을 다시 판정한다.
     다시 판정은 ShipFinder와 LLM을 쓰므로 개발 중에 저절로 돌지 않게 WORKER_SCHEDULE처럼 명시해야 켜진다."""
     return os.environ.get("WATCH_ENABLED", "off").strip().lower() in ("on", "true", "1")
 
@@ -61,11 +61,11 @@ def run_once(shipfinder_calls: int) -> dict:
     budget = Budget(shipfinder_calls)
     # 지켜보기 재판정(run_watch)도 화물마다 ShipFinder를 부르는데 Budget을 거치지 않는다 (MCP·판정 경로).
     # 그래서 재판정할 화물 몫의 예산을 먼저 떼어 두고, 수집은 남은 예산으로 한다. 안 그러면 한 번 실행이
-    # WORKER_SHIPFINDER_CALLS_PER_RUN을 넘어 하루 50회 한도를 깰 수 있다 (10-06 점검).
+    # WORKER_SHIPFINDER_CALLS_PER_RUN을 넘어 하루 50회 한도를 깰 수 있다.
     # 재판정은 api 프로세스의 MCP(/mcp)를 거쳐 api 쪽 ShipFinderClient로 부른다. 이 워커의 ShipFinderClient 캐시와는
     # 프로세스가 달라 아래 collect_watch_positions가 받아 둔 위치를 다시 쓰지 못한다. 화물마다 실제로 호출된다고 센다.
     # 배를 아는 화물만 다시 판정한다(known_vessel_only): 그 경로는 화물당 SHIPFINDER_CALLS_PER_KNOWN_VESSEL회(위치 1회)다.
-    # 배를 모르는 화물은 후보 검색으로 최대 11회를 써서 예산으로 묶기 어렵다 (services/watch.py 설명)
+    # 배를 모르는 화물은 후보 검색으로 최대 11회를 써서 예산으로 묶기 어렵다 (services/watch/watch.py 설명)
     watch_limit = 0
     if watch_enabled():
         try:
@@ -93,7 +93,7 @@ def run_once(shipfinder_calls: int) -> dict:
     summary["watch_positions_purged"] = purge_watch_positions(conn)  # 안 지켜보는 배의 30일 지난 감시 위치 삭제 (migrations/021)
     if watch_enabled():
         try:
-            # 지켜보는 화물 재판정 (services/watch.py). 떼어 둔 예산만큼, 배를 아는 화물만
+            # 지켜보는 화물 재판정 (services/watch/watch.py). 떼어 둔 예산만큼, 배를 아는 화물만
             summary["watch"] = run_watch(conn, limit=watch_limit, known_vessel_only=True)
         except Exception as e:  # 재판정이 실패해도 위에서 끝낸 수집 결과는 그대로 남긴다
             summary["watch"] = {"error": type(e).__name__}

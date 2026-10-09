@@ -187,32 +187,32 @@ erDiagram
 | 표 | 쓰는 곳 | 읽는 곳 | 상태 |
 |---|---|---|---|
 | query_log | routers/agent.py `_logged` (db `log_query`) | db `recent_queries`(이력 화면), `latest_response`·후속 질문, 탈퇴 삭제 | 사용 중 |
-| user_profiles | services/profile.py | profile.py, 운영자 고객 목록, scripts/rekey_personal_data.py | 사용 중 |
-| suspended_users | services/customers.py | auth.py 요청마다 확인, 고객 목록 | 사용 중 |
-| operators | services/operators.py | 운영자 판단, 운영자 목록 | 사용 중 |
-| operator_audit | services/operators.py | 운영자 화면 이력 | 사용 중 |
-| admin_actions | services/customers.py | 운영자 화면 이력 | 사용 중 |
+| user_profiles | services/account/profile.py | profile.py, 운영자 고객 목록, scripts/ops/rekey_personal_data.py | 사용 중 |
+| suspended_users | services/account/customers.py | auth.py 요청마다 확인, 고객 목록 | 사용 중 |
+| operators | services/account/operators.py | 운영자 판단, 운영자 목록 | 사용 중 |
+| operator_audit | services/account/operators.py | 운영자 화면 이력 | 사용 중 |
+| admin_actions | services/account/customers.py | 운영자 화면 이력 | 사용 중 |
 | schema_migrations | db/__init__.py | db/__init__.py | 사용 중 |
 | targets | worker/collector.py | worker/collector.py, `purge_old_positions` | 사용 중 (worker 전용) |
 | positions | worker/collector.py | db `recent_positions`(정박 대기 신호), worker | 사용 중 (칸 일부만 읽음) |
 | arrival_reports | worker/collector.py | 없음 | 쓰기만. 서비스는 해수부 API를 실시간으로 부른다 |
 | control_events | worker/collector.py | `purge_old_positions`만 | 쓰기만. 서비스는 해수부 API를 실시간으로 부른다 |
-| user_cargo | services/memory.py, cargo.py, cargo_sheet.py, watch.py | 같은 서비스, worker/collector.py(지켜보는 배 찾기) | 사용 중 (화물 비서 기억, 화물 시트, 지켜보기) |
-| user_lc | services/cargo_sheet.py | cargo_sheet.py, cargo.py | 사용 중 (화물 시트의 신용장) |
-| user_memory | services/memory.py | services/memory.py | 사용 중 |
-| user_forget | services/memory.py | services/memory.py, `purge_done_cargo` | 사용 중 |
-| kakao_links | services/kakao.py | services/kakao.py, routers/kakao.py | 사용 중 |
-| token_usage | services/quota.py | services/quota.py | 사용 중 |
-| watch_positions | worker/collector.py | services/watch.py, cargo.py | 사용 중 (지도 표시) |
-| vessel_watch | services/vessel_watch.py (routers/watch.py `/api/watch/vessels`와 채팅이 부른다) | 같은 서비스, worker/collector.py (SELECT_WATCHED) | 사용 중 (B/L 없이 배만 지켜보기, 023) |
-| conversations, conversation_messages | services/conversations.py | 같은 서비스 (routers/conversations.py가 부른다), 탈퇴 삭제 | 사용 중 |
+| user_cargo | services/account/memory.py, cargo.py, cargo_sheet.py, watch.py | 같은 서비스, worker/collector.py(지켜보는 배 찾기) | 사용 중 (화물 비서 기억, 화물 시트, 지켜보기) |
+| user_lc | services/watch/cargo_sheet.py | cargo_sheet.py, cargo.py | 사용 중 (화물 시트의 신용장) |
+| user_memory | services/account/memory.py | services/account/memory.py | 사용 중 |
+| user_forget | services/account/memory.py | services/account/memory.py, `purge_done_cargo` | 사용 중 |
+| kakao_links | services/watch/kakao.py | services/watch/kakao.py, routers/kakao.py | 사용 중 |
+| token_usage | services/account/quota.py | services/account/quota.py | 사용 중 |
+| watch_positions | worker/collector.py | services/watch/watch.py, cargo.py | 사용 중 (지도 표시) |
+| vessel_watch | services/watch/vessel_watch.py (routers/watch.py `/api/watch/vessels`와 채팅이 부른다) | 같은 서비스, worker/collector.py (SELECT_WATCHED) | 사용 중 (B/L 없이 배만 지켜보기, 023) |
+| conversations, conversation_messages | services/chat/conversations.py | 같은 서비스 (routers/conversations.py가 부른다), 탈퇴 삭제 | 사용 중 |
 
 ### 정리로 처리된 것
 | 대상 | 처리 |
 |---|---|
 | query_log.retry_count, query_log.model | 018_db_cleanup이 칸에 값이 하나도 없을 때만 지운다. 값이 있으면 지우지 않고 NOTICE만 남긴다. `db/__init__.py`의 이력 응답은 model을 null로 내보낸다 |
 | operators.email, operator_audit.target_email·actor_email, admin_actions.actor_email | 013에서 지문·암호문으로 옮긴 뒤 비워 둔 옛 평문 칸. 018_db_cleanup이 비어 있을 때만 지운다. 018이 `operators.email_hash`를 NOT NULL 기본 키로 올린다(비어 있는 줄이 없을 때만) |
-| user_cargo, user_memory | 014 때는 표만 있었으나 화물 비서 기억(`services/memory.py`)이 만들어져 지금은 사용 중이다 (docs/specs/memory.md) |
+| user_cargo, user_memory | 014 때는 표만 있었으나 화물 비서 기억(`services/account/memory.py`)이 만들어져 지금은 사용 중이다 (docs/specs/memory.md) |
 
 ### 정리 후보
 | 대상 | 이유 |
@@ -257,7 +257,7 @@ erDiagram
 입항 30일이 지난 배의 위치는 `purge_old_positions()`가 매일 지운다 (002, pg_cron `marvia-purge-positions`, 매일 18:00 UTC).
 
 ### watch_positions: 지켜보는 화물의 배 위치 (017_watch_positions, 021_watch_positions_purge)
-사용자가 "지켜보기"를 켠 화물(`user_cargo.watch`가 true이고 `status`가 active)의 배 위치다. 연구용 `positions`와 따로 둔다. worker가 `user_cargo.vessel_mmsi`를 모아 ShipFinder에서 받아 쌓고 (`collect_watch_positions`), API(`services/watch.py`, `cargo.py`)가 지도에 그린다 (docs/specs/cargo-watch.md).
+사용자가 "지켜보기"를 켠 화물(`user_cargo.watch`가 true이고 `status`가 active)의 배 위치다. 연구용 `positions`와 따로 둔다. worker가 `user_cargo.vessel_mmsi`를 모아 ShipFinder에서 받아 쌓고 (`collect_watch_positions`), API(`services/watch/watch.py`, `cargo.py`)가 지도에 그린다 (docs/specs/cargo-watch.md).
 | 칸 | 타입 | 설명 |
 |---|---|---|
 | id | BIGSERIAL PK | 줄 번호 |
@@ -348,10 +348,10 @@ RLS를 켜고 규칙은 두지 않는다. 같은 파일에서 `purge_old_watch_p
 | consent_at | TIMESTAMPTZ | 수집·이용 동의 시각 (개인정보보호법 제15조). 동의 없이는 저장하지 않는다 |
 | created_at, updated_at | TIMESTAMPTZ | 만든 시각, 고친 시각 |
 
-탈퇴하면 이 줄을 지운다 (services/account.py).
+탈퇴하면 이 줄을 지운다 (services/account/account.py).
 
 ### user_cargo: 사용자의 화물 표 (014, 015, 017_cargo_watch, 019, 020, 021_cargo_vessel_name)
-화물 비서 기억의 확실한 값과 화물 시트, 지켜보기가 함께 쓴다 (docs/specs/memory.md, cargo-watch.md). 조회하면 services/memory.py가 채운다.
+화물 비서 기억의 확실한 값과 화물 시트, 지켜보기가 함께 쓴다 (docs/specs/memory.md, cargo-watch.md). 조회하면 services/account/memory.py가 채운다.
 | 칸 | 타입 | 설명 |
 |---|---|---|
 | id | BIGSERIAL PK | 줄 번호 |
@@ -397,12 +397,12 @@ RLS를 켜고 규칙은 두지 않는다. 같은 파일에서 `purge_old_watch_p
 완료(done)된 지 3년이 지난 줄은 `purge_done_cargo()`가 지우고, 그 화물의 메모장 항목도 함께 뺀다 (015, pg_cron `marvia-purge-done-cargo`, 매일 18:20 UTC).
 
 ### user_lc: 신용장 (019)
-화물 시트(`/api/cargo/sheet`)에서 화물을 신용장 번호로 묶는다 (services/cargo_sheet.py).
+화물 시트(`/api/cargo/sheet`)에서 화물을 신용장 번호로 묶는다 (services/watch/cargo_sheet.py).
 | 칸 | 타입 | 설명 |
 |---|---|---|
 | id | BIGSERIAL PK | 줄 번호 |
 | user_id | TEXT NOT NULL | 로그인 사용자 |
-| lc_no | TEXT NOT NULL | 신용장 번호. CHECK 길이 1~35 (services/cargo_sheet.LC_NO_MAX와 같다). UNIQUE (user_id, lc_no) |
+| lc_no | TEXT NOT NULL | 신용장 번호. CHECK 길이 1~35 (services/watch/cargo_sheet.LC_NO_MAX와 같다). UNIQUE (user_id, lc_no) |
 | opened_on | DATE | 개설일 |
 | created_at, updated_at | TIMESTAMPTZ NOT NULL | 만든 시각, 고친 시각 |
 
@@ -417,7 +417,7 @@ RLS를 켜고 규칙은 두지 않는다. 같은 파일에서 `purge_old_watch_p
 | updated_at | TIMESTAMPTZ NOT NULL | 고친 시각 |
 
 ### user_forget: 잊기 표시 (015)
-사용자가 메모장이나 화물 기억을 지웠다는 표시를 잠깐 남겨, 지운 직후 동시에 도는 저장이 다시 살리지 않게 한다 (services/memory.py `_FORGET_KEEP_SEC` 하루).
+사용자가 메모장이나 화물 기억을 지웠다는 표시를 잠깐 남겨, 지운 직후 동시에 도는 저장이 다시 살리지 않게 한다 (services/account/memory.py `_FORGET_KEEP_SEC` 하루).
 | 칸 | 타입 | 설명 |
 |---|---|---|
 | user_id | TEXT PK | 로그인 사용자 |
@@ -437,7 +437,7 @@ RLS를 켜고 규칙은 두지 않는다. 같은 파일에서 `purge_old_watch_p
 | last_sent_at | TIMESTAMPTZ | 마지막으로 알림을 보낸 시각 (022) |
 
 ### token_usage: 하루 토큰 사용량 (016_token_usage)
-사용자(또는 로그인 꺼진 환경의 세션)별 하루 LLM 토큰 한도를 세는 표다 (docs/specs/token-quota.md, services/quota.py).
+사용자(또는 로그인 꺼진 환경의 세션)별 하루 LLM 토큰 한도를 세는 표다 (docs/specs/token-quota.md, services/account/quota.py).
 | 칸 | 타입 | 설명 |
 |---|---|---|
 | owner | TEXT NOT NULL | 로그인했으면 user_id, 아니면 session_id |
@@ -446,7 +446,7 @@ RLS를 켜고 규칙은 두지 않는다. 같은 파일에서 `purge_old_watch_p
 | updated_at | TIMESTAMPTZ NOT NULL | 고친 시각 |
 
 ### conversations, conversation_messages: 채팅 대화 목록 (018_conversations)
-ChatGPT식 대화 목록이다 (services/conversations.py, routers/conversations.py). 사용자 말에 B/L·전화번호가 섞일 수 있어 글과 JSON은 모두 개인정보 열쇠로 잠근 글자만 둔다. 열쇠가 없으면 저장하지 않는다.
+ChatGPT식 대화 목록이다 (services/chat/conversations.py, routers/conversations.py). 사용자 말에 B/L·전화번호가 섞일 수 있어 글과 JSON은 모두 개인정보 열쇠로 잠근 글자만 둔다. 열쇠가 없으면 저장하지 않는다.
 | 칸 (conversations) | 타입 | 설명 |
 |---|---|---|
 | id | TEXT NOT NULL | 대화 번호. 채팅 요청의 session_id와 같다. PRIMARY KEY (user_id, id) |
@@ -465,7 +465,7 @@ ChatGPT식 대화 목록이다 (services/conversations.py, routers/conversations
 | extra_enc | TEXT | 잠근 화면 자료(선박 목록, 지도, 화물 줄 등) |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | 시각 |
 
-인덱스: `conversations_user_updated_idx (user_id, updated_at DESC)`. 마지막으로 고친 지 90일이 지난 대화는 `purge_old_conversations()`가 지운다 (018, pg_cron `marvia-purge-conversations`, 매일 18:30 UTC). 대화당 말풍선 상한과 목록 수는 코드 상수다 (services/conversations.py KEEP_MESSAGES 200, LIST_MAX 50). 탈퇴하면 대화도 함께 지운다.
+인덱스: `conversations_user_updated_idx (user_id, updated_at DESC)`. 마지막으로 고친 지 90일이 지난 대화는 `purge_old_conversations()`가 지운다 (018, pg_cron `marvia-purge-conversations`, 매일 18:30 UTC). 대화당 말풍선 상한과 목록 수는 코드 상수다 (services/chat/conversations.py KEEP_MESSAGES 200, LIST_MAX 50). 탈퇴하면 대화도 함께 지운다.
 
 ### suspended_users: 지금 정지된 계정 (012)
 | 칸 | 타입 | 설명 |

@@ -25,23 +25,22 @@
 4. 끝나면 `event: result` / `data: <ChatResponse JSON>` 하나. 화면은 /api/chat 응답과 똑같이 처리한다
 5. 화면은 다음 단계가 오면 앞 단계에 완료 표시를 하고, 지금 단계는 진행 중으로 보인다. 경과 시간(브라우저가 잰 값)을 같이 보인다
 
-**단계 이름** (services/progress.py STAGES, 화면 라벨은 web/lib/progress.ts)
+**단계 이름** (services/chat/progress.py STAGES, 화면 라벨은 web/lib/progress.ts)
 
 | stage | 실제 지점 | 화면 라벨 |
 |---|---|---|
-| understand | services/chat._route, 에이전트(또는 대비 경로 route_chat) LLM 직전 | 질문 이해 |
+| understand | services/chat/chat._route, 에이전트(또는 대비 경로 route_chat) LLM 직전 | 질문 이해 |
 | customs | routers/agent._assess, UNI-PASS 조회 직전 | 통관 정보 조회 |
 | identify | routers/agent._identify 직전 | 선박 식별 |
 | position | ShipFinder 위치·해수부 일정·searoute 거리 조회 직전 | 위치·입항 일정 확인 |
 | judge | LLM 판정과 검증 반복 직전 | 판정 정리와 검증 |
 | answer | routers/agent._follow_up, 후속 답 LLM 직전 | 답변 작성과 검증 |
-| schedule | services/chat.search_vessels, 해수부 입항 예정 조회 직전 | 부산 입항 예정 조회 |
+| schedule | services/chat/chat.search_vessels, 해수부 입항 예정 조회 직전 | 부산 입항 예정 조회 |
 | ports | 지역에 맞는 항구 고르기(match_ports) 직전 | 지역 항구 찾기 |
 | tool_candidates | 채팅 에이전트가 선박 후보 검색(get_vessel_candidates)을 고른 때 | 선박 후보 찾기 |
 | tool_position | 에이전트가 실시간 위치(get_live_position)를 고른 때 | 선박 실시간 위치 조회 |
 | tool_schedule | 에이전트가 부산 입항 기록(get_port_schedule)을 고른 때 | 부산 입항 기록 조회 |
 | tool_distance | 에이전트가 남은 항로 거리(estimate_distance)를 고른 때 | 남은 항로 거리 계산 |
-| tool_web | 에이전트가 웹 검색(web_search)을 고른 때 | 웹 검색 |
 | memory | 기억 뽑기가 저장할 내용을 찾았을 때만. 답 만들기와 같이 돌아 다른 단계와 겹칠 수 있다 (실사용 76) | 메모 저장 중 |
 
 경로마다 지나간 단계만 나온다. 예: 정상 조회 understand → customs → identify → position → judge, 되묻기 understand → customs → identify, 부산 외 understand → customs.
@@ -60,11 +59,11 @@
 
 ## How
 
-- services/progress.py: ContextVar에 듣는 함수를 두고 step(stage)로 알린다. 듣는 쪽이 없으면 아무것도 안 한다. 판정 코드에는 step 한 줄씩만 들어간다
+- services/chat/progress.py: ContextVar에 듣는 함수를 두고 step(stage)로 알린다. 듣는 쪽이 없으면 아무것도 안 한다. 판정 코드에는 step 한 줄씩만 들어간다
 - routers/chat.py POST /api/chat/stream: handle을 별도 스레드에서 돌리고(지금 요청 문맥을 복사해 요청 ID·LLM 사용량 로그가 이어지게) 단계를 큐로 받아 StreamingResponse(text/event-stream)로 보낸다. 헤더 Cache-Control: no-cache, X-Accel-Buffering: no
 - 화면(web/lib/api.ts): EventSource는 POST·Authorization 헤더를 못 써서 fetch 응답 본문을 읽어 SSE를 직접 나눈다. 전체 시간 제한은 /api/chat과 같은 90초
 - 배포: 화면(Railway marvia-web)이 API(Railway marvia-api)를 `NEXT_PUBLIC_API_BASE`로 바로 부른다. Vercel·Cloud Run은 쓰지 않는다 (처음 Spec에는 Cloud Run이라고 썼다). CORS는 같은 POST라 그대로
-- 테스트: backend/tests/test_chat_stream.py (듣는 쪽 없음, 이벤트 모양, 결과가 /api/chat과 같음, 오류 이벤트, 데모 3건 실제 경로의 단계 순서), web/scripts/verify.mjs (가짜 스트림으로 단계 표시·대체·오류, 실행법은 web/README.md)
+- 테스트: backend/tests/integration/test_chat_stream.py (듣는 쪽 없음, 이벤트 모양, 결과가 /api/chat과 같음, 오류 이벤트, 데모 3건 실제 경로의 단계 순서), web/scripts/verify.mjs (가짜 스트림으로 단계 표시·대체·오류, 실행법은 web/README.md)
 - 15초마다 `: ping` 주석 줄은 `routers/chat.py PING_SEC`다
 
 ## AC (Given-When-Then)

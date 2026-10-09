@@ -25,5 +25,5 @@ SDD 3.5·7절은 "UNI-PASS의 중량·세관명·화주 정보를 LLM에 넘기�
 - 칸 해석(신고번호가 단계마다 무엇인지 등). UNI-PASS 글자 그대로 보여 준다
 
 ## 완료 기준
-- `backend/tests/test_customs_detail.py`: 13칸 파싱, 판정 LLM 입력·이력 저장·후속 질문 LLM 입력에 원문 없음, 판정 뒤 응답에 붙음
+- `backend/tests/unit/test_customs_detail.py`: 13칸 파싱, 판정 LLM 입력·이력 저장·후속 질문 LLM 입력에 원문 없음, 판정 뒤 응답에 붙음
 - 결과 화면에 "관세청 처리 내역" 표가 보인다 (`web/components/CustomsDetailTable.tsx`)

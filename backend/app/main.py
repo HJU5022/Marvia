@@ -6,7 +6,7 @@
 - RequestLogMiddleware: 요청마다 JSON 로그 한 줄 (A5, SDD 5.11)
 - CORS: ALLOWED_ORIGINS에 적힌 출처만 (A10, SDD 7절)
 
-MCP 서버(/mcp)도 이 앱의 경로로 붙인다 (09-29 결정, SDD 5.9). 배포 서비스(Railway marvia-api)가 하나로 끝난다.
+MCP 서버(/mcp)도 이 앱의 경로로 붙인다 (SDD 5.9). 배포 서비스(Railway marvia-api)가 하나로 끝난다.
 외부 MCP 클라이언트(Claude Desktop 등)용 창구이고, 서비스 자신은 도구 함수를 직접 부른다.
 
 기동할 때 DB 마이그레이션을 적용한다. 워커는 기본이 꺼짐이라 워커만 믿으면 query_log 같은 표가 안 생긴다.
@@ -26,7 +26,7 @@ from backend.app.db import apply_migrations, connect
 from backend.app.observability.langfuse import flush as langfuse_flush
 from backend.app.observability.logging import RequestLogMiddleware, setup_logging, log_failure, setup_logging
 from backend.app.routers import account, admin, agent, cargo_sheet, chat, conversations, document, history, kakao, memory, profile, watch
-from backend.app.services import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
+from backend.app.services.account import memory as memory_service  # 뒤 작업 일꾼 닫기 (lifespan)
 from mcp_server.server import MountedMCP
 
 setup_logging()
@@ -47,15 +47,15 @@ def _migrate() -> None:
         logger.warning("DB 마이그레이션을 적용하지 못했습니다(%s). DB 없이 계속합니다", type(e).__name__)
 
 
-# 재생 모드 데모 파일을 몇 시간마다 새로 만들지 (10-05 결정). 위치를 "30분 전 수신"으로 만들어서 6시간
+# 재생 모드 데모 파일을 몇 시간마다 새로 만들지. 위치를 "30분 전 수신"으로 만들어서 6시간
 # (skills/ais-reliability/rules.md position_stale_hours)이 지나면 오래된 위치가 되어 데모 결과가 바뀐다. 그보다 넉넉히 짧게 둔다
 DEMO_REFRESH_HOURS = 4
 
 
 def _refresh_demo_forever(stop: threading.Event) -> None:
-    """재생 모드일 때만 도는 일꾼. DEMO_REFRESH_HOURS마다 데모 재생 파일을 새로 만든다 (scripts/make_demo.refresh).
+    """재생 모드일 때만 도는 일꾼. DEMO_REFRESH_HOURS마다 데모 재생 파일을 새로 만든다 (scripts/demo/make_demo.refresh).
     켜질 때 한 번 만드는 것은 Dockerfile.railway 시작 명령이 한다. 실패해도 서버는 계속 돈다 (다음 차례에 다시 해 본다)."""
-    from scripts import make_demo  # 재생 모드에서만 필요해서 여기서 불러온다
+    from scripts.demo import make_demo  # 재생 모드에서만 필요해서 여기서 불러온다
 
     while not stop.wait(DEMO_REFRESH_HOURS * 3600):
         try:
@@ -87,10 +87,10 @@ app.add_middleware(
     CORSMiddleware,
     # 기본값은 로컬 프론트만. 배포에서는 ALLOWED_ORIGINS에 화면 주소(Railway marvia-web)를 넣는다
     allow_origins=[o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
-    # DELETE: 내 기록 삭제·회원 탈퇴 (09-30), PUT: 회원 정보 저장 (10-01, user-profile). 빠지면 브라우저가 사전 요청에서 막는다
+    # DELETE: 내 기록 삭제·회원 탈퇴, PUT: 회원 정보 저장 (user-profile). 빠지면 브라우저가 사전 요청에서 막는다
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
-    # 엑셀 받기(GET /api/cargo/sheet.xlsx)의 파일 이름을 다른 주소의 화면이 읽으려면 열어 둬야 한다 (10-06)
+    # 엑셀 받기(GET /api/cargo/sheet.xlsx)의 파일 이름을 다른 주소의 화면이 읽으려면 열어 둬야 한다
     expose_headers=["Content-Disposition"],
 )
 
@@ -98,15 +98,15 @@ app.add_middleware(
 app.include_router(agent.router)
 app.include_router(chat.router)  # 자연어 입력 (docs/specs/chat-search.md)
 app.include_router(history.router)
-app.include_router(conversations.router)  # 대화 목록 (10-06)
+app.include_router(conversations.router)  # 대화 목록
 app.include_router(document.router)  # 서류 사진 (docs/specs/document-extract.md)
 app.include_router(account.router)  # 회원 탈퇴 (삭제 3단계)
 app.include_router(admin.router)  # 운영자 관리 (docs/specs/operator-admin.md)
 app.include_router(profile.router)  # 회원 정보 (docs/specs/user-profile.md)
 app.include_router(memory.router)  # 화물 비서 기억 (docs/specs/memory.md)
-app.include_router(kakao.router)  # 카카오톡 "나에게 보내기" 알림 연결 (10-02)
-app.include_router(watch.router)  # 화물 지켜보기·바뀐 판정 (G5, 10-05)
-app.include_router(cargo_sheet.router)  # 내 화물 현황 표·엑셀 받기 (019, 10-06)
+app.include_router(kakao.router)  # 카카오톡 "나에게 보내기" 알림 연결
+app.include_router(watch.router)  # 화물 지켜보기·바뀐 판정 (G5)
+app.include_router(cargo_sheet.router)  # 내 화물 현황 표·엑셀 받기 (019)
 
 
 # /mcp: MCP 클라이언트가 연결하는 프로토콜 창구. /api/agent(사용자 화면용)와 경로를 나눈다 (가이드 v4 배포 구조).
@@ -120,7 +120,7 @@ HEALTH_DB_TIMEOUT_SEC = 3
 
 @app.get("/health")
 def health():
-    """채점자와 배포 환경이 서비스 상태를 확인하는 곳. 서버가 떠 있는지와 DB에 붙는지를 본다 (10-01 결정).
+    """채점자와 배포 환경이 서비스 상태를 확인하는 곳. 서버가 떠 있는지와 DB에 붙는지를 본다.
 
     - DB 연결 성공: 200 {"status": "ok", "db": "ok"}
     - DATABASE_URL 없음: 200 {"status": "ok", "db": "not_configured"}. 평가 실행기처럼 DB를 일부러 끈 환경이라 고장이 아니다

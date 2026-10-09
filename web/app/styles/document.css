@@ -1,5 +1,5 @@
 /* 담당 영역: 서류 사진 확인 (DocumentPanel, 시안 2-5). 토큰은 globals.css :root, 이 파일은 globals.css 뒤에 불러와져 같은 선택자를 덮는다.
- * 3차 다듬기(10-06): 칸마다 흰 상자와 노란 테두리를 없앴다. 읽은 값 8칸은 흰 판 하나 안에서 이름(회색) 위, 값 아래로만 나눈다.
+ * 3차 다듬기: 칸마다 흰 상자와 노란 테두리를 없앴다. 읽은 값 8칸은 흰 판 하나 안에서 이름(회색) 위, 값 아래로만 나눈다.
  * 걸린 칸은 상자 대신 이름 줄의 주의 글씨와 입력칸 노란 테두리로 보인다. 움직임은 220ms 등장(40ms 간격), 줄이기 설정이면 globals.css가 끈다. */
 @keyframes doc-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
@@ -113,11 +113,11 @@ output.doc-value{color:var(--text)}
   .doc-actions .button{width:100%}
 }
 
-/* 읽는 중: 경과 초 (10-07 정운 실사용 11번. 10-08 정운 53번: 재지 않은 "보통 20초쯤" 문구는 뺐다) */
+/* 읽는 중: 경과 초 (재지 않은 "보통 20초쯤" 문구는 뺐다) */
 .document-panel .dropzone .doc-wait{font-size:var(--fs-sm,13px);color:var(--text-2)}
 .document-panel .dropzone .doc-wait .mono{font-size:var(--fs-sm,13px)}
 
-/* ---------- 10-08 정운 49·51·53번: 채팅 입력창에 붙이는 서류 (옆 패널 대신) ---------- */
+/* ---------- 채팅 입력창에 붙이는 서류 (옆 패널 대신) ---------- */
 /* 끌어 놓기 안내: 채팅 영역(.ask) 전체를 덮는다. 포인터를 받지 않아 dragleave 계산이 흔들리지 않는다 */
 .ask{position:relative}
 .doc-drop-overlay{position:absolute;inset:8px;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--brand);border-radius:12px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--brand);pointer-events:none;animation:doc-up 150ms var(--ease) both}
@@ -126,7 +126,7 @@ output.doc-value{color:var(--text)}
 .composer .attach-btn{min-width:40px;justify-content:center;padding:8px}
 .chat-dock .doc-note{margin:0 0 8px}
 
-/* 파일 칩: 입력창 바로 위, 입력창과 같은 너비. 확인 카드는 없다 (10-08 정운 실사용 73번) */
+/* 파일 칩: 입력창 바로 위, 입력창과 같은 너비. 확인 카드는 없다 */
 .doc-attach{margin:0 0 8px}
 .doc-attach .doc-chip{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;border:1px solid var(--border-strong);background:var(--surface);font-size:var(--text-sm);color:var(--text)}
 .doc-attach .doc-chip-name{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}

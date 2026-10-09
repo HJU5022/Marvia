@@ -1,6 +1,6 @@
 # Spec: 운영자 관리 (관리 탭, 고객 관리, 운영자 등록·해지)
 
-아래 "추가" 절의 고객 수정·강제 탈퇴·마스킹 해제·일시 정지·이메일 암호화는 모두 구현돼 있다 (`routers/admin.py`, `services/customers.py`, `services/operators.py`, migrations 009~013, 018). 처음 설계 절과 "추가" 절이 다른 곳은 "추가"가 맞다.
+아래 "추가" 절의 고객 수정·강제 탈퇴·마스킹 해제·일시 정지·이메일 암호화는 모두 구현돼 있다 (`routers/admin.py`, `services/account/customers.py`, `services/account/operators.py`, migrations 009~013, 018). 처음 설계 절과 "추가" 절이 다른 곳은 "추가"가 맞다.
 
 SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규칙에 따라 쓴다. 로그인(G3) 뒤에 붙는 확장이다.
 
@@ -23,7 +23,7 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 ## What
 
 **Happy Path**
-1. 최초 운영자: 사람이 `python -m scripts.grant_operator <이메일>`을 한 번 실행한다. 이력에 등록자는 `bootstrap`으로 남는다
+1. 최초 운영자: 사람이 `python -m scripts.ops.grant_operator <이메일>`을 한 번 실행한다. 이력에 등록자는 `bootstrap`으로 남는다
 2. 운영자가 로그인하면 GET /api/me가 `is_operator: true`를 주고, 화면 사이드바에 "관리" 탭이 생긴다
 3. 관리 > 고객 관리: 가입자 목록을 마스킹해서 보여 준다 (Supabase 관리자 API)
 4. 관리 > 운영자: 이메일을 입력해 등록, 목록에서 해지, 아래에 등록·해지 이력
@@ -62,11 +62,11 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 | POST /api/admin/operators | 운영자 | {email} 등록 |
 | POST /api/admin/operators/revoke | 운영자 | {email} 해지 |
 
-**마스킹 (services/operators.py mask_email, mask_name)**: 이메일은 앞 2자 + *** @ 도메인 첫 글자 + *** + 최상위 도메인 (`ka***@g***.com`). 이름은 첫 글자 + * (`김**`). 고객 목록 응답에 원문을 넣지 않는다. 운영자 목록은 운영자끼리 누가 권한을 가졌는지 알아야 하므로 원문을 보여 준다
+**마스킹 (services/account/operators.py mask_email, mask_name)**: 이메일은 앞 2자 + *** @ 도메인 첫 글자 + *** + 최상위 도메인 (`ka***@g***.com`). 이름은 첫 글자 + * (`김**`). 고객 목록 응답에 원문을 넣지 않는다. 운영자 목록은 운영자끼리 누가 권한을 가졌는지 알아야 하므로 원문을 보여 준다
 
 **화면 (web/)**: 사이드바 링크를 is_operator로 나눈다 (`web/components/Shell.tsx`). /admin 한 페이지(`web/components/AdminPage.tsx`)에 "고객 관리"와 "운영자 관리" 두 탭. 고객 관리에는 고객 작업 이력(GET /api/admin/actions)도 보인다. 해지는 화면 안에서 한 번 더 확인한다
 
-**테스트**: backend/tests/test_admin.py, test_customers_admin.py (추가 절의 수정·탈퇴·마스킹 해제·정지). 마스킹, 권한(403), 중복 등록(409), 자기 해지(400), 이력 기록을 가짜 DB·가짜 Supabase로 확인한다. 키 없이 돈다
+**테스트**: backend/tests/integration/test_admin.py, test_customers_admin.py (추가 절의 수정·탈퇴·마스킹 해제·정지). 마스킹, 권한(403), 중복 등록(409), 자기 해지(400), 이력 기록을 가짜 DB·가짜 Supabase로 확인한다. 키 없이 돈다
 
 ## 추가: 고객 수정·강제 탈퇴·마스킹 해제, 테스트 고객
 
@@ -76,8 +76,8 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 
 | 동작 | API | 규칙 |
 |---|---|---|
-| 수정 | PUT /api/admin/customers/{user_id}/profile | 이름·휴대전화·주소만. 검사 규칙은 본인 입력과 같다(services/profile.clean). 동의 시각은 바꾸지 않는다. 이메일은 구글 계정이라 못 바꾼다 |
-| 강제 탈퇴 | DELETE /api/admin/customers/{user_id} | 기록 → 회원 정보 → 계정 순서(services/account.withdraw와 같다). 운영자 계정은 해지 먼저(409), 자기 자신은 안 됨(400) |
+| 수정 | PUT /api/admin/customers/{user_id}/profile | 이름·휴대전화·주소만. 검사 규칙은 본인 입력과 같다(services/account/profile.clean). 동의 시각은 바꾸지 않는다. 이메일은 구글 계정이라 못 바꾼다 |
+| 강제 탈퇴 | DELETE /api/admin/customers/{user_id} | 기록 → 회원 정보 → 계정 순서(services/account/account.withdraw와 같다). 운영자 계정은 해지 먼저(409), 자기 자신은 안 됨(400) |
 | 마스킹 해제 | POST /api/admin/customers/{user_id}/unmask {reason} | 사유 10~500자 필수. 그 고객 한 명의 이메일·이름·전화·주소 원문을 돌려준다. 화면은 60초 뒤 다시 가린다 |
 
 **이력 (011_admin_actions.sql)**: admin_actions(id, action: customer_update / customer_delete / unmask (012가 customer_suspend / customer_resume 추가), target_user_id, target_email_masked, actor_user_id, actor_email, reason, created_at). INSERT만. 마스킹 해제는 원문을 보기 전에 먼저 기록한다(기록 실패면 원문을 주지 않는다). 대상은 탈퇴 뒤에도 알아볼 수 있게 가린 이메일로 남긴다
@@ -91,7 +91,7 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 | EC-11 | 회원 정보가 없는 고객을 수정 | 운영자가 새로 입력할 수 있다. 동의 시각은 운영자 입력 시각, 이력에 남는다 |
 | EC-12 | 운영자 계정 강제 탈퇴 | 409. 운영자 해지 먼저 |
 
-**테스트 고객**: scripts/seed_test_users.py가 testuser1~3@marvia.test 계정(Supabase 관리자 API, user_metadata.test=true)과 가공 회원 정보를 만든다. 실제 사람이 아님을 이름(testUser1~3)으로 드러낸다. 다시 돌리면 이미 있는 계정은 건너뛴다
+**테스트 고객**: scripts/ops/seed_test_users.py가 testuser1~3@marvia.test 계정(Supabase 관리자 API, user_metadata.test=true)과 가공 회원 정보를 만든다. 실제 사람이 아님을 이름(testUser1~3)으로 드러낸다. 다시 돌리면 이미 있는 계정은 건너뛴다
 
 ## 추가: 고객 계정 일시 정지
 
@@ -115,4 +115,4 @@ SDD 5절과 작업 리스트에 없는 기능이라 CLAUDE.md "Spec 먼저" 규�
 - operator_audit: target/actor 이메일을 암호문 + 가린 값으로. admin_actions의 처리자 이메일도 같다
 - 암호문·지문 열쇠는 PII_ENCRYPTION_KEY (B/L 열쇠와 분리, .env.example에 키 이름 추가). 지문은 그 열쇠에서 용도 이름을 붙여 갈라 쓴다. 열쇠가 없으면 운영자 기능은 닫힌 쪽으로 실패(운영자 아님, 등록 503)
 - 화면 응답 모양은 그대로(서버가 풀어서 준다). 열쇠가 바뀌어 못 풀면 가린 값
-- 기존 행은 scripts/encrypt_operator_emails.py로 옮기고 평문을 비웠다. INSERT만 하는 이력 표를 고친 유일한 예외다
+- 기존 행은 scripts/ops/encrypt_operator_emails.py로 옮기고 평문을 비웠다. INSERT만 하는 이력 표를 고친 유일한 예외다

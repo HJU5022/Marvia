@@ -62,7 +62,7 @@ proj2-5/
 | A6 | `POST /api/agent` 라우터. 서비스 계층 호출만, LLM SDK import 금지 | 라우터에 openai/anthropic import 없음 | ✅ | |
 | A7 | B/L 형식 검증, 범위 밖 입력 거절 | 잘못된 형식 400, 정상 통과. 부산 외 항만은 unsupported | ✅ | |
 | A8 | UNI-PASS 클라이언트, 응답 → C5 정제, 필드 마스킹 | 실제 B/L 1건 조회 성공 또는 모의 응답으로 파싱 통과 | ✅ | 실제 B/L 1건 MRN 식별까지 확인 |
-| A9 | 실패 경로: 외부 API 타임아웃 · 5xx 재시도 2회 + 백오프, partial 응답 | 모의 지연으로 재시도 로그 확인 | ✅ | 실패 훈련 스크립트 `scripts/failure_drill.py` |
+| A9 | 실패 경로: 외부 API 타임아웃 · 5xx 재시도 2회 + 백오프, partial 응답 | 모의 지연으로 재시도 로그 확인 | ✅ | 실패 훈련 스크립트 `scripts/eval/failure_drill.py` |
 | A10 | CORS, /mcp 토큰 인증, 비밀값 서버 환경변수만 | 브라우저에서 키 노출 없음, 토큰 없으면 401 | ✅ | 배포 때 `MCP_TOKEN`을 새로 만들어 넣는다 |
 | A11 | README 실행 절차 (clone → .env → compose up, 10분) | 다른 사람이 처음 클론해서 재현 | ✅ 완료 | 키 없이 도는 데모 3건 절차 작성 · 로컬과 Docker로 확인. 다른 사람 재현은 하지 않았다 (F5). README에 키 없는 데모 13건(라이브 10 + 평가셋 3) 절차. 다른 사람 재현은 F5에서 확인하지 못했다 |
 | A12 | `GET /api/history` 라우터. query_log를 session_id로 읽기만 | agent 2회 호출 뒤 같은 세션 조회 시 2건, 다른 세션 0건 | ✅ | |
@@ -91,15 +91,15 @@ proj2-5/
 | C-1 | `skills/ais-reliability/SKILL.md` + `rules.md`. 신호 7종, 상충 우선순위, 판정 표, 되묻기 조건 | 함정 경험 보유 팀원 검수 | ✅ | 판정 표 예외(깨진 목적지 · 항해상태 불일치), 판매일 없을 때, 날짜 말하기 추가 |
 | C-2 | `skills/customs-stages/SKILL.md`: 실제 처리구분 이름, 의미, 다음 단계, 할 일, 관세사 확인 조건 | 단계 전체 확보 | ✅ | 실제 처리구분 10단계. "사용자가 할 일" 칸 함정 경험 보유 팀원 확인 |
 | C-3 | `skills/port-busan/SKILL.md`: 부두 · 정박지 개요, 하역 장소 문장 규칙 | 함정 경험 보유 팀원 검수 | ✅ | |
-| C-4 | 1층 신호 판정 코드 (`services/signals.py`): rules.md 읽어 7종 판정 → C3 | 단위 테스트 통과 | ✅ | 정박 시간은 워커 위치 이력으로 잰다 |
+| C-4 | 1층 신호 판정 코드 (`services/judge/signals.py`): rules.md 읽어 7종 판정 → C3 | 단위 테스트 통과 | ✅ | 정박 시간은 워커 위치 이력으로 잰다 |
 | C-5 | 선박 식별: 후보 1척이면 코드 확정, 복수면 LLM 판단, uncertain이면 판정 차단 | 동명 선박(B01) 케이스가 uncertain | ✅ | MRN 호출부호 · 세관 국적과 다르면 1척이어도 되묻기 |
-| C-6 | `services/llm.py`: LLM 호출 단일 지점, Skill 주입, 모델 A/B 스위치 | 라우터 밖에서 LLM SDK import 없음 | ✅ 완료 | 도구는 코드가 순서대로 부른다(LLM이 도구를 고르지 않음). Vertex(`vertex/`)와 OpenRouter 두 길. 키 없는 데모는 녹화 답 재생. 판정 흐름은 코드가 도구를 순서대로 부르지만, 후속 질문과 채팅 에이전트는 LLM이 읽기 전용 MCP 도구를 골라 쓴다(`services/chat.py`). OpenRouter와 Vertex(`vertex/`) 두 길 |
+| C-6 | `services/llm.py`: LLM 호출 단일 지점, Skill 주입, 모델 A/B 스위치 | 라우터 밖에서 LLM SDK import 없음 | ✅ 완료 | 도구는 코드가 순서대로 부른다(LLM이 도구를 고르지 않음). Vertex(`vertex/`)와 OpenRouter 두 길. 키 없는 데모는 녹화 답 재생. 판정 흐름은 코드가 도구를 순서대로 부르지만, 후속 질문과 채팅 에이전트는 LLM이 읽기 전용 MCP 도구를 골라 쓴다(`services/chat/chat.py`). OpenRouter와 Vertex(`vertex/`) 두 길 |
 | C-7 | 출력 검증 V1~V8 + 3단계 재시도 + 폴백 | 위반 응답 주입 시 재시도 트레이스 | ✅ 완료 | V8 등급 검사. 폴백은 판정 표 등급 + 고정 문구로 partial, failed는 통관 조회 실패만. 검증 규칙이 V1~V15까지 늘었다(V9·V10 주입 방어, V11 통관 진행 평가 금지 등) |
 | C-8 | days_margin 코드 계산, LLM 덮어쓰기 금지 울타리 | LLM이 다른 값 내도 코드 값 유지 | ✅ | 판매일 없으면 null |
 | C-9 | 후속 질의: 근거 범위 밖 질문 거절 | "비트코인 시세" 거절 | ✅ | 후속 답도 V1 · V7 검사 |
 | C-10 | 신뢰 경계: 도구 응답 · dest 문자열 속 지시문 무시 | dest에 지시문 넣은 케이스 통과 | ✅ | 평가 주입 3건 통과 |
 | C-11 | 프롬프트 작성, Langfuse에 등록 (연동 코드는 D4) | Langfuse에 prompt 존재 | 🔁 바뀜 | 처음엔 judge · pick-vessel · follow-up · judge-eval · doc-extract 5종이었고 지금은 10종이다. 이력은 `docs/prompt_versions.md`: chat-agent · chat-route · chat-title · doc-extract · follow-up · judge · judge-eval · pick-vessel · port-match는 Langfuse, memory-write는 레포 파일(`backend/app/prompts/`). 9개에 Langfuse 라벨 v1 |
-| C-12 | 등급은 판정 표 코드로 (`services/verdict.py`), 회색 지대만 LLM이 올리기 | 판정 표와 다른 등급이면 V8, 회색 지대는 표 이상만 | ✅ | 30건 판정 정확도 100% |
+| C-12 | 등급은 판정 표 코드로 (`services/judge/verdict.py`), 회색 지대만 LLM이 올리기 | 판정 표와 다른 등급이면 V8, 회색 지대는 표 이상만 | ✅ | 30건 판정 정확도 100% |
 
 ## D. 관측, 수집 워커, 평가
 
@@ -167,14 +167,14 @@ proj2-5/
 | 기능 | 코드 | 비고 |
 | --- | --- | --- |
 | 대화 목록 (새 대화 · 지난 대화 열기 · 삭제) | `routers/conversations.py`, 마이그레이션 018_conversations | |
-| 채팅 에이전트 · 웹 검색 도구 · 스트림 | `routers/chat.py`, `services/chat.py` | |
+| 채팅 에이전트 · 웹 검색 도구 · 스트림 | `routers/chat.py`, `services/chat/chat.py` | |
 | 카카오톡 알림 연결 | `routers/kakao.py`, `clients/kakao.py`, 마이그레이션 016_kakao_links, 022 | 연결 · 시험 발송 · 채팅에서 "지금 보내 줘" |
 | 내 화물 현황표 · 엑셀 받기 | `routers/cargo_sheet.py`, 마이그레이션 019 | 신용장별 묶음 |
 | 품명(goods_name) · 선명 저장 | 마이그레이션 020, 021_cargo_vessel_name | 품명은 채팅 에이전트에만 준다 |
-| 컨테이너 번호 가리기와 번호로 화물 찾기 | `services/chat.py` 등 | |
+| 컨테이너 번호 가리기와 번호로 화물 찾기 | `services/chat/chat.py` 등 | |
 | 운영자 · 고객 관리 · 지표 | `routers/admin.py`, 마이그레이션 009 ~ 013 | 운영자 이메일 암호화 |
-| 하루 토큰 한도 | `services/quota.py`, 마이그레이션 016_token_usage | 1명당 `DAILY_TOKENS_PER_USER` |
-| 안내처(referrals) | `skills/referrals/`, `services/referrals.py` | |
+| 하루 토큰 한도 | `services/account/quota.py`, 마이그레이션 016_token_usage | 1명당 `DAILY_TOKENS_PER_USER` |
+| 안내처(referrals) | `skills/referrals/`, `services/chat/referrals.py` | |
 | 서버 마이그레이션 자동 적용 | `backend/app/main.py` → `db.apply_migrations` | 001 ~ 023 |
 
 ## I. 실사용 점검 (항목 32~81)

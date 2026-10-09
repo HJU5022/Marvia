@@ -1,14 +1,14 @@
 /* 담당 영역: 소개 랜딩 (로그인 전 첫 화면 LoginScreen, 소개 /about). components/IntroContent.tsx 의 lp-* 와 LoginScreen 의 intro-btn 등.
- * (10-07 개편) 아임웹 GLOBAL LOGISTICS 템플릿의 짜임: 사진 꽉 찬 첫 화면, 굵은 큰 제목, 강조색 하나(우리 브랜드 파랑),
+ * 아임웹 GLOBAL LOGISTICS 템플릿의 짜임: 사진 꽉 찬 첫 화면, 굵은 큰 제목, 강조색 하나(우리 브랜드 파랑),
  * 단락마다 바탕을 흰색·연회색·짙은 남색으로 바꿔 리듬을 만든다. 숨겼다가 나타나는 효과는 쓰지 않는다 (글은 처음부터 보인다).
- * 모서리는 기업 사이트처럼 작게 (4~8px, --lp-r-*), 그림자는 옅게 한 겹. 둥근 알약·큰 그림자·엇갈린 카드는 쓰지 않는다 (10-07 승욱: 너무 둥글고 귀여움).
+ * 모서리는 기업 사이트처럼 작게 (4~8px, --lp-r-*), 그림자는 옅게 한 겹. 둥근 알약·큰 그림자·엇갈린 카드는 쓰지 않는다 (너무 둥글고 귀여움).
  * 토큰은 globals.css :root (--brand 등). */
 
 .lp{--lp-r-sm:4px;--lp-r:6px;--lp-r-lg:8px;--lp-shadow:0 1px 2px rgba(15,27,45,.06),0 4px 12px rgba(15,27,45,.05);--lp-ink:#111827;--lp-ink-2:#4b5563;--lp-line:#e5e7eb;--lp-soft:#f5f7fa;--lp-dark:#0f1b2d;--lp-max:1180px;
   background:#fff;color:var(--lp-ink);overflow-x:clip;font-weight:400;
-  word-break:keep-all;overflow-wrap:anywhere}  /* 한글이 단어 중간에서 끊기지 않게 (10-07 점검: "근거/까지", "드리/고") */
+  word-break:keep-all;overflow-wrap:anywhere}  /* 한글이 단어 중간에서 끊기지 않게 ("근거/까지", "드리/고") */
 .lp h1,.lp h2,.lp h3,.lp p{text-wrap:pretty}  /* 마지막 줄에 한 글자만 남지 않게 */
-.lp [id]{scroll-margin-top:84px}  /* 메뉴로 이동하면 따라오는 윗줄(68px)에 제목이 가리지 않게 (10-07 점검) */
+.lp [id]{scroll-margin-top:84px}  /* 메뉴로 이동하면 따라오는 윗줄(68px)에 제목이 가리지 않게 */
 .lp h1,.lp h2,.lp h3{margin:0;color:inherit;letter-spacing:-.02em}
 .lp p{margin:0}
 .lp-wrap{max-width:var(--lp-max);margin:0 auto;padding:0 32px}
@@ -124,13 +124,13 @@
 #start{padding-top:72px;padding-bottom:40px}
 .lp-cta{display:grid;grid-template-columns:1.2fr .8fr;align-items:center;gap:32px;padding:56px;border-radius:var(--lp-r-lg);background:var(--brand);color:#fff;overflow:hidden}
 .lp-cta h2{font-size:clamp(28px,3.2vw,40px);font-weight:700;line-height:1.25}
-/* 글자를 흰색 그대로. 88% 흰색은 파란 띠(#2962f5) 위에서 대비 4.26으로 WCAG AA 4.5에 못 미쳤다 (10-08 e2e 접근성 검사) */
+/* 글자를 흰색 그대로. 88% 흰색은 파란 띠(#2962f5) 위에서 대비 4.26으로 WCAG AA 4.5에 못 미쳤다 */
 .lp-cta-text p{margin-top:14px!important;font-size:17px;color:#fff}
 .lp-cta-action{margin-top:30px}
 .lp-cta .intro-btn{background:#fff;color:var(--brand)}
 .lp-cta .intro-btn:hover{background:#eef3ff}
 .lp-cta .intro-error{color:#fff}
-.lp-cta :focus-visible{outline-color:#fff}  /* 파란 바탕에서 파란 포커스 테두리가 묻혀서 흰색으로 (10-07 점검) */
+.lp-cta :focus-visible{outline-color:#fff}  /* 파란 바탕에서 파란 포커스 테두리가 묻혀서 흰색으로 */
 .lp-cta-img{width:100%;height:320px;object-fit:cover;border-radius:var(--lp-r)}
 .lp-scope{display:flex;align-items:flex-start;justify-content:center;gap:8px;margin-top:22px!important;text-align:center;font-size:14px;line-height:1.6;color:var(--lp-ink-2)}
 .lp-scope svg{flex:none;margin-top:3px}

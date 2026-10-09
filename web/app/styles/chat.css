@@ -18,7 +18,7 @@ body[data-fit] .workspace{height:100dvh;min-height:0}
 body[data-fit] main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 body[data-fit] .route-fade{flex:1;min-height:0;display:flex;flex-direction:column;animation:none}
 body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이드바 아래와 결과 머리표에 이미 있다 */
-/* (10-07 승욱) 40:60으로 나뉘어도 사이드바의 대화 목록은 그대로 둔다. 전에는 접혀서 내 화물 결과를 열면 왼쪽 대화 칸이 사라졌다.
+/* 40:60으로 나뉘어도 사이드바의 대화 목록은 그대로 둔다. 전에는 접혀서 내 화물 결과를 열면 왼쪽 대화 칸이 사라졌다.
    사이드바를 접었거나 좁은 화면이면 지금처럼 대화 칸 왼쪽 위 단추가 여는 패널(Shell)을 쓴다 */
 
 .chat-app{flex:1;min-height:0;display:flex;background:var(--bg)}
@@ -33,7 +33,7 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 .pane-head{flex:none;display:flex;align-items:center;gap:10px;padding:20px 28px 4px}
 .pane-head h1{font-size:var(--fs-lg,18px);font-weight:var(--fw-medium,500);letter-spacing:-.02em;color:var(--text)}
 .chat-app.split .pane-head{padding:14px 20px;border-bottom:1px solid var(--border)}
-/* 10-08 정운 41·43번: 제목을 뺀 머리는 넓은 화면의 전체 폭(100:0) 대화에서 비어 위쪽 여백만 차지한다. 열기 버튼이 보이는 화면(40:60, 900px 이하)에서만 둔다 */
+/* 제목을 뺀 머리는 넓은 화면의 전체 폭(100:0) 대화에서 비어 위쪽 여백만 차지한다. 열기 버튼이 보이는 화면(40:60, 900px 이하)에서만 둔다 */
 @media (min-width:901px){.chat-app:not(.split) .pane-head{display:none}}
 .chat-app.split .pane-head h1{font-size:var(--fs-md,15px);font-weight:var(--fw-medium,500)}
 .pane-icon{display:none;place-items:center;width:36px;height:36px;border-radius:0;background:transparent;color:var(--text-2)}
@@ -56,16 +56,16 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 .page-end a{color:var(--brand);font-weight:600}
 
 /* ---- 대화 칸: 위는 스크롤, 아래는 입력창 ---- */
-.ask{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:760px;margin:0 auto;padding:0 28px}  /* 10-08 정운 41번: 전체 폭 대화는 가운데 정렬한 읽기 좋은 폭(760px) 한 줄 */
+.ask{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:760px;margin:0 auto;padding:0 28px}  /* 전체 폭 대화는 가운데 정렬한 읽기 좋은 폭(760px) 한 줄 */
 .chat-app.split .ask{max-width:none;margin:0;padding:0}
-.chat-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;padding:12px 16px 32px 2px;scroll-behavior:smooth}  /* 아래 32px: 마지막 말이 입력창에 붙어 보이지 않게 (10-07 정운 실사용 10번) */
+.chat-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;padding:12px 16px 32px 2px;scroll-behavior:smooth}  /* 아래 32px: 마지막 말이 입력창에 붙어 보이지 않게 */
 .chat-scroll>*{flex:none}  /* 칸이 줄어들며 말들이 겹치지 않게 */
-.chat-app.split .chat-scroll{padding:16px 20px 32px}  /* 10-08 정운 40번: 위 기본 오른쪽 여백 16px은 스크롤바가 오른쪽 글자를 자르지 않게 한 것이다. 분할 화면은 20px로 이미 충분하다 */
+.chat-app.split .chat-scroll{padding:16px 20px 32px}  /* 위 기본 오른쪽 여백 16px은 스크롤바가 오른쪽 글자를 자르지 않게 한 것이다. 분할 화면은 20px로 이미 충분하다 */
 .chat-scroll:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:0}
 .chat-dock{flex:none;padding:16px 0 20px}
 .chat-app.split .chat-dock{padding:12px 20px 18px;border-top:1px solid var(--border);background:var(--surface)}
 
-/* 처음 화면: 작은 영문 라벨 + 가벼운 제목 + 조용한 번호 목록 (10-07 정운 실사용 24번, 아이콘 상자·큰 칩 없앰) */
+/* 처음 화면: 작은 영문 라벨 + 가벼운 제목 + 조용한 번호 목록 */
 .chat-empty{margin:auto;display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:8px;padding:24px 0;width:100%;max-width:420px}
 .chat-eyebrow{font-size:var(--fs-xs,12px);font-weight:var(--fw-medium,500);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .chat-empty h2{margin:0;font-size:var(--fs-xl,22px);font-weight:var(--fw-regular,400);letter-spacing:-.01em;line-height:1.35;color:var(--text)}
@@ -75,7 +75,7 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 .feature-tiles button:hover:not(:disabled){background:none;color:var(--text);box-shadow:none}
 .tile-no{font-size:var(--fs-xs,12px);letter-spacing:.08em;color:var(--muted);font-variant-numeric:tabular-nums}
 
-/* ---- 입력창: 아래에 고정. 네모, 가는 선, 보내기는 채운 파란 블록 대신 가는 네모 화살표 (10-07 정운 엘레강스) ---- */
+/* ---- 입력창: 아래에 고정. 네모, 가는 선, 보내기는 채운 파란 블록 대신 가는 네모 화살표 ---- */
 .composer-wrap{padding:0;border-radius:0;background:var(--surface);box-shadow:none;border:1px solid var(--border-strong);transition:border-color var(--t-fast) var(--ease)}
 .composer-wrap:focus-within{transform:none;box-shadow:none;border-color:var(--text)}
 .composer{background:transparent;padding:14px 18px 10px;border-radius:0}
@@ -94,15 +94,15 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 .chat-dock .quota-note.blocked{color:var(--text);font-weight:600}
 .chat-dock .fill-offer{margin:0 0 8px}
 
-/* 시작 문장: 칩 없이 글자 링크 + 화살표, 가는 밑줄 (10-07 정운 엘레강스) */
-/* 10-08 정운 실사용 65번: 예시 4개의 너비가 들쭉날쭉해서 2열 같은 너비 격자로 맞췄다. 밑줄이 열마다 나란히 서고, 좁은 화면은 1열 */
+/* 시작 문장: 칩 없이 글자 링크 + 화살표, 가는 밑줄 */
+/* 예시 4개의 너비가 들쭉날쭉해서 2열 같은 너비 격자로 맞췄다. 밑줄이 열마다 나란히 서고, 좁은 화면은 1열 */
 .chat-examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch;gap:0 24px;margin-top:16px}
 @media (max-width:600px){.chat-examples{grid-template-columns:minmax(0,1fr)}}
 .chat-examples button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;min-height:36px;padding:4px 0;border:0;border-bottom:1px solid var(--hairline,#E5E8EB);border-radius:0;background:none;color:var(--text-2);font-size:var(--fs-sm,13px);transform:none!important;transition:color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
 .chat-examples button:hover:not(:disabled){background:none;color:var(--text);border-bottom-color:var(--text)}
 
 /* ---- 대화 말풍선: 내 말은 회색 말풍선, Marvia의 답은 상자 없이 글로 (Claude·ChatGPT처럼). 새 말은 아래에서 살짝 떠오른다 ---- */
-/* 원인(10-07 정운 실사용 1·7번): globals.css의 `.ask .chat-thread{max-height:340px}`가 이 규칙보다 구체적이라 남았다. overflow가 visible이라 340px을 넘는 말이
+/* 원인: globals.css의 `.ask .chat-thread{max-height:340px}`가 이 규칙보다 구체적이라 남았다. overflow가 visible이라 340px을 넘는 말이
  * 상자 밖으로 흘러 아래에 그린 진행 단계와 겹쳤다(긴 대화일수록 진행 단계가 말들에 가려졌다). 같은 구체도로 덮어 흐름대로 쌓는다 */
 .ask .chat-thread{list-style:none;margin:0;padding:0;gap:20px;max-height:none;overflow:visible;flex:none}
 .chat-turn,.chat-seed{animation:m-rise var(--t-enter) var(--ease) backwards}
@@ -112,7 +112,7 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 .chat-turn.user{max-width:82%}
 .chat-bubble{border-radius:0;padding:12px 16px}
 .chat-bubble p{margin:0;font-size:var(--fs-base,14px);line-height:1.7;white-space:pre-line}
-/* 내 말: 둥근 회색 말풍선 대신 오른쪽 정렬 글자 + 가는 왼쪽 선 (10-07 정운 엘레강스) */
+/* 내 말: 둥근 회색 말풍선 대신 오른쪽 정렬 글자 + 가는 왼쪽 선 */
 .chat-turn.user .chat-bubble{background:none;padding:2px 0 2px 14px;border-left:1px solid var(--border-strong);border-radius:0;text-align:left}
 .chat-app.split .chat-turn.user .chat-bubble{background:none}
 .chat-turn.assistant .chat-bubble,.chat-seed .chat-bubble{padding:0;background:none;border:0;border-radius:0}
@@ -120,10 +120,10 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 /* 예전 전역 규칙이 p에 입힌 말풍선 모양을 걷어낸다 */
 .chat-turn.assistant .chat-bubble p,.chat-seed .chat-bubble p,.chat-turn.user .chat-bubble p{background:none;border:0;padding:0;border-radius:0;color:var(--text)}
 .chat-body{gap:12px}
-.chat-link{color:var(--muted);font-size:var(--fs-sm,13px);text-decoration:underline;text-decoration-color:var(--hairline,#E5E8EB);text-underline-offset:3px;word-break:normal;overflow-wrap:anywhere}  /* 제목만 보이는 출처 링크. 긴 맨 주소만 anywhere로 접는다 (10-07 실사용 4번) */
+.chat-link{color:var(--muted);font-size:var(--fs-sm,13px);text-decoration:underline;text-decoration-color:var(--hairline,#E5E8EB);text-underline-offset:3px;word-break:normal;overflow-wrap:anywhere}  /* 제목만 보이는 출처 링크. 긴 맨 주소만 anywhere로 접는다 */
 .chat-link:hover{color:var(--brand);text-decoration-color:currentColor}
 
-/* 판정 답: 작은 점 + 글자, "지금 할 일"은 작은 회색 라벨, 할 일은 보통 굵기 (10-07 정운 실사용 9번). 칠한 배지 상자 없음 */
+/* 판정 답: 작은 점 + 글자, "지금 할 일"은 작은 회색 라벨, 할 일은 보통 굵기. 칠한 배지 상자 없음 */
 .chat-verdict{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:16px;padding:0;border:0}
 .chat-bubble .chat-grade{display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);color:var(--text-2)}
 .chat-grade i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
@@ -134,7 +134,7 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 .chat-todo span{font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.04em;color:var(--muted)}
 .chat-show-detail{display:none;padding:2px 0;background:none;color:var(--text);font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400);letter-spacing:.04em;border-bottom:1px solid var(--text);border-radius:0}
 
-/* ---- 진행 단계: 세로 타임라인 (10-07 정운 엘레강스). 서버가 알린 단계만 그린다. 점 + 가는 세로선, 끝난 단계까지는 실선으로 채워진다.
+/* ---- 진행 단계: 세로 타임라인. 서버가 알린 단계만 그린다. 점 + 가는 세로선, 끝난 단계까지는 실선으로 채워진다.
  * li 글자는 "이름 + 완료/진행 중"만 두고(e2e), 진행 중 단계의 경과 시간은 data-elapsed를 ::after로 그린다 ---- */
 .pending-card{margin:20px 0 8px;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;animation:m-rise var(--t-enter) var(--ease) backwards}
 .pending-head{justify-content:flex-start;gap:10px;font-size:var(--fs-xs,12px);font-weight:var(--fw-regular,400);letter-spacing:.06em;color:var(--muted)}
@@ -166,7 +166,7 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 /* 입력창이 화면 밖일 때 떠 있는 버튼 */
 .back-to-composer{font-size:var(--fs-sm,13px);font-weight:var(--fw-regular,400);box-shadow:none;animation:m-rise var(--t-enter) var(--ease) backwards}
 
-/* 대화 속 작은 지도: 둥근 상자 없이 가는 선 하나 (10-07 정운 엘레강스) */
+/* 대화 속 작은 지도: 둥근 상자 없이 가는 선 하나 */
 .chat-body .chat-mini-map{margin:12px 0 0;border:0;border-radius:0;background:none;box-shadow:none;border-top:1px solid var(--hairline,#E5E8EB);border-bottom:1px solid var(--hairline,#E5E8EB)}
 .chat-body .chat-mini-map figcaption{padding:10px 0;font-size:var(--fs-sm,13px)}
 .chat-body .chat-mini-map .mini-map-legend{display:block;margin-top:2px;color:var(--muted);font-size:var(--fs-xs,12px)}
@@ -231,7 +231,7 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
   .detail-pane{left:0}
 }
 
-/* 답 준비 점 세 개: 파란색 대신 회색 (10-07 정운 엘레강스) */
+/* 답 준비 점 세 개: 파란색 대신 회색 */
 .pending-dots i{background:var(--muted)}
 
 /* 답 아래 접힌 단계 요약 */
@@ -240,24 +240,24 @@ body[data-fit] .app-footer{display:none}  /* 가공 데이터 안내는 사이�
 .steps-toggle:hover{color:var(--text)}
 .pending-steps.settled{margin:8px 0 8px}
 
-/* 선박 후보 칩 (10-08 정운 실사용 37번): 되묻는 답 말풍선 아래에서 눌러 고른다. 모양은 입력창 예시 버튼과 같은 직선 테두리 */
+/* 선박 후보 칩: 되묻는 답 말풍선 아래에서 눌러 고른다. 모양은 입력창 예시 버튼과 같은 직선 테두리 */
 .chat-cand-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;max-width:520px}
 .chat-cand-chip{appearance:none;-webkit-appearance:none;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;font-size:14px;color:var(--body);background:var(--surface);border:1px solid var(--border);border-radius:0;padding:8px 12px;cursor:pointer;min-height:44px}
 .chat-cand-chip strong{font-weight:500;color:var(--ink,var(--body))}
 .chat-cand-chip span{color:var(--muted)}
 .chat-cand-chip:hover:not(:disabled){background:var(--soft)}
 .chat-cand-chip:disabled{opacity:.5;cursor:not-allowed}
-/* 10-08 정운 실사용 57번: 후보 칩 옆 "이 배 지켜보기" 버튼. 칩과 한 묶음으로 줄바꿈하고 375px에서도 안 넘치게 한다 */
+/* 후보 칩 옆 "이 배 지켜보기" 버튼. 칩과 한 묶음으로 줄바꿈하고 375px에서도 안 넘치게 한다 */
 .chat-cand-item{display:flex;align-items:stretch;gap:4px;max-width:100%}
 .chat-cand-item .chat-cand-chip{min-width:0}
 .chat-cand-item .watch-vessel-btn{align-self:center}
 .chat-cand-item .watch-vessel-btn .icon-button,.cmp-watch .watch-vessel-btn .icon-button{min-width:44px;min-height:44px}
 .cmp-watch{display:inline-block;margin-top:2px}
 
-/* 10-08 정운 실사용 58번: 대화 맨 위 근거 모음 버튼 줄. 대화 칸을 내려도 위에 붙어 있다 */
+/* 대화 맨 위 근거 모음 버튼 줄. 대화 칸을 내려도 위에 붙어 있다 */
 .chat-evidence-bar{position:sticky;top:0;z-index:5;display:flex;justify-content:flex-end;padding:4px 0 6px;background:var(--bg,transparent)}
 
-/* 10-08 정운 실사용 77번: 선박 검색 답 말풍선. 요약 한 줄 → 한 줄 목록(배 사이 가는 선만) → 나머지 보기 → 출처 줄 (ChatVesselTable) */
+/* 선박 검색 답 말풍선. 요약 한 줄 → 한 줄 목록(배 사이 가는 선만) → 나머지 보기 → 출처 줄 (ChatVesselTable) */
 .cvt{display:flex;flex-direction:column;gap:8px;min-width:0}
 .cvt-lead{margin:0;font-size:16px;font-weight:600;line-height:1.6;color:var(--text);white-space:pre-line;word-break:keep-all}
 .cvt-list{list-style:none;margin:0;padding:0}

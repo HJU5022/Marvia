@@ -1,4 +1,4 @@
-/* 답 문장 속 근거 칩, 말풍선, 대화 근거 모음 (10-08 정운 실사용 58번). 색은 globals.css 토큰을 쓴다 */
+/* 답 문장 속 근거 칩, 말풍선, 대화 근거 모음. 색은 globals.css 토큰을 쓴다 */
 .ev-text{white-space:pre-wrap}
 .ev-wrap{position:relative;display:inline-block;margin:0 2px;vertical-align:baseline}
 .ev-chip{appearance:none;-webkit-appearance:none;font:inherit;font-size:11px;line-height:1.4;color:var(--brand);background:var(--brand-soft);border:1px solid transparent;border-radius:0;padding:0 6px;cursor:pointer;vertical-align:1px}

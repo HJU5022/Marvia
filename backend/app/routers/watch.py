@@ -1,15 +1,15 @@
-"""화물 지켜보기 /api (G5 등록·감시·알림, 10-05 결정, docs/Marvia_개발_작업_리스트.md).
+"""화물 지켜보기 /api (G5 등록·감시·알림, docs/Marvia_개발_작업_리스트.md).
 
-창구만 한다: 로그인 확인 → services.watch 부르기 → HTTP 응답. 최대 5건·반출 끝난 화물 제외 같은 규칙과
-다시 판정·알림은 services/watch.py에 있다.
+창구만 한다: 로그인 확인 → services.watch.watch 부르기 → HTTP 응답. 최대 5건·반출 끝난 화물 제외 같은 규칙과
+다시 판정·알림은 services/watch/watch.py에 있다.
 
   POST /api/cargo/watch/state   {"bl_no"}           → {"saved", "watch"}   결과 화면의 버튼 상태
   PUT  /api/cargo/watch         {"bl_no", "on"}     → {"watch"}            지켜보기 켜기·끄기
-  GET  /api/watch                                   → {"items", "updated_at", "sample"}  지켜보는 화물 목록·위치 (10-06)
+  GET  /api/watch                                   → {"items", "updated_at", "sample"}  지켜보는 화물 목록·위치
   GET  /api/watch/changes                           → {"changes": [...]}   안 본 판정 변화 (다음 접속 때 띠)
   POST /api/watch/changes/seen                      → {"cleared": 건수}    띠를 보여 줬으니 "봤음"으로
 
-  GET    /api/watch/vessels             → {"items"}            B/L 없이 배만 지켜보는 목록 (10-08 정운 실사용 57번)
+  GET    /api/watch/vessels             → {"items"}            B/L 없이 배만 지켜보는 목록
   POST   /api/watch/vessels  {mmsi | call_sign, name, flag?, dest?, eta?} → {"mmsi", "watch": true}   배 지켜보기 켜기
                                     (mmsi 없이 call_sign만 오면 ShipFinder 검색으로 MMSI를 정한다. 여러 척이면 name이 같은 배, 그다음 최근 신호. 한 척도 없으면 422,
                                     검색 실패 503, 하루 한도 소진은 503에 다른 안내문)
@@ -29,9 +29,9 @@ from pydantic import BaseModel
 
 from backend.app.auth import CurrentUser, current_user
 from backend.app.observability.logging import log_failure
-from backend.app.services import operators as ops
-from backend.app.services import vessel_watch as vsvc
-from backend.app.services import watch as svc
+from backend.app.services.account import operators as ops
+from backend.app.services.watch import vessel_watch as vsvc
+from backend.app.services.watch import watch as svc
 
 router = APIRouter(prefix="/api", tags=["watch"])
 
@@ -50,7 +50,7 @@ class StateBody(BaseModel):
 
 
 class VesselBody(BaseModel):
-    """채팅에서 본 배. name 이하는 사용자가 본 글 그대로의 표시용 값이다 (services/vessel_watch.py)."""
+    """채팅에서 본 배. name 이하는 사용자가 본 글 그대로의 표시용 값이다 (services/watch/vessel_watch.py)."""
     mmsi: int | None = None
     call_sign: str | None = None  # 입항 예정 목록처럼 MMSI가 없는 곳에서 온다. mmsi가 있으면 쓰지 않는다
     name: str
@@ -104,7 +104,7 @@ def put_watch(body: WatchBody, user: Annotated[CurrentUser | None, Depends(curre
 
 @router.get("/watch")
 def get_watch_list(user: Annotated[CurrentUser | None, Depends(current_user)] = None) -> dict:
-    """감시 목록 화면이 부른다. 지켜보는 화물마다 마지막 조회 값과 배 위치·지나온 길 (services/watch.watch_list)."""
+    """감시 목록 화면이 부른다. 지켜보는 화물마다 마지막 조회 값과 배 위치·지나온 길 (services/watch/watch.watch_list)."""
     user = _login_required(user)
     try:
         with ops.open_conn() as conn:
@@ -138,14 +138,14 @@ def post_seen(user: Annotated[CurrentUser | None, Depends(current_user)] = None)
         raise HTTPException(status_code=503, detail=DB_DOWN)
 
 
-# ── B/L 없이 배만 지켜보기 (10-08 정운 실사용 57번). 기존 B/L 지켜보기와 표·규칙을 섞지 않는다 ──
+# ── B/L 없이 배만 지켜보기. 기존 B/L 지켜보기와 표·규칙을 섞지 않는다 ──
 
 _VESSEL_ERRORS = {
     "limit": (409, "배 지켜보기는 최대 5척까지입니다. 다른 배를 먼저 끄세요"),
     "invalid": (422, "배 번호(MMSI) 또는 호출부호와 이름이 필요합니다"),
     "unknown_vessel": (422, "이 배의 선박 번호를 확인하지 못해 지켜볼 수 없어요."),
     "lookup_failed": (503, "선박 번호를 찾는 중 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요."),
-    # 하루 한도 소진은 다시 눌러도 오늘은 같으므로 안내를 따로 둔다 (10-08 정운 실사용 64번)
+    # 하루 한도 소진은 다시 눌러도 오늘은 같으므로 안내를 따로 둔다
     "quota_exhausted": (503, "오늘 선박 조회 한도를 다 썼어요. 내일 다시 시도해 주세요."),
 }
 
@@ -156,7 +156,7 @@ def get_vessel_watches(user: Annotated[CurrentUser | None, Depends(current_user)
     user = _login_required(user)
     try:
         with ops.open_conn() as conn:
-            # refresh: 위치가 없거나 오래된 배는 지금 받아 채운다 (10-08 정운 실사용 66번)
+            # refresh: 위치가 없거나 오래된 배는 지금 받아 채운다
             return vsvc.list_vessels(conn, user.id, refresh=True)
     except Exception as e:
         log_failure("vessel_watch_list", type(e).__name__)
@@ -173,7 +173,7 @@ def add_vessel_watch(body: VesselBody, user: Annotated[CurrentUser | None, Depen
             # DB 연결을 열기 전에 찾는다: 외부 검색이 느려도 연결을 붙잡고 있지 않게
             if not (body.call_sign or "").strip():
                 raise vsvc.VesselWatchError("invalid")
-            # name은 같은 호출부호의 여러 배 중 이름이 같은 배를 고르는 데 쓴다 (10-08 정운 실사용 64번)
+            # name은 같은 호출부호의 여러 배 중 이름이 같은 배를 고르는 데 쓴다
             mmsi = vsvc.resolve_mmsi(body.call_sign, body.name)
         with ops.open_conn() as conn:
             return vsvc.add_vessel(conn, user.id, mmsi, body.name, body.flag, body.dest, body.eta, body.call_sign)

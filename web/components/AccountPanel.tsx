@@ -28,7 +28,7 @@ export function AccountPanel() {
     try {
       const r = await deleteMyHistory();
       setMessage(`조회 이력 ${r.deleted}건과 기억한 화물·메모장·대화 목록을 지웠어요.`); setHistoryStep('done'); reset();
-      void refreshConversations();  // 서버는 대화 목록도 지웠다. 사이드바 목록도 다시 읽는다 (10-07 정운: 지웠는데 목록이 남아 보임)
+      void refreshConversations();  // 서버는 대화 목록도 지웠다. 사이드바 목록도 다시 읽는다 (지웠는데 목록이 남아 보임)
     } catch (e) { setError(e instanceof Error ? e.message : '이력을 지우지 못했어요.'); setHistoryStep('confirm'); }
   }
 

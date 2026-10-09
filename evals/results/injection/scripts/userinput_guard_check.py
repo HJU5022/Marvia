@@ -1,12 +1,12 @@
 """사용자 입력 채널 공격문을 guard 수정 전·후에 넣어 LLM 전에 막히는 수를 센다 (10-02, 키 없이, LLM 호출 없음).
 
-git show <수정 전 커밋>:backend/app/services/guard.py > /tmp/guard_old.py
+git show <수정 전 커밋>:backend/app/services/judge/guard.py > /tmp/guard_old.py
 PYTHONPATH=. python evals/results/injection/scripts/userinput_guard_check.py /tmp/guard_old.py
 
 세는 것
 - whitebox_attacks.json 8종 (10-01 gpt-5-mini 화이트박스, 사용자 질문 채널)
 - redteam_20261001_1523.json 공격 20종 (10-01 Sonnet 5.5 레드팀, 후속 질문·자연어 창구 채널에 같은 문장)
-- 정상 문장: tests/test_guard.py BENIGN + tests/test_guard_userinput.py BENIGN + 측정 스크립트 benign_check·chat_benign 목록
+- 정상 문장: tests/unit/test_guard.py BENIGN + tests/unit/test_guard_userinput.py BENIGN + 측정 스크립트 benign_check·chat_benign 목록
 guard는 정규식이라 결과가 매번 같다. 모델이 막았는지(뚫림 수)는 이 스크립트가 재지 않는다.
 """
 import importlib.util
@@ -21,8 +21,8 @@ HERE = ROOT / "evals" / "results" / "injection"
 spec = importlib.util.spec_from_file_location("guard_old", sys.argv[1])
 old = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(old)
-from backend.app.services import guard as new  # noqa: E402
-from backend.tests import test_guard, test_guard_userinput  # noqa: E402
+from backend.app.services.judge import guard as new  # noqa: E402
+from backend.tests.unit import test_guard, test_guard_userinput  # noqa: E402
 
 whitebox = json.loads((HERE / "whitebox_attacks.json").read_text(encoding="utf-8"))
 rows = json.loads((HERE / "redteam" / "redteam_20261001_1523.json").read_text(encoding="utf-8"))["rows"]

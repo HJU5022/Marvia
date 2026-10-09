@@ -11,8 +11,8 @@ UNI-PASS는 선명과 국적만 주고 IMO·호출부호를 주지 않는다 (PR
 호출부호(call_sign)는 검색 응답에 있는 값을 그대로 넘긴다. 해수부 조회의 키가 되는데,
 선명은 해수부가 한글이고 ShipFinder가 영문이라 서로 맞추기 어렵다.
 
-호출부호로도 찾을 수 있다 (09-28 추가). B/L의 MRN으로 해수부 입항 신고에서 호출부호를 얻으면
-선명 대신 그것으로 찾는다 (backend/app/services/identify.py). 동명 선박·표기 차이 문제가 없다.
+호출부호로도 찾을 수 있다. B/L의 MRN으로 해수부 입항 신고에서 호출부호를 얻으면
+선명 대신 그것으로 찾는다 (backend/app/services/judge/identify.py). 동명 선박·표기 차이 문제가 없다.
 
 출력 계약은 mcp_server/schemas.py의 VesselCandidatesResult다 (C4, SDD 3.4).
 
@@ -63,7 +63,7 @@ def _fetch_details(client: ShipFinderClient, mmsis: list[int]) -> dict[int, tupl
     """후보들의 목적지·선종·국적을 동시에 받아 온다. 실패한 값은 빈 값으로 둔다. 상세가 없어도 후보 자체는 남긴다.
 
     위치와 국적은 따로 받는다. 전에는 위치가 실패하면 국적도 건너뛰어서, 신호가 끊긴 배는 국적을 몰랐다.
-    그래서 세관 국적과 다른 배를 가려내지 못하고 확정했다 (09-28, 평가 B14).
+    그래서 세관 국적과 다른 배를 가려내지 못하고 확정했다 (평가 B14).
     """
 
     def one(mmsi: int) -> tuple[int, tuple]:
@@ -112,7 +112,7 @@ def get_vessel_candidates(
         return {"error": ToolError(**e.to_dict()).model_dump()}
     if call_sign:
         # 검색어는 선명·호출부호 등을 두루 찾으므로, 호출부호가 정확히 같은 배만 남긴다
-        # 호출부호는 배가 팔리거나 국적을 바꾸면 다른 배에 다시 배정된다. 09-28 실측: 같은 호출부호로 IMO가 다른 3척,
+        # 호출부호는 배가 팔리거나 국적을 바꾸면 다른 배에 다시 배정된다. 실측: 같은 호출부호로 IMO가 다른 3척,
         # 마지막 신호 0일·123일·552일 전. 아래 최근 신호 필터를 지나면 지금 쓰는 배 1척만 남는다
         hits = [h for h in hits if (h.call_sign or "").strip().upper() == call_sign.strip().upper()]
 

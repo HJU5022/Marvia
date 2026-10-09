@@ -1,10 +1,10 @@
 'use client';
-/** 입항 예정 선박 검색 결과 (docs/specs/chat-search.md vessel_search). 오른쪽 칸 구성 (10-06 개편, 정운 요청):
+/** 입항 예정 선박 검색 결과 (docs/specs/chat-search.md vessel_search). 오른쪽 칸 구성:
  * 맨 위에 큰 지도(VesselMap, 화물 상세 지도와 같은 모양과 지도 펼치기), 그 아래에 5칸짜리 가벼운 목록.
  * 줄을 누르면 지도가 그 배로 날아가고, 줄이 그 자리에서 펼쳐져 자세히(VesselDetail)가 나온다. 줄과 점은 서로 강조한다.
- * 위치는 배마다 ShipFinder를 한 번씩 불러야 알 수 있고 하루 50건 한도가 있다. 그래서 자동으로 받지 않고 선명을 누를 때만 받는다 (10-07).
+ * 위치는 배마다 ShipFinder를 한 번씩 불러야 알 수 있고 하루 50건 한도가 있다. 그래서 자동으로 받지 않고 선명을 누를 때만 받는다.
  * 받은 결과는 서버가 10분 캐시하므로 여기서도 같은 시간 동안 들고 있다(cache, 모듈 변수). 지도에는 지금 고른 배 하나만 찍는다.
- * 다른 배를 고르면 앞 배는 캐시에만 남고(점은 지운다), 10분이 지나면 캐시에서도 지운다. 그 뒤 다시 누르면 API를 부른다 (10-07 승욱).
+ * 다른 배를 고르면 앞 배는 캐시에만 남고(점은 지운다), 10분이 지나면 캐시에서도 지운다. 그 뒤 다시 누르면 API를 부른다.
  * 해수부 입항 신고 기준이라 "직전 기항지"를 그대로 보여 준다. 출발지가 아니라는 점은 줄 펼침의 출처 안내에 있다 (EC-04). 판정은 하지 않는다.
  * 수십 척이 나올 수 있어 화면에서 페이지로 나눈다. 한 페이지 10·30·50척 중 고른다(기본 10).
  * 표에 두지 못한 값(호출부호, 선박 종류, 다음에 들를 항구, 목적)은 펼친 줄 안으로 옮겼다. 가로로 밀리는 표가 되지 않게 5칸만 둔다.
@@ -24,7 +24,7 @@ const PAGE_SIZES = [10, 30, 50] as const;
 const FRESH_MS = 10 * 60 * 1000;
 
 /** 정렬할 수 있는 5칸. 시각 칸은 ISO 문자열이라 글자 순서가 곧 시간 순서다 */
-/** 직전 기항지가 이 곳 수 이하면 접지 않고 바로 보인다 (10-08 정운 실사용 77번) */
+/** 직전 기항지가 이 곳 수 이하면 접지 않고 바로 보인다 */
 const PORTS_INLINE_MAX = 5;
 const COLUMNS: {key: keyof VesselItem; label: string; cls: string}[] = [
   {key: 'ship_name', label: '선박 이름', cls: 'c-name'}, {key: 'nationality', label: '국적', cls: 'c-flag'},
@@ -88,11 +88,11 @@ export function VesselList({data}: {data: ChatResponse}) {
       .finally(() => inflight.current.delete(k));
   }, []);
 
-  // 처음에는 아무 배도 고르지 않는다. 선명을 눌렀을 때만 위치를 받는다 (10-07 승욱: 전에는 첫 줄을 자동으로 골라
+  // 처음에는 아무 배도 고르지 않는다. 선명을 눌렀을 때만 위치를 받는다 (전에는 첫 줄을 자동으로 골라
   // 묻지도 않은 배의 상세가 열리고 ShipFinder 하루 한도를 썼다)
   const selected = sel && sorted.includes(sel) ? sel : null;
   const selKey = selected ? keyOf(selected) : null;
-  // 10-08 정운 실사용 79: 고른 배를 앱에 알린다. 채팅이 "이 배 지켜봐 줘"의 그 배를 on_screen의 selected로 받는다. 해제·목록이 사라질 때는 null
+  // 고른 배를 앱에 알린다. 채팅이 "이 배 지켜봐 줘"의 그 배를 on_screen의 selected로 받는다. 해제·목록이 사라질 때는 null
   const {setSelectedArrival} = useApp();
   useEffect(() => { setSelectedArrival(selected ? {name: selected.ship_name, call_sign: selected.call_sign ?? null} : null); }, [selKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => setSelectedArrival(null), [setSelectedArrival]);
@@ -134,7 +134,7 @@ export function VesselList({data}: {data: ChatResponse}) {
     return () => window.clearInterval(id);
   }, []);
 
-  // 지도에 찍을 배: 지금 고른 배 하나 (10-07 승욱: 전에는 이 세션에서 받은 배가 모두 점으로 남았다)
+  // 지도에 찍을 배: 지금 고른 배 하나 (전에는 이 세션에서 받은 배가 모두 점으로 남았다)
   const ships = useMemo<MapShip[]>(() => {
     const e = selKey ? entries[selKey] : undefined;
     const pos = e?.status === 'done' ? e.data.position : null;
@@ -161,7 +161,7 @@ export function VesselList({data}: {data: ChatResponse}) {
       <div>
         <h2>{data.place ? `${placeLabel(data.place)}에서 들른 배` : '부산 입항 예정 배'}</h2>
         <p className="vl-meta">{total}척 · {data.days ?? 7}일 · 모든 시각 한국 시간</p>
-        {/* 10-08 정운 실사용 77번: 항구 이름이 많으면(40곳) 한 줄로 이어 붙이지 않고 접어 둔다. 5곳 이하는 바로 보인다 */}
+        {/* 항구 이름이 많으면(40곳) 한 줄로 이어 붙이지 않고 접어 둔다. 5곳 이하는 바로 보인다 */}
         {data.ports.length > 0 && (data.ports.length <= PORTS_INLINE_MAX
           ? <div className="vl-ports vl-ports-line"><b>직전 기항지 {data.ports.length}곳</b><ul className="vl-chips">{data.ports.map(p => <li key={p}>{p}</li>)}</ul></div>
           : <details className="vl-ports"><summary><b>직전 기항지 {data.ports.length}곳</b><span className="vl-ports-btn">항구 보기</span></summary>
@@ -185,8 +185,8 @@ export function VesselList({data}: {data: ChatResponse}) {
               onClick={() => pick(v)} onMouseEnter={() => setHover(k)} onMouseLeave={() => setHover(null)}>
               <td className="c-name"><div className="vl-name">
                 <button type="button" className="ship-link" onClick={e => { e.stopPropagation(); pick(v); }} aria-pressed={open} aria-expanded={open}>{v.ship_name}</button>
-                {/* 10-08 정운 실사용 64번: 자세히를 이미 받은 줄은 그 결과의 MMSI로 올려 서버가 다시 찾지 않게 한다. 못 받은 줄은 호출부호+이름을 보내고 서버가 이름으로 가린다 */}
-                {/* 해수부 신고에는 MMSI가 없어 호출부호로 올린다(서버가 찾는다). 호출부호가 없는 배는 지켜볼 수 없어 버튼을 그리지 않는다 (10-08 정운 실사용 57번) */}
+                {/* 자세히를 이미 받은 줄은 그 결과의 MMSI로 올려 서버가 다시 찾지 않게 한다. 못 받은 줄은 호출부호+이름을 보내고 서버가 이름으로 가린다 */}
+                {/* 해수부 신고에는 MMSI가 없어 호출부호로 올린다(서버가 찾는다). 호출부호가 없는 배는 지켜볼 수 없어 버튼을 그리지 않는다 */}
                 {v.call_sign ? <span className="vl-watch" onClick={e => e.stopPropagation()}><WatchVesselButton mmsi={(entries[k]?.status === 'done' ? entries[k].data.vessel?.mmsi : null) ?? null} callSign={v.call_sign} name={v.ship_name} flag={v.nationality} eta={v.expected_arrival}/></span> : null}
               </div></td>
               <td className="c-flag">{cell(v.nationality)}</td>

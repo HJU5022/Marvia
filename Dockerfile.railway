@@ -1,4 +1,4 @@
-# Railway 배포용 API 서버 이미지 (10-02 결정: 백엔드는 Railway, 화면은 Vercel).
+# Railway 배포용 API 서버 이미지 (백엔드와 화면 모두 Railway, Vercel은 쓰지 않는다).
 # Railway는 Dockerfile의 마지막 단계만 빌드하고 단계(target)를 고를 수 없다(docs.railway.com/guides/dockerfiles).
 # 기본 Dockerfile의 마지막 단계는 worker라서, app 단계(base + app)만 옮긴 이 파일을 RAILWAY_DOCKERFILE_PATH로 지정한다.
 # 로컬 `docker compose up`은 그대로 Dockerfile을 쓴다. 기본 Dockerfile의 base · app 단계를 고치면 이 파일도 같이 고친다.
@@ -7,8 +7,8 @@ FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
-COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY backend/requirements.txt backend/requirements.lock.txt ./backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt -c backend/requirements.lock.txt
 
 COPY backend/ ./backend/
 COPY mcp_server/ ./mcp_server/
@@ -21,17 +21,17 @@ COPY evals/ ./evals/
 RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements-doc.txt ./backend/requirements-doc.txt
-RUN pip install --no-cache-dir -r backend/requirements-doc.txt
+RUN pip install --no-cache-dir -r backend/requirements-doc.txt -c backend/requirements.lock.txt
 
 # OCR 모델을 빌드 때 받아 이미지에 넣는다 (첫 요청이 모델 내려받기로 느려지지 않게)
-RUN python -c "from backend.app.services.doc_ocr import _get_engine; _get_engine()"
+RUN python -c "from backend.app.services.chat.doc_ocr import _get_engine; _get_engine()"
 
 EXPOSE 8000
 # Railway는 포트를 PORT 환경변수로 준다(docs.railway.com/reference/healthchecks). 없으면 8000.
 # 서비스는 자기 /mcp를 MCP_URL로 부르므로(backend/app/services/mcp_client.py) 서버와 같은 포트로 맞춘다.
 # 기본 Dockerfile처럼 ENV에 8000을 박아 두면 Railway가 다른 포트를 줄 때 MCP 도구 호출이 전부 실패한다.
 # exec로 uvicorn이 PID 1이 되어 Railway의 종료 신호를 직접 받는다
-# 재생 모드(REPLAY_MODE=true)면 켜질 때 데모 재생 파일을 지금 시각 기준으로 만든다 (10-05 결정: 실제 B/L이 없어 배포는 데모로 시연).
-# 파일은 컨테이너 안에 생겨서 배포할 때마다 사라지고, 약 5시간 반 뒤 위치가 오래된 위치가 된다(scripts/make_demo.py).
-# 시연 직전에는 다시 배포하거나 Railway Console에서 python -m scripts.make_demo 를 한 번 실행한다. 실패해도 서버는 켠다
-CMD ["sh", "-c", "export MCP_URL=\"${MCP_URL:-http://127.0.0.1:${PORT:-8000}/mcp}\"; case \"$REPLAY_MODE\" in true|1|yes) python -m scripts.make_demo || echo 'make_demo failed';; esac; exec uvicorn backend.app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]
+# 재생 모드(REPLAY_MODE=true)면 켜질 때 데모 재생 파일을 지금 시각 기준으로 만든다 (실제 B/L이 없어 배포는 데모로 시연).
+# 파일은 컨테이너 안에 생겨서 배포할 때마다 사라지고, 약 5시간 반 뒤 위치가 오래된 위치가 된다(scripts/demo/make_demo.py).
+# 시연 직전에는 다시 배포하거나 Railway Console에서 python -m scripts.demo.make_demo 를 한 번 실행한다. 실패해도 서버는 켠다
+CMD ["sh", "-c", "export MCP_URL=\"${MCP_URL:-http://127.0.0.1:${PORT:-8000}/mcp}\"; case \"$REPLAY_MODE\" in true|1|yes) python -m scripts.demo.make_demo || echo 'make_demo failed';; esac; exec uvicorn backend.app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]

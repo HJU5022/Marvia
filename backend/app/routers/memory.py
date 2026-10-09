@@ -1,8 +1,8 @@
-"""화물 비서 기억 창구 (docs/specs/memory.md "API", 10-02 결정 7).
+"""화물 비서 기억 창구 (docs/specs/memory.md "API", 결정 7).
 
 창구만 한다: 로그인 확인 → services(memory, cargo) 부르기 → HTTP 응답. 검사·저장 규칙은 services에 있다.
   GET    /api/memory                    내 메모장 보기 (번호 없는 마크다운 + 항목 + 화물 요약, 원본 B/L 없음)
-  DELETE /api/memory                    메모장 전부 지우기 (화물 표는 남는다, 10-02 결정 D2)
+  DELETE /api/memory                    메모장 전부 지우기 (화물 표는 남는다, 결정 D2)
   DELETE /api/memory/items/{id}         메모장 항목 하나 지우기
   POST   /api/memory/document-facts     서류 확인 화면에서 확인한 B/L 조건·거래처 저장
 로그인 필수다. 로그인 기능이 꺼진 채점 환경은 사람이 없어 401 (EC-08). 삭제는 실패를 숨기지 않고 503 (routers/history.py와 같다).
@@ -21,9 +21,10 @@ from backend.app.observability.logging import log_failure
 from backend.app.schemas.memory import (
     CargoSummary, DocumentFactsRequest, DocumentFactsResponse, MemoryDeleteResponse, MemoryItem, MemoryResponse,
 )
-from backend.app.services import cargo, memory
-from backend.app.services.chat import DEFAULT_BL_TYPE
-from backend.app.services.evidence import KST
+from backend.app.services.watch import cargo
+from backend.app.services.account import memory
+from backend.app.services.chat.chat import DEFAULT_BL_TYPE
+from backend.app.services.judge.evidence import KST
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -77,7 +78,7 @@ def get_memory(user_id: Annotated[str | None, Depends(current_user_id)] = None) 
 @router.delete("/memory", response_model=MemoryDeleteResponse)
 def delete_memory(user_id: Annotated[str | None, Depends(current_user_id)] = None) -> MemoryDeleteResponse:
     """메모장을 전부 지운다 (Spec "사용자는 전부 지울 수 있다", 개인정보보호법 제36조). deleted는 지운 메모 항목 수.
-    화물 표(기억한 화물)와 조회 기록은 남는다 (10-02 결정 D2). 화물 표는 "내 조회 기록 지우기"(DELETE /api/history)와 탈퇴가 지운다."""
+    화물 표(기억한 화물)와 조회 기록은 남는다 (결정 D2). 화물 표는 "내 조회 기록 지우기"(DELETE /api/history)와 탈퇴가 지운다."""
     user_id = _login_required(user_id)
     _db_required("memory_delete")
     try:
@@ -111,7 +112,7 @@ def delete_memory_item(item_id: str, user_id: Annotated[str | None, Depends(curr
 @router.post("/memory/document-facts", response_model=DocumentFactsResponse)
 def save_document_facts(body: DocumentFactsRequest,
                         user_id: Annotated[str | None, Depends(current_user_id)] = None) -> DocumentFactsResponse:
-    """서류 확인 화면에서 사용자가 "확인한 값으로 채우기"를 누른 값만 저장한다 (10-02 결정 7).
+    """서류 확인 화면에서 사용자가 "확인한 값으로 채우기"를 누른 값만 저장한다 (결정 7).
 
     - B/L 조건(원본 B/L·은행 지시식·운임·인코텀즈)은 화물 표 줄에. 줄이 없으면 만든다. 모르는 칸(null)은 덮지 않는다
     - 거래처는 메모장 거래처 항목으로, 출처는 B/L 또는 A/N. 서류 종류(source)를 모르면 저장하지 않는다

@@ -1,6 +1,6 @@
 'use client';
-/** Marvia 소개 본문. 로그인 전 첫 화면(LoginScreen)과 사이드바의 /about 이 같은 본문을 쓴다 (10-07 정운 요청 25). 디자인이 하나여야 해서 여기서만 짠다.
- * (10-07 승욱 개편) 아임웹 GLOBAL LOGISTICS 템플릿의 짜임을 따르되, 필요한 것만 가져왔다.
+/** Marvia 소개 본문. 로그인 전 첫 화면(LoginScreen)과 사이드바의 /about 이 같은 본문을 쓴다. 디자인이 하나여야 해서 여기서만 짠다.
+ * 아임웹 GLOBAL LOGISTICS 템플릿의 짜임을 따르되, 필요한 것만 가져왔다.
  *   가져온 것: 사진 꽉 찬 첫 화면 + 굵은 큰 제목, 숫자 줄, 글·그림 두 칸 단락, 연회색 바탕 기능 카드(엇갈림), 짙은 바탕 단락, 마지막 권유 상자, 강조색 하나
  *   버린 것: 공지 띠, 고객 후기·별점, 파트너 로고(우리에게 없는 것), 지어낸 숫자. 스크롤해야 나타나는 숨김 효과도 없앴다 (빠르게 내리면 빈 화면으로 보였다)
  * 숫자 줄은 우리가 실제로 잰 값만 싣는다: evals/results/b_20261007_0935.json (평가셋 30건, 서비스 모델 gemini-3.5-flash-lite, EVAL_REPORT.md 5절).
@@ -10,12 +10,12 @@
 import type {ReactNode} from 'react';
 import {Anchor, BellRing, FileSearch, Info, ShieldCheck, Ship, Stamp} from 'lucide-react';
 
-/** 사진을 화면 너비에 맞는 크기로 (가장 먼저 그려지는 첫 화면 사진이 무거웠다, 10-07 점검) */
+/** 사진을 화면 너비에 맞는 크기로 (가장 먼저 그려지는 첫 화면 사진이 무거웠다) */
 const HERO_SRCSET = '/landing/port-800.webp 800w, /landing/port-1280.webp 1280w, /landing/port-1440.webp 1440w, /landing/port-1920.webp 1920w';
 const SEA_SRCSET = '/landing/sea-800.webp 800w, /landing/sea-1280.webp 1280w, /landing/sea-1920.webp 1920w';
 import {isLive} from '@/lib/api';
 
-/** 평가셋 30건 실측 (10-07, b_20261007_0935.json). 숫자 줄과 출처 문장이 이 값 하나를 쓴다 */
+/** 평가셋 30건 실측 (b_20261007_0935.json). 숫자 줄과 출처 문장이 이 값 하나를 쓴다 */
 const EVAL = {
   date: '10월 7일',
   total: 30,
@@ -117,7 +117,7 @@ export function IntroContent({action, navRight, footer}: {action: ReactNode; nav
       <div className="lp-band-shade" aria-hidden="true"/>
       <div className="lp-wrap lp-band-in">
         <p className="lp-eyebrow light">데이터 출처</p>
-        <h2 id="lp-src">공공 데이터 세 곳을 한 화면에</h2>
+        <h2 id="lp-src">공공 데이터와 선박 위치 신호를 한 화면에</h2>
         <ul className="lp-sources">
           {SOURCES.map(({icon: Icon, name, what}) => <li key={name}><Icon size={22} strokeWidth={1.75} aria-hidden="true"/><b>{name}</b><span>{what}</span></li>)}
         </ul>

@@ -1,5 +1,5 @@
-/** End-to-end acceptance for the current AI-composer home (10-02 rewrite; the old #bl form flow no longer exists).
- * 1) Demo mode: `npm run dev -- --port 3100` must be running at MARVIA_TEST_URL (default :3100). Fixtures only, no API.
+/** End-to-end acceptance for the current AI-composer home (rewritten; the old #bl form flow no longer exists).
+ * 1) Demo mode: `npm run dev -- --port 3100` must be running at MARVIA_TEST_URL (default http://localhost:3100; 127.0.0.1 makes the Next dev server block dev resources, so the first step times out). Fixtures only, no API.
  * 2) Live mode (optional): a production build made with NEXT_PUBLIC_API_BASE=http://127.0.0.1:3199 running at MARVIA_LIVE_TEST_URL.
  *    This script starts a fake API on :3199 itself, so the browser receives real SSE over the network (docs/specs/chat-progress.md).
  *    Without MARVIA_LIVE_TEST_URL the live checks are reported as SKIP, never as PASS.
@@ -14,8 +14,8 @@ import http from 'node:http';
 import {chromium} from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
-const SHOTS77 = process.env.MARVIA_SHOT_DIR ?? 'screenshots';  // 10-08 정운 실사용 77번 스크린샷 자리
-const base = process.env.MARVIA_TEST_URL ?? 'http://127.0.0.1:3100';
+const SHOTS77 = process.env.MARVIA_SHOT_DIR ?? 'screenshots';  // 스크린샷 자리
+const base = process.env.MARVIA_TEST_URL ?? 'http://localhost:3100';
 const live = process.env.MARVIA_LIVE_TEST_URL ?? '';
 const MOCK_PORT = Number(process.env.MARVIA_MOCK_API_PORT ?? 3199);
 const mockOrigin = `http://127.0.0.1:${MOCK_PORT}`;
@@ -36,7 +36,7 @@ async function audit(page, name) {
 }
 async function newContext(width, allowed = [base]) {
   const context = await browser.newContext({viewport: {width, height: 1000}, deviceScaleFactor: 1, reducedMotion: 'reduce'});
-  // 지도 바탕(OpenFreeMap)이 쓰는 호스트 하나만 예외로 허용한다 (10-06 정운 승인). 스타일, 벡터 타일, 글꼴, 아이콘이 모두 이 호스트다.
+  // 지도 바탕(OpenFreeMap)이 쓰는 호스트 하나만 예외로 허용한다. 스타일, 벡터 타일, 글꼴, 아이콘이 모두 이 호스트다.
   // 못 불러와도 지도는 해안선으로 되돌아가야 하므로(lib/basemap.ts) 이 허용이 e2e를 네트워크에 묶지는 않는다. 다른 외부 주소는 그대로 실패시킨다.
   const origins = [...allowed.map(u => new URL(u).origin), 'https://tiles.openfreemap.org'];
   await context.route('**/*', route => {
@@ -54,7 +54,7 @@ const activeId = page => page.evaluate(() => document.activeElement?.id ?? '');
 const mockCalls = [];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chatReply = reply => ({kind: 'message', reply, agent: null, request: null, vessels: [], place: null, ports: [], days: null});
-/** 10-08 정운 실사용 77번: 선박 검색 답. 서버 _ship_list_lines와 같은 모양의 글 + 43척(항구 40곳)의 구조 데이터 */
+/** 선박 검색 답. 서버 _ship_list_lines와 같은 모양의 글 + 43척(항구 40곳)의 구조 데이터 */
 function vesselReply() {
   const vessels = Array.from({length: 43}, (_, i) => ({ship_name: `TEST VESSEL ${i + 1}`, call_sign: `T${i}`, nationality: 'PANAMA', ship_kind: '컨테이너선', previous_port: `PORT ${i % 40}`, next_port: null, purpose: '양하',
     expected_arrival: new Date(Date.UTC(2026, 9, 6, 15 + i, 0)).toISOString(), facility: null, planned_departure: null, is_cargo: true}));
@@ -115,7 +115,7 @@ try {
       await page.screenshot({path: `screenshots/${String(i + 8).padStart(2, '0')}-${route}-${width}.png`, fullPage: true}); check(`${route} ${width}px`);
     }
 
-    // 설정은 화면 안 탭 4개 (10-08 정운 실사용 48번: 조회 이력 탭을 뺐다), 관리는 탭 2개: 탭마다 접근성 검사 (탭을 바꿔도 가로 넘침이 없어야 한다)
+    // 설정은 화면 안 탭 4개 (조회 이력 탭을 뺐다), 관리는 탭 2개: 탭마다 접근성 검사 (탭을 바꿔도 가로 넘침이 없어야 한다)
     await page.goto(`${base}/settings`); await ready(page);
     const settingsTabs = page.locator('.st-tabs .st-tab'); assert.equal(await settingsTabs.count(), 4, 'settings has 4 in-page tabs');
     for (let t = 0; t < 4; t++) { await settingsTabs.nth(t).click(); await ready(page); await overflow(page, width); if (!interactionsOnly) await audit(page, `settings-tab${t}-${width}`); }
@@ -169,7 +169,7 @@ try {
     await page.locator('.cand-row').first().click(); assert(await page.getByRole('radio').first().isChecked(), 'clicking a candidate row selects its radio'); await page.getByRole('button', {name: '확인하고 판정하기'}).click(); await page.locator('[data-status="ok"][aria-busy="false"]').waitFor();
     check(`candidate validation + resolution ${width}`);
 
-    // 10-08 정운 실사용 37번: 채팅으로 조회해 되묻는 답이 오면 말풍선 아래에 후보 칩이 보이고, 칩을 누르면 같은 요청으로 판정이 나온 뒤 칩은 사라진다
+    // 채팅으로 조회해 되묻는 답이 오면 말풍선 아래에 후보 칩이 보이고, 칩을 누르면 같은 요청으로 판정이 나온 뒤 칩은 사라진다
     await home(page); await input(page).fill('MRVDEMO1102'); await input(page).press('Enter');
     await page.locator('.chat-cand-chips').waitFor();
     assert(await page.locator('.chat-cand-chip').count() > 0, 'candidate chips appear under the asking bubble');
@@ -178,7 +178,7 @@ try {
     assert.equal(await page.locator('.chat-cand-chips').count(), 0, 'chips disappear once resolved');
     check(`chat candidate chips resolve ${width}`);
 
-    // 10-08 정운 실사용 58번: 데모의 정상 답에는 모의 근거 표시가 붙는다. 칩을 누르면 그 자리에 출처가 뜨고, Esc로 닫으면 칩으로 포커스가 돌아온다. "근거 N개"는 모음 패널을 연다
+    // 데모의 정상 답에는 모의 근거 표시가 붙는다. 칩을 누르면 그 자리에 출처가 뜨고, Esc로 닫으면 칩으로 포커스가 돌아온다. "근거 N개"는 모음 패널을 연다
     await home(page); await input(page).fill('MRVDEMO1101'); await input(page).press('Enter');
     const chip = page.locator('.chat-turn.assistant .ev-chip').first();
     await chip.waitFor();
@@ -214,7 +214,7 @@ try {
     await home(page); await input(page).fill('중국에서 부산 들어오는 배 보여줘'); await input(page).press('Enter');
     await page.locator('.vessel-results').waitFor();
     assert.equal(await page.locator('.vessel-results thead th').count(), 5);
-    // 10-08 정운 실사용 77번: 체험 모드 답도 3칸 표로 (배 이름 | 도착 예정 | 직전 기항지), 직전 기항지 2곳은 접지 않고 바로 보인다
+    // 체험 모드 답도 3칸 표로 (배 이름 | 도착 예정 | 직전 기항지), 직전 기항지 2곳은 접지 않고 바로 보인다
     assert((await page.locator('.cvt-list li').count()) >= 1, 'one-line list rows'); assert.equal(await page.locator('.cvt-table').count(), 0, 'no boxed table');
     assert.equal(await page.locator('.vl-ports details, details.vl-ports').count(), 0, 'few ports are shown inline, no disclosure');
     assert.equal(await page.locator('.vl-ports-line .vl-chips li').count(), 2);
@@ -239,7 +239,7 @@ try {
     assert(await page.locator('.vessel-results .leaflet-container').count() <= 1, 'only the selected vessel keeps a map');
     check(`vessel search + inline detail switch/cleanup ${width}`);
 
-    // 서류 첨부 (10-08 정운 49·51·53·73번): 붙이면 칩만 생기고 아무 일도 없다(읽기·조회 없음). 보내기를 눌러야 서류에서 B/L만 읽어 조회한다.
+    // 서류 첨부: 붙이면 칩만 생기고 아무 일도 없다(읽기·조회 없음). 보내기를 눌러야 서류에서 B/L만 읽어 조회한다.
     // 입력창은 셋 다 된다: 글만, 사진만, 사진 + 글. 보낼 때마다 사용자 말풍선은 정확히 한 개이고 조회 결과가 온다. 확인 카드·수정 화면은 없다
     const turnCount = await turns(page);
     // 휴대폰: 펼친 상세 시트가 입력창을 덮으므로 손잡이로 접는다 (넓은 화면에는 손잡이가 없다)
@@ -297,11 +297,11 @@ try {
     check(`text only send: one user turn ${width}`);
 
     // 이력: 필터, 저장된 판정 재생, 다시 조회해도 재생 스냅샷 조건 그대로
-    // 사이드바 개편(10-07): 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다
+    // 사이드바 개편: 좁은 화면은 메뉴 서랍을 열고, "화물" 묶음이 접혀 있으면 펼친 뒤 누른다
     if (await page.getByRole('button', {name: '메뉴 열기'}).isVisible()) await page.getByRole('button', {name: '메뉴 열기'}).click();
     const cargoGroup = page.locator('.sb-group-head'); if (await cargoGroup.getAttribute('aria-expanded') === 'false') await cargoGroup.click();
     await page.getByRole('link', {name: '조회 이력'}).first().click(); await page.locator('.hist-list > li').first().waitFor();
-    await page.getByLabel('B/L 뒤 네 자리 검색').fill('ZZZZ'); assert.equal(await page.locator('.hist-list > li').count(), 0);
+    await page.getByLabel('B/L 번호 검색').fill('ZZZZ'); assert.equal(await page.locator('.hist-list > li').count(), 0);
     await page.getByRole('button', {name: '조건 초기화'}).click(); await page.getByLabel('상태별로 거르기').selectOption('failed');
     await page.getByRole('button', {name: /저장된 판정 열기/}).click(); await page.locator('[data-status="failed"]').waitFor();
     await page.getByText('저장된 이력', {exact: true}).waitFor({state: 'attached'});
@@ -362,7 +362,7 @@ try {
       check(`live: missing stream endpoint falls back to /api/chat ${width}`);
 
 
-      // 10-08 정운 실사용 77번: 선박 검색 답은 표로 (3칸 머리글, 줄 나눔, 가로 넘침 없음), "나머지 N척 전체 보기"가 표를 연다, 직전 기항지 40곳은 접어 둔다
+      // 선박 검색 답은 표로 (3칸 머리글, 줄 나눔, 가로 넘침 없음), "나머지 N척 전체 보기"가 표를 연다, 직전 기항지 40곳은 접어 둔다
       await input(page).fill('VESSELS 일본에서 오는 배'); await input(page).press('Enter');
       await page.locator('.cvt-list').waitFor();
       assert.equal(await page.locator('.cvt-list li').count(), 5);

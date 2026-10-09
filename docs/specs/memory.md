@@ -12,8 +12,8 @@
 | "UNI-PASS 품명·중량·화주는 쓰지 않는다" | 품명(`goods_name`)은 저장하고 채팅 에이전트 LLM에는 준다. 판정 LLM에는 주지 않는다(`llm.JUDGE_CUSTOMS_EXCLUDE`). 인젝션 의심 문구는 버린다. 중량·세관명·화주는 여전히 저장하지 않는다. 컨테이너 번호(`container_no`)는 저장하되 LLM에는 [CNTR1] 번호표만 간다 |
 | 채팅 입구 (의도 4개, `marvia-chat-route`) | 기본 경로가 도구를 고르는 채팅 에이전트로 바뀌었다 (docs/specs/chat-search.md "구현 상태"). 의도 4개 방식은 대비 경로다. 기억은 화물 조회·후속 질문 외에 **화물 조회 없이 끝난 채팅 턴**에도 쓴다: `memory.remember_chat_later`. 문장이 있을 때만 기억 뽑기를 부른다 |
 | 마이그레이션 015 "적용은 수동" | 서버와 worker가 켜질 때 `migrations/*.sql`을 자동 적용한다 (`db.apply_migrations`). 운영 DB에 적용됐는지는 이 문서로는 확인되지 않는다. 끝난 화물 3년 정리는 `worker/run.py`가 실행마다 `purge_done_cargo`를 부르고, pg_cron이 있으면 매일 18:20 UTC에도 돈다 |
-| "확정된 배는 다시 조회 때 배 찾기를 건너뛰는 데 아직 쓰지 않는다" | 일반 조회에서는 여전히 안 쓴다. 지켜보기 재판정(`services/watch.py run_watch`)은 저장된 `vessel_mmsi`를 후보 검색 없이 쓴다 (`routers/agent.py trusted_vessel`) |
-| 화면 "설정 > 내 기억" | 설정의 "기억한 화물" 탭(`web/components/SettingsPage.tsx`, `MemoryPanel.tsx`). 화물 표는 `/cargo` 화물 현황(엑셀 내려받기 포함, `services/cargo_sheet.py`)과 `/watch` 지켜보는 화물에도 쓰인다 |
+| "확정된 배는 다시 조회 때 배 찾기를 건너뛰는 데 아직 쓰지 않는다" | 일반 조회에서는 여전히 안 쓴다. 지켜보기 재판정(`services/watch/watch.py run_watch`)은 저장된 `vessel_mmsi`를 후보 검색 없이 쓴다 (`routers/agent.py trusted_vessel`) |
+| 화면 "설정 > 내 기억" | 설정의 "기억한 화물" 탭(`web/components/SettingsPage.tsx`, `MemoryPanel.tsx`). 화물 표는 `/cargo` 화물 현황(엑셀 내려받기 포함, `services/watch/cargo_sheet.py`)과 `/watch` 지켜보는 화물에도 쓰인다 |
 | 모델 표 (`LLM_MODEL` Gemini 2.5 Flash) | `.env.example` 기준 값은 OpenRouter `google/gemini-3.5-flash-lite`다. `MEMORY_MODEL`은 코드는 있고 `.env.example` 값이 비어 있다 (비면 기억 뽑기만 건너뜀). 실제 운영 값은 레포에서 확인되지 않는다 |
 | 체크리스트의 수동 작업 | Langfuse 프롬프트 등록·실제 DB 검증·평가 문항·처리방침 문구는 레포에서 확인되지 않아 열린 채로 둔다. 아래 체크 표시는 초기 설계 시점 기준이다 |
 
@@ -99,7 +99,7 @@
 | 화물별 | 걱정 | 내용 (60자) |
 | 화물별 | 할 일 | 내용 (60자), 완료 여부 |
 
-넣지 않는 것: 자유로운 대화 요약, 담당자 개인 이름, 개인 휴대폰, 이메일, 금액, 계좌, 지시문. 휴대폰·이메일·금액·계좌·지시문은 코드가 모양으로 거절한다(`services/pii_patterns.py`, `memory._check_fields`). **개인 이름은 모양으로 가를 수 없어 프롬프트(`marvia-memory-write`, `marvia-doc-extract`)로만 막는다.** 거래처 전화번호는 서류 사진(B/L "Party to contact for cargo release", A/N)과 사용자에게서만 받는다.
+넣지 않는 것: 자유로운 대화 요약, 담당자 개인 이름, 개인 휴대폰, 이메일, 금액, 계좌, 지시문. 휴대폰·이메일·금액·계좌·지시문은 코드가 모양으로 거절한다(`services/account/pii_patterns.py`, `memory._check_fields`). **개인 이름은 모양으로 가를 수 없어 프롬프트(`marvia-memory-write`, `marvia-doc-extract`)로만 막는다.** 거래처 전화번호는 서류 사진(B/L "Party to contact for cargo release", A/N)과 사용자에게서만 받는다.
 
 코드가 이 모양으로 만든다. 번호(`[c1]`), 날짜, 제목은 코드가 붙이고 LLM은 건드리지 못한다.
 
@@ -160,7 +160,7 @@
 4. **전체 질문** ("이번 주 남은 거 뭐야?"): 화물 표의 마지막 판정과 메모장 할 일로 답하고, **언제 확인한 값인지** 붙인다. 화물마다 새로 조회하지 않는다 (ShipFinder 하루 50회). *(만들지 않는다)*
 5. 처음 범위는 두 종류 질문(화물 하나, 전체)만. 나머지는 "B/L을 알려 주세요" 등으로 안내한다. *(채팅은 지금 구조 그대로다. 의도 cargo / follow_up / vessel_search / other, `marvia-chat-route` 프롬프트도 그대로. 기억은 화물 조회와 후속 질문에만 연결한다)*
 
-~~판정 흐름(`_assess` 등)을 `services/`로 옮긴 뒤 두 라우터가 같은 함수를 부른다.~~ **결정: 옮기지 않는다.** 채팅 창구(`services/chat.py`)는 이미 `routers/agent.run_agent`를 그대로 불러 판정·이력·트레이스가 같다. 기억 읽기·쓰기는 `run_agent` 안에 붙였다.
+~~판정 흐름(`_assess` 등)을 `services/`로 옮긴 뒤 두 라우터가 같은 함수를 부른다.~~ **결정: 옮기지 않는다.** 채팅 창구(`services/chat/chat.py`)는 이미 `routers/agent.run_agent`를 그대로 불러 판정·이력·트레이스가 같다. 기억 읽기·쓰기는 `run_agent` 안에 붙였다.
 
 ### 보관과 크기
 
@@ -296,14 +296,14 @@ POST   /api/memory/document-facts      서류 확인 화면에서 확인한 B/L 
 | `backend/app/db/migrations/014_memory_tables.sql` | 표 두 개 (Supabase 적용) |
 | `backend/app/db/migrations/015_memory_conditions_purge.sql` | B/L 조건 칸, 확인 대기, 가득 참 표시, 삭제 표시 표, 끝난 화물 3년 정리 함수·pg_cron (서버 기동 때 자동 적용) |
 | ~~`backend/app/services/assess.py`~~ | **만들지 않는다.** 판정 흐름은 `routers/agent.py`에 둔다 (결정 3) |
-| `backend/app/services/cargo.py` | 화물 표 쓰기·읽기, 지문, 끝난 화물 처리 (새 파일) |
-| `backend/app/services/memory.py` | 명령 검사·적용, 상한, 템플릿(번호 있음·없음) (새 파일) |
-| `backend/app/services/chat.py` | (기존) B/L 찾기·가리기. 가린 문장을 기억 뽑기 재료로 넘기고, 화물 조회 답에 "지난 조회" 한 줄. 하우스→마스터·`cargo_ref`는 안 만든다 |
+| `backend/app/services/watch/cargo.py` | 화물 표 쓰기·읽기, 지문, 끝난 화물 처리 (새 파일) |
+| `backend/app/services/account/memory.py` | 명령 검사·적용, 상한, 템플릿(번호 있음·없음) (새 파일) |
+| `backend/app/services/chat/chat.py` | (기존) B/L 찾기·가리기. 가린 문장을 기억 뽑기 재료로 넘기고, 화물 조회 답에 "지난 조회" 한 줄. 하우스→마스터·`cargo_ref`는 안 만든다 |
 | `backend/app/services/llm.py` | `write_memory()`, 판정·후속 호출에 기억 블록 자리(`context`), 서류 칸 추가 |
-| `backend/app/services/validate.py` | 검사 규칙 추가: 답에 내부 번호(`[c1]`, `u2` 등)가 있으면 위반 |
+| `backend/app/services/judge/validate.py` | 검사 규칙 추가: 답에 내부 번호(`[c1]`, `u2` 등)가 있으면 위반 |
 | `backend/app/routers/chat.py`, `routers/memory.py` | 채팅(기존, 사용자 ID만 넘김), 기억 창구(새 파일) |
 | `backend/app/routers/agent.py` | 화물 표·메모장 읽기·쓰기 연결, 후속 질문 지난 결과를 원본 B/L로 가르기(EC-05) |
-| `backend/app/services/account.py`, `routers/history.py` | 탈퇴·내 기록 삭제 때 화물 표·메모장도 지움 |
+| `backend/app/services/account/account.py`, `routers/history.py` | 탈퇴·내 기록 삭제 때 화물 표·메모장도 지움 |
 | ~~`backend/app/observability/langfuse.py`~~ | **고치지 않는다.** 트레이스의 기억 블록은 그대로 둔다 (결정 8) |
 | Langfuse 프롬프트 | `marvia-memory-write`, `marvia-chat-route` 새로. `marvia-judge`·`marvia-follow-up`에 `<user_cargo>`·`<user_memory>` |
 | `.env.example` | `MEMORY_MODEL` 추가 (계약 C8) |
@@ -323,7 +323,7 @@ POST   /api/memory/document-facts      서류 확인 화면에서 확인한 B/L 
 1. **범위**: 화물 표(`user_cargo`)와 메모장(`user_memory`) 둘 다 만든다.
 2. **채팅**: 지금 `/api/chat` 구조를 그대로 둔다 (의도 cargo / follow_up / vessel_search / other, `marvia-chat-route` 그대로). 기억은 화물 조회와 후속 질문에만 연결한다. 전체 질문("이번 주 남은 거 뭐야?"), `cargo_ref` 이름 찾기, 하우스→마스터 자동 재조회는 만들지 않는다.
 3. **판정 흐름 이동 안 함**: `routers/agent.py`의 판정 흐름을 새 서비스 파일로 옮기지 않는다. 채팅이 이미 `run_agent`를 재사용한다.
-4. **"지난번엔 ○○였어요"**: 로그인 사용자가 이미 줄이 있는 화물을 조회하면 채팅 답에 코드가 쓴 한 줄을 붙인다 (LLM 아님). 예: "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요." 덮어쓰기 **전에** 읽은 값으로 만든다. 응답 칸을 늘리지 않고 `schemas/agent.py`도 바꾸지 않는다 (`services/chat._cargo`, `cargo.previous_line`).
+4. **"지난번엔 ○○였어요"**: 로그인 사용자가 이미 줄이 있는 화물을 조회하면 채팅 답에 코드가 쓴 한 줄을 붙인다 (LLM 아님). 예: "지난 조회(10.01)에서는 지켜볼 것, 여유 3일이었어요." 덮어쓰기 **전에** 읽은 값으로 만든다. 응답 칸을 늘리지 않고 `schemas/agent.py`도 바꾸지 않는다 (`services/chat/chat._cargo`, `cargo.previous_line`).
 5. **B/L 조건 세 칸** (`user_cargo`, 마이그레이션 015):
    - `original_bl`: `required`(원본 필요) / `surrendered`(서렌더, 원본 불필요) / NULL
    - `to_order_bank`: 수하인이 "TO ORDER OF ... BANK"(은행 지시식)인가. BOOLEAN / NULL
@@ -343,7 +343,7 @@ POST   /api/memory/document-facts      서류 확인 화면에서 확인한 B/L 
 
 ### 구현하며 정한 것 (결정에 숫자가 없던 곳)
 
-- 칸 글자 수: 담당 직무 20자, 전화번호 20자, 이름표 20자 (Spec에 숫자 없음). 기억 뽑기 한 번에 받는 명령 10개까지. 버전 충돌 재시도 3번. 상한(3,000자·30건)과 함께 `services/memory.py`·`services/cargo.py` 상수 한 곳에 둔다. rules.md는 LLM에 통째로 들어가는 Skill 재료라 거기 두지 않았다
+- 칸 글자 수: 담당 직무 20자, 전화번호 20자, 이름표 20자 (Spec에 숫자 없음). 기억 뽑기 한 번에 받는 명령 10개까지. 버전 충돌 재시도 3번. 상한(3,000자·30건)과 함께 `services/account/memory.py`·`services/watch/cargo.py` 상수 한 곳에 둔다. rules.md는 LLM에 통째로 들어가는 Skill 재료라 거기 두지 않았다
 - 3,000자는 번호 없는 메모장 글(사용자가 보는 모양) 기준
 - 대화 기억 뽑기는 사용자 문장이 있을 때만 부른다 (채팅 문장, 또는 후속 질문). 칸 입력으로 한 첫 조회는 문장이 없어 화물 표만 쓴다
 - 대화에서 나온 거래처는 출처가 "사용자"뿐이고, 회사 이름·전화 숫자가 사용자 문장에 있어야 한다. B/L·A/N 출처는 서류 확인 저장만 쓴다
@@ -384,15 +384,15 @@ POST   /api/memory/document-facts      서류 확인 화면에서 확인한 B/L 
 ### 구현
 
 - [x] 마이그레이션 014 `user_cargo`, `user_memory` + RLS + 보관 함수·pg_cron (015 파일, Supabase 적용은 수동)
-- [x] `services/cargo.py`: 지문, 쓰기·읽기, 끝난 화물, 반출 3년 정리 (정리는 DB 함수 015 + 워커, 결정 D3)
-- [x] `services/memory.py`: 명령 검사, 버전 확인 적용, 상한 줄이기, 템플릿 두 모양
+- [x] `services/watch/cargo.py`: 지문, 쓰기·읽기, 끝난 화물, 반출 3년 정리 (정리는 DB 함수 015 + 워커, 결정 D3)
+- [x] `services/account/memory.py`: 명령 검사, 버전 확인 적용, 상한 줄이기, 템플릿 두 모양
 - [x] `services/llm.py` `write_memory()` + `.env.example` `MEMORY_MODEL`
 - [ ] Langfuse `marvia-memory-write` 등록 (수동 작업, 레포에서 확인되지 않음), 로컬 사본 `backend/app/prompts/` (끝)
 - [x] ~~판정 흐름을 `routers/agent.py`에서 서비스로 옮기기~~ 하지 않음 (결정 3)
 - [x] `routers/agent.py`: 화물 표·메모장 읽어 넣기, 응답 뒤 백그라운드 쓰기 (`memory.run_later`, /api/agent·/api/chat·스트림 공통)
 - [x] `marvia-judge`·`marvia-follow-up`에 두 블록 추가, 순서 고정 (로컬 파일. Langfuse 등록은 수동 작업, 레포에서 확인되지 않음)
 - [x] `validate.py`: 내부 번호 새어 나옴 검사 (V12)
-- [x] `services/chat.py` + `routers/chat.py`: 기억 연결과 지난 조회 한 줄만. 하우스 → 마스터, `cargo_ref`는 만들지 않음 (결정 2)
+- [x] `services/chat/chat.py` + `routers/chat.py`: 기억 연결과 지난 조회 한 줄만. 하우스 → 마스터, `cargo_ref`는 만들지 않음 (결정 2)
 - [x] Langfuse `marvia-chat-route` 등록 (등록돼 있고 변경 없음)
 - [x] `routers/memory.py`: 보기, 전부 지우기, 항목 하나 지우기, 서류 확인값 저장
 - [x] 탈퇴·내 기록 삭제 때 화물 표·메모장도 삭제 (운영자의 고객 삭제도 같은 `withdraw`를 탄다)
@@ -427,4 +427,4 @@ POST   /api/memory/document-facts      서류 확인 화면에서 확인한 B/L 
 
 ## 기억 뽑기 실행 방식 변경
 
-- 기억 뽑기는 답과 동시에 돌린다. 한 번의 시간 상한 `MEMORY_TIMEOUT_SEC` 10초(예전에는 60초까지 매달림), 실패하면 `MEMORY_RETRIES` 2번 더 시도해 모두 3번까지, 답이 다 만들어진 뒤 `MEMORY_JOIN_GRACE_SEC` 2초만 더 기다리고 넘으면 답을 먼저 보낸다. 저장에 실패하거나 검사에 걸려 버린 칸은 사용자에게 알린다. 거래처는 역할 없이도 저장한 뒤 역할·전화를 되묻는다 (실사용 76번, 커밋 `5da58bf`, `services/memory.py`)
+- 기억 뽑기는 답과 동시에 돌린다. 한 번의 시간 상한 `MEMORY_TIMEOUT_SEC` 10초(예전에는 60초까지 매달림), 실패하면 `MEMORY_RETRIES` 2번 더 시도해 모두 3번까지, 답이 다 만들어진 뒤 `MEMORY_JOIN_GRACE_SEC` 2초만 더 기다리고 넘으면 답을 먼저 보낸다. 저장에 실패하거나 검사에 걸려 버린 칸은 사용자에게 알린다. 거래처는 역할 없이도 저장한 뒤 역할·전화를 되묻는다 (실사용 76번, 커밋 `5da58bf`, `services/account/memory.py`)

@@ -1,4 +1,4 @@
-/** 지도 바탕을 정적 래스터 타일로 미리 구워 두는 스크립트 (10-06 정운 승인). 다시 굽기: `node scripts/bake-basemap.mjs`
+/** 지도 바탕을 정적 래스터 타일로 미리 구워 두는 스크립트. 다시 굽기: `node scripts/bake-basemap.mjs`
  *
  * 왜 하나
  * - WebGL이 없는 컴퓨터(발표장 PC 등)에서는 OpenFreeMap 벡터 지도를 그릴 수 없다. 그래서 같은 지도를 미리 그림 파일(XYZ 타일)로 구워
@@ -24,12 +24,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'public', 'basemap');
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron'; // lib/basemap.ts 의 STYLE_URL 과 같다
 const ATTRIBUTION = '© OpenStreetMap · OpenFreeMap';
-// 손실 압축(q78)은 바다 색을 1~2단계 어긋나게 해서 타일 사이에 옅은 사각형 이음선이 보였다(10-06). 바다 픽셀이 sea.webp·배경색과 정확히 같도록 무손실로 굽는다.
+// 손실 압축(q78)은 바다 색을 1~2단계 어긋나게 해서 타일 사이에 옅은 사각형 이음선이 보였다. 바다 픽셀이 sea.webp·배경색과 정확히 같도록 무손실로 굽는다.
 // 지도가 단색 위주라 무손실이어도 용량이 작다
 const WEBP = {lossless: true, effort: 6};
 // 구울 구역. 확대 3~7 은 전체 구역, 확대 8 은 DETAIL 구역만 (용량 때문, 승인된 범위)
 const REGION = {west: 100, east: 155, south: 10, north: 50};
-// 확대 8: 한국 + 일본 서부 + 중국 동해안 (10-06 범위 넓힘)
+// 확대 8: 한국 + 일본 서부 + 중국 동해안
 const DETAIL = {west: 118, east: 136, south: 28, north: 40};
 const PLAN = [3, 4, 5, 6, 7].map((z) => ({z, box: REGION, keepSea: false})).concat([{z: 8, box: DETAIL, keepSea: true}]);
 

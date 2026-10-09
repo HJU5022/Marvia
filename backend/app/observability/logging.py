@@ -22,7 +22,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 # 요청 하나 안에서만 유지되는 값들. 비동기로 여러 요청이 섞여도 서로 침범하지 않는다
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 llm_usage_var: ContextVar[dict] = ContextVar("llm_usage", default={})
-# 이 요청의 로그인 이메일 (auth.current_user가 채운다). 하루 토큰 한도의 운영자 예외 판단에 쓴다 (services/quota.py).
+# 이 요청의 로그인 이메일 (auth.current_user가 채운다). 하루 토큰 한도의 운영자 예외 판단에 쓴다 (services/account/quota.py).
 # 미들웨어가 요청마다 새 dict를 만든다. 요청 밖(스크립트·테스트)은 None이다
 request_user_var: ContextVar[dict | None] = ContextVar("request_user", default=None)
 
@@ -59,7 +59,7 @@ def setup_logging(level: int = logging.INFO) -> None:
 
     # HTTP 클라이언트는 INFO로 요청 주소 전체를 남긴다. 외부 API 주소에는 키(UNI-PASS crkyCn,
     # 공공데이터 serviceKey, ShipFinder key)와 B/L 번호가 들어 있어 로그에 그대로 쌓인다
-    # (09-28 실제 B/L 호출에서 발견, SDD 3.5 "로그에는 가린 번호만" 위반). 경고 이상만 남긴다.
+    # (실제 B/L 호출에서 발견, SDD 3.5 "로그에는 가린 번호만" 위반). 경고 이상만 남긴다.
     for name in NOISY_URL_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
 
@@ -85,7 +85,7 @@ def log_failure(stage: str, error: str) -> None:
     이 줄이 없으면 로그만 보고는 어느 단계가 왜 실패했는지 알 수 없다. request_id로 요청 로그·트레이스와 잇는다.
     error에는 오류 종류·코드만 넣는다. 예외 메시지는 넣지 않는다. 외부 API 주소(키)나 B/L이 섞일 수 있다 (SDD 3.5).
     메시지에도 stage·error를 적는다. JSON 핸들러가 없는 곳(평가 실행기 터미널)에서는 메시지만 찍혀서,
-    전에는 "failure" 한 단어만 보여 무엇이 실패했는지 알 수 없었다 (09-29 평가 실행).
+    전에는 "failure" 한 단어만 보여 무엇이 실패했는지 알 수 없었다.
     """
     failure_logger.warning("failure stage=%s error=%s", stage, error,
                            extra={"request_id": current_request_id(), "stage": stage, "error": error})

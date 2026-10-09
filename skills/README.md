@@ -18,9 +18,10 @@
 | `customs-stages/` | 통관 단계 읽는 법, 관세사 확인이 필요한 때 | 통관 보류 낱말(`customs_hold_words`), 통관 평가 문장 검사 낱말 |
 | `port-busan/` | 부산항 부두·정박지 이름의 뜻, 하역 장소 문장 규칙 | 부산 기준점·반경·항구 코드, 해수부 입항 일정 조회 기간·선명 비교 기준 |
 | `port-busan/cargo-vessels.md` | | 입항 예정 선박 검색에서 수입 화물선으로 보는 선종·입항 목적 목록 (`services/chat.py`가 읽는다) |
+| `import-basics/` | 수입 실무 기초: B/L 번호를 찾는 곳, 포워더 확인, A/N 같은 낱말. 웹 검색 대신 고정 문서로 둔다 (docs/adr/0020) | 없음. 글만 있는 Skill이라 `rules.md`가 없다 |
 | `referrals/` | 안내처 Skill. 프롬프트에 넣지 않는다 | 신호별 안내 문장, 공식 창구 주소·전화 (`services/referrals.py`가 읽어 붙인다) |
 
-프롬프트에 넣는 조합은 `llm.py`가 정한다: 판정은 `ais-reliability`, `customs-stages`, `cargo-verdict`, 선박 후보 판단은 `ais-reliability`, 후속 질문은 `referrals`를 뺀 네 폴더 전부.
+프롬프트에 넣는 조합은 `llm.py`가 정한다: 판정은 `ais-reliability`, `customs-stages`, `cargo-verdict`, 선박 후보 판단은 `ais-reliability`, 후속 질문과 채팅 답은 `referrals`를 뺀 다섯 폴더 전부(`import-basics` 포함).
 
 ## 테스트
 

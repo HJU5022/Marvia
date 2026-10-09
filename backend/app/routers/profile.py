@@ -1,6 +1,6 @@
 """GET·PUT /api/profile 본인 회원 정보 (docs/specs/user-profile.md).
 
-창구만 한다: 로그인 확인 → services.profile 부르기 → HTTP 응답. 검사·암호화·마스킹 규칙은 services/profile.py에 있다.
+창구만 한다: 로그인 확인 → services.account.profile 부르기 → HTTP 응답. 검사·암호화·마스킹 규칙은 services/account/profile.py에 있다.
 본인 정보라 원문을 돌려준다. 다른 사람 정보는 이 경로로 볼 수 없다 (user_id는 출입증에서만 꺼낸다).
 """
 from __future__ import annotations
@@ -13,8 +13,8 @@ from pydantic import BaseModel
 
 from backend.app.auth import CurrentUser, current_user
 from backend.app.observability.logging import log_failure
-from backend.app.services import operators as ops
-from backend.app.services import profile as svc
+from backend.app.services.account import operators as ops
+from backend.app.services.account import profile as svc
 
 router = APIRouter(prefix="/api", tags=["profile"])
 

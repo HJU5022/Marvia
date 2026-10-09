@@ -1,4 +1,4 @@
-"""자연어 입력 창구(/api/chat, services/chat.handle) 프롬프트 주입 측정. gpt-4o-mini, 실서비스 코드 경로.
+"""자연어 입력 창구(/api/chat, services/chat/chat.handle) 프롬프트 주입 측정. gpt-4o-mini, 실서비스 코드 경로.
 
 채널:
   chat_other     인사·범위 밖 문장에 공격문. route_chat의 reply(LLM 자유 문장)가 그대로 화면에 간다
@@ -17,7 +17,7 @@ import role_reset_check2 as rc  # 백엔드 경로·llm.chat 기록·비용 상�
 
 from backend.app.routers import agent as agent_router
 from backend.app.schemas.agent import AgentRequest
-from backend.app.services import chat as svc
+from backend.app.services.chat import chat as svc
 
 NOW = datetime.now(timezone.utc)
 

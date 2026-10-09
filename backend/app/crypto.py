@@ -1,4 +1,4 @@
-"""B/L 원본 잠그기·열기 (작업 G3 뒤 ② 암호화, 09-30 결정).
+"""B/L 원본 잠그기·열기 (작업 G3 뒤 ② 암호화).
 
 메모리("이 B/L 다시 볼까요?")는 원본 B/L이 있어야 다시 조회할 수 있다. 가린 번호(bl_masked)로는 못 한다.
 그래서 로그인한 사용자의 B/L만 잠가서 저장하고, 다시 조회할 때만 서버가 연다. 로그인 기능이 꺼진 채점 환경에서는 저장하지 않는다.
@@ -23,7 +23,7 @@ from backend.app.observability.logging import log_failure
 
 
 BL_KEY_ENV = "BL_ENCRYPTION_KEY"
-# 회원 정보(이름·전화·주소)와 운영자 이메일 전용 열쇠 (10-01 분리). B/L 열쇠와 따로 두어 한쪽이 새도 다른 쪽은 안전하다.
+# 회원 정보(이름·전화·주소)와 운영자 이메일 전용 열쇠. B/L 열쇠와 따로 두어 한쪽이 새도 다른 쪽은 안전하다.
 # 없으면 B/L 열쇠로 대신하지 않는다(나눈 의미가 없어진다). 부르는 쪽은 저장·비교를 하지 않는다
 PII_KEY_ENV = "PII_ENCRYPTION_KEY"
 
@@ -62,7 +62,7 @@ def decrypt(token: str, key_env: str = BL_KEY_ENV) -> str | None:
         return None
 
 
-# ── 찾기용 지문 (10-01, docs/specs/operator-admin.md "이메일 암호화") ──
+# ── 찾기용 지문 (docs/specs/operator-admin.md "이메일 암호화") ──
 # Fernet은 같은 값도 매번 다르게 잠가서 WHERE 비교를 할 수 없다. 운영자 이메일처럼 "같은지"만 알면 되는 값은
 # HMAC-SHA256 지문으로 찾고, 화면에 보여 줄 원문은 encrypt()로 따로 잠근다.
 # 지문 열쇠는 PII_ENCRYPTION_KEY에서 용도 이름을 붙여 갈라 쓴다. 같은 열쇠를 두 용도에 그대로 쓰지 않으려는 것이다.

@@ -33,7 +33,7 @@ def connect(url: str | None = None, timeout: int | None = None):
 
 
 def atomic(conn):
-    """여러 표를 지우는 일을 한 트랜잭션으로 묶는다 (삭제 경로, docs/specs/memory.md 개인정보, 10-02 검증).
+    """여러 표를 지우는 일을 한 트랜잭션으로 묶는다 (삭제 경로, docs/specs/memory.md 개인정보, 검증).
     connect()는 autocommit이라 이 안에서만 BEGIN·COMMIT으로 묶인다(psycopg Connection.transaction).
     트랜잭션 기능이 없는 연결(테스트의 가짜 연결)은 묶지 않고 그대로 실행한다."""
     from contextlib import nullcontext
@@ -41,7 +41,7 @@ def atomic(conn):
     return conn.transaction() if hasattr(conn, "transaction") else nullcontext()
 
 
-# 마이그레이션 전체를 감싸는 pg advisory lock 번호 (10-06 점검). 아무 값이나 되지만 앱 안에서 이 용도로만 쓴다.
+# 마이그레이션 전체를 감싸는 pg advisory lock 번호. 아무 값이나 되지만 앱 안에서 이 용도로만 쓴다.
 # 'marvia-migrations'의 뜻으로 고정한 64비트 정수다
 MIGRATION_LOCK_ID = 7_310_620_261_006
 
@@ -49,7 +49,7 @@ MIGRATION_LOCK_ID = 7_310_620_261_006
 def apply_migrations(conn) -> list[str]:
     """migrations/*.sql을 이름 순서대로 한 번씩만 적용하고, 새로 적용한 파일 이름을 돌려준다.
 
-    10-06 점검으로 두 가지를 더했다.
+    점검으로 두 가지를 더했다.
     - 전체를 pg_advisory_lock으로 감싼다. api와 worker가 동시에 떠서 같은 파일을 두 번 적용하려다 한쪽이
       "already exists"나 schema_migrations 중복 키로 죽는 경쟁을 막는다. 뒤에 온 쪽은 앞쪽이 끝날 때까지 기다린 뒤
       적용된 목록을 다시 읽어 건너뛴다. 잠금은 finally에서 풀고, 연결이 끊겨도 DB가 풀어 준다(세션 잠금)
@@ -94,8 +94,8 @@ def _owner(session_id: str, user_id: str | None) -> tuple[str, str]:
     """이력을 누구 기준으로 찾을지 WHERE 조건과 값으로 돌려준다 (G3, 006 마이그레이션).
 
     로그인했으면 사용자 ID로 찾는다. 브라우저가 바뀌어도 이어진다.
-    사용자가 없으면(로그인 기능이 꺼진 채점 환경, 로그인은 09-30부터 필수) 세션 ID로 찾되 로그인한 채 남긴 줄은 뺀다.
-    같은 DB를 로그인 켠 환경과 같이 쓰더라도 사용자 기록이 세션 조회로 새지 않게 한다 (09-30 실제 DB 확인 중 발견).
+    사용자가 없으면(로그인 기능이 꺼진 채점 환경, 로그인은 필수) 세션 ID로 찾되 로그인한 채 남긴 줄은 뺀다.
+    같은 DB를 로그인 켠 환경과 같이 쓰더라도 사용자 기록이 세션 조회로 새지 않게 한다 (실제 DB 확인 중 발견).
     조건 문자열은 이 두 가지로만 정해진다. 사용자 입력은 값(%s)으로만 들어간다.
     """
     return ("user_id = %s", user_id) if user_id else ("session_id = %s AND user_id IS NULL", session_id)
@@ -104,7 +104,7 @@ def _owner(session_id: str, user_id: str | None) -> tuple[str, str]:
 def recent_queries(conn, session_id: str, limit: int = 20, user_id: str | None = None,
                    since: datetime | None = None) -> list[dict]:
     """세션(로그인했으면 사용자)의 지난 조회를 최신순으로 읽는다. 새로 계산하거나 저장하지 않는다 (SDD 4.4).
-    since가 있으면 그 시각 이후(>=)만 읽는다 (설정 화면 기간 필터, 10-06).
+    since가 있으면 그 시각 이후(>=)만 읽는다 (설정 화면 기간 필터).
     days_margin·stage_name은 저장된 결과(response JSONB)에서 두 값만 꺼낸다. 이력 한 줄 이유(routers/history)를 코드로 만드는 재료다."""
     where, owner = _owner(session_id, user_id)
     params: list = [owner]
@@ -168,7 +168,7 @@ def delete_user_queries(conn, user_id: str) -> int:
 
 
 def purge_old_queries(conn) -> int:
-    """90일 지난 조회 기록을 지우고 지운 줄 수를 돌려준다 (09-30 결정, 개인정보보호법 제21조).
+    """90일 지난 조회 기록을 지우고 지운 줄 수를 돌려준다 (개인정보보호법 제21조).
 
     규칙(90일)은 DB 함수 purge_old_queries()에만 있다 (migrations/008). Supabase는 pg_cron이 하루 한 번
     부르고, pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
@@ -178,7 +178,7 @@ def purge_old_queries(conn) -> int:
 
 def purge_done_cargo(conn) -> int:
     """반출 뒤 3년 지난 끝난 화물 줄과 그 화물의 메모장 항목을 지우고 지운 화물 수를 돌려준다
-    (docs/specs/memory.md "보관과 크기", 10-02 결정 D3). 하루 지난 삭제 표시(user_forget)도 같이 정리한다.
+    (docs/specs/memory.md "보관과 크기", 결정 D3). 하루 지난 삭제 표시(user_forget)도 같이 정리한다.
 
     규칙(3년, 무엇을 지우나)은 DB 함수 purge_done_cargo()에만 있다 (migrations/015). purge_old_queries와 같이 pg_cron이 하루 한 번,
     pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
@@ -187,7 +187,7 @@ def purge_done_cargo(conn) -> int:
 
 
 def purge_old_conversations(conn) -> int:
-    """마지막 대화로부터 90일 지난 대화(말풍선 포함)를 지우고 지운 대화 수를 돌려준다 (10-06 결정, 대화 목록).
+    """마지막 대화로부터 90일 지난 대화(말풍선 포함)를 지우고 지운 대화 수를 돌려준다 (대화 목록).
 
     규칙(90일)은 DB 함수 purge_old_conversations()에만 있다 (migrations/018). purge_old_queries와 같이 pg_cron이 하루 한 번,
     pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
@@ -196,7 +196,7 @@ def purge_old_conversations(conn) -> int:
 
 
 def purge_watch_positions(conn) -> int:
-    """더 지켜보지 않는 배의 30일 지난 감시·지도 위치(watch_positions)를 지우고 지운 줄 수를 돌려준다 (10-06 점검).
+    """더 지켜보지 않는 배의 30일 지난 감시·지도 위치(watch_positions)를 지우고 지운 줄 수를 돌려준다.
 
     규칙(30일, 지금 지켜보는 배는 남김)은 DB 함수 purge_old_watch_positions()에만 있다 (migrations/021). purge_old_queries와
     같이 pg_cron이 하루 한 번, pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.
@@ -205,9 +205,9 @@ def purge_watch_positions(conn) -> int:
 
 
 def recent_positions(conn, mmsi: int, limit: int = 20) -> list[dict]:
-    """워커가 모은 같은 배의 위치 이력을 오래된 순으로 읽는다. anchor_wait 정지 시간 계산용 (services/signals.py).
+    """워커가 모은 같은 배의 위치 이력을 오래된 순으로 읽는다. anchor_wait 정지 시간 계산용 (services/judge/signals.py).
 
-    limit 20줄은 워커 6시간 간격(09-23 결정)이면 약 5일치다. 정지 기준 24시간(rules.md anchor_wait_hours)과
+    limit 20줄은 워커 6시간 간격이면 약 5일치다. 정지 기준 24시간(rules.md anchor_wait_hours)과
     그 앞에 움직이던 점까지 보기에 넉넉하다. 모양은 signals.compute의 history와 같게 {"at", "lat", "lng", "sog"}.
     """
     rows = conn.execute(

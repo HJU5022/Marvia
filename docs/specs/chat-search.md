@@ -42,17 +42,17 @@
 ## How
 
 - 프롬프트 2개(backend/app/prompts/marvia-chat-route.md, marvia-port-match.md), llm.route_chat / llm.match_ports. Skill 문서는 넣지 않는다
-- services/chat.py: 가리기, 라우팅, 실행, 해수부 결과 10분 캐시(같은 기간을 여러 번 묻는 경우)
+- services/chat/chat.py: 가리기, 라우팅, 실행, 해수부 결과 10분 캐시(같은 기간을 여러 번 묻는 경우)
 - routers/chat.py: POST /api/chat. 로그인·정지 확인은 auth.current_user 그대로
 - LLM 출력에서 코드가 덮어쓰는 것: bl_ref는 가린 목록에 있는 것만, ports는 주어진 목록 안의 것만, days는 1~14로 자른다
 - 화면: TopBar 폼을 입력창 하나로 바꾸고 예시 문장 칩, 서류 사진 버튼은 남긴다(B/L을 문장에 넣어 준다). 결과는 kind별로 기존 카드 / 선박 표 / 안내 문장
-- 테스트: backend/tests/test_chat.py (가리기, 라우팅별 실행, 폴백, 덮어쓰기, 항구 필터)
+- 테스트: backend/tests/integration/test_chat.py (가리기, 라우팅별 실행, 폴백, 덮어쓰기, 항구 필터)
 
 **추가**: 입항 예정 목록은 공개 정보이고 데모 B/L 3건과 무관하므로, DATA_GO_KR_KEY가 있으면 REPLAY_MODE에서도 선박 검색만 실제 해수부를 부른다. 키가 없으면 녹화본. 답에는 사용자가 쓴 지역 이름(place_label)을 쓴다
 
 ## 추가: 선박 자세히 보기
 
-선박 표에서 선명을 누르면 GET /api/vessels/detail?call_sign=&ship_name= 로 한 척을 자세히 본다. 새 데이터 소스 없이 기존 MCP 도구 넷을 묶는다(services/vessel_detail.py).
+선박 표에서 선명을 누르면 GET /api/vessels/detail?call_sign=&ship_name= 로 한 척을 자세히 본다. 새 데이터 소스 없이 기존 MCP 도구 넷을 묶는다(services/watch/vessel_detail.py).
 - 해수부 get_port_schedule: 입항 예정·실적, 접안 시설, 관제 이벤트 (호출부호 우선)
 - ShipFinder get_vessel_candidates → get_live_position: MMSI, 국적, 실시간 위치·속력·AIS 목적지·AIS ETA·마지막 수신
 - searoute estimate_distance: 부산까지 남은 바닷길, 지금 속력이면 걸리는 시간(계산 도착)
@@ -61,14 +61,14 @@
 
 ## 구현 상태
 
-처음 설계(의도 4개 분류 후 코드 실행)는 두 번 넓어졌다. 아래가 지금 코드(`backend/app/services/chat.py`, `routers/chat.py`)다.
+처음 설계(의도 4개 분류 후 코드 실행)는 두 번 넓어졌다. 아래가 지금 코드(`backend/app/services/chat/chat.py`, `routers/chat.py`)다.
 
-- **채팅 에이전트**: 의도 4개에 안 맞는 실무 질문이 모두 고정 안내로 가고 앞 대화를 몰라 "이건"을 못 알아듣던 문제를 고치려고, 기본 경로가 에이전트로 바뀌었다. LLM(프롬프트 marvia-chat-agent)이 도구를 골라 부르고 코드가 실행한다. 도구는 `check_cargo`(화물 조회), `ask_cargo`(화면의 화물 후속 질문), `search_arrivals`(부산 입항 선박 검색), `set_watch`(지켜보기 켜고 끄기), `send_kakao`(지금 상태를 카카오톡으로), 읽기 전용 MCP 도구 4종, 좁은 범위의 `web_search`다. 등급·여유 일수는 여전히 판정 흐름(코드)이 정한다. 화면은 최근 대화(history)도 함께 보낸다
+- **채팅 에이전트**: 의도 4개에 안 맞는 실무 질문이 모두 고정 안내로 가고 앞 대화를 몰라 "이건"을 못 알아듣던 문제를 고치려고, 기본 경로가 에이전트로 바뀌었다. LLM(프롬프트 marvia-chat-agent)이 도구를 골라 부르고 코드가 실행한다. 도구는 `check_cargo`(화물 조회), `ask_cargo`(화면의 화물 후속 질문), `search_arrivals`(부산 입항 선박 검색), `set_watch`(지켜보기 켜고 끄기), `send_kakao`(지금 상태를 카카오톡으로), 읽기 전용 MCP 도구 4종, 이다. 처음에 있던 좁은 범위의 `web_search`는 없앴다 (docs/adr/0020). 등급·여유 일수는 여전히 판정 흐름(코드)이 정한다. 화면은 최근 대화(history)도 함께 보낸다
 - **처음 설계의 4개 의도 분류는 대비 경로로 남았다**: 에이전트를 못 쓰면(키 없음, 도구를 거절하는 모델, `CHAT_AGENT=off`) `_classic`이 의도 고르기(`llm.route_chat`)와 실행을 맡는다. 그것도 안 되면 규칙(EC-01)이다
 - **LLM에 가는 것**: B/L은 [BL1]로, MRN은 [MRN]으로, 컨테이너 번호는 [CNTR1]로 가린다. 컨테이너 번호가 로그인 사용자의 화물 표에 있으면 코드가 원본 B/L로 바꿔 조회한다. 주입 모양 문장(`guard`)은 LLM에 보내지 않는다
 - **범위 밖 주제**: 항공·육상, 창고 수령일, 일정 변경, 날씨, 품목 요건은 LLM 없이 고정 문장과 공식 창구로 답한다 (`skills/referrals/rules.md`, docs/specs/referral-guide.md). 세액·관세율·통관 가능 여부는 관세사 안내 고정 문장(`BROKER_ONLY`)이다
 - **응답**: `ChatResponse.kind`는 `cargo` / `vessels` / `message`이고, `map`(지도), `cargos`(B/L 2~3개 문장의 줄), `watch_offer`, `watch_set`이 더해졌다
 - **대화 저장**: 로그인 사용자의 대화는 답을 만든 뒤 뒤에서 저장한다 (conversations 표, docs/ERD.md). 기억 쓰기와 지난 조회 한 줄은 docs/specs/memory.md
 - **화면**: 입력창은 하나. 서류 사진 버튼과 예시 문장 칩이 있다 (`web/components/ChatBar.tsx`, `AskPanel.tsx`). 입력 한도는 500자
-- 선박 자세히 보기 `GET /api/vessels/detail`은 그대로 있다 (`services/vessel_detail.py`)
-- 테스트: `backend/tests/test_chat.py`, `test_chat_agent.py`, `test_chat_multi_bl.py`, `test_chat_watch.py`, `test_chat_kakao_now.py`, `test_chat_map.py` 등
+- 선박 자세히 보기 `GET /api/vessels/detail`은 그대로 있다 (`services/watch/vessel_detail.py`)
+- 테스트: `backend/tests/integration/test_chat.py`, `test_chat_agent.py`, `test_chat_multi_bl.py`, `test_chat_watch.py`, `test_chat_kakao_now.py`, `test_chat_map.py` 등

@@ -1,6 +1,6 @@
 """화이트박스 공격 생성: 9/30 프롬프트 원문을 Sonnet에 보여 주고 빈틈을 노린 공격 8종 (구독, 무료)."""
 import json, subprocess
-import scripts.injection_redteam as rt
+import scripts.eval.injection_redteam as rt
 
 prompt = subprocess.run(["git", "show", "a6e7966:backend/app/prompts/marvia-follow-up.md"], capture_output=True,
                         text=True, encoding="utf-8").stdout

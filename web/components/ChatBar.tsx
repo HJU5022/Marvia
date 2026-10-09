@@ -1,8 +1,8 @@
 'use client';
-/** AI 입력창 (docs/specs/chat-search.md). 홈 화면의 주 기능이라 가운데 넓은 자리에 둔다 (강사 피드백 10-02, 구현작업서 4절).
+/** AI 입력창 (docs/specs/chat-search.md). 홈 화면의 주 기능이라 가운데 넓은 자리에 둔다 (강사 피드백, 구현작업서 4절).
  * 문장은 POST /api/chat/stream으로 가고, 서버가 B/L을 가린 뒤 LLM이 의도(화물 조회·후속 질문·입항 선박 검색)를 고른다.
  * 기다리는 동안은 서버가 알린 실제 처리 단계만 보인다 (docs/specs/chat-progress.md). 타이머로 단계를 만들지 않는다.
- * 서류 첨부 (10-08 정운 49·51·53·73번): 클립 버튼이나 끌어 놓기로 파일을 붙이면 입력창 위에 파일 칩만 생긴다. 붙이는 순간에는 아무 일도 없다(읽기도 조회도 안 한다).
+ * 서류 첨부: 클립 버튼이나 끌어 놓기로 파일을 붙이면 입력창 위에 파일 칩만 생긴다. 붙이는 순간에는 아무 일도 없다(읽기도 조회도 안 한다).
  * 보내기(버튼·Enter)를 누르면 그때 서류에서 B/L(과 MRN)만 코드로 읽고(POST /api/document/bl, LLM 없음) 곧바로 채팅 조회를 보낸다.
  * 입력창은 셋 다 된다: 사진만(글 없이), 사진 + 글, 글만(전과 같음). 말풍선에는 쓴 글과 파일 이름만 보이고 B/L은 보이지 않는다.
  * 번호를 못 찾으면 조회하지 않고 안내만 한다. 칩과 쓴 글은 그대로 두어 번호를 적어 다시 보낼 수 있다.
@@ -31,7 +31,7 @@ const DOC_NO_BL_NOTE = '서류에서 B/L 번호를 찾지 못했어요. 번호�
 const DOC_MAX_BYTES = 10 * 1024 * 1024;  // routers/document.py MAX_BYTES. 서버가 최종 판단하고, 여기서는 올리기 전에 빨리 알려 주는 용도다
 
 /** 처음 보는 사람을 위한 예시 문장. 누르면 입력창에 채우기만 한다(보내기는 사용자가). 실제 모드는 누구나 바로 결과를 볼 수 있는
- * 입항 선박 검색만 둔다 (데모 B/L을 실제 사용자에게 보여 주지 않는다, 10-01). 데모 모드는 가공 B/L */
+ * 입항 선박 검색만 둔다 (데모 B/L을 실제 사용자에게 보여 주지 않는다). 데모 모드는 가공 B/L */
 const EXAMPLES = isLive
   ? ['이번 주 일본에서 부산 들어오는 배 보여줘', '상하이에서 출발해서 부산 오는 배 있어?', '2주 안에 베트남에서 들어오는 배 알려줘', '3일 안에 부산 들어오는 배 전부']
   : ['MRVDEMO1101 화물 괜찮아?', 'MRVDEMO1107 지금 조치해야 해?', '중국에서 부산 들어오는 배 보여줘'];
@@ -41,16 +41,15 @@ function scrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
 
-/** 답 글 속 http(s) 주소를 누를 수 있는 링크로 바꾼다. 단 코드가 붙인 줄만이다 (10-06 점검: LLM 문장 속 주소까지 링크가 되어,
- * 도구 결과·서류 글에 심은 주소가 답에 옮겨지면 누를 수 있는 링크로 보였다). 링크로 만드는 줄은 머리가 아래 셋인 줄뿐이다:
- *   "웹 참고: 제목 (주소)"            services/chat.py WEB_NOTE. 주소는 서버가 가져온 검색 결과에서만 온다
+/** 답 글 속 http(s) 주소를 누를 수 있는 링크로 바꾼다. 단 코드가 붙인 줄만이다 (LLM 문장 속 주소까지 링크가 되어,
+ * 도구 결과·서류 글에 심은 주소가 답에 옮겨지면 누를 수 있는 링크로 보였다). 링크로 만드는 줄은 머리가 아래인 줄뿐이다:
  *   "확인처: ...", "진행 상황 직접 보기: ..."  services/referrals.py, 문구 원본은 skills/referrals/rules.md
  * 그 밖의 줄의 주소는 글자 그대로 둔다. 링크도 http·https만 만들고 새 탭으로 연다(noopener: 열린 쪽이 이 창을 못 건드리게).
- * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (10-06 정운 지적: 웹 참고 링크가 안 눌림) */
+ * 닫는 괄호는 주소에 넣지 않는다: "(https://...)"의 ")"가 주소 끝에 붙지 않게 (웹 참고 링크가 안 눌림) */
 const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
-// [제목](주소) 마크다운 링크: 제목만 보이고 주소는 숨긴다 (10-07 정운 실사용 4번). 제목 속 대괄호·주소 속 공백·괄호는 받지 않는다
-const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/[a-z][a-z0-9\-/]*)\)/g;  // 사이트 안 경로(/watch)도 받는다: 감시 화물 링크 (10-08 정운 실사용 79)
-const LINK_LINE_PREFIXES = ['웹 참고: ', '확인처: ', '진행 상황 직접 보기: ', '감시 화물에서 보기: '];
+// [제목](주소) 마크다운 링크: 제목만 보이고 주소는 숨긴다. 제목 속 대괄호·주소 속 공백·괄호는 받지 않는다
+const MD_LINK_PATTERN = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/[a-z][a-z0-9\-/]*)\)/g;  // 사이트 안 경로(/watch)도 받는다: 감시 화물 링크
+const LINK_LINE_PREFIXES = ['확인처: ', '진행 상황 직접 보기: ', '감시 화물에서 보기: '];
 function linkifyLine(line: string, key: number) {
   if (!LINK_LINE_PREFIXES.some(prefix => line.trimStart().startsWith(prefix))) return line;
   const out: ReactNode[] = [];
@@ -85,16 +84,16 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   // B/L 여러 개를 비교한 답은 표가 줄마다 배지를 가지고 있어 붙이지 않는다
   const verdictTurn = view === 'cargo' && result?.verdict ? thread.map((t, i) => t.role === 'assistant' && t.kind === 'cargo' && !(t.cargos && t.cargos.length > 1) ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
   // 선박 후보 칩은 "가장 최근 되묻기 답"에만 붙이고, 그 되묻기가 아직 풀리지 않았을 때만 보인다 (결과 칸이 같은 되묻기 그대로일 때).
-  // 후보를 골라 판정이 나오면 결과가 바뀌어 칩이 사라진다 (10-08 정운 실사용 37번)
+  // 후보를 골라 판정이 나오면 결과가 바뀌어 칩이 사라진다
   // 선박 검색 답 중 가장 최근 것만 "나머지 N척 전체 보기"가 열린다 (ChatVesselTable)
   const lastVesselTurn = thread.reduce((a, t, i) => t.role === 'assistant' && t.kind === 'vessels' ? i : a, -1);
   const chipTurn = result?.status === 'insufficient' ? thread.map((t, i) => t.role === 'assistant' && t.agent?.vessel_candidates.length ? i : -1).reduce((a, b) => Math.max(a, b), -1) : -1;
-  // 화물 카드가 실제로 보일 때만 "이 화물"로 안내한다. AppProvider.ask도 같은 조건으로 화물을 함께 보낸다 (10-02 UI 점검 F5)
+  // 화물 카드가 실제로 보일 때만 "이 화물"로 안내한다. AppProvider.ask도 같은 조건으로 화물을 함께 보낸다 (UI 점검 F5)
   const cargoShown = view === 'cargo' && !!result && !!request.bl_no;
   // 하루 토큰 한도를 다 쓰면 입력·서류 사진을 막는다. 서버도 429로 막는다 (docs/specs/token-quota.md)
   const blocked = !!usage?.exhausted;
   const [text, setText] = useState('');
-  // 첨부한 서류. 칩만 만들고 보내기 전에는 읽지 않는다 (10-08 정운 실사용 73번)
+  // 첨부한 서류. 칩만 만들고 보내기 전에는 읽지 않는다
   const [file, setFile] = useState<File | null>(null);
   const [docBusy, setDocBusy] = useState(false);  // 보낸 뒤 서류에서 B/L을 찾는 동안
   const [docSeconds, setDocSeconds] = useState(0);
@@ -181,7 +180,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
     // 실패하면 쓴 문장을 돌려준다. 그 사이 새로 쓴 글자가 있으면 덮지 않는다
     if (!ok) setText(t => t || m);
   }
-  /** 서류를 붙여 보낼 때 (10-08 정운 실사용 73번): 서류에서 B/L(과 MRN)만 코드로 읽고, 쓴 글과 함께 채팅 조회로 보낸다.
+  /** 서류를 붙여 보낼 때: 서류에서 B/L(과 MRN)만 코드로 읽고, 쓴 글과 함께 채팅 조회로 보낸다.
    * 사진만(글 없음)도 된다. 문장 = "B/L [MRN 값] 쓴 글": MRN은 서버가 문장에서 코드로 뽑아 세관 미등록 때 배를 찾는다(LLM에는 안 감).
    * 말풍선에는 B/L 대신 쓴 글과 파일 이름만 둔다. 서류 확인·수정 단계는 없고, 선박·항차·날짜는 조회가 가져온다 */
   async function sendWithDocument(f: File, typed: string) {
@@ -219,7 +218,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   }
   function openPicker() { if (!loading && !blocked) pickRef.current?.click(); }
 
-  // 끌어 놓기 (10-08 정운 49번): 채팅 영역 어디든 놓을 수 있다. 파일이 아닌 끌기(글자 등)는 건드리지 않는다.
+  // 끌어 놓기: 채팅 영역 어디든 놓을 수 있다. 파일이 아닌 끌기(글자 등)는 건드리지 않는다.
   // 막힌 상태에서도 놓은 파일을 브라우저가 열어 버리지 않게 preventDefault는 늘 한다. 안내 화면만 막는다
   const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
   const canDrop = !loading && !blocked;
@@ -240,7 +239,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
   // 대화가 없고 답할 글만 있는 첫 화면(.chat-seed는 .chat-turn이 아니다: 실제 주고받은 말만 .chat-turn으로 센다): 결과 칸의 answer를 그대로 답 말풍선으로 보인다 (지어내지 않는다, 서버 값)
   const seedAnswer = thread.length === 0 && view === 'cargo' && result && result.status !== 'insufficient' && result.answer ? result : null;
   const empty = idle && !loading && thread.length === 0;
-  // 이 대화의 근거 모음 (10-08 정운 실사용 58번): 답 턴마다 붙은 근거를 순번(turn)과 함께 모은다. 0개면 버튼이 숨는다
+  // 이 대화의 근거 모음: 답 턴마다 붙은 근거를 순번(turn)과 함께 모은다. 0개면 버튼이 숨는다
   const convEvidence = thread.flatMap((t, i) => t.role === 'assistant' && t.evidence ? t.evidence.map(e => ({...e, turn: i})) : []);
 
   return <section className="ask" aria-label="AI에게 묻기" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDropFile}>
@@ -285,7 +284,7 @@ export function ChatBar({idle = false, onShowDetail}: {idle?: boolean; onShowDet
             placeholder={file ? '서류와 함께 보낼 설명을 적어 주세요 (선택, 사진만 보내도 돼요)' : cargoShown ? '이 화물에 대해 더 물어보세요' : 'B/L 번호나 궁금한 점을 입력해 주세요'}
             aria-describedby="chat-help" autoComplete="off" spellCheck={false}/>
           <div className="composer-foot">
-            {/* 10-08 정운 49번: 서류 첨부는 클립 아이콘 하나. 옆 패널을 열지 않고 파일 선택창만 연다 */}
+            {/* 서류 첨부는 클립 아이콘 하나. 옆 패널을 열지 않고 파일 선택창만 연다 */}
             <button type="button" className="doc-trigger attach-btn" onClick={openPicker} disabled={loading || blocked} aria-label="서류 사진·PDF 첨부" title="서류 사진·PDF 첨부"><Paperclip size={18} strokeWidth={1.5}/></button>
             <input ref={pickRef} type="file" accept="image/*,application/pdf" className="sr-only" tabIndex={-1} aria-hidden="true"
               onChange={e => { attach(e.target.files?.[0]); e.target.value = ''; }}/>
@@ -324,7 +323,7 @@ function Pending({stages, since}: {stages: ProgressStage[]; since: number}) {
       <span className="mono pending-time">{seconds}초</span>
     </div>
     {stages.length > 0
-      // 세로 타임라인 (10-07 정운 엘레강스). li 글자는 "단계 이름 + 완료/진행 중"만 둔다: 경과 시간은 CSS ::after로 그린다 (e2e가 글자 끝을 본다)
+      // 세로 타임라인. li 글자는 "단계 이름 + 완료/진행 중"만 둔다: 경과 시간은 CSS ::after로 그린다 (e2e가 글자 끝을 본다)
       ? <ol className="pending-steps" aria-live="polite" aria-label="답변 준비 단계">{stages.map((s, i) => {
           const done = i < stages.length - 1;
           const start = seenAt.current.get(s) ?? now;
@@ -338,7 +337,7 @@ function Pending({stages, since}: {stages: ProgressStage[]; since: number}) {
   </div>;
 }
 
-/** 답이 온 뒤 접힌 한 줄 요약 "N단계 · M초". 누르면 같은 타임라인이 모두 완료로 펼쳐진다 (10-07 정운 엘레강스).
+/** 답이 온 뒤 접힌 한 줄 요약 "N단계 · M초". 누르면 같은 타임라인이 모두 완료로 펼쳐진다.
  * 단계 시간은 브라우저가 처음 본 시각 차이다. 마지막 단계는 답이 온 시각까지로 잰다 */
 function StepsSummary({steps, tookMs}: {steps: {stage: ProgressStage; at: number}[]; tookMs: number}) {
   const [open, setOpen] = useState(false);
