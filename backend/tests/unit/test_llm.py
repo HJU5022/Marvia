@@ -1,6 +1,6 @@
 """services/llm.py 재시도 테스트 (C-6). 키 없이 돈다: OpenRouter 호출(_call_once)을 가짜로 바꾼다.
 
-확인하는 것: 500·503·429면 한 번 더 부르고, 400 같은 건 바로 올리고, 두 번 다 실패하면 포기한다.
+확인하는 것: 500·503이면 한 번 더 부르고(429는 test_llm_rate_limit.py), 400 같은 건 바로 올리고, 두 번 다 실패하면 포기한다.
 모델 이름이 vertex/로 시작하면 Vertex AI로, 아니면 OpenRouter로 간다.
 """
 from types import SimpleNamespace
@@ -57,7 +57,8 @@ def test_does_not_retry_bad_request(monkeypatch):
 
 
 def test_gives_up_after_max_attempts(monkeypatch):
-    calls = _fake(monkeypatch, [llm.LLMError("rate", code=429), llm.LLMError("rate", code=429)])
+    # 과부하(503)는 MAX_ATTEMPTS번에서 멈춘다. 429는 더 기다려 보므로 test_llm_rate_limit.py에서 따로 본다
+    calls = _fake(monkeypatch, [llm.LLMError("busy", code=503), llm.LLMError("busy", code=503)])
     with pytest.raises(llm.LLMError):
         llm.chat([{"role": "user", "content": "hi"}])
     assert len(calls) == llm.MAX_ATTEMPTS == 2

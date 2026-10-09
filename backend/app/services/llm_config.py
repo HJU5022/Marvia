@@ -27,6 +27,18 @@ MAX_TOOL_ROUNDS = 3
 # 타임아웃은 넣지 않는다. 60초를 한 번 더 기다리면 시간 예산을 넘는다.
 RETRYABLE_CODES = {429, 500, 502, 503}
 
+# 레이트 리밋(429)은 다른 실패보다 더 기다려 볼 만하다. 제공사가 "잠깐 뒤에 다시"라고 알려 주는 경우라서다.
+# 429면 RETRY_WAIT_SEC부터 두 배씩(2초 → 4초) 기다리며 최초 포함 RATE_LIMIT_ATTEMPTS번까지 부른다.
+# 응답에 Retry-After 헤더가 있으면 그 값을 따르되 RATE_LIMIT_MAX_WAIT_SEC를 넘기지 않는다 (사용자가 너무 오래 기다리지 않게).
+# 그래도 429면 LLM_FALLBACK_MODEL(.env)이 있을 때 그 모델로 한 번만 더 부른다 (가이드 원칙 2 "레이트 리밋: 큐잉 또는 다른 모델로").
+RATE_LIMIT_ATTEMPTS = 3
+RATE_LIMIT_MAX_WAIT_SEC = 8.0
+
+# 서버 전체에서 동시에 나가는 LLM 호출 수의 상한(LLM_MAX_CONCURRENCY, .env). 넘으면 자리가 날 때까지 줄을 선다(큐잉).
+# 줄에서 QUEUE_WAIT_SEC초를 넘게 기다리면 queue_full로 실패시켜 부르는 쪽의 부분 응답 경로를 탄다.
+# 값이 없거나 0이면 줄을 세우지 않는다 (지금까지와 같다)
+QUEUE_WAIT_SEC = 20.0
+
 # 끝까지 못 쓰고 끊긴 답의 finish_reason. JSON이 깨졌고 이 값이면 _ask_json이 같은 대화로 한 번 더 묻는다.
 # None: 끝 신호 없이 스트림이 끊김 (서류 판독). "error": 제공사가 생성 중 오류로 멈춤 (판정 평가 3회, 74번 중 4번)
 # length(토큰 한도)와 stop(정상 종료)은 넣지 않는다. 다시 물어도 같은 한도에 닿거나, 형식 문제라 프롬프트로 고쳐야 한다

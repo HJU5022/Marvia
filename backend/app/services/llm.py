@@ -51,6 +51,7 @@ from pydantic import BaseModel, ValidationError
 from backend.app.clients import replay  # REPLAY_MODE 녹화 답 재생 (_replay_answer)
 from backend.app.services.account import quota  # 1명당 하루 토큰 한도 (docs/specs/token-quota.md)
 from backend.app.observability.langfuse import end_generation, get_prompt, start_generation
+from backend.app.observability.logging import llm_usage_var, request_id_var  # 요청당 토큰 상한을 요청 안에서만 센다
 from backend.app.schemas.agent import AgentResponse, VesselCandidate
 from backend.app.schemas.customs import CustomsRecord
 from backend.app.schemas.signals import SignalSet
@@ -60,6 +61,9 @@ from backend.app.services.llm_config import (
     CUT_FINISH_REASONS,
     MAX_ATTEMPTS,
     MAX_TOOL_ROUNDS,
+    QUEUE_WAIT_SEC,
+    RATE_LIMIT_ATTEMPTS,
+    RATE_LIMIT_MAX_WAIT_SEC,
     REPLAY_LLM_DIR,
     VERTEX_PREFIX,
     VERTEX_SCOPES,
@@ -213,7 +217,8 @@ def _call_once(kwargs: dict) -> LLMResult:
                        latency_ms=int((time.monotonic() - start) * 1000), kind="timeout") from None
     except openai.APIStatusError as e:  # HTTP 4xx·5xx로 온 실패
         raise LLMError(f"{model}: HTTP {e.status_code} {e.message}", code=e.status_code,
-                       latency_ms=int((time.monotonic() - start) * 1000), kind=_status_kind(e.status_code)) from e
+                       latency_ms=int((time.monotonic() - start) * 1000), kind=_status_kind(e.status_code),
+                       retry_after=_retry_after(e)) from e
     except openai.APIConnectionError as e:  # 연결 실패·타임아웃. 다시 부르지 않는다 (위 RETRYABLE_CODES 주석)
         raise LLMError(f"{model}: 연결 실패 {type(e).__name__}",
                        latency_ms=int((time.monotonic() - start) * 1000), kind="connection") from e
@@ -261,6 +266,65 @@ def _call_once(kwargs: dict) -> LLMResult:
     )
 
 
+def _retry_after(e: openai.APIStatusError) -> float | None:
+    """429 응답의 Retry-After 헤더를 초로 읽는다. 없거나 숫자가 아니면 None (HTTP 날짜 형식은 쓰지 않는다)."""
+    try:
+        value = e.response.headers.get("retry-after") if e.response is not None else None
+        return float(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
+# 서버 전체 동시 호출 상한(큐잉). LLM_MAX_CONCURRENCY가 처음 읽힐 때 한 번 만든다. 값이 없거나 0이면 None(줄 없음)
+_queue: threading.BoundedSemaphore | None = None
+_queue_size: int | None = None
+_queue_lock = threading.Lock()
+
+
+def _llm_queue() -> threading.BoundedSemaphore | None:
+    """LLM_MAX_CONCURRENCY만큼 자리가 있는 줄을 돌려준다. 설정이 바뀌면(테스트) 새로 만든다."""
+    global _queue, _queue_size
+    try:
+        size = int(os.environ.get("LLM_MAX_CONCURRENCY") or 0)
+    except ValueError:
+        size = 0
+    with _queue_lock:
+        if size != _queue_size:
+            _queue, _queue_size = (threading.BoundedSemaphore(size) if size > 0 else None), size
+        return _queue
+
+
+def _request_token_cap() -> int | None:
+    """요청당 토큰 상한(MAX_TOKENS_PER_REQUEST, .env). 비우거나 0이면 None(상한 없음). ADR 0018에서 칸만 있던 값이다."""
+    try:
+        cap = int(os.environ.get("MAX_TOKENS_PER_REQUEST") or 0)
+    except ValueError:
+        return None
+    return cap if cap > 0 else None
+
+
+def _request_usage() -> dict | None:
+    """지금 처리 중인 HTTP 요청의 사용량 dict(미들웨어가 요청마다 새로 만든다). 요청 밖(스크립트·평가·테스트)은 None.
+
+    요청 밖에서도 기본값 dict가 있지만 모든 호출이 함께 쓰는 하나라서, 거기에 쌓으면 평가 실행기가 상한에 걸린다.
+    그래서 request_id가 있는 요청 안에서만 센다.
+    """
+    return llm_usage_var.get() if request_id_var.get() else None
+
+
+def _call_queued(kwargs: dict) -> LLMResult:
+    """줄(LLM_MAX_CONCURRENCY)에 서서 자리를 얻은 뒤 _call_once를 부른다. QUEUE_WAIT_SEC 안에 자리가 안 나면 queue_full."""
+    queue = _llm_queue()
+    if queue is None:
+        return _call_once(kwargs)
+    if not queue.acquire(timeout=QUEUE_WAIT_SEC):
+        raise LLMError(f"{kwargs['model']}: 동시 호출 상한에서 {QUEUE_WAIT_SEC:g}초 넘게 기다림", kind="queue_full")
+    try:
+        return _call_once(kwargs)
+    finally:
+        queue.release()
+
+
 def chat(
     messages: list[dict],
     *,
@@ -271,7 +335,14 @@ def chat(
     max_tokens: int | None = None,
     timeout: float | None = None,
 ) -> LLMResult:
-    """OpenRouter에 묻고 답을 돌려준다. 429·502·503이면 잠깐 쉬고 한 번 더 묻는다. 출력 검증은 아직 안 한다.
+    """OpenRouter에 묻고 답을 돌려준다. 출력 검증은 아직 안 한다.
+
+    실패 처리 (가이드 원칙 2, llm_config 주석):
+      500·502·503   RETRY_WAIT_SEC 쉬고 한 번 더 (최초 포함 MAX_ATTEMPTS번)
+      429           2초 → 4초처럼 늘려 가며(Retry-After가 있으면 그 값, 상한 RATE_LIMIT_MAX_WAIT_SEC) RATE_LIMIT_ATTEMPTS번까지.
+                    그래도 429면 LLM_FALLBACK_MODEL로 한 번 더
+      동시 호출      LLM_MAX_CONCURRENCY 자리만큼만 나가고 나머지는 줄을 선다 (_call_queued)
+      요청당 비용    이 요청이 쓴 토큰이 MAX_TOKENS_PER_REQUEST에 닿았으면 부르지 않고 request_budget으로 올린다
 
     Args:
         messages: [{"role": "system"|"user"|..., "content":...}]
@@ -300,20 +371,45 @@ def chat(
     if timeout:
         kwargs["_timeout"] = timeout  # _call_once가 꺼낸다
 
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    # 요청당 비용 상한: 이 요청이 이미 상한만큼 썼으면 더 부르지 않는다. 부르는 쪽은 LLMError를 받아
+    # 판정 표 폴백·규칙 답 같은 기존 부분 응답 경로로 간다 (판정은 코드 표가 정하므로 등급은 나간다)
+    usage, cap = _request_usage(), _request_token_cap()
+    if usage is not None and cap and usage.get("request_tokens", 0) >= cap:
+        raise LLMError(f"{model}: 이 요청의 토큰 {usage.get('request_tokens', 0)}개가 요청당 상한 {cap}개에 닿음",
+                       kind="request_budget")
+
+    attempt = 0
+    wait = RETRY_WAIT_SEC
+    while True:
+        attempt += 1
         try:
-            result = _call_once(kwargs)
+            result = _call_queued(kwargs)
             result.attempts = attempt
+            tokens = (result.prompt_tokens or 0) + (result.completion_tokens or 0)
             # 1명당 하루 토큰 한도에 쌓는다 (services/account/quota.py, docs/specs/token-quota.md). 이 요청은 끝까지 답하고 다음 요청부터 막는다
-            quota.add((result.prompt_tokens or 0) + (result.completion_tokens or 0))
+            quota.add(tokens)
+            if usage is not None:
+                usage["request_tokens"] = usage.get("request_tokens", 0) + tokens  # 요청당 상한용 누계
             return result
         except LLMError as e:
-            if not e.retryable or attempt == MAX_ATTEMPTS:
-                raise
-            logger.warning("llm %s 실패(code %s), %.1f초 뒤 재시도 %d/%d",
-                           kwargs["model"], e.code, RETRY_WAIT_SEC, attempt + 1, MAX_ATTEMPTS)
-            time.sleep(RETRY_WAIT_SEC)
-    raise AssertionError("unreachable")  # 마지막 시도는 위에서 return 또는 raise된다
+            rate_limited = e.code == 429
+            limit = RATE_LIMIT_ATTEMPTS if rate_limited else MAX_ATTEMPTS
+            if e.retryable and attempt < limit:
+                # 429는 제공사가 알려 준 시간을 따르고, 없으면 기다리는 시간을 두 배씩 늘린다. 둘 다 상한을 둔다
+                delay = min(getattr(e, "retry_after", None) or wait, RATE_LIMIT_MAX_WAIT_SEC) if rate_limited else RETRY_WAIT_SEC
+                logger.warning("llm %s 실패(code %s), %.1f초 뒤 재시도 %d/%d",
+                               kwargs["model"], e.code, delay, attempt + 1, limit)
+                time.sleep(delay)
+                if rate_limited:
+                    wait *= 2
+                continue
+            fallback = os.environ.get("LLM_FALLBACK_MODEL")
+            if rate_limited and fallback and fallback != kwargs["model"]:
+                # 같은 모델이 계속 한도에 막히면 다른 모델로 한 번만 돌린다. 결과의 model 칸과 Langfuse에 바뀐 모델이 남는다
+                logger.warning("llm %s 레이트 리밋 계속, 대체 모델 %s로 한 번 더", kwargs["model"], fallback)
+                kwargs = {**kwargs, "model": fallback}
+                continue
+            raise
 
 
 # ── 2층 판정 judge() ─────────────────────────────────────────────
@@ -514,6 +610,41 @@ def _replay_answer(prompt_name: str, user_content: str, output_model: type[BaseM
     raise LLMError(f"REPLAY_MODE: {prompt_name} 녹화 답 중 이번 입력에 맞는 것이 없습니다", kind="not_configured")
 
 
+# ── 모델 라우팅 (가이드 가산 "요청 난이도에 따라 모델 자동 선택", docs/specs/model-routing.md) ──
+# 판정 LLM은 등급을 정하지 않고 설명만 쓴다(등급은 판정 표, PRD 6.1). 설명할 것이 적은 쉬운 판정은 작은 모델로 보내 비용을 줄인다.
+# 난이도는 LLM에 묻지 않고 코드가 신호로 정한다. 아래 셋 중 하나라도 해당하면 어려움(서비스 모델 LLM_MODEL):
+#   회색 지대(verdict_mode raise_only)  act를 가르는 신호가 unknown이라 LLM이 등급을 올릴지 판단해야 한다 (D7)
+#   신호 중 unknown이 하나라도 있음     "모른다"를 근거로 설명해야 한다 (SDD 5.4)
+#   켜진 신호가 HARD_TRIGGERED개 이상   신호끼리 어긋나 conflicts를 써야 한다
+#   검증 위반 뒤 다시 묻는 중(feedback)  작은 모델이 규칙을 어겼을 수 있으니 서비스 모델로 올린다
+# 나머지(신호가 모두 clear거나 하나만 켜짐)는 쉬움이다. LLM_ROUTE_SMALL_MODEL이 비어 있으면 라우팅하지 않는다.
+HARD_TRIGGERED = 2  # 신호 개수 규칙이라 도메인 임계값(rules.md)이 아니다. 둘 이상이면 서로 어긋날 수 있다
+
+
+def judge_difficulty(signals: SignalSet, verdict_mode: str | None, feedback: str | None) -> str:
+    """판정 한 건의 난이도("easy"|"hard")를 코드로 정한다. 기준은 위 주석."""
+    if feedback or verdict_mode == "raise_only":
+        return "hard"
+    states = [s.state for s in signals.signals]
+    if "unknown" in states or states.count("triggered") >= HARD_TRIGGERED:
+        return "hard"
+    return "easy"
+
+
+def route_judge_model(signals: SignalSet, verdict_mode: str | None, feedback: str | None) -> str | None:
+    """쉬운 판정이면 LLM_ROUTE_SMALL_MODEL을, 아니면 None(= chat()이 LLM_MODEL을 쓴다)을 돌려준다.
+
+    LLM_MODEL이 비어 있으면(재생 모드의 녹화 답) 고르지 않는다. 모델을 정해 넘기면 녹화 답 재생을 건너뛰기 때문이다(_ask_json).
+    """
+    small = os.environ.get("LLM_ROUTE_SMALL_MODEL")
+    if not small or not os.environ.get("LLM_MODEL"):
+        return None
+    if judge_difficulty(signals, verdict_mode, feedback) == "easy":
+        logger.info("judge route easy -> %s", small)
+        return small
+    return None
+
+
 def judge(
     signals: SignalSet,
     customs: CustomsRecord | None,
@@ -529,7 +660,9 @@ def judge(
 ) -> LLMAnswer:
     """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계).
     feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도).
-    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md). 데이터일 뿐이고 등급은 지금처럼 판정 표가 정한다."""
+    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md). 데이터일 뿐이고 등급은 지금처럼 판정 표가 정한다.
+    model을 따로 주지 않으면 난이도로 모델을 고른다 (route_judge_model, docs/specs/model-routing.md)."""
+    model = model or route_judge_model(signals, verdict_mode, feedback)
     return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date,
                                                 table_verdict, verdict_mode),
                      "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback, skills=JUDGE_SKILLS, context=memory)

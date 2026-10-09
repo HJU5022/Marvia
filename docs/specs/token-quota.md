@@ -19,7 +19,7 @@
 - 한도 값: 환경변수 `DAILY_TOKENS_PER_USER` (.env.example 100000). 비우거나 0이면 막지 않는다 (키 없는 테스트·채점 환경)
 
 ## 하지 않는 것
-- 금액(원) 기준 상한. 모델마다 단가가 달라 토큰으로 센다. `DAILY_COST_CAP_KRW`, `MAX_TOKENS_PER_REQUEST`는 `.env.example`에 칸만 있고 읽는 코드가 없다
+- 금액(원) 기준 상한. 모델마다 단가가 달라 토큰으로 센다. `DAILY_COST_CAP_KRW`는 `.env.example`에 칸만 있고 읽는 코드가 없다. 요청 하나의 토큰 상한은 `MAX_TOKENS_PER_REQUEST`가 따로 맡는다(`llm.chat`, SDD 5.6)
 - 사람별 다른 한도, 오래된 사용량 줄 정리 (탈퇴 때 그 사람 줄만 지우고, 날짜가 지난 줄을 자동으로 지우는 cron은 없다)
 
 ## 완료 기준
