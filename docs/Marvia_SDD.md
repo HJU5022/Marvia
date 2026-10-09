@@ -465,7 +465,7 @@ class EvalRecord(BaseModel):
 | 호출 조정 | `SHIPFINDER_TIMEOUT_SEC`, `MOF_TIMEOUT_SEC`, `MOF_BASE_URL`, `MOF_RELAY_TOKEN`, `HTTP_MAX_ATTEMPTS`, `HTTP_BACKOFF_SEC` |
 | 워커 | `WORKER_SCHEDULE`, `WORKER_INTERVAL_HOURS`, `WORKER_SHIPFINDER_CALLS_PER_RUN`, `WATCH_ENABLED` |
 
-`DAILY_COST_CAP_KRW`와 `MAX_TOKENS_PER_REQUEST`는 `.env.example`에 자리만 있고 읽는 코드가 없다(구현하지 않았고 코드에 없다). 비용 방어는 `DAILY_TOKENS_PER_USER`(5.20)가 대신한다. 컨테이너가 설정하는 `MCP_URL`과 `PORT`는 Dockerfile이 정한다(6.2).
+`DAILY_COST_CAP_KRW`는 `.env.example`에 자리만 있고 읽는 코드가 없다. `MAX_TOKENS_PER_REQUEST`(요청당 토큰 상한), `LLM_MAX_CONCURRENCY`(동시 호출 줄), `LLM_FALLBACK_MODEL`(429 대체 모델)은 `llm.chat`이 읽는다(5.6 재시도 줄). 비용 방어는 `DAILY_TOKENS_PER_USER`(5.20)가 대신한다. 컨테이너가 설정하는 `MCP_URL`과 `PORT`는 Dockerfile이 정한다(6.2).
 
 ### 3.9 DB 스키마
 
@@ -694,8 +694,8 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
 - 프롬프트는 `observability/langfuse.get_prompt(name, label="production")`로 받는다. Langfuse 키가 없거나 실패하면 `backend/app/prompts/<이름>.md` 로컬 사본을 쓴다(트레이스의 prompt_version은 "local"). 코드에 프롬프트 문자열 없음. 현재 버전 번호와 되돌리기 절차는 `docs/release_manifest.json`·`docs/prompt_versions.md`. `marvia-memory-write`는 Langfuse에 등록하지 않고 레포 파일로 동작한다.
 - 시스템 프롬프트 = Langfuse prompt + 그 호출에 필요한 skills/ 문서 전문(통째로, RAG 아님). 판정 = AIS 신뢰도·통관 단계·등급(`JUDGE_SKILLS`), 배 고르기 = AIS 신뢰도, 후속 질문·채팅 에이전트 = 전부, 통관 해설 채점 = 통관 단계(`GRADE_SKILLS`).
 - 도구 호출: 판정 흐름의 도구(위치·일정·거리·후보)는 코드가 순서대로 부르고 결과를 자료로 넘긴다. LLM이 도구를 고르는 곳은 후속 질문(읽기 전용 MCP 도구)과 채팅 에이전트뿐이고, 루프 상한은 `MAX_TOOL_ROUNDS=3`. 코드는 `services/mcp_client.py`로 `/mcp`를 거쳐 도구를 부르고(`MCP_URL`이 없으면 같은 프로세스 안의 MCP 서버에 메모리로 붙음) 호출마다 Langfuse tool 관측을 남긴다.
-- 모델: 서비스 모델은 `LLM_MODEL`(`google/gemini-3.5-flash-lite`, 값은 `docs/release_manifest.json`). 기억 뽑기·제목은 `MEMORY_MODEL`(gpt-4o-mini 계획), 평가 비교는 `EVAL_COMPARE_MODEL`, 채점은 `EVAL_GRADER_MODEL`. 계획과 달라진 점: 모델 이름이 MODEL_A/B가 아니고, 레이트 리밋 때 MODEL_B로 돌리는 폴백은 구현하지 않았다.
-- 재시도: 호출 하나는 최초 1회 + 재시도 1회(`MAX_ATTEMPTS=2`, 429·500·502·503, 2초 대기), 호출당 타임아웃 60초. 끊긴 답(finish_reason None·error)은 같은 대화로 한 번 더 묻는다. 판정의 위반 재시도(최대 3회, 시간 예산 60초)는 라우터가 한다(5.7).
+- 모델: 서비스 모델은 `LLM_MODEL`(`google/gemini-3.5-flash-lite`, 값은 `docs/release_manifest.json`). 기억 뽑기·제목은 `MEMORY_MODEL`(gpt-4o-mini 계획), 평가 비교는 `EVAL_COMPARE_MODEL`, 채점은 `EVAL_GRADER_MODEL`. 계획과 달라진 점: 모델 이름이 MODEL_A/B가 아니다. 레이트 리밋 때 다른 모델로 돌리는 폴백은 처음엔 없었다가 `LLM_FALLBACK_MODEL`로 붙였다(아래 재시도 줄).
+- 재시도: 호출 하나는 최초 1회 + 재시도 1회(`MAX_ATTEMPTS=2`, 500·502·503, 2초 대기), 호출당 타임아웃 60초. 429는 2초, 4초로 늘려 가며 최초 포함 3번(`RATE_LIMIT_ATTEMPTS`, Retry-After 헤더가 있으면 따르되 8초 상한), 그래도 429면 `LLM_FALLBACK_MODEL`로 한 번. 동시 호출은 `LLM_MAX_CONCURRENCY`만큼만 나가고 나머지는 줄을 서며 20초 넘게 기다리면 `queue_full`. 요청 하나의 토큰 누계가 `MAX_TOKENS_PER_REQUEST`에 닿으면 그 요청 안의 다음 호출은 `request_budget`으로 부르지 않는다. 끊긴 답(finish_reason None·error)은 같은 대화로 한 번 더 묻는다. 판정의 위반 재시도(최대 3회, 시간 예산 60초)는 라우터가 한다(5.7).
 - 응답은 구조화 출력(strict JSON schema)으로 받는다. 입력의 B/L은 가린 토큰이고 컨테이너 번호는 `[CNTR1]` 번호표다.
 - 모든 호출이 쓴 토큰(입력+출력)을 `services/account/quota.add()`로 사용자별 하루 사용량에 더한다(5.20).
 - REPLAY_MODE에서 `LLM_MODEL`이 비어 있으면 `evals/fixtures/replay/llm/`의 녹화 답을 쓴다.
@@ -895,7 +895,7 @@ open http://localhost:8000/docs
 | 항목 | 목표 | 측정 |
 | --- | --- | --- |
 | p95 지연 | 정상 경로 15초 이내(목표). 판정 재시도 예산은 60초, 화면 요청 제한 90초 | Langfuse, `evals/results`. 실제 값은 EVAL_REPORT.md |
-| 요청당 비용 | 상한은 평가 후 확정. 사용자별 하루 토큰 한도(5.20)가 실제 방어선이다 | Langfuse cost, 결과 파일 |
+| 요청당 비용 | 요청당 토큰 상한 `MAX_TOKENS_PER_REQUEST`(값은 운영 설정). 사용자별 하루 토큰 한도(5.20)와 함께 막는다 | Langfuse cost, 결과 파일 |
 | 계약 준수율 | 95% 이상 (게이트) | validate 통과율(`evals/contract_rate.py`) |
 | 가용성 | 외부 API 1개 장애 시 partial 응답, 전체 실패 아님 | 실패 경로 테스트, `evals/results/failure_drill.txt` |
 | 재현성 | clone → compose up 10분 | 수동 |
@@ -945,7 +945,10 @@ open http://localhost:8000/docs
 | 식별 uncertain·0척 | _identify | insufficient, verdict None, 후보·missing_inputs. 검색 도구 실패는 되묻지 않고 partial |
 | 위치 없음·믿을 도착일 없음 | 코드 | LLM 없이 보류. 대략 도착일은 "참고용"으로만(판매 예정일을 받은 경우) |
 | LLM 스키마 위반·검증 위반·호출 실패·시간 예산 초과 | validate · llm.py · 라우터 | 3회 재시도 → partial, 판정 표 등급 + 고정 문구(회색 지대면 등급 없음, 5.7) |
-| LLM 429·과부하 | llm.py | 호출당 1회 재시도. 모델 교체 폴백은 없음 |
+| LLM 과부하(5xx) | llm.py | 호출당 1회 재시도 |
+| LLM 429 | llm.py | 늘려 가며 3번(Retry-After 따름, 8초 상한), 그래도 429면 `LLM_FALLBACK_MODEL`로 한 번, 끝내 실패하면 부분 응답 |
+| 동시 호출 몰림 | llm.py | `LLM_MAX_CONCURRENCY` 줄에서 대기, 20초 넘으면 `queue_full`로 부분 응답 |
+| 요청당 토큰 상한 | llm.py | 그 요청 안의 다음 LLM 호출을 하지 않음(`request_budget`). 판정은 표 등급 폴백, 채팅은 규칙 답 |
 | 하루 토큰 한도 초과 | quota_guard | 그 요청은 끝까지 답하고 다음 요청부터 429 `daily_token_limit`, 화면은 안내 후 입력 막기 (5.20) |
 | 비용 일일 상한(원화) | 구현 안 됨 | `DAILY_COST_CAP_KRW`는 읽는 코드가 없다(3.8) |
 | DB 없음·연결 실패 | db.connect | 서버는 뜨고(마이그레이션 경고) 이력·기억 저장은 건너뜀. `/health`는 DB 연결 실패면 503(`db: down`), `DATABASE_URL` 없으면 200(`not_configured`). 삭제 API는 실패를 숨기지 않고 503 |

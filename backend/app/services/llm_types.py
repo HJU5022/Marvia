@@ -34,14 +34,19 @@ class LLMError(Exception):
       connection    연결 실패                   no_choices  200인데 답 없이 error만 옴
       timeout       TIMEOUT_SEC 안에 답이 없음 (전체 시간 상한, _create_with_deadline)
       not_configured 모델 이름이 설정에 없음
+      queue_full    동시 호출 상한(LLM_MAX_CONCURRENCY)에 줄을 섰는데 QUEUE_WAIT_SEC 안에 자리가 안 남
+      request_budget 이 요청이 쓴 토큰이 요청당 상한(MAX_TOKENS_PER_REQUEST)에 닿음. 더 부르지 않는다
       truncated·bad_format은 LLMFormatError 쪽 (답은 왔는데 쓸 수 없음)
+    retry_after: 429 응답의 Retry-After 헤더(초). 있으면 chat()이 그만큼 기다린다
     """
 
-    def __init__(self, message: str, code: int | None = None, latency_ms: int = 0, kind: str = "unknown"):
+    def __init__(self, message: str, code: int | None = None, latency_ms: int = 0, kind: str = "unknown",
+                 retry_after: float | None = None):
         super().__init__(message)
         self.code = code
         self.latency_ms = latency_ms
         self.kind = kind
+        self.retry_after = retry_after
 
     @property
     def retryable(self) -> bool:
