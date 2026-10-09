@@ -1,0 +1,560 @@
+[
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "bl.png",
+  "sec": 24.22,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "bl__blur.png",
+  "sec": 20.56,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "bl__half.png",
+  "sec": 18.33,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "bl__jpeg25.jpg",
+  "sec": 21.47,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "bl__phone.jpg",
+  "sec": 17.59,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "bl__tilt3.png",
+  "sec": 21.95,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "ko_notice.png",
+  "sec": 4.15,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "ko_notice__blur.png",
+  "sec": 3.9,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "ko_notice__half.png",
+  "sec": 3.32,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "ko_notice__jpeg25.jpg",
+  "sec": 4.23,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "ko_notice__phone.jpg",
+  "sec": 3.45,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "paddle_default(ch/en/ja)",
+  "image": "ko_notice__tilt3.png",
+  "sec": 4.48,
+  "load_s": 8.9,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "bl.png",
+  "sec": 21.81,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "bl__blur.png",
+  "sec": 19.46,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "bl__half.png",
+  "sec": 18.13,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "bl__jpeg25.jpg",
+  "sec": 21.04,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "bl__phone.jpg",
+  "sec": 18.26,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "bl__tilt3.png",
+  "sec": 21.49,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "ko_notice.png",
+  "sec": 4.32,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "ko_notice__blur.png",
+  "sec": 4.41,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "ko_notice__half.png",
+  "sec": 3.5,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "ko_notice__jpeg25.jpg",
+  "sec": 4.29,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": false,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "ko_notice__phone.jpg",
+  "sec": 3.57,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "paddle_korean",
+  "image": "ko_notice__tilt3.png",
+  "sec": 4.78,
+  "load_s": 0.4,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "bl.png",
+  "sec": 24.1,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": false,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "bl__blur.png",
+  "sec": 25.5,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": false,
+   "vessel": false,
+   "voyage": false,
+   "container": false,
+   "pol": false,
+   "pod": false,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "bl__half.png",
+  "sec": 8.75,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": false,
+   "voyage": false,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "bl__jpeg25.jpg",
+  "sec": 23.83,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": false,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "bl__phone.jpg",
+  "sec": 11.47,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": false,
+   "container": false,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "bl__tilt3.png",
+  "sec": 28.25,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": false,
+   "container": false,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "ko_notice.png",
+  "sec": 8.03,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "ko_notice__blur.png",
+  "sec": 8.73,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "ko_notice__half.png",
+  "sec": 2.31,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "ko_notice__jpeg25.jpg",
+  "sec": 8.17,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "ko_notice__phone.jpg",
+  "sec": 4.7,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "easyocr(ko+en)",
+  "image": "ko_notice__tilt3.png",
+  "sec": 8.69,
+  "load_s": 7.2,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": false,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ }
+]
