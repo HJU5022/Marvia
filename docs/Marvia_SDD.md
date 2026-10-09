@@ -559,10 +559,10 @@ multipart 업로드(10MB 상한). 앞 4바이트로 PDF 여부를 가른다(파�
   | `match_ports()` | `marvia-port-match` | 질문한 지역에 맞는 항구 고르기 | 없음 |
   | `grade_customs()` | `marvia-judge-eval` | 평가의 통관 해설 채점(`evals/judge.py`) | `GRADE_SKILLS` = customs-stages |
 
-- 프롬프트는 `observability/langfuse.get_prompt(name, label="production")`로 받는다. Langfuse 키가 없거나 실패하면 `backend/app/prompts/<이름>.md` 로컬 사본을 쓴다(트레이스의 prompt_version은 "local"). 코드에 프롬프트 문자열 없음. 현재 버전 번호와 되돌리기 절차는 `docs/release_manifest.json`·`docs/prompt_versions.md`. `marvia-memory-write`는 Langfuse에 등록하지 않고 레포 파일로 동작한다.
-- 시스템 프롬프트 = Langfuse prompt + 그 호출에 필요한 skills/ 문서 전문(통째로, RAG 아님). 판정 = AIS 신뢰도·통관 단계·등급(`JUDGE_SKILLS`), 배 고르기 = AIS 신뢰도, 후속 질문·채팅 에이전트 = 전부, 통관 해설 채점 = 통관 단계(`GRADE_SKILLS`).
+- 프롬프트는 `observability/langfuse.get_prompt(name, label="production")`로 받는다. 10개 모두 Langfuse에 등록돼 있고, 키가 없거나 가져오기에 실패하면 `backend/app/prompts/<이름>.md` 레포 사본을 쓴다(트레이스의 prompt_version은 "local"). 코드에 프롬프트 문자열은 없다. 현재 버전 번호와 되돌리기 절차는 [release_manifest.json](release_manifest.json)과 [prompt_versions.md](prompt_versions.md)에 있다.
+- 시스템 프롬프트 = Langfuse prompt + 위 표의 Skill 문서 전문(통째로, RAG 아님, [ADR 0003](adr/0003-no-rag-whole-skill-docs.md)). `import-basics`는 후속 질문과 채팅 에이전트에만 들어가고 판정에는 없다. `referrals`는 어느 LLM 묶음에도 넣지 않고 코드가 확인처 문장으로만 쓴다(`services/chat/referrals.py`. `llm.py`의 Skill 묶음 상수에 없다).
 - 도구 호출: 판정 흐름의 도구(위치·일정·거리·후보)는 코드가 순서대로 부르고 결과를 자료로 넘긴다. LLM이 도구를 고르는 곳은 후속 질문(읽기 전용 MCP 도구)과 채팅 에이전트뿐이고, 루프 상한은 `MAX_TOOL_ROUNDS=3`. 코드는 `services/mcp_client.py`로 `/mcp`를 거쳐 도구를 부르고(`MCP_URL`이 없으면 같은 프로세스 안의 MCP 서버에 메모리로 붙음) 호출마다 Langfuse tool 관측을 남긴다.
-- 모델: 서비스 모델은 `LLM_MODEL`(`google/gemini-3.5-flash-lite`, 값은 `docs/release_manifest.json`). 기억 뽑기·제목은 `MEMORY_MODEL`(gpt-4o-mini 계획), 평가 비교는 `EVAL_COMPARE_MODEL`, 채점은 `EVAL_GRADER_MODEL`. 판정(judge)은 모델을 따로 주지 않으면 난이도로 고른다: 회색 지대·unknown 신호·켜진 신호 2개 이상·검증 재시도면 `LLM_MODEL`, 나머지는 `LLM_ROUTE_SMALL_MODEL`(비면 라우팅 없음, docs/specs/model-routing.md). 계획과 달라진 점: 모델 이름이 MODEL_A/B가 아니다. 레이트 리밋 때 다른 모델로 돌리는 폴백은 처음엔 없었다가 `LLM_FALLBACK_MODEL`로 붙였다(아래 재시도 줄).
+- 모델: 서비스 모델은 `LLM_MODEL`(`google/gemini-3.5-flash-lite`, 값은 `docs/release_manifest.json`). 기억 뽑기·제목은 `MEMORY_MODEL`(`openai/gpt-4o-mini`), 평가 비교는 `EVAL_COMPARE_MODEL`, 채점은 `EVAL_GRADER_MODEL`(`anthropic/claude-haiku-4.5`). 판정(judge)은 모델을 따로 주지 않으면 난이도로 고른다: 회색 지대·unknown 신호·켜진 신호 2개 이상·검증 재시도면 `LLM_MODEL`, 나머지는 `LLM_ROUTE_SMALL_MODEL`(비면 라우팅 없음, docs/specs/model-routing.md). 계획과 달라진 점: 모델 이름이 MODEL_A/B가 아니다. 레이트 리밋 때 다른 모델로 돌리는 폴백은 처음엔 없었다가 `LLM_FALLBACK_MODEL`로 붙였다(아래 재시도 줄).
 - 재시도: 호출 하나는 최초 1회 + 재시도 1회(`MAX_ATTEMPTS=2`, 500·502·503, 2초 대기), 호출당 타임아웃 60초. 429는 2초, 4초로 늘려 가며 최초 포함 3번(`RATE_LIMIT_ATTEMPTS`, Retry-After 헤더가 있으면 따르되 8초 상한), 그래도 429면 `LLM_FALLBACK_MODEL`로 한 번. 동시 호출은 `LLM_MAX_CONCURRENCY`만큼만 나가고 나머지는 줄을 서며 20초 넘게 기다리면 `queue_full`. 요청 하나의 토큰 누계가 `MAX_TOKENS_PER_REQUEST`에 닿으면 그 요청 안의 다음 호출은 `request_budget`으로 부르지 않는다. 끊긴 답(finish_reason None·error)은 같은 대화로 한 번 더 묻는다. 판정의 위반 재시도(최대 3회, 시간 예산 60초)는 라우터가 한다(5.7).
 - 응답은 구조화 출력(strict JSON schema)으로 받는다. 입력의 B/L은 가린 토큰이고 컨테이너 번호는 `[CNTR1]` 번호표다.
 - 모든 호출이 쓴 토큰(입력+출력)을 `services/account/quota.add()`로 사용자별 하루 사용량에 더한다(5.20).
@@ -777,8 +777,8 @@ open http://localhost:8000/docs
 
 | 항목 | 목표 | 측정 |
 | --- | --- | --- |
-| p95 지연 | 정상 경로 15초 이내(목표). 판정 재시도 예산은 60초, 화면 요청 제한 90초 | Langfuse, `evals/results`. 실제 값은 EVAL_REPORT.md |
-| 요청당 비용 | 요청당 토큰 상한 `MAX_TOKENS_PER_REQUEST`(값은 운영 설정). 사용자별 하루 토큰 한도(5.20)와 함께 막는다 | Langfuse cost, 결과 파일 |
+| p95 지연 | 정상 경로 15초 이하. 판정 재시도 예산 60초, 화면 요청 제한 90초 | 출시 게이트, 실측은 [EVAL_REPORT.md](../EVAL_REPORT.md) 7절 |
+| 요청당 비용 | 판정 요청당 $0.005 이하. 재측정 평균의 약 2배로 정했다(EVAL_REPORT 7절). 요청당 토큰 상한 `MAX_TOKENS_PER_REQUEST`(값은 운영 설정)와 사용자별 하루 토큰 한도(5.20)로 막는다 | 출시 게이트, 결과 파일 `usage` |
 | 계약 준수율 | 95% 이상 (게이트) | validate 통과율(`evals/contract_rate.py`) |
 | 가용성 | 외부 API 1개 장애 때 partial 응답, 전체 실패 아님 | 실패 경로 테스트, `evals/results/failure_drill.txt` |
 | 재현성 | clone → compose up 10분 | 6.6 |
@@ -914,7 +914,7 @@ fixture: evals/fixtures/<파일> (가공 응답, 실제 원본 아님)
 | B/L 가리기 | 앞 4자 + `****` + 뒤 4자 | 가운데 절반을 `*`로 | 8자 이하 번호가 전부 가려졌다. `schemas/customs.py` `mask_bl` |
 | 규칙 파일 | 한 파일 | Skill 폴더마다 `rules.md`, 키 이름 일부 변경 | 3.6, [ADR 0004](adr/0004-rules-frontmatter-thresholds.md) |
 | 환경변수 이름 | `MODEL_A`, `MODEL_B`, `JUDGE_MODEL` | `LLM_MODEL`, `EVAL_COMPARE_MODEL`, `EVAL_GRADER_MODEL` | 3.8 |
-| 모델 폴백 | 레이트 리밋 때 `MODEL_B`로 | 만들지 않았다. 호출당 1회 재시도만 | 5.6 |
+| 모델 폴백 | 레이트 리밋 때 `MODEL_B`로 | 429가 이어지면 `LLM_FALLBACK_MODEL`로 한 번. 판정은 난이도에 따라 `LLM_ROUTE_SMALL_MODEL`로 보내는 라우팅을 더했다([specs/model-routing.md](specs/model-routing.md)) | 5.6 |
 | DB 표 | `arrivals`, `api_cache` | `arrival_reports`·`control_events`·`targets`. API 캐시는 프로세스 메모리(`clients/cache.py`) | 3.9 |
 | 선박 식별 | `identify.resolve()`, 2척 이상이면 LLM | 순서는 `routers/agent._identify`. MRN·서류 대조를 먼저, LLM은 항차·예정일이 있을 때만 | 근거 없이 LLM이 고르면 남의 배를 확정했다(평가셋 B01). 5.5, [ADR 0015](adr/0015-same-name-vessel-needs-user-evidence.md) |
 | 검증 폴백 | `failed` | 판정 표 등급 + 고정 문구로 `partial` | 등급은 코드가 정하므로 LLM이 못 만든 것은 문장뿐이다. 5.7 |

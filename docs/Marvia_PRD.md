@@ -325,7 +325,7 @@ verdict 정답이 있는 문항 22건, 그중 act 11건(`evals/dataset.jsonl` `e
 | 카카오톡 알림 | P1 "판정 변화 시 알림" | 사용자가 켠 화물 지켜보기 + "나에게 보내기". 자동 재판정은 배포에서 꺼짐 | [ADR 0019](adr/0019-watch-user-opt-in-limit.md), [specs/cargo-watch.md](specs/cargo-watch.md) |
 | 로그인·기억·운영자·토큰 한도·현황표 | 계획에 없음 | 만듦(4절 표) | [ADR 0017](adr/0017-memory-feature-decisions.md), [ADR 0018](adr/0018-daily-token-quota.md), `docs/specs/` |
 | 품명·컨테이너 번호 | 품명은 LLM에 넘기지 않음 | 품명은 채팅 에이전트에만, 판정 LLM에는 없음. 컨테이너 번호는 `[CNTR1]` 같은 가린 표시로만 | SDD 3.5, [ADR 0005](adr/0005-bl-masking-not-to-llm.md) |
-| 비용·레이트 리밋 방어 | 다른 모델 라우팅, 요청·일일 상한 차단 | 로그인 + 1명당 하루 토큰 한도(429). 모델 교체·금액 상한 없음 | [ADR 0018](adr/0018-daily-token-quota.md), SDD 8 |
+| 비용·레이트 리밋 방어 | 다른 모델 라우팅, 요청·일일 상한 차단 | 로그인 + 1명당 하루 토큰 한도(429), 요청당 토큰 상한, LLM 429 때 대체 모델로 한 번, 쉬운 판정은 작은 모델(판정 모델 라우팅). 금액 상한 없음 | [ADR 0018](adr/0018-daily-token-quota.md), SDD 8 |
 | 수집 대상 | 20~30척, 3~6시간마다 | 최대 12척, 6시간마다, 배포 worker 스케줄 꺼짐 | `worker/collector.py`, `worker/run.py`, `release_manifest.json` |
 | 실패 유도 문항 | 주입 2(사용자 입력, AIS dest), 범위 밖 | 주입 3(+ MCP 도구 설명), 부산 외 항만, LLM 계약 위반 지속 | `evals/dataset.jsonl` |
 | 베이스라인 (a) | 1층 결과를 verdict로 | 서비스와 같은 판정 표 | `evals/baseline_rules.py` |

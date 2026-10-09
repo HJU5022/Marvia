@@ -39,6 +39,7 @@ SDD 5절과 작업 리스트에 없는 기능은 Spec을 먼저 쓴다 (CLAUDE.m
 | [document-extract.md](./specs/document-extract.md) | 서류 사진에서 조회 값 뽑기 |
 | [injection-redteam.md](./specs/injection-redteam.md) | 프롬프트 주입 레드팀 점검 |
 | [memory.md](./specs/memory.md) | 화물 비서 기억: 사용자별 화물 표와 메모장, 채팅 입구 |
+| [model-routing.md](./specs/model-routing.md) | 판정 모델 라우팅: 쉬운 판정은 작은 모델로 |
 | [mrn-fallback.md](./specs/mrn-fallback.md) | 세관에 아직 없는 화물은 MRN으로 배 상태까지 |
 | [operator-admin.md](./specs/operator-admin.md) | 운영자 관리: 관리 탭, 고객 관리, 운영자 등록과 해지 |
 | [referral-guide.md](./specs/referral-guide.md) | 안내처 표: 신호별 다음 행선지와 범위 밖 질문 |
