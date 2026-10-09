@@ -3,11 +3,11 @@
 구글 로그인은 Supabase Auth가 하고, 화면은 받은 출입증을 Authorization: Bearer <JWT>로 보낸다.
 여기서는 서명·만료·발급처·대상만 확인하고 사용자 ID(sub)를 꺼낸다. 백엔드는 구글과 직접 통신하지 않는다.
 
-서명 확인은 공개키 방식(ES256)이다 (09-30 결정). Supabase가 공개한 견본(JWKS)과 대조하므로
+서명 확인은 공개키 방식(ES256)이다. Supabase가 공개한 견본(JWKS)과 대조하므로
 우리 .env에 JWT_SECRET 같은 비밀값을 두지 않는다. 필요한 설정은 SUPABASE_URL(비밀 아님) 하나다.
-09-30 실제 JWKS를 읽어 ES256 공개키 1개를 확인했다. 서명 계산은 직접 짜지 않고 PyJWT에 맡긴다 (Supabase 문서 권고).
+실제 JWKS를 읽어 ES256 공개키 1개를 확인했다. 서명 계산은 직접 짜지 않고 PyJWT에 맡긴다 (Supabase 문서 권고).
 
-로그인은 필수다 (09-30 결정). 손님으로 쓰는 길은 없다. 세 갈래로 나뉜다:
+로그인은 필수다. 손님으로 쓰는 길은 없다. 세 갈래로 나뉜다:
 - SUPABASE_URL 없음 → None(로그인 기능 자체가 꺼짐). 채점용 compose는 Supabase가 없어 이 길로 데모가 돈다.
   이때만 예전처럼 session_id로 구분한다
 - 로그인 켜짐 + 헤더 없음 → 401. 메모리·등록·알림이 전부 사람에 묶이는 기능이라 주인 없는 기록을 만들지 않는다
@@ -109,7 +109,7 @@ def current_user(authorization: str | None = Header(default=None)) -> CurrentUse
     if _suspended(user.id):
         log_failure("auth", "suspended")
         raise HTTPException(status_code=403, detail=SUSPENDED)
-    # 하루 토큰 한도의 운영자 예외가 이 이메일을 본다 (services/quota.py). 서명을 확인한 값만 적는다.
+    # 하루 토큰 한도의 운영자 예외가 이 이메일을 본다 (services/account/quota.py). 서명을 확인한 값만 적는다.
     # 로그인 확인은 스레드풀에서 돌아 새 대입은 핸들러로 안 넘어가고, 미들웨어가 만든 dict를 고치면 넘어간다
     holder = request_user_var.get()
     if holder is not None:
@@ -118,9 +118,9 @@ def current_user(authorization: str | None = Header(default=None)) -> CurrentUse
 
 
 def verified_email(claims: dict) -> str | None:
-    """출입증의 이메일. 확인되지 않은 이메일이면 None (10-06 점검).
+    """출입증의 이메일. 확인되지 않은 이메일이면 None.
 
-    운영자 판단(services/operators.is_operator)과 토큰 한도 운영자 예외(services/quota.is_exempt)가 이 이메일을 본다.
+    운영자 판단(services/account/operators.is_operator)과 토큰 한도 운영자 예외(services/account/quota.is_exempt)가 이 이메일을 본다.
     확인 안 된 이메일을 믿으면, 이메일 확인을 끈 가입 경로로 운영자 주소를 등록한 사람이 운영자가 된다.
     Supabase 출입증은 email_verified를 맨 위나 user_metadata 안에 둔다(구글 로그인은 user_metadata.email_verified=true).
     둘 중 하나라도 있으면 true일 때만 이메일을 쓴다. 둘 다 없으면 예전처럼 쓴다(그런 출입증을 주는 로그인 경로가 지금 없다).
@@ -147,8 +147,8 @@ def _suspended(user_id: str) -> bool:
         return False
     try:
         # 함수 안에서 불러온다. 순환 import를 피하고, 테스트는 operators.open_conn을 가짜로 바꿔 끼운다
-        from backend.app.services.customers import is_suspended
-        from backend.app.services.operators import open_conn
+        from backend.app.services.account.customers import is_suspended
+        from backend.app.services.account.operators import open_conn
         with open_conn() as conn:
             return is_suspended(conn, user_id)
     except Exception as e:

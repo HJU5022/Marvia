@@ -1,4 +1,4 @@
-/** UNI-PASS 처리 이력 원문 표 (docs/specs/customs-detail.md, 10-02). 관세청이 준 값을 해석하지 않고 그대로 보여 준다.
+/** UNI-PASS 처리 이력 원문 표 (docs/specs/customs-detail.md). 관세청이 준 값을 해석하지 않고 그대로 보여 준다.
  * 화면 전용 값이라 서버가 저장하지 않는다. 그래서 이력 재생이나 후속 질문 응답에는 없고, 그때는 표를 그리지 않는다.
  * React 텍스트로만 그려 안내문 속 글자가 HTML로 해석되지 않는다. */
 import {FileText} from 'lucide-react';

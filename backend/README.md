@@ -15,12 +15,12 @@ FastAPI 서버. 요청을 검증하고, 서비스를 불러 판정(순항·주�
 | `app/auth.py`, `app/crypto.py` | 로그인 토큰(JWT) 확인, B/L 원본 암호화 |
 | `app/routers/` | 요청 검증, 서비스 호출, 응답. 판정과 LLM 호출은 하지 않는다 |
 | `app/schemas/` | 출력 계약 원본(`agent.py`, `signals.py`, `customs.py`, `document.py`, `memory.py`) |
-| `app/services/` | 업무 로직 (아래 두 묶음) |
+| `app/services/` | 업무 로직. `llm*.py`·`mcp_client.py`와 네 묶음 폴더 `judge/` `chat/` `account/` `watch/` (아래) |
 | `app/clients/` | 외부 API 클라이언트(`shipfinder`, `mof`, `kakao`, `supabase_admin`)와 `cache`, `retry`, `replay`(REPLAY_MODE 재생) |
 | `app/observability/` | `langfuse.py`(span), `logging.py`(구조화 JSON 로그) |
 | `app/db/migrations/` | `001`~`023` `*.sql`, 이름 순서대로 한 번씩 적용 |
 | `app/prompts/` | Langfuse에서 못 가져올 때 쓰는 프롬프트 사본(`marvia-*.md`) |
-| `tests/` | pytest. 키 없이 돈다 |
+| `tests/` | pytest. 키 없이 돈다. `unit/`(함수·모듈), `integration/`(라우터·채팅 경로), `contract/`(스키마·프롬프트 파일), 공통 `conftest.py`, `fixtures/` |
 
 ## 라우터와 엔드포인트
 
@@ -41,12 +41,15 @@ FastAPI 서버. 요청을 검증하고, 서비스를 불러 판정(순항·주�
 
 ## 서비스 (`app/services/`)
 
-| 묶음 | 파일 |
+| 위치 | 파일 |
 |---|---|
-| 판정 쪽 | `customs`(UNI-PASS 조회), `identify`, `vessel_pick`(선박 식별), `signals`(1층 신호 7종), `verdict`(판정 표), `llm`(LLM 오케스트레이션), `validate`(검증 V1~V7, V9~V15), `evidence`(근거, 여유 일수), `rules`(`rule(key)`로 rules.md 값 읽기), `guard`(프롬프트 주입 걸러내기), `mcp_client`(MCP 도구 호출), `mrn_fallback`, `bl_parse`, `citations` |
-| 화면 기능 쪽 | `chat`, `conversations`, `memory`, `doc_ocr`, `watch`, `vessel_watch`, `kakao`, `cargo`, `cargo_sheet`, `vessel_detail`, `quota`, `referrals`, `profile`, `account`, `operators`, `customers`, `metrics`, `progress`, `pii_patterns` |
+| 맨 위 | `llm`(LLM 호출 단일 지점, SDK import는 여기서만), `llm_config`(주소·상한), `llm_types`(결과·오류), `llm_schemas`(프롬프트 이름·출력 스키마), `llm_support`(입력 조립·정제 순수 함수), `mcp_client`(MCP 도구 호출) |
+| `judge/` 판정 흐름 | `customs`(UNI-PASS 조회), `identify`(선박 식별), `bl_parse`, `mrn_fallback`, `signals`(1층 신호 7종), `verdict`(판정 표), `validate`(검증 V1~V7, V9~V15), `evidence`(근거, 여유 일수), `rules`(`rule(key)`로 rules.md 값 읽기), `guard`(프롬프트 주입 걸러내기), `answers`(고정 문구), `builders`(응답 조립), `saved`(지난 응답 값), `vessel_match`(호출부호·국적 대조) |
+| `chat/` 채팅·서류 | `chat`(자연어 창구), `texts` `patterns` `limits`(문구·정규식·상수), `models` `ids` `map_card` `memo` `screen` `tools` `replies` `watch_chat`(chat에서 나눈 순수 부분), `citations`, `conversations`, `progress`, `referrals`, `doc_ocr` |
+| `account/` 회원·기억·운영 | `memory`, `quota`, `pii_patterns`, `profile`, `account`, `operators`, `customers`, `metrics` |
+| `watch/` 화물 현황·지켜보기 | `cargo`, `cargo_sheet`, `watch`, `vessel_watch`, `vessel_pick`, `vessel_detail`, `kakao` |
 
-검증 규칙 V1~V7, V9~V15는 `app/services/validate.py`, V8(등급 검사)은 `app/routers/agent.py`에 있다.
+검증 규칙 V1~V7, V9~V15는 `app/services/judge/validate.py`, V8(등급 검사)은 `app/routers/agent.py`에 있다.
 
 ## 실행과 테스트
 

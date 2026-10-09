@@ -143,7 +143,7 @@ def test_final_revision_is_not_planned_arrival(fake):
     assert get_port_schedule(call_sign="TEST12", ship_name="테스트벌크12")["planned_arrival"] is None
 
 
-# ── 도구는 예외를 던지지 않는다 (C4, 10-06 점검) ──
+# ── 도구는 예외를 던지지 않는다 (C4) ──
 
 def test_missing_key_returns_bad_key_error(monkeypatch):
     """클라이언트 만들기에서 난 실패(키 없음)도 {error}로, 코드는 bad_key 그대로."""
@@ -166,8 +166,8 @@ def test_unexpected_exception_returns_bad_response(monkeypatch):
 
 
 def test_defaults_come_from_rules():
-    """조회 기간·선명 비교 기준은 port-busan/rules.md 프론트매터 값이다 (C6, 10-06)."""
-    from backend.app.services.rules import rule
+    """조회 기간·선명 비교 기준은 port-busan/rules.md 프론트매터 값이다 (C6)."""
+    from backend.app.services.judge.rules import rule
 
     assert port_schedule.LOOKBACK_DAYS == rule("port_schedule_lookback_days")
     assert port_schedule.LOOKAHEAD_DAYS == rule("port_schedule_lookahead_days")

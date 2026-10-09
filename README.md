@@ -18,14 +18,19 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 
 **지금 살아있는지 확인**
 
-```bash
-curl -s https://marvia-api-production.up.railway.app/health     # {"status":"ok","db":"ok"}
-```
+브라우저로는 아래 주소를 열면 된다. 터미널에서는 `curl`로 같은 주소를 부른다.
+
+| 방법 | 주소 또는 명령 |
+|---|---|
+| 브라우저 | https://marvia-api-production.up.railway.app/health |
+| 터미널 | `curl -s https://marvia-api-production.up.railway.app/health` |
+| API 문서 (브라우저) | https://marvia-api-production.up.railway.app/docs |
 
 | 결과 | 뜻 |
 |---|---|
 | `{"status":"ok","db":"ok"}` | API와 DB가 모두 응답한다 |
 | HTTP 503 | API는 떠 있고 DB 연결이 끊겼다 (`/health`가 DB를 확인한다) |
+| 주소만(`/`) 열면 `Not Found`, `/api/agent`를 브라우저로 열면 `Method Not Allowed` | 정상이다. API 서버라 첫 화면이 없고, `/api/agent`는 B/L을 보내는 POST 요청만 받는다. 화면은 위 표의 웹 주소에서 쓴다 |
 | 응답 없음 · 타임아웃 | 배포 서버가 내려가 있다. 로컬에서 [키 없이 데모](#키-없이-데모-13건-10분-재현)로 같은 화면과 판정을 재현할 수 있다 |
 
 ## 데모
@@ -151,9 +156,9 @@ flowchart TD
 | 판정은 2층 | 1층은 코드가 신호 7종(위치 6시간 끊김, AIS ETA와 해수부 예정 12시간 차이, 부산 인근 24시간 정박, 목적지 변경·깨짐, 항해상태·속도 불일치, 통관 검사·보류, 신뢰 ETA가 판매 예정일을 넘김)을 triggered / clear / unknown으로 판정한다. 2층은 LLM이 신호가 어긋날 때 어느 출처를 왜 믿는지 설명한다 |
 | 숫자는 코드가 계산 | 여유 일수, 거리, freshness는 코드가 계산하고 LLM은 덮어쓰지 못한다. 임계값 원본은 `skills/*/rules.md` 프론트매터 |
 | 코드가 LLM을 막는다 | 위치가 오래됐으면 "현재 위치" 표현 금지, 식별 불확정이면 판정 금지, 근거에 없는 숫자 거부 같은 출력 검증 규칙(V1~V15). 위반하면 재시도 3단계 후 폴백. 등급은 코드의 판정 표가 정한다 |
-| RAG 아님 | 지식은 Skill 문서를 통째로 넣고, 실시간 데이터는 MCP 도구로 가져온다. LangGraph와 RAG는 쓰지 않는다 |
+| RAG 아님 | 지식은 Skill 문서를 통째로 넣고, 실시간 데이터는 MCP 도구로 가져온다. LangGraph와 RAG는 쓰지 않는다. 채팅 에이전트의 웹 검색 도구는 가이드가 RAG로 보는 "웹 검색 결과 본문을 프롬프트에 붙여 답변 생성"이라 없앴고, 수입 실무 기초는 고정 Skill 문서(`import-basics`)로 옮겼다 ([ADR 0020](docs/adr/0020-remove-web-search-use-skill.md)) |
 
-#### Skill 5종 (`skills/`)
+#### Skill 6종 (`skills/`)
 
 각 폴더의 `SKILL.md`(도메인 지식·설명법)와 `rules.md`(코드가 읽는 재료)를 통째로 호출에 넣는다. 어느 호출이 어느 Skill을 받는지는 `backend/app/services/llm.py`의 `JUDGE_SKILLS` 등 상수가 정한다. 폴더 설명은 [skills/README.md](./skills/README.md).
 
@@ -163,7 +168,8 @@ flowchart TD
 | `customs-stages` | UNI-PASS 통관 단계의 뜻·다음 단계·할 일 설명법과 관세사 안내 | 판정, 후속 답, 채팅 에이전트, 통관 해설 채점(평가) |
 | `cargo-verdict` | 코드가 낸 등급과 되묻기·보류·실패 결과를 설명하는 법 | 판정, 후속 답, 채팅 에이전트 |
 | `port-busan` | 부두·정박지 이름의 뜻과 하역 장소를 한 문장으로 말하는 법 | 후속 답, 채팅 에이전트 (판정에는 넣지 않음) |
-| `referrals` | 마르비아가 답하지 않는 부분을 누구에게 어느 공식 창구에서 확인하게 하는지 | LLM에 넣지 않고 채팅 코드(`services/referrals.py`)가 `rules.md`를 읽어 고정 문구 뒤에 붙임 |
+| `import-basics` | 수입 실무 기초(B/L 번호를 찾는 곳, 포워더 확인, A/N 같은 낱말). 웹 검색을 없애고 고정 문서로 옮겼다 | 후속 답, 채팅 에이전트 (판정에는 넣지 않음) |
+| `referrals` | 마르비아가 답하지 않는 부분을 누구에게 어느 공식 창구에서 확인하게 하는지 | LLM에 넣지 않고 채팅 코드(`services/chat/referrals.py`)가 `rules.md`를 읽어 고정 문구 뒤에 붙임 |
 
 ---
 
@@ -250,12 +256,12 @@ open http://localhost:8000/docs          # API 문서
 cp .env.example .env
 # .env에서 REPLAY_MODE=false 를 REPLAY_MODE=true 로 바꾼다. 다른 칸은 비워 둔다
 docker compose up -d --build
-docker compose exec api python -m scripts.make_demo      # 데모 재생 파일을 지금 시각 기준으로 만든다
+docker compose exec api python -m scripts.demo.make_demo      # 데모 재생 파일을 지금 시각 기준으로 만든다
 ```
 
 `make_demo`가 B/L 번호와 넣을 판매 예정일을 표로 보여 준다. 판매 예정일은 실행한 날에 따라 달라진다(아래 `<판매일>`).
 
-라이브 데모 10건 (시나리오는 `scripts/demo_live.py`의 `SPECS`, 펼친 문항은 `evals/fixtures/demo_live.jsonl`)
+라이브 데모 10건 (시나리오는 `scripts/demo/demo_live.py`의 `SPECS`, 펼친 문항은 `evals/fixtures/demo_live.jsonl`)
 
 | B/L | 시나리오 | 켜지는 신호 | 기대 결과 |
 |---|---|---|---|
@@ -291,8 +297,8 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 - 녹화 답은 평가셋 `TESTBL01` 입력에만 맞다. 판매 예정일을 다른 날짜로 넣거나 라이브 데모 10건을 부르면 녹화 답을 쓰지 않고 `partial`로 끝난다. 등급은 판정 표가 정해서 그대로 나오고, "설명 문장은 만들지 못했습니다" 안내가 붙는다. 틀린 설명을 그럴듯하게 보이지 않게 한 것이다
 - `.env`에 `LLM_MODEL`를 넣으면 같은 데모를 진짜 LLM이 판정한다 (녹화 답을 쓰지 않는다)
 - 위치 수신 시각이 "만든 시각 30분 전"이라 약 5시간 반 뒤에는 오래된 위치가 된다. 재생 모드 서버는 4시간마다 스스로 다시 만들고, 직접 돌릴 때는 `make_demo`를 다시 돌린다
-- 새 시나리오는 `scripts/demo_live.py`의 `SPECS`에 dict 하나를 더하고 `python -m scripts.demo_live`로 jsonl을 다시 쓴다
-- Docker 없이: `python -m scripts.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
+- 새 시나리오는 `scripts/demo/demo_live.py`의 `SPECS`에 dict 하나를 더하고 `python -m scripts.demo.demo_live`로 jsonl을 다시 쓴다
+- Docker 없이: `python -m scripts.demo.make_demo` 후 `REPLAY_MODE=true uvicorn backend.app.main:app --port 8000`
 
 ### 키
 
@@ -328,8 +334,8 @@ curl -s -X POST localhost:8000/api/agent -H 'content-type: application/json' \
 |---|---|
 | API 직접 실행 | `python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt -r backend/requirements-doc.txt` 후 `.venv/bin/python -m uvicorn backend.app.main:app --port 8000` (API + MCP `/mcp`. 윈도우는 `.venv\Scripts\python`) |
 | 화면(web/) | `cd web && npm install && npm run dev` (:3000, Node 20.9 이상). `web/.env`의 `NEXT_PUBLIC_API_BASE`를 비우면 `web/lib/fixtures` 가공 데이터로 뜨고, `http://localhost:8000`을 넣으면 위 API에 붙는다. 자세한 설명은 [web/README.md](./web/README.md) |
-| MCP 확인 | `python -m scripts.mcp_check http://localhost:8000/mcp` (연결과 도구 4종), `python -m scripts.mcp_demo` (4종 호출), `python -m scripts.mcp_auth_check` (토큰 없으면 401) |
-| 테스트 | `pytest` 키 없이 돈다 (가공 응답으로 대체). `pytest backend/tests mcp_server/tests`로 2309건 통과. PR 때 `.github/workflows/tests.yml`이 같은 범위를 돈다 |
+| MCP 확인 | `python -m scripts.demo.mcp_check http://localhost:8000/mcp` (연결과 도구 4종), `python -m scripts.demo.mcp_demo` (4종 호출), `python -m scripts.demo.mcp_auth_check` (토큰 없으면 401) |
+| 테스트 | `pytest` 키 없이 돈다 (가공 응답으로 대체). `pytest backend/tests mcp_server/tests`로 2360건 통과. PR 때 `.github/workflows/tests.yml`이 같은 범위를 돈다 |
 | 평가 | `python -m evals.run_eval --config a|b|c` (실제 API·LLM을 불러 돈이 든다) |
 
 MCP 서버는 API 서버 안의 `/mcp` 경로다. 서버 하나, 배포 주소 하나로 `/api/agent`(화면용)와 `/mcp`(MCP 클라이언트용)가 같이 열린다. `MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401이고, 배포에서는 반드시 채운다. 우리 서비스(`/api/agent`)도 도구를 `/mcp`를 거쳐 MCP 프로토콜로 부른다(`backend/app/services/mcp_client.py`). Docker 이미지는 `MCP_URL=http://127.0.0.1:8000/mcp`로 같은 서버에 HTTP로 붙고, `MCP_URL`이 없으면(테스트·평가 실행기) 같은 프로세스의 MCP 서버에 메모리로 붙는다. 후속 질문에서는 LLM이 `tools/list`로 받은 읽기 전용 도구를 직접 골라 부르고, 호출마다 Langfuse에 `mcp:<도구>` 관측이 남는다. 도구 4종은 `estimate_distance`, `get_live_position`, `get_vessel_candidates`, `get_port_schedule`이고 본체는 `mcp_server/tools/*.py`, 등록은 `mcp_server/server.py`의 `create_mcp()`다. 폴더 설명은 [mcp_server/README.md](./mcp_server/README.md).
@@ -346,6 +352,15 @@ MCP 서버는 API 서버 안의 `/mcp` 경로다. 서버 하나, 배포 주소 �
 | `marvia-api` | Railway | `Dockerfile.railway` (app 단계만). `/api/*`, `/mcp`, `/health` |
 | `marvia-worker` | Railway | 위치·입항 실적 수집, 지켜보는 화물 재판정 |
 | `mof-relay` | Google Cloud Run (서울) | 해수부 API 릴레이 ([relay/README.md](./relay/README.md)) |
+
+배포는 Railway CLI로 한다 (GitHub에서 자동 배포되지 않는다). 레포 루트에서 실행한다.
+
+```bash
+railway up --service marvia-api --detach                     # Railway 변수 RAILWAY_DOCKERFILE_PATH=Dockerfile.railway
+railway up web --path-as-root --service marvia-web --detach  # web 폴더만 올린다
+```
+
+CLI는 연결한 폴더 전체를 올린다. web에 `--path-as-root`가 없으면 루트 `Dockerfile`의 마지막 단계(worker)가 빌드돼 화면이 502가 된다. 배포한 커밋과 확인 결과는 `docs/release_manifest.json`에 적는다.
 
 Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패하는 원인은 확인하지 못했다. 한국에서는 0.1초에 응답한다. 같은 증상을 미국 GitHub Actions에서도 겪었다는 보고가 있어(github.com/SFByomi/blueboard/pull/19) 해외 접속 차단으로 짐작하지만 공식 확인은 아니다. UNI-PASS는 싱가포르에서도 된다.
 
@@ -379,20 +394,83 @@ Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout
 
 ## 디렉토리 구조
 
-레포 루트가 Docker 빌드 컨텍스트다. 처음 계획(SDD 1.1)의 `app/`, `eval/`은 각각 `backend/app/`, `evals/`로 옮겨 만들었다. 폴더마다 하는 일과 하지 않는 일은 CLAUDE.md "폴더" 표에 있다.
+레포 루트가 Docker 빌드 컨텍스트다. 폴더 안 파일 하나하나의 설명은 각 폴더 README에 있다 ([backend](./backend/README.md) · [mcp_server](./mcp_server/README.md) · [skills](./skills/README.md) · [web](./web/README.md) · [relay](./relay/README.md) · [evals](./evals/README.md) · [docs](./docs/README.md)).
 
-| 폴더 | 내용 | 설명 |
-|---|---|---|
-| `backend/` | FastAPI. `app/routers`(요청), `schemas`(계약 C1~C5), `services`(판정·채팅·기억·지켜보기), `clients`(외부 API), `observability`, `db/migrations`(001~023 자동 적용), `prompts`(Langfuse 실패 때 쓰는 사본), `tests` | [backend/README.md](./backend/README.md) |
-| `mcp_server/` | FastMCP. 선박 후보·실시간 위치·입항 일정·남은 거리 도구 4개 | [mcp_server/README.md](./mcp_server/README.md) |
-| `skills/` | `ais-reliability`, `customs-stages`, `port-busan`, `cargo-verdict`, `referrals`. 폴더마다 `SKILL.md` + `rules.md` | [skills/README.md](./skills/README.md) |
-| `worker/` | `collector.py`(위치·입항 실적 수집), `watch.py`(지켜보는 화물 재판정), `run.py` | |
-| `relay/` | 해수부 API 릴레이 (서울 Cloud Run) | [relay/README.md](./relay/README.md) |
-| `evals/` | 평가셋 30건(`dataset.jsonl`)·서류 12건, `fixtures/`(재생 파일), `results/`, 실행기·채점 | [evals/README.md](./evals/README.md) |
-| `web/` | Next.js 16. 경로 `/`, `/watch`, `/cargo`, `/history`, `/settings`, `/admin`, `/metrics`, `/about`. `public/basemap/`에 미리 구운 지도 타일 | [web/README.md](./web/README.md) |
-| `scripts/` | 손으로 돌리는 스크립트 (make_demo, demo_live, mcp_check, langfuse_evidence 등) | |
-| `docs/` | PRD, SDD, 작업 리스트, ERD, 릴리스 manifest, 프롬프트 버전, specs, evidence | [docs/README.md](./docs/README.md) |
-| 루트 | `EVAL_REPORT.md`, `Dockerfile`(base / app / worker), `Dockerfile.railway`, `docker-compose.yml`(api + worker + postgres 16), `.env.example`, `CLAUDE.md` · `AGENTS.md`(AI 코딩 도구 작업 지침) | |
+```
+proj2-5/
+├── README.md                  채점자용 소개 · 실행법 · 지표 (이 파일)
+├── EVAL_REPORT.md             관측과 평가 제출물. 실행한 숫자만 적는다
+├── CLAUDE.md · AGENTS.md      AI 작업 규칙 (AGENTS.md는 CLAUDE.md를 가리킨다)
+├── Dockerfile                 로컬 compose용 멀티스테이지 (base / app / worker)
+├── Dockerfile.railway         Railway 배포용 API 이미지 (마지막 단계만 빌드하는 Railway 제약 때문)
+├── docker-compose.yml         api(/mcp 포함) + worker + postgres 16. `docker compose up` 한 줄
+├── pyproject.toml             프로젝트 정보. 설치 기준은 backend/requirements.txt
+├── .env.example               환경변수 이름과 설명 (값 없음)
+│
+├── backend/                   FastAPI 서버
+│   ├── requirements*.txt      의존성 · requirements.lock.txt(테스트한 버전 고정)
+│   ├── app/
+│   │   ├── main.py            앱 시작 · 라우터 등록 · /health · 마이그레이션 자동 적용 · /mcp 마운트
+│   │   ├── routers/           요청 입구. 검증 → 서비스 호출 → 응답 (agent, chat, document, watch, history ...)
+│   │   ├── schemas/           출력 계약 원본 (C1~C5). 필드는 여기서만 정한다
+│   │   ├── services/
+│   │   │   ├── llm.py         LLM 게이트웨이. LLM SDK는 이 파일에서만 부른다 (재시도 · 검증 · 관측)
+│   │   │   ├── llm_*.py       LLM 설정 · 결과 타입 · 출력 스키마 · 보조 함수
+│   │   │   ├── judge/         판정: UNI-PASS 조회 · 선박 식별 · 신호 계산 · 판정 표 · 검증 V1~V15 · 근거 카드
+│   │   │   ├── chat/          채팅: 도구 고르는 에이전트 · 정해진 문구 · 서류 읽기(OCR) · 진행 단계
+│   │   │   ├── account/       회원: 기억(메모) · 하루 토큰 한도 · 개인정보 · 운영자
+│   │   │   └── watch/         지켜보기: 화물 재판정 · 카카오 알림 · 화물 현황표 · 배 상세
+│   │   ├── clients/           외부 API 클라이언트 (ShipFinder, 해수부, 카카오, 재생 파일, 캐시, 재시도)
+│   │   ├── observability/     Langfuse 트레이스 · 구조화 로그
+│   │   ├── db/migrations/     001~023 SQL. 서버가 켜질 때 순서대로 자동 적용
+│   │   └── prompts/           Langfuse를 못 읽을 때 쓰는 프롬프트 사본 (marvia-*.md)
+│   └── tests/                 pytest, 키 없이 돈다
+│       ├── unit/              함수 단위 (신호 · 판정 표 · 검증 규칙 · 파서)
+│       ├── integration/       라우터 경로 · 채팅 · 스트림 · 데모 (가짜 LLM, 재생 파일)
+│       └── contract/          계약 검사 (스키마 · 평가셋 형식 · 프롬프트 필수 규칙)
+│
+├── mcp_server/                FastMCP 서버 (/mcp, Bearer 토큰)
+│   └── tools/                 선박 후보 · 실시간 위치 · 입항 일정 · 남은 거리 (도구 4종, 읽기 전용)
+├── skills/                    LLM이 읽는 도메인 지식 (RAG 아님, 문서를 통째로 넣는다)
+│   ├── ais-reliability/       AIS 값이 틀리는 경우 읽는 법
+│   ├── customs-stages/        통관 단계의 뜻 · 다음 단계 · 할 일
+│   ├── port-busan/            부산항 부두 · 정박지
+│   ├── cargo-verdict/         등급(순항 · 주의 · 긴급)을 설명하는 법
+│   ├── referrals/             마르비아가 답하지 않는 것은 어디에 물을지
+│   └── import-basics/         수입 실무 기초 FAQ (B/L 번호 · A/N · 반출 · 보관료 · 신고)
+│                              폴더마다 SKILL.md(설명법) + rules.md(코드가 읽는 임계값 · 목록)
+├── worker/                    위치 · 입항 실적 수집, 지켜보는 화물 재판정 (배포에서는 꺼 둠)
+├── relay/                     해수부 API 중계 (서울 Cloud Run). Railway 싱가포르에서 해수부가 막혀서 둔다
+│
+├── evals/                     평가
+│   ├── dataset.jsonl          판정 평가셋 30건 (정상 8 · 경계 14 · 실패 유도 8, 사람이 정답 확정)
+│   ├── doc_dataset.jsonl      서류 사진 평가 12건
+│   ├── run_eval.py · judge.py 실행기 · LLM-as-judge 채점
+│   ├── fixtures/              외부 API 재생 파일 (가공값). 키 없이 재현
+│   └── results/               실행 결과 원본 (EVAL_REPORT 숫자의 근거)
+├── scripts/                   손으로 돌리는 스크립트
+│   ├── demo/                  데모 데이터 만들기 · MCP 연결 확인 · 실제 응답 수집
+│   ├── eval/                  측정 도구 (A/B, 주입 레드팀, Langfuse 집계)
+│   └── ops/                   ⚠ 실제 DB · 계정을 바꾼다. 실행 전 ops/README.md
+│
+├── web/                       Next.js 16 화면 (Railway marvia-web)
+│   ├── app/                   화면 경로: / (대화) · /watch · /cargo · /history · /settings · /admin · /metrics · /about
+│   ├── components/            화면 조각 (결과 카드 · 지도 · 채팅 입력 · 이력 표 ...)
+│   ├── lib/                   API 호출 · 데모 fixture · 형식 함수
+│   └── scripts/verify.mjs     화면 e2e (데모 모드, 접근성 검사 포함)
+│
+└── docs/                      문서 (지도는 docs/README.md)
+    ├── Marvia_PRD.md          왜 만드나 · 범위 · 만들지 않는 것
+    ├── Marvia_SDD.md          구현 명세 (계약 · 흐름 · 파일 책임 · 실패 처리 · 배포)
+    ├── Marvia_개발_작업_리스트.md  작업 ID · 완료 기준 · 일정
+    ├── ERD.md                 DB 표 구조
+    ├── adr/                   설계 결정 기록 (왜 이렇게 만들었나, 결정 하나당 한 장)
+    ├── specs/                 기능별 명세
+    ├── evidence/              Langfuse 캡처 · 집계 · MCP 연결 캡처
+    ├── assets/gif/            README 데모 GIF
+    ├── prompt_versions.md     프롬프트 버전별 변경 · 이유 · 결과
+    └── release_manifest.json  배포 단위 고정 (모델 · 프롬프트 버전 · 코드 · 되돌리기)
+```
 
 ---
 

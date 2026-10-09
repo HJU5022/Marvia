@@ -1,10 +1,10 @@
 'use client';
-/** 앱 틀: 왼쪽 사이드바 + 상단 줄 + 본문 + 하단 링크 (10-07 정운 실사용 16·18·29·31번 개편).
+/** 앱 틀: 왼쪽 사이드바 + 상단 줄 + 본문 + 하단 링크.
  * 사이드바는 위에서 아래로 한 흐름이다: 로고·접기 → "새 대화" → 대화 목록(가장 넓고 스크롤) → 화물 메뉴(접는 묶음) → 운영자 묶음 → Marvia 소개 → 계정 줄.
  * 계정 줄을 누르면 위로 뜨는 작은 창에서 프로필·설정·계정 관리·로그아웃을 연다 (예전 오른쪽 위 아바타 메뉴는 이 창과 겹쳐 뺐다).
  * 접으면 아이콘 줄(rail)이 되고, 펼치면 본문이 밀린다(덮지 않는다). 접기는 이 브라우저에만 기억한다 (localStorage marvia.rail).
  * 900px 이하에서는 사이드바가 왼쪽에서 나오는 서랍이 된다. 상단 줄의 메뉴 버튼으로 연다.
- * 로그인이 켜져 있고 로그인 전이면 사이드바·상단 줄 없이 LoginScreen만 전체 화면으로 보인다 (10-07 정운 25번, 소개 페이지는 예외).
+ * 로그인이 켜져 있고 로그인 전이면 사이드바·상단 줄 없이 LoginScreen만 전체 화면으로 보인다.
  * 메뉴는 GET /api/me의 is_operator로 나눈다. 숨김은 편의이고 권한은 서버가 막는다 (OperatorOnly, 관리 API 403). */
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
@@ -20,7 +20,7 @@ import {useApp} from './AppProvider';
 import {isLive} from '@/lib/api';
 
 // 화물 묶음(접는 메뉴): 감시 화물 · 화물 현황 · 조회 이력.
-// 10-08 정운 실사용 70번: "내 화물"은 "/"(대화 화면)로 가서 "새 대화"와 대화 목록과 겹쳤다. 같은 곳으로 가는 길이 셋이면 헷갈려서 뺐다. 대화는 "새 대화"와 목록으로 연다
+// "내 화물"은 "/"(대화 화면)로 가서 "새 대화"와 대화 목록과 겹쳤다. 같은 곳으로 가는 길이 셋이면 헷갈려서 뺐다. 대화는 "새 대화"와 목록으로 연다
 const cargoMenu = [
   {href: '/watch', label: '감시 화물', icon: Radar},
   {href: '/cargo', label: '화물 현황', icon: Table2},
@@ -35,27 +35,27 @@ const aboutItem = {href: '/about', label: 'Marvia 소개', icon: Info};
 // 계정 창의 항목. tab은 SettingsPage의 탭 키 (?tab=)
 const accountMenu = [
   {tab: 'profile', label: '프로필', icon: CircleUserRound},
-  // 10-08 정운 실사용 48번: 설정 탭 이름을 "알림·판정 기준"으로 바꿨으니 계정 창 항목도 같은 이름으로 맞춘다 (탭 키 rules는 그대로)
+  // 설정 탭 이름을 "알림·판정 기준"으로 바꿨으니 계정 창 항목도 같은 이름으로 맞춘다 (탭 키 rules는 그대로)
   {tab: 'rules', label: '알림·판정 기준', icon: Settings2},
   {tab: 'account', label: '계정 관리', icon: UserCog},
 ];
 const cargoPaths = cargoMenu.map(m => m.href);
 
-/** 상단 경로 표시. 메뉴에 안 보이는 화면(운영자가 아닌 사람이 주소로 연 /metrics·/admin)도 제 이름을 보인다 (10-02 UI 점검 F16) */
+/** 상단 경로 표시. 메뉴에 안 보이는 화면(운영자가 아닌 사람이 주소로 연 /metrics·/admin)도 제 이름을 보인다 (UI 점검 F16) */
 function crumb(path: string, chatTitle?: string) {
-  // 10-08 정운 42번: "/"는 내 화물 메뉴와 같은 주소지만 실제로는 대화 화면이다. "내 화물"로 적으면 화물 목록으로 오해해서 대화 제목(없으면 "대화")을 보인다
+  // "/"는 내 화물 메뉴와 같은 주소지만 실제로는 대화 화면이다. "내 화물"로 적으면 화물 목록으로 오해해서 대화 제목(없으면 "대화")을 보인다
   if (path === '/') return chatTitle || '대화';
   if (path === '/settings') return '내 정보와 설정';
   const hit = [...cargoMenu, ...operatorMenu, aboutItem].find(l => l.href === path);
   if (!hit) return 'Marvia';
-  // 10-08 정운 실사용 70번: "내 화물" 메뉴가 없어졌으니 앞에 붙이던 "내 화물 / "도 뺀다. 메뉴 이름 그대로 보인다
+  // "내 화물" 메뉴가 없어졌으니 앞에 붙이던 "내 화물 / "도 뺀다. 메뉴 이름 그대로 보인다
   return hit.label;
 }
 
 export function Shell({children}: {children: React.ReactNode}) {
   const path = usePathname();
   const {data, authEnabled, authReady, user, reset, isOperator, profileComplete, meReady, suspended, conversationsOn, savedId, newConversation, loading, opening, conversations, activeId} = useApp();
-  const [convOpen, setConvOpen] = useState(false);  // 접힌 사이드바·40:60 화면에서 대화 목록을 여는 패널. 여는 단추는 채팅 칸 왼쪽 위(page.tsx). 상단바 "대화" 버튼은 사이드바와 겹쳐 뺐다 (10-08 정운 32번)
+  const [convOpen, setConvOpen] = useState(false);  // 접힌 사이드바·40:60 화면에서 대화 목록을 여는 패널. 여는 단추는 채팅 칸 왼쪽 위(page.tsx). 상단바 "대화" 버튼은 사이드바와 겹쳐 뺐다
   const [collapsed, setCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(false);  // 900px 이하: 사이드바가 서랍
   const [drawer, setDrawer] = useState(false);
@@ -76,9 +76,9 @@ export function Shell({children}: {children: React.ReactNode}) {
   useEffect(() => { setDrawer(false); setMenu(false); if (cargoPaths.includes(path)) setCargoOpen(true); }, [path]);
   // 좁은 화면(900px 이하)이나 접은 메뉴는 사이드바에 대화 목록을 둘 자리가 없다. 상단바 버튼이 여는 패널로 같은 목록을 보인다. Esc로 닫는다
   useEffect(() => { if (!convOpen) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setConvOpen(false); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [convOpen]);
-  // 화면 안(대화 칸 왼쪽 위)의 버튼이 같은 대화 목록 패널을 열도록 이벤트를 듣는다. 40:60 화면에서도 사이드바 목록은 그대로 보인다 (10-07)
+  // 화면 안(대화 칸 왼쪽 위)의 버튼이 같은 대화 목록 패널을 열도록 이벤트를 듣는다. 40:60 화면에서도 사이드바 목록은 그대로 보인다
   useEffect(() => { const open = () => setConvOpen(true); window.addEventListener('marvia:conversations', open); return () => window.removeEventListener('marvia:conversations', open); }, []);
-  // 서랍은 Esc로 닫는다. 계정 창은 Esc와 바깥 클릭으로 닫힌다 (10-02 UI 점검 F17). 열려 있을 때만 듣는다
+  // 서랍은 Esc로 닫는다. 계정 창은 Esc와 바깥 클릭으로 닫힌다 (UI 점검 F17). 열려 있을 때만 듣는다
   useEffect(() => {
     if (!drawer && !menu) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMenu(false); setDrawer(false); } };
@@ -97,7 +97,7 @@ export function Shell({children}: {children: React.ReactNode}) {
   const blocked = authEnabled && !!user && meReady && suspended && path !== '/about';
   async function logout() { setMenu(false); setDrawer(false); await signOut(); reset(); }
 
-  // 로그인 전·회원 정보 입력·정지 안내는 사이드바와 상단 줄 없이 전체 화면 (10-07 정운 25번)
+  // 로그인 전·회원 정보 입력·정지 안내는 사이드바와 상단 줄 없이 전체 화면
   if (gated || needProfile || blocked) {
     return <div className="entry-shell"><a className="skip-link" href="#main">본문으로 건너뛰기</a><main id="main" tabIndex={-1}>
       {gated ? (authReady ? <LoginScreen/> : <div className="initial-loading" role="status"><div className="loading-orbit"/><strong>로그인 상태를 확인하고 있어요.</strong></div>)

@@ -8,7 +8,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _no_real_db(monkeypatch):
-    """테스트에서 실제 DB 접속은 기다리지 않고 바로 실패하게 한다 (10-06).
+    """테스트에서 실제 DB 접속은 기다리지 않고 바로 실패하게 한다.
 
     많은 테스트가 DATABASE_URL을 postgresql://fake 같은 가짜 주소로 두고, 쓰는 곳의 connect만 가짜로 바꿔 끼운다.
     그런데 바꿔 끼우지 않은 길(앱 수명의 main._migrate, 요청마다 도는 auth._suspended)은 가짜 호스트에 실제로
@@ -25,8 +25,8 @@ def _no_real_db(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clear_memory_notices():
-    """다음 답에 붙일 기억 알림(services/memory._notices)은 프로세스 메모리에 있다. 테스트끼리 새지 않게 비운다 (10-08 정운 실사용 76)."""
-    from backend.app.services import memory
+    """다음 답에 붙일 기억 알림(services/account/memory._notices)은 프로세스 메모리에 있다. 테스트끼리 새지 않게 비운다."""
+    from backend.app.services.account import memory
 
     memory._notices.clear()
     yield

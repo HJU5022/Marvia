@@ -68,7 +68,8 @@
 
 /* 클러스터 상세 창: 지도 오른쪽 일부만 쓴다 */
 .cluster-panel{width:300px;top:12px;bottom:auto;max-height:calc(100% - 24px);border:0;box-shadow:0 4px 16px #191f2824}
-.cluster-panel dl div{grid-template-columns:72px 1fr}
+.cluster-panel dl div{grid-template-columns:88px 1fr}
+.cluster-panel dl dt{white-space:nowrap}  /* 가장 긴 라벨 "위치 받은 시각"이 두 줄로 꺾이지 않게 칸을 넓히고 줄바꿈을 막는다 */
 .cluster-go{font-size:var(--text-sm)}
 
 /* 휴대폰(시안 3-6): 지도 카드 → 목록 카드 순으로 쌓는다 */
@@ -81,7 +82,7 @@
   .cluster-panel{left:12px;right:12px;width:auto;top:auto;bottom:12px;max-height:75%}
 }
 
-/* PC: 오른쪽 목록 카드는 지도 카드 높이에 맞추고, 화물이 많으면 목록 안에서만 스크롤한다 (10-06 정운 지적:
+/* PC: 오른쪽 목록 카드는 지도 카드 높이에 맞추고, 화물이 많으면 목록 안에서만 스크롤한다 (지적 내용:
    목록이 끝없이 길어져 지도 아래가 텅 비었다). height:0 + min-height:100%는 줄 높이를 지도 카드가 정하게 하는 그리드 기법 */
 @media(min-width:901px){
   .wm-body{align-items:stretch}
@@ -89,7 +90,7 @@
   .wm-body:has(.wm-map-card) .watch-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
 }
 
-/* ===== 10-06 3차 다듬기: 상자 줄이고, 목록은 구분선 행으로, 선택 강조에 움직임 ===== */
+/* ===== 3차 다듬기: 상자 줄이고, 목록은 구분선 행으로, 선택 강조에 움직임 ===== */
 .wm-head{margin-bottom:16px}
 .wm-head h2{font-size:var(--text-xl)}
 
@@ -162,7 +163,7 @@
 .track-hit{cursor:pointer}
 @media (prefers-reduced-motion: reduce){.watch-pin .pin-body{transition:none}}
 
-/* ===== 10-07 정리 (정운 실사용 17번): 위치 없는 화물도 같은 행 모양, 지도는 늘 보인다 ===== */
+/* ===== 정리: 위치 없는 화물도 같은 행 모양, 지도는 늘 보인다 ===== */
 .watch-map{border-radius:0}
 .watch-list li.no-pos .watch-row-static{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:12px;padding:14px 12px}
 .watch-chip.idle{background:var(--neutral-bg);color:var(--muted);display:grid;place-items:center}
@@ -170,7 +171,7 @@
 .wm-side-head h3{font-size:var(--fs-lg,18px);font-weight:500}
 
 /* =========================================================
-   엘레강스 v2 (10-07 정운): 제목은 가볍게, 목록은 가는 선 행, 선택 표시는 얇은 선 하나, 체크는 네모
+   엘레강스 v2: 제목은 가볍게, 목록은 가는 선 행, 선택 표시는 얇은 선 하나, 체크는 네모
    ========================================================= */
 .wm-head h2{font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em}
 .wm-head small{letter-spacing:.06em}
@@ -207,7 +208,7 @@
 .cluster-go:hover{background:var(--text);color:#fff;border-color:var(--text)}
 .watch-pin .pin-body{box-shadow:none;border-width:2px}
 
-/* ===== 10-08 정운 실사용 57번: B/L 없이 배만 지켜보는 줄 (components/WatchedVessels.tsx, WatchVesselButton.tsx) ===== */
+/* ===== B/L 없이 배만 지켜보는 줄 (components/WatchedVessels.tsx, WatchVesselButton.tsx) ===== */
 .watched-vessels{margin-top:24px}
 .watched-vessels h3{font-size:var(--fs-lg,18px);font-weight:500;margin:0 0 8px}
 .watched-vessels ul{list-style:none;margin:0;padding:0}
@@ -226,7 +227,7 @@
 .vl-watch .request-error{max-width:140px;font-size:var(--text-sm,13px)}
 @media (max-width:480px){.vl-name{flex-direction:column;gap:2px}.vl-watch{margin:0}}
 
-/* ===== 10-08 정운 실사용 64·68번 ===== */
+/* ===== 실사용 보강 ===== */
 /* 64: 오류는 이름 아래 작은 글. 입항 예정 목록 줄에서는 버튼 둘레 상자를 풀어 오류가 이름 줄 아래로 내려가게 한다 */
 .wv-err{font-size:var(--text-sm,13px);line-height:1.35;color:var(--danger,#b42318);max-width:240px}
 .wv-err:empty{display:none}
@@ -237,7 +238,7 @@
 /* 68: 화물 없이 배만 지켜볼 때는 지도 한 칸만 */
 .wm-body:not(:has(.wm-side)){grid-template-columns:minmax(0,1fr)}
 /* 69: 배만 지켜보는 배는 다른 지도와 같은 화살표·작은 이름 알약. 옅은 색과 "배만" 꼬리표로만 구분한다 */
-/* 배만 지켜보는 배: 화물 핀과 같은 동그라미·알파벳, 판정이 없어 흰 바탕에 회색 점선 테두리 (10-08 승욱, WatchMap.tsx Spot) */
+/* 배만 지켜보는 배: 화물 핀과 같은 동그라미·알파벳, 판정이 없어 흰 바탕에 회색 점선 테두리 (WatchMap.tsx Spot) */
 .watch-pin .pin-body.vessel-only{background:#fff;border:2px dashed #9ca3af}
 .watch-pin .pin-body.vessel-only b{color:var(--muted,#6b7280)}
 /* Leaflet 말풍선은 기본이 white-space:nowrap이라 긴 줄("배만 지켜보는 중 (B/L 없음, 판정 없음)")이 상자 밖으로 나갔다. 줄바꿈을 허용한다 */

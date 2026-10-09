@@ -19,12 +19,12 @@ from datetime import date, datetime, timedelta, timezone
 from backend.app.clients.mof import MAX_PAGES, MofClient, SailingPlan
 from backend.app.clients.shipfinder import ShipFinderClient, ShipFinderError
 
-# 입항 신고를 오늘부터 며칠 뒤까지 볼지. 해수부 신고가 1주 앞까지 나온다 (09-24~30 조회 264척, 2026-09-23 실측).
+# 입항 신고를 오늘부터 며칠 뒤까지 볼지. 해수부 신고가 1주 앞까지 나온다 (조회 264척, 실측).
 # mcp_server/tools/port_schedule.py의 LOOKAHEAD_DAYS와 같은 근거다
 LOOKAHEAD_DAYS = 7
 # 어제 것도 다시 받는 이유: 관제 이벤트가 늦게 올라오거나 신고가 최종으로 바뀌는 것을 놓치지 않으려고
 LOOKBACK_DAYS = 1
-# 추적 대상 척수 상한 (09-23 결정). 작업 리스트 D1은 20~30척이지만 ShipFinder가 하루 50회라 12척으로 줄였다.
+# 추적 대상 척수 상한. 작업 리스트 D1은 20~30척이지만 ShipFinder가 하루 50회라 12척으로 줄였다.
 # 24시간 정박을 위치 이력으로 잡으려면 6시간 간격으로 한 척당 하루 4번은 받아야 한다: 12척 x 4 = 48회
 MAX_TARGETS = 12
 # 추적 대상으로 고르는 선종. 소량 수입 화물은 컨테이너로 온다 (PRD 사용자: 소량 해상 수입자)
@@ -137,9 +137,9 @@ def collect_positions(conn, sf: ShipFinderClient, budget: Budget, now: datetime 
 
 # 감시·지도 (docs/specs/cargo-watch.md, 017). 사용자가 지켜보기를 켠 화물(user_cargo.watch, 017_cargo_watch)의 배 중
 # 위치를 가장 오래 못 받은 배부터. 진행 중 화물 전체로 잡으면 로그인 사용자의 조회마다 대상이 늘어
-# (services/memory.py가 user_cargo를 채운다) 실행 예산을 다 써서 연구용 수집이 굶는다 (10-06 점검).
-# 지켜보기는 사용자당 최대 5건이다 (services/watch.py MAX_WATCH)
-# 10-08 정운 실사용 57번: B/L 없이 배만 지켜보는 배(vessel_watch, 023)도 같은 길로 위치를 받는다. UNION이 같은 배를 한 번만 센다.
+# (services/account/memory.py가 user_cargo를 채운다) 실행 예산을 다 써서 연구용 수집이 굶는다.
+# 지켜보기는 사용자당 최대 5건이다 (services/watch/watch.py MAX_WATCH)
+# 실사용 57번: B/L 없이 배만 지켜보는 배(vessel_watch, 023)도 같은 길로 위치를 받는다. UNION이 같은 배를 한 번만 센다.
 # 판정·재판정은 하지 않는다 (run_watch는 user_cargo만 본다)
 SELECT_WATCHED = """
 SELECT c.mmsi FROM (SELECT vessel_mmsi AS mmsi FROM user_cargo
@@ -160,7 +160,7 @@ def collect_watch_positions(conn, sf: ShipFinderClient, budget: Budget) -> dict:
 
     감시·지도 경로의 재료다. 연구용 대상(positions)보다 먼저 부른다. 사용자가 보는 화면이라 우선한다 (run.py).
     같은 실행의 지켜보기 재판정(run_watch)은 이 위치를 다시 쓰지 않는다. 재판정은 api의 MCP(/mcp)를 거쳐 api 프로세스의
-    ShipFinderClient로 부르므로, 이 워커 프로세스의 캐시와 따로다. 그래서 worker/run.py가 재판정 몫의 예산을 따로 떼어 둔다 (10-06 점검).
+    ShipFinderClient로 부르므로, 이 워커 프로세스의 캐시와 따로다. 그래서 worker/run.py가 재판정 몫의 예산을 따로 떼어 둔다.
     """
     mmsis = [row[0] for row in conn.execute(SELECT_WATCHED).fetchall()]
     saved, failed = 0, []
@@ -183,7 +183,7 @@ def collect_watch_positions(conn, sf: ShipFinderClient, budget: Budget) -> dict:
 def _pick_hit(hits, call_sign: str):
     """호출부호가 정확히 같은 검색 결과 중 가장 최근에 보고한 MMSI.
 
-    한 호출부호에 MMSI가 여러 개 나올 수 있다 (09-23 실측: BOBQ2에 MMSI 3개). 최근 보고가 지금 쓰는 번호다.
+    한 호출부호에 MMSI가 여러 개 나올 수 있다 (BOBQ2에 MMSI 3개). 최근 보고가 지금 쓰는 번호다.
     """
     same = [h for h in hits if h.call_sign and h.call_sign.upper() == call_sign.upper()]
     if not same:
@@ -221,7 +221,7 @@ def select_targets(conn, reports: list[SailingPlan], sf: ShipFinderClient, budge
 
 
 def purge_positions(conn) -> int:
-    """입항 30일 지난 배의 위치 기록을 지우고 지운 줄 수를 돌려준다 (09-23 결정).
+    """입항 30일 지난 배의 위치 기록을 지우고 지운 줄 수를 돌려준다.
 
     규칙은 DB 함수 purge_old_positions()에만 있다 (migrations/002). Supabase는 pg_cron이 하루 한 번
     부르고, pg_cron이 없는 로컬·채점용 DB는 워커가 실행마다 부른다. 여러 번 불러도 결과는 같다.

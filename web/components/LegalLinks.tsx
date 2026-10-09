@@ -1,7 +1,7 @@
 'use client';
-/** 하단 작은 줄: 개인정보처리방침 · 이용약관 · © 2026 Marvia (10-07 정운 요청 30). 누르면 LegalModal로 본문을 연다.
+/** 하단 작은 줄: 개인정보처리방침 · 이용약관 · © 2026 Marvia. 누르면 LegalModal로 본문을 연다.
  * 로그인 전 소개 화면 맨 아래와 앱 하단(Shell의 app-footer)에서 같이 쓴다.
- * 이용약관: 안내 서비스라는 한계와 책임 범위. 답마다 붙이던 면책 문구를 대신한다 (10-07 정운 결정).
+ * 이용약관: 안내 서비스라는 한계와 책임 범위. 답마다 붙이던 면책 문구를 대신한다.
  * 처리방침: 레포에 있는 사실만 적는다. 근거: ProfileForm 동의 문구, backend/app/db/migrations/008_purge_queries.sql(90일),
  * backend/app/routers/history.py(내 기록 삭제), backend/app/services/account.py(탈퇴), docs/specs/memory.md(저장 항목).
  * 레포에 없는 것(사업자 정보, 책임자 연락처, 시행일)은 일부러 비웠다.

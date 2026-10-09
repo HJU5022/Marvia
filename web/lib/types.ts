@@ -1,34 +1,34 @@
-/** Wire contracts transcribed from backend/app/schemas/agent.py (2026-09-28, sale_due_date 선택 입력은 10-01 반영).
+/** Wire contracts transcribed from backend/app/schemas/agent.py (2026-09-28, sale_due_date 선택 입력은 이후 반영).
  * Dates/datetimes serialize as ISO strings. Nullable required fields stay required.
  * Python defaulted fields are optional on request, populated on serialized response.
  * History contracts come from backend/app/routers/history.py, not the mockup.
  */
-import type {Citation, EvidenceItem} from './evidenceTypes';  // 답 속 근거 표시 (10-08 정운 실사용 58번)
+import type {Citation, EvidenceItem} from './evidenceTypes';  // 답 속 근거 표시
 export type Verdict = 'fine' | 'watch' | 'act';
 export type Status = 'ok' | 'partial' | 'insufficient' | 'failed' | 'unsupported';
 export type VesselMatch = 'confirmed' | 'uncertain' | 'none';
 export type Freshness = 'fresh' | 'stale' | 'unknown';
-/** 서류 사진에서 확인한 출항일을 /api/chat에 실어 보내는 칸 (10-06). 서버가 같은 B/L 조회에만 departed_on으로 싣는다 */
+/** 서류 사진에서 확인한 출항일을 /api/chat에 실어 보내는 칸. 서버가 같은 B/L 조회에만 departed_on으로 싣는다 */
 export interface ChatDocument { bl_no: string; departed_on: string }
-/** 화면에 지금 떠 있는 배들. /api/chat 요청의 선택 칸 on_screen (백엔드 routers/chat.py ChatScreen, 10-08 정운 실사용 36번).
+/** 화면에 지금 떠 있는 배들. /api/chat 요청의 선택 칸 on_screen (백엔드 routers/chat.py ChatScreen).
  * 서버는 이 값을 자료로만 LLM에 준다. B/L·컨테이너 번호 칸은 없다. 글자는 80자(시각 40자), 목록은 10줄까지 */
 export interface ChatOnScreen {
   vessel?: {ship_name: string; flag?: string | null; mmsi?: number | null; lat?: number | null; lng?: number | null;
     position_time?: string | null; destination?: string | null} | null;
-  /** call_sign: 배를 지켜볼 때 서버가 MMSI를 찾는 열쇠. selected: 사용자가 목록에서 고른 줄(지도에 보이는 배) (10-08 정운 실사용 79) */
+  /** call_sign: 배를 지켜볼 때 서버가 MMSI를 찾는 열쇠. selected: 사용자가 목록에서 고른 줄(지도에 보이는 배) */
   arrivals?: {ship_name: string; flag?: string | null; eta?: string | null; previous_port?: string | null; call_sign?: string | null; selected?: boolean}[];
 }
 export interface AgentRequest {
   bl_no: string;
   bl_type: 'MASTER' | 'HOUSE';
-  // 선택 입력 (09-29 계약 변경). 없으면 null로 보내고 백엔드는 배 상태만으로 판정한다
+  // 선택 입력. 없으면 null로 보내고 백엔드는 배 상태만으로 판정한다
   sale_due_date: string | null;
   session_id: string;
   follow_up_question?: string | null;
   resolved_mmsi?: number | null;
   voyage_no?: string | null;
   forwarder_eta?: string | null;
-  /** 서류 사진에서 사용자가 확인한 출항일 (10-06). 내 화물 현황 표 출항 칸에만 쓰이고 판정에는 안 쓰인다. 직접 적은 날짜는 덮지 않는다 */
+  /** 서류 사진에서 사용자가 확인한 출항일. 내 화물 현황 표 출항 칸에만 쓰이고 판정에는 안 쓰인다. 직접 적은 날짜는 덮지 않는다 */
   departed_on?: string | null;
   /** 적하목록 관리번호. 세관에 아직 없는 화물을 해수부 입항 신고로 찾을 때 (docs/specs/mrn-fallback.md) */
   mrn?: string | null;
@@ -60,12 +60,12 @@ export interface CustomsInfo {
   next_stage: string | null; needs_broker: boolean;
   // Backend is list[dict], not a stronger invented timeline contract.
   history: Record<string, unknown>[];
-  /** 어디서 어디로 (UNI-PASS 적재항·양륙항, 10-01). 없으면 null */
+  /** 어디서 어디로 (UNI-PASS 적재항·양륙항). 없으면 null */
   loading_port?: string | null; loading_port_name?: string | null; loading_country?: string | null;
   discharge_port?: string | null; discharge_port_name?: string | null;
-  /** UNI-PASS 포워더·선사·컨테이너 번호 (10-06 화물 현황 표). 서버가 못 읽으면 없다 */
+  /** UNI-PASS 포워더·선사·컨테이너 번호. 서버가 못 읽으면 없다 */
   forwarder_name?: string | null; carrier_name?: string | null; container_no?: string | null;
-  /** 품명 prnm. 적하목록 영어 그대로 (백엔드 10-06 추가) */
+  /** 품명 prnm. 적하목록 영어 그대로 (백엔드) */
   goods_name?: string | null;
 }
 export interface BerthInfo { facility: string | null; shed: string | null }
@@ -88,29 +88,29 @@ export interface HistoryItem {
 }
 export interface HistoryResponse { items: HistoryItem[]; available: boolean }
 
-/** POST /api/document 응답. backend/app/schemas/document.py 그대로 (C1~C8 밖의 새 계약, 09-29). */
+/** POST /api/document 응답. backend/app/schemas/document.py 그대로 (C1~C8 밖의 새 계약). */
 export type DocumentCheck = 'missing' | 'not_in_text' | 'format' | 'ambiguous';
 export interface DocumentField { value: string | null; checks: DocumentCheck[] }
-/** B/L 조건 세 칸·인코텀즈·화물 인도 연락처 (10-02 결정 6). 서류에 없으면 value null, checks 빈 목록 */
+/** B/L 조건 세 칸·인코텀즈·화물 인도 연락처 (결정 6). 서류에 없으면 value null, checks 빈 목록 */
 export type DocumentConditionKey = 'original_bl' | 'to_order_bank' | 'freight_term' | 'incoterm'
   | 'contact_company' | 'contact_role' | 'contact_phone';
 export type DocumentFieldKey = 'bl_no' | 'vessel' | 'voyage' | 'eta' | 'pol' | 'pod' | 'item' | DocumentConditionKey;
 export interface DocumentResponse {
   status: 'ok' | 'partial';
   needs_review: boolean;
-  /** etd(출항일, 10-06)는 옛 서버 응답에 없을 수 있어 선택이다 */
+  /** etd(출항일)는 옛 서버 응답에 없을 수 있어 선택이다 */
   fields: Record<DocumentFieldKey, DocumentField> & {etd?: DocumentField};
   ocr: { lines: number; rotation: 0 | 180 | 270; runs: number; ocr_ms: number };
   trace_id: string;
   /** 서류의 MRN (코드가 뽑음). 없으면 null */
   mrn?: string | null;
-  /** 서류 종류. 거래처를 기억할 때 출처로 쓴다. 모르면 null (10-02) */
+  /** 서류 종류. 거래처를 기억할 때 출처로 쓴다. 모르면 null */
   doc_kind?: 'B/L' | 'A/N' | null;
-  /** AI가 서류 글자를 정리하지 못했을 때 실패 종류(bad_format, timeout 등). 성공이면 null. 옛 서버 응답에는 없다 (10-06) */
+  /** AI가 서류 글자를 정리하지 못했을 때 실패 종류(bad_format, timeout 등). 성공이면 null. 옛 서버 응답에는 없다 */
   llm_error?: string | null;
 }
 
-/** 화물 비서 기억 (backend/app/schemas/memory.py, docs/specs/memory.md, 10-02). 원본 B/L은 오지 않는다 */
+/** 화물 비서 기억 (backend/app/schemas/memory.py, docs/specs/memory.md). 원본 B/L은 오지 않는다 */
 export type ContactRole = '포워더' | '관세사' | '수출자' | '판매처';
 export type OriginalBl = 'required' | 'surrendered';
 export type FreightTerm = 'prepaid' | 'collect';
@@ -137,7 +137,7 @@ export interface MemoryResponse {
   /** 메모장 글자 수와 상한 (M5). 옛 서버 응답에는 없을 수 있다 */
   used_chars?: number; max_chars?: number;
 }
-/** POST /api/memory/document-facts. 서류 확인 화면에서 사용자가 확인한 값만 보낸다 (10-02 결정 7) */
+/** POST /api/memory/document-facts. 서류 확인 화면에서 사용자가 확인한 값만 보낸다 (결정 7) */
 export interface DocumentFactsRequest {
   bl_no: string; bl_type?: 'MASTER' | 'HOUSE' | null; source?: 'B/L' | 'A/N' | null;
   original_bl?: OriginalBl | null; to_order_bank?: boolean | null; freight_term?: FreightTerm | null; incoterm?: Incoterm | null;
@@ -148,7 +148,7 @@ export interface DocumentFactsResponse {
   contact: 'saved' | 'unchanged' | 'rejected' | 'skipped' | 'full' | 'conflict';
 }
 
-/** 운영자 관리 (backend/app/routers/admin.py, docs/specs/operator-admin.md, 10-01). */
+/** 운영자 관리 (backend/app/routers/admin.py, docs/specs/operator-admin.md). */
 export interface MeResponse { user_id: string | null; email: string | null; is_operator: boolean; profile_complete: boolean;
   /** 화면 전용. 서버가 403 account_suspended를 주면 true (operator-admin 일시 정지) */
   suspended?: boolean }
@@ -190,13 +190,13 @@ export interface ChatResponse {
   /** 한 문장에 B/L이 2~3개일 때만 값이 있다(조회한 화물 한 줄씩). 한 개짜리 답과 옛 응답·데모에는 없거나 빈 목록이다 (ChatCargoTable).
    * agent·request는 첫 줄의 것과 같은 모양이라 줄을 누르면 단일 화물 답처럼 아래 결과 칸을 바꾼다 */
   cargos?: ChatCargo[];
-  /** 에이전트가 이 화물을 지켜보자고 제안했을 때만 값이 있다. reason은 코드가 쓴 문장이고 reply 안에도 이미 들어 있다 (10-06 결정). 옛 응답·데모에는 없거나 null */
+  /** 에이전트가 이 화물을 지켜보자고 제안했을 때만 값이 있다. reason은 코드가 쓴 문장이고 reply 안에도 이미 들어 있다. 옛 응답·데모에는 없거나 null */
   watch_offer?: WatchOffer | null;
-  /** 대화로 지켜보기를 방금 켰거나 껐을 때만 값이 있다 ("응", "그만 지켜봐"). 없거나 null이면 바뀐 게 없다 (10-06 결정) */
+  /** 대화로 지켜보기를 방금 켰거나 껐을 때만 값이 있다 ("응", "그만 지켜봐"). 없거나 null이면 바뀐 게 없다 */
   watch_set?: WatchSet | null;
-  /** 대화로 배 한 척을 감시 목록에 넣거나 뺐을 때만 값이 있다 (10-08 정운 실사용 79). 배 지켜보기 버튼이 새로 읽는다 */
+  /** 대화로 배 한 척을 감시 목록에 넣거나 뺐을 때만 값이 있다. 배 지켜보기 버튼이 새로 읽는다 */
   watch_vessel_set?: WatchVesselSet | null;
-  /** 답 문장 속 [E1] 표시가 가리키는 근거 묶음과 표시 위치 (10-08 정운 실사용 58번). 서버가 검증을 끝낸 값이다. 옛 응답·데모에는 없거나 빈 목록이다 (EvidencePopover) */
+  /** 답 문장 속 [E1] 표시가 가리키는 근거 묶음과 표시 위치. 서버가 검증을 끝낸 값이다. 옛 응답·데모에는 없거나 빈 목록이다 (EvidencePopover) */
   evidence_items?: EvidenceItem[];
   citations?: Citation[];
 }
@@ -206,21 +206,21 @@ export interface WatchOffer { bl_no: string; reason: string; logged_in: boolean 
 export interface WatchVesselSet { mmsi: number; name: string; on: boolean }
 /** ChatResponse.watch_set */
 export interface WatchSet { bl_no: string; on: boolean }
-/** ChatResponse.cargos의 한 줄 (백엔드 routers/chat.py ChatCargo, 10-05). bl_no는 사용자가 입력한 값 그대로 */
+/** ChatResponse.cargos의 한 줄 (백엔드 routers/chat.py ChatCargo). bl_no는 사용자가 입력한 값 그대로 */
 export interface ChatCargo {
   bl_no: string; status: string; verdict: 'fine' | 'watch' | 'act' | null; ship_name: string | null;
   eta: string | null; days_margin: number | null; sale_due_date: string | null;
-  /** 판정을 못 낸 줄이 필요로 하는 것의 짧은 이유 ("같은 이름 배 2척"). 판정이 났으면 null (10-06) */
+  /** 판정을 못 낸 줄이 필요로 하는 것의 짧은 이유 ("같은 이름 배 2척"). 판정이 났으면 null */
   note: string | null;
   agent: AgentResponse; request: AgentRequest;
 }
-/** ChatResponse.map. 말풍선 아래 작은 지도 한 점 (백엔드 계약, 10-05) */
+/** ChatResponse.map. 말풍선 아래 작은 지도 한 점 (백엔드 계약) */
 export interface ChatMap { lat: number; lng: number; ship_name: string | null; distance_nm: number | null; received_at: string | null; source: string }
 /** POST /api/chat, /api/chat/stream 요청의 history 한 줄. 지금 질문보다 앞선 대화이고 오래된 것부터 둔다.
  * 서버 에이전트가 "그 배", "아까 그거" 같은 말을 풀 때 쓴다. B/L 번호는 서버가 가리므로 화면 글자 그대로 보낸다 */
 export interface ChatHistoryTurn { role: 'user' | 'assistant'; text: string }
 
-/* ---------- 대화 목록 (GET/DELETE /api/conversations, 10-06 결정) ---------- */
+/* ---------- 대화 목록 (GET/DELETE /api/conversations) ---------- */
 /** GET /api/conversations 한 줄. id는 그 대화의 chat session_id와 같다. 새 대화는 새 session_id다 */
 export interface ConversationSummary { id: string; title: string; updated_at: string }
 /** GET /api/conversations/{id}의 메시지 한 줄. extra는 서버가 저장해 둔 그 턴의 화면용 값(ChatResponse의 kind, vessels, map, cargos, watch_offer, watch_set)이라
@@ -232,7 +232,7 @@ export interface ConversationDetail { id: string; title: string; messages: Conve
 /** GET /api/vessels/detail (services/vessel_detail.py). 도구가 실패한 칸은 null, 이유는 errors */
 export interface VesselDetailResponse {
   call_sign: string | null; ship_name: string | null;
-  /** imo·similarity·source·fetched_at·cached_at는 MCP 도구 응답이 그대로 온다(10-06). 없으면 쓰지 않는다. similarity는 선명이 비슷한 정도일 뿐 내 배라는 뜻이 아니다 */
+  /** imo·similarity·source·fetched_at·cached_at는 MCP 도구 응답이 그대로 온다. 없으면 쓰지 않는다. similarity는 선명이 비슷한 정도일 뿐 내 배라는 뜻이 아니다 */
   vessel: {mmsi: number; name: string; flag: string | null; call_sign: string | null; ship_type: number | null;
     imo?: number | null; similarity?: number | null; source?: string | null; fetched_at?: string | null; cached_at?: string | null} | null;
   position: {lat: number; lng: number; sog: number | null; cog: number | null; navistat: number | null; dest: string | null;
@@ -258,10 +258,10 @@ export type KakaoLinkResult = 'connected' | 'expired' | 'mismatch' | 'no_consent
 export interface WatchState { saved: boolean; watch: boolean }
 /** GET /api/watch/changes의 한 줄. 지난 접속 뒤 판정이 바뀐 지켜보는 화물. B/L은 마스킹된 값만 온다 */
 export interface WatchChange { bl_masked: string; label: string | null; from_verdict: Verdict; to_verdict: Verdict; changed_at: string;
-  /** 서버가 판정이 바뀐 이유를 문장으로 보내 주면 붙인다(10-06). 없으면 쓰지 않는다 */
+  /** 서버가 판정이 바뀐 이유를 문장으로 보내 주면 붙인다. 없으면 쓰지 않는다 */
   reason?: string | null }
 
-/** 내 화물 현황 표 (GET /api/cargo/sheet, 10-06). 날짜는 모두 "YYYY-MM-DD" */
+/** 내 화물 현황 표 (GET /api/cargo/sheet). 날짜는 모두 "YYYY-MM-DD" */
 export interface CargoLc { id: number; lc_no: string; opened_on: string | null }
 export interface CargoSheetRow {
   cargo_key: string; bl_masked: string; label: string | null; status: 'active' | 'done';
@@ -287,6 +287,6 @@ export interface CustomsDetailRow {
   package_count: string | null; package_unit: string | null; weight: string | null; weight_unit: string | null;
 }
 
-/** POST /api/document/bl 응답 (10-08 정운 실사용 73번). 채팅 첨부가 쓴다. 코드가 뽑은 B/L·MRN만 있고 LLM 칸은 없다.
+/** POST /api/document/bl 응답. 채팅 첨부가 쓴다. 코드가 뽑은 B/L·MRN만 있고 LLM 칸은 없다.
  * bl_no가 null이면 서류에서 번호를 못 찾은 것이다 */
 export interface DocumentBlResponse { bl_no: string | null; mrn: string | null; ocr: {lines: number; rotation: number; runs: number; ocr_ms: number}; trace_id: string }

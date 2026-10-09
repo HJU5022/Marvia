@@ -1,6 +1,6 @@
 'use client';
 /** 조회 입력 폼 (SDD 5.13 TopBar, 계약 C2). 백엔드와 같은 B/L 정규화·검사를 먼저 해서 400을 줄인다.
- * 판매 예정일은 선택이다 (09-29 계약 변경). 요청에 status나 fixture ID 같은 칸을 더하지 않는다.
+ * 판매 예정일은 선택이다. 요청에 status나 fixture ID 같은 칸을 더하지 않는다.
  */
 import {useEffect, useState, type FormEvent} from 'react';
 import {ArrowRight, Camera, Check, ChevronDown, LoaderCircle, Search, X} from 'lucide-react';
@@ -31,7 +31,7 @@ export function TopBar() {
     setErrors(next);
     if (Object.keys(next).length) return;
     setBl(no); selectFixture(null); setChoice('');
-    // 서류에서 확인한 출항일은 그 서류의 B/L을 조회할 때만 싣는다 (10-06). 서버가 화물 표 출항 칸에 적는다
+    // 서류에서 확인한 출항일은 그 서류의 B/L을 조회할 때만 싣는다. 서버가 화물 표 출항 칸에 적는다
     const departed_on = docHints?.departed_on && docHints.bl_no === no ? docHints.departed_on : null;
     void lookup({bl_no: no, bl_type: type, sale_due_date: date || null, session_id: request.session_id, departed_on});
   }

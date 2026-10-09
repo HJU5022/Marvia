@@ -1,0 +1,36 @@
+# 프로젝트 메타데이터. 설치 목록의 기준은 계속 backend/requirements.txt다 (Dockerfile이 그 파일을 읽는다).
+# 아래 dependencies는 그 파일 내용을 그대로 옮긴 사본이라, 의존성을 바꿀 때는 requirements.txt를 먼저 고치고 여기도 같이 맞춘다.
+# 버전 고정은 backend/requirements.lock.txt (Docker 빌드가 constraints로 쓴다).
+# pytest 설정은 일부러 넣지 않았다: CI가 `python -m pytest -q backend/tests mcp_server/tests`로 경로를 직접 주고, 루트 conftest.py를 쓴다.
+[project]
+name = "marvia"
+version = "0.0.0"
+requires-python = ">=3.12"  # Dockerfile base python:3.12-slim과 같다
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "python-dotenv>=1.0",
+  "openai>=1.60",  # OpenRouter도 이 SDK로 부릅니다(base_url만 교체)
+  "google-auth[requests]>=2.30",  # MODEL_*=vertex/... 일 때 Vertex AI 토큰 발급 (llm.py, 09-28 설치본 2.58.1)
+  "langfuse>=4,<5",  # 필수 조건 4. v4부터 트레이스 쓰는 법(OpenTelemetry 기반)이 달라져 범위를 묶는다 (09-28 설치본 4.15.6)
+  "mcp>=1.29,<2",  # 필수 조건 5 - FastMCP (2.x는 MCPServer로 API 변경, 강의·SDD 기준 v1 고정)
+  "httpx>=0.27",  # 외부 API 호출 (ShipFinder 등)
+  "pytest>=8.0",  # 단위 테스트
+  "freezegun>=1.5",  # 평가 실행 때만 시계를 평가셋 clock으로 멈춘다 (evals/, 서버는 import 안 함. 09-28 설치본 1.5.5)
+  "searoute>=1.6",  # 부산까지 남은 해상 거리 (B7). 키 불필요
+  "pycountry>=24.6",  # 세관 국적 코드 ↔ ShipFinder 국적 이름 대조 (routers/agent.py). LGPL-2.1, 수정 없이 import만 (README 8절). 09-28 설치본 26.2.16
+  "psycopg[binary]>=3.2",  # 수집 워커의 Postgres 저장 (D1). 동기 드라이버라 주기 실행 스크립트에 단순하다
+  "PyJWT[crypto]>=2.8",  # 로그인 출입증(ES256) 확인 (G3, auth.py). [crypto]가 cryptography를 같이 깐다. 09-30 설치본 2.15.0·cryptography 50.0.1
+  "kiwipiepy>=0.24,<0.25",  # 한국어 형태소 분석: Skill 답의 명사만 뽑아 근거 없는 낱말을 센다 (validate.py V14, 10-06). 0.24부터 Apache-2.0 (0.23 이하는 LGPL이라 범위를 묶는다)
+  "openpyxl>=3.1,<4",  # 내 화물 현황 표를 .xlsx로 받기 (services/cargo_sheet.py, 10-06). MIT, PyPI 3.1.5 확인
+]
+
+[project.optional-dependencies]
+# 서류 사진 읽기(OCR). Dockerfile app 단계에서만 설치한다 (backend/requirements-doc.txt)
+doc = [
+  "rapidocr==3.9.2",  # 서류 사진 OCR (docs/specs/document-extract.md). Apache-2.0. PaddleOCR 모델을 ONNX로 돌린다. 09-29 실험과 같은 버전
+  "onnxruntime==1.30.0",  # rapidocr의 실행 엔진. MIT. Paddle 엔진 그대로보다 B/L 한 장 약 10배 빨랐다 (09-29 Mac M2 실측)
+  "python-multipart>=0.0.20",  # FastAPI 파일 업로드(POST /api/document)에 필요. 09-29 설치본 0.0.32
+  "pypdfium2>=4.30,<5",  # 서류 PDF 읽기: 글자층 추출과 스캔 PDF를 그림으로 그리기. Apache-2.0/BSD-3. PyMuPDF는 AGPL이라 뺐다 (10-06 결정). 설치본 4.30.0
+]

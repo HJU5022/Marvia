@@ -1,6 +1,6 @@
 """측정에 쓴 공격 문장 전부를 수정 전후 guard에 넣어 비교한다 (10-01 오탐 수정 확인용, 키 없이).
 
-git show <수정 전 커밋>:backend/app/services/guard.py > /tmp/guard_old.py
+git show <수정 전 커밋>:backend/app/services/judge/guard.py > /tmp/guard_old.py
 PYTHONPATH=. python evals/results/injection/scripts/guard_compare.py /tmp/guard_old.py
 """
 import glob
@@ -13,7 +13,7 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("guard_old", sys.argv[1])
 old = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(old)
-from backend.app.services import guard as new  # noqa: E402
+from backend.app.services.judge import guard as new  # noqa: E402
 
 texts = set()
 for f in glob.glob("evals/results/injection/**/*.json", recursive=True):

@@ -5,7 +5,7 @@
 | 구분 | 내용 |
 |---|---|
 | 책임 | ShipFinder, 해수부, searoute 데이터를 원본 값과 `fetched_at`과 함께 돌려준다 |
-| 하지 않는 것 | 판정, freshness 계산. 위치가 오래됐는지는 `services/signals.py`가 정한다 |
+| 하지 않는 것 | 판정, freshness 계산. 위치가 오래됐는지는 `services/judge/signals.py`가 정한다 |
 
 ## 파일
 
@@ -38,5 +38,5 @@
 ```bash
 pytest mcp_server/tests                                          # 키 없이
 python -m mcp_server.server --port 8001                          # 따로 띄울 때 (기본 포트 8001)
-python -m scripts.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   # API 서버 안의 /mcp 확인
+python -m scripts.demo.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   # API 서버 안의 /mcp 확인
 ```

@@ -213,7 +213,7 @@
 /* 회원 정보 입력 화면(필수 모드) 위쪽 이메일 한 줄 */
 .profile-card .profile-account{margin:4px 0 0;font-size:var(--fs-sm,13px);color:var(--muted)}
 
-/* 개인정보 수집·이용 동의 창: 가입 때 한 번만 뜬다 (10-07 정운 22번). body 아래에 그려서 .st-page 밖이다 */
+/* 개인정보 수집·이용 동의 창: 가입 때 한 번만 뜬다. body 아래에 그려서 .st-page 밖이다 */
 .consent-backdrop{position:fixed;inset:0;z-index:2100;display:grid;place-items:center;padding:16px;background:#191f2859}
 .consent-modal{width:min(440px,100%);padding:28px 28px 20px;background:var(--surface,#fff);border-radius:0;box-shadow:0 16px 48px #191f2829;animation:m-pop .18s var(--ease,ease) both}
 .consent-modal h2{margin:0 0 16px;font-size:var(--fs-lg,18px);font-weight:var(--fw-medium,500);color:var(--text,#191f28)}
@@ -224,7 +224,7 @@
 .consent-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 @media(max-width:700px){.consent-modal{padding:24px 20px 16px}.consent-actions .button{flex:1}}
 
-/* ---- 엘레강스 정리 (10-07 정운 엘레강스: 아임웹 61번 약관 창·글자 탭 기준) ----
+/* ---- 엘레강스 정리 (아임웹 61번 약관 창·글자 탭 기준) ----
    위 규칙을 덮는다. 상자·채움·굵은 글씨를 걷고 얇은 글자 + 가는 선 + 네모 단추만 남긴다 */
 .st-head{margin:0 0 24px}
 .st-head h1{font-size:var(--fs-xl,22px);font-weight:400;letter-spacing:.06em}

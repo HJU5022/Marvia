@@ -1,6 +1,6 @@
 # 안내처 표
 
-상태: 1(신호별 다음 행선지)과 2(범위 밖 질문)를 구현했다 (PR #71). 재료는 `skills/referrals/rules.md`(새 skills 폴더, "정해야 할 것" 3번의 답), 코드는 `backend/app/services/referrals.py`, 테스트는 `backend/tests/test_referrals.py`.
+상태: 1(신호별 다음 행선지)과 2(범위 밖 질문)를 구현했다 (PR #71). 재료는 `skills/referrals/rules.md`(새 skills 폴더, "정해야 할 것" 3번의 답), 코드는 `backend/app/services/chat/referrals.py`, 테스트는 `backend/tests/unit/test_referrals.py`.
 
 ### 구현 상태
 
@@ -9,19 +9,19 @@
 | 신호별 확인처 | 켜진 신호마다 "확인처:" 한 줄, 두 개까지 | 구현. `referrals.signal_lines/with_signal_lines`, `routers/agent.py`가 LLM 답의 actions 뒤에 붙이고, 설명을 못 만든 폴백에서도 붙인다. `referral_order`, `referral_max: 2`, `referral_prefix`는 rules.md. 입력 오류로 세지 않는 신호는 뺀다 |
 | 통관 보류의 UNI-PASS 줄 | 한 줄 더 | 구현 (`signal_referral_links`) |
 | navstat_mismatch | 붙이지 않음 | 구현 (rules.md에 항목이 없다) |
-| 범위 밖 질문 | 5개 주제를 고정 문장으로 | 5개 구현: air_land, warehouse_date, schedule_change(`require`가 있어야 걸림), weather, import_requirement. B/L이 있는 문장은 건너뛴다 (`services/chat._route`). 주제는 LLM 분류가 아니라 정규식(rules.md `out_of_scope`)이다 |
+| 범위 밖 질문 | 5개 주제를 고정 문장으로 | 5개 구현: air_land, warehouse_date, schedule_change(`require`가 있어야 걸림), weather, import_requirement. B/L이 있는 문장은 건너뛴다 (`services/chat/chat._route`). 주제는 LLM 분류가 아니라 정규식(rules.md `out_of_scope`)이다 |
 | 세액·통관 가부 | `BROKER_ONLY`에 확인처 | 구현. `broker_referral`을 `BROKER_ONLY` 끝에 붙인다 (`referrals.broker_tail`) |
 | 품목별 요건 답의 한국관세사회 링크 | 붙임 | 안 붙였다. 현재 답은 관세사에게 확인하라는 문장만 있다. 아래 "공식 창구" 표의 `broker_search`는 코드에 쓰이지 않는다 |
-| `NOT_IN_SKILLS`, `BROKER_SHORT`에 확인처 | 붙이거나 맞춤 | 바뀌지 않았다 (`services/chat.py`). 아래 "기존 고정 문구와의 관계" 표의 이 줄들은 반영하지 않았다. `CLEARANCE_TAG`는 없앴다 (아래 표) |
+| `NOT_IN_SKILLS`, `BROKER_SHORT`에 확인처 | 붙이거나 맞춤 | 바뀌지 않았다 (`services/chat/chat.py`). 아래 "기존 고정 문구와의 관계" 표의 이 줄들은 반영하지 않았다. `CLEARANCE_TAG`는 없앴다 (아래 표) |
 | 링크 확인 스크립트 | `scripts/`에 둠 | 만들지 않았다 (scripts/에 없음) |
 | 범위 밖 질문 평가 5~10건 | 사람이 따로 | evals/에서 확인하지 못했다 |
 
 ## 왜 만드나
 
 마르비아는 답하지 않는 영역이 정해져 있다. 세액·통관 가부 판단, 창고 수령일 예측이 그렇다 (PRD 4절).
-지금은 그런 질문에 "관세사에게 문의해 주세요", "자료에 없습니다"로 끝난다 (services/chat.py 고정 문구).
+지금은 그런 질문에 "관세사에게 문의해 주세요", "자료에 없습니다"로 끝난다 (services/chat/chat.py 고정 문구).
 사람만 안내하고 공식 창구는 알려 주지 않는다.
-웹 검색 답에는 출처 링크가 붙지만(caf412a), 검색 결과에 따라 매번 달라서 공식 창구가 나온다는 보장이 없다.
+처음에는 웹 검색 답에 출처 링크를 붙였으나, 검색 결과에 따라 매번 달라서 공식 창구가 나온다는 보장이 없었다. 웹 검색 도구는 없앴다 (docs/adr/0020).
 판정 답에도 신호가 켜졌을 때 누구에게 무엇을 물어야 하는지가 일정하게 붙지 않는다.
 
 그래서 두 가지를 고정한다.
@@ -151,7 +151,7 @@ out_of_scope:
 
 ## 기존 고정 문구와의 관계
 
-| 지금 문구 (services/chat.py) | 바뀌는 것 |
+| 지금 문구 (services/chat/chat.py) | 바뀌는 것 |
 |---|---|
 | BROKER_ONLY, BROKER_SHORT | 위 "세액·통관 가부" 답으로 맞추고 확인처 줄을 붙인다 |
 | CLEARANCE_TAG, GENERAL_TAG | 없앴다 (답마다 같은 꼬리표가 붙어 기계 같다는 실사용 지적). "안내용 정보, 실제 처리는 포워더·관세사 확인" 고지는 사이트 이용약관(web/components/LegalLinks.tsx)으로 옮겼다 |
@@ -162,7 +162,7 @@ out_of_scope:
 
 - rules.md 프론트매터: signal_referrals, referral_order, referral_max, out_of_scope. 계약 파일 변경이라 PR 리뷰를 거친다
 - 판정 응답 조립(코드): 켜진 신호로 확인처 줄을 만들어 actions 뒤에 붙인다. LLM 출력 검증(V1~V7)은 붙이기 전에 끝난다
-- services/chat.py: 범위 밖 주제를 먼저 가르고 고정 문장으로 답한다. 기존 고정 문구는 위 표대로 맞춘다
+- services/chat/chat.py: 범위 밖 주제를 먼저 가르고 고정 문장으로 답한다. 기존 고정 문구는 위 표대로 맞춘다
 - 테스트(키 없이): 신호 조합마다 붙는 줄과 순서·개수, "괜찮음"엔 안 붙는 것, 범위 밖 질문마다 고정 문장, LLM 답에 주소가 없는 것
 - 평가: 판정 답 본문은 그대로라 기존 평가셋에는 영향이 없다. 범위 밖 질문 평가 5~10건은 사람이 써서 따로 둔다
 - 링크 확인 스크립트: scripts/에 공식 창구 주소가 살아 있는지 보는 스크립트는 없다 (위 구현 상태 표)

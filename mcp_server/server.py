@@ -9,16 +9,16 @@ FastMCP, Streamable HTTP, 경로 /mcp. 외부 데이터 도구 4종을 여기에
 {error: {code, message, retryable}}로 돌려줍니다.
 
 MCP_TOKEN이 있으면 /mcp는 Authorization: Bearer <MCP_TOKEN> 없이 부를 수 없습니다 (A10).
-MCP_TOKEN이 없으면 REPLAY_MODE일 때만 열고, 아니면 같은 컨테이너 안의 요청만 받습니다 (10-06 점검, mcp_server/auth.py).
+MCP_TOKEN이 없으면 REPLAY_MODE일 때만 열고, 아니면 같은 컨테이너 안의 요청만 받습니다 (mcp_server/auth.py).
 
-어디서 뜨나 (09-29 결정, SDD 5.9):
+어디서 뜨나 (SDD 5.9):
   기본은 API 서버(backend/app/main.py) 안의 /mcp 경로입니다. 배포 서비스(Railway marvia-api)가 하나로 끝납니다.
   이 파일을 직접 실행하는 길(아래)은 로컬 확인용으로 남깁니다.
-  서비스(routers/agent.py 등)도 /mcp를 거쳐 도구를 부릅니다 (10-02, backend/app/services/mcp_client.py).
+  서비스(routers/agent.py 등)도 /mcp를 거쳐 도구를 부릅니다 (backend/app/services/mcp_client.py).
   외부 MCP 클라이언트와 같은 창구입니다.
 
 실행:  python -m mcp_server.server --port 8001          (따로 띄울 때)
-확인:  python -m scripts.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   (API 서버 안)
+확인:  python -m scripts.demo.mcp_check http://localhost:8000/mcp --token <MCP_TOKEN>   (API 서버 안)
 """
 import argparse
 import functools
@@ -56,7 +56,7 @@ def _token(token: str | None) -> str:
 
 
 def _in_thread(fn):
-    """동기 도구 함수를 스레드에서 돌리는 async 함수로 감싼다 (10-02).
+    """동기 도구 함수를 스레드에서 돌리는 async 함수로 감싼다.
 
     FastMCP(mcp 1.30)는 동기 도구를 이벤트 루프 위에서 바로 부른다(func_metadata.call_fn_with_arg_validation).
     도구가 외부 API를 기다리는 몇 초 동안 API 서버 전체(/health 포함)가 멈춘다. 서비스가 /mcp를 거쳐
@@ -73,10 +73,10 @@ def create_mcp(token: str | None = None) -> FastMCP:
     """도구 4종을 등록한 FastMCP를 새로 만든다.
 
     Host 검사: FastMCP는 기본으로 localhost에서 온 요청만 받는다(DNS 리바인딩 방지). 그대로면 배포 주소
-    (xxx.run.app)로 온 요청이 421로 막힌다 (09-29 라이브러리 코드 확인, mcp 1.30 fastmcp/server.py).
+    (xxx.run.app)로 온 요청이 421로 막힌다 (라이브러리 코드 확인, mcp 1.30 fastmcp/server.py).
     토큰이 있으면 이 검사를 끄고 토큰이 막는다. 배포 주소는 미리 알 수 없어 허용 목록을 적기 어렵다.
     compose의 worker도 같다: MCP_URL=http://api:8000/mcp라 Host가 api:8000이고, 토큰이 있으면 그대로 통과한다.
-    토큰이 없으면 localhost에 compose 서비스 이름(api)만 더해 받는다 (10-06 점검: 전에는 localhost만이라 worker가 421).
+    토큰이 없으면 localhost에 compose 서비스 이름(api)만 더해 받는다 (전에는 localhost만이라 worker가 421).
     토큰 없이 밖에서 오는 요청은 어차피 auth.protect가 막는다(REPLAY_MODE가 아니면 루프백만). 이 목록은 REPLAY_MODE에서
     worker의 지켜보기 재판정이 api의 /mcp를 부를 수 있게 하려는 것이다.
     """
@@ -93,7 +93,7 @@ def create_mcp(token: str | None = None) -> FastMCP:
     # 서버를 API 서버 수명이 열릴 때마다 새로 만들어야 해서(MountedMCP) 도구 파일이 아니라 이 함수 안에서 단다.
     # functools.wraps가 본체의 이름·docstring·타입 힌트를 옮겨서 도구 이름·설명·입력 스키마는 본체 그대로다.
     # _in_thread: 동기 도구를 스레드에서 돌려 외부 API를 기다리는 동안 API 서버가 멈추지 않게 한다.
-    # (10-07: 전에는 반복문으로 등록해 데코레이터가 보이지 않아 "MCP tool 미정의"로 오해받았다. 동작은 같다)
+    # (전에는 반복문으로 등록해 데코레이터가 보이지 않아 "MCP tool 미정의"로 오해받았다. 동작은 같다)
 
     @mcp.tool(annotations=read_only)
     @_in_thread
@@ -126,7 +126,7 @@ def create_mcp(token: str | None = None) -> FastMCP:
 mcp = create_mcp(token="")
 
 # FastMCP는 만들어질 때 로그 수준을 INFO로 맞춘다. 그러면 httpx가 외부 API 주소(키 포함)를 로그에 남긴다.
-# 백엔드와 같은 로거들을 경고 이상만 남기게 한다 (backend/app/observability/logging.py, 09-28 발견)
+# 백엔드와 같은 로거들을 경고 이상만 남기게 한다 (backend/app/observability/logging.py)
 for _name in NOISY_URL_LOGGERS:
     logging.getLogger(_name).setLevel(logging.WARNING)
 
@@ -139,7 +139,7 @@ def build_app(token: str | None = None, server: FastMCP | None = None):
 
 
 class MountedMCP:
-    """API 서버(FastAPI)의 /mcp 경로에 붙이는 ASGI 앱 (09-29 결정: 서버 하나로 합침).
+    """API 서버(FastAPI)의 /mcp 경로에 붙이는 ASGI 앱 (서버 하나로 합침).
 
     FastMCP의 세션 관리자는 한 인스턴스에서 한 번만 시작할 수 있다. API 서버의 수명(lifespan)이 열릴 때마다
     running()에서 FastMCP를 새로 만들어 시작한다. 배포에서는 한 번이지만, 테스트는 TestClient로 여러 번 연다.

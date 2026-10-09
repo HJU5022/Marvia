@@ -3,11 +3,11 @@
 VesselSearch(선박 검색)와 VesselPositionSingle(단일 선박 위치) 두 개만 부릅니다.
 MCP 도구(B3·B4)와 수집 워커(D1)가 이 클라이언트를 같이 씁니다. 위치는 SDD 1.1·CLAUDE.md의 backend/app/clients/.
 
-- 값은 원본 그대로 돌려주고 판정(freshness 등)은 하지 않습니다. 판정은 services/signals.py 몫입니다.
+- 값은 원본 그대로 돌려주고 판정(freshness 등)은 하지 않습니다. 판정은 services/judge/signals.py 몫입니다.
 - API의 "무효" 표시값(sog -1, hdg 511, eta 0 등)만 None으로 바꾸고, 원본은 raw에 남깁니다.
 - 빈도 초과(23·29)로 실패하면 마지막 성공 응답을 캐시에서 돌려줍니다 (B8, TTL은 rules.md api_cache_ttl_hours).
   캐시 값은 fetched_at이 과거라서 받는 쪽이 오래된 값임을 알 수 있습니다.
-- 하루 호출 한도 소진(38)을 한 번 받으면 그 프로세스는 한국 날짜가 바뀔 때까지 ShipFinder를 더 부르지 않습니다 (10-06 점검).
+- 하루 호출 한도 소진(38)을 한 번 받으면 그 프로세스는 한국 날짜가 바뀔 때까지 ShipFinder를 더 부르지 않습니다.
 
 명세: https://docs.shipfinder.com/428749512e0 (검색), /428990613e0 (위치), /8401497m0 (상태 코드)
 """
@@ -31,11 +31,11 @@ BASE_URL = "https://api.elaneglobal.com/v1/AIS/"
 TIMEOUT_SEC = float(os.environ.get("SHIPFINDER_TIMEOUT_SEC", 10))  # 환경변수로 조정 가능
 
 # SDD 5.2 상태 코드 매핑. 목록에 없는 코드는 "error".
-# 13 = Server busy (docs.shipfinder.com/8401497m0). 잠시 뒤 다시 부르면 되므로 retryable (09-22 확인).
+# 13 = Server busy (docs.shipfinder.com/8401497m0). 잠시 뒤 다시 부르면 되므로 retryable.
 _STATUS_CODES = {
     3: "not_found",
     # 6 = 키 만료, 7 = 키 잠김 (docs.shipfinder.com/8401497m0). 키를 바꾸기 전에는 다시 불러도 같아 bad_key로 묶는다.
-    # 10-07 실측: 무료 키 기간이 끝나 6이 왔는데, 목록에 없어 "error"로 뭉쳐져 원인이 로그에 안 보였다
+    # 무료 키 기간이 끝나 6이 왔는데, 목록에 없어 "error"로 뭉쳐져 원인이 로그에 안 보였다
     6: "bad_key",
     7: "bad_key",
     9: "bad_key",
@@ -43,20 +43,20 @@ _STATUS_CODES = {
     21: "no_permission",
     23: "rate_limited",
     29: "rate_limited",
-    # 38 = 하루 호출 한도 소진. 공식 코드 표(docs.shipfinder.com/8401497m0)에는 없고 10-02에 실제로 받은 응답으로 정했다 (10-06 점검).
+    # 38 = 하루 호출 한도 소진. 공식 코드 표(docs.shipfinder.com/8401497m0)에는 없고 실제로 받은 응답으로 정했다.
     # 전에는 목록에 없어 "error"로 뭉쳐졌다.
     # 오늘은 다시 불러도 같은 답이라 retryable이 아니다
     38: "quota_exhausted",
 }
 _RETRYABLE = {"busy", "rate_limited", "timeout"}
-# 마지막 성공 값으로 대신하는 실패. 빈도 초과(SDD 5.2), 시간 초과(09-29 결정, 평가셋 F02 "마지막 수신 위치로 판정"),
-# 하루 한도 소진(10-06 점검). 셋 다 "지금 못 받았을 뿐 배의 정보는 있다"는 뜻이다. 권한 없음·없는 배는 사실이라 캐시로 가리지 않는다
+# 마지막 성공 값으로 대신하는 실패. 빈도 초과(SDD 5.2), 시간 초과(평가셋 F02 "마지막 수신 위치로 판정"),
+# 하루 한도 소진. 셋 다 "지금 못 받았을 뿐 배의 정보는 있다"는 뜻이다. 권한 없음·없는 배는 사실이라 캐시로 가리지 않는다
 _CACHE_FALLBACK = {"rate_limited", "timeout", "quota_exhausted"}
-# 캐시 TTL이 지난 값도 쓰는 실패. 시간 초과(09-29 결정 ①)와 한도 소진은 오늘 안에 새 값을 받을 길이 없다.
+# 캐시 TTL이 지난 값도 쓰는 실패. 시간 초과(①)와 한도 소진은 오늘 안에 새 값을 받을 길이 없다.
 # 빈도 초과는 잠시 뒤 새 값을 받을 수 있어 SDD 5.2대로 TTL 안에서만 쓴다
 _IGNORE_TTL = {"timeout", "quota_exhausted"}
 
-# 한도 소진을 받은 한국 날짜 (10-06 점검). 같은 날에는 호출하지 않고 바로 quota_exhausted로 실패시켜 남은 일(수집 워커의
+# 한도 소진을 받은 한국 날짜. 같은 날에는 호출하지 않고 바로 quota_exhausted로 실패시켜 남은 일(수집 워커의
 # 다음 배, 후보 상세 조회 5척 등)이 헛호출을 쌓지 않게 한다. 프로세스 메모리라 api와 worker는 각자 한 번씩은 38을 받는다.
 # 날짜 경계는 한국 자정으로 잡았다. ShipFinder 서버가 다른 시간대 자정에 초기화하면 경계 뒤 첫 호출이 38을 다시 받고
 # 그날 하루 다시 막힐 뿐이라 한도를 넘기지는 않는다
@@ -162,7 +162,7 @@ class ShipFinderClient:
     # 클라이언트를 새로 만들어도 캐시는 남아야 해서 클래스 변수로 둔다
     cache = ResponseCache()
 
-    #: 마지막 호출이 캐시로 답한 시각. 실시간으로 받았으면 None (SDD 8절 "근거에 캐시 표시")
+    # 마지막 호출이 캐시로 답한 시각. 실시간으로 받았으면 None (SDD 8절 "근거에 캐시 표시")
     last_cached_at: datetime | None
 
     def __init__(self, key: str | None = None, transport: httpx.BaseTransport | None = None):
@@ -178,7 +178,7 @@ class ShipFinderClient:
         self.last_cached_at = None
 
     def _cached(self, key: str, fetch):
-        """호출해 보고, 빈도 초과·시간 초과·한도 소진이면 마지막 성공 값을 돌려준다 (SDD 5.2, 09-29 결정, 10-06 점검).
+        """호출해 보고, 빈도 초과·시간 초과·한도 소진이면 마지막 성공 값을 돌려준다 (SDD 5.2).
 
         다른 실패(권한 없음, 없는 배 등)는 캐시로 가리지 않는다. 그 실패는 사실이기 때문이다.
         캐시로 대신했으면 last_cached_at이 채워지고, 라우터는 그 판정을 partial로 알린다 (routers/agent.py).
@@ -188,10 +188,10 @@ class ShipFinderClient:
         except ShipFinderError as e:
             if e.code not in _CACHE_FALLBACK:
                 raise
-            # 시간 초과는 TTL(rules.md api_cache_ttl_hours)이 지난 값도 쓴다 (09-29 결정 ①, 평가셋 F02: 03:05 캐시로 12:00 판정).
+            # 시간 초과는 TTL(rules.md api_cache_ttl_hours)이 지난 값도 쓴다 (①, 평가셋 F02: 03:05 캐시로 12:00 판정).
             # 오래된 위치는 signals의 position_stale이 "마지막 수신 위치"로 드러내므로 숨기는 것이 아니다
-            # (09-27 결정 "오래된 위치는 되묻지 않고 마지막 수신 위치로 판정"). 빈도 초과는 SDD 5.2대로 TTL 안에서만
-            # 한도 소진도 같다: 오늘 안에 새 값을 받을 수 없다 (_IGNORE_TTL, 10-06 점검)
+            # ("오래된 위치는 되묻지 않고 마지막 수신 위치로 판정"). 빈도 초과는 SDD 5.2대로 TTL 안에서만
+            # 한도 소진도 같다: 오늘 안에 새 값을 받을 수 없다 (_IGNORE_TTL)
             entry = self.cache.entry(key, ignore_ttl=(e.code in _IGNORE_TTL))
             if entry is None:
                 raise
@@ -208,7 +208,7 @@ class ShipFinderClient:
         self._http.close()
 
     def _get(self, endpoint: str, params: dict) -> dict:
-        """ShipFinder HTTP 호출 한 번을 Langfuse span으로 감싼다 (10-08 정운 실사용 64번).
+        """ShipFinder HTTP 호출 한 번을 Langfuse span으로 감싼다.
 
         전에는 성공한 호출이 어디에도 안 보여서 하루 한도를 누가 썼는지 알 수 없었다. httpx 로거는 키가 URL에 실려 새므로
         일부러 WARNING으로 막아 뒀다. 그래서 키·URL·검색어·응답 원본은 빼고 endpoint, 캐시 여부, 건수, 오류 코드,
@@ -230,7 +230,7 @@ class ShipFinderClient:
             return body
 
     def _get_raw(self, endpoint: str, params: dict) -> dict:
-        # 오늘 이미 한도 소진을 받았으면 부르지 않는다. 불러도 38만 돌아오고 호출 수만 쌓인다 (10-06 점검)
+        # 오늘 이미 한도 소진을 받았으면 부르지 않는다. 불러도 38만 돌아오고 호출 수만 쌓인다
         if quota_blocked():
             raise ShipFinderError("quota_exhausted", f"{endpoint} 오늘 호출 한도 소진 (호출하지 않음)", status=38)
 
@@ -298,7 +298,7 @@ class ShipFinderClient:
 def position_from_data(d: dict) -> VesselPosition:
     """VesselPositionSingle 응답의 data 칸을 VesselPosition으로 옮긴다.
 
-    좌표(lat·lng)가 빠진 응답은 KeyError로 흘리지 않고 ShipFinderError("error")로 바꾼다 (10-06 점검).
+    좌표(lat·lng)가 빠진 응답은 KeyError로 흘리지 않고 ShipFinderError("error")로 바꾼다.
     MCP 도구는 ShipFinderError만 {error}로 바꾸므로, 다른 예외는 도구 밖으로 새어 나갔다.
 
     클라이언트 안에서만 쓰던 변환을 밖으로 뺐다. 평가 실행기가 평가셋의 "캐시 위치"(F02)를

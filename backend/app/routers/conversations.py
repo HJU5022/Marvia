@@ -1,4 +1,4 @@
-"""대화 목록 창구 (ChatGPT·Claude식, 10-06 정운 결정, services/conversations.py, migrations/018).
+"""대화 목록 창구 (ChatGPT·Claude식, services/chat/conversations.py, migrations/018).
 
 GET /api/conversations         내 대화 목록 (최근순 50건)
 GET /api/conversations/{id}    대화 하나: 말풍선, 마지막 판정(context·result)
@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from backend.app.auth import current_user_id
 from backend.app.db import connect
 from backend.app.observability.logging import log_failure
-from backend.app.services import conversations as svc
+from backend.app.services.chat import conversations as svc
 
 router = APIRouter(prefix="/api", tags=["conversations"])
 

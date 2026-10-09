@@ -1,9 +1,9 @@
 'use client';
-/** 로그인 전 첫 화면 = 소개 랜딩 (10-07 정운 요청 25). 사이드바 없이 전체 화면으로 나온다(Shell).
+/** 로그인 전 첫 화면 = 소개 랜딩. 사이드바 없이 전체 화면으로 나온다(Shell).
  * 본문은 /about 과 같은 IntroContent. 시작 버튼이 구글 로그인이다. 비밀번호를 받지 않는다. 로그인 기능이 꺼진 환경(채점용)에서는 이 화면이 나오지 않는다.
  * 체험 모드 버튼은 두지 않는다 (배포 화면에는 불필요, 체험 데모는 e2e용으로 코드에만 남아 있다).
  * 로그인 로직(signInWithGoogle)은 G3 때 그대로다. 스타일은 app/styles/landing.css.
- * 하단에는 약관 링크를 두지 않는다. 우리 서비스에 따로 정한 약관·처리방침 문서가 없다 (10-07 승욱).
+ * 하단에는 약관 링크를 두지 않는다. 우리 서비스에 따로 정한 약관·처리방침 문서가 없다.
  */
 import {useState} from 'react';
 import {LoaderCircle} from 'lucide-react';
@@ -27,7 +27,7 @@ export function LoginScreen() {
     </button>
     {error && <p role="alert" className="intro-error">{error}</p>}
   </>;
-  // 윗줄 오른쪽 작은 로그인 (10-07 정운 엘레강스: 글자만, 같은 동작)
+  // 윗줄 오른쪽 작은 로그인 (엘레강스: 글자만, 같은 동작)
   const navRight = <button type="button" className="intro-nav-login" onClick={start} disabled={busy}>로그인</button>;
   return <IntroContent action={action} navRight={navRight} footer={<footer className="intro-foot">© 2026 Marvia</footer>}/>;
 }

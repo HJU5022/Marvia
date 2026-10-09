@@ -1,9 +1,9 @@
-"""카카오 로그인·카카오톡 메시지 API 호출 (카카오톡 "나에게 보내기" 알림, 10-02).
+"""카카오 로그인·카카오톡 메시지 API 호출 (카카오톡 "나에게 보내기" 알림).
 
 이 파일은 카카오 서버에 HTTP 요청을 보내고 결과를 Tokens나 KakaoError로 바꿔 주는 일만 한다.
-토큰을 DB에 저장하거나 언제 보낼지 정하는 일은 services/kakao.py, 주소 연결은 routers/kakao.py 몫이다.
+토큰을 DB에 저장하거나 언제 보낼지 정하는 일은 services/watch/kakao.py, 주소 연결은 routers/kakao.py 몫이다.
 동의 화면이 끝나면 카카오는 브라우저를 우리 화면(/settings/kakao)으로 돌려보낸다. 그 화면이 로그인 출입증을 붙여
-routers/kakao.py의 POST /callback을 부른다 (10-05 결정). 백엔드 주소로 바로 돌려보내지 않는다.
+routers/kakao.py의 POST /callback을 부른다. 백엔드 주소로 바로 돌려보내지 않는다.
 
 왜 이렇게 했나:
 - exchange_code와 send_memo는 재시도하지 않는다. 인가 코드는 한 번만 쓸 수 있어서 다시 보내면 어차피 실패하고,
@@ -17,7 +17,7 @@ routers/kakao.py의 POST /callback을 부른다 (10-05 결정). 백엔드 주소
 - transport는 테스트가 가짜 서버(httpx.MockTransport)를 꽂는 자리다. 운영에서는 None이다
 
 출처: 카카오 로그인 REST API 문서(인가 코드·토큰 받기·토큰 갱신), 카카오톡 메시지 REST API 문서(나에게 보내기),
-카카오 로그인 REST API 문서(연결 끊기). 10-02 결정(로그인 사용자별 "나에게 보내기" 알림).
+카카오 로그인 REST API 문서(연결 끊기). 로그인 사용자별 "나에게 보내기" 알림.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from backend.app.clients.retry import with_retry
 
 KAUTH = "https://kauth.kakao.com"
 KAPI = "https://kapi.kakao.com"
-DEFAULT_REDIRECT_URI = "http://localhost:3000/settings/kakao"  # 우리 화면 주소. 백엔드가 아니라 화면이 카카오 결과를 받는다 (10-05 결정)
+DEFAULT_REDIRECT_URI = "http://localhost:3000/settings/kakao"  # 우리 화면 주소. 백엔드가 아니라 화면이 카카오 결과를 받는다
 SCOPE = "talk_message"
 
 TIMEOUT_SEC = 10  # supabase_admin.py와 같은 값 (SDD 8절)

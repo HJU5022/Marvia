@@ -1,5 +1,5 @@
 /* 담당 영역: 화물 상세 패널 (지도 카드, 판정, 일정, 통관, 펼쳐 보기). 토큰은 globals.css :root, 이 파일은 globals.css 뒤에 불러와져 같은 선택자를 덮는다.
- * 3차 다듬기(10-06): 흰 상자를 줄였다. 지도만 카드로 남기고 판정·일정·통관·펼쳐 보기는 배경 위에 글자 크기와 여백, 가는 구분선으로만 나눈다.
+ * 3차 다듬기: 흰 상자를 줄였다. 지도만 카드로 남기고 판정·일정·통관·펼쳐 보기는 배경 위에 글자 크기와 여백, 가는 구분선으로만 나눈다.
  * 움직임 길이는 150ms(눌림) / 220ms(나타남) / 320ms(패널·지도). 움직임 줄이기를 켜면 globals.css가 전부 끈다(animation·transition none). */
 
 .result{display:flex;flex-direction:column;gap:0;margin:0;animation:m-rise var(--t-enter) var(--ease) backwards}
@@ -40,7 +40,7 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 .map-frame.is-overlay .map-chips{top:16px;left:16px}
 .map-frame.is-overlay .map-tools{top:16px;right:16px}
 .map-frame.is-overlay .map-zoom{left:16px;bottom:44px}
-/* 지도 아래 한 줄 요약 (10-07 정운 실사용 12번): 떠 있는 흰 카드와 채운 배지 대신 작은 점 + 글자, 옅은 보조 글씨 */
+/* 지도 아래 한 줄 요약: 떠 있는 흰 카드와 채운 배지 대신 작은 점 + 글자, 옅은 보조 글씨 */
 .map-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:center;padding:14px 2px 0}
 .map-summary-main{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;min-width:0}
 .verdict-dot{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-base,14px);font-weight:var(--fw-medium,500);color:var(--text)}
@@ -85,7 +85,7 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 .map-tool:active{transform:scale(.96)}
 .map-frame .leaflet-bottom.leaflet-left .leaflet-control-attribution{margin:0 0 6px 6px;border-radius:0;padding:2px 8px;font-size:12px!important}
 
-/* ---- 2 판정: 배경 위 글. 작은 라벨 + 보통 굵기 문장, 여유 일수만 숫자로 눈에 띄게 (10-07 정운 실사용 12번) ---- */
+/* ---- 2 판정: 배경 위 글. 작은 라벨 + 보통 굵기 문장, 여유 일수만 숫자로 눈에 띄게 ---- */
 .verdict-hero,.verdict-hero.fine,.verdict-hero.watch,.verdict-hero.act{display:block;padding:24px 2px;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible}
 .verdict-body{display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
 .verdict-todo{min-width:0;flex:1}
@@ -127,7 +127,7 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 .customs-section .cargo-parties dt{font-size:var(--fs-xs,12px);color:var(--muted)}
 .customs-section .cargo-parties dd{margin:0;font-size:var(--fs-sm,13px);font-weight:var(--fw-medium,500);color:var(--text)}
 
-/* ---- 5 상세 정보: 구역 제목 + 근거 개수 + 펼치기 단추 모양. 위아래 얇은 선, 마우스를 올리면 배경이 깔린다 (10-07 정운 실사용 13번) ---- */
+/* ---- 5 상세 정보: 구역 제목 + 근거 개수 + 펼치기 단추 모양. 위아래 얇은 선, 마우스를 올리면 배경이 깔린다 ---- */
 .more-fold{background:none;border-top:1px solid var(--hairline,#e5e8eb);border-bottom:1px solid var(--hairline,#e5e8eb);border-radius:0;interpolate-size:allow-keywords}
 .more-fold>summary{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:2px 10px;width:100%;box-sizing:border-box;padding:16px 8px;margin:0;list-style:none;cursor:pointer;border-radius:0;transition:background var(--t-fast) var(--ease)}
 .more-fold>summary:hover{background:var(--hover)}
@@ -194,7 +194,7 @@ body[data-map-big] .detail-scroll{overflow:hidden}
  .more-fold>summary strong{font-size:var(--fs-md,15px)}
  .verdict-body{flex-direction:column;align-items:stretch;gap:12px}
  .verdict-slack{align-items:flex-start;text-align:left}
- /* 세계 지도 저작자 표시(© OpenStreetMap · OpenFreeMap)는 잘리면 안 된다. 글자를 줄이고, 떠 있는 카드를 한 줄만큼 올려 겹치지 않게 한다 (10-06) */
+ /* 세계 지도 저작자 표시(© OpenStreetMap · OpenFreeMap)는 잘리면 안 된다. 글자를 줄이고, 떠 있는 카드를 한 줄만큼 올려 겹치지 않게 한다 */
  .map-frame .leaflet-control-attribution{font-size:11px!important;padding:1px 6px;max-width:calc(100% - 12px);white-space:nowrap}
  .schedule-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
  .sch-line{display:none}
@@ -230,7 +230,7 @@ body[data-map-big] .detail-scroll{overflow:hidden}
 }
 
 /* =========================================================
-   엘레강스 v2 (10-07 정운): 지도 위 겹침 요소는 둥근 흰 상자 대신 네모, 얇은 선, 반투명 흰색, 그림자 없음.
+   엘레강스 v2: 지도 위 겹침 요소는 둥근 흰 상자 대신 네모, 얇은 선, 반투명 흰색, 그림자 없음.
    결과 패널은 가벼운 글자 + 얇은 선. 참고: imweb Reservation 테마 (images/57, 63).
    ========================================================= */
 /* 지도 위 겹침: 줌·내 위치·펼치기·ⓘ·안내 칩·저작자 표시·선박/항구 이름표가 같은 모양 */

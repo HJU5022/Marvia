@@ -7,6 +7,7 @@
 | 궁금한 것 | 볼 곳 |
 |---|---|
 | 왜 만드나, 범위, 만들지 않는 것, 평가 설계 | [Marvia_PRD.md](./Marvia_PRD.md) (안 만드는 것은 4절) |
+| 왜 이렇게 설계했나 (설계 결정 기록, 결정 하나당 한 장) | [adr/](./adr/README.md) |
 | 어떻게 구현하나: 스키마(계약 C1~C8), 처리 흐름, 파일별 책임, 실패 처리, 배포 | [Marvia_SDD.md](./Marvia_SDD.md) (스키마 3절, 흐름 4절, 파일 책임 5절, 배포 6절, 보안 7절, 실패 8절) |
 | 작업 ID(A1~G5), 완료 기준, 기한, 묶음 경계 | [Marvia_개발_작업_리스트.md](./Marvia_개발_작업_리스트.md) |
 | DB 표와 관계, 마이그레이션 001~023 | [ERD.md](./ERD.md) |
@@ -42,7 +43,7 @@ SDD 5절과 작업 리스트에 없는 기능은 Spec을 먼저 쓴다(CLAUDE.md
 |---|---|
 | [backend/](../backend/README.md) | FastAPI 앱 구조 |
 | [mcp_server/](../mcp_server/README.md) | MCP 도구 4종 |
-| [skills/](../skills/README.md) | Skill 5종 |
+| [skills/](../skills/README.md) | Skill 6종 |
 | [relay/](../relay/README.md) | 해수부 릴레이 |
 | [web/](../web/README.md) | 화면 |
 | [evals/](../evals/README.md) | 평가셋 |

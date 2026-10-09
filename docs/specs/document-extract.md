@@ -40,7 +40,7 @@ SDD 1절은 F9를 "인터페이스만 남기고 구현하지 않는다"고 적�
 - 입력은 사진 또는 PDF 한 파일이고 상한은 10MB(`routers/document.py MAX_BYTES`, 넘으면 400 `too_large`)다. 폼에 `session_id`를 같이 보낼 수 있다. 로그인이 필수이고 하루 토큰 한도(docs/specs/token-quota.md)를 확인한다
 - 7칸 말고 **출항일 `etd`**(도착 통지서의 E.T.D. 또는 B/L의 Shipped/Laden on board 날짜, 서류에서 옮긴 값, 없으면 null)가 더해졌다. 화물 시트의 `departed_source = 'document'`가 이 값에서 온다 (docs/ERD.md)
 - 응답에 `mrn`(코드가 "MRN" 이름표 옆에서 뽑음, docs/specs/mrn-fallback.md)과 `llm_error`(LLM 단계가 실패한 종류, 성공이면 null)가 있다. LLM이 실패하면 `status=partial`이고 화면은 AI가 못 읽었다고 안내한다
-- PDF 동작은 `services/doc_ocr.py`의 상수(`PDF_MAX_PAGES` 2, `PDF_MIN_TEXT_CHARS` 40, `PDF_RENDER_SCALE` 2, `PDF_MAX_PIXELS` 12,000,000)와 위 서술이 일치한다
+- PDF 동작은 `services/chat/doc_ocr.py`의 상수(`PDF_MAX_PAGES` 2, `PDF_MIN_TEXT_CHARS` 40, `PDF_RENDER_SCALE` 2, `PDF_MAX_PIXELS` 12,000,000)와 위 서술이 일치한다
 - 화면은 `web/components/DocumentPanel.tsx`가 확인 화면을 그린다
 
 ### 규칙과의 관계
@@ -62,7 +62,7 @@ SDD 1절은 F9를 "인터페이스만 남기고 구현하지 않는다"고 적�
 | EC-05 | LLM 실패 (키 없음, 과부하, 형식 깨짐) | 200, B/L만 채우고 나머지 빈칸, `status=partial` |
 | EC-06 | LLM이 글자에 없는 값을 씀 | 그 칸 `not_in_text`, 확인 필요 |
 | EC-07 | 칸끼리 뒤바뀜 (선명 자리에 선적항) | **1차 검사로는 못 잡는다.** 사용자 확인 화면이 막는다 |
-| EC-08 | 서류 속에 지시문 ("이전 지시 무시") | 데이터로만 넘긴다. 뽑는 칸이 7개로 고정이라 새 동작이 없다. 확인 결과(`scripts/doc_injection_check.py`, `evals/doc_dataset.jsonl`): 지시문 7종은 거의 전부 무시, "모든 칸 비우기"는 6번 중 1번 따랐지만 빈칸(missing)으로 확인 필요 |
+| EC-08 | 서류 속에 지시문 ("이전 지시 무시") | 데이터로만 넘긴다. 뽑는 칸이 7개로 고정이라 새 동작이 없다. 확인 결과(`scripts/eval/doc_injection_check.py`, `evals/doc_dataset.jsonl`): 지시문 7종은 거의 전부 무시, "모든 칸 비우기"는 6번 중 1번 따랐지만 빈칸(missing)으로 확인 필요 |
 | EC-09 | 같은 칸 이름표가 두 번 (가짜 "선명 / 항차 (정정)" 행 등) | 그 칸 `ambiguous`, 확인 필요. 값이 서류 글자에 있어 not_in_text로 못 잡는다(D8: LLM이 3번 모두 위조 값 채택). 이름표처럼 짧은 줄만 센다 |
 
 ## How
@@ -103,7 +103,7 @@ POST /api/document   (multipart/form-data, file=이미지)
 - 개인 이름·휴대폰·이메일은 받지 않는다 (프롬프트 + 코드 검사).
 - 저장은 사용자가 확인 화면에서 "확인한 값으로 채우기"를 눌렀을 때만 `POST /api/memory/document-facts`로 한다. 검사에 걸린 칸은 확인 화면이 비운 채로 보여 주고, 사용자가 고른 값만 보낸다. 확인 안 한 OCR 값은 저장하지 않는다.
 
-- 파일: `services/doc_ocr.py`(1~3, 5단계), `services/llm.py` `extract_doc_fields()`(4단계), `routers/document.py`, `schemas/document.py`(계약, 새 파일)
+- 파일: `services/chat/doc_ocr.py`(1~3, 5단계), `services/llm.py` `extract_doc_fields()`(4단계), `routers/document.py`, `schemas/document.py`(계약, 새 파일)
 - 의존성: `rapidocr`(Apache-2.0), `onnxruntime`(MIT), `python-multipart`(업로드). 모델 파일은 Docker 빌드 때 받아 이미지에 넣는다
 
 ## 근거 (실행한 것만)
@@ -118,4 +118,4 @@ POST /api/document   (multipart/form-data, file=이미지)
 ## 채팅 첨부 B/L 읽기와 OCR 스레드
 
 - 채팅 첨부는 칩만 두고 보내기에서 `POST /api/document/bl`로 B/L(과 MRN)만 코드로 읽는다. OCR만 돌려 보통 1~3초이고 LLM을 부르지 않는다. 전체 7칸 판독은 `POST /api/document`가 그대로 맡는다 (실사용 73번, 커밋 `15560af`)
-- OCR 스레드를 컨테이너 CPU 쿼터에 맞춰 1~4개로 제한한다. 환경변수 `OCR_THREADS`(1 이상 정수)가 있으면 그 값이다. Railway에서 같은 사진 한 장이 126초 걸리던 문제의 원인이 호스트 코어 수만큼 만든 스레드였다 (실사용 74번, 커밋 `5c3630e`, `services/doc_ocr.py`)
+- OCR 스레드를 컨테이너 CPU 쿼터에 맞춰 1~4개로 제한한다. 환경변수 `OCR_THREADS`(1 이상 정수)가 있으면 그 값이다. Railway에서 같은 사진 한 장이 126초 걸리던 문제의 원인이 호스트 코어 수만큼 만든 스레드였다 (실사용 74번, 커밋 `5c3630e`, `services/chat/doc_ocr.py`)

@@ -18,7 +18,7 @@ from typing import Annotated
 import searoute
 from pydantic import Field
 
-from backend.app.services.rules import rule
+from backend.app.services.judge.rules import rule
 from mcp_server.schemas import DistanceResult, ToolError
 
 _EARTH_RADIUS_NM = 3440.065
@@ -86,7 +86,7 @@ ROUTE_MAX_POINTS = 150  # 화면에 그릴 경로 점 상한. searoute 경로는
 
 
 def route_points(lat: float, lng: float) -> list[list[float]]:
-    """배 위치에서 부산 기준점까지 남은 예상 바닷길을 [위도, 경도] 점 목록으로 돌려준다 (선박 자세히 보기 지도, 10-01).
+    """배 위치에서 부산 기준점까지 남은 예상 바닷길을 [위도, 경도] 점 목록으로 돌려준다 (선박 자세히 보기 지도).
 
     estimate_distance와 같은 계산(searoute 항로망 + 마지막 노드에서 기준점까지 직선)이라 거리와 선이 맞는다.
     MCP 도구가 아니다. 도구 응답 모양(DistanceResult)을 바꾸지 않으려고 따로 둔다. 실제 항적이 아니라 예상 경로다.

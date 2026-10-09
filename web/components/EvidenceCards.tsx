@@ -1,6 +1,6 @@
 'use client';
-/** E5 근거 카드. 펼치면 출처·항목·값·조회 시각을 표로 보여 준다. 원본 JSON과 추적 ID는 사용자 화면에 내지 않는다 (10-02 화면 용어 점검).
- * 값은 evidenceValue로 시각·단위만 읽기 좋게 바꾼다 (10-02 UI 점검 F14). React 텍스트로만 그려 HTML로 해석되지 않는다. */
+/** E5 근거 카드. 펼치면 출처·항목·값·조회 시각을 표로 보여 준다. 원본 JSON과 추적 ID는 사용자 화면에 내지 않는다.
+ * 값은 evidenceValue로 시각·단위만 읽기 좋게 바꾼다 (UI 점검 F14). React 텍스트로만 그려 HTML로 해석되지 않는다. */
 import {FileCheck2,Plus} from 'lucide-react';
 import type {Evidence} from '@/lib/types';
 import {dateTime,evidenceValue,fieldLabel,sourceLabels} from '@/lib/format';

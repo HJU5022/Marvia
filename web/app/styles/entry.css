@@ -1,5 +1,5 @@
 /* 담당 영역: 진입 화면의 약관 줄과 약관·처리방침 창 (LegalLinks, LegalModal). 토큰은 globals.css :root.
- * 소개 랜딩(LoginScreen, /about) 스타일은 10-07 개편 때 styles/landing.css 로 옮겼다 (lp-*). */
+ * 소개 랜딩(LoginScreen, /about) 스타일은 개편 때 styles/landing.css 로 옮겼다 (lp-*). */
 
 /* ---------- 하단 약관 줄 (LegalLinks) ---------- */
 .legal-links{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 14px;font-size:var(--fs-xs,12px);font-weight:400;letter-spacing:.08em;color:var(--muted,#6b6b6b)}

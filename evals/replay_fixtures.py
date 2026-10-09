@@ -1,4 +1,4 @@
-"""평가셋 한 문항의 fixtures를 REPLAY_MODE 재생 파일 묶음으로 바꾼다 (D7·D8 공용, 09-28).
+"""평가셋 한 문항의 fixtures를 REPLAY_MODE 재생 파일 묶음으로 바꾼다 (D7·D8 공용).
 
 왜 필요한가:
   dataset.jsonl의 fixtures는 사람이 읽기 쉽게 요약한 모양이다 (C7, evals/schema.py).
@@ -16,7 +16,7 @@
 
 값은 전부 fixtures에 있는 가공값 그대로다. 실제 응답 원본은 쓰지 않는다 (CLAUDE.md).
 
-실패 문항 (09-28):
+실패 문항:
   위치 조회가 에러 응답(F04 권한 없음 {"status": 21, ...})이면 그 응답을 그대로 파일로 쓴다.
   타임아웃(F02)은 응답이 안 오는 것이라 파일로 흉내 낼 수 없다. TIMEOUT_MARKER를 파일에 쓰고,
   use_error_replay()가 평가 동안만 ShipFinder 재생 transport를 감싸 그 파일을 만나면 타임아웃 예외를 낸다.
@@ -72,7 +72,7 @@ def write_replay_files(record: dict, out_dir: Path) -> None:
 
 
 def _write_positions(fixtures: dict, out_dir: Path) -> None:
-    """워커 위치 이력(worker_positions)을 positions/<MMSI>.json으로 쓴다 (10-06 추가, 라이브 데모).
+    """워커 위치 이력(worker_positions)을 positions/<MMSI>.json으로 쓴다 (라이브 데모).
 
     서버는 재생 모드에서 이 파일을 DB 이력 대신 읽어 anchor_wait의 정지 시간을 잰다 (clients/replay.position_history).
     worker_positions는 두 모양이다. 리스트면 shipfinder.position의 배 한 척 것(평가셋 모양), 딕셔너리면 {MMSI: 리스트}(배 여러 척, 라이브 데모).
@@ -92,13 +92,13 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
     """요약값을 UNI-PASS XML로. tCnt 0(없는 B/L)이면 파일을 만들지 않는다.
     파일이 없으면 replay가 "없는 B/L"로 답한다 (replay.py _UNIPASS_NOT_FOUND).
 
-    10-06 추가 (라이브 데모 10건, evals/fixtures/demo_live.jsonl): 요약 칸 말고도 실제 API001 응답처럼 상단 칸(UNIPASS_EXTRA)과
+    추가분 (라이브 데모 10건, evals/fixtures/demo_live.jsonl): 요약 칸 말고도 실제 API001 응답처럼 상단 칸(UNIPASS_EXTRA)과
     컨테이너 번호(cntrNo 리스트), 처리 이력 줄(history 리스트, 최신이 위)을 쓸 수 있다. 평가셋 문항에는 이 칸들이 없어 재생 파일이 전과 같다."""
     if not u or u.get("tCnt") == 0:
         return
     stage = (u.get("prgsStts") or "").replace(SUMMARY_MARK, "").strip()
     fields = {
-        # 이력 줄이 없으면 서버는 csclPrgsStts를 단계 이름으로 쓴다 (services/customs.py FIELD_CANDIDATES)
+        # 이력 줄이 없으면 서버는 csclPrgsStts를 단계 이름으로 쓴다 (services/judge/customs.py FIELD_CANDIDATES)
         "csclPrgsStts": u.get("csclPrgsStts") or stage,
         "prgsStts": stage,
         "cargMtNo": u.get("cargMtNo"),
@@ -108,7 +108,7 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
         "etprCstm": u.get("cstmNm"),
         "dsprCd": u.get("dsprCd"),  # 양륙항. 부산(KRPUS)이 아니면 서버가 unsupported로 끝낸다 (F05)
         "shedNm": u.get("shedNm"),
-        # 적재항 코드·이름 (10-05 추가, 서류 대조 데모 evals/fixtures/demo_papers.jsonl용).
+        # 적재항 코드·이름 (서류 대조 데모 evals/fixtures/demo_papers.jsonl용).
         # 평가셋 문항에는 이 칸이 없어 아래 빈 값 걸러내기로 빠진다. 그래서 평가셋 재생 파일은 전과 같다
         "ldprCd": u.get("ldprCd"),
         "ldprNm": u.get("ldprNm"),
@@ -129,7 +129,7 @@ def _write_unipass(bl_no: str, u: dict, out_dir: Path) -> None:
 # 라이브 데모가 쓰는 API001 상단 칸 (연계가이드 v4.1, evals/fixtures/unipass/progress_ok.xml 순서). 서버는 이 중 일부만 읽고 나머지는 실제 응답 모양을 맞추려고 둔다
 UNIPASS_EXTRA = ("prgsStCd", "mblNo", "hblNo", "shipNatNm", "vydf", "etprCstm", "lodCntyCd", "dsprNm", "prnm", "ttwg", "wghtUt",
                  "cargTp", "rlseDtyPridPassTpcd", "dclrDelyAdtxYn", "cntrGcnt", "shcoFlcoSgn", "shcoFlco", "frwrSgn", "frwrEntsConm")
-# 이력 한 줄의 13칸 (services/customs.py DETAIL_FIELDS와 같은 이름). 실제 응답처럼 빈 칸도 빈 태그로 쓴다
+# 이력 한 줄의 13칸 (services/judge/customs.py DETAIL_FIELDS와 같은 이름). 실제 응답처럼 빈 칸도 빈 태그로 쓴다
 HISTORY_TAGS = ("cargTrcnRelaBsopTpcd", "prcsDttm", "dclrNo", "rlbrDttm", "rlbrBssNo", "rlbrCn", "bfhnGdncCn", "shedNm", "shedSgn",
                 "pckGcnt", "pckUt", "wght", "wghtUt")
 
@@ -181,7 +181,7 @@ def _write_mof(m: dict, out_dir: Path) -> None:
     """평가셋은 신고·실적을 한 줄씩 평평하게 적었다. 실제 API는 배(item)마다 detail을 묶는다.
     호출부호별로 묶어 두 API 모양으로 쓴다. 호출부호 없이 부르면 _ALL.xml(전체)을 읽는다 (replay.py).
 
-    10-05 추가 (서류 대조 데모용, 평가셋 문항에는 없는 칸이라 평가셋 재생 파일은 전과 같다):
+    추가분 (서류 대조 데모용, 평가셋 문항에는 없는 칸이라 평가셋 재생 파일은 전과 같다):
       - prvsDpmprtPrtNm: 직전 기항지. 실제 API처럼 item 칸에 둔다 (clients/mof.py _to_plan)
       - sailing_plan_errors: 호출부호 목록. 그 호출부호의 선박운항정보 조회를 해수부 오류 응답으로 만든다"""
     plans = _group(m.get("arrival_reports") or [], ("vsslNm", "vsslNltyCd", "prvsDpmprtPrtNm"),
@@ -201,9 +201,9 @@ def _write_mof(m: dict, out_dir: Path) -> None:
 
 
 def _write_all(path: Path, items: list[str]) -> None:
-    """호출부호 없이 부를 때 읽는 전체 목록(_ALL.xml)을 쓴다. 이미 있으면 그 안의 item 뒤에 이어 붙인다 (10-06).
+    """호출부호 없이 부를 때 읽는 전체 목록(_ALL.xml)을 쓴다. 이미 있으면 그 안의 item 뒤에 이어 붙인다.
 
-    전에는 문항마다 덮어써서 마지막에 쓴 문항 것만 남았다 (scripts/make_demo.py 머리 주석 "N01이 마지막이어야"). 한 폴더에
+    전에는 문항마다 덮어써서 마지막에 쓴 문항 것만 남았다 (scripts/demo/make_demo.py 머리 주석 "N01이 마지막이어야"). 한 폴더에
     여러 문항을 쓰는 서버 데모(13건)에서는 MRN으로 훑는 조회(identify_mrn)가 앞에 쓴 문항의 배를 못 찾았다.
     같은 item 글자는 한 번만 넣는다. 평가 실행기는 문항마다 새 폴더라 이어 붙일 것이 없어 결과가 전과 같다."""
     old = re.findall(r"<item>.*?</item>", path.read_text(encoding="utf-8"), re.S) if path.is_file() else []

@@ -8,12 +8,12 @@
   1. dataset.jsonl 30건을 문항마다 REPLAY 재생 파일로 풀고 (evals/replay_fixtures.py)
   2. 시계를 문항의 clock(09-22 12:00)으로 맞춘 채 실제 라우터(run_agent)에 요청을 넣고
   3. 응답을 정답과 대조해 축별 점수와 게이트를 계산해 evals/results/<config>_<한국시각>.json에 쓴다
-     (예: b_20260929_0343.json). 예전엔 <config>.json 하나를 덮어써서 09-28 Gemini 19/30 원본을 잃었다.
+     (예: b_20260929_0343.json). 예전엔 <config>.json 하나를 덮어써서 Gemini 19/30 원본을 잃었다.
      그래서 실행마다 새 파일을 만들고, 어떤 코드·프롬프트로 잰 점수인지(git 커밋·프롬프트 버전)도 같이 적는다
   4. 문항마다 LLM 호출(모델·토큰·비용·지연·실패 종류)과 실패 로그(stage=error)를 남긴다.
-     09-29 qwen 무료 실행에서 23건이 판정을 못 냈는데 왜 실패했는지 결과 파일에 없었다.
+     qwen 무료 실행에서 23건이 판정을 못 냈는데 왜 실패했는지 결과 파일에 없었다.
      요청당 비용은 README 지표 표·발표 질문 7에 필요하다 (Main_2 가이드 12장·13장)
-  5. Langfuse 키가 있으면 실행 한 번을 Dataset marvia-golden-30의 실험(Experiment)으로 남긴다 (_LangfuseRun, 09-29).
+  5. Langfuse 키가 있으면 실행 한 번을 Dataset marvia-golden-30의 실험(Experiment)으로 남긴다 (_LangfuseRun).
      문항마다 호출을 한 트레이스로 묶어 그 문항에 잇고, 채점 결과를 점수로 붙인다. Experiments 탭에서 실행끼리 비교한다
 서버 코드는 고치지 않는다. 바꿔 끼우는 것(판정기, 재생 transport, 시계)은 이 실행 안에서만 유효하다.
 
@@ -118,7 +118,7 @@ class _LangfuseRun:
     """평가 실행 한 번을 Langfuse Dataset(evals/push_dataset.py로 올린 marvia-golden-30)의 실험(Experiment)으로 남긴다.
 
     SDK의 dataset.run_experiment를 쓴다. 이 계정(09-16 이후 생성)은 옛 "dataset run" API로 만든 기록이
-    Experiments 화면에 안 잡혀서(09-29 확인, Experiments 0개) 공식 경로로 바꿨다.
+    Experiments 화면에 안 잡혀서(Experiments 0개) 공식 경로로 바꿨다.
     max_concurrency=1로 한 문항씩 돈다. 이 실행기는 시계를 멈추고 서버 함수를 바꿔 끼워서 동시에 돌면 안 된다.
     SDK가 문항마다 span을 열어 주므로, 그 안에서 서버가 남기는 LLM generation이 문항별 트레이스로 모인다.
     Langfuse가 실패해도 평가는 계속한다. 못 돈 문항은 기록 없이 로컬에서 풀고, 결과 파일은 그대로 남는다.
@@ -241,8 +241,6 @@ def _setup_env() -> None:
     os.environ.pop("DATABASE_URL", None)
     # 재생에서 재시도 대기는 의미가 없다. 타임아웃 문항(F02)이 괜히 느려지지 않게
     os.environ["HTTP_BACKOFF_SEC"] = "0"
-    # 웹 검색은 끈다: 결과가 매번 달라 30건 평가를 다시 돌려도 같은 숫자가 안 나오고, 호출마다 돈이 든다 (10-05 웹 검색 결정, services/chat.py web_search_enabled)
-    os.environ["WEB_SEARCH"] = "off"
 
 
 def _setup_config(config: str) -> None:
@@ -275,7 +273,7 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
     from backend.app.observability.logging import failure_logger
     from backend.app.routers import agent
     from backend.app.schemas.agent import AgentRequest
-    from backend.app.services import validate
+    from backend.app.services.judge import validate
     from evals.replay_fixtures import write_replay_files
 
     out = work / rec["id"]
@@ -295,7 +293,7 @@ def _run_one(rec: dict, config: str, work: Path) -> dict:
 
     agent.get_live_position = spy_position
     # 워커 위치 이력은 DB 대신 평가셋 fixtures.worker_positions를 준다. 평가는 DB를 쓰지 않는다 (_setup_env).
-    # 이게 없으면 anchor_wait가 정지 시간을 못 재서 B08(30시간 정박)이 늘 unknown이었다 (09-29 확인)
+    # 이게 없으면 anchor_wait가 정지 시간을 못 재서 B08(30시간 정박)이 늘 unknown이었다
     real_history = agent._position_history
     agent._position_history = lambda mmsi: list(rec["fixtures"].get("worker_positions") or [])
     restore_chat = _llm_failure_replay(rec, config)
@@ -357,7 +355,7 @@ def _seed_position_cache(rec: dict, cache) -> None:
     """평가셋 fixtures.shipfinder.cache(예전에 받아 둔 위치)를 캐시에 넣는다. 평가셋에 적힌 담긴 시각 그대로.
 
     F02 "위치 조회가 시간 초과 → 마지막 수신 위치로 판정"을 재현하려면 조회 전에 캐시가 있어야 한다.
-    전에는 이 칸을 읽지 않아 F02가 캐시 없는 시간 초과로만 돌았다 (09-29 확인).
+    전에는 이 칸을 읽지 않아 F02가 캐시 없는 시간 초과로만 돌았다.
     캐시가 TTL(clients/cache.py, SDD 5.2 6시간)을 넘겼으면 클라이언트가 버린다. 그 판단은 서버 코드에 맡긴다.
     """
     from backend.app.clients.shipfinder import position_from_data
@@ -422,7 +420,7 @@ def _llm_failure_replay(rec: dict, config: str):
 
     def broken_chat(*args, **kwargs):
         # 필수 칸 누락. 실제로 부르지 않았으니 비용 0. None으로 두면 usage()가 "금액 모름"으로 보고
-        # 진짜 호출 금액 합계까지 버린다 (09-29 gpt-4o-mini 실행에서 요청당 비용이 이것 때문에 비었다)
+        # 진짜 호출 금액 합계까지 버린다 (gpt-4o-mini 실행에서 요청당 비용이 이것 때문에 비었다)
         return llm.LLMResult(content="{}", model="replay/invalid", cost=0.0)
 
     llm.chat = broken_chat
@@ -492,7 +490,7 @@ def p95(values: list[int]) -> int | None:
 
     100건 중 95건이 이 값 안에 들어온다는 뜻이다. 보간 없이 실제로 나온 값 하나를 고른다.
     예전 식 sorted[int(n × 0.95) - 1]은 한 칸 앞 값을 골랐다. 30건이면 29번째 대신 28번째라 실제보다 낮게 나왔고,
-    2건이면 가장 빠른 값이 나와 p50보다 작았다 (09-29 --only N01 F08: p50 5066ms, p95 23ms).
+    2건이면 가장 빠른 값이 나와 p50보다 작았다 (--only N01 F08: p50 5066ms, p95 23ms).
     """
     if not values:
         return None
@@ -515,7 +513,7 @@ def usage(rows: list[dict]) -> dict:
         "llm_errors": dict(Counter(c["kind"] for c in calls if not c["ok"])),
         "prompt_tokens": sum(c["prompt_tokens"] or 0 for c in ok),
         "completion_tokens": sum(c["completion_tokens"] or 0 for c in ok),  # Vertex는 생각 토큰 포함 (llm.py)
-        # 입력 중 제공사 캐시에서 읽은 토큰 합 (09-30). 캐시된 입력은 싸게 계산된다. 할인율은 제공사 가격표를 따른다
+        # 입력 중 제공사 캐시에서 읽은 토큰 합. 캐시된 입력은 싸게 계산된다. 할인율은 제공사 가격표를 따른다
         "cached_tokens": sum(c.get("cached_tokens") or 0 for c in ok),
         "cost_usd": total_cost,
         "cost_usd_per_request": round(total_cost / len(rows), 6) if total_cost is not None and rows else None,

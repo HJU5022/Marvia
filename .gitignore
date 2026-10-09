@@ -41,7 +41,7 @@ Thumbs.db
 # 작업 기록 (로컬 전용. 커밋하지 않는다)
 seunguk_commit_review/
 
-# 데모 재생 파일 (scripts/make_demo.py가 실행 시각 기준으로 만든다. 녹화 답 llm/과 README만 커밋한다)
+# 데모 재생 파일 (scripts/demo/make_demo.py가 실행 시각 기준으로 만든다. 녹화 답 llm/과 README만 커밋한다)
 evals/fixtures/replay/shipfinder/
 evals/fixtures/replay/mof/
 evals/fixtures/replay/unipass/

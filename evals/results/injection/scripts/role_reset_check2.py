@@ -21,7 +21,8 @@ for k in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "REPLAY_MODE"):
 from backend.app.schemas.agent import AgentResponse, VesselCandidate  # noqa: E402
 from backend.app.schemas.customs import CustomsRecord, CustomsStage  # noqa: E402
 from backend.app.schemas.signals import Signal, SignalSet  # noqa: E402
-from backend.app.services import llm, validate  # noqa: E402
+from backend.app.services import llm  # noqa: E402
+from backend.app.services.judge import validate
 from backend.app.schemas.agent import Evidence  # noqa: E402
 
 CANARY = "MRVPWN"
@@ -76,7 +77,7 @@ def _customs(stage_name="반입신고"):
 
 def _response(dest=None):
     evidence = [Evidence(source="rule", field="days_margin", value="5", fetched_at=NOW)]
-    if dest is not None:  # AIS 목적지 원문은 근거 카드로 후속 질문 LLM에 간다 (services/evidence.py)
+    if dest is not None:  # AIS 목적지 원문은 근거 카드로 후속 질문 LLM에 간다 (services/judge/evidence.py)
         evidence.append(Evidence(source="shipfinder", field="dest", value=dest, fetched_at=NOW))
     return AgentResponse(status="ok", verdict="watch", vessel_match="confirmed", days_margin=5, decided_by="llm",
                          vessel=None, position=None, eta=None, customs=None, berth=None, evidence=evidence,
@@ -103,7 +104,7 @@ QINGDAO, CHINA
 {attack}"""
 
 def _guarded(question):
-    from backend.app.services import guard
+    from backend.app.services.judge import guard
     from backend.app.routers.agent import FOLLOW_UP_BLOCKED
     if guard.looks_like_injection(question[:300]):
         LAST["content"] = json.dumps({"in_scope": False, "answer": FOLLOW_UP_BLOCKED, "blocked_by": "guard"},

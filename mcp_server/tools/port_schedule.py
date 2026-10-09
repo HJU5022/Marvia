@@ -23,10 +23,10 @@ from typing import Annotated
 from pydantic import Field
 
 from backend.app.clients.mof import MofClient, MofError, SailingPlan, VesselCall
-from backend.app.services.rules import rule
+from backend.app.services.judge.rules import rule
 from mcp_server.schemas import ControlEvent, PortScheduleResult, ToolError
 
-# 조회 기간과 선명 비교 기준은 skills/port-busan/rules.md 프론트매터가 원본이다 (C6, 10-06 점검: 코드 숫자를 옮김).
+# 조회 기간과 선명 비교 기준은 skills/port-busan/rules.md 프론트매터가 원본이다 (C6, 코드 숫자를 옮김).
 # 도구 입력 스키마의 기본값이 되어야 해서 불러올 때 한 번 읽어 둔다
 LOOKBACK_DAYS = rule("port_schedule_lookback_days")  # 실적을 며칠 전까지 볼지
 LOOKAHEAD_DAYS = rule("port_schedule_lookahead_days")  # 입항 예정을 며칠 뒤까지 볼지
@@ -71,7 +71,7 @@ def _by_name(records: list, ship_name: str | None) -> list:
 
 
 def _same_ship(records: list, call_sign: str | None, ship_name: str | None) -> list:
-    """이 배의 기록만 남긴다. 호출부호로 조회했으면 호출부호가 같은 기록을 선명과 상관없이 쓴다 (10-05).
+    """이 배의 기록만 남긴다. 호출부호로 조회했으면 호출부호가 같은 기록을 선명과 상관없이 쓴다.
 
     해수부는 국적선 선명을 한글로 준다(예: 테스트트윈사십팔). 세관·ShipFinder 선명은 영문이라, 호출부호로 정확히
     찾은 기록을 선명으로 다시 거르면 국적선의 입항 예정·실적이 모두 버려졌다 (데모 TESTBL48, mof_eta 없음 → partial).
@@ -136,7 +136,7 @@ def get_port_schedule(
     today = date.today()
     # 호출부호가 있으면 API가 걸러 주므로 한 페이지면 된다. 선명으로 찾을 때는 뒤 페이지까지 본다
     pages = 1 if call_sign else NAME_SEARCH_PAGES
-    # 클라이언트 만들기(키 없음 = bad_key)와 결과 조립까지 try 안에 둔다 (10-06 점검). 전에는 make_client()와
+    # 클라이언트 만들기(키 없음 = bad_key)와 결과 조립까지 try 안에 둔다. 전에는 make_client()와
     # PortScheduleResult가 try 밖이라 예외가 도구 밖으로 새어 계약(C4)의 {error} 대신 MCP 오류 문장이 나갔다
     try:
         client = make_client()
@@ -148,7 +148,7 @@ def get_port_schedule(
         )
 
         fetched_at = datetime.now(timezone.utc)
-        # 호출부호로 조회했으면 호출부호가 같은 기록을 선명과 상관없이 쓴다 (_same_ship, 10-05)
+        # 호출부호로 조회했으면 호출부호가 같은 기록을 선명과 상관없이 쓴다 (_same_ship)
         chosen = _pick(calls, ship_name, call_sign)
         plan = _pick_plan(plans, ship_name, call_sign)
 

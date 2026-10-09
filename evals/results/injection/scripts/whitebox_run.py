@@ -4,7 +4,7 @@ import json, os, subprocess, sys
 from collections import Counter
 from pathlib import Path
 from dotenv import dotenv_values
-import scripts.injection_redteam as rt
+import scripts.eval.injection_redteam as rt
 from backend.app.schemas.agent import Evidence
 
 _real_chat = rt.llm.chat.__wrapped__ if hasattr(rt.llm.chat, "__wrapped__") else rt.llm.chat

@@ -6,7 +6,7 @@
 FastMCP에는 OAuth 기반 인증이 있지만 발급 서버와 메타데이터 경로가 필요하다.
 우리는 서버 사이(FastAPI에서 MCP)만 부르므로 고정 토큰 하나로 충분하다.
 
-MCP_TOKEN이 비었을 때 (10-06 점검: 전에는 경고만 남기고 /mcp를 누구에게나 열었다)
+MCP_TOKEN이 비었을 때 (전에는 경고만 남기고 /mcp를 누구에게나 열었다)
   - REPLAY_MODE면 연다. 외부 API 대신 가공 응답만 읽어 키가 새거나 호출 한도가 닳을 일이 없다 (SDD 6.1, 채점자 재현용)
   - 아니면 같은 컨테이너 안(루프백 주소)에서 온 요청만 받고 나머지는 401이다. api가 자기 /mcp를 부르는 길
     (Dockerfile app 스테이지 MCP_URL=http://127.0.0.1:8000/mcp, services/mcp_client.py)은 토큰 없이도 돌아야 해서다.
@@ -62,7 +62,7 @@ def _is_loopback(request: Request) -> bool:
 
 
 class LoopbackOnlyMiddleware(BaseHTTPMiddleware):
-    """MCP_TOKEN 없이 띄웠을 때 루프백에서 온 요청만 통과시킨다 (10-06 점검, 모듈 설명 참고)."""
+    """MCP_TOKEN 없이 띄웠을 때 루프백에서 온 요청만 통과시킨다 (모듈 설명 참고)."""
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path in PUBLIC_PATHS or _is_loopback(request):
@@ -76,7 +76,7 @@ def protect(app: ASGIApp, token: str | None = None) -> ASGIApp:
     """토큰이 있으면 Bearer 인증을 건다. 없으면 REPLAY_MODE일 때만 그대로 열고, 아니면 루프백만 받는다.
 
     전에는 토큰이 없으면 경고만 남기고 열어 두었다. 키를 채우고 토큰을 빠뜨린 배포가 우리 ShipFinder·해수부 키를
-    누구에게나 태우게 되어 막았다 (10-06 점검).
+    누구에게나 태우게 되어 막았다.
     """
     token = token if token is not None else os.environ.get("MCP_TOKEN", "")
     if token:
