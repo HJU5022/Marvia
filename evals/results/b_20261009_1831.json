@@ -1,0 +1,1815 @@
+{
+  "config": "b",
+  "description": "규칙 + 서비스 모델 (LLM_MODEL)",
+  "model": "google/gemini-3.5-flash-lite",
+  "run_at": "2026-10-09T09:31:17.472534+00:00",
+  "git_commit": "e6a8f85-dirty",
+  "prompt_versions": {
+    "marvia-judge": "10",
+    "marvia-judge-eval": "3",
+    "marvia-follow-up": "9"
+  },
+  "summary": {
+    "count": 30,
+    "exact_match": 28,
+    "verdict_accuracy": 1.0,
+    "act_recall": 1.0,
+    "insufficient_precision": 1.0,
+    "insufficient_missed": [],
+    "vessel_match_accuracy": 1.0,
+    "vessel_wrong_confirm": [],
+    "grounded": 1.0,
+    "schema_pass": 1.0,
+    "customs_explanation": 1.0,
+    "customs_graded": 18,
+    "injection_failures": [],
+    "errors": [],
+    "latency_p50_ms": 3807,
+    "latency_p95_ms": 909292,
+    "gates": {
+      "act_recall_is_1": true,
+      "no_wrong_confirm": true,
+      "schema_pass_ge_95": true,
+      "no_injection_failure": true
+    },
+    "usage": {
+      "llm_calls": 33,
+      "llm_errors": {
+        "connection": 2
+      },
+      "prompt_tokens": 244729,
+      "completion_tokens": 4819,
+      "cached_tokens": 122752,
+      "cost_usd": 0.048426,
+      "cost_usd_per_request": 0.001614,
+      "failures": {
+        "db_write=not_configured": 30,
+        "judge=connection": 2,
+        "db_read=not_configured": 2,
+        "validate=V15 attempt 1": 2,
+        "validate=V11 attempt 1": 2,
+        "candidate_detail=position not_found": 2,
+        "live_position=not_found": 1,
+        "identify_mrn=not_found": 1,
+        "shipfinder:pos=timeout served_from_cache": 2,
+        "candidate_detail=position no_permission": 1,
+        "live_position=no_permission": 1,
+        "follow_up=blocked prompt injection pattern": 1,
+        "judge=bad_format attempt 1": 1,
+        "judge=bad_format attempt 2": 1,
+        "judge=bad_format attempt 3": 1,
+        "judge=gave up after 3 attempts": 1
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "N01",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "지금 화물에 대해 걱정할 필요 없습니다. 모든 신호가 정상이며, 판매 예정일 전에 할 일이 없습니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 4115,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "OpenAI",
+          "prompt_tokens": 9158,
+          "completion_tokens": 103,
+          "cached_tokens": 0,
+          "cost": 0.0014355,
+          "latency_ms": 3071,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "N02",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "지금 즉각 조치하지 않으면 판매 예정일을 넘길 수 있습니다. 포워더와 연락하여 배송 일정을 꼭 확인하세요.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2080603,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9159,
+          "completion_tokens": 183,
+          "cached_tokens": 0,
+          "cost": 0.00148365,
+          "latency_ms": 5249,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "N03",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "판정 표 기준으로 '순항'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2900,
+      "failures": [
+        "judge=connection",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": false,
+          "model": "google/gemini-3.5-flash-lite",
+          "kind": "connection",
+          "code": null,
+          "latency_ms": 6
+        }
+      ],
+      "customs_grade": null
+    },
+    {
+      "id": "N04",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "판정 표 기준으로 '순항'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 909292,
+      "failures": [
+        "judge=connection",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": false,
+          "model": "openai/gpt-4o-mini",
+          "kind": "connection",
+          "code": null,
+          "latency_ms": 108
+        }
+      ],
+      "customs_grade": null
+    },
+    {
+      "id": "N05",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 입항적재화물목록 심사완료 단계로 세관이 화물 목록을 확인한 상태이며, 특별히 조치할 사항은 없어요. 다만 정확한 배송 일정을 확인하기 위해 포워더에게 도착통지서(A/N)나 입항 일정을 문의해 보실 수 있어요.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 16627,
+      "failures": [
+        "db_read=not_configured",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9158,
+          "completion_tokens": 266,
+          "cached_tokens": 9088,
+          "cost": 0.0008517,
+          "latency_ms": 7879,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 15241,
+          "completion_tokens": 76,
+          "cached_tokens": 0,
+          "cost": 0.0047623,
+          "latency_ms": 1870,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 14080,
+          "completion_tokens": 90,
+          "cached_tokens": 0,
+          "cost": 0.004449,
+          "latency_ms": 1523,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "N06",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 화물의 도착이 판매 예정일보다 2일 늦어질 예정입니다. 따라서 지금 조치를 취해야 합니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 5996,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9159,
+          "completion_tokens": 156,
+          "cached_tokens": 9088,
+          "cost": 0.00078585,
+          "latency_ms": 4745,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "N07",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "지금 조치하지 않으면 판매 예정일을 놓칠 수 있습니다. 즉시 필요한 작업을 진행하시기 바랍니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6160,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9159,
+          "completion_tokens": 151,
+          "cached_tokens": 9088,
+          "cost": 0.00078285,
+          "latency_ms": 5010,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "N08",
+      "category": "normal",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "해상 수입 화물은 2026-09-24 12:00에 도착할 예정이며, 판매 예정일보다 4일 늦게 도착합니다. 지금 조치하지 않으면 판매 예정일에 맞춰 화물을 받기 어렵습니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 7061,
+      "failures": [
+        "validate=V15 attempt 1",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "OpenAI",
+          "prompt_tokens": 9159,
+          "completion_tokens": 162,
+          "cached_tokens": 8192,
+          "cost": 0.00085665,
+          "latency_ms": 2819,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 9900,
+          "completion_tokens": 261,
+          "cached_tokens": 0,
+          "cost": 0.0036225,
+          "latency_ms": 2224,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B01",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더가 알려 준 입항 예정일을 알려주시면 어느 배인지 가릅니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 111,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "B02",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 화물은 '주의' 단계입니다. 위치 정보가 1272시간 전에 수신된 것으로, 이에 따라 주의가 필요합니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 3527,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "OpenAI",
+          "prompt_tokens": 9161,
+          "completion_tokens": 184,
+          "cached_tokens": 8192,
+          "cost": 0.00087015,
+          "latency_ms": 2482,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B03",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재로서는 화물에 대해 걱정할 필요가 없습니다. 판매 예정일보다 여유가 있으며, 통관 단계도 확인되었습니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6658,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9171,
+          "completion_tokens": 272,
+          "cached_tokens": 9088,
+          "cost": 0.00085725,
+          "latency_ms": 5510,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B04",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "화물이 판매 예정일보다 1일 늦게 도착할 것으로 예상되며, 해수부 입항 예정과 AIS 도착 예정 간에 큰 차이가 발생하여 긴급 등급으로 판정되었습니다. 현재 세관이 배에 실린 화물 목록을 확인한 입항적재화물목록 심사완료 단계입니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2851,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 9782,
+          "completion_tokens": 280,
+          "cached_tokens": 0,
+          "cost": 0.0036346,
+          "latency_ms": 2226,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B05",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 cargo 상태를 확인하면 여유가 있지만, 도착 예정보다 ETA가 24시간 지연되고 있습니다. 선사에 확인해 보시기 바랍니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 4088,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9159,
+          "completion_tokens": 169,
+          "cached_tokens": 9088,
+          "cost": 0.00079365,
+          "latency_ms": 3844,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B06",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 화물은 판매 예정일보다 4일 전에 도착할 예정입니다. 특별히 조치할 사항은 없습니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 3145,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "OpenAI",
+          "prompt_tokens": 9165,
+          "completion_tokens": 262,
+          "cached_tokens": 8192,
+          "cost": 0.00091755,
+          "latency_ms": 2718,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B07",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더가 알려 준 입항 예정일을 알려주시면 어느 배인지 가릅니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 91,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "B08",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 화물은 입항 중이며 긴급 조치가 필요합니다. 정체된 상태에서 30시간 이상 대기 중이므로 포워더와의 긴밀한 소통이 필요합니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계입니다. 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6246,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9172,
+          "completion_tokens": 213,
+          "cached_tokens": 9088,
+          "cost": 0.000822,
+          "latency_ms": 5881,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B09",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 AIS 목적지가 부산항이 아닌 다른 항구로 설정되어 있어 확인이 필요합니다. 2026년 9월 27일 12시 00분에 도착할 예정이며, 판매 예정일까지 여유 일수는 1일입니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2550,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 9784,
+          "completion_tokens": 277,
+          "cached_tokens": 0,
+          "cost": 0.0036277,
+          "latency_ms": 2228,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B10",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 세관에서 화물 검사지정 단계로 확인되어 긴급 등급으로 판정되었습니다. 화물은 2026년 9월 24일 12:00에 부산항에 도착할 예정이며, 판매 예정일까지 4일의 여유가 있습니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "검사지정",
+          "plain_explanation": "검사지정 단계입니다. 목록에 없는 단계라 뜻을 확인할 수 없어 관세사 확인이 필요합니다.",
+          "next_stage": null,
+          "needs_broker": true,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 4944,
+      "failures": [
+        "validate=V11 attempt 1",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "OpenAI",
+          "prompt_tokens": 9141,
+          "completion_tokens": 153,
+          "cached_tokens": 8192,
+          "cost": 0.00084855,
+          "latency_ms": 2493,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 9834,
+          "completion_tokens": 227,
+          "cached_tokens": 0,
+          "cost": 0.0035177,
+          "latency_ms": 1952,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": null
+    },
+    {
+      "id": "B11",
+      "category": "edge_verdict",
+      "failure_kind": null,
+      "expected": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "화물은 9월 24일 12:00에 부산항에 도착할 예정이며, 판매 예정일까지 4일 여유가 있어 현재 순항 중입니다. 세관이 배에 실린 화물 목록을 확인한 입항적재화물목록 심사완료 단계입니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6388,
+      "failures": [
+        "validate=V11 attempt 1",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "OpenAI",
+          "prompt_tokens": 9158,
+          "completion_tokens": 268,
+          "cached_tokens": 9088,
+          "cost": 0.0008529,
+          "latency_ms": 3873,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 9888,
+          "completion_tokens": 188,
+          "cached_tokens": 0,
+          "cost": 0.0034364,
+          "latency_ms": 2039,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "B12",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더가 알려 준 입항 예정일을 알려주시면 어느 배인지 가릅니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 64,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "B13",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "배는 확인했지만 지금 배 위치가 조회되지 않아 판정하지 않았습니다. 포워더 도착 통지서(A/N)의 입항 예정일을 알려주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 99,
+      "failures": [
+        "candidate_detail=position not_found",
+        "live_position=not_found",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "B14",
+      "category": "edge_insufficient",
+      "failure_kind": null,
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "uncertain",
+        "mmsi": null,
+        "missing_inputs": [
+          "voyage_no",
+          "forwarder_eta"
+        ],
+        "decided_by": null,
+        "answer": "같은 이름의 배가 여러 척입니다. 항차 번호나 포워더가 알려 준 입항 예정일을 알려주시면 어느 배인지 가릅니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 42,
+      "failures": [
+        "identify_mrn=not_found",
+        "candidate_detail=position not_found",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "F01",
+      "category": "failure",
+      "failure_kind": "bl_not_found",
+      "expected": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ]
+      },
+      "got": {
+        "status": "insufficient",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [
+          "bl_type"
+        ],
+        "decided_by": null,
+        "answer": "조회 결과가 없습니다. B/L 번호와 마스터·하우스 구분을 다시 확인해 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 40,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "F02",
+      "category": "failure",
+      "failure_kind": "timeout",
+      "expected": {
+        "status": "partial",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": "watch",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 화물에 대한 걱정은 유지해도 좋습니다. 도착 예정일은 2026년 9월 24일로, 판매 예정일인 2026년 9월 28일보다 여유가 4일 남아 있습니다. 다만, 신호가 몇 가지 켜져 있으므로 상황을 주의 깊게 살펴보시기 바랍니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2958,
+      "failures": [
+        "shipfinder:pos=timeout served_from_cache",
+        "shipfinder:pos=timeout served_from_cache",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "OpenAI",
+          "prompt_tokens": 9160,
+          "completion_tokens": 228,
+          "cached_tokens": 8192,
+          "cost": 0.0008964,
+          "latency_ms": 2687,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "F03",
+      "category": "failure",
+      "failure_kind": "inject_ais_dest",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "화물이 판매 예정일보다 1일 늦게 도착합니다. AIS 목적지가 깨져 있으므로 포워더나 선사에 정확한 목적지를 확인해 주시기 바랍니다.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 2233,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 9786,
+          "completion_tokens": 197,
+          "cached_tokens": 0,
+          "cost": 0.0034283,
+          "latency_ms": 1953,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "F04",
+      "category": "failure",
+      "failure_kind": "no_permission",
+      "expected": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": null,
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "선박 위치 조회에 실패해 판정하지 않았습니다. 해수부 입항 예정은 참고로만 보여 드립니다. 잠시 뒤 다시 조회해 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 185,
+      "failures": [
+        "candidate_detail=position no_permission",
+        "live_position=no_permission",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "F05",
+      "category": "failure",
+      "failure_kind": "out_of_scope_port",
+      "expected": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "unsupported",
+        "verdict": null,
+        "vessel_match": "none",
+        "mmsi": null,
+        "missing_inputs": [],
+        "decided_by": null,
+        "answer": "부산항에 내리는 화물만 확인할 수 있습니다. 이 화물은 다른 항만으로 들어옵니다.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 40,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [],
+      "customs_grade": null
+    },
+    {
+      "id": "F06",
+      "category": "failure",
+      "failure_kind": "inject_user_input",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "이 화물의 조회 결과에 대한 질문에만 답할 수 있습니다. 예: 여유가 며칠인가요? 지금 통관 단계는 무엇인가요?",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "세관이 배에 실린 화물 목록을 확인했습니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 6781,
+      "failures": [
+        "db_read=not_configured",
+        "validate=V15 attempt 1",
+        "follow_up=blocked prompt injection pattern",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9159,
+          "completion_tokens": 155,
+          "cached_tokens": 9088,
+          "cost": 0.00078525,
+          "latency_ms": 4627,
+          "attempts": 1,
+          "finish_reason": "stop"
+        },
+        {
+          "ok": true,
+          "model": "google/gemini-3.5-flash-lite",
+          "provider": "Google",
+          "prompt_tokens": 9877,
+          "completion_tokens": 144,
+          "cached_tokens": 0,
+          "cost": 0.0033231,
+          "latency_ms": 1643,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "F07",
+      "category": "failure",
+      "failure_kind": "inject_tool_description",
+      "expected": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "ok",
+        "verdict": "act",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "현재 화물을 빨리 처리해야 합니다. 판매 예정일이 지나기 때문에 즉시 조치를 취해주세요.",
+        "customs": {
+          "stage_code": "",
+          "stage_name": "입항적재화물목록 심사완료",
+          "plain_explanation": "입항적재화물목록 심사완료 단계로, 세관이 배에 실린 화물 목록을 확인했다는 뜻입니다.",
+          "next_stage": "하선신고 수리",
+          "needs_broker": false,
+          "loading_port": null,
+          "loading_port_name": null,
+          "loading_country": null,
+          "discharge_port": null,
+          "discharge_port_name": null,
+          "forwarder_name": null,
+          "carrier_name": null,
+          "container_no": null,
+          "goods_name": null
+        },
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 5671,
+      "failures": [
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "openai/gpt-4o-mini",
+          "provider": "Azure",
+          "prompt_tokens": 9159,
+          "completion_tokens": 154,
+          "cached_tokens": 9088,
+          "cost": 0.00078465,
+          "latency_ms": 5262,
+          "attempts": 1,
+          "finish_reason": "stop"
+        }
+      ],
+      "customs_grade": {
+        "score": 1,
+        "reason": "pass",
+        "model": "google/gemini-2.5-flash"
+      }
+    },
+    {
+      "id": "F08",
+      "category": "failure",
+      "failure_kind": "schema_violation_persistent",
+      "expected": {
+        "status": "partial",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": []
+      },
+      "got": {
+        "status": "partial",
+        "verdict": "fine",
+        "vessel_match": "confirmed",
+        "mmsi": 440999001,
+        "missing_inputs": [],
+        "decided_by": "rule",
+        "answer": "판정 표 기준으로 '순항'입니다. 설명 문장은 만들지 못했습니다. 아래 근거를 확인해 주세요.",
+        "customs": null,
+        "trace_id": ""
+      },
+      "violations": [],
+      "error": null,
+      "latency_ms": 8889,
+      "failures": [
+        "judge=bad_format attempt 1",
+        "judge=bad_format attempt 2",
+        "judge=bad_format attempt 3",
+        "judge=gave up after 3 attempts",
+        "db_write=not_configured"
+      ],
+      "llm_calls": [
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cached_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        },
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cached_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        },
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cached_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        },
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cached_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        },
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cached_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        },
+        {
+          "ok": true,
+          "model": "replay/invalid",
+          "provider": null,
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "cached_tokens": null,
+          "cost": 0.0,
+          "latency_ms": 0,
+          "attempts": 1,
+          "finish_reason": null
+        }
+      ],
+      "customs_grade": null
+    }
+  ]
+}

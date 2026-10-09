@@ -610,6 +610,41 @@ def _replay_answer(prompt_name: str, user_content: str, output_model: type[BaseM
     raise LLMError(f"REPLAY_MODE: {prompt_name} 녹화 답 중 이번 입력에 맞는 것이 없습니다", kind="not_configured")
 
 
+# ── 모델 라우팅 (가이드 가산 "요청 난이도에 따라 모델 자동 선택", docs/specs/model-routing.md) ──
+# 판정 LLM은 등급을 정하지 않고 설명만 쓴다(등급은 판정 표, PRD 6.1). 설명할 것이 적은 쉬운 판정은 작은 모델로 보내 비용을 줄인다.
+# 난이도는 LLM에 묻지 않고 코드가 신호로 정한다. 아래 셋 중 하나라도 해당하면 어려움(서비스 모델 LLM_MODEL):
+#   회색 지대(verdict_mode raise_only)  act를 가르는 신호가 unknown이라 LLM이 등급을 올릴지 판단해야 한다 (D7)
+#   신호 중 unknown이 하나라도 있음     "모른다"를 근거로 설명해야 한다 (SDD 5.4)
+#   켜진 신호가 HARD_TRIGGERED개 이상   신호끼리 어긋나 conflicts를 써야 한다
+#   검증 위반 뒤 다시 묻는 중(feedback)  작은 모델이 규칙을 어겼을 수 있으니 서비스 모델로 올린다
+# 나머지(신호가 모두 clear거나 하나만 켜짐)는 쉬움이다. LLM_ROUTE_SMALL_MODEL이 비어 있으면 라우팅하지 않는다.
+HARD_TRIGGERED = 2  # 신호 개수 규칙이라 도메인 임계값(rules.md)이 아니다. 둘 이상이면 서로 어긋날 수 있다
+
+
+def judge_difficulty(signals: SignalSet, verdict_mode: str | None, feedback: str | None) -> str:
+    """판정 한 건의 난이도("easy"|"hard")를 코드로 정한다. 기준은 위 주석."""
+    if feedback or verdict_mode == "raise_only":
+        return "hard"
+    states = [s.state for s in signals.signals]
+    if "unknown" in states or states.count("triggered") >= HARD_TRIGGERED:
+        return "hard"
+    return "easy"
+
+
+def route_judge_model(signals: SignalSet, verdict_mode: str | None, feedback: str | None) -> str | None:
+    """쉬운 판정이면 LLM_ROUTE_SMALL_MODEL을, 아니면 None(= chat()이 LLM_MODEL을 쓴다)을 돌려준다.
+
+    LLM_MODEL이 비어 있으면(재생 모드의 녹화 답) 고르지 않는다. 모델을 정해 넘기면 녹화 답 재생을 건너뛰기 때문이다(_ask_json).
+    """
+    small = os.environ.get("LLM_ROUTE_SMALL_MODEL")
+    if not small or not os.environ.get("LLM_MODEL"):
+        return None
+    if judge_difficulty(signals, verdict_mode, feedback) == "easy":
+        logger.info("judge route easy -> %s", small)
+        return small
+    return None
+
+
 def judge(
     signals: SignalSet,
     customs: CustomsRecord | None,
@@ -625,7 +660,9 @@ def judge(
 ) -> LLMAnswer:
     """2층 판정. output은 JudgeOutput. 자료는 코드가 모은 신호·통관·여유 일수·날짜 (SDD 4.1 7단계).
     feedback은 출력 검증(C-7) 위반 내용이다. 주면 위반을 고쳐 다시 답하라고 붙인다 (SDD 5.7 재시도).
-    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md). 데이터일 뿐이고 등급은 지금처럼 판정 표가 정한다."""
+    memory: 로그인 사용자의 기억 블록 (docs/specs/memory.md). 데이터일 뿐이고 등급은 지금처럼 판정 표가 정한다.
+    model을 따로 주지 않으면 난이도로 모델을 고른다 (route_judge_model, docs/specs/model-routing.md)."""
+    model = model or route_judge_model(signals, verdict_mode, feedback)
     return _ask_json(JUDGE_PROMPT, _judge_input(signals, customs, days_margin, trusted_eta, sale_due_date,
                                                 table_verdict, verdict_mode),
                      "judge", JUDGE_SCHEMA, JudgeOutput, model, feedback=feedback, skills=JUDGE_SKILLS, context=memory)
