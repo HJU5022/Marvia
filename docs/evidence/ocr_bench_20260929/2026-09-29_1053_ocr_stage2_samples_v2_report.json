@@ -1,0 +1,206 @@
+[
+ {
+  "image": "ko_notice.png",
+  "ocr_s": 0.65,
+  "llm_s": 1.09,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "부산 신항",
+   "item": "건고추"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 75,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 283,
+   "total_tokens": 358
+  }
+ },
+ {
+  "image": "ko_notice__blur.png",
+  "ocr_s": 0.6,
+  "llm_s": 1.3,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "부산신항",
+   "item": "건고추"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 75,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 284,
+   "total_tokens": 359
+  }
+ },
+ {
+  "image": "ko_notice__half.png",
+  "ocr_s": 0.38,
+  "llm_s": 1.6,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "부산신항",
+   "item": "건고추"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 75,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 285,
+   "total_tokens": 360
+  }
+ },
+ {
+  "image": "ko_notice__jpeg25.jpg",
+  "ocr_s": 0.63,
+  "llm_s": 1.99,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "부산신항",
+   "item": "건고추"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 75,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 284,
+   "total_tokens": 359
+  }
+ },
+ {
+  "image": "ko_notice__phone.jpg",
+  "ocr_s": 0.42,
+  "llm_s": 1.27,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "부산신항",
+   "item": "건고추"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 75,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 286,
+   "total_tokens": 361
+  }
+ },
+ {
+  "image": "ko_notice__tilt3.png",
+  "ocr_s": 0.71,
+  "llm_s": 1.03,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "부산신항",
+   "item": "건고추"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 75,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 285,
+   "total_tokens": 360
+  }
+ }
+]

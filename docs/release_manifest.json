@@ -1,12 +1,12 @@
 {
-  "_about": "Marvia 배포 단위 고정 (D10, 3주차 10강 PromptReleaseManifest). 프롬프트 버전만이 아니라 모델·평가셋·채점기·코드·배포를 한 묶음으로 적는다. 프롬프트를 바꾸면 이 파일도 같이 바꾼다. 되돌리기 절차는 rollback 항목.",
-  "release": "2026-10-08-r7",
-  "fixed_at": "2026-10-08",
+  "_about": "Marvia 배포 단위 기록. 프롬프트 버전만이 아니라 모델·평가셋·채점 모델·코드·배포를 한 묶음으로 적는다. 프롬프트를 바꾸면 이 파일도 같이 바꾼다. 되돌리기 절차는 rollback, 이전 릴리스는 previous_release에 중첩한다 (r7 -> r6 -> r4 -> r3 -> r2)",
+  "release": "2026-10-09-r8",
+  "fixed_at": "2026-10-09",
   "code": {
-    "branch": "PR #86 (https://github.com/aihuman-7th/proj2-5/pull/86, 배포 시점 커밋 0480636)",
-    "commits_note": "공격 e2e 버그 수정, 동작 변화 없는 구조 개편, 웹 검색(RAG) 제거와 import-basics Skill. PR #86 머지 전에 로컬 브랜치에서 배포했다",
+    "branch": "PR #88 (https://github.com/aihuman-7th/proj2-5/pull/88), 배포 커밋 cc962b1",
+    "commits_note": "main 3a65408(PR #86, #87 병합) 위에 문서 정리 커밋 5개. 코드 변화는 #87의 LLM 429 대체 모델·동시 호출 줄·요청당 토큰 상한·판정 모델 라우팅과 처리방침 화면 문구",
     "commits": [
-      "0480636"
+      "cc962b1"
     ]
   },
   "deploy": {
@@ -14,24 +14,24 @@
     "api": {
       "service": "marvia-api",
       "url": "https://marvia-api-production.up.railway.app",
-      "deployment": "b81cd313-091b-49f6-9286-4b0b0b1ecc47",
+      "deployment": "183c58d7-4e8e-42f6-9087-a39dee510757",
       "status": "SUCCESS",
       "command": "railway up --service marvia-api --detach (레포 루트, Railway 변수 RAILWAY_DOCKERFILE_PATH=Dockerfile.railway)"
     },
     "web": {
       "service": "marvia-web",
       "url": "https://marvia.up.railway.app",
-      "deployment": "ca49edde-5981-4828-9c27-1995fe56bc00",
+      "deployment": "99882fa1-8a2b-4a85-a6be-06205146ab80",
       "status": "SUCCESS",
       "command": "railway up web --path-as-root --service marvia-web --detach (web 폴더만 올린다. 레포 루트에서 올리면 루트 Dockerfile의 worker 단계가 빌드돼 화면이 502가 된다)",
-      "note": "r7 뒤 화면만 두 번 다시 배포했다: 소개 페이지 사진·데이터 출처 제목(ed7476ab), 지도 클러스터 패널 라벨 줄바꿈 수정(ca49edde). 백엔드는 그대로"
+      "note": "r8에서 api와 web을 같은 커밋 cc962b1로 함께 배포했다"
     },
     "worker": {
       "service": "marvia-worker",
       "mode": "run once",
       "WATCH_ENABLED": "off",
       "WORKER_SCHEDULE": "off",
-      "note": "서비스는 만들어 두었지만 자동 수집·재판정은 꺼져 있다"
+      "note": "서비스는 있지만 자동 수집·재판정은 꺼져 있다"
     },
     "mof_relay": {
       "service": "mof-relay",
@@ -39,18 +39,19 @@
       "region": "asia-northeast3",
       "project": "개인 GCP 프로젝트 (팀 계정 아님, 무료 체험 크레딧)",
       "status": "사용 중",
-      "note": "해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). 운영 marvia-api에 MOF_BASE_URL·MOF_RELAY_TOKEN이 설정돼 있고 운영 채팅 입항 검색이 실제 선박 목록을 돌려줬다(예: 일본에서 1주 안에 부산 오는 수입 화물선 43척). 연결 실패는 한 번 바로 다시 시도하고 그래도 안 되면 15초 동안 바로 실패시킨다(clients/mof.py CIRCUIT_OPEN_SEC). 릴레이 주소와 deployment ID는 이 파일에 적지 않았다"
+      "note": "해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). 운영 marvia-api에 MOF_BASE_URL·MOF_RELAY_TOKEN이 설정돼 있고 운영 채팅 입항 검색이 실제 선박 목록을 돌려줬다(예: 일본에서 1주 안에 부산 오는 수입 화물선 43척). 연결 실패는 한 번 바로 다시 시도하고, 그래도 안 되면 15초 동안 바로 실패시킨다(backend/app/clients/mof.py CIRCUIT_OPEN_SEC). 릴레이 주소와 deployment ID는 이 파일에 적지 않는다"
     },
     "replay_mode": false,
-    "replay_mode_note": "배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 채점자·키 없는 로컬 데모·평가용. 원인은 확인하지 못했다: Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다. 우회: 서울 릴레이(mof_relay)를 쓰는 중",
-    "verification": "/health {status: ok, db: ok}, web 200, 로그인 사용자 채팅 '컨테이너 무료기간 언제부터 부과돼?'가 import-basics 내용으로 1단계 답, Langfuse 트레이스 prompt_version 16"
+    "replay_mode_note": "배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 키 없는 재현·로컬 데모·평가용이다. Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패하고, 한국에서는 0.1초에 응답한다. 원인은 확인하지 못했다. 우회로 서울 릴레이(deploy.mof_relay)를 쓴다",
+    "verification": "/health {status: ok, db: ok}, web /about 200, 운영 화면 개인정보처리방침 창에 '반출 후 3년', 'Langfuse에 남아요', '해외 서비스 이용' 문구 확인. 로그인이 필요한 채팅 호출은 이번 배포에서 하지 않았다",
+    "env_note": "DAILY_TOKENS_PER_USER=100000을 운영 marvia-api 변수에 넣었다(그전에는 비어 있어 하루 토큰 한도가 꺼져 있었다). #87의 LLM_FALLBACK_MODEL, LLM_ROUTE_SMALL_MODEL, LLM_MAX_CONCURRENCY, MAX_TOKENS_PER_REQUEST 운영 값은 확인하지 않았다. 비어 있으면 그 기능은 꺼진 채 동작한다"
   },
   "models": {
     "service": "google/gemini-3.5-flash-lite (OpenRouter)",
     "memory_and_title": "openai/gpt-4o-mini (메모 저장은 10초 제한, 최대 3번 시도)",
     "eval_grader": "anthropic/claude-haiku-4.5",
     "temperature": "공급자 기본값 (코드에서 따로 정하지 않음)",
-    "note": "r4에서 모델 변경 없음"
+    "note": "r4 이후 모델 변경 없음"
   },
   "prompts": {
     "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
@@ -65,7 +66,7 @@
     "marvia-doc-extract": 6,
     "marvia-chat-title": 1,
     "marvia-memory-write": 1,
-    "_registered": "Langfuse에 등록. chat-agent 16 라벨 production, latest, v7. 레포 파일 backend/app/prompts/marvia-chat-agent.md와 같은 글 (웹 검색 줄 제거, 회사 전화번호는 포워더·선사 확인 안내, 브랜드 표기 마르비아). 15는 라벨 v6"
+    "_registered": "Langfuse에 등록. chat-agent 16 라벨 production, latest, v7. 레포 파일 backend/app/prompts/marvia-chat-agent.md와 같은 글이다. 바뀐 내용은 docs/prompt_versions.md. 15는 라벨 v6"
   },
   "knowledge": {
     "skills": "skills/*/*.md",
@@ -84,7 +85,7 @@
       "model": "vertex/google/gemini-3.5-flash-lite (Vertex AI 직접 호출. 서비스 경로인 OpenRouter가 아님)",
       "run_at": "2026-10-07T00:35:11Z",
       "prompt_versions": "judge 10, judge-eval 3, follow-up 8 (r3 묶음의 follow-up까지 반영)",
-      "git_commit": "ec49ceb-dirty (dirty는 코드와 무관한 .env.example 수정 때문, 코드는 main 2a6fa7a와 같음)",
+      "git_commit": "ec49ceb-dirty (dirty는 .env.example 수정뿐이고 코드는 main 2a6fa7a와 같다)",
       "exact_match": "30/30",
       "gates": "4개 모두 통과",
       "p50_ms": 1825,
@@ -105,7 +106,7 @@
       "p50_ms": "1875 ~ 2078",
       "p95_ms": "3579 ~ 6288",
       "cost_usd_per_request": "0.002406 ~ 0.002808",
-      "note": "정답 지표는 버전 사이에 같고, 지연·비용은 회차 간 흔들림이 버전 간 차이보다 크다. 채점기 호출 비용은 위 금액에 없다(재지 않았다)"
+      "note": "정답 지표는 버전 사이에 같고, 지연·비용은 회차 간 흔들림이 버전 간 차이보다 크다. 채점 모델 호출 비용은 위 금액에 없다(재지 않았다)"
     },
     "chat_agent_ab": {
       "script": "scripts/eval/eval_chat_agent_ab.py",
@@ -120,48 +121,20 @@
       "known_weak": "사람 이름 되풀이(17~25%), 인식 못 한 식별자 (두 버전 모두)"
     }
   },
-  "change_reason": "chat-agent 16과 코드: 가이드 v3 11쪽 표 2가 웹 검색 본문 붙이기를 RAG로 보아 웹 검색 도구를 지우고 실무 기초를 import-basics Skill로 옮겼다 (ADR 0020). 공격 e2e 버그 수정과 동작 변화 없는 구조 개편을 함께 배포",
+  "change_reason": "PR #87의 LLM 429 대체 모델·동시 호출 줄·요청당 토큰 상한·판정 모델 라우팅(docs/specs/model-routing.md)을 운영에 올리고, 처리방침 화면에 끝난 화물 3년 삭제·Langfuse 답변 기록·해외 서비스 이용 안내를 더했다. 프롬프트는 바꾸지 않았다",
   "rollback": {
-    "prompt": "Langfuse에서 marvia-chat-agent의 production 라벨을 15로 되돌린다. 단 15는 웹 검색 도구 설명이 있어 r7 코드와 맞지 않으므로 코드도 함께 되돌린다",
-    "prompt_previous": {
-      "marvia-chat-agent": 15
-    },
-    "code": "Railway에서 이전 deployment를 Redeploy 한다. r6 시기 배포: api 791f74b3, web f09b3bd0"
+    "prompt": "프롬프트 변경 없음",
+    "code": "Railway에서 r8 직전 배포를 Redeploy 한다: api a6e192ef(10-08 17:21 배포. r7 기록의 b81cd313 뒤에 한 번 더 올라간 배포로 r7 기록에는 없다), web ca49edde. 또는 git revert 뒤 railway up"
   },
   "previous_release": {
-    "release": "2026-10-08-r6",
+    "release": "2026-10-08-r7",
     "fixed_at": "2026-10-08",
     "code": {
-      "branch": "PR #83 (https://github.com/aihuman-7th/proj2-5/pull/83, 9bed960, 리뷰어 seungwook-kim)",
-      "commits_note": "git log --oneline origin/main..HEAD 기준 22개, 최신이 앞(9bed960으로 병합). r4 이후 실사용 59~79와 chat-agent 14 프롬프트",
+      "branch": "PR #86 (https://github.com/aihuman-7th/proj2-5/pull/86), 배포 커밋 0480636",
+      "commits_note": "공격 e2e 버그 수정, 동작 변화 없는 구조 개편, 웹 검색(RAG) 제거와 import-basics Skill. 배포는 PR #86 작업 브랜치 커밋 0480636으로 했다 (Railway는 GitHub에서 자동 배포하지 않는다)",
       "commits": [
-        "00cb06a",
-        "d715999",
-        "a5fe014",
-        "574b85b",
-        "5da58bf",
-        "f90501f",
-        "b688dc8",
-        "5c3630e",
-        "15560af",
-        "427d577",
-        "40762ec",
-        "aba9d2a",
-        "7eb6445",
-        "97e23be",
-        "5ca12c3",
-        "f22abf4",
-        "3819088",
-        "ec6f17c",
-        "92989e0",
-        "19386c2",
-        "5f24e99",
-        "3fc1120"
-      ],
-      "migration": "추가 없음 (r4의 023_vessel_watch.sql 그대로)",
-      "api": "새 /api/document/bl (서류 사진에서 B/L만 코드로 읽음, LLM 없음). 채팅에 watch_vessel 도구 추가 (계약은 더하기만)",
-      "verification": "pytest backend/tests mcp_server/tests 2242 passed, web tsc 오류 0, verify-contract PASS, e2e 데모 PASS (라이브는 SKIP)",
-      "note": "PR #83은 9bed960으로 병합됐다. 배포 서버에는 PR #83 작업 브랜치 코드가 올라가 있다 (Railway는 GitHub에서 자동 배포되지 않음)"
+        "0480636"
+      ]
     },
     "deploy": {
       "platform": "Railway",
@@ -175,16 +148,17 @@
       "web": {
         "service": "marvia-web",
         "url": "https://marvia.up.railway.app",
-        "deployment": "803b2aff-9297-4737-bc4b-710b8327752e",
+        "deployment": "ca49edde-5981-4828-9c27-1995fe56bc00",
         "status": "SUCCESS",
-        "command": "railway up web --path-as-root --service marvia-web --detach (web 폴더만 올린다. 레포 루트에서 올리면 루트 Dockerfile의 worker 단계가 빌드돼 화면이 502가 된다)"
+        "command": "railway up web --path-as-root --service marvia-web --detach (web 폴더만 올린다. 레포 루트에서 올리면 루트 Dockerfile의 worker 단계가 빌드돼 화면이 502가 된다)",
+        "note": "r7 첫 웹 배포는 803b2aff다. 그 뒤 화면만 두 번 다시 배포했다: ed7476ab(소개 페이지 사진·데이터 출처 제목), ca49edde(지도 클러스터 패널 라벨 줄바꿈). api는 b81cd313 그대로"
       },
       "worker": {
         "service": "marvia-worker",
         "mode": "run once",
         "WATCH_ENABLED": "off",
         "WORKER_SCHEDULE": "off",
-        "note": "서비스는 만들어 두었지만 자동 수집·재판정은 꺼져 있다"
+        "note": "서비스는 있지만 자동 수집·재판정은 꺼져 있다"
       },
       "mof_relay": {
         "service": "mof-relay",
@@ -192,11 +166,18 @@
         "region": "asia-northeast3",
         "project": "개인 GCP 프로젝트 (팀 계정 아님, 무료 체험 크레딧)",
         "status": "사용 중",
-        "note": "해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). 운영 marvia-api에 MOF_BASE_URL·MOF_RELAY_TOKEN이 설정돼 있고 운영 채팅 입항 검색이 실제 선박 목록을 돌려줬다(예: 일본에서 1주 안에 부산 오는 수입 화물선 43척). 연결 실패는 한 번 바로 다시 시도하고 그래도 안 되면 15초 동안 바로 실패시킨다(clients/mof.py CIRCUIT_OPEN_SEC). 릴레이 주소와 deployment ID는 이 파일에 적지 않았다"
+        "note": "해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). 운영 marvia-api에 MOF_BASE_URL·MOF_RELAY_TOKEN이 설정돼 있고 운영 채팅 입항 검색이 실제 선박 목록을 돌려줬다(예: 일본에서 1주 안에 부산 오는 수입 화물선 43척). 연결 실패는 한 번 바로 다시 시도하고, 그래도 안 되면 15초 동안 바로 실패시킨다(backend/app/clients/mof.py CIRCUIT_OPEN_SEC). 릴레이 주소와 deployment ID는 이 파일에 적지 않는다"
       },
       "replay_mode": false,
-      "replay_mode_note": "배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 채점자·키 없는 로컬 데모·평가용. 원인은 확인하지 못했다: Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다. 우회: 서울 릴레이(mof_relay)를 쓰는 중",
+      "replay_mode_note": "배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 키 없는 재현·로컬 데모·평가용이다. Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패하고, 한국에서는 0.1초에 응답한다. 원인은 확인하지 못했다. 우회로 서울 릴레이(deploy.mof_relay)를 쓴다",
       "verification": "/health {status: ok, db: ok}, web 200, 로그인 사용자 채팅 '컨테이너 무료기간 언제부터 부과돼?'가 import-basics 내용으로 1단계 답, Langfuse 트레이스 prompt_version 16"
+    },
+    "models": {
+      "service": "google/gemini-3.5-flash-lite (OpenRouter)",
+      "memory_and_title": "openai/gpt-4o-mini (메모 저장은 10초 제한, 최대 3번 시도)",
+      "eval_grader": "anthropic/claude-haiku-4.5",
+      "temperature": "공급자 기본값 (코드에서 따로 정하지 않음)",
+      "note": "r4 이후 모델 변경 없음"
     },
     "prompts": {
       "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
@@ -211,73 +192,147 @@
       "marvia-doc-extract": 6,
       "marvia-chat-title": 1,
       "marvia-memory-write": 1,
-      "_registered": "Langfuse에 등록. chat-agent 16 라벨 production, latest, v7. 레포 파일 backend/app/prompts/marvia-chat-agent.md와 같은 글 (웹 검색 줄 제거, 회사 전화번호는 포워더·선사 확인 안내, 브랜드 표기 마르비아). 15는 라벨 v6"
+      "_registered": "Langfuse에 등록. chat-agent 16 라벨 production, latest, v7. 레포 파일 backend/app/prompts/marvia-chat-agent.md와 같은 글이다. 바뀐 내용은 docs/prompt_versions.md. 15는 라벨 v6"
     },
-    "change_reason": "chat-agent 14 (PR #83, 실사용 점검 59~79): 지시문을 중복 없이 다시 정리(3758 -> 3030 단어, 절: Input / Tools / Decision rules / Answer tiers / Output format / Evidence marks / Trust boundary), watch_vessel 도구와 on_screen selected·call_sign 입력 추가. 코드: 서류 첨부 단순화(71~73, 칩만 두고 보내기에서 B/L만 읽음), OCR 스레드 제한(74), 하우스에서 마스터 자동 재조회(75), 메모 저장 동시 실행(76), 배 목록 답 형식(77), 대화 다시 열 때 화면 복원(78), 채팅으로 배 감시(79), 지도·사이드바·나뉜 화면 정리(59~70). chat-agent 15: recall_memo 도구 설명 줄과 규칙 줄 2줄 추가(저장해 둔 연락처·메모 질문은 웹이 아니라 사용자의 메모로 답함, 별도 평가 실행 없음)",
-    "rollback": {
-      "prompt": "Langfuse에서 marvia-chat-agent의 production 라벨을 14로 되돌린다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
-      "prompt_previous": {
-        "marvia-chat-agent": 14
+    "knowledge": {
+      "skills": "skills/*/*.md",
+      "sha256_12": "dd37753b906c"
+    },
+    "evaluation": {
+      "dataset": {
+        "file": "evals/dataset.jsonl",
+        "rows": 30,
+        "sha256_12": "1d551b2c1d16",
+        "last_changed": "2026-09-30"
       },
-      "code": "Railway에서 이전 deployment를 Redeploy 한다. r4 시기 배포: api 70a27b70, web f07dcd6c. 또는 git revert 뒤 railway up"
+      "runner": "python -m evals.run_eval --config b",
+      "last_result": {
+        "file": "evals/results/b_20261007_0935.json",
+        "model": "vertex/google/gemini-3.5-flash-lite (Vertex AI 직접 호출. 서비스 경로인 OpenRouter가 아님)",
+        "run_at": "2026-10-07T00:35:11Z",
+        "prompt_versions": "judge 10, judge-eval 3, follow-up 8 (r3 묶음의 follow-up까지 반영)",
+        "git_commit": "ec49ceb-dirty (dirty는 .env.example 수정뿐이고 코드는 main 2a6fa7a와 같다)",
+        "exact_match": "30/30",
+        "gates": "4개 모두 통과",
+        "p50_ms": 1825,
+        "p95_ms": 4824,
+        "llm_calls": 29,
+        "prompt_tokens": 231184,
+        "completion_tokens": 5380,
+        "cached_tokens": 16146,
+        "cost": "금액 미기록(Vertex라 토큰만 남음)",
+        "note": "F08은 judge가 bad_format 3번 뒤 포기했다. 등급은 코드 판정 표에서 나와 문항은 맞았다"
+      },
+      "remeasure_20261007": {
+        "files": "evals/results/b_20261007_2102.json, 2105, 2107, 2110, 2113, 2116 (같은 폴더, b_20261007_*)",
+        "model": "google/gemini-3.5-flash-lite (OpenRouter 서비스 경로)",
+        "git_commit": "bd6585c-dirty (프롬프트만 라벨 고정본으로 바꿔 돌림. 래퍼는 레포 밖)",
+        "runs": "프롬프트 라벨 v1(judge 9 · follow-up 5), v2(judge 10 · follow-up 7), v5 production(judge 10 · follow-up 9) 각 2회",
+        "exact_match": "6회 모두 30/30, 게이트 4개 모두 통과",
+        "p50_ms": "1875 ~ 2078",
+        "p95_ms": "3579 ~ 6288",
+        "cost_usd_per_request": "0.002406 ~ 0.002808",
+        "note": "정답 지표는 버전 사이에 같고, 지연·비용은 회차 간 흔들림이 버전 간 차이보다 크다. 채점 모델 호출 비용은 위 금액에 없다(재지 않았다)"
+      },
+      "chat_agent_ab": {
+        "script": "scripts/eval/eval_chat_agent_ab.py",
+        "cases": "scripts/eval/eval_chat_agent_cases.jsonl (162건 x2)",
+        "model": "google/gemini-3.5-flash-lite (OpenRouter)",
+        "compare": "v13 + 2줄 -> v14",
+        "pass_rate": "85.0% -> 87.6%",
+        "input_tokens_per_call": "35,333 -> 26,963",
+        "latency_ms_per_call": "3,159 -> 2,367",
+        "run_cost_usd_per_pass": "2.13 -> 1.44",
+        "total_spend_usd": "점검 전체 약 11.8, judge·follow-up 정리 평가 약 1.3",
+        "known_weak": "사람 이름 되풀이(17~25%), 인식 못 한 식별자 (두 버전 모두)"
+      }
+    },
+    "change_reason": "chat-agent 16과 코드: 가이드 v3 11쪽 표 2가 웹 검색 본문 붙이기를 RAG로 보아 웹 검색 도구를 지우고 실무 기초를 import-basics Skill로 옮겼다 (docs/adr/0020-remove-web-search-use-skill.md). 공격 e2e 버그 수정과 동작 변화 없는 구조 개편을 함께 배포했다",
+    "rollback": {
+      "prompt": "Langfuse에서 marvia-chat-agent의 production 라벨을 15로 되돌린다. 단 15는 웹 검색 도구 설명이 있어 r7 코드와 맞지 않으므로 코드도 함께 되돌린다",
+      "prompt_previous": {
+        "marvia-chat-agent": 15
+      },
+      "code": "Railway에서 r7 직전 배포를 Redeploy 한다: api 791f74b3, web f09b3bd0 (10-08 11:06 배포. manifest r6 블록이 기록한 c6a27837·82f370ac 뒤에 한 번 더 올라간 배포로, r6 기록에는 없다). 또는 git revert 뒤 railway up"
     },
     "previous_release": {
-      "release": "2026-10-08-r4",
+      "release": "2026-10-08-r6",
       "fixed_at": "2026-10-08",
       "code": {
-        "branch": "PR #79 (https://github.com/aihuman-7th/proj2-5/pull/79, 26ba901)",
+        "branch": "PR #83 (https://github.com/aihuman-7th/proj2-5/pull/83, 9bed960, 리뷰어 seungwook-kim)",
+        "commits_note": "git log --oneline origin/main..HEAD 기준 22개, 최신이 앞(9bed960으로 병합). r4 이후 실사용 59~79와 chat-agent 14 프롬프트",
         "commits": [
-          "480ac64",
-          "47d7c76",
-          "00f4e65",
-          "19ead92",
-          "28e5dc5",
-          "8cee37d",
-          "1ed63e7",
-          "e3f37ba",
-          "07a4441",
-          "5834390",
-          "81beee4"
+          "00cb06a",
+          "d715999",
+          "a5fe014",
+          "574b85b",
+          "5da58bf",
+          "f90501f",
+          "b688dc8",
+          "5c3630e",
+          "15560af",
+          "427d577",
+          "40762ec",
+          "aba9d2a",
+          "7eb6445",
+          "97e23be",
+          "5ca12c3",
+          "f22abf4",
+          "3819088",
+          "ec6f17c",
+          "92989e0",
+          "19386c2",
+          "5f24e99",
+          "3fc1120"
         ],
-        "migration": "023_vessel_watch.sql 추가",
-        "api": "새 /api/watch/vessels (GET/POST/DELETE). 채팅 계약은 더하기만: ChatRequest.on_screen, ChatResponse.evidence_items·citations",
-        "verification": "pytest backend/tests mcp_server/tests 2145 passed, web tsc 오류 0, verify-contract PASS, e2e 데모 56 PASS (라이브는 SKIP)",
-        "note": "r4 코드는 PR #79로 먼저 올라갔고 r5 PR #83에 이어서 들어갔다. 아래 deploy는 r4 당시 값"
+        "migration": "추가 없음 (r4의 023_vessel_watch.sql 그대로)",
+        "api": "새 /api/document/bl (서류 사진에서 B/L만 코드로 읽음, LLM 없음). 채팅에 watch_vessel 도구 추가 (계약은 더하기만)",
+        "verification": "pytest backend/tests mcp_server/tests 2242 passed, web tsc 오류 0, verify-contract PASS, e2e 데모 PASS (라이브는 SKIP)",
+        "note": "PR #83은 9bed960으로 병합됐다. 배포 서버에는 PR #83 작업 브랜치 코드가 올라가 있다 (Railway는 GitHub에서 자동 배포되지 않음)"
       },
       "deploy": {
         "platform": "Railway",
         "api": {
           "service": "marvia-api",
           "url": "https://marvia-api-production.up.railway.app",
-          "deployment": "36e64fe6-032d-4976-9eb5-bda5b18c400f"
+          "deployment": "c6a27837-9428-45a1-9878-0c316c1849ce",
+          "status": "SUCCESS"
         },
         "web": {
           "service": "marvia-web",
           "url": "https://marvia.up.railway.app",
-          "deployment": "5ec00d64-8fc2-40e9-8a7f-4f83b96a64fb"
+          "deployment": "82f370ac-9369-4e7d-98eb-ede7ea47154c",
+          "status": "SUCCESS"
+        },
+        "worker": {
+          "service": "marvia-worker",
+          "mode": "run once",
+          "WATCH_ENABLED": "off",
+          "WORKER_SCHEDULE": "off",
+          "note": "서비스는 만들어 두었지만 자동 수집·재판정은 꺼져 있다"
         },
         "mof_relay": {
           "service": "mof-relay",
           "platform": "Google Cloud Run",
           "region": "asia-northeast3",
           "project": "개인 GCP 프로젝트 (팀 계정 아님, 무료 체험 크레딧)",
-          "status": "r4 기록 시점 값. 현재 상태는 위 deploy.mof_relay",
-          "note": "해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). r4 기록 시점에는 Railway 환경변수 MOF_BASE_URL·MOF_RELAY_TOKEN을 설정하지 않았다. 주소와 deployment ID는 적지 않았다"
+          "status": "사용 중",
+          "note": "해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). 운영 marvia-api에 MOF_BASE_URL·MOF_RELAY_TOKEN이 설정돼 있고 운영 채팅 입항 검색이 실제 선박 목록을 돌려줬다(예: 일본에서 1주 안에 부산 오는 수입 화물선 43척). 연결 실패는 한 번 바로 다시 시도하고 그래도 안 되면 15초 동안 바로 실패시킨다(clients/mof.py CIRCUIT_OPEN_SEC). 릴레이 주소와 deployment ID는 이 파일에 적지 않았다"
         },
         "replay_mode": false,
-        "replay_mode_note": "배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 채점자·키 없는 로컬 데모·평가용. 원인은 확인하지 못했다: Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다",
-        "r4_note": "r4 기록 시점에는 배포하지 않았고, 위 api·web deployment ID는 r1 때 값 그대로다. 이때 Railway에 MOF_BASE_URL·MOF_RELAY_TOKEN을 설정하지 않았다"
+        "replay_mode_note": "배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 키 없는 재현·로컬 데모·평가용. 원인은 확인하지 못했다: Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다. 우회: 서울 릴레이(mof_relay)를 쓰는 중"
       },
       "models": {
-        "service": "google/gemini-3.5-flash-lite",
-        "memory_and_title": "openai/gpt-4o-mini",
+        "service": "google/gemini-3.5-flash-lite (OpenRouter)",
+        "memory_and_title": "openai/gpt-4o-mini (메모 저장은 10초 제한, 최대 3번 시도)",
         "eval_grader": "anthropic/claude-haiku-4.5",
-        "temperature": "공급자 기본값 (코드에서 따로 정하지 않음)"
+        "temperature": "공급자 기본값 (코드에서 따로 정하지 않음)",
+        "note": "r4에서 모델 변경 없음"
       },
       "prompts": {
         "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
-        "_release_label": "v4: chat-agent 13, follow-up 9에만 v4. 나머지는 이전 라벨 그대로",
-        "marvia-chat-agent": 13,
+        "_release_label": "v6: chat-agent 15에만 v6. 나머지는 이전 라벨 그대로",
+        "marvia-chat-agent": 15,
         "marvia-chat-route": 2,
         "marvia-judge": 10,
         "marvia-judge-eval": 3,
@@ -287,7 +342,7 @@
         "marvia-doc-extract": 6,
         "marvia-chat-title": 1,
         "marvia-memory-write": 1,
-        "_registered": "Langfuse에 등록하고 Langfuse를 읽어 production 글이 레포 파일과 같음을 확인했다. chat-agent 13 · follow-up 9 모두 라벨 production, latest, v4. memory-write 1도 첫 등록, 라벨 production, latest, v4 (production 글 = 레포 파일 확인)"
+        "_registered": "Langfuse에 등록. chat-agent 15 라벨 production, latest, v6. 레포 파일 backend/app/prompts/marvia-chat-agent.md가 같은 글 (14에 recall_memo 도구 설명 줄과 \"메모·전화번호 질문은 recall_memo, 웹은 쓰지 않는다\" 규칙 줄을 더함). 14는 라벨 v5 (커밋 00cb06a). 나머지 프롬프트 9개는 Langfuse production 글이 레포 파일과 같다. judge·follow-up 정리본은 A/B에서 이득이 없어 쓰지 않았다 (follow-up 단어 -3%, judge -0.4%, 통관 해설 채점 OLD 1.0x4 vs NEW 0.867~1.0)"
       },
       "knowledge": {
         "skills": "skills/*/*.md",
@@ -317,61 +372,191 @@
           "cached_tokens": 16146,
           "cost": "금액 미기록(Vertex라 토큰만 남음)",
           "note": "F08은 judge가 bad_format 3번 뒤 포기했다. 등급은 코드 판정 표에서 나와 문항은 맞았다"
+        },
+        "remeasure_20261007": {
+          "files": "evals/results/b_20261007_2102.json, 2105, 2107, 2110, 2113, 2116 (같은 폴더, b_20261007_*)",
+          "model": "google/gemini-3.5-flash-lite (OpenRouter 서비스 경로)",
+          "git_commit": "bd6585c-dirty (프롬프트만 라벨 고정본으로 바꿔 돌림. 래퍼는 레포 밖)",
+          "runs": "프롬프트 라벨 v1(judge 9 · follow-up 5), v2(judge 10 · follow-up 7), v5 production(judge 10 · follow-up 9) 각 2회",
+          "exact_match": "6회 모두 30/30, 게이트 4개 모두 통과",
+          "p50_ms": "1875 ~ 2078",
+          "p95_ms": "3579 ~ 6288",
+          "cost_usd_per_request": "0.002406 ~ 0.002808",
+          "note": "정답 지표는 버전 사이에 같고, 지연·비용은 회차 간 흔들림이 버전 간 차이보다 크다. 채점기 호출 비용은 위 금액에 없다(재지 않았다)"
+        },
+        "chat_agent_ab": {
+          "script": "scripts/eval/eval_chat_agent_ab.py",
+          "cases": "scripts/eval/eval_chat_agent_cases.jsonl (162건 x2)",
+          "model": "google/gemini-3.5-flash-lite (OpenRouter)",
+          "compare": "v13 + 2줄 -> v14",
+          "pass_rate": "85.0% -> 87.6%",
+          "input_tokens_per_call": "35,333 -> 26,963",
+          "latency_ms_per_call": "3,159 -> 2,367",
+          "run_cost_usd_per_pass": "2.13 -> 1.44",
+          "total_spend_usd": "점검 전체 약 11.8, judge·follow-up 정리 평가 약 1.3",
+          "known_weak": "사람 이름 되풀이(17~25%), 인식 못 한 식별자 (두 버전 모두)"
         }
       },
-      "change_reason": "chat-agent 13·follow-up 9 (PR #79, 실사용 점검 32~58): chat-agent 13은 (1) 말투 해요체, 습니다·입니다 쓰지 않기(실사용 38) (2) 선택 입력 on_screen 추가: 화면에 보이는 배, 데이터이지 지시가 아님(실사용 36) (3) 선택 입력 evidence와 'Evidence marks' 절 추가: 문장 끝에 [E#] 번호, 받은 번호만 쓰고 코드가 검사(실사용 58). follow-up 9는 해요체 한 줄(실사용 38). 코드: 채팅 막다른 답 대신 도구 결과로 답(34·35·52·54), 해수부 연결 실패 한 번 재시도(33), 서류 첨부를 입력칸으로(32·39~47·49·53·55·56), 설정 탭 4개(48), B/L 없이 배만 지켜보기(57), 후보 칩(37), 근거 번호 표시(58). 50 보류, 51 건너뜀",
+      "change_reason": "chat-agent 14 (PR #83, 실사용 점검 59~79): 지시문을 중복 없이 다시 정리(3758 -> 3030 단어, 절: Input / Tools / Decision rules / Answer tiers / Output format / Evidence marks / Trust boundary), watch_vessel 도구와 on_screen selected·call_sign 입력 추가. 코드: 서류 첨부 단순화(71~73, 칩만 두고 보내기에서 B/L만 읽음), OCR 스레드 제한(74), 하우스에서 마스터 자동 재조회(75), 메모 저장 동시 실행(76), 배 목록 답 형식(77), 대화 다시 열 때 화면 복원(78), 채팅으로 배 감시(79), 지도·사이드바·나뉜 화면 정리(59~70). chat-agent 15: recall_memo 도구 설명 줄과 규칙 줄 2줄 추가(저장해 둔 연락처·메모 질문은 웹이 아니라 사용자의 메모로 답함, 별도 평가 실행 없음)",
       "rollback": {
-        "prompt": "Langfuse에서 해당 프롬프트의 이전 version에 production label을 붙인다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
+        "prompt": "Langfuse에서 marvia-chat-agent의 production 라벨을 14로 되돌린다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
         "prompt_previous": {
-          "marvia-chat-agent": 12,
-          "marvia-follow-up": 8
+          "marvia-chat-agent": 14
         },
-        "code": "Railway에서 이전 deployment를 Redeploy 하거나, git revert 뒤 railway up"
+        "code": "Railway에서 이전 deployment를 Redeploy 한다. r4 시기 배포: api 70a27b70, web f07dcd6c. 또는 git revert 뒤 railway up"
       },
       "previous_release": {
-        "release": "2026-10-07-r3",
-        "fixed_at": "2026-10-07",
+        "release": "2026-10-08-r4",
+        "fixed_at": "2026-10-08",
         "code": {
-          "branch": "PR #75 (main 2a6fa7a)",
-          "commit_prompts": "2a6fa7a",
-          "note": "배포 서버에 r3 코드가 올라갔는지는 이 파일에 기록 없음. deploy 칸의 deployment ID는 r1 때 값 그대로"
+          "branch": "PR #79 (https://github.com/aihuman-7th/proj2-5/pull/79, 26ba901)",
+          "commits": [
+            "480ac64",
+            "47d7c76",
+            "00f4e65",
+            "19ead92",
+            "28e5dc5",
+            "8cee37d",
+            "1ed63e7",
+            "e3f37ba",
+            "07a4441",
+            "5834390",
+            "81beee4"
+          ],
+          "migration": "023_vessel_watch.sql 추가",
+          "api": "새 /api/watch/vessels (GET/POST/DELETE). 채팅 계약은 더하기만: ChatRequest.on_screen, ChatResponse.evidence_items·citations",
+          "verification": "pytest backend/tests mcp_server/tests 2145 passed, web tsc 오류 0, verify-contract PASS, e2e 데모 56 PASS (라이브는 SKIP)",
+          "note": "r4 코드는 PR #79로 먼저 올라갔고 r5 PR #83에 이어서 들어갔다. 아래 deploy는 r4 당시 값"
+        },
+        "deploy": {
+          "platform": "Railway",
+          "api": {
+            "service": "marvia-api",
+            "url": "https://marvia-api-production.up.railway.app",
+            "deployment": "36e64fe6-032d-4976-9eb5-bda5b18c400f"
+          },
+          "web": {
+            "service": "marvia-web",
+            "url": "https://marvia.up.railway.app",
+            "deployment": "5ec00d64-8fc2-40e9-8a7f-4f83b96a64fb"
+          },
+          "mof_relay": {
+            "service": "mof-relay",
+            "platform": "Google Cloud Run",
+            "region": "asia-northeast3",
+            "project": "개인 GCP 프로젝트 (팀 계정 아님, 무료 체험 크레딧)",
+            "status": "r4 기록 시점 값. 현재 상태는 위 deploy.mof_relay",
+            "note": "해수부 API가 Railway 싱가포르에서 ConnectTimeout이라 서울에 둔 릴레이(relay/). r4 기록 시점에는 Railway 환경변수 MOF_BASE_URL·MOF_RELAY_TOKEN을 설정하지 않았다. 주소와 deployment ID는 적지 않았다"
+          },
+          "replay_mode": false,
+          "replay_mode_note": "배포 서버는 실제 모드(REPLAY_MODE=false). 재생 모드는 키 없는 재현·로컬 데모·평가용. 원인은 확인하지 못했다: Railway 서버(리전 기록은 Singapore)에서 해수부 API(apis.data.go.kr VsslEtrynd5)가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답한다",
+          "r4_note": "r4 기록 시점에는 배포하지 않았고, 위 api·web deployment ID는 r1 때 값 그대로다. 이때 Railway에 MOF_BASE_URL·MOF_RELAY_TOKEN을 설정하지 않았다"
+        },
+        "models": {
+          "service": "google/gemini-3.5-flash-lite",
+          "memory_and_title": "openai/gpt-4o-mini",
+          "eval_grader": "anthropic/claude-haiku-4.5",
+          "temperature": "공급자 기본값 (코드에서 따로 정하지 않음)"
         },
         "prompts": {
           "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
-          "_release_label": "v3: r2 이후 바뀐 3개(chat-agent 12, follow-up 8, chat-route 2)에만 Langfuse 라벨 v3. 나머지 6개는 r2/r1 라벨 그대로라 r3 묶음 = 아래 버전 전부. 다음 변경은 바꾼 것에만 v4",
-          "marvia-chat-agent": 12,
+          "_release_label": "v4: chat-agent 13, follow-up 9에만 v4. 나머지는 이전 라벨 그대로",
+          "marvia-chat-agent": 13,
           "marvia-chat-route": 2,
           "marvia-judge": 10,
           "marvia-judge-eval": 3,
-          "marvia-follow-up": 8,
+          "marvia-follow-up": 9,
           "marvia-pick-vessel": 3,
           "marvia-port-match": 1,
           "marvia-doc-extract": 6,
           "marvia-chat-title": 1,
-          "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
+          "marvia-memory-write": 1,
+          "_registered": "Langfuse에 등록하고 Langfuse를 읽어 production 글이 레포 파일과 같음을 확인했다. chat-agent 13 · follow-up 9 모두 라벨 production, latest, v4. memory-write 1도 첫 등록, 라벨 production, latest, v4 (production 글 = 레포 파일 확인)"
         },
-        "change_reason": "chat-agent 12·follow-up 8·chat-route 2 (PR #75, 실사용 점검 항목 2·3·5·6): 답마다 붙이던 고정 면책 문구(\"일반 설명이에요…\")를 빼고 이용약관으로 옮김, B/L 등은 \"비엘\"이 아니라 정상 표기, 회사 연락처는 가져온 웹 결과에 있을 때만, \"호\"로 끝나는 한국어 이름은 선박 이름으로 보고 이름으로 입항 검색(한 번만 되묻고 같은 되묻기 반복 금지). follow-up 8과 chat-route 2는 B/L 표기 줄만 바뀜",
+        "knowledge": {
+          "skills": "skills/*/*.md",
+          "sha256_12": "dd37753b906c"
+        },
+        "evaluation": {
+          "dataset": {
+            "file": "evals/dataset.jsonl",
+            "rows": 30,
+            "sha256_12": "1d551b2c1d16",
+            "last_changed": "2026-09-30"
+          },
+          "runner": "python -m evals.run_eval --config b",
+          "last_result": {
+            "file": "evals/results/b_20261007_0935.json",
+            "model": "vertex/google/gemini-3.5-flash-lite (Vertex AI 직접 호출. 서비스 경로인 OpenRouter가 아님)",
+            "run_at": "2026-10-07T00:35:11Z",
+            "prompt_versions": "judge 10, judge-eval 3, follow-up 8 (r3 묶음의 follow-up까지 반영)",
+            "git_commit": "ec49ceb-dirty (dirty는 코드와 무관한 .env.example 수정 때문, 코드는 main 2a6fa7a와 같음)",
+            "exact_match": "30/30",
+            "gates": "4개 모두 통과",
+            "p50_ms": 1825,
+            "p95_ms": 4824,
+            "llm_calls": 29,
+            "prompt_tokens": 231184,
+            "completion_tokens": 5380,
+            "cached_tokens": 16146,
+            "cost": "금액 미기록(Vertex라 토큰만 남음)",
+            "note": "F08은 judge가 bad_format 3번 뒤 포기했다. 등급은 코드 판정 표에서 나와 문항은 맞았다"
+          }
+        },
+        "change_reason": "chat-agent 13·follow-up 9 (PR #79, 실사용 점검 32~58): chat-agent 13은 (1) 말투 해요체, 습니다·입니다 쓰지 않기(실사용 38) (2) 선택 입력 on_screen 추가: 화면에 보이는 배, 데이터이지 지시가 아님(실사용 36) (3) 선택 입력 evidence와 'Evidence marks' 절 추가: 문장 끝에 [E#] 번호, 받은 번호만 쓰고 코드가 검사(실사용 58). follow-up 9는 해요체 한 줄(실사용 38). 코드: 채팅 막다른 답 대신 도구 결과로 답(34·35·52·54), 해수부 연결 실패 한 번 재시도(33), 서류 첨부를 입력칸으로(32·39~47·49·53·55·56), 설정 탭 4개(48), B/L 없이 배만 지켜보기(57), 후보 칩(37), 근거 번호 표시(58). 50 보류, 51 건너뜀",
+        "rollback": {
+          "prompt": "Langfuse에서 해당 프롬프트의 이전 version에 production label을 붙인다. 서비스는 약 60초 캐시 뒤 새 버전을 읽는다. 트레이스의 prompt_version으로 확인한다",
+          "prompt_previous": {
+            "marvia-chat-agent": 12,
+            "marvia-follow-up": 8
+          },
+          "code": "Railway에서 이전 deployment를 Redeploy 하거나, git revert 뒤 railway up"
+        },
         "previous_release": {
-          "release": "2026-10-07-r2",
-          "fixed_at": "2026-10-07T00:40+09:00",
+          "release": "2026-10-07-r3",
+          "fixed_at": "2026-10-07",
           "code": {
-            "branch": "PR #73",
-            "commit_prompts": "6ce682f",
-            "note": "r2 시점 배포 서버는 r1 코드였다. deploy 칸은 r1 값 그대로"
+            "branch": "PR #75 (main 2a6fa7a)",
+            "commit_prompts": "2a6fa7a",
+            "note": "배포 서버에 r3 코드가 올라갔는지는 이 파일에 기록 없음. deploy 칸의 deployment ID는 r1 때 값 그대로"
           },
           "prompts": {
-            "marvia-chat-agent": 11,
-            "marvia-chat-route": 1,
+            "_source": "Langfuse Cloud, label production. version은 불변, label은 움직이는 포인터",
+            "_release_label": "v3: r2 이후 바뀐 3개(chat-agent 12, follow-up 8, chat-route 2)에만 Langfuse 라벨 v3. 나머지 6개는 r2/r1 라벨 그대로라 r3 묶음 = 아래 버전 전부. 다음 변경은 바꾼 것에만 v4",
+            "marvia-chat-agent": 12,
+            "marvia-chat-route": 2,
             "marvia-judge": 10,
             "marvia-judge-eval": 3,
-            "marvia-follow-up": 7,
+            "marvia-follow-up": 8,
             "marvia-pick-vessel": 3,
             "marvia-port-match": 1,
             "marvia-doc-extract": 6,
             "marvia-chat-title": 1,
             "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
           },
-          "change_reason": "judge 10(통관 해설 예시를 이름+뜻으로), doc-extract 6(칸 추가 + 출항일 etd), follow-up 6(D11 통관 진행 평가 금지)·7, chat-agent 11(화면 화물과 이어지지 않는 사람·이름은 되묻기, 트레이스 bc9c239a, A/B 124회)"
+          "change_reason": "chat-agent 12·follow-up 8·chat-route 2 (PR #75, 실사용 점검 항목 2·3·5·6): 답마다 붙이던 고정 면책 문구(\"일반 설명이에요…\")를 빼고 이용약관으로 옮김, B/L 등은 \"비엘\"이 아니라 정상 표기, 회사 연락처는 가져온 웹 결과에 있을 때만, \"호\"로 끝나는 한국어 이름은 선박 이름으로 보고 이름으로 입항 검색(한 번만 되묻고 같은 되묻기 반복 금지). follow-up 8과 chat-route 2는 B/L 표기 줄만 바뀜",
+          "previous_release": {
+            "release": "2026-10-07-r2",
+            "fixed_at": "2026-10-07T00:40+09:00",
+            "code": {
+              "branch": "PR #73",
+              "commit_prompts": "6ce682f",
+              "note": "r2 시점 배포 서버는 r1 코드였다. deploy 칸은 r1 값 그대로"
+            },
+            "prompts": {
+              "marvia-chat-agent": 11,
+              "marvia-chat-route": 1,
+              "marvia-judge": 10,
+              "marvia-judge-eval": 3,
+              "marvia-follow-up": 7,
+              "marvia-pick-vessel": 3,
+              "marvia-port-match": 1,
+              "marvia-doc-extract": 6,
+              "marvia-chat-title": 1,
+              "marvia-memory-write": "Langfuse 미등록, 레포 파일(backend/app/prompts/marvia-memory-write.md)로 동작"
+            },
+            "change_reason": "judge 10(통관 해설 예시를 이름+뜻으로), doc-extract 6(칸 추가 + 출항일 etd), follow-up 6(D11 통관 진행 평가 금지)·7, chat-agent 11(화면 화물과 이어지지 않는 사람·이름은 되묻기, 트레이스 bc9c239a)"
+          }
         }
       }
     }

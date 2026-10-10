@@ -1,0 +1,512 @@
+[
+ {
+  "engine": "korean",
+  "image": "crumple.png",
+  "sec": 0.56,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "fax.png",
+  "sec": 0.51,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "handwriting.png",
+  "sec": 0.55,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "mixed_cjk.png",
+  "sec": 0.61,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true,
+   "shipper_zh": false,
+   "item_zh": false
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "perspective.png",
+  "sec": 0.6,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "rot90.png",
+  "sec": 1.66,
+  "rot": 270,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "shadow.png",
+  "sec": 0.54,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "stamp.png",
+  "sec": 0.54,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "tiny.png",
+  "sec": 0.54,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "watermark.png",
+  "sec": 0.91,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "an_easyisf_1.jpg",
+  "sec": 1.41,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod": true,
+   "eta": true,
+   "firms": true,
+   "weight": true,
+   "total": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "an_easyisf_2.jpg",
+  "sec": 2.07,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "vessel_voy": true,
+   "pol": true,
+   "pod": true,
+   "eta": true,
+   "hbl": true,
+   "invoice_date": true,
+   "weight": true,
+   "under_watermark_1": true,
+   "under_watermark_2": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "an_easyisf_3.jpg",
+  "sec": 1.23,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod": true,
+   "firms": true,
+   "weight": true,
+   "item": true,
+   "date": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "an_easyisf_4.jpg",
+  "sec": 1.1,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "flight": true,
+   "arrival": true,
+   "port": true,
+   "firms_I_not_1": false,
+   "pcs_weight": true,
+   "airline": true
+  }
+ },
+ {
+  "engine": "korean",
+  "image": "bl_1853_handwritten.jpg",
+  "sec": 1.76,
+  "rot": 0,
+  "runs": 3,
+  "hits": {
+   "print_port": true,
+   "print_dest": true,
+   "print_line": true,
+   "hand_ship": false,
+   "hand_name": false,
+   "hand_date": false,
+   "hand_amount": true
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "crumple.png",
+  "sec": 1.58,
+  "rot": 270,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "fax.png",
+  "sec": 1.61,
+  "rot": 0,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "handwriting.png",
+  "sec": 1.68,
+  "rot": 0,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "mixed_cjk.png",
+  "sec": 0.63,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false,
+   "shipper_zh": true,
+   "item_zh": true
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "perspective.png",
+  "sec": 0.57,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "rot90.png",
+  "sec": 1.63,
+  "rot": 180,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "shadow.png",
+  "sec": 1.83,
+  "rot": 0,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "stamp.png",
+  "sec": 1.67,
+  "rot": 270,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "tiny.png",
+  "sec": 1.64,
+  "rot": 270,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "watermark.png",
+  "sec": 3.36,
+  "rot": 0,
+  "runs": 3,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": false,
+   "eta": true,
+   "item_ko": false,
+   "consignee_ko": false
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "an_easyisf_1.jpg",
+  "sec": 1.48,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod": true,
+   "eta": true,
+   "firms": true,
+   "weight": true,
+   "total": true
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "an_easyisf_2.jpg",
+  "sec": 2.47,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "vessel_voy": true,
+   "pol": true,
+   "pod": true,
+   "eta": true,
+   "hbl": true,
+   "invoice_date": true,
+   "weight": true,
+   "under_watermark_1": true,
+   "under_watermark_2": true
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "an_easyisf_3.jpg",
+  "sec": 1.44,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod": true,
+   "firms": true,
+   "weight": true,
+   "item": true,
+   "date": true
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "an_easyisf_4.jpg",
+  "sec": 1.08,
+  "rot": 0,
+  "runs": 1,
+  "hits": {
+   "flight": true,
+   "arrival": true,
+   "port": true,
+   "firms_I_not_1": false,
+   "pcs_weight": true,
+   "airline": true
+  }
+ },
+ {
+  "engine": "default_ch",
+  "image": "bl_1853_handwritten.jpg",
+  "sec": 1.84,
+  "rot": 0,
+  "runs": 3,
+  "hits": {
+   "print_port": true,
+   "print_dest": true,
+   "print_line": false,
+   "hand_ship": false,
+   "hand_name": false,
+   "hand_date": false,
+   "hand_amount": true
+  }
+ }
+]
