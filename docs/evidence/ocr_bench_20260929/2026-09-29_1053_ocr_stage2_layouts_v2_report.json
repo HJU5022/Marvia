@@ -1,0 +1,104 @@
+[
+ {
+  "image": "two_col.png",
+  "ocr_s": 0.38,
+  "llm_s": 1.11,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "부산신항",
+   "item": "건고추"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 75,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 215,
+   "total_tokens": 290
+  }
+ },
+ {
+  "image": "english_form.png",
+  "ocr_s": 0.38,
+  "llm_s": 1.7,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO, CHINA",
+   "pod": "BUSAN NEW PORT, KOREA",
+   "item": "120 BAGS OF DRIED RED PEPPER"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 88,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 218,
+   "total_tokens": 306
+  }
+ },
+ {
+  "image": "sentence.png",
+  "ocr_s": 0.36,
+  "llm_s": 1.15,
+  "got": {
+   "bl_no": "MRVA2026090001",
+   "vessel": "SEA STAR",
+   "voyage": "0925W",
+   "eta": "2026-10-02",
+   "pol": "QINGDAO",
+   "pod": "부산 신항",
+   "item": "건고추 120포"
+  },
+  "correct": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "eta": true,
+   "pol": true,
+   "pod": true,
+   "item": true
+  },
+  "check_fails": [],
+  "usage": {
+   "completion_tokens": 79,
+   "extra_properties": {
+    "google": {
+     "traffic_type": "ON_DEMAND"
+    }
+   },
+   "prompt_tokens": 229,
+   "total_tokens": 308
+  }
+ }
+]

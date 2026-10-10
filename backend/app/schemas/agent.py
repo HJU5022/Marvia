@@ -47,7 +47,7 @@ class AgentRequest(BaseModel):
     voyage_no: str | None = Field(default=None, max_length=20, pattern=VOYAGE_PATTERN,
                                   description="되묻기 후 입력. 영문·숫자·공백·-·/·. 20자까지 (10-06 점검)")
     forwarder_eta: date | None = None
-    # 적하목록 관리번호(예: 26PCLUVK37I). UNI-PASS에 B/L이 아직 없을 때 해수부 입항 신고로 배를 찾는 데만 쓴다 (docs/specs/mrn-fallback.md, 10-01)
+    # 적하목록 관리번호(예: 26ABCD1234I). UNI-PASS에 B/L이 아직 없을 때 해수부 입항 신고로 배를 찾는 데만 쓴다 (docs/specs/mrn-fallback.md, 10-01)
     mrn: str | None = Field(default=None, description="MRN 11자. 선택")
     # 서류 사진에서 사용자가 확인한 출항일 (10-06). 내 화물 현황 표 출항 칸(user_cargo.departed_on, source 'document')에 적는 데만 쓴다
     # (services/cargo.upsert_assessment). 판정·되묻기 구분·LLM 입력에는 쓰지 않는다. 사용자가 직접 적은 날짜(manual)는 덮지 않는다

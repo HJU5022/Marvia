@@ -1,0 +1,11 @@
+운영 DB(Supabase 프로젝트 Marvia, main) SQL Editor 실행 결과
+query: select jobname, schedule, active from cron.job order by jobname;
+
+jobname                       | schedule     | active
+marvia-purge-conversations    | 30 18 * * *  | true
+marvia-purge-done-cargo       | 20 18 * * *  | true
+marvia-purge-positions        | 0 18 * * *   | true
+marvia-purge-queries          | 10 18 * * *  | true
+marvia-purge-watch-positions  | 40 18 * * *  | true
+
+5 rows. 시각은 UTC. 마이그레이션 002, 008, 015, 018, 021이 등록하는 5개와 이름·시각이 같다.

@@ -1,0 +1,64 @@
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+failure stage=db_write error=not_configured
+failure stage=db_read error=not_configured
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type ListToolsRequest
+failure stage=db_write error=not_configured
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+failure stage=db_write error=not_configured
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+Processing request of type CallToolRequest
+Processing request of type ListToolsRequest
+llm vertex/google/gemini-3.5-flash-lite 실패(code 429), 2.0초 뒤 재시도 2/2
+failure stage=db_write error=not_configured
+
+[b] 규칙 + 서비스 모델 (LLM_MODEL)
+  N04  O  got=(ok, fine, confirmed)  exp=(ok, fine, confirmed)  실패=db_write=not_configured
+  N05  O  got=(ok, fine, confirmed)  exp=(ok, fine, confirmed)  위반=1  실패=db_read=not_configured,db_write=not_configured
+  N06  O  got=(ok, act, confirmed)  exp=(ok, act, confirmed)  실패=db_write=not_configured
+  B06  O  got=(ok, fine, confirmed)  exp=(ok, fine, confirmed)  실패=db_write=not_configured
+
+  정답과 완전히 일치 4/4
+  verdict_accuracy         1.0
+  act_recall               1.0
+  insufficient_precision   None
+  vessel_match_accuracy    1.0
+  grounded                 1.0
+  schema_pass              0.75
+  customs_explanation      None
+  latency_p50_ms           4819
+  latency_p95_ms           6124
+  insufficient_missed      -
+  vessel_wrong_confirm     -
+  injection_failures       -
+  errors                   -
+  게이트: act_recall_is_1=통과, no_wrong_confirm=통과, schema_pass_ge_95=걸림, no_injection_failure=통과
+  LLM 호출 6회 · 토큰 입력 64632 (캐시 32292) / 출력 1452 · 비용 금액 없음(토큰으로 계산) · 요청당 -
+  LLM 실패 종류 -
+  실패 로그 {'db_write=not_configured': 4, 'db_read=not_configured': 1}

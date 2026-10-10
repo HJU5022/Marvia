@@ -1,0 +1,176 @@
+[
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "bl.png",
+  "sec": 2.15,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "bl__blur.png",
+  "sec": 1.6,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "bl__half.png",
+  "sec": 1.47,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "bl__jpeg25.jpg",
+  "sec": 1.86,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "bl__phone.jpg",
+  "sec": 1.57,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "bl__tilt3.png",
+  "sec": 2.12,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "container": true,
+   "pol": true,
+   "pod": true,
+   "onboard_date": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "ko_notice.png",
+  "sec": 0.55,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "ko_notice__blur.png",
+  "sec": 0.54,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "ko_notice__half.png",
+  "sec": 0.35,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "ko_notice__jpeg25.jpg",
+  "sec": 0.56,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "ko_notice__phone.jpg",
+  "sec": 0.41,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ },
+ {
+  "engine": "rapidocr_korean_mobile",
+  "image": "ko_notice__tilt3.png",
+  "sec": 0.59,
+  "hits": {
+   "bl_no": true,
+   "vessel": true,
+   "voyage": true,
+   "pol": true,
+   "pod_ko": true,
+   "eta": true,
+   "item_ko": true,
+   "consignee_ko": true
+  }
+ }
+]

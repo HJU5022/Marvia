@@ -3,7 +3,8 @@
  * 로그인 전 소개 화면 맨 아래와 앱 하단(Shell의 app-footer)에서 같이 쓴다.
  * 이용약관: 안내 서비스라는 한계와 책임 범위. 답마다 붙이던 면책 문구를 대신한다.
  * 처리방침: 레포에 있는 사실만 적는다. 근거: ProfileForm 동의 문구, backend/app/db/migrations/008_purge_queries.sql(90일),
- * backend/app/routers/history.py(내 기록 삭제), backend/app/services/account.py(탈퇴), docs/specs/memory.md(저장 항목).
+ * backend/app/routers/history.py(내 기록 삭제), backend/app/routers/account.py(탈퇴), docs/specs/memory.md(저장 항목),
+ * 015_memory_conditions_purge.sql(끝난 화물 3년), observability/langfuse.py(답변 기록), docs/release_manifest.json(배포 서비스).
  * 레포에 없는 것(사업자 정보, 책임자 연락처, 시행일)은 일부러 비웠다.
  */
 import {useState} from 'react';
@@ -58,7 +59,11 @@ function Privacy() {
       <li>회원 정보와 계정: 회원 탈퇴 때까지. 탈퇴하면 바로 지워요.</li>
       <li>조회 기록: 90일이 지나면 자동으로 지워요. 설정에서 언제든 직접 지울 수도 있어요.</li>
       <li>탈퇴하면 조회 기록, 대화, 기억한 화물 정보도 함께 지워요.</li>
+      <li>끝난 화물 정보는 반출 후 3년이 지나면 자동으로 지워요.</li>
+      <li>AI 답변 기록은 품질 확인을 위해 Langfuse에 남아요. 기록 삭제·탈퇴를 해도 여기에는 남을 수 있어요.</li>
     </ul>
+    <h3>해외 서비스 이용</h3>
+    <p>서비스 운영을 위해 해외 서비스(Railway 서버, Langfuse 기록, Google·OpenRouter AI)를 이용해요. 이 과정에서 가린 B/L 번호, 질문과 답이 해외 서버를 거쳐요.</p>
     <h3>안전하게 보관하는 방법</h3>
     <p>B/L 번호는 암호로 잠가 저장하고 화면에는 일부를 가려서 보여 줘요. 회원 정보도 암호화해서 저장하고, 운영자에게는 가린 값만 보여요.</p>
     <h3>내가 할 수 있는 것</h3>
