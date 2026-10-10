@@ -12,7 +12,7 @@ KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 L
 | 평가 리포트 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
 | 문서 지도 | [docs/README.md](./docs/README.md) (PRD · SDD · 작업 리스트 · ERD · ADR · 근거 자료) |
 
-주소와 배포 커밋은 [docs/release_manifest.json](./docs/release_manifest.json)에 적힌 값이다. 배포는 Railway이고 Vercel은 쓰지 않는다.
+주소와 배포 커밋은 [docs/release_manifest.json](./docs/release_manifest.json)에 적힌 값이다. 배포는 Railway이고 Vercel은 쓰지 않는다. 처음 계획(화면 Vercel + 서버 Cloud Run)에서 바꾼 결정과 그 대가는 [ADR 0009](docs/adr/0009-deploy-railway-not-vercel.md)에 있다.
 
 ### 살아 있는지 확인
 
@@ -39,6 +39,7 @@ curl -s https://marvia-api-production.up.railway.app/health
 | 04 | 지켜보기 지도 | ![04 지켜보기 지도](docs/assets/gif/04-watch-map.gif) |
 | 05 | 서류 사진 첨부 흐름 (데모 모드는 사진 내용과 관계없이 가공 B/L을 돌려준다) | ![05 서류](docs/assets/gif/05-document.gif) |
 | 06 | 화물 현황표 | ![06 화물 현황표](docs/assets/gif/06-cargo-sheet.gif) |
+| 07 | 실패 흐름: 통관 정보를 못 가져오면 판정 없이 실패와 다시 조회하기, 위치 근거가 모자라면 판정을 미루고 마지막 수신 위치와 해수부 근거만 보여 주는 부분 응답 | ![07 실패 흐름](docs/assets/gif/07-failure.gif) |
 
 ---
 
@@ -290,13 +291,16 @@ curl http://localhost:8000/health        # {"status":"ok","db":"ok"}. DB가 끊�
 | 항목 | 내용 |
 |---|---|
 | 위치 | API 서버 안의 `/mcp` 경로(FastMCP, Streamable HTTP). 서버 하나로 `/api/agent`와 `/mcp`가 같이 열린다 |
-| 인증 | `MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401. 배포 주소 확인 기록은 [docs/evidence/mcp-02-deployed-tools.txt](./docs/evidence/mcp-02-deployed-tools.txt) |
+| 인증 | `MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401. 배포 주소 확인 기록은 [docs/evidence/mcp-02-deployed-tools.txt](./docs/evidence/mcp-02-deployed-tools.txt), 화면은 아래 그림 |
 | 도구 4종 (읽기 전용) | `get_vessel_candidates`, `get_live_position`, `get_port_schedule`, `estimate_distance` |
 | 서비스가 부르는 방식 | `/api/agent`와 채팅도 도구를 MCP 프로토콜로 부른다(`backend/app/services/mcp_client.py`). 호출마다 Langfuse에 `mcp:<도구>` 관측이 남는다 |
+
+![배포 주소 MCP 확인: 토큰 있으면 도구 4개, 없으면 401](docs/evidence/mcp-03-deployed-auth.png)
 
 본체·등록 위치와 연결 방식은 [mcp_server/README.md](./mcp_server/README.md).
 
 ---
+
 
 ## 배포
 

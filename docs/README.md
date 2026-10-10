@@ -54,6 +54,7 @@ SDD 5절과 작업 리스트에 없는 기능은 Spec을 먼저 쓴다 (CLAUDE.m
 | [langfuse_summary_20261002.md](./evidence/langfuse_summary_20261002.md) | 같은 스크립트(`scripts/eval/langfuse_evidence.py`)의 이전 실행. 집계 기간 2026-09-01 ~ 2026-10-02 |
 | `langfuse-01-dashboard.jpg` ~ `langfuse-10-latency-percentiles.jpg` (10장) | Langfuse 화면 캡처: 대시보드, 트레이스, 재시도, 프롬프트, 실험, 데이터셋, 비용, 지연 |
 | [mcp-02-deployed-tools.txt](./evidence/mcp-02-deployed-tools.txt) | 배포 주소 `/mcp` 연결 기록. 토큰이 있으면 도구 4개, 없으면 401 |
+| [mcp-03-deployed-auth.png](./evidence/mcp-03-deployed-auth.png) | 배포 r8에서 다시 확인한 화면. 토큰이 있으면 도구 4개, 없으면 401 |
 | `B10-mcp-연결-도구목록-호출.png` | 로컬 MCP 서버(`/mcp`)에 langchain-mcp-adapters 클라이언트로 붙어 도구 4개 목록을 받고 estimate_distance를 부른 캡처 |
 
 ## 폴더 README

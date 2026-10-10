@@ -12,3 +12,16 @@ tools: 4
 
 ## 토큰 없음 (막혀야 한다)
 HTTP 401
+
+# 배포 r8에서 다시 확인 (화면: mcp-03-deployed-auth.png)
+
+$ python -m scripts.demo.mcp_check https://marvia-api-production.up.railway.app/mcp   # 토큰 있음, 2026-10-10T16:55:57Z
+connected: marvia-mcp (protocol 2025-11-25)
+- estimate_distance: 배의 좌표에서 부산항까지 바닷길로 얼마나 남았는지 알고 싶을 때 쓴다.
+- get_live_position: MMSI를 알고 그 배가 어디서 어떤 속력으로 어디로 가는지 볼 때 쓴다.
+- get_vessel_candidates: 선명이나 호출부호만 알고 그 배의 MMSI를 아직 모를 때 쓴다.
+- get_port_schedule: 그 배가 부산항에 이미 들어왔는지, 언제 들어올 예정인지, 어느 부두에 대는지 해수부 기록으로 확인할 때 쓴다.
+tools: 4
+
+$ curl -X POST https://marvia-api-production.up.railway.app/mcp ...   # 토큰 없음, 2026-10-10T16:56:10Z
+HTTP 401
