@@ -5,7 +5,7 @@
  * - 마커에 마우스를 올리면 선명, 가린 B/L, 운송 화물 이름표, 판정, 통관 단계, 도착 예정, 위치 수신 시각이 뜬다.
  *   운송 화물은 사용자가 붙인 이름표만 쓴다. UNI-PASS 품명은 저장·표시하지 않는다 (SDD 3.5)
  * - 배마다 6시간 간격 위치 이력(track)을 그 배 색의 선으로 잇고, 찍힌 지점마다 작은 동그라미를 단다. 마우스를 올리면 시각과 속력
- * - 배끼리 화면에서 가까우면(CLUSTER_PX 안) 숫자 클러스터로 묶는다. 확대 단계가 바뀔 때마다 다시 묶는다.
+ * - 배끼리 화면에서 가까우면(CLUSTER_PX 안) 숫자 클러스터로 묶는다. 확대 단계가 바뀔 때마다 다시 묶고, 최대 확대에서는 묶지 않는다.
  *   클러스터를 누르면 상세 창에 그 안의 배와 말풍선 내용 전부가 뜬다. 새 라이브러리(leaflet.markercluster) 없이 직접 묶는다
  * 판정은 하지 않는다. 표시만 한다. */
 import {useEffect, useRef, useState, type CSSProperties} from 'react';
@@ -24,6 +24,8 @@ const colorOf = (i: number) => PALETTE[i % PALETTE.length];
 const VESSEL_ONLY_COLOR = '#9ca3af';
 // 화면에서 이 거리(px) 안에 있는 배끼리 한 클러스터로 묶는다. 핀 폭(34px)보다 조금 넓게
 const CLUSTER_PX = 44;
+// 최대 확대. 10이면 44px가 약 5km라 같은 정박지의 배가 끝까지 묶여 하나가 안 보였다. 13이면 약 600m까지 갈라진다
+const MAX_ZOOM = 13;
 /** 위치가 있어 지도에 올릴 수 있는 화물 */
 type Located = WatchItem & {lat: number; lng: number};
 
@@ -115,7 +117,7 @@ export function WatchMap() {
       const {demo} = getPresentationData();
       const css = getComputedStyle(document.documentElement);
       const color = (n: string) => css.getPropertyValue(n).trim();
-      const map = L.map(host.current, {zoomControl: true, scrollWheelZoom: true, minZoom: 4, maxZoom: 10});
+      const map = L.map(host.current, {zoomControl: true, scrollWheelZoom: true, minZoom: 4, maxZoom: MAX_ZOOM});
       const points = [...active.flatMap(i => [L.latLng(i.lat, i.lng), ...(showTrack ? (i.track ?? []).map(t => L.latLng(t.lat, t.lng)) : [])]),
         ...vesselPins.map(v => L.latLng(v.lat as number, v.lng as number))];
       const port = L.latLng(demo.port.lat, demo.port.lng);
@@ -221,10 +223,12 @@ export function WatchMap() {
         const pts = spots.map(it => map.latLngToLayerPoint([it.lat, it.lng]));
         const used = new Set<number>();
         groups = [];
+        // [왜] 더 확대할 수 없는 단계에서 묶으면 안의 배를 따로 볼 방법이 없다. 그때는 핀이 겹쳐도 하나씩 올린다
+        const atMax = map.getZoom() >= map.getMaxZoom();
         spots.forEach((_, i) => {
           if (used.has(i)) return;
           const g = [i]; used.add(i);
-          spots.forEach((__, j) => { if (!used.has(j) && pts[i].distanceTo(pts[j]) < CLUSTER_PX) { g.push(j); used.add(j); } });
+          if (!atMax) spots.forEach((__, j) => { if (!used.has(j) && pts[i].distanceTo(pts[j]) < CLUSTER_PX) { g.push(j); used.add(j); } });
           groups.push(g);
         });
         groups.forEach(g => {
@@ -254,7 +258,7 @@ export function WatchMap() {
         const after = () => {
           if (finished) return; finished = true;
           const g = groups.find(x => x.includes(i));
-          // 최대로 확대해도 붙어 있는 배(같은 부두 등)는 상세 창으로 보이되, 누른 배를 맨 위에 둔다
+          // 묶인 채로 끝났으면 상세 창으로 보이되 누른 배를 맨 위에 둔다. 최대 확대에서는 묶지 않으므로 그때는 말풍선이 열린다
           if (g && g.length > 1) setCluster([i, ...g.filter(x => x !== i)]);
           else { markers[i].openTooltip(); opened = markers[i]; }
         };
