@@ -60,7 +60,7 @@ export function MetricsPage(){
 
     {!measured?<p className="mt-empty">측정 전</p>:<>
     <p className="mt-status"><span className={`mt-dot ${state}`}/>{state==='pass'?'합격 기준 통과':state==='fail'?'합격 기준 미달':'측정 대기'}
-      {m.updated_at&&<small>서비스 구성(b) · {dateTime(m.updated_at as unknown as string)}{datasetSize?` · 평가 문항 ${datasetSize}개`:''}</small>}</p>
+      {m.updated_at&&<small>골든셋 {datasetSize?`${datasetSize}건 `:''}평가 결과 · 서비스 구성(b) · 마지막 실행 {dateTime(m.updated_at as unknown as string)} 기준 (실시간 아님)</small>}</p>
 
     <div className="mt-kpis">{m.kpis.map(k=>{
       const line=PASS_LINE[k.id];
