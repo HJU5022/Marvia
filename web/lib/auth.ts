@@ -4,12 +4,21 @@
  * - NEXT_PUBLIC_SUPABASE_URL: Supabase 프로젝트 주소 (비밀 아님)
  * - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 브라우저용 공개 키 (비밀 아님. service_role/secret 키는 절대 넣지 않는다)
  * 둘 중 하나라도 없으면 로그인 기능이 꺼지고, 화면은 예전처럼 세션 ID로만 돈다 (채점용 compose와 같은 길).
+ *
+ * 데모 계정(docs/specs/demo-account.md): 여러 사람이 같이 쓰는 이메일 로그인 계정 1개. 화면에 공개하는 값이라 비밀값이 아니다.
+ * - NEXT_PUBLIC_DEMO_EMAIL, NEXT_PUBLIC_DEMO_PASSWORD: 둘 다 있을 때만 로그인 화면에 버튼과 계정 표기가 나온다
  */
 import {createClient, type Session, type SupabaseClient} from '@supabase/supabase-js';
 
 const URL_ = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const KEY = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '').trim();
 export const authEnabled = URL_ !== '' && KEY !== '';
+
+const DEMO_EMAIL = (process.env.NEXT_PUBLIC_DEMO_EMAIL ?? '').trim();
+const DEMO_PASSWORD = (process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? '').trim();
+/** 데모 계정. 로그인이 꺼져 있거나 값이 하나라도 비면 null이라 화면에 버튼이 나오지 않는다. */
+export const demoAccount = authEnabled && DEMO_EMAIL !== '' && DEMO_PASSWORD !== ''
+  ? {email: DEMO_EMAIL, password: DEMO_PASSWORD} : null;
 
 let client: SupabaseClient | null = null;
 
@@ -69,6 +78,14 @@ export async function signInWithGoogle(): Promise<void> {
   if (!sb) throw new Error('로그인 기능이 설정되지 않았습니다.');
   const {error} = await sb.auth.signInWithOAuth({provider: 'google', options: {redirectTo: returnAddress(window.location)}});
   if (error) throw new Error('구글 로그인을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+}
+
+/** 데모 계정으로 로그인한다. 구글로 넘어가지 않고 이 페이지에서 바로 끝나며, 끝나면 onAuthChange가 화면을 바꾼다. */
+export async function signInWithDemo(): Promise<void> {
+  const sb = supabase();
+  if (!sb || !demoAccount) throw new Error('데모 계정이 설정되지 않았습니다.');
+  const {error} = await sb.auth.signInWithPassword(demoAccount);
+  if (error) throw new Error('데모 계정으로 로그인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
 }
 
 export async function signOut(): Promise<void> {

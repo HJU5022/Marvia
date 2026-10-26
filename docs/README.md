@@ -36,6 +36,7 @@ SDD 5절과 작업 리스트에 없는 기능은 Spec을 먼저 쓴다 (CLAUDE.m
 | [chat-progress.md](./specs/chat-progress.md) | 답을 기다리는 동안 실제 처리 단계를 SSE로 보여 주기 |
 | [chat-search.md](./specs/chat-search.md) | 자연어 입력 하나로 조회, 입항 선박 검색 |
 | [customs-detail.md](./specs/customs-detail.md) | UNI-PASS 처리 이력 원문 화면 표시 |
+| [demo-account.md](./specs/demo-account.md) | 데모 계정: 로그인 화면 표기와 버튼, 탈퇴 막기 |
 | [document-extract.md](./specs/document-extract.md) | 서류 사진에서 조회 값 뽑기 |
 | [injection-redteam.md](./specs/injection-redteam.md) | 프롬프트 주입 레드팀 점검 |
 | [memory.md](./specs/memory.md) | 화물 비서 기억: 사용자별 화물 표와 메모장, 채팅 입구 |

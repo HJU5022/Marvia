@@ -152,6 +152,54 @@ def test_withdraw_needs_login(monkeypatch):
         assert client.delete("/api/account").status_code == 401  # 로그인 켜짐, 헤더 없음
 
 
+# ── 데모 계정 탈퇴 막기 (docs/specs/demo-account.md) ──
+
+DEMO_EMAIL = "demo@example.com"
+
+
+def _login_with_email(monkeypatch, email: str) -> dict:
+    """_login과 같되 출입증에 확인된 이메일을 넣는다. 데모 계정 판단이 이 이메일을 본다."""
+    import time
+
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from backend.app import auth
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    base = "https://test-project.supabase.co"
+    monkeypatch.setenv("SUPABASE_URL", base)
+    monkeypatch.setattr(auth, "_signing_key", lambda token, base_url: key.public_key())
+    token = jwt.encode({"sub": f"user-{email.split('@')[0]}", "aud": "authenticated", "iss": f"{base}/auth/v1", "email": email,
+                        "user_metadata": {"email_verified": True}, "exp": int(time.time()) + 3600},
+                       key, algorithm="ES256")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_demo_account_cannot_withdraw(monkeypatch):
+    """여러 사람이 같이 쓰는 데모 계정은 지우지 않는다. 대소문자가 달라도 같은 계정이다."""
+    monkeypatch.setenv("DEMO_ACCOUNT_EMAIL", "Demo@Example.com")
+    from backend.app.routers import account as account_router
+
+    headers = _login_with_email(monkeypatch, DEMO_EMAIL)
+    # 라우터가 withdraw를 이름으로 들여와 쓰므로 라우터 쪽 이름을 바꿔 끼운다
+    monkeypatch.setattr(account_router, "withdraw", lambda user_id: pytest.fail("데모 계정을 지우면 안 된다"))
+    with TestClient(app) as client:
+        resp = client.delete("/api/account", headers=headers)
+    assert resp.status_code == 403 and "데모 계정" in resp.json()["detail"]
+
+
+def test_other_account_still_withdraws_when_demo_is_set(monkeypatch):
+    """데모 이메일이 정해져 있어도 다른 사람은 예전처럼 탈퇴한다."""
+    monkeypatch.setenv("DEMO_ACCOUNT_EMAIL", DEMO_EMAIL)
+    headers, steps = _login_with_email(monkeypatch, "someone@example.com"), []
+    _db(monkeypatch, steps)
+    monkeypatch.setattr(account_service, "delete_account", lambda user_id: steps.append(("account", user_id)))
+    with TestClient(app) as client:
+        assert client.delete("/api/account", headers=headers).status_code == 200
+    assert steps[-1] == ("account", "user-someone")
+
+
 def test_browser_may_send_delete():
     """CORS가 DELETE를 허용해야 화면에서 내 기록 삭제·탈퇴를 부를 수 있다 (전엔 GET·POST만)."""
     with TestClient(app) as client:
