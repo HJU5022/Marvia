@@ -46,3 +46,6 @@ evals/fixtures/replay/shipfinder/
 evals/fixtures/replay/mof/
 evals/fixtures/replay/unipass/
 evals/fixtures/replay/positions/
+
+# v2
+.venv-v1/
