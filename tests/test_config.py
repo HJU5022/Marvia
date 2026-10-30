@@ -20,3 +20,18 @@ def test_empty_value_uses_default(monkeypatch):
     # .env에 "MARVIA_DATABASE_URL="처럼 값 없이 적힌 경우
     monkeypatch.setenv("MARVIA_DATABASE_URL", "")
     assert Settings(_env_file=None).database_url == LOCAL_DB
+
+
+def test_model_defaults(monkeypatch):
+    monkeypatch.delenv("MARVIA_CHAT_MODEL", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.chat_model == "claude-haiku-5-5"
+    assert settings.embed_dim == 1024
+
+
+def test_key_is_hidden_when_printed(monkeypatch):
+    # [왜] 설정 객체를 실수로 print해도 키가 화면·로그에 나오지 않아야 한다
+    monkeypatch.setenv("MARVIA_ANTHROPIC_API_KEY", "sk-test-not-real")
+    settings = Settings(_env_file=None)
+    assert "sk-test-not-real" not in repr(settings)
+    assert settings.anthropic_api_key.get_secret_value() == "sk-test-not-real"

@@ -4,6 +4,8 @@ version = "2.0.0a0"
 description = "어떤 단서로든 수입 화물을 찾아 법령 근거와 함께 다음 할 일을 알려 주는 에이전트"
 requires-python = ">=3.12"
 dependencies = [
+    "langchain>=1.4.7",
+    "langchain-anthropic>=1.7.7",
     "langgraph>=1.2.18",
     "langgraph-checkpoint-postgres>=3.2.0",
     "psycopg[binary,pool]>=3.3.6",

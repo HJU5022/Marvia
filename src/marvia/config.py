@@ -1,12 +1,13 @@
-"""설정: 환경 변수와 .env에서 값을 읽는다 (설계 8절, 계획 1 Task 8).
+"""설정: 환경 변수와 .env에서 값을 읽는다 (설계 8절·13절, 계획 1 Task 8, 계획 2 Task 1).
 
-하지 않는 일: 키·비밀번호 보관. 값은 환경 변수나 .env에만 두고 코드에는 기본값(로컬 DB)만 둔다.
+하지 않는 일: 키·비밀번호 보관. 값은 환경 변수나 .env에만 두고 코드에는 기본값(로컬 DB, 모델 이름)만 둔다.
 [주의] MARVIA_ 접두어가 붙은 이름만 읽는다. 루트 .env의 DATABASE_URL은 v1 운영 DB라,
 읽으면 시험 데이터가 운영 DB에 쌓인다.
 """
 
 from __future__ import annotations
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,3 +23,15 @@ class Settings(BaseSettings):
 
     # 기본값은 docker-compose.yml의 로컬 Postgres (포트 5433)
     database_url: str = "postgresql://marvia:marvia@localhost:5433/marvia"
+
+    # 키 (설계 12절: 저장소에는 이름만 둔다)
+    # [왜] SecretStr은 print나 로그에 '**********'로만 보인다. 실제 값은 .get_secret_value()로만 꺼낸다
+    anthropic_api_key: SecretStr = SecretStr("")  # MARVIA_ANTHROPIC_API_KEY
+    openrouter_api_key: SecretStr = SecretStr("")  # MARVIA_OPENROUTER_API_KEY
+
+    # 모델 (설계 2절 결정 14). [왜] 이름을 설정에 두면 평가 때 환경 변수만 바꿔 다른 모델과 비교할 수 있다
+    chat_model: str = "claude-haiku-5-5"  # 대화 LLM (Anthropic API)
+    embed_model: str = "voyageai/voyage-4"  # 임베딩 (OpenRouter)
+    embed_dim: int = 1024  # [주의] migrations/001_corpus_units.sql의 vector(1024)와 같아야 한다
+    rerank_model: str = "voyageai/rerank-2.5"  # 리랭커 (OpenRouter)
+    openrouter_url: str = "https://openrouter.ai/api/v1"
