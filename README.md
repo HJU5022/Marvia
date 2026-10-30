@@ -2,29 +2,30 @@
 
 **B/L 하나로 부산항 수입 화물이 제때 오는지 순항 / 주의 / 긴급으로 판정하고, 그 근거를 함께 보여주는 LLM 에이전트.**
 
-KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 LLM 서비스
+KDT AI Human 7기 2차 팀 프로젝트 · 5조 · [유형 1] 도메인 특화 LLM 서비스. 2026-10-20부터 개인 저장소(HJU5022/Marvia)에서 이어 개발한다.
 
 | | |
 |---|---|
-| 서비스 | https://marvia.up.railway.app |
-| Agent API | https://marvia-api-production.up.railway.app (`POST /api/agent`, `POST /api/chat`, `GET /health`, `/docs`) |
-| MCP | 위 API 주소의 `/mcp` (Bearer 토큰) |
+| 화면 | https://marvia-kappa.vercel.app (Vercel). 로그인 화면의 **데모 계정으로 둘러보기** 버튼으로 바로 들어간다. 데모 계정은 여러 사람이 같이 쓰는 계정이라 대화·화물 기록이 서로 보인다 ([docs/specs/demo-account.md](./docs/specs/demo-account.md)) |
+| Agent API | https://marvia-api-898187792720.asia-northeast3.run.app (Google Cloud Run 서울, 재생 모드) (`POST /api/agent`, `POST /api/chat`, `GET /health`, `/docs`) |
+| MCP | 위 API 주소의 `/mcp` (Bearer 토큰. 토큰 없이 부르면 401) |
+| 상태 | 2026-10-30 확인: 화면 200, API `/health` `{"status":"ok","db":"ok"}`, `/mcp` 401. API가 올라가 있는 GCP 무료 크레딧은 2026-12-09에 끝나고 그 뒤 운영 여부는 정하지 않았다. 주소가 죽어 있으면 [키 없이 데모](#키-없이-데모-13건)로 로컬에서 같은 판정을 재현한다 |
 | 평가 리포트 | [EVAL_REPORT.md](./EVAL_REPORT.md) |
 | 문서 지도 | [docs/README.md](./docs/README.md) (PRD · SDD · 작업 리스트 · ERD · ADR · 근거 자료) |
 
-주소와 배포 커밋은 [docs/release_manifest.json](./docs/release_manifest.json)에 적힌 값이다. 배포는 Railway이고 Vercel은 쓰지 않는다. 처음 계획(화면 Vercel + 서버 Cloud Run)에서 바꾼 결정과 그 대가는 [ADR 0009](docs/adr/0009-deploy-railway-not-vercel.md)에 있다.
+2차 제출(2026-10-09, r8)까지는 Railway에 배포했고 그때 주소와 커밋은 [docs/release_manifest.json](./docs/release_manifest.json)에 있다([ADR 0009](docs/adr/0009-deploy-railway-not-vercel.md), 대체됨). 발표 뒤 Railway를 해지하고 개인 계정으로 옮겨 화면은 Vercel, API는 Cloud Run 서울에 **재생 모드**로 공개한다. 바꾼 경위와 대가는 [ADR 0021](docs/adr/0021-deploy-vercel-cloudrun-replay.md)에 있다.
 
 ### 살아 있는지 확인
 
 ```bash
-curl -s https://marvia-api-production.up.railway.app/health
+curl -s https://marvia-api-898187792720.asia-northeast3.run.app/health
 ```
 
 | 결과 | 뜻 |
 |---|---|
 | `{"status":"ok","db":"ok"}` | API와 DB가 모두 응답한다 |
 | HTTP 503 | API는 떠 있고 DB 연결이 끊겼다 (`/health`가 DB를 확인한다) |
-| API 주소 `/`가 `Not Found`, `/api/agent`가 `Method Not Allowed` | 정상이다. API 서버라 첫 화면이 없고 `/api/agent`는 POST만 받는다. 화면은 서비스 주소에서 쓴다 |
+| API 주소 `/`가 `Not Found`, `/api/agent`가 `Method Not Allowed` | 정상이다. API 서버라 첫 화면이 없고 `/api/agent`는 POST만 받는다. 화면은 화면 주소에서 쓴다 |
 | 응답 없음 · 타임아웃 | 배포 서버가 내려가 있다. [키 없이 데모](#키-없이-데모-13건)로 같은 판정을 로컬에서 재현한다 |
 
 ## 데모
@@ -96,8 +97,8 @@ curl -s https://marvia-api-production.up.railway.app/health
 
 ```mermaid
 flowchart TD
-    U["브라우저"] --> WEB["web/ Next.js 16<br/>(Railway marvia-web)<br/>서버 비밀 키 없음"]
-    WEB -->|"POST /api/agent<br/>POST /api/chat"| API["backend/app FastAPI<br/>(Railway marvia-api)<br/>routers"]
+    U["브라우저"] --> WEB["web/ Next.js 16<br/>(Vercel)<br/>서버 비밀 키 없음"]
+    WEB -->|"POST /api/agent<br/>POST /api/chat"| API["backend/app FastAPI<br/>(Cloud Run 서울)<br/>routers"]
 
     subgraph SVC["backend/app/services"]
         direction TB
@@ -199,7 +200,7 @@ API 키가 없으면 [키 없이 데모](#키-없이-데모-13건)부터 한다.
 키를 하나도 넣지 않고 13건이 끝까지 돈다. 등급(순항·주의·긴급), 되묻기, 반출 완료, 실패는 키 없이 그대로 나오고, 라이브 데모 10건의 설명 문장만 LLM 키가 있어야 나온다. 외부 API 응답은 가공값 재생 파일(`evals/fixtures/replay/`)을 읽는다. 라이브 시연용 모의 화물 10건(`DEMO..`)과 평가셋 데모 3건(`TESTBL..`)이고, 모든 B/L·선박·포워더·컨테이너는 가공값이다.
 
 ```bash
-git clone https://github.com/aihuman-7th/proj2-5.git && cd proj2-5
+git clone https://github.com/HJU5022/Marvia.git && cd Marvia
 cp .env.example .env
 # .env에서 REPLAY_MODE=false 를 REPLAY_MODE=true 로 바꾼다. 다른 칸은 비워 둔다
 docker compose up -d --build
@@ -291,7 +292,7 @@ curl http://localhost:8000/health        # {"status":"ok","db":"ok"}. DB가 끊�
 | 항목 | 내용 |
 |---|---|
 | 위치 | API 서버 안의 `/mcp` 경로(FastMCP, Streamable HTTP). 서버 하나로 `/api/agent`와 `/mcp`가 같이 열린다 |
-| 인증 | `MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401. 배포 주소 확인 기록은 [docs/evidence/mcp-02-deployed-tools.txt](./docs/evidence/mcp-02-deployed-tools.txt), 화면은 아래 그림 |
+| 인증 | `MCP_TOKEN`을 채우면 `Authorization: Bearer <MCP_TOKEN>` 없이는 401. 배포 주소 확인 기록은 [docs/evidence/mcp-02-deployed-tools.txt](./docs/evidence/mcp-02-deployed-tools.txt), 화면은 아래 그림(둘 다 2차 제출 때 Railway 주소 기록). 지금 Cloud Run 주소도 토큰 없이 `/mcp`를 부르면 401이다(2026-10-30 확인) |
 | 도구 4종 (읽기 전용) | `get_vessel_candidates`, `get_live_position`, `get_port_schedule`, `estimate_distance` |
 | 서비스가 부르는 방식 | `/api/agent`와 채팅도 도구를 MCP 프로토콜로 부른다(`backend/app/services/mcp_client.py`). 호출마다 Langfuse에 `mcp:<도구>` 관측이 남는다 |
 
@@ -304,7 +305,20 @@ curl http://localhost:8000/health        # {"status":"ok","db":"ok"}. DB가 끊�
 
 ## 배포
 
-배포 서버는 실제 모드(`REPLAY_MODE=false`)다. 재생 모드(`REPLAY_MODE=true`)는 키 없는 재현, 로컬 데모, 평가용이다.
+지금 공개 배포(2026-10-26~)는 개인 계정에 있고 **재생 모드**(`REPLAY_MODE=true`)다. 외부 API(UNI-PASS·ShipFinder·해수부)는 재생 파일(`evals/fixtures/replay/`)을 읽는다. 재생 모드여도 `LLM_MODEL`이 설정돼 있으면 설명 문장은 실제 모델을 부른다(`backend/app/services/llm.py`의 재생 모드 주석). 2차 제출 때의 Railway 배포는 실제 모드였다([ADR 0010](docs/adr/0010-deployed-server-real-mode.md), 대체됨). 바꾼 경위는 [ADR 0021](docs/adr/0021-deploy-vercel-cloudrun-replay.md).
+
+| 서비스 | 플랫폼 | 비고 |
+|---|---|---|
+| 화면 | Vercel | `web/` Next.js 16. `NEXT_PUBLIC_API_BASE`가 아래 API를 가리킨다 |
+| API | Google Cloud Run (서울, asia-northeast3) | FastAPI. `/api/*`, `/mcp`, `/health` |
+| 워커 | 올리지 않았다 | 자동 수집·감시 재판정은 돌지 않는다 |
+| DB·로그인 | Supabase (서울) | 2차 때의 팀 프로젝트가 아니라 새 프로젝트다. 표는 같은 마이그레이션으로 만들었다 |
+
+API가 올라가 있는 GCP 프로젝트는 무료 체험 크레딧이고 2026-12-09에 끝난다. 그 뒤 운영 여부는 정하지 않았다. 배포 커밋·확인 결과는 [docs/release_manifest.json](./docs/release_manifest.json) `_current_deploy`에 적는다.
+
+### 이전 배포 (2차 제출, Railway, 해지됨)
+
+2차 제출 때 배포 서버는 실제 모드(`REPLAY_MODE=false`)였다. 아래 표와 명령은 그때 기록이고 지금은 쓰지 않는다. 주소는 모두 404다.
 
 | 서비스 | 플랫폼 | 비고 |
 |---|---|---|
@@ -313,32 +327,32 @@ curl http://localhost:8000/health        # {"status":"ok","db":"ok"}. DB가 끊�
 | `marvia-worker` | Railway | 위치·입항 실적 수집, 지켜보는 화물 재판정. 배포에서는 한 번만 실행하고 자동 수집·재판정은 꺼 두었다(`WORKER_SCHEDULE=off`, `WATCH_ENABLED=off`) |
 | `mof-relay` | Google Cloud Run (서울) | 해수부 API 릴레이 ([relay/README.md](./relay/README.md)) |
 
-배포는 Railway CLI로 한다(GitHub에서 자동 배포되지 않는다). 레포 루트에서 실행한다.
+배포는 Railway CLI로 했다(GitHub에서 자동 배포되지 않았다). 레포 루트에서 실행했다.
 
 ```bash
 railway up --service marvia-api --detach                     # Railway 변수 RAILWAY_DOCKERFILE_PATH=Dockerfile.railway
 railway up web --path-as-root --service marvia-web --detach  # web 폴더만 올린다
 ```
 
-CLI는 연결한 폴더 전체를 올린다. web에 `--path-as-root`가 없으면 루트 `Dockerfile`의 마지막 단계(worker)가 빌드돼 화면이 502가 된다. 배포한 커밋, 모델, 프롬프트 버전, 확인 결과, 되돌리기 방법은 [docs/release_manifest.json](./docs/release_manifest.json)에 적는다.
+CLI는 연결한 폴더 전체를 올린다. web에 `--path-as-root`가 없으면 루트 `Dockerfile`의 마지막 단계(worker)가 빌드돼 화면이 502가 됐다. 배포한 커밋, 모델, 프롬프트 버전, 확인 결과, 되돌리기 방법은 [docs/release_manifest.json](./docs/release_manifest.json) r8 이하에 있다.
 
-**해수부 릴레이.** Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패한다. 한국에서는 0.1초에 응답하고, UNI-PASS는 싱가포르에서도 된다. 원인은 확인하지 못했다. 그래서 서울(asia-northeast3) Cloud Run에 작은 FastAPI 릴레이를 두고 우회했다.
+**해수부 릴레이.** 2차 제출 때 Railway 서버(리전 기록은 Singapore)에서 해수부 API가 ConnectTimeout(15초 x 3회)으로 실패했다. 한국에서는 0.1초에 응답하고, UNI-PASS는 싱가포르에서도 됐다. 원인은 확인하지 못했다. 그래서 서울(asia-northeast3) Cloud Run에 작은 FastAPI 릴레이를 두고 우회했다.
 
 | 항목 | 내용 |
 |---|---|
 | 하는 일 | `GET /1192000/VsslEtrynd5/*`, `/1192000/CntlVssl2/*`만 `apis.data.go.kr`로 넘기고, `X-Relay-Token` 헤더가 맞아야 받는다. 쿼리스트링(serviceKey)은 로그에 남기지 않는다 |
 | 백엔드 쪽 | `MOF_BASE_URL`(릴레이 주소, 비우면 직접 호출), `MOF_RELAY_TOKEN`(릴레이의 `RELAY_TOKEN`과 같은 값). 연결 실패는 한 번만 바로 다시 시도하고, 그래도 안 되면 15초 동안 해수부 호출을 바로 실패시킨다(`backend/app/clients/mof.py`의 `CIRCUIT_OPEN_SEC`) |
-| 확인한 것 | 운영 `marvia-api`가 릴레이를 쓰고, 운영 채팅의 입항 선박 검색이 실제 선박 목록을 돌려줬다("일본에서 1주 안에 부산 오는 수입 화물선" 질문에 43척, [SDD 6.7절](./docs/Marvia_SDD.md#67-해수부-릴레이-cloud-run-서울)). 지속 가동률은 재지 않았다 |
-| 비용 | 개인 GCP 프로젝트의 무료 체험 크레딧(팀 계정 아님) |
+| 확인한 것 | 2차 제출 때(실제 모드) 운영 `marvia-api`가 릴레이를 쓰고, 운영 채팅의 입항 선박 검색이 실제 선박 목록을 돌려줬다("일본에서 1주 안에 부산 오는 수입 화물선" 질문에 43척, [SDD 6.7절](./docs/Marvia_SDD.md#67-해수부-릴레이-cloud-run-서울)). 지속 가동률은 재지 않았다 |
+| 비용 | 개인 GCP 프로젝트의 무료 체험 크레딧(팀 계정 아님). 2026-12-09에 끝난다 |
 
-**알려진 한계.** 배포 서버는 실제 모드지만 실제 사용자 B/L 판정을 사람이 대조한 기록은 없다. 자동 수집과 감시 재판정은 배포에서 꺼져 있다. 나머지 약점은 [EVAL_REPORT 8절](./EVAL_REPORT.md#8-지금-이-서비스의-가장-큰-약점).
+**알려진 한계.** 지금 공개 배포는 재생 모드라 실제 화물을 조회하지 않고, 2차 제출 때 실제 모드로 돌던 서버에서도 실제 사용자 B/L 판정을 사람이 대조한 기록은 없다. 자동 수집과 감시 재판정은 배포에서 돌지 않는다. 나머지 약점은 [EVAL_REPORT 8절](./EVAL_REPORT.md#8-지금-이-서비스의-가장-큰-약점).
 
 ### 기술 스택
 
 | 영역 | 사용 |
 |---|---|
-| Backend | FastAPI, Pydantic v2, Docker, Railway (`marvia-api`) |
-| Frontend | Next.js 16, React 19, MapLibre 지도, Railway (`marvia-web`) |
+| Backend | FastAPI, Pydantic v2, Docker, Google Cloud Run 서울 (2차 제출 때는 Railway `marvia-api`) |
+| Frontend | Next.js 16, React 19, MapLibre 지도, Vercel (2차 제출 때는 Railway `marvia-web`) |
 | LLM | OpenRouter. 서비스 모델 `google/gemini-3.5-flash-lite`, 비교 모델 `openai/gpt-4o-mini`(이전 서비스 모델)·`qwen/qwen3-235b-a22b-2507`. 구조화 출력. `llm.py`에 Vertex(`vertex/` 접두) 경로도 있다 |
 | 도구 | FastMCP (Streamable HTTP), ShipFinder, 해수부 공공데이터, searoute |
 | 데이터 | Supabase(배포 DB·로그인), 로컬은 PostgreSQL 16 |
@@ -354,7 +368,7 @@ CLI는 연결한 폴더 전체를 올린다. web에 `--path-as-root`가 없으�
 |---|---|
 | `README.md`, `EVAL_REPORT.md` | 소개·실행법·지표, 관측과 평가 리포트 |
 | `CLAUDE.md`, `AGENTS.md` | AI 작업 규칙 |
-| `Dockerfile`, `Dockerfile.railway`, `docker-compose.yml` | 로컬 compose용 멀티스테이지, Railway API 이미지, api·worker·postgres 16 |
+| `Dockerfile`, `Dockerfile.railway`, `docker-compose.yml` | 로컬 compose용 멀티스테이지, Railway API 이미지(2차 제출 때 사용), api·worker·postgres 16 |
 | [`backend/`](./backend/README.md) | FastAPI 서버: 라우터, 스키마(계약), 판정·채팅·회원·지켜보기 서비스, 외부 API 클라이언트, 마이그레이션, 프롬프트 사본, 테스트 |
 | [`mcp_server/`](./mcp_server/README.md) | FastMCP 서버, 읽기 전용 도구 4종 |
 | [`skills/`](./skills/README.md) | LLM이 읽는 도메인 지식 6종 (폴더마다 `SKILL.md` + `rules.md`) |

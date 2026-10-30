@@ -27,8 +27,8 @@ Marvia의 구조를 정한 결정을 한 건씩 적는다. 번호는 읽는 순�
 | [0006](0006-mcp-server-for-external-data.md) | 외부 데이터 도구는 MCP 서버로 노출하고 서비스도 /mcp로 부른다 | 채택 | SDD 3.4, 5.9 |
 | [0007](0007-validation-retry-partial-fallback.md) | 검증 V1~V15, 위반이 계속되면 partial 폴백 | 채택 | SDD 5.7 / EVAL_REPORT 4-1, 9-2절 |
 | [0008](0008-replay-mode-keyless.md) | REPLAY_MODE로 키 없이 데모와 평가를 재현한다 | 채택 | SDD 6.1, 6.6 |
-| [0009](0009-deploy-railway-not-vercel.md) | 배포는 Railway, Vercel과 api용 Cloud Run은 쓰지 않는다 | 채택 | SDD 2.2, 6.4 / release_manifest.json |
-| [0010](0010-deployed-server-real-mode.md) | 배포 서버는 재생 모드가 아니라 실제 모드로 돌린다 | 채택 | SDD 2.2 / release_manifest.json |
+| [0009](0009-deploy-railway-not-vercel.md) | 배포는 Railway, Vercel과 api용 Cloud Run은 쓰지 않는다 | 대체됨 → 0021 | SDD 2.2, 6.4 / release_manifest.json r8 |
+| [0010](0010-deployed-server-real-mode.md) | 배포 서버는 재생 모드가 아니라 실제 모드로 돌린다 | 대체됨 → 0021 | SDD 2.2 / release_manifest.json r8 |
 | [0011](0011-mof-seoul-relay.md) | 해수부 API는 서울 Cloud Run 릴레이를 거쳐 부른다 | 채택 | SDD 6.7 / relay/README.md |
 | [0012](0012-service-model-gemini-flash-lite.md) | 서비스 모델을 gpt-4o-mini에서 gemini-3.5-flash-lite로 바꿨다 | 채택 | EVAL_REPORT 5절 / release_manifest.json |
 | [0013](0013-prompts-in-langfuse-production-label.md) | 프롬프트는 Langfuse에서 가져오고 production 라벨로 되돌린다 | 채택 | SDD 5.6 / prompt_versions.md |
@@ -39,3 +39,4 @@ Marvia의 구조를 정한 결정을 한 건씩 적는다. 번호는 읽는 순�
 | [0018](0018-daily-token-quota.md) | 남용 방어는 로그인과 1명당 하루 토큰 한도로 한다 | 채택 | specs/token-quota.md / SDD 5.20 |
 | [0019](0019-watch-user-opt-in-limit.md) | 지켜보기는 사용자가 켠 화물만, 사용자당 최대 5건 | 채택 | specs/cargo-watch.md / SDD 5.10, 5.18 |
 | [0020](0020-remove-web-search-use-skill.md) | 웹 검색 도구를 없애고 수입 실무 기초는 Skill 문서로 둔다 | 채택 | prompt_versions.md chat-agent 16 / skills/import-basics |
+| [0021](0021-deploy-vercel-cloudrun-replay.md) | 개인 계정으로 옮기며 화면은 Vercel, API는 Cloud Run 서울에 재생 모드로 공개한다 | 채택 | release_manifest.json `_current_deploy` / specs/demo-account.md |

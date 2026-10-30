@@ -1,6 +1,6 @@
 # 0009. 배포는 Railway로 하고 Vercel과 api용 Cloud Run은 쓰지 않는다
 
-상태: 채택
+상태: 대체됨 → [0021](0021-deploy-vercel-cloudrun-replay.md). 발표 뒤 Railway를 해지했고(2026-10-15에는 이미 꺼져 있었다), 개인 계정으로 옮기며 화면은 Vercel, API는 Cloud Run 서울로 바꿨다. 아래는 2차 제출(2026-10-09 r8)까지의 기록이다.
 
 ## 맥락
 처음 계획은 화면 Vercel + 서버 GCP Cloud Run이었다 ([SDD 2.2절](../Marvia_SDD.md)). Railway로 바꾼 이유는 레포에 기록이 없다.

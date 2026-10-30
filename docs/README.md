@@ -16,7 +16,7 @@
 
 | 궁금한 것 | 볼 곳 |
 |---|---|
-| 왜 이렇게 설계했나 (결정 하나당 한 장, 20건) | [adr/](./adr/README.md) |
+| 왜 이렇게 설계했나 (결정 하나당 한 장, 21건) | [adr/](./adr/README.md) |
 | SDD에 없는 기능의 범위와 동작 | [specs/](#specs) (아래 표) |
 | DB 표와 칸, 관계, 마이그레이션 | [ERD.md](./ERD.md) |
 | 프롬프트 10개의 지금 버전, 버전마다 무엇을 왜 바꿨고 결과가 어땠나 | [prompt_versions.md](./prompt_versions.md) (원문은 `backend/app/prompts/`) |
