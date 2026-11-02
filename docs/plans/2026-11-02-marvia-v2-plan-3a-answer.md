@@ -165,7 +165,9 @@ def test_stage_without_deadline():
         (date(2026, 10, 21), 20, 0.005),
         (date(2026, 10, 22), 21, 0.010),
         (date(2026, 12, 20), 80, 0.015),
-        (date(2026, 12, 21), 81, 0.020),
+        # [왜] 80일째 12-20이 일요일이라 3호 구간이 12-21(월)까지 간다 (민법 제161조)
+        (date(2026, 12, 21), 81, 0.015),
+        (date(2026, 12, 22), 82, 0.020),
     ],
 )
 def test_late_surcharge_bands(today, late_days, rate):
@@ -206,7 +208,7 @@ deadlines:
         - { within_days: 80, rate: 0.015 }
       else_rate: 0.020 # 그 밖 (L002421@20260227#제247조.1항.4호)
       cap_krw: 5000000 # 가산세액 상한 (L002421@20260227#제247조.2항)
-      # 붙는 물품은 관세청장이 정한다(시행령 제248조 → 보세화물관리에 관한 고시 제34조제1항, A36852@20260224#제34조.1항).
+      # 붙는 물품은 관세청장이 정한다(시행령 제248조 → 보세화물관리에 관한 고시 제34조제1항, A36852@20260224#제34조.1항.1호.가목~.1항.4호).
       # 고시 별표 1이 코퍼스에 없어 코드는 대상인지 가리지 않고 이 글을 늘 함께 낸다
       applies: 보세화물관리에 관한 고시 별표 1 보세구역에 반입된 물품과 공고 물품만
   # 납세신고 수리일부터 15일 이내 관세 납부 (L001556@20261002#제9조.1항.1호)
@@ -272,6 +274,8 @@ holidays:
 ```
 
 - [ ] **Step 3: 기한 계산**
+
+(11-02 실행 뒤 검증에서 고침) 가산세 구간(20·50·80일)의 끝날도 토·일·공휴일이면 다음 날로 넘긴다. 관세법 제8조제2항이 기간 계산을 민법에 맡기고 민법 제161조가 "말일이 토요일 또는 공휴일이면 익일 만료"라서다 [추정: 이 구간에 적용한 예규는 확인하지 못했다]. 그래서 날 수 대신 `due_date`로 구한 구간 끝날과 오늘을 비교하고, 시험에 12-21(구간 끝 12-20이 일요일, 1.5%)과 12-22(2.0%)를 둔다.
 
 `src/marvia/tools/deadlines.py`:
 
@@ -349,8 +353,14 @@ def import_deadlines(stage: str, stage_on: date, today: date) -> list[Deadline]:
             late_days = -days_left
             # [왜] 구간을 짧은 것부터 보고 처음 들어맞는 율을 쓴다. 어느 구간에도 없으면 그 밖의 율
             # [추정] "기한이 지난 날부터 20일내"의 첫날 셈은 확인하지 못했다. 기한 다음 날을 1일로 센다
-            bands = late["bands"]
-            rate = next((b["rate"] for b in bands if late_days <= b["within_days"]), late["else_rate"])
+            # [왜] 구간 끝날도 기간의 말일이라 토·일·공휴일이면 다음 날로 넘긴다
+            #      (관세법 제8조제2항 → 민법 제161조). 그래서 날 수 대신
+            #      due_date로 구한 구간 끝날과 오늘을 비교한다
+            # [추정] 민법 제161조를 이 구간에 적용한 판례·예규는 확인하지 못했다
+            rate = next(
+                (b["rate"] for b in late["bands"] if today <= due_date(due, b["within_days"], holidays)),
+                late["else_rate"],
+            )
             surcharge = LateSurcharge(
                 late_days=late_days, rate=rate, cap_krw=late["cap_krw"], applies=late["applies"]
             )
@@ -371,7 +381,7 @@ def import_deadlines(stage: str, stage_on: date, today: date) -> list[Deadline]:
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `uv run pytest tests/tools/test_deadlines.py -v`
-Expected: 11 passed
+Expected: 12 passed
 
 - [ ] **Step 5: 전체 확인과 커밋**
 
@@ -380,7 +390,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 92 passed (DB가 꺼져 있으면 86 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 93 passed (DB가 꺼져 있으면 87 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -726,7 +736,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 102 passed (DB가 꺼져 있으면 96 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 103 passed (DB가 꺼져 있으면 97 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -1210,7 +1220,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 124 passed (DB가 꺼져 있으면 118 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 125 passed (DB가 꺼져 있으면 119 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -1841,7 +1851,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 128 passed (DB가 꺼져 있으면 122 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 129 passed (DB가 꺼져 있으면 123 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -2532,7 +2542,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 132 passed (DB가 꺼져 있으면 126 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 133 passed (DB가 꺼져 있으면 127 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -3295,7 +3305,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 135 passed (DB가 꺼져 있으면 129 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 136 passed (DB가 꺼져 있으면 130 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4109,7 +4119,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 145 passed (DB가 꺼져 있으면 139 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 146 passed (DB가 꺼져 있으면 140 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4244,7 +4254,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 146 passed (DB가 꺼져 있으면 140 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 147 passed (DB가 꺼져 있으면 141 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4311,7 +4321,7 @@ uv run python scripts/try_agent.py "다음 주에 칭다오에서 고추 와요.
 - 화물 번호가 있으면 화물 줄과 기한(수입신고 기한·관세 납부기한, 넘겼으면 신고지연 가산세율과 대상 범위)을, 재수입 질문이면 서류검사 요건 판정을 코드가 계산하고 작성자는 그 값만 옮긴다.
 - 번호가 없는 화물 질문에는 코드가 쓰는 포워더 안내 줄과 작성자가 쓴 메시지가 나온다.
 - 검증 위반 두 번, LLM 호출 상한, 남은 단계 부족, LLM 실패 중 하나면 오류 대신 부분 답(계산한 것·찾은 근거·빠진 근거·실패한 도구·다음 선택지)이 나온다.
-- 테스트 146개가 키 없이 돈다(DB가 꺼져 있으면 140 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
+- 테스트 147개가 키 없이 돈다(DB가 꺼져 있으면 141 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
 
 ## 설계와 대조
 

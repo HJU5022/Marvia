@@ -71,8 +71,14 @@ def import_deadlines(stage: str, stage_on: date, today: date) -> list[Deadline]:
             late_days = -days_left
             # [왜] 구간을 짧은 것부터 보고 처음 들어맞는 율을 쓴다. 어느 구간에도 없으면 그 밖의 율
             # [추정] "기한이 지난 날부터 20일내"의 첫날 셈은 확인하지 못했다. 기한 다음 날을 1일로 센다
-            bands = late["bands"]
-            rate = next((b["rate"] for b in bands if late_days <= b["within_days"]), late["else_rate"])
+            # [왜] 구간 끝날도 기간의 말일이라 토·일·공휴일이면 다음 날로 넘긴다
+            #      (관세법 제8조제2항 → 민법 제161조). 그래서 날 수 대신
+            #      due_date로 구한 구간 끝날과 오늘을 비교한다
+            # [추정] 민법 제161조를 이 구간에 적용한 판례·예규는 확인하지 못했다
+            rate = next(
+                (b["rate"] for b in late["bands"] if today <= due_date(due, b["within_days"], holidays)),
+                late["else_rate"],
+            )
             surcharge = LateSurcharge(
                 late_days=late_days, rate=rate, cap_krw=late["cap_krw"], applies=late["applies"]
             )
