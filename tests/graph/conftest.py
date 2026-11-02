@@ -86,15 +86,21 @@ NO_FACTS = ItemFacts(
 
 @pytest.fixture
 def fake_rag():
-    """가짜 RagDeps를 만드는 함수. 질의와 상관없이 UNIT을 찾고, sufficient대로 채점한다."""
+    """가짜 RagDeps를 만드는 함수. 늘 UNIT을 찾고 sufficient대로 채점한다. fail을 주면 검색이 실패한다."""
 
-    def make(sufficient: bool = True) -> RagDeps:
+    def make(sufficient: bool = True, fail: Exception | None = None) -> RagDeps:
         missing = "" if sufficient else "가산세 대상 보세구역 목록"
+
+        def search(query, as_of):
+            if fail:
+                raise fail
+            return [UNIT]
+
         return RagDeps(
             analyze=lambda prompt: QueryAnalysis(
                 question_type="문구 해석", as_of=None, search_query="수입신고 기한"
             ),
-            search=lambda query, as_of: [UNIT],
+            search=search,
             rerank=lambda query, texts: [UNIT.score] * len(texts),
             grade=lambda prompt: Grade(sufficient=sufficient, reason="시험", missing=missing),
             rewrite=lambda prompt: Rewrite(search_query="수입신고 기한 가산세"),

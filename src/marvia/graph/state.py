@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Required, TypedDict
 
+from langgraph.managed import RemainingSteps
+
 
 # [왜] TypedDict는 "이 dict에는 이런 칸이 있다"를 적어 두는 문법이다. 실행 중 검사는 하지 않고 pyright가 본다
 # [왜] total=False: 모든 칸이 처음부터 있을 필요는 없다. 노드가 하나씩 채워 간다
@@ -34,6 +36,8 @@ class MarviaState(IdentifyState, total=False):
     write_attempts: int  # 이번 차례 작성자 호출 수
     llm_calls: int  # 이번 차례 LLM 호출 수
     failed_tools: list[dict]  # 실패한 도구 호출 {"tool", "message"}
+    # [왜] LangGraph가 단계마다 채우는 값(recursion_limit까지 남은 단계 수). 읽기만 하고 start도 비우지 않는다
+    remaining_steps: RemainingSteps
     answer: str  # 화면에 보낼 답 (번호를 되돌린 글)
 
 

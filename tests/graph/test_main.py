@@ -1,9 +1,12 @@
+import httpx
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from marvia.graph.main import build_main_graph, merge_evidence
 from marvia.graph.schemas import Draft, Plan, Step
+from marvia.llm import LLMFailed
 from marvia.tools.reimport import ItemFacts
+from marvia.tools.rules import load_rules
 
 # 근거 묶음에 없는 unit_id를 인용한 초안. 검증에서 늘 걸린다
 BAD = Draft(
@@ -44,6 +47,15 @@ def recording(prompts: list[str], *answers):
     def call(prompt: str):
         prompts.append(prompt)
         return next(left)
+
+    return call
+
+
+def failing(error: Exception):
+    """부르면 error를 내는 가짜 LLM."""
+
+    def call(prompt: str):
+        raise error
 
     return call
 
@@ -201,3 +213,57 @@ def test_second_turn_drops_item(agent_deps):
     graph.invoke({"text": "수입신고는 언제 해요?"}, cfg("t14"))
     values = graph.get_state(cfg("t14")).values
     assert values["item"] == {} and values["calc"] == {}  # 지난 차례의 품목 사실과 계산이 남지 않는다
+
+
+def test_llm_call_cap_gives_partial_answer(agent_deps):
+    # 계획자가 끝없이 검색만 고른다. 호출 수 상한에 닿으면 부분 답으로 끝난다
+    graph = build_main_graph(agent_deps(plan=lambda prompt: SEARCH), InMemorySaver())
+    out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t15"))
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert "찾은 근거:" in out["answer"]  # 그동안 찾은 근거의 제목은 남긴다
+    assert graph.get_state(cfg("t15")).values["llm_calls"] >= load_rules("agent")["loop"]["max_llm_calls"]
+
+
+def test_remaining_steps_gives_partial_answer(agent_deps):
+    # recursion_limit을 작게 주면 호출 수 상한보다 먼저 남은 단계가 모자란다. 오류 대신 부분 답
+    graph = build_main_graph(agent_deps(plan=lambda prompt: SEARCH), InMemorySaver())
+    out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t16") | {"recursion_limit": 10})
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert graph.get_state(cfg("t16")).values["llm_calls"] < load_rules("agent")["loop"]["max_llm_calls"]
+
+
+def test_recursion_limit_from_rules(agent_deps):
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    assert graph.config["recursion_limit"] == load_rules("agent")["loop"]["recursion_limit"]
+
+
+def test_search_failure_is_recorded_and_planner_sees_it(agent_deps, fake_rag):
+    plan_prompts: list[str] = []
+    rag = fake_rag(fail=httpx.ConnectError("연결 안 됨"))
+    graph = build_main_graph(
+        agent_deps(rag=rag, plan=recording(plan_prompts, SEARCH, WRITE)), InMemorySaver()
+    )
+    out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t17"))
+    assert "search_law: ConnectError" in plan_prompts[1]  # 오류 글(연결 안 됨)은 넣지 않는다
+    assert "시험 답이에요." in out["answer"]  # 검색이 실패해도 차례는 이어 간다
+
+
+def test_planner_failure_gives_partial_answer(agent_deps):
+    graph = build_main_graph(agent_deps(plan=failing(LLMFailed("APITimeoutError"))), InMemorySaver())
+    out = graph.invoke({"text": "DEMO0001 어디야?"}, cfg("t18"))
+    assert "끝까지 확인하지 못했어요" in out["answer"] and "- plan: APITimeoutError" in out["answer"]
+
+
+def test_item_failure_gives_partial_answer_without_another_plan_call(agent_deps):
+    plan_prompts: list[str] = []
+    deps = agent_deps(plan=recording(plan_prompts, EXTRACT), item=failing(LLMFailed("OutputParserException")))
+    graph = build_main_graph(deps, InMemorySaver())
+    out = graph.invoke({"text": "건고추를 다시 들여와요"}, cfg("t19"))
+    assert "- extract_item: OutputParserException" in out["answer"]
+    assert len(plan_prompts) == 1  # 실패 뒤에는 계획자를 다시 부르지 않는다
+
+
+def test_writer_failure_gives_partial_answer(agent_deps):
+    graph = build_main_graph(agent_deps(write=failing(LLMFailed("RateLimitError"))), InMemorySaver())
+    out = graph.invoke({"text": "DEMO0001 어디야?"}, cfg("t20"))
+    assert "끝까지 확인하지 못했어요" in out["answer"] and "- write: RateLimitError" in out["answer"]

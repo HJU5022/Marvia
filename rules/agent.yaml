@@ -1,4 +1,16 @@
-# 에이전트 흐름 설정값. 코드(src/marvia/graph/main.py, answer.py)가 읽는다 (설계 6.4·6.5).
+# 에이전트 흐름 설정값. 코드(src/marvia/graph/main.py, answer.py, src/marvia/llm.py)가 읽는다 (설계 6.4·6.5).
+# 숫자는 계획 3a의 시작값이고 계획 4 평가 결과를 보고 고친다.
+
+llm:
+  timeout_s: 60 # LLM 호출 한 번의 시간 제한(초). ChatAnthropic 기본값은 제한 없음이라 꼭 둔다 (11-02 실측)
+  max_retries: 2 # Anthropic SDK 재시도 횟수(429·5xx·연결 오류). SDK 기본값과 같다
+
+loop:
+  max_llm_calls: 20 # 한 차례 LLM 호출 상한. 계획자 다음 갈림길에서 닿았으면 finish (설계 6.4)
+  # 계획자 다음에 남아 있어야 할 그래프 단계 수. 모자라면 finish.
+  # [왜] 5 = write → verify → write → verify → respond. answer.max_write_attempts를 바꾸면 2 × 그 값 + 1로 바꾼다
+  min_remaining_steps: 5
+  recursion_limit: 40 # 한 차례의 그래프 단계 상한 (LangGraph 기본값 10007은 사실상 무제한, 11-02 실측)
 
 answer:
   # 작성자 호출 상한. 검증 위반이면 한 번 고치게 하고, 또 위반이면 부분 답으로 간다 (설계 6.5)

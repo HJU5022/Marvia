@@ -3,7 +3,8 @@
 순서도: START → start → identify(서브그래프) → (질문 있으면 ask → lookup) → plan
         plan → (진행 중인 할 일) search_law | extract_item | calc → plan ... / 할 일 없음·write → write
         → verify → 위반 없음: respond / 위반·횟수 남음: write / 그 밖: finish → END
-하지 않는 일: 한도·실패 처리(계획 3a Task 7).
+        LLM 호출 수·남은 단계가 한도에 닿거나 LLM이 실패하면 plan·write 다음에 finish (설계 6.4)
+하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다), 대화 기록(messages)·장기 기억(Store).
 LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수를 넣어 키 없이 돈다.
 """
 
@@ -14,6 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 
+import httpx
+import psycopg
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
@@ -25,6 +28,7 @@ from marvia.graph.state import MarviaState
 from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
+from marvia.llm import LLMFailed
 from marvia.prompts import render
 from marvia.tools.deadlines import import_deadlines
 from marvia.tools.reimport import ItemFacts, reimport_check
@@ -85,6 +89,22 @@ def merge_evidence(old: list[dict], new: list[dict]) -> list[dict]:
     return sorted(best.values(), key=lambda item: item["score"], reverse=True)
 
 
+# 실패하면 이번 차례를 부분 답으로 끝내는 LLM 노드
+LLM_NODES = ("plan", "extract_item", "write")
+
+
+def _failure(state: MarviaState, tool: str, error: Exception) -> dict:
+    """실패한 도구를 failed_tools에 더한 칸. 오류 종류 이름만 남긴다."""
+    # [주의] 오류 글은 넣지 않는다. 접속 주소나 요청 글이 섞일 수 있다. LLMFailed는 원래 오류 이름을 담고 있다
+    message = str(error) if isinstance(error, LLMFailed) else type(error).__name__
+    return {"failed_tools": state.get("failed_tools", []) + [{"tool": tool, "message": message}]}
+
+
+def _llm_failed(state: MarviaState) -> bool:
+    """이번 차례에 계획자·품목 사실·작성자 LLM이 실패했나."""
+    return any(t["tool"] in LLM_NODES for t in state.get("failed_tools", []))
+
+
 def _current_step(state: MarviaState) -> dict | None:
     """진행 중인 할 일. 없으면 None."""
     return next((step for step in state.get("plan", []) if step["status"] == "in_progress"), None)
@@ -120,6 +140,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
 
     def plan(state: MarviaState) -> dict:
         """계획자: 지금까지 한 일과 모은 것을 보고 남은 할 일을 다시 정한다 (설계 6.1)."""
+        if _llm_failed(state):
+            return {}  # [왜] 품목 사실 LLM이 이미 실패했다. 계획자를 또 부르지 않고 route가 finish로 보낸다
         # [왜] 방금 끝난 일(in_progress)은 done으로 남기고 아직 안 한 일(pending)은 버린다.
         #      남은 일은 계획자가 새로 낸다
         done = [step | {"status": "done"} for step in state.get("plan", []) if step["status"] != "pending"]
@@ -136,13 +158,25 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             done="\n".join(f"{step['action']}: {step['query']}" for step in done),
             failed="\n".join(f"{t['tool']}: {t['message']}" for t in state.get("failed_tools", [])),
         )
-        steps = [step.model_dump() | {"status": "pending"} for step in deps.plan(prompt).steps]
+        try:
+            new = deps.plan(prompt)
+        except LLMFailed as error:
+            return {"plan": done, **_failure(state, "plan", error)}
+        steps = [step.model_dump() | {"status": "pending"} for step in new.steps]
         if steps:
             steps[0]["status"] = "in_progress"  # [왜] 진행 중은 한 번에 하나 (설계 6.2)
         return {"plan": done + steps, "llm_calls": state.get("llm_calls", 0) + 1}
 
     def route(state: MarviaState) -> str:
-        """갈림길: 진행 중인 할 일의 action 노드로 간다. 할 일이 없으면 write."""
+        """갈림길: 한도에 닿았거나 LLM이 실패했으면 finish. 아니면 진행 중인 할 일 노드, 없으면 write."""
+        loop = cfg["loop"]
+        if (
+            _llm_failed(state)
+            or state.get("llm_calls", 0) >= loop["max_llm_calls"]
+            # [왜] 남은 단계가 모자라면 GraphRecursionError로 멈추기 전에 부분 답으로 간다 (설계 6.4)
+            or state.get("remaining_steps", loop["min_remaining_steps"]) < loop["min_remaining_steps"]
+        ):
+            return "finish"
         step = _current_step(state)
         return step["action"] if step else "write"
 
@@ -151,7 +185,12 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
         step = _current_step(state) or {}
         query = step.get("query") or state.get("masked_text", "")  # 질의가 비었으면 가린 질문 그대로
         # [왜] RAG 공책(RagState)은 메인 공책과 칸이 달라 노드 안에서 따로 부른다 (LangGraph 문서의 방식)
-        out = rag_graph.invoke({"question": query, "as_of": deps.today()})
+        try:
+            out = rag_graph.invoke({"question": query, "as_of": deps.today()})
+        except (httpx.HTTPError, psycopg.Error, LLMFailed) as error:
+            # [왜] 검색 실패(Voyage·DB·RAG 안의 LLM)는 차례 전체를 멈추지 않는다.
+            #      기록만 하고 계획자가 다음 길을 고른다 (설계 결정 4의 ①)
+            return _failure(state, "search_law", error)
         gaps = state.get("gaps", []) + ([] if out.get("sufficient") else [out.get("missing", "")])
         return {
             "evidence": merge_evidence(state.get("evidence", []), out.get("evidence", [])),
@@ -169,7 +208,10 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             # [왜] 사유 이름만으로는 뜻이 모자라다(수입 최소량이 몇 kg인지 등). yaml 이름표를 함께 준다
             flags="\n".join(f"- {flag}: {item}" for flag, item in load_rules("reimport")["forced"].items()),
         )
-        facts = deps.item(prompt)
+        try:
+            facts = deps.item(prompt)
+        except LLMFailed as error:
+            return _failure(state, "extract_item", error)
         return {"item": facts.model_dump(mode="json"), "llm_calls": state.get("llm_calls", 0) + 1}
 
     def calc(state: MarviaState) -> dict:
@@ -207,7 +249,10 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             gaps="\n".join(state.get("gaps", [])),
             violations="\n".join(state.get("verification", [])),
         )
-        draft = deps.write(prompt)
+        try:
+            draft = deps.write(prompt)
+        except LLMFailed as error:
+            return _failure(state, "write", error)
         return {
             "draft": draft.model_dump(),
             "write_attempts": state.get("write_attempts", 0) + 1,
@@ -225,6 +270,10 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             deps.today(),
         )
         return {"verification": violations}
+
+    def after_write(state: MarviaState) -> str:
+        """갈림길: 작성자 LLM이 실패했으면 finish, 아니면 verify."""
+        return "finish" if _llm_failed(state) else "verify"
 
     def after_verify(state: MarviaState) -> str:
         """갈림길: 통과면 respond, 위반인데 횟수가 남았으면 write, 아니면 finish."""
@@ -254,13 +303,16 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
     graph.add_edge("ask", "lookup")
     graph.add_edge("lookup", "plan")
     # [왜] 셋째 인자에 갈 수 있는 곳을 모두 적는다. 그림(get_graph)에 화살표가 빠지지 않는다
-    graph.add_conditional_edges("plan", route, ["search_law", "extract_item", "calc", "write"])
+    graph.add_conditional_edges("plan", route, ["search_law", "extract_item", "calc", "write", "finish"])
     # [왜] 한 일을 보고 계획자가 다시 정한다. 이 세 화살표가 계획자 루프다
     graph.add_edge("search_law", "plan")
     graph.add_edge("extract_item", "plan")
     graph.add_edge("calc", "plan")
-    graph.add_edge("write", "verify")
+    graph.add_conditional_edges("write", after_write, ["verify", "finish"])
     graph.add_conditional_edges("verify", after_verify, ["respond", "write", "finish"])
     graph.add_edge("respond", END)
     graph.add_edge("finish", END)
-    return graph.compile(checkpointer=checkpointer)
+    # [왜] with_config로 그래프에 recursion_limit을 붙여 둔다. invoke 때 config를 넘기면 그 값이 이긴다
+    return graph.compile(checkpointer=checkpointer).with_config(
+        recursion_limit=cfg["loop"]["recursion_limit"]
+    )
