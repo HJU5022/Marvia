@@ -255,6 +255,15 @@ def test_remaining_steps_gives_partial_answer(agent_deps):
     assert graph.get_state(cfg("t16")).values["llm_calls"] < load_rules("agent")["loop"]["max_llm_calls"]
 
 
+def test_rewrite_path_fits_in_remaining_steps(agent_deps):
+    # [왜] 계산 뒤 작성자가 두 번 다 검증에 걸려도(write → verify → write → verify → finish)
+    #      한도 경계에서 GraphRecursionError 대신 부분 답이 나와야 한다 (검증 담당 11-02 실측: 5면 모자랐다)
+    deps = agent_deps(plan=recording([], CALC, WRITE), write=lambda prompt: BAD)
+    graph = build_main_graph(deps, InMemorySaver())
+    out = graph.invoke({"text": "DEMO0001 언제까지 신고해요?"}, cfg("t16b") | {"recursion_limit": 10})
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+
+
 def test_recursion_limit_from_rules(agent_deps):
     graph = build_main_graph(agent_deps(), InMemorySaver())
     assert graph.config["recursion_limit"] == load_rules("agent")["loop"]["recursion_limit"]

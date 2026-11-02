@@ -22,7 +22,8 @@ config = {"configurable": {"thread_id": "try-agent"}}
 # [왜] get_usage_metadata_callback: 이 블록 안의 LLM 호출(RAG 서브그래프 안 포함)의 토큰 수를 모델별로 더한다
 with connect(settings.database_url) as conn, get_usage_metadata_callback() as usage:
     graph = build_main_graph(agent_deps(settings, conn), InMemorySaver())
-    out = graph.invoke({"text": sys.argv[1]}, config)
+    # [왜] 인자 없이 돌리면 대표 화물 질문 하나로 돈다 (try_main.py와 같은 방식)
+    out = graph.invoke({"text": " ".join(sys.argv[1:]) or "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
     # 멈췄으면 선택지를 보여 주고 답을 받아 재개한다 (scripts/try_main.py와 같은 방식)
     while "__interrupt__" in out:
         question = out["__interrupt__"][0].value

@@ -3096,6 +3096,7 @@ Return steps: the remaining steps in order. The first one runs next, and you wil
 - Choose write when the evidence, calculations and facts below are enough to answer, or when more steps would not help.
 - Do not repeat a done step with the same query. Do not retry a failed tool more than once.
 - Run extract_item at most once. If item facts are shown below, use them.
+- After calc, search_law for the provision named in each basis label of the calculation results, unless that provision is already in the evidence found. The answer can only name and cite provisions that are in the evidence.
 - Dates, day counts and inspection results come only from calc. Never work them out yourself.
 - Cargo numbers appear as tokens such as [BL1]. Never put a token or a cargo number into a search query.
 
@@ -3491,7 +3492,7 @@ git commit -m "feat(graph): 품목 사실 뽑기와 기한·재수입 계산을 
 
 ### Task 7: 한도와 실패 처리
 
-**배울 것:** 한도 셋(설계 6.4): LLM 호출 수(`loop.max_llm_calls`), 남은 단계(`RemainingSteps`: LangGraph가 단계마다 채우는 값. recursion_limit이 10이면 첫 노드가 9를 보고 단계마다 1씩 준다. 갈림길 함수도 그 노드와 같은 값을 본다, 11-02 실측), recursion_limit(LangGraph 기본값은 10007이라 사실상 무제한이다, 11-02 실측. `.with_config(recursion_limit=...)`로 그래프에 붙여 두고, invoke 때 config로 넘기면 그 값이 이긴다). `min_remaining_steps`가 5인 이유(계획자 다음에 write → verify → write → verify → respond 다섯 단계가 남아야 오류 없이 끝난다. 모자라면 finish 한 단계로 끝낸다). LLM 시간 제한과 재시도(ChatAnthropic의 timeout 기본값은 None이라 시간 제한이 없다. 재시도는 Anthropic SDK의 `max_retries`가 429·5xx·연결 오류에만 한다. LangGraph `RetryPolicy`의 기본 판정은 anthropic 400·401도 다시 시도해서 쓰지 않는다, 11-02 실측). 실패를 값으로 바꾸기(LLM 오류는 `structured`가 `LLMFailed` 하나로 바꾸고, 노드가 잡아 `failed_tools`에 적은 뒤 갈림길이 finish로 보낸다. 검색 실패는 기록만 하고 계획자가 다음 길을 고른다). `except Exception`을 쓰지 않는 이유(코드 버그까지 삼키면 고칠 곳이 안 보인다).
+**배울 것:** 한도 셋(설계 6.4): LLM 호출 수(`loop.max_llm_calls`), 남은 단계(`RemainingSteps`: LangGraph가 단계마다 채우는 값. recursion_limit이 10이면 첫 노드가 9를 보고 단계마다 1씩 준다. 갈림길 함수도 그 노드와 같은 값을 본다, 11-02 실측), recursion_limit(LangGraph 기본값은 10007이라 사실상 무제한이다, 11-02 실측. `.with_config(recursion_limit=...)`로 그래프에 붙여 두고, invoke 때 config로 넘기면 그 값이 이긴다). `min_remaining_steps`가 6인 이유(갈림길이 보는 남은 단계에 plan 자신이 들어 있어, 그 하나에 write → verify → write → verify → finish 다섯 단계를 더한 6이 남아야 오류 없이 끝난다. 모자라면 finish 한 단계로 끝낸다. 처음 쓴 5는 실행 뒤 검증에서 경계에서 모자랐다). LLM 시간 제한과 재시도(ChatAnthropic의 timeout 기본값은 None이라 시간 제한이 없다. 재시도는 Anthropic SDK의 `max_retries`가 429·5xx·연결 오류에만 한다. LangGraph `RetryPolicy`의 기본 판정은 anthropic 400·401도 다시 시도해서 쓰지 않는다, 11-02 실측). 실패를 값으로 바꾸기(LLM 오류는 `structured`가 `LLMFailed` 하나로 바꾸고, 노드가 잡아 `failed_tools`에 적은 뒤 갈림길이 finish로 보낸다. 검색 실패는 기록만 하고 계획자가 다음 길을 고른다). `except Exception`을 쓰지 않는 이유(코드 버그까지 삼키면 고칠 곳이 안 보인다).
 
 설계 그림과 다른 점: `write` 다음이 고정 화살표(`write → verify`)에서 갈림길(`write → verify | finish`)이 된다. 작성자 LLM이 실패하면 검증할 초안이 없어서다.
 
@@ -3810,8 +3811,9 @@ llm:
 loop:
   max_llm_calls: 20 # 한 차례 LLM 호출 상한. 계획자 다음 갈림길에서 닿았으면 finish (설계 6.4)
   # 계획자 다음에 남아 있어야 할 그래프 단계 수. 모자라면 finish.
-  # [왜] 5 = write → verify → write → verify → respond. answer.max_write_attempts를 바꾸면 2 × 그 값 + 1로 바꾼다
-  min_remaining_steps: 5
+  # [왜] 6 = 갈림길이 보는 남은 단계에 plan 자신이 들어 있어 1 + (write → verify → write → verify → finish 5).
+  #      answer.max_write_attempts를 바꾸면 2 × 그 값 + 2로 바꾼다 (11-02 검증에서 5는 경계에서 모자랐다)
+  min_remaining_steps: 6
   recursion_limit: 40 # 한 차례의 그래프 단계 상한 (LangGraph 기본값 10007은 사실상 무제한, 11-02 실측)
 
 answer:
@@ -4400,7 +4402,8 @@ config = {"configurable": {"thread_id": "try-agent"}}
 # [왜] get_usage_metadata_callback: 이 블록 안의 LLM 호출(RAG 서브그래프 안 포함)의 토큰 수를 모델별로 더한다
 with connect(settings.database_url) as conn, get_usage_metadata_callback() as usage:
     graph = build_main_graph(agent_deps(settings, conn), InMemorySaver())
-    out = graph.invoke({"text": sys.argv[1]}, config)
+    # [왜] 인자 없이 돌리면 대표 화물 질문 하나로 돈다 (try_main.py와 같은 방식)
+    out = graph.invoke({"text": " ".join(sys.argv[1:]) or "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
     # 멈췄으면 선택지를 보여 주고 답을 받아 재개한다 (scripts/try_main.py와 같은 방식)
     while "__interrupt__" in out:
         question = out["__interrupt__"][0].value
@@ -4501,6 +4504,7 @@ uv run python scripts/try_agent.py "다음 주에 칭다오에서 고추 와요.
 | `fix(tools): 재수입 판정의 반송품 범위·기간 끝날 휴일·미래 발급일·중복 사유 바로잡기` | 반송품 사유를 별표 9 제2호가목12) 밖으로 좁힘, 5년 기간 끝날 휴일 넘기기, 미래 발급일은 다시 묻기, 같은 사유 한 번만 | 별표 원문, 민법 제161조 [추정] |
 | `fix(graph): 검증자가 해요체 단정·금액·비율·기간·다른 날짜 꼴을 잡고 계산 결과의 금액은 허용` | Task 3 Step 4 메모 | 해요체·금액·비율 표현을 놓치고 가산세 상한을 잘못 막았다 |
 | `fix(graph): 단계 시각을 한국 날짜로 세고 지난 답·빈 빠진 근거를 남기지 않음` | 아래 | 아래 |
+| `fix(graph): 남은 단계 한도를 6으로 바로잡고 계산 뒤 근거 조문을 찾게 함` | `min_remaining_steps` 5 → 6, 계획자 프롬프트에 "calc 뒤 basis 조문을 search_law로 찾기", `try_agent.py` 기본 질문 | 계산 뒤 작성자가 두 번 다 검증에 걸리면 경계에서 `GraphRecursionError`가 났다(검증 담당 540경우 탐침). 계산만 하고 검색하지 않으면 작성자가 조문·일수를 인용할 수 없다 |
 
 마지막 커밋에서 고친 것:
 
@@ -4533,7 +4537,19 @@ def test_empty_missing_is_not_a_gap(agent_deps, fake_rag):
     assert graph.get_state(cfg("t10b")).values["gaps"] == []
 ```
 
-Expected: 린트·타입 오류 0, 178 passed (DB가 꺼져 있으면 172 passed, 6 skipped)
+`test_recursion_limit_from_rules` 앞에 아래 시험을 넣는다 (남은 단계 한도 고침의 회귀 시험).
+
+```python
+def test_rewrite_path_fits_in_remaining_steps(agent_deps):
+    # [왜] 계산 뒤 작성자가 두 번 다 검증에 걸려도(write → verify → write → verify → finish)
+    #      한도 경계에서 GraphRecursionError 대신 부분 답이 나와야 한다 (검증 담당 11-02 실측: 5면 모자랐다)
+    deps = agent_deps(plan=recording([], CALC, WRITE), write=lambda prompt: BAD)
+    graph = build_main_graph(deps, InMemorySaver())
+    out = graph.invoke({"text": "DEMO0001 언제까지 신고해요?"}, cfg("t16b") | {"recursion_limit": 10})
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+```
+
+Expected: 린트·타입 오류 0, 179 passed (DB가 꺼져 있으면 173 passed, 6 skipped)
 
 검증 담당이 짚었지만 고치지 않은 것: 번호 없을 때 안내를 코드가 늘 붙이기(법령만 묻는 질문에 틀린 안내가 된다, 화물 질문인지는 작성자가 판단), 검색 질의의 토큰 지우기(가린 값이고 질의 분석 프롬프트가 지운다), 근거 묶음 상한(LLM 호출 상한 안에서 근거 40개 안팎 [추정]), 프롬프트 태그 탈출(설계 12절 promptfoo), 법령 이름까지 맞추는 조문 검사(약칭이 많다), 공휴일 표 끝(2027-12-31) 경고, 30일 기한의 보세구역 종류 구분.
 
@@ -4543,7 +4559,7 @@ Expected: 린트·타입 오류 0, 178 passed (DB가 꺼져 있으면 172 passed
 - 화물 번호가 있으면 화물 줄과 기한(수입신고 기한·관세 납부기한, 넘겼으면 신고지연 가산세율과 대상 범위)을, 재수입 질문이면 서류검사 요건 판정을 코드가 계산하고 작성자는 그 값만 옮긴다.
 - 번호가 없는 화물 질문에는 코드가 쓰는 포워더 안내 줄과 작성자가 쓴 메시지가 나온다.
 - 검증 위반 두 번, LLM 호출 상한, 남은 단계 부족, LLM 실패 중 하나면 오류 대신 부분 답(계산한 것·찾은 근거·빠진 근거·실패한 도구·다음 선택지)이 나온다.
-- 테스트 178개가 키 없이 돈다(DB가 꺼져 있으면 172 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
+- 테스트 179개가 키 없이 돈다(DB가 꺼져 있으면 173 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
 
 ## 설계와 대조
 
