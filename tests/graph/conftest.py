@@ -1,6 +1,11 @@
-"""tests/graph 공용 준비물. 이 폴더의 테스트 함수가 인자 이름(evidence, calc, cargos)으로 받아 쓴다."""
+"""tests/graph 공용 준비물. 테스트 함수가 인자 이름(evidence, calc, cargos, agent_deps)으로 받아 쓴다."""
+
+from datetime import date
 
 import pytest
+
+from marvia.graph.main import AgentDeps
+from marvia.graph.schemas import Draft
 
 
 @pytest.fixture
@@ -53,3 +58,20 @@ def cargos() -> list[dict]:
             "error": {"code": "not_found", "message": "재생 데이터에 없는 번호입니다", "retryable": False},
         },
     ]
+
+
+TODAY = date(2026, 11, 2)
+# 가짜 작성자가 늘 돌려주는 초안. 인용·날짜·번호가 없어 근거 묶음이 비어 있으면 검증을 통과한다
+PLAIN = Draft(
+    answer="시험 답이에요.", citations=[], next_options=["관세사에게 물어보기"], forwarder_message=""
+)
+
+
+@pytest.fixture
+def agent_deps():
+    """가짜 AgentDeps를 만드는 함수. 바꿀 칸만 키워드로 넘긴다: agent_deps(write=...)."""
+
+    def make(**changes) -> AgentDeps:
+        return AgentDeps(**({"write": lambda prompt: PLAIN, "today": lambda: TODAY} | changes))
+
+    return make

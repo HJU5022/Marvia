@@ -1,5 +1,9 @@
 # 에이전트 흐름 설정값. 코드(src/marvia/graph/main.py, answer.py)가 읽는다 (설계 6.4·6.5).
 
+answer:
+  # 작성자 호출 상한. 검증 위반이면 한 번 고치게 하고, 또 위반이면 부분 답으로 간다 (설계 6.5)
+  max_write_attempts: 2
+
 finish:
   # 부분 답 끝에 늘 붙이는 다음 선택지 (설계 2절 결정 4의 ③)
   next_options:

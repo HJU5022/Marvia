@@ -2,6 +2,7 @@
 
 실행: uv run python scripts/try_main.py MOCK12345678TEST87654321
 하지 않는 일: 저장. 메모리 서랍(InMemorySaver)이라 프로그램을 끄면 대화가 사라진다 (Postgres는 Task 8).
+LLM도 부르지 않는다. 작성자 자리에 고정 초안을 넣어 키 없이 흐름(멈춤·재개)만 본다.
 """
 
 import sys
@@ -9,9 +10,11 @@ import sys
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from marvia.graph.main import build_main_graph
+from marvia.graph.main import AgentDeps, build_main_graph
+from marvia.graph.schemas import Draft
 
-graph = build_main_graph(InMemorySaver())
+OFFLINE = Draft(answer="(작성자 LLM 없이 돌린 시험 답)", citations=[], next_options=[], forwarder_message="")
+graph = build_main_graph(AgentDeps(write=lambda prompt: OFFLINE), InMemorySaver())
 # [왜] thread_id는 서류 번호다. 멈춘 대화를 다시 찾을 때 같은 번호를 써야 한다
 config = {"configurable": {"thread_id": "try"}}
 out = graph.invoke({"text": " ".join(sys.argv[1:]) or "MOCK12345678TEST87654321"}, config)

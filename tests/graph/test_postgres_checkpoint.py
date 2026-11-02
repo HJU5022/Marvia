@@ -25,16 +25,16 @@ def _db_up() -> bool:
 pytestmark = pytest.mark.skipif(not _db_up(), reason="로컬 Postgres가 꺼져 있음 (docker compose up -d db)")
 
 
-def test_resume_after_restart():
+def test_resume_after_restart(agent_deps):
     # [왜] 돌릴 때마다 새 대화 번호를 쓴다. 지난번 실행의 사진과 섞이지 않게
     config = {"configurable": {"thread_id": f"pg-{uuid4()}"}}
     # 첫 번째 서버: 질문하다 멈춘다
     with PostgresSaver.from_conn_string(URL) as saver:
         saver.setup()  # 체크포인트 표가 없으면 만든다. 이미 있으면 그대로 둔다
-        out = build_main_graph(saver).invoke({"text": "MOCK12345678TEST87654321"}, config)
+        out = build_main_graph(agent_deps(), saver).invoke({"text": "MOCK12345678TEST87654321"}, config)
         assert "__interrupt__" in out
     # with 블록을 나오면 DB 연결이 닫힌다 = 서버가 꺼진 것과 같다
     # 두 번째 서버: 새 연결, 새 그래프. 같은 대화 번호로 DB에서 사진을 꺼내 이어 간다
     with PostgresSaver.from_conn_string(URL) as saver:
-        out = build_main_graph(saver).invoke(Command(resume={"selected": 0}), config)
+        out = build_main_graph(agent_deps(), saver).invoke(Command(resume={"selected": 0}), config)
         assert "TEST87654321: 하선신고 (인천)" in out["answer"]

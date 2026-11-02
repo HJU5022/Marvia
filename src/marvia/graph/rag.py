@@ -32,8 +32,8 @@ class RagDeps:
     rewrite: Callable[[str], Rewrite]  # 프롬프트 → 고친 질의
 
 
-def _evidence_block(evidence: list[dict]) -> str:
-    """채점 프롬프트에 넣을 근거 글. unit_id를 앞에 붙여 어느 조문인지 보이게 한다."""
+def evidence_block(evidence: list[dict]) -> str:
+    """프롬프트에 넣을 근거 글. unit_id를 앞에 붙여 어느 조문인지 보이게 한다. 작성자 프롬프트도 쓴다."""
     return "\n\n".join(f"[{e['unit_id']}] {e['heading']}\n{e['text']}" for e in evidence)
 
 
@@ -72,7 +72,7 @@ def build_rag_graph(deps: RagDeps):
         evidence = state.get("evidence", [])
         if not evidence:
             return {"sufficient": False, "missing": "검색 결과가 없다"}
-        prompt = render("rag_grade", question=state["question"], evidence=_evidence_block(evidence))
+        prompt = render("rag_grade", question=state["question"], evidence=evidence_block(evidence))
         result = deps.grade(prompt)
         return {"sufficient": result.sufficient, "missing": "" if result.sufficient else result.missing}
 
