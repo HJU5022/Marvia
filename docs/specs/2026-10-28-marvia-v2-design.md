@@ -35,7 +35,7 @@
 | 11 | 일정: 일요일(11-01)까지 1차 전체를 목표로 하고, 밀리면 정해 둔 순서대로 뺀다 | 정운 결정 |
 | 12 | 작업 방식: Claude가 코드를 작게 쓰고 짧게 설명한다. 정운이 이해 못 한 부분은 정운이 묻는다. 큰 작업은 Claude가 혼자 하지 않는다 | 하면서 배우는 것이 목적 |
 | 13 | 판정은 네 칸(등급·단계·일정·확신)으로 보여 준다. 등급은 순항·주의·경계·긴급. 항구 앞 장시간 정지는 경계, 주의 신호 2개가 겹치면 경계, 지연 기준은 1일 (10-29) | 등급 셋으로는 성격이 다른 상황이 한 등급에 섞이고 사용자가 할 일이 보이지 않았다 |
-| 14 | 대화 LLM은 Anthropic API의 Claude Haiku 5.5(`claude-haiku-5-5`)를 기본으로 하고, 임베딩·리랭커는 OpenRouter의 Voyage 모델로 부른다. 모델 이름은 설정 값이라 평가 때 바꿔 같은 평가셋으로 비교한다 (10-30) | 정운 결정. Vertex 대신 공급자를 정했다 |
+| 14 | 대화 LLM은 Anthropic API의 Claude Haiku 5.5(`claude-haiku-5-5`)를 기본으로 하고, 임베딩·리랭커는 Voyage AI API를 직접 부른다(11-02, OpenRouter에서 바꿈). 모델 이름은 설정 값이라 평가 때 바꿔 같은 평가셋으로 비교한다 (10-30) | 정운 결정. Vertex 대신 공급자를 정했다. Anthropic API에는 임베딩·리랭커가 없고, Voyage를 직접 부르면 input_type·output_dimension을 보낼 수 있다 |
 | 15 | 코퍼스는 국가법령정보센터 웹 페이지에서 한 번 받아 단위 파일을 저장소에 둔다. 시행일이 오늘보다 뒤인 판은 받지 않고 목록으로 알린다. Open API는 2차 (10-30) | 키 없이 받을 수 있고 3차 측정에서 써 본 방식이다. 저장소에 두면 테스트와 CI가 인터넷 없이 돈다 |
 
 ## 3. 전체 구조
@@ -125,7 +125,7 @@
 ### 5.3 색인
 
 - 맥락 문장(Contextual Retrieval): 단위마다 "이 조문은 ○○법 제○장 ○○에 관한 것으로…" 같은 한두 문장을 LLM이 색인 때 한 번 붙인다. 켜기 전후를 평가셋으로 비교한다.
-- 임베딩: OpenRouter의 `voyageai/voyage-4`(1024차원, 모델은 설정 값). pgvector HNSW 인덱스.
+- 임베딩: Voyage AI의 `voyage-4`(1024차원, 모델은 설정 값). 색인은 `input_type=document`, 질문은 `query`로 보낸다. pgvector HNSW 인덱스.
 - 키워드: kiwipiepy로 형태소를 나눠 `tsvector('simple')`에 넣는다(Postgres 기본 전문 검색에는 한국어 사전이 없다).
 
 ### 5.4 검색 흐름
@@ -280,7 +280,7 @@
 | 언어·도구 | Python 3.12, uv, ruff, pyright, pytest, pydantic-settings |
 | 에이전트 | LangGraph 1.x, langgraph-checkpoint-postgres, PostgresStore |
 | LLM | Anthropic API, 기본 `claude-haiku-5-5`. `init_chat_model`로 만들어 모델 이름만 바꾸면 다른 모델로 돈다. 구조화 출력은 `method="json_schema"` |
-| 임베딩·리랭커 | OpenRouter: 임베딩 `voyageai/voyage-4`, 리랭커 `voyageai/rerank-2.5` (10-30 문서 확인) |
+| 임베딩·리랭커 | Voyage AI API 직접: 임베딩 `voyage-4`, 리랭커 `rerank-3` (11-02 문서 확인: 두 모델 모두 무료 2억 토큰, 그 뒤 백만 토큰당 $0.06·$0.05) |
 | 로컬 | docker compose: api, Postgres + pgvector, Neo4j |
 | 배포 | API Cloud Run(서울), 화면 Vercel, DB Supabase, 그래프 AuraDB 무료판, 해수부 릴레이는 기존 Cloud Run 유지 |
 | CI/CD | GitHub Actions, WIF(키 파일 없이 GCP 인증), Secret Manager, Docker 멀티스테이지(non-root) |
@@ -309,6 +309,5 @@
 | 인천의 장치기간·보세화물 별표 1 해당 행 | 3차 자료 4개 모두 인천 언급이 0회였다 |
 | 해수부 API가 부산 외 항만을 같은 형식으로 주는지 | 항만 데이터화의 전제 |
 | AuraDB 무료판 한도 | 그래프 크기와 맞는지 |
-| OpenRouter가 Voyage에 `dimensions`·`input_type`을 넘기는지 | 문서에 없다(10-30). 계획 2는 두 값을 보내지 않고 받은 차원을 코드로 확인한다 |
 | 국가법령정보센터에서 시행 예정판이 걸린 법령의 현행판을 받는 방법 | 웹 페이지는 최신 공포본을 준다(식물방역법 10-30 확인). 1차 문서 9개는 모두 현행이라 계획 2는 막지 않는다 |
 | 보세화물관리 고시 별표 1과 제34조 문구의 관계 | 3차 검토에서 해석이 확정되지 않았다 |

@@ -27,11 +27,11 @@ class Settings(BaseSettings):
     # 키 (설계 12절: 저장소에는 이름만 둔다)
     # [왜] SecretStr은 print나 로그에 '**********'로만 보인다. 실제 값은 .get_secret_value()로만 꺼낸다
     anthropic_api_key: SecretStr = SecretStr("")  # MARVIA_ANTHROPIC_API_KEY
-    openrouter_api_key: SecretStr = SecretStr("")  # MARVIA_OPENROUTER_API_KEY
+    voyage_api_key: SecretStr = SecretStr("")  # MARVIA_VOYAGE_API_KEY
 
     # 모델 (설계 2절 결정 14). [왜] 이름을 설정에 두면 평가 때 환경 변수만 바꿔 다른 모델과 비교할 수 있다
     chat_model: str = "claude-haiku-5-5"  # 대화 LLM (Anthropic API)
-    embed_model: str = "voyageai/voyage-4"  # 임베딩 (OpenRouter)
+    embed_model: str = "voyage-4"  # 임베딩 (Voyage AI)
     embed_dim: int = 1024  # [주의] migrations/001_corpus_units.sql의 vector(1024)와 같아야 한다
-    rerank_model: str = "voyageai/rerank-2.5"  # 리랭커 (OpenRouter)
-    openrouter_url: str = "https://openrouter.ai/api/v1"
+    rerank_model: str = "rerank-3"  # 리랭커 (Voyage AI)
+    voyage_url: str = "https://api.voyageai.com/v1"

@@ -1,4 +1,4 @@
-"""corpus/units를 로컬 DB에 색인한다 (계획 2 Task 10). OpenRouter 키 필요(--context면 Anthropic 키도).
+"""corpus/units를 로컬 DB에 색인한다 (계획 2 Task 10). Voyage 키 필요(--context면 Anthropic 키도).
 
 실행: uv run python scripts/index_corpus.py            맥락 문장 없이 (약 $0.1)
       uv run python scripts/index_corpus.py --context  맥락 문장 포함 (약 $1, 1시간 안팎)
@@ -10,7 +10,7 @@ from pathlib import Path
 from marvia.config import Settings
 from marvia.db import connect
 from marvia.llm import chat_model, structured
-from marvia.rag import openrouter
+from marvia.rag import voyage
 from marvia.rag.context import Context, make_contextualizer
 from marvia.rag.index import index_units, read_units
 
@@ -24,7 +24,7 @@ contextualize = make_contextualizer(structured(chat_model(settings), Context)) i
 
 
 def embed(texts: list[str]) -> list[list[float]]:
-    return openrouter.embed(texts, settings)
+    return voyage.embed(texts, settings, "document")
 
 
 with connect(settings.database_url) as conn:

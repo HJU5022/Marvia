@@ -20,7 +20,7 @@ from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
 from marvia.tools.rules import load_rules
 
 
-# [왜] 바깥 기능(LLM·DB·OpenRouter)을 함수로 받아 둔다. 테스트는 가짜 함수를 넣어 키·DB 없이 돈다
+# [왜] 바깥 기능(LLM·DB·Voyage)을 함수로 받아 둔다. 테스트는 가짜 함수를 넣어 키·DB 없이 돈다
 @dataclass(frozen=True)
 class RagDeps:
     """RAG 서브그래프가 쓰는 바깥 기능 묶음. 실제 값은 marvia.rag.live.live_deps가 만든다."""
