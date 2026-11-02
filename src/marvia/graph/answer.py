@@ -21,7 +21,8 @@ def cargo_lines(cargos: list[dict]) -> list[str]:
         facts = cargo["facts"]
         if facts:
             day = (facts.get("stage_at") or "")[:10]  # "2026-10-27T09:00:00+09:00" → 2026-10-27 (한국 시각)
-            lines.append(f"{cargo['token']}: {facts['stage']} ({facts['port']}) {day}".rstrip())
+            port = f" ({facts['port']})" if facts.get("port") else ""  # [왜] 항구를 모르면 "(None)" 대신 뺀다
+            lines.append(f"{cargo['token']}: {facts['stage']}{port} {day}".rstrip())
         else:
             error = cargo["error"]
             lines.append(f"{cargo['token']}: 조회하지 못했어요 ({error['message']}, {error['code']})")
@@ -68,7 +69,9 @@ def partial_answer(
     ]
     if calc.get("reimport"):
         reimport = calc["reimport"]
-        calc_lines.append(f"재수입 검사: {reimport['verdict']} ({', '.join(reimport['basis'])})")
+        # [왜] "대상 아님"이면 이름표가 없다. 빈 괄호를 쓰지 않는다
+        basis = f" ({', '.join(reimport['basis'])})" if reimport["basis"] else ""
+        calc_lines.append(f"재수입 검사: {reimport['verdict']}{basis}")
     parts = [
         _header(cargos),
         "끝까지 확인하지 못했어요. 지금까지 확인한 것만 적어요.",

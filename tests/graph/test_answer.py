@@ -44,3 +44,14 @@ def test_partial_answer(cargos, calc, evidence):
     assert "관세법 > 제9장 통관 > 제241조(수출ㆍ수입 또는 반송의 신고)" in text
     assert "- 재수입 조건 조문" in text and "- search_law: DB 연결 실패" in text
     assert all(option in text for option in load_rules("agent")["finish"]["next_options"])
+
+
+def test_cargo_line_without_port():
+    cargo = {"token": "[BL1]", "facts": {"stage": "입항", "stage_at": None, "port": None}, "error": None}
+    assert cargo_lines([cargo]) == ["[BL1]: 입항"]  # 빈 값은 "(None)" 대신 빼고 쓴다
+
+
+def test_partial_answer_reimport_without_basis(cargos):
+    calc = {"reimport": {"verdict": "대상 아님", "basis": []}}
+    text = partial_answer(cargos, calc, [], [], [])
+    assert "재수입 검사: 대상 아님\n" in text + "\n" and "대상 아님 ()" not in text

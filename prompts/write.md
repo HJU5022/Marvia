@@ -11,9 +11,9 @@ Return:
 Rules for answer:
 - When you name an article such as 제241조, cite an evidence item whose heading has that article.
 - Write dates as YYYY-MM-DD, copied from the calculation results or the cargo lines. Never write dates like "11월 26일".
-- Write a day count such as "30일" only if that number is in the calculation results or in the text of an evidence item you cite.
+- Write a number with a unit (일, 주, 개월, 년, %) only if that number is in the calculation results or in the text of an evidence item you cite. A rate in the calculation results is a fraction: 0.015 means 1.5%.
 - Calculation results carry a basis label but are not citations. Cite the evidence item for that article if you mention it.
-- Never say whether customs clearance will pass, never fix an HS code, never state a tax amount in won. Suggest asking a licensed customs broker (관세사) instead.
+- Never say whether customs clearance will pass, never fix an HS code, never state a tax amount in won (an amount copied from the calculation results, such as the surcharge cap, is fine). Suggest asking a licensed customs broker (관세사) instead.
 - Cargo numbers appear as tokens such as [BL1]. Keep the tokens exactly. Never write a real cargo number.
 - The cargo lines are shown to the user above your answer. Do not repeat them.
 

@@ -14,12 +14,26 @@ from datetime import date
 from marvia.graph.schemas import Draft
 from marvia.tools.rules import load_rules
 
-_ARTICLE = re.compile(r"제\d+조(?:의\d+)?")  # 제241조, 제1조의4
+# 제241조, 241조, 제1조의4. [왜] "관세법 9조"처럼 "제"를 빼고 써도 같은 조문으로 본다
+_ARTICLE = re.compile(r"(?<!\d)제?\s*(\d+)\s*조(?:\s*의\s*(\d+))?")
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-_KOREAN_DATE = re.compile(r"\d{1,2}월\s*\d{1,2}일")  # 11월 26일
-_DAY_COUNT = re.compile(r"(\d+)\s*일")  # 30일, 24 일
-# [왜] JSON 안에서 값 자리에 놓인 정수만 고른다(날짜 글 속 숫자는 빼고). 음수는 부호를 떼고 센다
-_JSON_INT = re.compile(r":\s*-?(\d+)\s*[,}]")
+# YYYY-MM-DD가 아닌 날짜 꼴: 11월 26일, 2026.11.26, 11/26
+_OTHER_DATE = re.compile(
+    r"\d{1,2}월\s*\d{1,2}일|\d{4}\.\s*\d{1,2}\.\s*\d{1,2}|(?<![\d/])\d{1,2}/\d{1,2}(?![\d/])"
+)
+# 단위가 붙은 수: 30일, 2주, 6개월, 5년, 1.5%
+_COUNT = re.compile(r"(\d+(?:\.\d+)?)\s*(일|주|개월|년|%)")
+# 원 단위 금액: 120,000원, 50만원, 12만 5천원. [주의] 원산지·원료·원문·원칙·원하시면의 "원"은 빼고 본다
+_WON = re.compile(r"(\d[\d,]*)\s*(억|만|천)?\s*(?:(\d+)\s*천)?\s*원(?!산|료|문|칙|래|인|본|단|형|하)")
+_WON_UNIT = {"억": 100_000_000, "만": 10_000, "천": 1_000, "": 1}
+# [왜] JSON 안에서 값 자리에 놓인 수만 고른다(날짜 글 속 숫자는 빼고). 음수는 부호를 떼고 센다
+_JSON_NUM = re.compile(r":\s*-?(\d+(?:\.\d+)?)\s*[,}]")
+
+
+def _won(match: re.Match) -> int:
+    """금액 글 하나를 원 단위 정수로 바꾼다. 12만 5천원 → 125000."""
+    head, unit, thousands = match.groups()
+    return int(head.replace(",", "")) * _WON_UNIT[unit or ""] + int(thousands or 0) * 1_000
 
 
 def verify(
@@ -35,6 +49,7 @@ def verify(
     입력: draft=작성자 초안(가린 토큰 그대로), evidence=근거 묶음, calc=계산 결과,
           cargos=화물별 조회 결과, mask_map=토큰 → 실제 번호, today=오늘.
     출력: 위반 문장 목록. 작성자 프롬프트에 그대로 들어가므로 실제 번호를 넣지 않는다.
+    주의: 정규식으로 보는 안전망이다. 법령 이름까지 맞는지(관세법 제9조와 시행령 제9조)는 보지 않는다.
     """
     violations: list[str] = []
     by_id = {e["unit_id"]: e for e in evidence}
@@ -45,34 +60,51 @@ def verify(
     if evidence and not draft.citations:
         violations.append("근거가 있는데 인용이 없다")
     cited_names = " ".join(f"{e['unit_id']} {e['heading']}" for e in cited)
-    for article in sorted(set(_ARTICLE.findall(draft.answer))):
+    articles = {f"제{n}조" + (f"의{sub}" if sub else "") for n, sub in _ARTICLE.findall(draft.answer)}
+    for article in sorted(articles):
         # [왜] (?!의): 인용이 제241조의2이면 답의 제241조는 그 앞부분일 뿐이라 통과시키지 않는다
         if not re.search(re.escape(article) + "(?!의)", cited_names):
             violations.append(f"인용한 근거에 없는 조문: {article}")
 
-    # 2. 숫자: 날짜는 계산 결과·화물 단계 날짜·오늘에서만, 일수는 계산 결과·인용한 조문 글에서만
+    # 2. 숫자: 날짜는 계산 결과·화물 단계 날짜·인용한 근거의 시행일·오늘에서만,
+    #    단위가 붙은 수는 계산 결과·인용한 조문 글에서만, 금액은 계산 결과에서만
     calc_json = json.dumps(calc, ensure_ascii=False)
     stage_days = {
         c["facts"]["stage_at"][:10] for c in cargos if c.get("facts") and c["facts"].get("stage_at")
     }
-    allowed_dates = set(_ISO_DATE.findall(calc_json)) | stage_days | {today.isoformat()}
+    effective_days = {str(e["effective"]) for e in cited}
+    allowed_dates = set(_ISO_DATE.findall(calc_json)) | stage_days | effective_days | {today.isoformat()}
     violations += [
         f"계산 결과에 없는 날짜: {d}" for d in sorted(set(_ISO_DATE.findall(draft.answer)) - allowed_dates)
     ]
-    violations += [f"날짜는 YYYY-MM-DD로 쓴다: {d}" for d in _KOREAN_DATE.findall(draft.answer)]
-    cited_text = " ".join(e["text"] for e in cited)
-    allowed_counts = set(_JSON_INT.findall(calc_json)) | set(_DAY_COUNT.findall(cited_text))
-    # [왜] "11월 26일"의 26일은 위에서 이미 걸렸다. 일수로 한 번 더 세지 않게 지우고 본다
-    counts = set(_DAY_COUNT.findall(_KOREAN_DATE.sub("", draft.answer)))
-    violations += [
-        f"계산 결과·인용 근거에 없는 일수: {n}일" for n in sorted(counts - allowed_counts, key=int)
-    ]
+    violations += [f"날짜는 YYYY-MM-DD로 쓴다: {d}" for d in _OTHER_DATE.findall(draft.answer)]
+    calc_numbers = {float(n) for n in _JSON_NUM.findall(calc_json)}
+    cited_counts = {(float(n), unit) for n, unit in _COUNT.findall(" ".join(e["text"] for e in cited))}
+    # [왜] 날짜 꼴은 위에서 이미 걸렸다. "11월 26일"의 26일을 일수로 한 번 더 세지 않게 지우고 본다
+    plain = _OTHER_DATE.sub("", draft.answer)
+    seen: set[str] = set()
+    for n, unit in _COUNT.findall(plain):
+        value = float(n)
+        if unit == "년" and value >= 1900:
+            continue  # 2026년 같은 연도는 수가 아니다
+        if unit == "%":
+            # [왜] 계산 결과의 율은 0.015처럼 소수다. 답에는 1.5%로 쓴다
+            ok = any(round(value, 6) == round(x * 100, 6) for x in calc_numbers)
+        else:
+            ok = value in calc_numbers or (value, unit) in cited_counts
+        if not ok and n + unit not in seen:
+            seen.add(n + unit)
+            violations.append(f"계산 결과·인용 근거에 없는 수: {n}{unit}")
 
-    # 3. 금지: 통관 가부, HS 코드 확정, 세액
+    # 3. 금지: 통관 가부, HS 코드 확정 (rules/verify.yaml), 세액 (계산 결과에 없는 금액)
     shown = "\n".join([draft.answer, *draft.next_options, draft.forwarder_message])
     for rule in load_rules("verify")["forbidden"]:
         if re.search(rule["pattern"], shown):
             violations.append(f"금지 표현: {rule['reason']}")
+    # [왜] 가산세 상한처럼 계산 결과에 있는 금액은 옮겨 쓴 값이라 된다.
+    #      그 밖의 금액은 세액을 계산해 말한 것이다
+    if any(_won(m) not in calc_numbers for m in _WON.finditer(shown)):
+        violations.append("금지 표현: 세액을 계산해 말했다")
 
     # 4. 번호: 실제 번호 대신 토큰만. [주의] 위반 문장에도 실제 번호 대신 토큰을 쓴다
     violations += [

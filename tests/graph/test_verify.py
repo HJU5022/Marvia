@@ -41,6 +41,11 @@ def test_article_must_be_in_cited_evidence(check):
     assert check(answer=GOOD.answer + " 관세법 제9조도 보세요.") == ["인용한 근거에 없는 조문: 제9조"]
 
 
+def test_article_without_je_is_checked_too(check):
+    # [왜] "관세법 9조"처럼 "제"를 빼고 써도 같은 조문이다
+    assert check(answer=GOOD.answer + " 관세법 9조도 보세요.") == ["인용한 근거에 없는 조문: 제9조"]
+
+
 def test_article_with_branch_number_is_another_article(check):
     # [왜] 제241조의2는 제241조와 다른 조문이다. 앞부분이 같다고 통과시키지 않는다
     assert check(answer=GOOD.answer + " 제241조의2도 보세요.") == ["인용한 근거에 없는 조문: 제241조의2"]
@@ -50,12 +55,30 @@ def test_date_not_from_calc(check):
     assert check(answer=GOOD.answer + " 2026-12-01에 다시 보세요.") == ["계산 결과에 없는 날짜: 2026-12-01"]
 
 
-def test_korean_date_form(check):
-    assert check(answer=GOOD.answer + " 11월 26일까지예요.") == ["날짜는 YYYY-MM-DD로 쓴다: 11월 26일"]
+@pytest.mark.parametrize("written", ["11월 26일", "2026.11.26", "11/26"])
+def test_other_date_forms(check, written):
+    assert check(answer=GOOD.answer + f" {written}까지예요.") == [f"날짜는 YYYY-MM-DD로 쓴다: {written}"]
 
 
-def test_day_count_not_from_calc(check):
-    assert check(answer=GOOD.answer + " 보통 45일 걸려요.") == ["계산 결과·인용 근거에 없는 일수: 45일"]
+def test_cited_effective_date_allowed(check):
+    # 인용한 근거의 시행일은 근거 묶음에 있는 값이라 써도 된다
+    assert check(answer=GOOD.answer + " 이 조문은 2026-10-02부터 시행됐어요.") == []
+
+
+@pytest.mark.parametrize("written", ["45일", "2주", "6개월", "3년", "3%"])
+def test_number_with_unit_not_from_calc(check, written):
+    assert check(answer=GOOD.answer + f" 보통 {written}예요.") == [
+        f"계산 결과·인용 근거에 없는 수: {written}"
+    ]
+
+
+def test_rate_from_calc_as_percent(evidence, cargos):
+    # 계산 결과의 율 0.015는 답에 1.5%로 쓴다
+    calc = {"deadlines": [{"surcharge": {"rate": 0.015, "cap_krw": 5000000}}]}
+    draft = Draft(
+        answer="지금 신고하면 가산세율은 1.5%예요.", citations=[], next_options=[], forwarder_message=""
+    )
+    assert verify(draft, [], calc, cargos, MASK, TODAY) == []
 
 
 def test_day_count_from_cited_evidence(evidence, cargos):
@@ -83,11 +106,29 @@ def test_real_number_leaks(check):
         ("통관이 될지는 관세사에게 확인하세요.", False),
         ("HS 코드는 3924.10입니다.", True),
         ("HS 코드는 관세사가 정해요.", False),
+        ("이 화물은 통관이 가능해요.", True),
+        ("문제없이 통관될 것 같아요.", True),
+        ("통관이 가능한지는 관세사에게 물어보세요.", False),
+        ("HS 코드가 3924.10입니다.", True),
+        ("HS 3924.10-0000으로 분류돼요.", True),
+        ("품목번호는 3924.10.0000입니다.", True),
         ("관세는 약 120,000원이에요.", True),
         ("관세는 약 50만원이에요.", True),
+        ("관세로 12만 원 정도 나와요.", True),
+        ("관세는 12만 5천원이에요.", True),
+        ("원산지 표시를 확인하세요.", False),
         ("가산세율은 과세가격의 0.5%예요.", False),
     ],
 )
 def test_forbidden_patterns(text, hit):
     draft = Draft(answer=text, citations=[], next_options=[], forwarder_message="")
     assert any(v.startswith("금지 표현") for v in verify(draft, [], {}, [], {}, TODAY)) is hit
+
+
+def test_amount_from_calc_allowed(cargos):
+    # [왜] 가산세 상한(cap_krw)처럼 계산 결과에 있는 금액은 세액 계산이 아니라 옮겨 쓴 값이다
+    calc = {"deadlines": [{"surcharge": {"rate": 0.005, "cap_krw": 5000000}}]}
+    draft = Draft(
+        answer="가산세는 500만원을 넘을 수 없어요.", citations=[], next_options=[], forwarder_message=""
+    )
+    assert verify(draft, [], calc, cargos, MASK, TODAY) == []
