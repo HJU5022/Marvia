@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -16,3 +18,20 @@ class Draft(BaseModel):
     citations: list[str] = Field(description="답이 기댄 근거의 unit_id. 근거 묶음의 대괄호 안 글 그대로")
     next_options: list[str] = Field(description="사용자가 다음에 할 수 있는 일 두세 개")
     forwarder_message: str = Field(description="포워더에게 번호를 물을 메시지. 필요 없으면 빈 글")
+
+
+class Step(BaseModel):
+    """할 일 하나 (설계 6.1)."""
+
+    # [왜] 실행 노드 이름과 같다. 계획자가 고른 action으로 그래프가 바로 그 노드에 간다
+    action: Literal["search_law", "write"] = Field(
+        description="search_law: 법령·고시 검색 / write: 지금 모은 것으로 답 쓰기"
+    )
+    query: str = Field(description="search_law면 한국어 검색 문장 하나. 아니면 빈 글")
+    reason: str = Field(description="이 일을 하는 이유 한 문장")
+
+
+class Plan(BaseModel):
+    """계획자가 낸 남은 할 일. 맨 앞 일이 다음에 돈다."""
+
+    steps: list[Step] = Field(description="남은 할 일을 순서대로. 더 할 일이 없으면 write 하나")

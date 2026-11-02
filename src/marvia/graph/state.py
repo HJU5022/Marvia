@@ -24,6 +24,7 @@ class IdentifyState(TypedDict, total=False):
 # [왜] 메인 그래프는 식별 칸을 모두 쓰고 아래 칸을 더 쓴다. 상속으로 같은 칸을 두 번 적지 않는다
 # [주의] 아래 칸(answer 빼고)은 start 노드가 차례마다 비운다. 칸을 더하면 start에도 더한다
 class MarviaState(IdentifyState, total=False):
+    plan: list[dict]  # 할 일 [{"action", "query", "reason", "status"}]. 진행 중은 하나 (설계 6.2)
     evidence: list[dict]  # 근거 묶음 (Evidence를 dict로 바꾼 것). unit_id마다 하나, 점수 높은 순
     gaps: list[str]  # RAG가 부족하다고 한 빠진 근거 문장 (막힘 처리 재료)
     calc: dict  # 계산 결과 {"deadlines": [...], "reimport": {...}}. 인용은 없고 날짜·조건·이름표만
