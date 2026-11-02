@@ -1,0 +1,101 @@
+[
+ {
+  "name": "관세법",
+  "title": "관세법",
+  "doc_id": "L001556",
+  "kind": "법률",
+  "effective": "2026-10-02",
+  "url": "https://www.law.go.kr/LSW/lsInfoR.do?lsiSeq=290673&chrClsCd=010202&urlMode=lsInfoP&efYd=20261002&ancYnChk=0",
+  "units": 1964,
+  "page_sha256": "5bb5693be1f47050d9ba45e082fea1967620d88ac4205f01cc2279420420ef18",
+  "status": "ok"
+ },
+ {
+  "name": "관세법 시행령",
+  "title": "관세법 시행령",
+  "doc_id": "L002421",
+  "kind": "시행령",
+  "effective": "2026-02-27",
+  "url": "https://www.law.go.kr/LSW/lsInfoR.do?lsiSeq=283621&chrClsCd=010202&urlMode=lsInfoP&efYd=20260227&ancYnChk=0",
+  "units": 2641,
+  "page_sha256": "f7219efb10f17ad61b308c9af63a68f41068bc41451c35e3f4c94a176fa513f8",
+  "status": "ok"
+ },
+ {
+  "name": "관세법 시행규칙",
+  "title": "관세법 시행규칙",
+  "doc_id": "L006392",
+  "kind": "시행규칙",
+  "effective": "2026-07-31",
+  "url": "https://www.law.go.kr/LSW/lsInfoR.do?lsiSeq=288525&chrClsCd=010202&urlMode=lsInfoP&efYd=20260731&ancYnChk=0",
+  "units": 863,
+  "page_sha256": "027be98c1dacdabaf2abeeecdf524dbd4f75817d7fea17cafac983d6b82cc4f8",
+  "status": "ok"
+ },
+ {
+  "name": "수입통관 사무처리에 관한 고시",
+  "title": "수입통관 사무처리에 관한 고시",
+  "doc_id": "A36893",
+  "kind": "고시",
+  "effective": "2025-12-17",
+  "url": "https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000269780",
+  "units": 736,
+  "page_sha256": "5f4161afa8c95973db1fa9272b6ba6f344bc4373c7ca14040e109256a8c28537",
+  "status": "ok"
+ },
+ {
+  "name": "보세화물관리에 관한 고시",
+  "title": "보세화물관리에 관한 고시",
+  "doc_id": "A36852",
+  "kind": "고시",
+  "effective": "2026-02-24",
+  "url": "https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000275032",
+  "units": 201,
+  "page_sha256": "b89368e52c1e89aca59eff5f868e02b86143dda2805c160e7686bd27c605a511",
+  "status": "ok"
+ },
+ {
+  "name": "관리대상화물 관리에 관한 고시",
+  "title": "관리대상화물 관리에 관한 고시",
+  "doc_id": "A36744",
+  "kind": "고시",
+  "effective": "2023-12-13",
+  "url": "https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000232614",
+  "units": 106,
+  "page_sha256": "30bf96b54a3981a6440489235cf8b8bb108c39ca21af3f4842116055ab49fb9d",
+  "status": "ok"
+ },
+ {
+  "name": "수입식품안전관리 특별법",
+  "title": "수입식품안전관리 특별법 ( 약칭: 수입식품법 )",
+  "doc_id": "L012247",
+  "kind": "법률",
+  "effective": "2026-10-08",
+  "url": "https://www.law.go.kr/LSW/lsInfoR.do?lsiSeq=285337&chrClsCd=010202&urlMode=lsInfoP&efYd=20261008&ancYnChk=0",
+  "units": 309,
+  "page_sha256": "b0fb77f10c0715ef5da22b11f6ed0674a61c0a1328b602ce08f92fa6394becfc",
+  "status": "ok"
+ },
+ {
+  "name": "수입식품안전관리 특별법 시행규칙",
+  "title": "수입식품안전관리 특별법 시행규칙",
+  "doc_id": "L012500",
+  "kind": "시행규칙",
+  "effective": "2026-09-30",
+  "url": "https://www.law.go.kr/LSW/lsInfoR.do?lsiSeq=290799&chrClsCd=010202&urlMode=lsInfoP&efYd=20260930&ancYnChk=0",
+  "units": 388,
+  "page_sha256": "28ae69c4bff37798da3ffa56919b7d3abfc097fed73610696988ab767ebb19b6",
+  "status": "ok"
+ },
+ {
+  "name": "수입식품등 신고 및 검사에 관한 규정",
+  "title": "수입식품등 신고 및 검사에 관한 규정",
+  "doc_id": "A87721",
+  "kind": "고시",
+  "effective": "2025-09-01",
+  "url": "https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000263512",
+  "units": 129,
+  "page_sha256": "861997aeddaae2fbfd695d400701cf85cce96c340585aac30a554ddcf58404d6",
+  "status": "ok"
+ }
+]
