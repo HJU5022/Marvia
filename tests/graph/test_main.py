@@ -3,6 +3,7 @@ from langgraph.types import Command
 
 from marvia.graph.main import build_main_graph, merge_evidence
 from marvia.graph.schemas import Draft, Plan, Step
+from marvia.tools.reimport import ItemFacts
 
 # 근거 묶음에 없는 unit_id를 인용한 초안. 검증에서 늘 걸린다
 BAD = Draft(
@@ -18,6 +19,18 @@ CITING = Draft(
 )
 SEARCH = Plan(steps=[Step(action="search_law", query="수입신고 기한", reason="기한 조문을 찾는다")])
 WRITE = Plan(steps=[Step(action="write", query="", reason="찾은 근거로 답한다")])
+CALC = Plan(steps=[Step(action="calc", query="", reason="기한을 계산한다")])
+EXTRACT = Plan(steps=[Step(action="extract_item", query="", reason="품목 사실을 뽑는다")])
+# 건고추를 5년 안에 다시 들여오고 조건을 모두 채운 사실
+CHILI = ItemFacts(
+    category="농산물·임산물",
+    same=["생산국", "품명", "수출업소", "포장장소"],
+    different=[],
+    prior_precise="받음",
+    prior_result="적합",
+    prior_cert_on="2026-03-10",
+    flags=[],
+)
 
 
 def cfg(thread_id: str) -> dict:
@@ -148,3 +161,43 @@ def test_merge_keeps_best_score_per_unit():
     old = [{"unit_id": "A", "score": 0.2}, {"unit_id": "B", "score": 0.5}]
     new = [{"unit_id": "A", "score": 0.7}]
     assert merge_evidence(old, new) == [{"unit_id": "A", "score": 0.7}, {"unit_id": "B", "score": 0.5}]
+
+
+def test_calc_gives_deadline_from_stage_date(agent_deps, calc):
+    due = Draft(
+        answer="[BL1]은 2026-11-26까지 수입신고해야 해요. 24일 남았어요.",
+        citations=[],
+        next_options=[],
+        forwarder_message="",
+    )
+    write_prompts: list[str] = []
+    deps = agent_deps(plan=recording([], CALC, WRITE), write=recording(write_prompts, due))
+    graph = build_main_graph(deps, InMemorySaver())
+    out = graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("t12"))
+    # 반입신고 2026-10-27 (한국 날짜) + 30일 = 2026-11-26. 계산 결과의 모양은 conftest의 calc 준비물과 같다
+    assert graph.get_state(cfg("t12")).values["calc"] == calc
+    assert '"due": "2026-11-26"' in write_prompts[0]
+    assert (
+        "DEMO0001은 2026-11-26까지 수입신고해야 해요." in out["answer"]
+    )  # 검증을 넘어 실제 번호로 되돌린 답
+
+
+def test_item_facts_then_reimport_check(agent_deps):
+    item_prompts: list[str] = []
+    deps = agent_deps(plan=recording([], EXTRACT, CALC, WRITE), item=recording(item_prompts, CHILI))
+    graph = build_main_graph(deps, InMemorySaver())
+    graph.invoke({"text": "작년 3월에 정밀검사 받은 건고추를 같은 수출업소에서 다시 들여와요"}, cfg("t13"))
+    values = graph.get_state(cfg("t13")).values
+    assert values["calc"]["reimport"]["verdict"] == "서류검사 요건 충족"
+    assert values["calc"]["reimport"]["window_end"] == "2031-03-10"
+    assert values["llm_calls"] == 5  # 계획 3 + 품목 사실 1 + 작성 1
+    assert "100kg" in item_prompts[0]  # 정밀검사 사유와 yaml 이름표를 함께 보여 준다
+
+
+def test_second_turn_drops_item(agent_deps):
+    deps = agent_deps(plan=recording([], EXTRACT, CALC, WRITE, WRITE), item=lambda prompt: CHILI)
+    graph = build_main_graph(deps, InMemorySaver())
+    graph.invoke({"text": "건고추를 다시 들여와요"}, cfg("t14"))
+    graph.invoke({"text": "수입신고는 언제 해요?"}, cfg("t14"))
+    values = graph.get_state(cfg("t14")).values
+    assert values["item"] == {} and values["calc"] == {}  # 지난 차례의 품목 사실과 계산이 남지 않는다

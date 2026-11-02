@@ -27,6 +27,7 @@ class MarviaState(IdentifyState, total=False):
     plan: list[dict]  # 할 일 [{"action", "query", "reason", "status"}]. 진행 중은 하나 (설계 6.2)
     evidence: list[dict]  # 근거 묶음 (Evidence를 dict로 바꾼 것). unit_id마다 하나, 점수 높은 순
     gaps: list[str]  # RAG가 부족하다고 한 빠진 근거 문장 (막힘 처리 재료)
+    item: dict  # 사용자가 말한 품목 사실 (ItemFacts를 dict로 바꾼 것). 뽑지 않았으면 빈 dict
     calc: dict  # 계산 결과 {"deadlines": [...], "reimport": {...}}. 인용은 없고 날짜·조건·이름표만
     draft: dict  # 작성자 초안 (Draft를 dict로 바꾼 것, 가린 토큰 그대로)
     verification: list[str]  # 마지막 초안의 검증 위반 (설계 6.2). 빈 목록이면 통과

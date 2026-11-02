@@ -9,6 +9,7 @@ from marvia.graph.rag import RagDeps
 from marvia.graph.schemas import Draft, Plan, Step
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
+from marvia.tools.reimport import ItemFacts
 
 # 근거 한 건 (관세법 제241조제3항). 가짜 RAG가 찾아 주고, evidence 준비물이 dict로 바꿔 준다
 UNIT = Evidence(
@@ -71,6 +72,16 @@ PLAIN = Draft(
 )
 # 가짜 계획자가 늘 돌려주는 계획: 바로 답 쓰기
 WRITE_NOW = Plan(steps=[Step(action="write", query="", reason="모은 것으로 답한다")])
+# 가짜 품목 사실: 사용자가 아무것도 말하지 않은 경우
+NO_FACTS = ItemFacts(
+    category="모름",
+    same=[],
+    different=[],
+    prior_precise="모름",
+    prior_result="모름",
+    prior_cert_on=None,
+    flags=[],
+)
 
 
 @pytest.fixture
@@ -100,6 +111,7 @@ def agent_deps(fake_rag):
         base = {
             "rag": fake_rag(),
             "plan": lambda prompt: WRITE_NOW,
+            "item": lambda prompt: NO_FACTS,
             "write": lambda prompt: PLAIN,
             "today": lambda: TODAY,
         }

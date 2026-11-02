@@ -24,8 +24,11 @@ class Step(BaseModel):
     """할 일 하나 (설계 6.1)."""
 
     # [왜] 실행 노드 이름과 같다. 계획자가 고른 action으로 그래프가 바로 그 노드에 간다
-    action: Literal["search_law", "write"] = Field(
-        description="search_law: 법령·고시 검색 / write: 지금 모은 것으로 답 쓰기"
+    action: Literal["search_law", "extract_item", "calc", "write"] = Field(
+        description=(
+            "search_law: 법령·고시 검색 / extract_item: 사용자가 말한 품목 사실 뽑기 / "
+            "calc: 기한·재수입 검사 계산 / write: 지금 모은 것으로 답 쓰기"
+        )
     )
     query: str = Field(description="search_law면 한국어 검색 문장 하나. 아니면 빈 글")
     reason: str = Field(description="이 일을 하는 이유 한 문장")

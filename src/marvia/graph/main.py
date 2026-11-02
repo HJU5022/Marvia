@@ -1,9 +1,9 @@
 """메인 그래프: 사용자 메시지가 처음 들어가는 가장 바깥 순서도 (설계 6절).
 
 순서도: START → start → identify(서브그래프) → (질문 있으면 ask → lookup) → plan
-        plan → (진행 중인 할 일) search_law → plan ... / 할 일 없음·write → write → verify
-        → 위반 없음: respond / 위반·횟수 남음: write / 그 밖: finish → END
-하지 않는 일: 품목 사실·계산(계획 3a Task 6에서 extract_item·calc로 들어온다), 한도·실패 처리(Task 7).
+        plan → (진행 중인 할 일) search_law | extract_item | calc → plan ... / 할 일 없음·write → write
+        → verify → 위반 없음: respond / 위반·횟수 남음: write / 그 밖: finish → END
+하지 않는 일: 한도·실패 처리(계획 3a Task 7).
 LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수를 넣어 키 없이 돈다.
 """
 
@@ -26,6 +26,8 @@ from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
 from marvia.prompts import render
+from marvia.tools.deadlines import import_deadlines
+from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 
 
@@ -36,6 +38,7 @@ class AgentDeps:
 
     rag: RagDeps  # RAG 서브그래프의 바깥 기능 (계획 2)
     plan: Callable[[str], Plan]  # 프롬프트 → 남은 할 일
+    item: Callable[[str], ItemFacts]  # 프롬프트 → 사용자가 말한 품목 사실
     write: Callable[[str], Draft]  # 프롬프트 → 답 초안
     today: Callable[[], date] = date.today  # [왜] 함수로 받아야 테스트가 날짜를 고정할 수 있다
 
@@ -47,6 +50,7 @@ def start(state: MarviaState) -> dict:
         "plan": [],
         "evidence": [],
         "gaps": [],
+        "item": {},
         "calc": {},
         "draft": {},
         "verification": [],
@@ -128,6 +132,7 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             evidence="\n".join(f"[{e['unit_id']}] {e['heading']}" for e in state.get("evidence", [])),
             gaps="\n".join(state.get("gaps", [])),
             calc=json.dumps(state.get("calc", {}), ensure_ascii=False),
+            item=json.dumps(state.get("item", {}), ensure_ascii=False),
             done="\n".join(f"{step['action']}: {step['query']}" for step in done),
             failed="\n".join(f"{t['tool']}: {t['message']}" for t in state.get("failed_tools", [])),
         )
@@ -155,6 +160,38 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             #      검색 결과가 비면 채점을 건너뛰어 실제로는 더 적다. 상한으로 세어 호출 수 한도에만 쓴다
             "llm_calls": state.get("llm_calls", 0) + 2 + 2 * out.get("rewrites", 0),
         }
+
+    def extract_item(state: MarviaState) -> dict:
+        """품목 사실: 사용자가 말한 재수입 품목 사실을 정해진 모양으로 뽑는다 (reimport_check의 입력)."""
+        prompt = render(
+            "item_facts",
+            question=state.get("masked_text", ""),
+            # [왜] 사유 이름만으로는 뜻이 모자라다(수입 최소량이 몇 kg인지 등). yaml 이름표를 함께 준다
+            flags="\n".join(f"- {flag}: {item}" for flag, item in load_rules("reimport")["forced"].items()),
+        )
+        facts = deps.item(prompt)
+        return {"item": facts.model_dump(mode="json"), "llm_calls": state.get("llm_calls", 0) + 1}
+
+    def calc(state: MarviaState) -> dict:
+        """계산: 화물 단계로 기한을, 품목 사실로 재수입 검사 판정을 낸다 (설계 7.1). LLM은 부르지 않는다."""
+        today = deps.today()
+        deadlines = []
+        for cargo in state.get("cargos", []):
+            facts = cargo["facts"]
+            if not facts or not facts.get("stage_at"):
+                continue
+            # [주의] stage_at은 "2026-10-27T09:00:00+09:00"(한국 시각) 글이다. 앞 10자로 한국 날짜를 쓴다.
+            #        UTC로 바꾸면 새벽에 바뀐 단계가 하루 앞 날짜가 된다 (화물 줄 cargo_lines와 같은 방식)
+            stage_on = date.fromisoformat(facts["stage_at"][:10])
+            deadlines += [
+                {"cargo": cargo["token"], **deadline.model_dump(mode="json")}
+                for deadline in import_deadlines(facts["stage"], stage_on, today)
+            ]
+        result: dict = {"deadlines": deadlines}
+        item = state.get("item")
+        if item:
+            result["reimport"] = reimport_check(ItemFacts.model_validate(item), today).model_dump(mode="json")
+        return {"calc": result}
 
     def write(state: MarviaState) -> dict:
         """작성자: 가린 질문·화물 줄·계산·근거로 답 초안을 쓴다. 지난 위반이 있으면 함께 넘긴다."""
@@ -205,6 +242,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
     graph.add_node("lookup", lookup)  # 식별 서브그래프의 조회 노드를 다시 쓴다
     graph.add_node("plan", plan)
     graph.add_node("search_law", search_law)
+    graph.add_node("extract_item", extract_item)
+    graph.add_node("calc", calc)
     graph.add_node("write", write)
     graph.add_node("verify", check)
     graph.add_node("respond", respond)
@@ -215,8 +254,11 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
     graph.add_edge("ask", "lookup")
     graph.add_edge("lookup", "plan")
     # [왜] 셋째 인자에 갈 수 있는 곳을 모두 적는다. 그림(get_graph)에 화살표가 빠지지 않는다
-    graph.add_conditional_edges("plan", route, ["search_law", "write"])
-    graph.add_edge("search_law", "plan")  # [왜] 한 일을 보고 계획자가 다시 정한다. 이 화살표가 계획자 루프다
+    graph.add_conditional_edges("plan", route, ["search_law", "extract_item", "calc", "write"])
+    # [왜] 한 일을 보고 계획자가 다시 정한다. 이 세 화살표가 계획자 루프다
+    graph.add_edge("search_law", "plan")
+    graph.add_edge("extract_item", "plan")
+    graph.add_edge("calc", "plan")
     graph.add_edge("write", "verify")
     graph.add_conditional_edges("verify", after_verify, ["respond", "write", "finish"])
     graph.add_edge("respond", END)
