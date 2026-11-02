@@ -65,7 +65,7 @@ def test_cited_effective_date_allowed(check):
     assert check(answer=GOOD.answer + " 이 조문은 2026-10-02부터 시행됐어요.") == []
 
 
-@pytest.mark.parametrize("written", ["45일", "2주", "6개월", "3년", "3%"])
+@pytest.mark.parametrize("written", ["45일", "2주", "6개월", "3년", "3%", "48시간", "24개월"])
 def test_number_with_unit_not_from_calc(check, written):
     assert check(answer=GOOD.answer + f" 보통 {written}예요.") == [
         f"계산 결과·인용 근거에 없는 수: {written}"
@@ -116,6 +116,15 @@ def test_real_number_leaks(check):
         ("관세는 약 50만원이에요.", True),
         ("관세로 12만 원 정도 나와요.", True),
         ("관세는 12만 5천원이에요.", True),
+        ("관세는 3천만원이에요.", True),
+        ("관세는 1억 2천만원이에요.", True),
+        ("가산세는 5백만원이에요.", True),
+        ("관세는 ₩120,000이에요.", True),
+        ("통관될 수 있어요.", True),
+        ("통관에 문제없어요.", True),
+        ("통관 가능성은 관세사에게 물어보세요.", False),
+        ("통관이 가능하신지 관세사에게 확인해 보세요.", False),
+        ("HS 코드는 2027년 1월에 바뀌어요.", False),
         ("원산지 표시를 확인하세요.", False),
         ("가산세율은 과세가격의 0.5%예요.", False),
     ],
@@ -130,5 +139,18 @@ def test_amount_from_calc_allowed(cargos):
     calc = {"deadlines": [{"surcharge": {"rate": 0.005, "cap_krw": 5000000}}]}
     draft = Draft(
         answer="가산세는 500만원을 넘을 수 없어요.", citations=[], next_options=[], forwarder_message=""
+    )
+    assert verify(draft, [], calc, cargos, MASK, TODAY) == []
+
+
+def test_numbers_and_articles_written_in_calc_allowed(cargos):
+    # [왜] 계산 결과 글은 코드와 rules/*.yaml이 만든 값이다. 작성자가 그 안의 수와 조문 이름을 옮겨도 된다.
+    #      인용(unit_id)은 여전히 근거 묶음에서만 온다
+    calc = {"reimport": {"verdict": "서류검사 요건 충족", "caveats": ["규정 제7조제1항: 5년 안에 다시 수입"]}}
+    draft = Draft(
+        answer="이전 정밀검사 뒤 5년 안이라 서류검사 요건을 채워요. 규정 제7조도 함께 보세요.",
+        citations=[],
+        next_options=[],
+        forwarder_message="",
     )
     assert verify(draft, [], calc, cargos, MASK, TODAY) == []

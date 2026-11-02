@@ -122,3 +122,15 @@ def test_yaml_names_match_schema():
     for category in rules["categories"].values():
         assert set(category["fields"]) <= set(get_args(SameField))
     assert set(rules["forced"]) == set(get_args(Flag))
+
+
+def test_window_end_past_holiday_table_is_noted():
+    # [왜] 공휴일 표가 끝난 뒤의 끝날은 토·일만 넘긴다. 공휴일을 반영하지 못했다고 단서로 알린다
+    result = reimport_check(facts(prior_cert_on=date(2024, 1, 1)), TODAY)
+    assert result.window_end == date(2029, 1, 1)
+    assert any("공휴일" in c for c in result.caveats)
+
+
+def test_window_end_inside_holiday_table_has_no_note():
+    result = reimport_check(facts(prior_cert_on=date(2022, 6, 1)), TODAY)  # 끝날 2027-06-01(화)
+    assert not any("공휴일" in c for c in result.caveats)

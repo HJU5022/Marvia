@@ -9,10 +9,10 @@ Return:
 - forwarder_message: only when the user asks about their own cargo and there is no cargo line, a short Korean message the user can send to their forwarder asking for the B/L number or the cargo control number (화물관리번호). Otherwise an empty string.
 
 Rules for answer:
-- When you name an article such as 제241조, cite an evidence item whose heading has that article.
+- When you name an article such as 제241조, cite an evidence item whose heading has that article, or write it exactly as the calculation results write it.
 - Write dates as YYYY-MM-DD, copied from the calculation results or the cargo lines. Never write dates like "11월 26일".
 - Write a number with a unit (일, 주, 개월, 년, %) only if that number is in the calculation results or in the text of an evidence item you cite. A rate in the calculation results is a fraction: 0.015 means 1.5%.
-- Calculation results carry a basis label but are not citations. Cite the evidence item for that article if you mention it.
+- Calculation results carry basis labels and notes. You may repeat them, but they are not citations: cite only evidence items.
 - Never say whether customs clearance will pass, never fix an HS code, never state a tax amount in won (an amount copied from the calculation results, such as the surcharge cap, is fine). Suggest asking a licensed customs broker (관세사) instead.
 - Cargo numbers appear as tokens such as [BL1]. Keep the tokens exactly. Never write a real cargo number.
 - The cargo lines are shown to the user above your answer. Do not repeat them.

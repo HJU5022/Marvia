@@ -22,19 +22,26 @@ _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _OTHER_DATE = re.compile(
     r"\d{1,2}월\s*\d{1,2}일|\d{4}\.\s*\d{1,2}\.\s*\d{1,2}|(?<![\d/])\d{1,2}/\d{1,2}(?![\d/])"
 )
-# 단위가 붙은 수: 30일, 2주, 6개월, 5년, 1.5%
-_COUNT = re.compile(r"(\d+(?:\.\d+)?)\s*(일|주|개월|년|%)")
-# 원 단위 금액: 120,000원, 50만원, 12만 5천원. [주의] 원산지·원료·원문·원칙·원하시면의 "원"은 빼고 본다
-_WON = re.compile(r"(\d[\d,]*)\s*(억|만|천)?\s*(?:(\d+)\s*천)?\s*원(?!산|료|문|칙|래|인|본|단|형|하)")
-_WON_UNIT = {"억": 100_000_000, "만": 10_000, "천": 1_000, "": 1}
+# 단위가 붙은 수: 30일, 2주, 6개월, 5년, 48시간, 1.5%
+_COUNT = re.compile(r"(\d+(?:\.\d+)?)\s*(일|주|개월|년|시간|%)")
+# 원 단위 금액: 120,000원, 50만원, 12만 5천원, 1억 2천만원, ₩120,000.
+# [주의] 원산지·원료·원문·원칙·원하시면의 "원"은 빼고 본다
+_WON_UNIT = {"억": 100_000_000, "천만": 10_000_000, "백만": 1_000_000, "만": 10_000, "천": 1_000, "백": 100}
+_WON_PIECE = re.compile(r"(\d[\d,]*)\s*(억|천만|백만|만|천|백)?")
+_WON = re.compile(
+    r"((?:\d[\d,]*\s*(?:억|천만|백만|만|천|백)?\s*)+)원(?!산|료|문|칙|래|인|본|단|형|하)|₩\s*(\d[\d,]*)"
+)
 # [왜] JSON 안에서 값 자리에 놓인 수만 고른다(날짜 글 속 숫자는 빼고). 음수는 부호를 떼고 센다
 _JSON_NUM = re.compile(r":\s*-?(\d+(?:\.\d+)?)\s*[,}]")
 
 
 def _won(match: re.Match) -> int:
-    """금액 글 하나를 원 단위 정수로 바꾼다. 12만 5천원 → 125000."""
-    head, unit, thousands = match.groups()
-    return int(head.replace(",", "")) * _WON_UNIT[unit or ""] + int(thousands or 0) * 1_000
+    """금액 글 하나를 원 단위 정수로 바꾼다. 12만 5천원 → 125000, 1억 2천만원 → 120000000."""
+    words, symbol = match.groups()
+    if symbol:  # ₩120,000
+        return int(symbol.replace(",", ""))
+    # [왜] "1억 2천만"은 조각(1억, 2천만)마다 수 × 단위를 더한다. 단위가 없으면 1
+    return sum(int(n.replace(",", "")) * _WON_UNIT.get(unit, 1) for n, unit in _WON_PIECE.findall(words))
 
 
 def verify(
@@ -60,7 +67,10 @@ def verify(
     violations += [f"근거 묶음에 없는 인용: {c}" for c in draft.citations if c not in by_id]
     if evidence and not draft.citations:
         violations.append("근거가 있는데 인용이 없다")
-    cited_names = " ".join(f"{e['unit_id']} {e['heading']}" for e in cited)
+    # [왜] 계산 결과 글은 코드와 rules/*.yaml이 만든 값이라, 그 안에 적힌 조문 이름은 답에 옮겨도 된다.
+    #      인용(unit_id)은 여전히 근거 묶음에서만 온다
+    calc_json = json.dumps(calc, ensure_ascii=False)
+    cited_names = " ".join(f"{e['unit_id']} {e['heading']}" for e in cited) + " " + calc_json
     articles = {f"제{n}조" + (f"의{sub}" if sub else "") for n, sub in _ARTICLE.findall(draft.answer)}
     for article in sorted(articles):
         # [왜] (?!의): 인용이 제241조의2이면 답의 제241조는 그 앞부분일 뿐이라 통과시키지 않는다
@@ -69,7 +79,6 @@ def verify(
 
     # 2. 숫자: 날짜는 계산 결과·화물 단계 날짜·인용한 근거의 시행일·오늘에서만,
     #    단위가 붙은 수는 계산 결과·인용한 조문 글에서만, 금액은 계산 결과에서만
-    calc_json = json.dumps(calc, ensure_ascii=False)
     stage_days = {
         kst_date(c["facts"]["stage_at"]).isoformat()
         for c in cargos
@@ -82,7 +91,10 @@ def verify(
     ]
     violations += [f"날짜는 YYYY-MM-DD로 쓴다: {d}" for d in _OTHER_DATE.findall(draft.answer)]
     calc_numbers = {float(n) for n in _JSON_NUM.findall(calc_json)}
-    cited_counts = {(float(n), unit) for n, unit in _COUNT.findall(" ".join(e["text"] for e in cited))}
+    # [왜] 단위가 붙은 수는 인용한 조문 글과 계산 결과 글(코드가 쓴 "5년" 같은 단서)에서
+    #      같은 단위로만 허용한다
+    written = " ".join(e["text"] for e in cited) + " " + calc_json
+    allowed_pairs = {(float(n), unit) for n, unit in _COUNT.findall(written)}
     # [왜] 날짜 꼴은 위에서 이미 걸렸다. "11월 26일"의 26일을 일수로 한 번 더 세지 않게 지우고 본다
     plain = _OTHER_DATE.sub("", draft.answer)
     seen: set[str] = set()
@@ -94,7 +106,8 @@ def verify(
             # [왜] 계산 결과의 율은 0.015처럼 소수다. 답에는 1.5%로 쓴다
             ok = any(round(value, 6) == round(x * 100, 6) for x in calc_numbers)
         else:
-            ok = value in calc_numbers or (value, unit) in cited_counts
+            # [왜] 계산 결과의 숫자 값(남은 날·넘긴 날)은 날 수라 "일"에만 쓴다. 24개월로 옮기면 틀린 값이다
+            ok = (unit == "일" and value in calc_numbers) or (value, unit) in allowed_pairs
         if not ok and n + unit not in seen:
             seen.add(n + unit)
             violations.append(f"계산 결과·인용 근거에 없는 수: {n}{unit}")

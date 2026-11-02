@@ -567,6 +567,18 @@ def test_yaml_names_match_schema():
     for category in rules["categories"].values():
         assert set(category["fields"]) <= set(get_args(SameField))
     assert set(rules["forced"]) == set(get_args(Flag))
+
+
+def test_window_end_past_holiday_table_is_noted():
+    # [왜] 공휴일 표가 끝난 뒤의 끝날은 토·일만 넘긴다. 공휴일을 반영하지 못했다고 단서로 알린다
+    result = reimport_check(facts(prior_cert_on=date(2024, 1, 1)), TODAY)
+    assert result.window_end == date(2029, 1, 1)
+    assert any("공휴일" in c for c in result.caveats)
+
+
+def test_window_end_inside_holiday_table_has_no_note():
+    result = reimport_check(facts(prior_cert_on=date(2022, 6, 1)), TODAY)  # 끝날 2027-06-01(화)
+    assert not any("공휴일" in c for c in result.caveats)
 ```
 
 Run: `uv run pytest tests/tools/test_reimport.py -v`
@@ -765,6 +777,10 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
         # [추정] 민법 제161조를 이 기간에 적용한 예규는 확인하지 못했다
         holidays = set(load_rules("deadlines")["holidays"])
         window_end = due_date(_years_later(facts.prior_cert_on, rules["window_years"]), 0, holidays)
+        if window_end > max(holidays):
+            # [왜] 공휴일 표 뒤의 날은 토·일만 넘긴다. 공휴일을 반영하지 못했다고 알린다
+            last = max(holidays)
+            caveats.append(f"공휴일 표가 {last}까지라 기간 끝날 계산에 그 뒤 공휴일은 반영하지 못했다")
         if today > window_end:
             failed.append(f"{rules['window_years']}년 지남 ({window_end}까지)")
 
@@ -788,7 +804,7 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `uv run pytest tests/tools/test_reimport.py -v`
-Expected: 14 passed
+Expected: 16 passed
 
 - [ ] **Step 5: 전체 확인과 커밋**
 
@@ -797,7 +813,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 110 passed (DB가 꺼져 있으면 104 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 112 passed (DB가 꺼져 있으면 106 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -955,7 +971,7 @@ def test_cited_effective_date_allowed(check):
     assert check(answer=GOOD.answer + " 이 조문은 2026-10-02부터 시행됐어요.") == []
 
 
-@pytest.mark.parametrize("written", ["45일", "2주", "6개월", "3년", "3%"])
+@pytest.mark.parametrize("written", ["45일", "2주", "6개월", "3년", "3%", "48시간", "24개월"])
 def test_number_with_unit_not_from_calc(check, written):
     assert check(answer=GOOD.answer + f" 보통 {written}예요.") == [
         f"계산 결과·인용 근거에 없는 수: {written}"
@@ -1006,6 +1022,15 @@ def test_real_number_leaks(check):
         ("관세는 약 50만원이에요.", True),
         ("관세로 12만 원 정도 나와요.", True),
         ("관세는 12만 5천원이에요.", True),
+        ("관세는 3천만원이에요.", True),
+        ("관세는 1억 2천만원이에요.", True),
+        ("가산세는 5백만원이에요.", True),
+        ("관세는 ₩120,000이에요.", True),
+        ("통관될 수 있어요.", True),
+        ("통관에 문제없어요.", True),
+        ("통관 가능성은 관세사에게 물어보세요.", False),
+        ("통관이 가능하신지 관세사에게 확인해 보세요.", False),
+        ("HS 코드는 2027년 1월에 바뀌어요.", False),
         ("원산지 표시를 확인하세요.", False),
         ("가산세율은 과세가격의 0.5%예요.", False),
     ],
@@ -1020,6 +1045,19 @@ def test_amount_from_calc_allowed(cargos):
     calc = {"deadlines": [{"surcharge": {"rate": 0.005, "cap_krw": 5000000}}]}
     draft = Draft(
         answer="가산세는 500만원을 넘을 수 없어요.", citations=[], next_options=[], forwarder_message=""
+    )
+    assert verify(draft, [], calc, cargos, MASK, TODAY) == []
+
+
+def test_numbers_and_articles_written_in_calc_allowed(cargos):
+    # [왜] 계산 결과 글은 코드와 rules/*.yaml이 만든 값이다. 작성자가 그 안의 수와 조문 이름을 옮겨도 된다.
+    #      인용(unit_id)은 여전히 근거 묶음에서만 온다
+    calc = {"reimport": {"verdict": "서류검사 요건 충족", "caveats": ["규정 제7조제1항: 5년 안에 다시 수입"]}}
+    draft = Draft(
+        answer="이전 정밀검사 뒤 5년 안이라 서류검사 요건을 채워요. 규정 제7조도 함께 보세요.",
+        citations=[],
+        next_options=[],
+        forwarder_message="",
     )
     assert verify(draft, [], calc, cargos, MASK, TODAY) == []
 ```
@@ -1132,12 +1170,14 @@ class Draft(BaseModel):
 
 forbidden:
   # 통관이 된다·안 된다·가능하다고 단정. "가능한지/될지는 관세사에게"처럼 묻는 말은 걸리지 않는다
-  - pattern: '통관(이|은|도|에)?\s*(가능|불가능|불가)(?!한지|할지|\s*여부)'
+  - pattern: '통관(이|은|도|에)?\s*(가능|불가능|불가)(?!성|한지|하신지|할지|\s*여부)'
     reason: 통관 가부를 단정했다
-  - pattern: '통관(이|은|도)?\s*(안\s*)?(됩니다|돼요|될\s*(거|것|겁)|되겠)'
+  - pattern: '통관(이|은|도)?\s*(안\s*)?(됩니다|돼요|될\s*(거|것|겁|수)|되겠)'
+    reason: 통관 가부를 단정했다
+  - pattern: '통관(에|이|은)?\s*(아무\s*)?문제\s*(가\s*)?없(?!는지|을지)'
     reason: 통관 가부를 단정했다
   # HS 코드·품목번호·세번 뒤에 숫자 네 자리 이상을 쓰면 확정으로 본다
-  - pattern: '(HS|품목번호|세번)\s*(코드|부호)?\s*(는|은|가|이|를|을|로|으로)?\s*\d{4}'
+  - pattern: '(HS|품목번호|세번)\s*(코드|부호)?\s*(는|은|가|이|를|을|로|으로)?\s*\d{4}(?!\s*년)'
     reason: HS 코드를 확정했다
 # 세액(원 단위 금액)은 정규식 대신 코드가 계산 결과의 금액과 대조한다 (src/marvia/graph/verify.py)
 ```
@@ -1186,19 +1226,26 @@ _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _OTHER_DATE = re.compile(
     r"\d{1,2}월\s*\d{1,2}일|\d{4}\.\s*\d{1,2}\.\s*\d{1,2}|(?<![\d/])\d{1,2}/\d{1,2}(?![\d/])"
 )
-# 단위가 붙은 수: 30일, 2주, 6개월, 5년, 1.5%
-_COUNT = re.compile(r"(\d+(?:\.\d+)?)\s*(일|주|개월|년|%)")
-# 원 단위 금액: 120,000원, 50만원, 12만 5천원. [주의] 원산지·원료·원문·원칙·원하시면의 "원"은 빼고 본다
-_WON = re.compile(r"(\d[\d,]*)\s*(억|만|천)?\s*(?:(\d+)\s*천)?\s*원(?!산|료|문|칙|래|인|본|단|형|하)")
-_WON_UNIT = {"억": 100_000_000, "만": 10_000, "천": 1_000, "": 1}
+# 단위가 붙은 수: 30일, 2주, 6개월, 5년, 48시간, 1.5%
+_COUNT = re.compile(r"(\d+(?:\.\d+)?)\s*(일|주|개월|년|시간|%)")
+# 원 단위 금액: 120,000원, 50만원, 12만 5천원, 1억 2천만원, ₩120,000.
+# [주의] 원산지·원료·원문·원칙·원하시면의 "원"은 빼고 본다
+_WON_UNIT = {"억": 100_000_000, "천만": 10_000_000, "백만": 1_000_000, "만": 10_000, "천": 1_000, "백": 100}
+_WON_PIECE = re.compile(r"(\d[\d,]*)\s*(억|천만|백만|만|천|백)?")
+_WON = re.compile(
+    r"((?:\d[\d,]*\s*(?:억|천만|백만|만|천|백)?\s*)+)원(?!산|료|문|칙|래|인|본|단|형|하)|₩\s*(\d[\d,]*)"
+)
 # [왜] JSON 안에서 값 자리에 놓인 수만 고른다(날짜 글 속 숫자는 빼고). 음수는 부호를 떼고 센다
 _JSON_NUM = re.compile(r":\s*-?(\d+(?:\.\d+)?)\s*[,}]")
 
 
 def _won(match: re.Match) -> int:
-    """금액 글 하나를 원 단위 정수로 바꾼다. 12만 5천원 → 125000."""
-    head, unit, thousands = match.groups()
-    return int(head.replace(",", "")) * _WON_UNIT[unit or ""] + int(thousands or 0) * 1_000
+    """금액 글 하나를 원 단위 정수로 바꾼다. 12만 5천원 → 125000, 1억 2천만원 → 120000000."""
+    words, symbol = match.groups()
+    if symbol:  # ₩120,000
+        return int(symbol.replace(",", ""))
+    # [왜] "1억 2천만"은 조각(1억, 2천만)마다 수 × 단위를 더한다. 단위가 없으면 1
+    return sum(int(n.replace(",", "")) * _WON_UNIT.get(unit, 1) for n, unit in _WON_PIECE.findall(words))
 
 
 def verify(
@@ -1224,7 +1271,10 @@ def verify(
     violations += [f"근거 묶음에 없는 인용: {c}" for c in draft.citations if c not in by_id]
     if evidence and not draft.citations:
         violations.append("근거가 있는데 인용이 없다")
-    cited_names = " ".join(f"{e['unit_id']} {e['heading']}" for e in cited)
+    # [왜] 계산 결과 글은 코드와 rules/*.yaml이 만든 값이라, 그 안에 적힌 조문 이름은 답에 옮겨도 된다.
+    #      인용(unit_id)은 여전히 근거 묶음에서만 온다
+    calc_json = json.dumps(calc, ensure_ascii=False)
+    cited_names = " ".join(f"{e['unit_id']} {e['heading']}" for e in cited) + " " + calc_json
     articles = {f"제{n}조" + (f"의{sub}" if sub else "") for n, sub in _ARTICLE.findall(draft.answer)}
     for article in sorted(articles):
         # [왜] (?!의): 인용이 제241조의2이면 답의 제241조는 그 앞부분일 뿐이라 통과시키지 않는다
@@ -1233,7 +1283,6 @@ def verify(
 
     # 2. 숫자: 날짜는 계산 결과·화물 단계 날짜·인용한 근거의 시행일·오늘에서만,
     #    단위가 붙은 수는 계산 결과·인용한 조문 글에서만, 금액은 계산 결과에서만
-    calc_json = json.dumps(calc, ensure_ascii=False)
     stage_days = {
         kst_date(c["facts"]["stage_at"]).isoformat()
         for c in cargos
@@ -1246,7 +1295,10 @@ def verify(
     ]
     violations += [f"날짜는 YYYY-MM-DD로 쓴다: {d}" for d in _OTHER_DATE.findall(draft.answer)]
     calc_numbers = {float(n) for n in _JSON_NUM.findall(calc_json)}
-    cited_counts = {(float(n), unit) for n, unit in _COUNT.findall(" ".join(e["text"] for e in cited))}
+    # [왜] 단위가 붙은 수는 인용한 조문 글과 계산 결과 글(코드가 쓴 "5년" 같은 단서)에서
+    #      같은 단위로만 허용한다
+    written = " ".join(e["text"] for e in cited) + " " + calc_json
+    allowed_pairs = {(float(n), unit) for n, unit in _COUNT.findall(written)}
     # [왜] 날짜 꼴은 위에서 이미 걸렸다. "11월 26일"의 26일을 일수로 한 번 더 세지 않게 지우고 본다
     plain = _OTHER_DATE.sub("", draft.answer)
     seen: set[str] = set()
@@ -1258,7 +1310,8 @@ def verify(
             # [왜] 계산 결과의 율은 0.015처럼 소수다. 답에는 1.5%로 쓴다
             ok = any(round(value, 6) == round(x * 100, 6) for x in calc_numbers)
         else:
-            ok = value in calc_numbers or (value, unit) in cited_counts
+            # [왜] 계산 결과의 숫자 값(남은 날·넘긴 날)은 날 수라 "일"에만 쓴다. 24개월로 옮기면 틀린 값이다
+            ok = (unit == "일" and value in calc_numbers) or (value, unit) in allowed_pairs
         if not ok and n + unit not in seen:
             seen.add(n + unit)
             violations.append(f"계산 결과·인용 근거에 없는 수: {n}{unit}")
@@ -1375,7 +1428,7 @@ def partial_answer(
 - [ ] **Step 6: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph/test_verify.py tests/graph/test_answer.py -v`
-Expected: 44 passed
+Expected: 56 passed
 
 - [ ] **Step 7: 전체 확인과 커밋**
 
@@ -1384,7 +1437,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 154 passed (DB가 꺼져 있으면 148 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 168 passed (DB가 꺼져 있으면 162 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -1741,10 +1794,10 @@ Return:
 - forwarder_message: only when the user asks about their own cargo and there is no cargo line, a short Korean message the user can send to their forwarder asking for the B/L number or the cargo control number (화물관리번호). Otherwise an empty string.
 
 Rules for answer:
-- When you name an article such as 제241조, cite an evidence item whose heading has that article.
+- When you name an article such as 제241조, cite an evidence item whose heading has that article, or write it exactly as the calculation results write it.
 - Write dates as YYYY-MM-DD, copied from the calculation results or the cargo lines. Never write dates like "11월 26일".
 - Write a number with a unit (일, 주, 개월, 년, %) only if that number is in the calculation results or in the text of an evidence item you cite. A rate in the calculation results is a fraction: 0.015 means 1.5%.
-- Calculation results carry a basis label but are not citations. Cite the evidence item for that article if you mention it.
+- Calculation results carry basis labels and notes. You may repeat them, but they are not citations: cite only evidence items.
 - Never say whether customs clearance will pass, never fix an HS code, never state a tax amount in won (an amount copied from the calculation results, such as the surcharge cap, is fine). Suggest asking a licensed customs broker (관세사) instead.
 - Cargo numbers appear as tokens such as [BL1]. Keep the tokens exactly. Never write a real cargo number.
 - The cargo lines are shown to the user above your answer. Do not repeat them.
@@ -2010,7 +2063,7 @@ Expected: 선택지 두 개(0번 권장)를 보인 뒤 `2건으로 읽었어요.
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph -v`
-Expected: 61 passed (DB가 꺼져 있으면 60 passed, 1 skipped)
+Expected: 73 passed (DB가 꺼져 있으면 72 passed, 1 skipped)
 
 - [ ] **Step 8: 전체 확인과 커밋**
 
@@ -2019,7 +2072,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 158 passed (DB가 꺼져 있으면 152 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 172 passed (DB가 꺼져 있으면 166 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -2704,7 +2757,7 @@ Expected: Task 4 Step 6과 같다
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph -v`
-Expected: 65 passed (DB가 꺼져 있으면 64 passed, 1 skipped)
+Expected: 77 passed (DB가 꺼져 있으면 76 passed, 1 skipped)
 
 - [ ] **Step 8: 전체 확인과 커밋**
 
@@ -2713,7 +2766,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 162 passed (DB가 꺼져 있으면 156 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 176 passed (DB가 꺼져 있으면 170 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -3096,7 +3149,7 @@ Return steps: the remaining steps in order. The first one runs next, and you wil
 - Choose write when the evidence, calculations and facts below are enough to answer, or when more steps would not help.
 - Do not repeat a done step with the same query. Do not retry a failed tool more than once.
 - Run extract_item at most once. If item facts are shown below, use them.
-- After calc, search_law for the provision named in each basis label of the calculation results, unless that provision is already in the evidence found. The answer can only name and cite provisions that are in the evidence.
+- After calc, search_law for the provision named in each basis label of the calculation results, unless that provision is already in the evidence found, so that the answer can cite it.
 - Dates, day counts and inspection results come only from calc. Never work them out yourself.
 - Cargo numbers appear as tokens such as [BL1]. Never put a token or a cargo number into a search query.
 
@@ -3471,7 +3524,7 @@ Expected: Task 4 Step 6과 같다
 - [ ] **Step 6: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph -v`
-Expected: 68 passed (DB가 꺼져 있으면 67 passed, 1 skipped)
+Expected: 80 passed (DB가 꺼져 있으면 79 passed, 1 skipped)
 
 - [ ] **Step 7: 전체 확인과 커밋**
 
@@ -3480,7 +3533,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 165 passed (DB가 꺼져 있으면 159 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 179 passed (DB가 꺼져 있으면 173 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4288,7 +4341,7 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph tests/test_llm.py -v`
-Expected: 80 passed (DB가 꺼져 있으면 79 passed, 1 skipped)
+Expected: 92 passed (DB가 꺼져 있으면 91 passed, 1 skipped)
 
 - [ ] **Step 8: 전체 확인과 커밋**
 
@@ -4297,7 +4350,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 175 passed (DB가 꺼져 있으면 169 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 189 passed (DB가 꺼져 있으면 183 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4433,7 +4486,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 176 passed (DB가 꺼져 있으면 170 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 190 passed (DB가 꺼져 있으면 184 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4505,6 +4558,7 @@ uv run python scripts/try_agent.py "다음 주에 칭다오에서 고추 와요.
 | `fix(graph): 검증자가 해요체 단정·금액·비율·기간·다른 날짜 꼴을 잡고 계산 결과의 금액은 허용` | Task 3 Step 4 메모 | 해요체·금액·비율 표현을 놓치고 가산세 상한을 잘못 막았다 |
 | `fix(graph): 단계 시각을 한국 날짜로 세고 지난 답·빈 빠진 근거를 남기지 않음` | 아래 | 아래 |
 | `fix(graph): 남은 단계 한도를 6으로 바로잡고 계산 뒤 근거 조문을 찾게 함` | `min_remaining_steps` 5 → 6, 계획자 프롬프트에 "calc 뒤 basis 조문을 search_law로 찾기", `try_agent.py` 기본 질문 | 계산 뒤 작성자가 두 번 다 검증에 걸리면 경계에서 `GraphRecursionError`가 났다(검증 담당 540경우 탐침). 계산만 하고 검색하지 않으면 작성자가 조문·일수를 인용할 수 없다 |
+| `fix(graph): 검증자가 계산 결과 글의 수·조문을 허용하고 금액·통관 표현을 더 정확히 읽음` | 계산 결과 글 안의 단위 수와 조문 이름 허용(인용은 여전히 근거 묶음만), 계산 결과의 숫자 값은 "일"에만, 시간 단위 검사, 이어 쓴 금액 단위(억·천만·백만·백)와 ₩, 통관 패턴(가능성·가능하신지 제외, 될 수·문제없어요 포함), HS 뒤 연도 제외, 재수입 기간 끝날이 공휴일 표 뒤면 단서 | 코드가 만든 재수입 결과("5년")조차 작성자가 말할 수 없어 부분 답으로 끝나기 쉬웠다(별표는 코퍼스 밖이라 인용 불가). 금액 꼴을 놓치고 문의 문장을 단정으로 막았다 |
 
 마지막 커밋에서 고친 것:
 
@@ -4549,7 +4603,7 @@ def test_rewrite_path_fits_in_remaining_steps(agent_deps):
     assert "끝까지 확인하지 못했어요" in out["answer"]
 ```
 
-Expected: 린트·타입 오류 0, 179 passed (DB가 꺼져 있으면 173 passed, 6 skipped)
+Expected: 린트·타입 오류 0, 193 passed (DB가 꺼져 있으면 187 passed, 6 skipped)
 
 검증 담당이 짚었지만 고치지 않은 것: 번호 없을 때 안내를 코드가 늘 붙이기(법령만 묻는 질문에 틀린 안내가 된다, 화물 질문인지는 작성자가 판단), 검색 질의의 토큰 지우기(가린 값이고 질의 분석 프롬프트가 지운다), 근거 묶음 상한(LLM 호출 상한 안에서 근거 40개 안팎 [추정]), 프롬프트 태그 탈출(설계 12절 promptfoo), 법령 이름까지 맞추는 조문 검사(약칭이 많다), 공휴일 표 끝(2027-12-31) 경고, 30일 기한의 보세구역 종류 구분.
 
@@ -4559,7 +4613,7 @@ Expected: 린트·타입 오류 0, 179 passed (DB가 꺼져 있으면 173 passed
 - 화물 번호가 있으면 화물 줄과 기한(수입신고 기한·관세 납부기한, 넘겼으면 신고지연 가산세율과 대상 범위)을, 재수입 질문이면 서류검사 요건 판정을 코드가 계산하고 작성자는 그 값만 옮긴다.
 - 번호가 없는 화물 질문에는 코드가 쓰는 포워더 안내 줄과 작성자가 쓴 메시지가 나온다.
 - 검증 위반 두 번, LLM 호출 상한, 남은 단계 부족, LLM 실패 중 하나면 오류 대신 부분 답(계산한 것·찾은 근거·빠진 근거·실패한 도구·다음 선택지)이 나온다.
-- 테스트 179개가 키 없이 돈다(DB가 꺼져 있으면 173 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
+- 테스트 193개가 키 없이 돈다(DB가 꺼져 있으면 187 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
 
 ## 설계와 대조
 

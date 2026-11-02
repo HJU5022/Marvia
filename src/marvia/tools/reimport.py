@@ -129,6 +129,10 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
         # [추정] 민법 제161조를 이 기간에 적용한 예규는 확인하지 못했다
         holidays = set(load_rules("deadlines")["holidays"])
         window_end = due_date(_years_later(facts.prior_cert_on, rules["window_years"]), 0, holidays)
+        if window_end > max(holidays):
+            # [왜] 공휴일 표 뒤의 날은 토·일만 넘긴다. 공휴일을 반영하지 못했다고 알린다
+            last = max(holidays)
+            caveats.append(f"공휴일 표가 {last}까지라 기간 끝날 계산에 그 뒤 공휴일은 반영하지 못했다")
         if today > window_end:
             failed.append(f"{rules['window_years']}년 지남 ({window_end}까지)")
 

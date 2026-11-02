@@ -12,7 +12,7 @@ Return steps: the remaining steps in order. The first one runs next, and you wil
 - Choose write when the evidence, calculations and facts below are enough to answer, or when more steps would not help.
 - Do not repeat a done step with the same query. Do not retry a failed tool more than once.
 - Run extract_item at most once. If item facts are shown below, use them.
-- After calc, search_law for the provision named in each basis label of the calculation results, unless that provision is already in the evidence found. The answer can only name and cite provisions that are in the evidence.
+- After calc, search_law for the provision named in each basis label of the calculation results, unless that provision is already in the evidence found, so that the answer can cite it.
 - Dates, day counts and inspection results come only from calc. Never work them out yourself.
 - Cargo numbers appear as tokens such as [BL1]. Never put a token or a cargo number into a search query.
 
