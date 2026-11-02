@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import httpx
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -5,6 +7,7 @@ from langgraph.types import Command
 from marvia.graph.main import build_main_graph, merge_evidence
 from marvia.graph.schemas import Draft, Plan, Step
 from marvia.llm import LLMFailed
+from marvia.rag.schemas import Grade
 from marvia.tools.reimport import ItemFacts
 from marvia.tools.rules import load_rules
 
@@ -133,6 +136,15 @@ def test_second_turn_starts_clean(agent_deps):
     assert len(values["plan"]) == 1  # 지난 차례의 할 일이 남지 않는다
 
 
+def test_interrupted_second_turn_does_not_show_last_answer(agent_deps):
+    # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 멈춘 차례의 결과에 남으면
+    #      화면이 지난 답을 다시 보여 줄 수 있다
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    graph.invoke({"text": "DEMO0001 어디야?"}, cfg("t8b"))
+    out = graph.invoke({"text": "MOCK12345678TEST87654321"}, cfg("t8b"))
+    assert "__interrupt__" in out and out.get("answer", "") == ""
+
+
 def test_plan_search_then_write(agent_deps):
     plan_prompts: list[str] = []
     deps = agent_deps(plan=recording(plan_prompts, SEARCH, WRITE), write=lambda prompt: CITING)
@@ -161,6 +173,17 @@ def test_search_gap_and_rewrites_counted(agent_deps, fake_rag):
     values = graph.get_state(cfg("t10")).values
     assert values["gaps"] == ["가산세 대상 보세구역 목록"]
     assert values["llm_calls"] == 9  # 계획 2 + RAG 상한 6 (고쳐 쓰기 2, rules/rag.yaml) + 작성 1
+
+
+def test_empty_missing_is_not_a_gap(agent_deps, fake_rag):
+    # 채점이 "부족"이어도 빠진 근거 문장이 비면 빈 줄을 남기지 않는다
+    rag = replace(
+        fake_rag(sufficient=False), grade=lambda p: Grade(sufficient=False, reason="시험", missing="")
+    )
+    deps = agent_deps(rag=rag, plan=recording([], SEARCH, WRITE), write=lambda p: CITING)
+    graph = build_main_graph(deps, InMemorySaver())
+    graph.invoke({"text": "수입신고는 언제 해요?"}, cfg("t10b"))
+    assert graph.get_state(cfg("t10b")).values["gaps"] == []
 
 
 def test_empty_plan_goes_to_write(agent_deps):

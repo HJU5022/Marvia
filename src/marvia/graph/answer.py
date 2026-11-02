@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from marvia.tools.deadlines import kst_date
 from marvia.tools.rules import load_rules
 
 # 번호 없을 때 안내 (설계 4.1의 ③). 포워더에게 보낼 문장은 작성자가 쓰고, 이 줄은 코드가 늘 같게 쓴다
@@ -20,7 +21,7 @@ def cargo_lines(cargos: list[dict]) -> list[str]:
     for cargo in cargos:
         facts = cargo["facts"]
         if facts:
-            day = (facts.get("stage_at") or "")[:10]  # "2026-10-27T09:00:00+09:00" → 2026-10-27 (한국 시각)
+            day = kst_date(facts["stage_at"]).isoformat() if facts.get("stage_at") else ""  # 한국 날짜
             port = f" ({facts['port']})" if facts.get("port") else ""  # [왜] 항구를 모르면 "(None)" 대신 뺀다
             lines.append(f"{cargo['token']}: {facts['stage']}{port} {day}".rstrip())
         else:

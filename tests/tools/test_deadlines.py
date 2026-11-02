@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from marvia.tools.deadlines import due_date, import_deadlines
+from marvia.tools.deadlines import due_date, import_deadlines, kst_date
 from marvia.tools.rules import load_rules
 
 HOLIDAYS = set(load_rules("deadlines")["holidays"])
@@ -64,3 +64,12 @@ def test_late_surcharge_bands(today, late_days, rate):
     assert (deadline.surcharge.late_days, deadline.surcharge.rate) == (late_days, rate)
     assert deadline.surcharge.cap_krw == 5000000
     assert "별표 1" in deadline.surcharge.applies  # 대상 물품 범위를 늘 함께 낸다
+
+
+@pytest.mark.parametrize(
+    "moment",
+    ["2026-10-27T09:00:00+09:00", "2026-10-26T15:30:00Z", "2026-10-27T00:30:00"],
+)
+def test_kst_date(moment):
+    # [왜] 기한은 한국 날짜로 센다. UTC 15:30은 한국 다음 날 00:30이고, 시간대가 없으면 한국 시각으로 본다
+    assert kst_date(moment) == date(2026, 10, 27)

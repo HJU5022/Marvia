@@ -12,6 +12,7 @@ import re
 from datetime import date
 
 from marvia.graph.schemas import Draft
+from marvia.tools.deadlines import kst_date
 from marvia.tools.rules import load_rules
 
 # 제241조, 241조, 제1조의4. [왜] "관세법 9조"처럼 "제"를 빼고 써도 같은 조문으로 본다
@@ -70,7 +71,9 @@ def verify(
     #    단위가 붙은 수는 계산 결과·인용한 조문 글에서만, 금액은 계산 결과에서만
     calc_json = json.dumps(calc, ensure_ascii=False)
     stage_days = {
-        c["facts"]["stage_at"][:10] for c in cargos if c.get("facts") and c["facts"].get("stage_at")
+        kst_date(c["facts"]["stage_at"]).isoformat()
+        for c in cargos
+        if c.get("facts") and c["facts"].get("stage_at")
     }
     effective_days = {str(e["effective"]) for e in cited}
     allowed_dates = set(_ISO_DATE.findall(calc_json)) | stage_days | effective_days | {today.isoformat()}

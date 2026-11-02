@@ -9,11 +9,15 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
 from marvia.tools.rules import load_rules
+
+# [왜] 법정 기한은 한국 날짜로 센다
+KST = ZoneInfo("Asia/Seoul")
 
 
 class LateSurcharge(BaseModel):
@@ -35,6 +39,16 @@ class Deadline(BaseModel):
     days_left: int  # 오늘부터 기한까지 남은 날. 넘겼으면 음수
     basis: str  # 조문 이름표 (예: 관세법 제241조제3항). 인용이 아니다
     surcharge: LateSurcharge | None = None  # 기한을 넘겼고 가산세 표가 있는 기한만
+
+
+def kst_date(moment: str) -> date:
+    """ISO 시각 글을 한국 날짜로 바꾼다. 시간대가 없으면 한국 시각으로 본다."""
+    # [왜] 앞 10자를 자르면 그 글의 시간대 날짜가 된다.
+    #      UTC 글(…Z)이면 한국 새벽에 바뀐 단계가 하루 앞 날짜가 된다
+    parsed = datetime.fromisoformat(moment)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=KST)  # [추정] UNI-PASS 시각은 시간대 없이 한국 시각으로 온다
+    return parsed.astimezone(KST).date()
 
 
 def due_date(start: date, days: int, holidays: set[date]) -> date:

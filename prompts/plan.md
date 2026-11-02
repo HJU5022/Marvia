@@ -11,6 +11,7 @@ Actions:
 Return steps: the remaining steps in order. The first one runs next, and you will plan again after it. Each step has action, query (empty unless search_law) and reason (one Korean sentence).
 - Choose write when the evidence, calculations and facts below are enough to answer, or when more steps would not help.
 - Do not repeat a done step with the same query. Do not retry a failed tool more than once.
+- Run extract_item at most once. If item facts are shown below, use them.
 - Dates, day counts and inspection results come only from calc. Never work them out yourself.
 - Cargo numbers appear as tokens such as [BL1]. Never put a token or a cargo number into a search query.
 

@@ -30,7 +30,7 @@ from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
-from marvia.tools.deadlines import import_deadlines
+from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 
@@ -51,6 +51,8 @@ def start(state: MarviaState) -> dict:
     """새 차례를 시작한다. 같은 대화(thread)의 지난 차례 근거·초안·횟수를 비운다."""
     # [왜] checkpointer는 thread마다 공책을 이어 쓴다. 비우지 않으면 지난 질문의 근거와 초안이 섞인다
     return {
+        # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 이번 차례가 멈췄을 때 결과에 남지 않게 비운다
+        "answer": "",
         "plan": [],
         "evidence": [],
         "gaps": [],
@@ -191,7 +193,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             # [왜] 검색 실패(Voyage·DB·RAG 안의 LLM)는 차례 전체를 멈추지 않는다.
             #      기록만 하고 계획자가 다음 길을 고른다 (설계 결정 4의 ①)
             return _failure(state, "search_law", error)
-        gaps = state.get("gaps", []) + ([] if out.get("sufficient") else [out.get("missing", "")])
+        missing = "" if out.get("sufficient") else out.get("missing", "")
+        gaps = state.get("gaps", []) + ([missing] if missing else [])  # [왜] 빈 문장은 남기지 않는다
         return {
             "evidence": merge_evidence(state.get("evidence", []), out.get("evidence", [])),
             "gaps": gaps,
@@ -222,9 +225,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             facts = cargo["facts"]
             if not facts or not facts.get("stage_at"):
                 continue
-            # [주의] stage_at은 "2026-10-27T09:00:00+09:00"(한국 시각) 글이다. 앞 10자로 한국 날짜를 쓴다.
-            #        UTC로 바꾸면 새벽에 바뀐 단계가 하루 앞 날짜가 된다 (화물 줄 cargo_lines와 같은 방식)
-            stage_on = date.fromisoformat(facts["stage_at"][:10])
+            # [주의] 단계 시각은 한국 날짜로 바꿔 센다 (화물 줄 cargo_lines·검증자와 같은 kst_date)
+            stage_on = kst_date(facts["stage_at"])
             deadlines += [
                 {"cargo": cargo["token"], **deadline.model_dump(mode="json")}
                 for deadline in import_deadlines(facts["stage"], stage_on, today)

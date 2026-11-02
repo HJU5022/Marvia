@@ -115,7 +115,7 @@ from datetime import date
 
 import pytest
 
-from marvia.tools.deadlines import due_date, import_deadlines
+from marvia.tools.deadlines import due_date, import_deadlines, kst_date
 from marvia.tools.rules import load_rules
 
 HOLIDAYS = set(load_rules("deadlines")["holidays"])
@@ -177,6 +177,15 @@ def test_late_surcharge_bands(today, late_days, rate):
     assert (deadline.surcharge.late_days, deadline.surcharge.rate) == (late_days, rate)
     assert deadline.surcharge.cap_krw == 5000000
     assert "별표 1" in deadline.surcharge.applies  # 대상 물품 범위를 늘 함께 낸다
+
+
+@pytest.mark.parametrize(
+    "moment",
+    ["2026-10-27T09:00:00+09:00", "2026-10-26T15:30:00Z", "2026-10-27T00:30:00"],
+)
+def test_kst_date(moment):
+    # [왜] 기한은 한국 날짜로 센다. UTC 15:30은 한국 다음 날 00:30이고, 시간대가 없으면 한국 시각으로 본다
+    assert kst_date(moment) == date(2026, 10, 27)
 ```
 
 Run: `uv run pytest tests/tools/test_deadlines.py -v`
@@ -291,11 +300,15 @@ holidays:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
 from marvia.tools.rules import load_rules
+
+# [왜] 법정 기한은 한국 날짜로 센다
+KST = ZoneInfo("Asia/Seoul")
 
 
 class LateSurcharge(BaseModel):
@@ -317,6 +330,16 @@ class Deadline(BaseModel):
     days_left: int  # 오늘부터 기한까지 남은 날. 넘겼으면 음수
     basis: str  # 조문 이름표 (예: 관세법 제241조제3항). 인용이 아니다
     surcharge: LateSurcharge | None = None  # 기한을 넘겼고 가산세 표가 있는 기한만
+
+
+def kst_date(moment: str) -> date:
+    """ISO 시각 글을 한국 날짜로 바꾼다. 시간대가 없으면 한국 시각으로 본다."""
+    # [왜] 앞 10자를 자르면 그 글의 시간대 날짜가 된다.
+    #      UTC 글(…Z)이면 한국 새벽에 바뀐 단계가 하루 앞 날짜가 된다
+    parsed = datetime.fromisoformat(moment)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=KST)  # [추정] UNI-PASS 시각은 시간대 없이 한국 시각으로 온다
+    return parsed.astimezone(KST).date()
 
 
 def due_date(start: date, days: int, holidays: set[date]) -> date:
@@ -381,7 +404,7 @@ def import_deadlines(stage: str, stage_on: date, today: date) -> list[Deadline]:
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `uv run pytest tests/tools/test_deadlines.py -v`
-Expected: 12 passed
+Expected: 15 passed
 
 - [ ] **Step 5: 전체 확인과 커밋**
 
@@ -390,7 +413,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 93 passed (DB가 꺼져 있으면 87 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 96 passed (DB가 꺼져 있으면 90 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -774,7 +797,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 107 passed (DB가 꺼져 있으면 101 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 110 passed (DB가 꺼져 있으면 104 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -1061,6 +1084,13 @@ def test_partial_answer_reimport_without_basis(cargos):
     calc = {"reimport": {"verdict": "대상 아님", "basis": []}}
     text = partial_answer(cargos, calc, [], [], [])
     assert "재수입 검사: 대상 아님\n" in text + "\n" and "대상 아님 ()" not in text
+
+
+def test_cargo_line_date_is_korean_date():
+    facts = {"stage": "반입신고", "stage_at": "2026-10-26T15:30:00Z", "port": "부산"}
+    assert cargo_lines([{"token": "[BL1]", "facts": facts, "error": None}]) == [
+        "[BL1]: 반입신고 (부산) 2026-10-27"
+    ]
 ```
 
 Run: `uv run pytest tests/graph/test_verify.py tests/graph/test_answer.py -v`
@@ -1146,6 +1176,7 @@ import re
 from datetime import date
 
 from marvia.graph.schemas import Draft
+from marvia.tools.deadlines import kst_date
 from marvia.tools.rules import load_rules
 
 # 제241조, 241조, 제1조의4. [왜] "관세법 9조"처럼 "제"를 빼고 써도 같은 조문으로 본다
@@ -1204,7 +1235,9 @@ def verify(
     #    단위가 붙은 수는 계산 결과·인용한 조문 글에서만, 금액은 계산 결과에서만
     calc_json = json.dumps(calc, ensure_ascii=False)
     stage_days = {
-        c["facts"]["stage_at"][:10] for c in cargos if c.get("facts") and c["facts"].get("stage_at")
+        kst_date(c["facts"]["stage_at"]).isoformat()
+        for c in cargos
+        if c.get("facts") and c["facts"].get("stage_at")
     }
     effective_days = {str(e["effective"]) for e in cited}
     allowed_dates = set(_ISO_DATE.findall(calc_json)) | stage_days | effective_days | {today.isoformat()}
@@ -1260,6 +1293,7 @@ def verify(
 
 from __future__ import annotations
 
+from marvia.tools.deadlines import kst_date
 from marvia.tools.rules import load_rules
 
 # 번호 없을 때 안내 (설계 4.1의 ③). 포워더에게 보낼 문장은 작성자가 쓰고, 이 줄은 코드가 늘 같게 쓴다
@@ -1274,7 +1308,7 @@ def cargo_lines(cargos: list[dict]) -> list[str]:
     for cargo in cargos:
         facts = cargo["facts"]
         if facts:
-            day = (facts.get("stage_at") or "")[:10]  # "2026-10-27T09:00:00+09:00" → 2026-10-27 (한국 시각)
+            day = kst_date(facts["stage_at"]).isoformat() if facts.get("stage_at") else ""  # 한국 날짜
             port = f" ({facts['port']})" if facts.get("port") else ""  # [왜] 항구를 모르면 "(None)" 대신 뺀다
             lines.append(f"{cargo['token']}: {facts['stage']}{port} {day}".rstrip())
         else:
@@ -1341,7 +1375,7 @@ def partial_answer(
 - [ ] **Step 6: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph/test_verify.py tests/graph/test_answer.py -v`
-Expected: 43 passed
+Expected: 44 passed
 
 - [ ] **Step 7: 전체 확인과 커밋**
 
@@ -1350,7 +1384,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 150 passed (DB가 꺼져 있으면 144 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 154 passed (DB가 꺼져 있으면 148 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -1809,6 +1843,8 @@ def start(state: MarviaState) -> dict:
     """새 차례를 시작한다. 같은 대화(thread)의 지난 차례 근거·초안·횟수를 비운다."""
     # [왜] checkpointer는 thread마다 공책을 이어 쓴다. 비우지 않으면 지난 질문의 근거와 초안이 섞인다
     return {
+        # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 이번 차례가 멈췄을 때 결과에 남지 않게 비운다
+        "answer": "",
         "evidence": [],
         "gaps": [],
         "calc": {},
@@ -1974,7 +2010,7 @@ Expected: 선택지 두 개(0번 권장)를 보인 뒤 `2건으로 읽었어요.
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph -v`
-Expected: 60 passed (DB가 꺼져 있으면 59 passed, 1 skipped)
+Expected: 61 passed (DB가 꺼져 있으면 60 passed, 1 skipped)
 
 - [ ] **Step 8: 전체 확인과 커밋**
 
@@ -1983,7 +2019,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 154 passed (DB가 꺼져 있으면 148 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 158 passed (DB가 꺼져 있으면 152 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -2425,6 +2461,8 @@ def start(state: MarviaState) -> dict:
     """새 차례를 시작한다. 같은 대화(thread)의 지난 차례 근거·초안·횟수를 비운다."""
     # [왜] checkpointer는 thread마다 공책을 이어 쓴다. 비우지 않으면 지난 질문의 근거와 초안이 섞인다
     return {
+        # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 이번 차례가 멈췄을 때 결과에 남지 않게 비운다
+        "answer": "",
         "plan": [],
         "evidence": [],
         "gaps": [],
@@ -2528,7 +2566,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
         query = step.get("query") or state.get("masked_text", "")  # 질의가 비었으면 가린 질문 그대로
         # [왜] RAG 공책(RagState)은 메인 공책과 칸이 달라 노드 안에서 따로 부른다 (LangGraph 문서의 방식)
         out = rag_graph.invoke({"question": query, "as_of": deps.today()})
-        gaps = state.get("gaps", []) + ([] if out.get("sufficient") else [out.get("missing", "")])
+        missing = "" if out.get("sufficient") else out.get("missing", "")
+        gaps = state.get("gaps", []) + ([missing] if missing else [])  # [왜] 빈 문장은 남기지 않는다
         return {
             "evidence": merge_evidence(state.get("evidence", []), out.get("evidence", [])),
             "gaps": gaps,
@@ -2665,7 +2704,7 @@ Expected: Task 4 Step 6과 같다
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph -v`
-Expected: 64 passed (DB가 꺼져 있으면 63 passed, 1 skipped)
+Expected: 65 passed (DB가 꺼져 있으면 64 passed, 1 skipped)
 
 - [ ] **Step 8: 전체 확인과 커밋**
 
@@ -2674,7 +2713,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 158 passed (DB가 꺼져 있으면 152 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 162 passed (DB가 꺼져 있으면 156 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -3056,6 +3095,7 @@ Actions:
 Return steps: the remaining steps in order. The first one runs next, and you will plan again after it. Each step has action, query (empty unless search_law) and reason (one Korean sentence).
 - Choose write when the evidence, calculations and facts below are enough to answer, or when more steps would not help.
 - Do not repeat a done step with the same query. Do not retry a failed tool more than once.
+- Run extract_item at most once. If item facts are shown below, use them.
 - Dates, day counts and inspection results come only from calc. Never work them out yourself.
 - Cargo numbers appear as tokens such as [BL1]. Never put a token or a cargo number into a search query.
 
@@ -3127,7 +3167,7 @@ from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
 from marvia.prompts import render
-from marvia.tools.deadlines import import_deadlines
+from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 
@@ -3148,6 +3188,8 @@ def start(state: MarviaState) -> dict:
     """새 차례를 시작한다. 같은 대화(thread)의 지난 차례 근거·초안·횟수를 비운다."""
     # [왜] checkpointer는 thread마다 공책을 이어 쓴다. 비우지 않으면 지난 질문의 근거와 초안이 섞인다
     return {
+        # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 이번 차례가 멈췄을 때 결과에 남지 않게 비운다
+        "answer": "",
         "plan": [],
         "evidence": [],
         "gaps": [],
@@ -3253,7 +3295,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
         query = step.get("query") or state.get("masked_text", "")  # 질의가 비었으면 가린 질문 그대로
         # [왜] RAG 공책(RagState)은 메인 공책과 칸이 달라 노드 안에서 따로 부른다 (LangGraph 문서의 방식)
         out = rag_graph.invoke({"question": query, "as_of": deps.today()})
-        gaps = state.get("gaps", []) + ([] if out.get("sufficient") else [out.get("missing", "")])
+        missing = "" if out.get("sufficient") else out.get("missing", "")
+        gaps = state.get("gaps", []) + ([missing] if missing else [])  # [왜] 빈 문장은 남기지 않는다
         return {
             "evidence": merge_evidence(state.get("evidence", []), out.get("evidence", [])),
             "gaps": gaps,
@@ -3281,9 +3324,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             facts = cargo["facts"]
             if not facts or not facts.get("stage_at"):
                 continue
-            # [주의] stage_at은 "2026-10-27T09:00:00+09:00"(한국 시각) 글이다. 앞 10자로 한국 날짜를 쓴다.
-            #        UTC로 바꾸면 새벽에 바뀐 단계가 하루 앞 날짜가 된다 (화물 줄 cargo_lines와 같은 방식)
-            stage_on = date.fromisoformat(facts["stage_at"][:10])
+            # [주의] 단계 시각은 한국 날짜로 바꿔 센다 (화물 줄 cargo_lines·검증자와 같은 kst_date)
+            stage_on = kst_date(facts["stage_at"])
             deadlines += [
                 {"cargo": cargo["token"], **deadline.model_dump(mode="json")}
                 for deadline in import_deadlines(facts["stage"], stage_on, today)
@@ -3428,7 +3470,7 @@ Expected: Task 4 Step 6과 같다
 - [ ] **Step 6: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph -v`
-Expected: 67 passed (DB가 꺼져 있으면 66 passed, 1 skipped)
+Expected: 68 passed (DB가 꺼져 있으면 67 passed, 1 skipped)
 
 - [ ] **Step 7: 전체 확인과 커밋**
 
@@ -3437,7 +3479,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 161 passed (DB가 꺼져 있으면 155 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 165 passed (DB가 꺼져 있으면 159 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -3951,7 +3993,7 @@ from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
-from marvia.tools.deadlines import import_deadlines
+from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 
@@ -3972,6 +4014,8 @@ def start(state: MarviaState) -> dict:
     """새 차례를 시작한다. 같은 대화(thread)의 지난 차례 근거·초안·횟수를 비운다."""
     # [왜] checkpointer는 thread마다 공책을 이어 쓴다. 비우지 않으면 지난 질문의 근거와 초안이 섞인다
     return {
+        # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 이번 차례가 멈췄을 때 결과에 남지 않게 비운다
+        "answer": "",
         "plan": [],
         "evidence": [],
         "gaps": [],
@@ -4112,7 +4156,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             # [왜] 검색 실패(Voyage·DB·RAG 안의 LLM)는 차례 전체를 멈추지 않는다.
             #      기록만 하고 계획자가 다음 길을 고른다 (설계 결정 4의 ①)
             return _failure(state, "search_law", error)
-        gaps = state.get("gaps", []) + ([] if out.get("sufficient") else [out.get("missing", "")])
+        missing = "" if out.get("sufficient") else out.get("missing", "")
+        gaps = state.get("gaps", []) + ([missing] if missing else [])  # [왜] 빈 문장은 남기지 않는다
         return {
             "evidence": merge_evidence(state.get("evidence", []), out.get("evidence", [])),
             "gaps": gaps,
@@ -4143,9 +4188,8 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
             facts = cargo["facts"]
             if not facts or not facts.get("stage_at"):
                 continue
-            # [주의] stage_at은 "2026-10-27T09:00:00+09:00"(한국 시각) 글이다. 앞 10자로 한국 날짜를 쓴다.
-            #        UTC로 바꾸면 새벽에 바뀐 단계가 하루 앞 날짜가 된다 (화물 줄 cargo_lines와 같은 방식)
-            stage_on = date.fromisoformat(facts["stage_at"][:10])
+            # [주의] 단계 시각은 한국 날짜로 바꿔 센다 (화물 줄 cargo_lines·검증자와 같은 kst_date)
+            stage_on = kst_date(facts["stage_at"])
             deadlines += [
                 {"cargo": cargo["token"], **deadline.model_dump(mode="json")}
                 for deadline in import_deadlines(facts["stage"], stage_on, today)
@@ -4242,7 +4286,7 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `uv run pytest tests/graph tests/test_llm.py -v`
-Expected: 79 passed (DB가 꺼져 있으면 78 passed, 1 skipped)
+Expected: 80 passed (DB가 꺼져 있으면 79 passed, 1 skipped)
 
 - [ ] **Step 8: 전체 확인과 커밋**
 
@@ -4251,7 +4295,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 171 passed (DB가 꺼져 있으면 165 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 175 passed (DB가 꺼져 있으면 169 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4386,7 +4430,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 172 passed (DB가 꺼져 있으면 166 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 176 passed (DB가 꺼져 있으면 170 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4447,13 +4491,59 @@ uv run python scripts/try_agent.py "다음 주에 칭다오에서 고추 와요.
 
 ---
 
+## 실행 뒤 검증에서 고친 것 (11-02)
+
+태스크마다 따로 돈 검증 담당의 결과로 고친 커밋이다. 위 태스크의 코드 블록에는 이미 반영했고(파일 전체 블록은 고친 내용 그대로, 앞 태스크의 `main.py` 중간 블록은 같은 부분만), 시험 개수도 고친 뒤 값이다.
+
+| 커밋 | 고친 것 | 이유 |
+|---|---|---|
+| `fix(tools): 가산세 구간 끝날도 휴일이면 다음 날로 넘김 (민법 제161조)` | 가산세 구간 끝날 휴일 넘기기, yaml 주석 unit_id | 구간도 기간이라 말일이 휴일이면 익일 만료 [추정] |
+| `fix(tools): 재수입 판정의 반송품 범위·기간 끝날 휴일·미래 발급일·중복 사유 바로잡기` | 반송품 사유를 별표 9 제2호가목12) 밖으로 좁힘, 5년 기간 끝날 휴일 넘기기, 미래 발급일은 다시 묻기, 같은 사유 한 번만 | 별표 원문, 민법 제161조 [추정] |
+| `fix(graph): 검증자가 해요체 단정·금액·비율·기간·다른 날짜 꼴을 잡고 계산 결과의 금액은 허용` | Task 3 Step 4 메모 | 해요체·금액·비율 표현을 놓치고 가산세 상한을 잘못 막았다 |
+| `fix(graph): 단계 시각을 한국 날짜로 세고 지난 답·빈 빠진 근거를 남기지 않음` | 아래 | 아래 |
+
+마지막 커밋에서 고친 것:
+
+- `kst_date`(`src/marvia/tools/deadlines.py`): 단계 시각 글을 한국 날짜로 바꾼다. 앞 10자를 자르면 UTC 글(`…Z`)일 때 하루 앞 날짜가 된다. 계산(`calc`), 화물 줄(`cargo_lines`), 검증자(허용 날짜) 세 곳이 같은 함수를 쓴다. 재생 fixture는 모두 `+09:00`이라 지금까지는 드러나지 않았고, 계획 3b의 실제 UNI-PASS 연결에서 터질 문제였다.
+- `start`가 `answer`도 비운다. 같은 대화의 둘째 차례가 interrupt로 멈추면 결과에 지난 답(실제 번호를 되돌린 글)이 남았다.
+- `search_law`가 빈 "빠진 근거" 문장을 남기지 않는다.
+- `prompts/plan.md`: `extract_item`은 한 번만 부른다.
+
+`tests/graph/test_main.py` 위쪽 import에 `from dataclasses import replace`와 `from marvia.rag.schemas import Grade`를 더하고, `test_plan_search_then_write` 앞과 `test_empty_plan_goes_to_write` 앞에 아래 시험을 하나씩 넣는다.
+
+```python
+def test_interrupted_second_turn_does_not_show_last_answer(agent_deps):
+    # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 멈춘 차례의 결과에 남으면
+    #      화면이 지난 답을 다시 보여 줄 수 있다
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    graph.invoke({"text": "DEMO0001 어디야?"}, cfg("t8b"))
+    out = graph.invoke({"text": "MOCK12345678TEST87654321"}, cfg("t8b"))
+    assert "__interrupt__" in out and out.get("answer", "") == ""
+```
+
+```python
+def test_empty_missing_is_not_a_gap(agent_deps, fake_rag):
+    # 채점이 "부족"이어도 빠진 근거 문장이 비면 빈 줄을 남기지 않는다
+    rag = replace(
+        fake_rag(sufficient=False), grade=lambda p: Grade(sufficient=False, reason="시험", missing="")
+    )
+    deps = agent_deps(rag=rag, plan=recording([], SEARCH, WRITE), write=lambda p: CITING)
+    graph = build_main_graph(deps, InMemorySaver())
+    graph.invoke({"text": "수입신고는 언제 해요?"}, cfg("t10b"))
+    assert graph.get_state(cfg("t10b")).values["gaps"] == []
+```
+
+Expected: 린트·타입 오류 0, 178 passed (DB가 꺼져 있으면 172 passed, 6 skipped)
+
+검증 담당이 짚었지만 고치지 않은 것: 번호 없을 때 안내를 코드가 늘 붙이기(법령만 묻는 질문에 틀린 안내가 된다, 화물 질문인지는 작성자가 판단), 검색 질의의 토큰 지우기(가린 값이고 질의 분석 프롬프트가 지운다), 근거 묶음 상한(LLM 호출 상한 안에서 근거 40개 안팎 [추정]), 프롬프트 태그 탈출(설계 12절 promptfoo), 법령 이름까지 맞추는 조문 검사(약칭이 많다), 공휴일 표 끝(2027-12-31) 경고, 30일 기한의 보세구역 종류 구분.
+
 ## 계획 3a가 끝나면 되는 것
 
 - `uv run python scripts/try_agent.py "질문"`으로 계획자 → 법령 검색·품목 사실·계산 → 작성 → 검증을 거친 답을 본다. 인용은 근거 묶음의 `unit_id`뿐이고, 제목·시행일·출처는 코드가 붙인다.
 - 화물 번호가 있으면 화물 줄과 기한(수입신고 기한·관세 납부기한, 넘겼으면 신고지연 가산세율과 대상 범위)을, 재수입 질문이면 서류검사 요건 판정을 코드가 계산하고 작성자는 그 값만 옮긴다.
 - 번호가 없는 화물 질문에는 코드가 쓰는 포워더 안내 줄과 작성자가 쓴 메시지가 나온다.
 - 검증 위반 두 번, LLM 호출 상한, 남은 단계 부족, LLM 실패 중 하나면 오류 대신 부분 답(계산한 것·찾은 근거·빠진 근거·실패한 도구·다음 선택지)이 나온다.
-- 테스트 172개가 키 없이 돈다(DB가 꺼져 있으면 166 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
+- 테스트 178개가 키 없이 돈다(DB가 꺼져 있으면 172 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
 
 ## 설계와 대조
 

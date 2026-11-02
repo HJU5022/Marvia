@@ -55,3 +55,10 @@ def test_partial_answer_reimport_without_basis(cargos):
     calc = {"reimport": {"verdict": "대상 아님", "basis": []}}
     text = partial_answer(cargos, calc, [], [], [])
     assert "재수입 검사: 대상 아님\n" in text + "\n" and "대상 아님 ()" not in text
+
+
+def test_cargo_line_date_is_korean_date():
+    facts = {"stage": "반입신고", "stage_at": "2026-10-26T15:30:00Z", "port": "부산"}
+    assert cargo_lines([{"token": "[BL1]", "facts": facts, "error": None}]) == [
+        "[BL1]: 반입신고 (부산) 2026-10-27"
+    ]
