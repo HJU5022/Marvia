@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from marvia.tools.deadlines import due_date
 from marvia.tools.rules import load_rules
 
 # [왜] Literal 값은 rules/reimport.yaml의 키와 같다. LLM이 이 중에서만 고르게 해 표에서 바로 찾는다
@@ -21,7 +22,7 @@ Category = Literal["농산물·임산물", "기구·용기·포장", "그 외", 
 SameField = Literal["생산국", "품명", "수출업소", "포장장소", "제조국", "해외제조업소", "재질", "바탕색상"]
 Flag = Literal[
     "기준·규격 신설·강화",
-    "반송품",
+    "정밀검사 대상 반송품",
     "부적합 처분 이력",
     "특별관리 영업자",
     "유해물질 검출 업소",
@@ -86,12 +87,13 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
     basis: list[str] = [rules["basis"]]
 
     # 1. 다시 정밀검사가 되는 사유 (사용자가 말한 것만)
-    for flag in facts.flags:
+    flags = list(dict.fromkeys(facts.flags))  # [왜] 같은 사유가 두 번 와도 한 번만 센다 (순서는 그대로)
+    for flag in flags:
         failed.append(f"{flag} ({rules['forced'][flag]})")
         basis.append(rules["forced"][flag])
     if facts.prior_result == "부적합":
         failed.append(rules["prior_failed"])
-    unstated = [f"{flag} ({item})" for flag, item in rules["forced"].items() if flag not in facts.flags]
+    unstated = [f"{flag} ({item})" for flag, item in rules["forced"].items() if flag not in flags]
     if unstated:
         caveats.append("다음에 해당하면 정밀검사 대상이다: " + ", ".join(unstated))
 
@@ -118,8 +120,15 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
     window_end = None
     if facts.prior_cert_on is None:
         missing.append("이전 정밀검사 뒤 수입신고확인증 발급일")
+    elif facts.prior_cert_on > today:
+        # [왜] 발급일이 오늘보다 뒤일 수는 없다. 연도를 잘못 읽었을 수 있어 판정에 쓰지 않고 다시 묻는다
+        missing.append("이전 정밀검사 뒤 수입신고확인증 발급일 (오늘보다 뒤라 다시 확인)")
     else:
-        window_end = _years_later(facts.prior_cert_on, rules["window_years"])
+        # [왜] 끝날이 토·일·공휴일이면 다음 날 끝난다 (민법 제161조).
+        #      공휴일 표는 rules/deadlines.yaml을 같이 쓴다
+        # [추정] 민법 제161조를 이 기간에 적용한 예규는 확인하지 못했다
+        holidays = set(load_rules("deadlines")["holidays"])
+        window_end = due_date(_years_later(facts.prior_cert_on, rules["window_years"]), 0, holidays)
         if today > window_end:
             failed.append(f"{rules['window_years']}년 지남 ({window_end}까지)")
 

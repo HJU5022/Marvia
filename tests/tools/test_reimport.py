@@ -59,10 +59,23 @@ def test_unknown_facts_are_missing():
 
 
 def test_forced_reason_means_precise_check():
-    result = reimport_check(facts(flags=["반송품"]), TODAY)
+    result = reimport_check(facts(flags=["특별관리 영업자"]), TODAY)
     assert result.verdict == "정밀검사 대상"
-    assert result.failed == ["반송품 (시행규칙 별표 10 제1호나목)"]
-    assert "시행규칙 별표 10 제1호나목" in result.basis
+    assert result.failed == ["특별관리 영업자 (시행규칙 별표 10 제3호가목)"]
+    assert "시행규칙 별표 10 제3호가목" in result.basis
+
+
+def test_same_flag_twice_counts_once():
+    result = reimport_check(facts(flags=["특별관리 영업자", "특별관리 영업자"]), TODAY)
+    assert result.failed == ["특별관리 영업자 (시행규칙 별표 10 제3호가목)"]
+
+
+def test_returned_goods_flag_keeps_document_check_exception():
+    # [왜] 별표 10 제1호나목은 별표 9 제2호가목12)의 서류검사 반송품
+    #      (재가공 수출용, 변질·위해 아닌 반송)을 뺀다
+    result = reimport_check(facts(flags=["정밀검사 대상 반송품"]), TODAY)
+    assert result.verdict == "정밀검사 대상"
+    assert "별표 9 제2호가목12)" in result.failed[0]
 
 
 def test_prior_failure_means_precise_check():
@@ -72,10 +85,24 @@ def test_prior_failure_means_precise_check():
 
 
 def test_window_passed_means_precise_check():
-    result = reimport_check(facts(prior_cert_on=date(2021, 11, 1)), TODAY)
+    result = reimport_check(facts(prior_cert_on=date(2021, 10, 30)), TODAY)
     assert result.verdict == "정밀검사 대상"
-    assert result.window_end == date(2026, 11, 1)
-    assert result.failed == ["5년 지남 (2026-11-01까지)"]
+    assert result.window_end == date(2026, 10, 30)  # 금요일
+    assert result.failed == ["5년 지남 (2026-10-30까지)"]
+
+
+def test_window_ending_on_weekend_moves_to_monday():
+    # 민법 제161조: 끝날 2026-10-31이 토요일이라 다음 쉬지 않는 날(11-02 월)에 끝난다
+    result = reimport_check(facts(prior_cert_on=date(2021, 10, 31)), TODAY)
+    assert result.window_end == date(2026, 11, 2)
+    assert result.verdict == "서류검사 요건 충족"
+
+
+def test_future_cert_date_is_asked_again():
+    # [왜] 발급일이 오늘보다 뒤일 수는 없다. 연도를 잘못 읽었을 수 있어 판정에 쓰지 않고 다시 묻는다
+    result = reimport_check(facts(prior_cert_on=date(2027, 1, 1)), TODAY)
+    assert result.verdict == "사실 부족" and result.window_end is None
+    assert result.missing == ["이전 정밀검사 뒤 수입신고확인증 발급일 (오늘보다 뒤라 다시 확인)"]
 
 
 def test_window_from_leap_day_ends_on_month_end():

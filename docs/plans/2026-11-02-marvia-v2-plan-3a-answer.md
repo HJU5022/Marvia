@@ -404,7 +404,7 @@ git commit -m "feat(tools): 수입신고·관세 납부 기한과 신고지연 �
 
 **배울 것:** `Literal`로 LLM의 선택지를 막기(같은 `Literal`을 `typing.get_args`로 꺼내 yaml 키와 맞는지 테스트한다), "사실 부족"을 결과로 내는 도구(모르는 사실은 짐작하지 않고 `missing`에 담아 작성자가 사용자에게 묻게 한다, 설계 결정 4의 ①②), 재량 조건("청장이 필요하다고 인정")은 코드도 LLM도 계산하지 않고 늘 단서로 붙이기, 구조화 출력 한도(기본값이 있는 칸은 JSON 스키마에서 선택 칸이 되어 한도에 세어진다. 그래서 `ItemFacts`는 기본값 없이 모두 필수 칸이고 `X | None`은 하나뿐이다).
 
-법 구조(11-02 별표 원문 확인): 정밀검사를 받은 물품 중 별표 10 제4호의 "동일사 동일수입식품등" 조건을 채워 다시 수입하면 별표 9 제2호가목7)에 따라 서류검사 대상이다. 다목(농산물·임산물)은 생산국·품명·수출업소·포장장소, 마목(기구·용기·포장)은 제조국·해외제조업소·재질·바탕색상이 같아야 하고, 이전 정밀검사가 별표 10 제1호가목1)·3)에 따른 것이며 그 뒤 수입신고확인증 발급일부터 5년 안이어야 한다. 기준·규격 신설·강화, 반송품, 부적합 이력 등 사유가 하나라도 있으면 다시 정밀검사다.
+법 구조(11-02 별표 원문 확인): 정밀검사를 받은 물품 중 별표 10 제4호의 "동일사 동일수입식품등" 조건을 채워 다시 수입하면 별표 9 제2호가목7)에 따라 서류검사 대상이다. 다목(농산물·임산물)은 생산국·품명·수출업소·포장장소, 마목(기구·용기·포장)은 제조국·해외제조업소·재질·바탕색상이 같아야 하고, 이전 정밀검사가 별표 10 제1호가목1)·3)에 따른 것이며 그 뒤 수입신고확인증 발급일부터 5년 안이어야 한다. 기준·규격 신설·강화, 반송품(재가공 수출용이거나 변질·위해가 아닌 반송은 별표 9 제2호가목12)로 서류검사), 부적합 이력 등 사유가 하나라도 있으면 다시 정밀검사다.
 
 **Files:**
 - Create: `rules/reimport.yaml`, `src/marvia/tools/reimport.py`, `tests/tools/test_reimport.py`
@@ -481,10 +481,23 @@ def test_unknown_facts_are_missing():
 
 
 def test_forced_reason_means_precise_check():
-    result = reimport_check(facts(flags=["반송품"]), TODAY)
+    result = reimport_check(facts(flags=["특별관리 영업자"]), TODAY)
     assert result.verdict == "정밀검사 대상"
-    assert result.failed == ["반송품 (시행규칙 별표 10 제1호나목)"]
-    assert "시행규칙 별표 10 제1호나목" in result.basis
+    assert result.failed == ["특별관리 영업자 (시행규칙 별표 10 제3호가목)"]
+    assert "시행규칙 별표 10 제3호가목" in result.basis
+
+
+def test_same_flag_twice_counts_once():
+    result = reimport_check(facts(flags=["특별관리 영업자", "특별관리 영업자"]), TODAY)
+    assert result.failed == ["특별관리 영업자 (시행규칙 별표 10 제3호가목)"]
+
+
+def test_returned_goods_flag_keeps_document_check_exception():
+    # [왜] 별표 10 제1호나목은 별표 9 제2호가목12)의 서류검사 반송품
+    #      (재가공 수출용, 변질·위해 아닌 반송)을 뺀다
+    result = reimport_check(facts(flags=["정밀검사 대상 반송품"]), TODAY)
+    assert result.verdict == "정밀검사 대상"
+    assert "별표 9 제2호가목12)" in result.failed[0]
 
 
 def test_prior_failure_means_precise_check():
@@ -494,10 +507,24 @@ def test_prior_failure_means_precise_check():
 
 
 def test_window_passed_means_precise_check():
-    result = reimport_check(facts(prior_cert_on=date(2021, 11, 1)), TODAY)
+    result = reimport_check(facts(prior_cert_on=date(2021, 10, 30)), TODAY)
     assert result.verdict == "정밀검사 대상"
-    assert result.window_end == date(2026, 11, 1)
-    assert result.failed == ["5년 지남 (2026-11-01까지)"]
+    assert result.window_end == date(2026, 10, 30)  # 금요일
+    assert result.failed == ["5년 지남 (2026-10-30까지)"]
+
+
+def test_window_ending_on_weekend_moves_to_monday():
+    # 민법 제161조: 끝날 2026-10-31이 토요일이라 다음 쉬지 않는 날(11-02 월)에 끝난다
+    result = reimport_check(facts(prior_cert_on=date(2021, 10, 31)), TODAY)
+    assert result.window_end == date(2026, 11, 2)
+    assert result.verdict == "서류검사 요건 충족"
+
+
+def test_future_cert_date_is_asked_again():
+    # [왜] 발급일이 오늘보다 뒤일 수는 없다. 연도를 잘못 읽었을 수 있어 판정에 쓰지 않고 다시 묻는다
+    result = reimport_check(facts(prior_cert_on=date(2027, 1, 1)), TODAY)
+    assert result.verdict == "사실 부족" and result.window_end is None
+    assert result.missing == ["이전 정밀검사 뒤 수입신고확인증 발급일 (오늘보다 뒤라 다시 확인)"]
 
 
 def test_window_from_leap_day_ends_on_month_end():
@@ -557,8 +584,8 @@ window_years: 5
 # 하나라도 해당하면 다시 정밀검사 대상이다. 키는 ItemFacts.flags의 값과 같아야 한다(테스트가 본다)
 forced:
   기준·규격 신설·강화: 시행규칙 별표 10 제1호가목2)
-  반송품: 시행규칙 별표 10 제1호나목
-  부적합 처분 이력: 시행규칙 별표 10 제2호나목 (부적합 처분 뒤 5년 이내 재수입)
+  정밀검사 대상 반송품: 시행규칙 별표 10 제1호나목. 재가공해 수출하려는 것과, 국내 유통품과 같고 변질·위생상 위해가 아닌 사유로 반송된 것은 서류검사다 (별표 9 제2호가목12))
+  부적합 처분 이력: 시행규칙 별표 10 제2호나목 (부적합 처분 뒤 5년 이내 재수입. 정밀검사는 합산 5회까지이고 부적합 뒤 1년 이내는 임의로 대상을 정한다, 별표 9 제2호다목2)나))
   특별관리 영업자: 시행규칙 별표 10 제3호가목
   유해물질 검출 업소: 시행규칙 별표 10 제3호나목 (부적합 처분일부터 2년 이내)
   수입 최소량 미만 뒤 이상: 시행규칙 별표 9 제3호가목5) (수입 최소량은 신고중량 100kg, 수입식품등 신고 및 검사에 관한 규정 제25조)
@@ -579,6 +606,8 @@ caveats:
 
 - [ ] **Step 3: 판정 코드**
 
+(11-02 실행 뒤 검증에서 고침) 네 가지를 고쳤다. ① 반송품 사유를 "정밀검사 대상 반송품"으로 좁히고 별표 9 제2호가목12)의 서류검사 반송품을 설명에 적었다. ② 5년 기간의 끝날이 토·일·공휴일이면 다음 날로 넘긴다(민법 제161조, Task 1과 같은 기준) [추정: 이 기간에 적용한 예규는 확인하지 못했다]. 그래서 기존 "기간 지남" 시험의 발급일을 2021-11-01(끝날 일요일)에서 2021-10-30(끝날 금요일)으로 바꾸고, 토요일에 끝나는 경우를 따로 시험한다. ③ 발급일이 오늘보다 뒤면 판정에 쓰지 않고 다시 묻는다. ④ 같은 사유가 두 번 와도 한 번만 센다. 부적합 처분 이력 설명에는 합산 5회·1년 이내 임의 선정(별표 9 제2호다목2)나))을 더했다.
+
 `src/marvia/tools/reimport.py`:
 
 ```python
@@ -598,6 +627,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from marvia.tools.deadlines import due_date
 from marvia.tools.rules import load_rules
 
 # [왜] Literal 값은 rules/reimport.yaml의 키와 같다. LLM이 이 중에서만 고르게 해 표에서 바로 찾는다
@@ -605,7 +635,7 @@ Category = Literal["농산물·임산물", "기구·용기·포장", "그 외", 
 SameField = Literal["생산국", "품명", "수출업소", "포장장소", "제조국", "해외제조업소", "재질", "바탕색상"]
 Flag = Literal[
     "기준·규격 신설·강화",
-    "반송품",
+    "정밀검사 대상 반송품",
     "부적합 처분 이력",
     "특별관리 영업자",
     "유해물질 검출 업소",
@@ -670,12 +700,13 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
     basis: list[str] = [rules["basis"]]
 
     # 1. 다시 정밀검사가 되는 사유 (사용자가 말한 것만)
-    for flag in facts.flags:
+    flags = list(dict.fromkeys(facts.flags))  # [왜] 같은 사유가 두 번 와도 한 번만 센다 (순서는 그대로)
+    for flag in flags:
         failed.append(f"{flag} ({rules['forced'][flag]})")
         basis.append(rules["forced"][flag])
     if facts.prior_result == "부적합":
         failed.append(rules["prior_failed"])
-    unstated = [f"{flag} ({item})" for flag, item in rules["forced"].items() if flag not in facts.flags]
+    unstated = [f"{flag} ({item})" for flag, item in rules["forced"].items() if flag not in flags]
     if unstated:
         caveats.append("다음에 해당하면 정밀검사 대상이다: " + ", ".join(unstated))
 
@@ -702,8 +733,15 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
     window_end = None
     if facts.prior_cert_on is None:
         missing.append("이전 정밀검사 뒤 수입신고확인증 발급일")
+    elif facts.prior_cert_on > today:
+        # [왜] 발급일이 오늘보다 뒤일 수는 없다. 연도를 잘못 읽었을 수 있어 판정에 쓰지 않고 다시 묻는다
+        missing.append("이전 정밀검사 뒤 수입신고확인증 발급일 (오늘보다 뒤라 다시 확인)")
     else:
-        window_end = _years_later(facts.prior_cert_on, rules["window_years"])
+        # [왜] 끝날이 토·일·공휴일이면 다음 날 끝난다 (민법 제161조).
+        #      공휴일 표는 rules/deadlines.yaml을 같이 쓴다
+        # [추정] 민법 제161조를 이 기간에 적용한 예규는 확인하지 못했다
+        holidays = set(load_rules("deadlines")["holidays"])
+        window_end = due_date(_years_later(facts.prior_cert_on, rules["window_years"]), 0, holidays)
         if today > window_end:
             failed.append(f"{rules['window_years']}년 지남 ({window_end}까지)")
 
@@ -727,7 +765,7 @@ def reimport_check(facts: ItemFacts, today: date) -> ReimportResult:
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `uv run pytest tests/tools/test_reimport.py -v`
-Expected: 10 passed
+Expected: 14 passed
 
 - [ ] **Step 5: 전체 확인과 커밋**
 
@@ -736,7 +774,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 103 passed (DB가 꺼져 있으면 97 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 107 passed (DB가 꺼져 있으면 101 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -1220,7 +1258,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 125 passed (DB가 꺼져 있으면 119 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 129 passed (DB가 꺼져 있으면 123 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -1851,7 +1889,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 129 passed (DB가 꺼져 있으면 123 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 133 passed (DB가 꺼져 있으면 127 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -2542,7 +2580,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 133 passed (DB가 꺼져 있으면 127 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 137 passed (DB가 꺼져 있으면 131 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -3305,7 +3343,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 136 passed (DB가 꺼져 있으면 130 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 140 passed (DB가 꺼져 있으면 134 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4119,7 +4157,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 146 passed (DB가 꺼져 있으면 140 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 150 passed (DB가 꺼져 있으면 144 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4254,7 +4292,7 @@ uv run ruff check . && uv run pyright && uv run pytest -q
 grep -rn $'\u2014' src tests prompts rules scripts docs/plans/2026-11-02-marvia-v2-plan-3a-answer.md
 ```
 
-Expected: 린트·타입 오류 0, 147 passed (DB가 꺼져 있으면 141 passed, 6 skipped), em dash 검색 결과 없음
+Expected: 린트·타입 오류 0, 151 passed (DB가 꺼져 있으면 145 passed, 6 skipped), em dash 검색 결과 없음
 
 ```bash
 graphify update .
@@ -4321,7 +4359,7 @@ uv run python scripts/try_agent.py "다음 주에 칭다오에서 고추 와요.
 - 화물 번호가 있으면 화물 줄과 기한(수입신고 기한·관세 납부기한, 넘겼으면 신고지연 가산세율과 대상 범위)을, 재수입 질문이면 서류검사 요건 판정을 코드가 계산하고 작성자는 그 값만 옮긴다.
 - 번호가 없는 화물 질문에는 코드가 쓰는 포워더 안내 줄과 작성자가 쓴 메시지가 나온다.
 - 검증 위반 두 번, LLM 호출 상한, 남은 단계 부족, LLM 실패 중 하나면 오류 대신 부분 답(계산한 것·찾은 근거·빠진 근거·실패한 도구·다음 선택지)이 나온다.
-- 테스트 147개가 키 없이 돈다(DB가 꺼져 있으면 141 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
+- 테스트 151개가 키 없이 돈다(DB가 꺼져 있으면 145 passed, 6 skipped). `scripts/try_main.py`는 키 없이 멈춤·재개를 보여 준다.
 
 ## 설계와 대조
 
