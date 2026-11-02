@@ -5,6 +5,7 @@ description = "어떤 단서로든 수입 화물을 찾아 법령 근거와 함�
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
+    "kiwipiepy>=0.24.1",
     "langchain>=1.4.7",
     "langchain-anthropic>=1.7.7",
     "langgraph>=1.2.18",

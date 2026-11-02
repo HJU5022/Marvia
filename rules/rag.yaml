@@ -1,0 +1,18 @@
+# RAG 설정값. 코드(src/marvia/rag, src/marvia/graph/rag.py)가 읽는다 (설계 5.3·5.4).
+# 숫자는 계획 2의 시작값이고, 계획 4 평가 결과를 보고 고친다.
+
+# 키워드로 남길 Kiwi 품사. NNG 일반명사, NNP 고유명사, SL 외국어, SH 한자, XR 어근, VV 동사, VA 형용사
+keyword_tags: [NNG, NNP, SL, SH, XR, VV, VA]
+
+index:
+  batch: 64 # 임베딩 API 한 번에 보낼 단위 수
+  workers: 4 # 맥락 문장을 동시에 만들 LLM 호출 수. 계정의 분당 호출 한도에 맞춘다
+
+search:
+  vector_k: 20 # 벡터 검색에서 가져올 개수
+  keyword_k: 20 # 키워드 검색에서 가져올 개수
+  rrf_k: 60 # RRF 상수. 클수록 1등과 10등의 점수 차이가 줄어든다 (RRF 논문의 기본값)
+  rerank_top_n: 8 # 리랭커가 다시 줄 세운 뒤 근거로 남길 개수
+
+loop:
+  max_rewrites: 2 # 근거가 부족할 때 질의를 고쳐 다시 찾는 최대 횟수 (설계 5.4의 6번)
