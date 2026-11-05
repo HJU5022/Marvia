@@ -179,8 +179,36 @@ def test_llm_cap_is_kept_exactly_and_ends_in_partial_answer(agent_deps, fake_rag
     assert "끝까지 확인하지 못했어요" in out["answer"] and f"LLM 호출 한도({cap}회)" in out["answer"]
 
 
+def test_search_is_refused_when_the_budget_would_pass_the_cap(agent_deps, fake_rag):
+    seen = []
+    rag = fake_rag(sufficient=False)
+    counting = type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
+    endless = [say(("search_law", {"query": f"질의 {i}"})) for i in range(40)]
+    graph = agent_graph(agent_deps, *endless, rag=counting)
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a8b"))
+    values = graph.get_state(cfg("a8b")).values
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+    # [왜] 검색 한 번의 최악은 2 + 2 × max_rewrites(=2)로 6. 두 번은 상한 안, 세 번째는 넘어서 거절된다
+    # [주의] seen은 RAG 안 검색 호출 수(고쳐 쓰기 포함)다.
+    #        한 번 찾기 = 초기 검색 + 고쳐 쓴 검색 2번이라 6 = 두 번 찾기
+    assert len(seen) == 3 * 2
+    assert values["llm_calls"] == cap
+    assert any("LLM 호출 한도가 가까워" in str(m.content) for m in values["messages"] if m.type == "tool")
+
+
+def test_parallel_searches_never_pass_the_cap(agent_deps, fake_rag):
+    rag = fake_rag(sufficient=False)
+    calls = tuple(("search_law", {"query": f"병렬 질의 {i}"}) for i in range(5))
+    graph = agent_graph(agent_deps, say(*calls), say(), rag=rag)
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a8c"))
+    values = graph.get_state(cfg("a8c")).values
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+    assert values["llm_calls"] <= cap
+
+
 def test_llm_failure_in_loop_gives_partial_answer(agent_deps):
     deps = agent_deps(model=BrokenModel(messages=iter([])))
     graph = build_main_graph(deps, InMemorySaver(), loop="agent")
     out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a9"))
     assert "- agent: APIConnectionError" in out["answer"]
+    assert graph.get_state(cfg("a9")).values["stopped"] == "llm_failed"

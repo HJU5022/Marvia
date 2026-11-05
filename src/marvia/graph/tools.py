@@ -74,19 +74,23 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
             # [왜] 같은 질의를 다시 찾으면 같은 결과에 돈만 든다 (11-06 손 시험: 검색 네 번 반복)
             return _reply(runtime, "이미 찾은 질의예요. 앞의 결과를 쓰거나 다른 조문을 찾으세요.")
         # [왜] 한도는 호출이 일어나는 곳에서 지킨다.
-        #      이 단계의 검색이 모두 최대로 돌아도 상한을 넘지 않을 때만 찾는다
-        calls = getattr(runtime.state["messages"][-1], "tool_calls", None) or []
-        searches = max(1, sum(call["name"] == "search_law" for call in calls))
+        #      이 단계의 search_law 호출 수는 마지막 모델 메시지에서 센다. 한도에 막힌 호출도 거기 들어 있어
+        #      세는 값이 실제보다 크거나 같다(안전 쪽). 병렬 검색은 전부 통과하거나 전부 거절된다
+        last_ai = next(m for m in reversed(runtime.state["messages"]) if m.type == "ai")
+        searches = sum(call["name"] == "search_law" for call in last_ai.tool_calls)
         if runtime.state.get("llm_calls", 0) + worst_search * searches > max_llm_calls:
             return _reply(runtime, "LLM 호출 한도가 가까워 더 찾지 않아요. 지금까지 찾은 것으로 끝내세요.")
         try:
             out = rag_graph.invoke({"question": query, "as_of": today()})
         except (httpx.HTTPError, psycopg.Error, LLMFailed) as error:
             # [왜] 검색 실패는 차례를 멈추지 않는다. 기록만 하고 모델이 다음 길을 고른다 (설계 결정 4의 ①)
-            # [왜] RAG는 늘 질의 분석 LLM부터 부른다. 어디서 실패했든 그 호출 하나는 일어났다
+            # [왜] RAG는 어느 단계에서든 실패할 수 있다. 실패 지점을 모르니 최악의 호출 수를 센다
+            #      (상한을 넘지 않게)
             name = error_name(error)
             failed = [{"tool": "search_law", "message": name}]
-            return _reply(runtime, f"검색 실패: {name}", failed_tools=failed, searched=[query], llm_calls=1)
+            return _reply(
+                runtime, f"검색 실패: {name}", failed_tools=failed, searched=[query], llm_calls=worst_search
+            )
         found = out.get("evidence", [])
         missing = "" if out.get("sufficient") else out.get("missing", "")
         # [왜] 모델에게는 unit_id와 제목만 준다. 무엇을 찾았는지만 알면 된다.
