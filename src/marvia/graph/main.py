@@ -32,7 +32,7 @@ from marvia.graph.identify import build_identify_graph, lookup
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
 from marvia.graph.state import MarviaState, merge_evidence
-from marvia.graph.tools import cargo_deadlines, error_name, make_tools
+from marvia.graph.tools import cargo_deadlines, error_name, make_tools, worst_search_calls
 from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
@@ -136,11 +136,7 @@ def respond(state: MarviaState) -> dict:
 
 def finish(state: MarviaState) -> dict:
     """부분 답을 낸다 (설계 6.4). 검증을 넘지 못한 초안은 쓰지 않는다."""
-    # [왜] 멈춘 차례에는 끝나지 않은 일을 진행 중으로 남기지 않는다. 끝낸 것이 아니라 pending으로 돌린다
-    todos = [
-        todo | {"status": "pending"} if todo["status"] == "in_progress" else todo
-        for todo in state.get("todos", [])
-    ]
+    todos = _pending_todos(state)
     text = partial_answer(
         state.get("cargos", []),
         state.get("calc", {}),
@@ -152,9 +148,17 @@ def finish(state: MarviaState) -> dict:
     return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos}
 
 
+def _pending_todos(state: MarviaState) -> list[dict]:
+    """멈춘 차례에 끝나지 않은 일을 진행 중으로 남기지 않는다. 끝낸 것이 아니라 pending으로 돌린다."""
+    return [
+        todo | {"status": "pending"} if todo["status"] == "in_progress" else todo
+        for todo in state.get("todos", [])
+    ]
+
+
 def decline(state: MarviaState) -> dict:
     """도메인 밖 질문: 코드가 쓴 정중한 거절과 할 수 있는 일을 답으로 낸다 (설계 1절)."""
-    return {"answer": decline_answer()}
+    return {"answer": decline_answer(), "todos": _pending_todos(state)}
 
 
 def _after_agent(state: MarviaState) -> str:
@@ -162,8 +166,13 @@ def _after_agent(state: MarviaState) -> str:
     if state.get("stopped"):
         return "finish"
     # [왜] 도메인 안 질문이 섞여 근거·계산을 모았으면 거절하지 않고 답한다(애매하면 답하는 쪽)
-    if state.get("out_of_scope") and not state.get("evidence") and not any(state.get("calc", {}).values()):
+    gathered = state.get("evidence") or any(state.get("calc", {}).values())
+    if state.get("out_of_scope") and not gathered:
         return "decline"
+    # [왜] 검색이 모두 실패해 모은 것이 없으면 작성자를 부르지 않는다. 근거 없는 답 대신
+    #      실패한 도구를 보인 부분 답으로 간다 (두 길 비교에서 근거 없는 완전한 답이 나왔다)
+    if not gathered and state.get("failed_tools"):
+        return "finish"
     return "write"
 
 
@@ -220,6 +229,10 @@ def build_main_graph(
         ):
             return "finish"
         step = _current_step(state)
+        # [왜] 한 번 더 최악으로 검색하면 한도를 넘을 때도 검색하지 않는다 (tools.py와 같다)
+        if step and step["action"] == "search_law":
+            if state.get("llm_calls", 0) + worst_search_calls() > loop["max_llm_calls"]:
+                return "finish"
         return step["action"] if step else "write"
 
     def search_law(state: MarviaState) -> dict:

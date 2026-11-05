@@ -65,6 +65,12 @@ def cargo_deadlines(cargos: list[dict], today: date) -> list[dict]:
     return deadlines
 
 
+def worst_search_calls() -> int:
+    """검색 한 번이 RAG 안에서 부를 수 있는 LLM 호출의 최대 (계획자 길·에이전트 길이 함께 쓴다)."""
+    # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기
+    return 2 + 2 * load_rules("rag")["loop"]["max_rewrites"]
+
+
 class Choice(BaseModel):
     """선택지 하나."""
 
@@ -75,9 +81,8 @@ class Choice(BaseModel):
 def make_tools(rag_graph, today: Callable[[], date]) -> list:
     """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것)."""
     max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
-    # [왜] 검색 한 번이 RAG 안에서 부를 수 있는 LLM 호출의 최대
-    #      = 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기
-    worst_search = 2 + 2 * load_rules("rag")["loop"]["max_rewrites"]
+    worst_search = worst_search_calls()
+    max_searches = load_rules("agent")["loop"]["max_searches"]
 
     @tool
     def search_law(query: str, runtime: ToolRuntime) -> Command:
@@ -95,6 +100,12 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         searches = sum(call["name"] == "search_law" for call in last_ai.tool_calls)
         if runtime.state.get("llm_calls", 0) + worst_search * searches > max_llm_calls:
             return _reply(runtime, "LLM 호출 한도가 가까워 더 찾지 않아요. 지금까지 찾은 것으로 끝내세요.")
+        # [왜] 라이브러리 미들웨어의 횟수는 질문(interrupt)으로 멈췄다 이어 가면 다시 0부터 센다.
+        #      searched는 공책에 남으므로 여기서도 센다. 미들웨어는 그대로 둔다 (이중 안전)
+        if len(runtime.state.get("searched", [])) + searches > max_searches:
+            return _reply(
+                runtime, "이번 차례에 찾을 수 있는 횟수를 다 썼어요. 지금까지 찾은 것으로 끝내세요."
+            )
         try:
             out = rag_graph.invoke({"question": query, "as_of": today()})
         except (httpx.HTTPError, psycopg.Error, LLMFailed) as error:
@@ -153,8 +164,10 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         """
         mask_map = dict(runtime.state.get("mask_map", {}))
         known = [token for token in tokens if token in mask_map]
+        # [왜] 이미 사실을 얻은 화물은 다시 조회하지 않고 지금 줄을 돌려준다 (같은 조회에 돈과 시간이 든다)
+        have = {c["token"]: c for c in runtime.state.get("cargos", []) if c["facts"]}
         # [주의] 실제 번호는 여기서만 꺼낸다. 결과 줄(cargo_lines)은 토큰으로 쓴다
-        cargos = [identify_number(mask_map[token], mask_map) for token in known]
+        cargos = [have.get(token) or identify_number(mask_map[token], mask_map) for token in known]
         lines = cargo_lines(cargos) + [
             f"{token}: 모르는 토큰이에요" for token in tokens if token not in mask_map
         ]

@@ -121,8 +121,12 @@ def describe_approval(tool_call: ToolCall, state: Any, runtime: Any) -> str:
     args = json.dumps(tool_call["args"], ensure_ascii=False)
     text = f"{tool_call['name']} 실행을 승인할까요?\n인자: {args}"
     if tool_call["name"] == "save_item_card":
-        facts = json.dumps(state.get("item", {}), ensure_ascii=False)
-        text += f"\n저장할 품목 사실: {facts}"
+        if not state.get("item"):
+            # [왜] 품목 사실이 없으면 도구가 저장하지 않고 돌아온다. 승인해도 저장되지 않는 것을 카드에 보인다
+            text += "\n저장할 품목 사실이 아직 없어요. 승인해도 저장되지 않아요."
+        else:
+            facts = json.dumps(state["item"], ensure_ascii=False)
+            text += f"\n저장할 품목 사실: {facts}"
     return text
 
 

@@ -6,6 +6,7 @@ from langgraph.types import Command
 
 from marvia.graph.main import build_main_graph, merge_evidence
 from marvia.graph.schemas import Draft, Plan, Step
+from marvia.graph.tools import worst_search_calls
 from marvia.llm import LLMFailed
 from marvia.rag.schemas import Grade
 from marvia.tools.reimport import ItemFacts
@@ -257,7 +258,9 @@ def test_llm_call_cap_gives_partial_answer(agent_deps):
     out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t15"))
     assert "끝까지 확인하지 못했어요" in out["answer"]
     assert "찾은 근거:" in out["answer"]  # 그동안 찾은 근거의 제목은 남긴다
-    assert graph.get_state(cfg("t15")).values["llm_calls"] >= load_rules("agent")["loop"]["max_llm_calls"]
+    # [왜] 한 번 더 최악으로 검색하면 한도를 넘을 때부터 검색하지 않는다
+    loop = load_rules("agent")["loop"]
+    assert graph.get_state(cfg("t15")).values["llm_calls"] + worst_search_calls() > loop["max_llm_calls"]
 
 
 def test_remaining_steps_gives_partial_answer(agent_deps):
@@ -321,3 +324,12 @@ def test_writer_failure_gives_partial_answer(agent_deps):
     graph = build_main_graph(agent_deps(write=failing(LLMFailed("RateLimitError"))), InMemorySaver())
     out = graph.invoke({"text": "DEMO0001 어디야?"}, cfg("t20"))
     assert "끝까지 확인하지 못했어요" in out["answer"] and "- write: RateLimitError" in out["answer"]
+
+
+def test_planner_never_passes_the_llm_cap_with_a_worst_case_search(agent_deps, fake_rag):
+    # 채점이 늘 부족해 검색마다 고쳐 쓰기를 끝까지 한다. 계획자는 끝없이 검색만 고른다
+    deps = agent_deps(plan=lambda prompt: SEARCH, rag=fake_rag(sufficient=False))
+    graph = build_main_graph(deps, InMemorySaver())
+    out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t40"))
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert graph.get_state(cfg("t40")).values["llm_calls"] <= load_rules("agent")["loop"]["max_llm_calls"]

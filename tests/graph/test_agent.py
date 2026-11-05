@@ -140,7 +140,10 @@ def test_search_failure_is_recorded_and_loop_goes_on(agent_deps, fake_rag):
     out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a4"))
     values = graph.get_state(cfg("a4")).values
     assert values["failed_tools"] == [{"tool": "search_law", "message": "ConnectError"}]
-    assert "시험 답이에요." in out["answer"]
+    # [왜] 검색이 모두 실패해 모은 것이 없으면 작성자를 부르지 않고 실패한 도구를 보인 부분 답으로 간다
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert "search_law: ConnectError" in out["answer"]
+    assert "시험 답이에요." not in out["answer"]
 
 
 def test_deadlines_come_from_code_and_numbers_stay_masked(agent_deps):
@@ -389,11 +392,14 @@ def test_rejected_item_card_is_not_saved(agent_deps):
     assert store.search(("users", "local", "items")) == []
 
 
-def test_auto_mode_saves_without_asking(agent_deps):
+def test_auto_mode_still_asks_for_the_item_card(agent_deps):
     store = InMemoryStore()
     graph = _card_graph(agent_deps, store, permission_mode="auto")
     out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a18"))
-    assert "__interrupt__" not in out and store.get(("users", "local", "items"), "건고추") is not None
+    assert "__interrupt__" in out  # 품목 카드 저장은 auto에서도 늘 묻는다 (설계 8절·12절)
+    assert store.get(("users", "local", "items"), "건고추") is None  # 승인 전에는 저장하지 않는다
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("a18"))
+    assert store.get(("users", "local", "items"), "건고추") is not None
 
 
 def test_unknown_permission_mode_still_asks(agent_deps):
@@ -518,3 +524,67 @@ def test_decline_with_empty_calc_still_declines(agent_deps):
     graph = agent_graph(agent_deps, both, say())
     out = graph.invoke({"text": "내일 날씨 어때?"}, cfg("f6"))
     assert out["answer"].startswith("이 질문은 Marvia가 도울 수 있는 범위 밖이에요.")
+
+
+def _counting_rag(fake_rag, seen):
+    rag = fake_rag()
+    return type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
+
+
+def test_search_cap_holds_across_an_interrupt(agent_deps, fake_rag):
+    seen = []
+    ask = ("ask_user", {"question": "어느 항이에요?", "options": TWO})
+    steps = [say(("search_law", {"query": f"질의{i}"})) for i in (1, 2, 3)] + [say(ask)]
+    steps += [say(("search_law", {"query": f"질의{i}"})) for i in (4, 5)] + [say()]
+    graph = agent_graph(agent_deps, *steps, rag=_counting_rag(fake_rag, seen))
+    out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a30"))
+    assert "__interrupt__" in out
+    graph.invoke(Command(resume={"selected": 0}), cfg("a30"))
+    # 상한은 질문으로 멈췄다 이어도 처음부터 다시 세지 않는다
+    assert len(seen) == load_rules("agent")["loop"]["max_searches"]
+
+
+def test_describe_approval_says_when_there_are_no_item_facts():
+    from marvia.graph.agent import describe_approval
+
+    call = {"name": "save_item_card", "args": {"name": "건고추"}, "id": "x"}
+    assert "저장되지 않" in describe_approval(call, {"item": {}}, None)
+    assert "저장되지 않" not in describe_approval(call, {"item": CHILI}, None)
+
+
+def test_decline_puts_in_progress_todo_back_to_pending(agent_deps):
+    todos = {"todos": [{"content": "날씨 보기", "status": "in_progress"}]}
+    graph = agent_graph(agent_deps, say(("write_todos", todos)), say(("decline", {"reason": "날씨 질문"})))
+    graph.invoke({"text": "오늘 날씨 어때?"}, cfg("a31"))
+    assert [t["status"] for t in graph.get_state(cfg("a31")).values["todos"]] == ["pending"]
+
+
+def test_known_token_is_not_looked_up_again(agent_deps, monkeypatch):
+    import marvia.graph.tools as tools_module
+
+    calls = []
+    real = tools_module.identify_number
+    monkeypatch.setattr(tools_module, "identify_number", lambda n, m: calls.append(n) or real(n, m))
+    graph = agent_graph(
+        agent_deps,
+        say(("lookup_cargo", {"tokens": ["[BL1]"]})),
+        say(("lookup_cargo", {"tokens": ["[BL1]"]})),
+        say(),
+    )
+    graph.invoke({"text": "DEMO0001 다시 봐 줘"}, cfg("a32"))
+    values = graph.get_state(cfg("a32")).values
+    texts = [m.content for m in values["messages"] if m.type == "tool"]
+    assert len(calls) == 0  # 식별 단계에서 이미 조회한 화물은 다시 조회하지 않는다
+    assert all("[BL1]: 반입신고" in text for text in texts)
+
+
+def test_malformed_approval_reply_rejects_and_saves_nothing(agent_deps):
+    from marvia.graph.resume import approval_reply
+
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store)
+    out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a33"))
+    count = len(out["__interrupt__"][0].value["action_requests"])
+    graph.invoke(Command(resume=approval_reply("a", count)), cfg("a33"))
+    assert store.search(("users", "local", "items")) == []
+    assert "__interrupt__" not in graph.get_state(cfg("a33")).values

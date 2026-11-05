@@ -17,6 +17,7 @@ from marvia.config import Settings
 from marvia.db import connect
 from marvia.graph.live import agent_deps
 from marvia.graph.main import build_main_graph
+from marvia.graph.resume import approval_reply
 from marvia.identify.mask import unmask
 
 settings = Settings()
@@ -45,9 +46,10 @@ with connect(settings.database_url) as conn, get_usage_metadata_callback() as us
             decision = (
                 {"type": "approve"} if approve else {"type": "reject", "message": "사용자가 거절했어요"}
             )
-            out = graph.invoke(
-                Command(resume={"decisions": [decision] * len(value["action_requests"])}), config
-            )
+            # [왜] 모양이 틀린 승인 값은 라이브러리 안에서 오류가 난다. approval_reply가 거절로 바꾼다
+            names = [request["name"] for request in value["action_requests"]]
+            reply = approval_reply({"decisions": [decision] * len(names)}, len(names), names)
+            out = graph.invoke(Command(resume=reply), config)
             continue
         # 선택지 질문 (설계 6.3의 질문 통로): 번호, 직접 입력, 빈 줄(권장안으로 진행)
         print(unmask(value["question"], mask_map))

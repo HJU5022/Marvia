@@ -21,6 +21,7 @@ from marvia.config import Settings
 from marvia.db import connect
 from marvia.graph.live import agent_deps
 from marvia.graph.main import build_main_graph
+from marvia.graph.resume import approval_reply
 from marvia.tools.rules import load_rules
 
 # 0.1 손 시험(11-06)과 같은 다섯 질문
@@ -42,10 +43,10 @@ def run(graph, text: str, thread: str) -> tuple[dict, list[dict]]:
         value = out["__interrupt__"][0].value
         pauses.append(value)
         if "action_requests" in value:
-            reply = {
-                "decisions": [{"type": "reject", "message": "비교 실행은 저장하지 않는다"}]
-                * len(value["action_requests"])
-            }
+            count = len(value["action_requests"])
+            reply = approval_reply(
+                {"decisions": [{"type": "reject", "message": "비교 실행은 저장하지 않는다"}] * count}, count
+            )
         else:
             reply = {"timeout": True}
         out = graph.invoke(Command(resume=reply), config)

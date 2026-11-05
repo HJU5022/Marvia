@@ -33,8 +33,8 @@ answer:
 # 승인 (설계 6.3). ask: 권한 모드가 ask일 때 승인을 받을 도구. always_ask: auto 모드에서도 늘 묻는 도구
 # [주의] 밖으로 나가는 메시지 도구가 생기면 always_ask에 넣는다 (설계 12절: auto는 바깥 발송을 덮지 않는다)
 approval:
-  ask: [save_item_card]
-  always_ask: []
+  ask: [] # 권한 모드가 ask일 때만 묻는 도구용. 지금은 없다
+  always_ask: [save_item_card] # 품목 카드 저장은 auto에서도 늘 묻는다 (설계 8절·12절)
 
 # 장기 기억 저장 기준 (설계 8절). 품목 카드 이름은 짧은 품목 이름만 받는다
 memory:
