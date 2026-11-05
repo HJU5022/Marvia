@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import date
+from typing import Annotated
 
 import httpx
 import psycopg
@@ -155,7 +156,11 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         return _reply(runtime, "\n".join(lines), cargos=cargos)
 
     @tool
-    def ask_user(question: str, options: list[Choice], runtime: ToolRuntime) -> Command:
+    def ask_user(
+        question: str,
+        options: Annotated[list[Choice], Field(min_length=2, max_length=3)],
+        runtime: ToolRuntime,
+    ) -> Command:
         """Ask the user one question with 2-3 options, the recommended option first. Use it only when you
         cannot go on without the answer. Call it alone, with no other tool in the same turn.
         """
@@ -167,16 +172,20 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         }
         # [주의] 재개하면 이 도구가 처음부터 다시 돈다. 그래서 interrupt 앞에는 바깥 일을 두지 않는다
         reply = interrupt(payload) or {}
-        if reply.get("custom"):
+        # [왜] 화면에서 온 값이라 dict가 아니면 답이 없는 것으로 본다 (문자열 응답은 AttributeError를 낸다)
+        reply = reply if isinstance(reply, dict) else {}
+        # [왜] 공백만 쓴 답은 답이 없는 것으로 본다
+        custom = str(reply.get("custom") or "").strip()
+        if custom:
             # [주의] 직접 쓴 답에 실제 번호가 있을 수 있다. 이번 차례 표에 이어 가린 뒤에만 모델에게 준다
-            masked, mask_map = mask_text(str(reply["custom"]), runtime.state.get("mask_map", {}))
+            masked, mask_map = mask_text(custom, runtime.state.get("mask_map", {}))
             return _reply(runtime, f"사용자 답(직접 입력): {masked}", mask_map=mask_map)
         selected = reply.get("selected")
-        # [왜] 화면에서 온 값이라 범위를 확인한다. 범위 밖이면 답이 없는 것으로 본다
-        if isinstance(selected, int) and 0 <= selected < len(options):
+        # [왜] 화면에서 온 값이라 범위를 확인한다. 범위 밖과 True(1이 아니다)는 답이 없는 것으로 본다
+        if isinstance(selected, int) and not isinstance(selected, bool) and 0 <= selected < len(options):
             return _reply(runtime, f"사용자 답: {options[selected].label}")
         # [왜] 답이 없거나 시간이 지나면 권장안으로 진행하고 가정으로 남긴다 (설계 결정 4의 ②)
-        label = options[0].label if options else "질문 없이 진행"
+        label = options[0].label
         assumption = f"'{question}'에 답이 없어 권장안 '{label}'으로 진행했어요."
         return _reply(runtime, f"답이 없어 권장안으로 진행해요: {label}", assumptions=[assumption])
 

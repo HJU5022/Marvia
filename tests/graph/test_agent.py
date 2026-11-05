@@ -302,6 +302,24 @@ def test_question_waits_for_a_choice(agent_deps):
     assert "사용자 답: 인천" in all_text(values) and values["assumptions"] == []
 
 
+def test_question_needs_two_or_three_options(agent_deps):
+    one = say(("ask_user", {"question": "어느 항구?", "options": TWO[:1]}))
+    graph = agent_graph(agent_deps, one, say())
+    out = graph.invoke({"text": "장치기간이 궁금해요"}, cfg("a12b"))
+    errors = [
+        m for m in graph.get_state(cfg("a12b")).values["messages"] if m.type == "tool" and m.status == "error"
+    ]
+    assert "__interrupt__" not in out and len(errors) == 1  # 선택지 하나는 모델에게 오류로 돌려준다
+
+
+def test_non_dict_resume_counts_as_no_answer(agent_deps):
+    ask = say(("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": TWO}))
+    graph = agent_graph(agent_deps, ask, say())
+    graph.invoke({"text": "장치기간이 궁금해요"}, cfg("a13b"))
+    out = graph.invoke(Command(resume="1"), cfg("a13b"))
+    assert "권장안 '부산'" in out["answer"]
+
+
 def test_no_answer_proceeds_with_the_recommended_option(agent_deps):
     ask = say(("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": TWO}))
     graph = agent_graph(agent_deps, ask, say())
@@ -322,6 +340,15 @@ def test_typed_answer_with_a_number_is_masked(agent_deps):
     assert [c["token"] for c in values["cargos"]] == ["[BL1]"]  # 가린 토큰으로 조회했다
 
 
+def test_typed_answer_extends_this_turns_mask_table(agent_deps):
+    ask = say(("ask_user", {"question": "다른 B/L도 있나요?", "options": TWO}))
+    graph = agent_graph(agent_deps, ask, say())
+    graph.invoke({"text": "DEMO0001 어디야?"}, cfg("a14b"))
+    graph.invoke(Command(resume={"custom": "DEMO0002도 있어요"}), cfg("a14b"))
+    values = graph.get_state(cfg("a14b")).values
+    assert values["mask_map"] == {"[BL1]": "DEMO0001", "[BL2]": "DEMO0002"}  # 앞 번호를 덮어쓰지 않는다
+
+
 def test_question_must_be_alone(agent_deps):
     mixed = say(
         ("ask_user", {"question": "어느 항구?", "options": TWO}), ("search_law", {"query": "장치기간"})
@@ -333,3 +360,4 @@ def test_question_must_be_alone(agent_deps):
         m for m in graph.get_state(cfg("a15")).values["messages"] if m.type == "tool" and m.status == "error"
     ]
     assert len(errors) == 2
+    assert graph.get_state(cfg("a15")).values.get("evidence", []) == []  # 섞인 search_law는 돌지 않았다

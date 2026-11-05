@@ -85,7 +85,9 @@ class Guards(AgentMiddleware[LoopState]):
     @hook_config(can_jump_to=["model"])
     def after_model(self, state: LoopState, runtime: Any) -> dict[str, Any] | None:
         """모델이 ask_user를 다른 도구와 함께 불렀으면 모두 오류로 돌려주고 다시 부른다."""
-        calls = getattr(state["messages"][-1], "tool_calls", None) or []
+        # [왜] 다른 미들웨어가 오류 결과를 먼저 붙여도 마지막 모델 메시지를 본다
+        last = next((m for m in reversed(state["messages"]) if m.type == "ai"), None)
+        calls = getattr(last, "tool_calls", None) or []
         if len(calls) > 1 and any(call["name"] == "ask_user" for call in calls):
             # [왜] 질문(interrupt)과 다른 도구가 한 단계에 섞이면 재개할 때 다른 도구가 다시 돌 수 있다
             errors = [ToolMessage(ASK_ALONE, tool_call_id=call["id"], status="error") for call in calls]
