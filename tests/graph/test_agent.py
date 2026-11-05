@@ -1,5 +1,6 @@
 """에이전트 길(계획 3c) 시험. 가짜 도구 호출 모델로 키 없이 돈다."""
 
+import anthropic
 import httpx
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -8,6 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
+from marvia.tools.rules import load_rules
 
 CITING = Draft(
     answer="관세법 제241조에 따라 반입일부터 30일 이내에 수입신고해야 해요.",
@@ -32,6 +34,13 @@ class ToolModel(GenericFakeChatModel):
 
     def bind_tools(self, tools, **kwargs):
         return self
+
+
+class BrokenModel(ToolModel):
+    """부르면 API 오류를 내는 가짜 모델."""
+
+    def _generate(self, *args, **kwargs):
+        raise anthropic.APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.test"))
 
 
 def say(*calls: tuple[str, dict], text: str = "") -> AIMessage:
@@ -152,3 +161,26 @@ def test_lookup_cargo_tool_uses_tokens_only(agent_deps):
     assert "[BL9]: 모르는 토큰이에요" in tool_text and "DEMO0001" not in tool_text
     assert "[BL1]: 반입신고" in tool_text
     assert [c["token"] for c in values["cargos"]] == ["[BL1]"]  # 같은 토큰은 바꾸고 늘리지 않는다
+
+
+def test_llm_cap_is_kept_exactly_and_ends_in_partial_answer(agent_deps, fake_rag):
+    seen = []
+    rag = fake_rag()
+    counting = type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
+    # [왜] 늘 새 질의로 검색하는 모델: 검색 상한과 LLM 호출 상한이 모두 닿는다
+    endless = [say(("search_law", {"query": f"질의 {i}"})) for i in range(40)]
+    graph = agent_graph(agent_deps, *endless, rag=counting)
+    out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a8"))
+    values = graph.get_state(cfg("a8")).values
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+    assert len(seen) == load_rules("agent")["loop"]["max_searches"]
+    assert values["llm_calls"] == cap  # 상한을 넘지 않는다
+    assert values["stopped"] == "llm_calls"
+    assert "끝까지 확인하지 못했어요" in out["answer"] and f"LLM 호출 한도({cap}회)" in out["answer"]
+
+
+def test_llm_failure_in_loop_gives_partial_answer(agent_deps):
+    deps = agent_deps(model=BrokenModel(messages=iter([])))
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent")
+    out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a9"))
+    assert "- agent: APIConnectionError" in out["answer"]

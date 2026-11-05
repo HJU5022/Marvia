@@ -24,6 +24,7 @@ from marvia.graph.identify import identify_number
 from marvia.llm import LLMFailed
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
+from marvia.tools.rules import load_rules
 
 
 def error_name(error: Exception) -> str:
@@ -58,6 +59,10 @@ def cargo_deadlines(cargos: list[dict], today: date) -> list[dict]:
 
 def make_tools(rag_graph, today: Callable[[], date]) -> list:
     """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것)."""
+    max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
+    # [왜] 검색 한 번이 RAG 안에서 부를 수 있는 LLM 호출의 최대
+    #      = 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기
+    worst_search = 2 + 2 * load_rules("rag")["loop"]["max_rewrites"]
 
     @tool
     def search_law(query: str, runtime: ToolRuntime) -> Command:
@@ -68,6 +73,12 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         if query in runtime.state.get("searched", []):
             # [왜] 같은 질의를 다시 찾으면 같은 결과에 돈만 든다 (11-06 손 시험: 검색 네 번 반복)
             return _reply(runtime, "이미 찾은 질의예요. 앞의 결과를 쓰거나 다른 조문을 찾으세요.")
+        # [왜] 한도는 호출이 일어나는 곳에서 지킨다.
+        #      이 단계의 검색이 모두 최대로 돌아도 상한을 넘지 않을 때만 찾는다
+        calls = getattr(runtime.state["messages"][-1], "tool_calls", None) or []
+        searches = max(1, sum(call["name"] == "search_law" for call in calls))
+        if runtime.state.get("llm_calls", 0) + worst_search * searches > max_llm_calls:
+            return _reply(runtime, "LLM 호출 한도가 가까워 더 찾지 않아요. 지금까지 찾은 것으로 끝내세요.")
         try:
             out = rag_graph.invoke({"question": query, "as_of": today()})
         except (httpx.HTTPError, psycopg.Error, LLMFailed) as error:
