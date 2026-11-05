@@ -27,10 +27,10 @@
 - 환경 변수는 `MARVIA_` 접두어만 읽는다. 루트 `.env`의 `DATABASE_URL`은 v1 운영 DB라 읽지 않는다.
 - 실제 화물 번호는 LLM·트레이스·저장소에 넣지 않는다. fixture 번호는 `DEMO`·`MOCK`·`TEST`·`NOPE` 접두어의 가공값만 쓴다.
 - 임계값·목록은 `rules/*.yaml`에 두고 코드에 숫자로 적지 않는다.
-- 커밋은 `v2` 브랜치에만 한다(`main` 커밋은 로컬 훅이 막는다). push는 정운 확인 뒤.
+- 커밋은 `v2` 브랜치에만 한다(`main` 커밋은 로컬 훅이 막는다). push는 확인한 뒤.
 - 파일 안에서 em dash(U+2014)를 쓰지 않는다.
 - 테스트는 키 없이 돈다. Postgres 테스트만 로컬 DB가 필요하고, 꺼져 있으면 건너뛴다.
-- 진행 방식: 태스크마다 "배울 것"을 짧게 설명하고 넘어간다. 정운이 모르는 부분을 물으면 그 자리에서 푼다.
+- 진행 방식: 태스크마다 "배울 것"을 짧게 설명하고 넘어간다. 모르는 부분이 생기면 그 자리에서 푼다.
 
 ## 파일 구조
 
@@ -69,9 +69,9 @@
 **Interfaces:**
 - Produces: 패키지 `marvia`(`marvia.__version__ == "2.0.0a0"`), `uv run pytest`로 도는 테스트 환경
 
-- [ ] **Step 0: 정운 확인 두 가지**
+- [ ] **Step 0: 확인 두 가지**
 
-uv를 이 저장소에 쓰는 것(전역 규칙상 매번 승인), v1 추적 파일을 `v2` 브랜치에서 지우는 것(태그 `v1-final`에 남는다)을 정운에게 확인받는다.
+uv를 이 저장소에 쓰는 것(전역 규칙상 매번 승인), v1 추적 파일을 `v2` 브랜치에서 지우는 것(태그 `v1-final`에 남는다)을 먼저 확인한다.
 
 - [ ] **Step 1: v1 가상환경 보관**
 
@@ -93,7 +93,7 @@ git rm -r -q backend mcp_server worker web skills evals scripts docs conftest.py
 git status --short --ignored
 ```
 
-`web/node_modules`, `web/.vercel` 같은 남은 폴더 목록을 정운에게 보여 주고, 지울지는 정운이 정한다(이 계획은 지우지 않는다).
+`web/node_modules`, `web/.vercel` 같은 남은 폴더 목록을 확인하고, 지울지는 따로 정한다(이 계획은 지우지 않는다).
 
 - [ ] **Step 4: `pyproject.toml` 새로 쓰기**
 
@@ -1241,7 +1241,7 @@ while "__interrupt__" in out:
 print(out["answer"])
 ```
 
-정운이 직접 돌려 본다:
+직접 돌려 본다:
 
 ```bash
 uv run python scripts/try_main.py MOCK12345678TEST87654321
@@ -1334,7 +1334,7 @@ volumes:
   pgdata_v2: {}
 ```
 
-정운이 띄운다:
+직접 띄운다:
 
 ```bash
 docker compose up -d db

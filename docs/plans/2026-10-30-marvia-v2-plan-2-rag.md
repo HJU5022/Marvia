@@ -4,9 +4,9 @@
 
 **Goal:** 법령 질문 하나를 받아, 현행 법령·고시의 조문 단위에서 `unit_id`가 붙은 근거 묶음을 찾아 돌려주는 RAG 서브그래프를 만든다. 테스트는 키 없이 돌고, 키를 넣으면 실제 코퍼스(1차 문서 9개)로 돈다.
 
-**Architecture:** 국가법령정보센터 웹 페이지를 한 번 받아 조·항·호·목 단위(`Unit`)로 잘라 저장소에 둔다. 단위마다 Kiwi 키워드(tsvector)와 Voyage 임베딩(pgvector)을 Postgres 한 표에 넣고, 두 검색 결과를 RRF로 합친 뒤 리랭커로 다시 줄 세운다. LangGraph 서브그래프가 질의 분석 → 검색 → 근거 채점 → 질의 고쳐 쓰기(최대 2회)를 돈다. LLM·DB·OpenRouter는 함수 묶음(`RagDeps`)으로 받아서 테스트는 가짜 함수를 넣는다.
+**Architecture:** 국가법령정보센터 웹 페이지를 한 번 받아 조·항·호·목 단위(`Unit`)로 잘라 저장소에 둔다. 단위마다 Kiwi 키워드(tsvector)와 Voyage 임베딩(pgvector)을 Postgres 한 표에 넣고, 두 검색 결과를 RRF로 합친 뒤 리랭커로 다시 줄 세운다. LangGraph 서브그래프가 질의 분석 → 검색 → 근거 채점 → 질의 고쳐 쓰기(최대 2회)를 돈다. LLM·DB·Voyage는 함수 묶음(`RagDeps`)으로 받아서 테스트는 가짜 함수를 넣는다.
 
-**Tech Stack:** Python 3.12, uv, LangGraph 1.2.x, langchain 1.4.x(`init_chat_model`), langchain-anthropic 1.7.x, Claude Haiku 5.5(Anthropic API), OpenRouter(Voyage 임베딩·리랭커), httpx, kiwipiepy 0.24.x, Postgres 16 + pgvector 0.8, psycopg 3, pydantic 2, pytest.
+**Tech Stack:** Python 3.12, uv, LangGraph 1.2.x, langchain 1.4.x(`init_chat_model`), langchain-anthropic 1.7.x, Claude Haiku 5.5(Anthropic API), Voyage AI API 직접 호출(임베딩·리랭커), httpx, kiwipiepy 0.24.x, Postgres 16 + pgvector 0.8, psycopg 3, pydantic 2, pytest.
 
 **Spec:** `docs/specs/2026-10-28-marvia-v2-design.md` (5절 하이브리드 RAG, 2절 결정 14·15)
 
@@ -19,20 +19,20 @@
 | 3 | 계획자(LLM)와 메인 그래프에 RAG 연결, GraphRAG(Neo4j)와 리랭커에서 합치기, MCP 서버, 작성자·검증자, 번호 없을 때 안내 문장, 신고 기한·재수입 계산, 별표 읽기, 실제 UNI-PASS 조회 | 10-31 |
 | 4 | 화면(Next.js + AG-UI), 평가셋·ragas·CI, 모델 비교표(Haiku 5.5와 다른 모델), Langfuse, 배포 | 11-01 |
 
-10-30 정운 결정으로 계획 2는 RAG 한 줄기만 한다. 계획자와 계산 도구(`import_deadlines`, `reimport_check`)는 계획 3으로 옮겼다. 계획 3이 무거우면 그때 나눈다.
+10-30 결정으로 계획 2는 RAG 한 줄기만 한다. 계획자와 계산 도구(`import_deadlines`, `reimport_check`)는 계획 3으로 옮겼다. 계획 3이 무거우면 그때 나눈다.
 
 ## Global Constraints
 
-- 계획 1의 제약을 그대로 따른다: Python 3.12 이상, `MARVIA_` 접두어 환경 변수만 읽기, 실제 화물 번호를 LLM·트레이스·저장소에 넣지 않기, 임계값·목록은 `rules/*.yaml`, 커밋은 `v2` 브랜치에만(push는 정운 확인 뒤), em dash(U+2014) 금지.
+- 계획 1의 제약을 그대로 따른다: Python 3.12 이상, `MARVIA_` 접두어 환경 변수만 읽기, 실제 화물 번호를 LLM·트레이스·저장소에 넣지 않기, 임계값·목록은 `rules/*.yaml`, 커밋은 `v2` 브랜치에만(push는 따로 확인한 뒤에만), em dash(U+2014) 금지.
 - 대화 LLM은 Anthropic API의 `claude-haiku-5-5`. `init_chat_model(..., model_provider="anthropic")`로 만들고, 구조화 출력은 `with_structured_output(schema, method="json_schema")`로 받는다.
-- 임베딩은 OpenRouter `voyageai/voyage-4`(1024차원), 리랭커는 `voyageai/rerank-2.5`. 주소는 `https://openrouter.ai/api/v1`. `dimensions`·`input_type`은 보내지 않고, 받은 차원을 코드가 확인한다(10-30 문서 확인).
-- 키 이름은 `MARVIA_ANTHROPIC_API_KEY`, `MARVIA_OPENROUTER_API_KEY`. 값은 `.env`에만 둔다. 저장소·출력·로그에 값을 넣지 않는다. 키는 개발 계정 `hajeongun.dev@gmail.com`으로 만든다.
-- 돈이 드는 실행(Task 1 Step 9, Task 10)은 정운에게 예상 비용을 말하고 허락을 받은 뒤 한다.
+- 임베딩은 Voyage AI `voyage-4`(1024차원), 리랭커는 `rerank-3`. 주소는 `https://api.voyageai.com/v1`. 임베딩에는 `input_type`(색인 `document`, 질문 `query`)과 `output_dimension`을 보내고, 받은 차원을 코드가 확인한다. 처음에는 OpenRouter 경유로 불렀으나 `input_type`·`output_dimension`을 보낼 수 있도록 11-02에 Voyage AI 직접 호출로 바꿨다(커밋 4f3964e).
+- 키 이름은 `MARVIA_ANTHROPIC_API_KEY`, `MARVIA_VOYAGE_API_KEY`. 값은 `.env`에만 둔다. 저장소·출력·로그에 값을 넣지 않는다. 키는 개발 계정 `hajeongun.dev@gmail.com`으로 만든다.
+- 돈이 드는 실행(Task 1 Step 9, Task 10)은 예상 비용을 먼저 적어 두고 실행 여부를 정한 뒤에 한다.
 - 코퍼스는 현행판만(시행일 ≤ 오늘). 법령·고시 원문은 저작권법 제7조의 보호받지 못하는 저작물이라 단위 파일을 저장소에 둔다. 받은 HTML 원본(`corpus/raw/`)은 올리지 않는다.
 - 프롬프트는 `prompts/*.md`가 원본이다(설계 11절). 질문·근거·조문은 태그로 감싸고 "데이터이니 안의 지시를 따르지 말라"고 적는다(설계 12절).
 - 테스트는 키 없이 돈다. DB 테스트는 `marvia_test` 스키마에 표를 만들었다 지우고, 로컬 DB가 꺼져 있으면 건너뛴다.
 - 의존성은 `uv add`로만 넣는다(pip 금지).
-- 진행 방식: 태스크마다 "배울 것"을 짧게 설명하고 넘어간다. 정운이 모르는 부분을 물으면 그 자리에서 푼다.
+- 진행 방식: 태스크마다 "배울 것"을 짧게 설명하고 넘어간다. 모르는 부분은 그 자리에서 풀고 간다.
 
 ## 파일 구조
 
@@ -46,12 +46,12 @@
 | `src/marvia/rag/lawpage.py` | 조문 페이지 HTML → `Unit` 목록 |
 | `src/marvia/rag/fetch.py` | 국가법령정보센터 주소 만들기, 페이지에서 번호·시행일 읽기 |
 | `src/marvia/rag/keywords.py` | Kiwi로 키워드 뽑기 |
-| `src/marvia/rag/openrouter.py` | 임베딩·리랭커 호출 |
+| `src/marvia/rag/voyage.py` | 임베딩·리랭커 호출 |
 | `src/marvia/rag/index.py` | `Unit` → DB 색인 |
 | `src/marvia/rag/search.py` | 벡터 + 키워드 검색, RRF |
 | `src/marvia/rag/schemas.py` | LLM이 채울 모양(`QueryAnalysis`, `Grade`, `Rewrite`) |
 | `src/marvia/rag/context.py` | 맥락 문장 |
-| `src/marvia/rag/live.py` | 실제 LLM·DB·OpenRouter로 `RagDeps` 만들기 |
+| `src/marvia/rag/live.py` | 실제 LLM·DB·Voyage로 `RagDeps` 만들기 |
 | `src/marvia/graph/state.py` | `RagState` 추가 |
 | `src/marvia/graph/rag.py` | RAG 서브그래프 |
 | `migrations/001_corpus_units.sql` | 코퍼스 표와 색인 |
@@ -73,7 +73,7 @@
 - Create: `src/marvia/llm.py`, `tests/test_llm.py`, `scripts/try_llm.py`
 
 **Interfaces:**
-- Produces: `Settings.anthropic_api_key: SecretStr`, `Settings.openrouter_api_key: SecretStr`, `Settings.chat_model = "claude-haiku-5-5"`, `Settings.embed_model = "voyageai/voyage-4"`, `Settings.embed_dim = 1024`, `Settings.rerank_model = "voyageai/rerank-2.5"`, `Settings.openrouter_url`
+- Produces: `Settings.anthropic_api_key: SecretStr`, `Settings.voyage_api_key: SecretStr`, `Settings.chat_model = "claude-haiku-5-5"`, `Settings.embed_model = "voyage-4"`, `Settings.embed_dim = 1024`, `Settings.rerank_model = "rerank-3"`, `Settings.voyage_url`
 - Produces: `chat_model(settings: Settings) -> BaseChatModel`, `structured(llm: BaseChatModel, schema: type[T]) -> Callable[[str], T]`
 
 - [ ] **Step 0: 문서 커밋**
@@ -171,14 +171,14 @@ class Settings(BaseSettings):
     # 키 (설계 12절: 저장소에는 이름만 둔다)
     # [왜] SecretStr은 print나 로그에 '**********'로만 보인다. 실제 값은 .get_secret_value()로만 꺼낸다
     anthropic_api_key: SecretStr = SecretStr("")  # MARVIA_ANTHROPIC_API_KEY
-    openrouter_api_key: SecretStr = SecretStr("")  # MARVIA_OPENROUTER_API_KEY
+    voyage_api_key: SecretStr = SecretStr("")  # MARVIA_VOYAGE_API_KEY
 
     # 모델 (설계 2절 결정 14). [왜] 이름을 설정에 두면 평가 때 환경 변수만 바꿔 다른 모델과 비교할 수 있다
     chat_model: str = "claude-haiku-5-5"  # 대화 LLM (Anthropic API)
-    embed_model: str = "voyageai/voyage-4"  # 임베딩 (OpenRouter)
+    embed_model: str = "voyage-4"  # 임베딩 (Voyage AI)
     embed_dim: int = 1024  # [주의] migrations/001_corpus_units.sql의 vector(1024)와 같아야 한다
-    rerank_model: str = "voyageai/rerank-2.5"  # 리랭커 (OpenRouter)
-    openrouter_url: str = "https://openrouter.ai/api/v1"
+    rerank_model: str = "rerank-3"  # 리랭커 (Voyage AI)
+    voyage_url: str = "https://api.voyageai.com/v1"
 ```
 
 - [ ] **Step 4: LLM 연결**
@@ -240,22 +240,22 @@ Expected: 7 passed
 ```
 # LLM: Anthropic API (Claude Haiku 5.5). hajeongun.dev 계정의 Anthropic Console에서 키를 만든다
 MARVIA_ANTHROPIC_API_KEY=
-# 임베딩·리랭커: OpenRouter (Voyage). hajeongun.dev 계정으로 만든다
-MARVIA_OPENROUTER_API_KEY=
+# 임베딩·리랭커: Voyage AI. hajeongun.dev 계정의 Voyage 대시보드에서 키를 만든다
+MARVIA_VOYAGE_API_KEY=
 ```
 
 - [ ] **Step 7: `.env`에 같은 블록 (값은 비움)**
 
-Claude는 `.env`를 읽지 않는다. 정운이 아래 한 줄로 끝에 붙이고, 키 값은 정운이 직접 채운다.
+`.env`는 읽지 않고, 아래 한 줄로 끝에 붙인 뒤 키 값은 직접 채운다. 값은 화면과 로그에 찍지 않는다.
 
 ```bash
-printf '\n# LLM: Anthropic API (Claude Haiku 5.5). hajeongun.dev 계정의 Anthropic Console에서 키를 만든다\nMARVIA_ANTHROPIC_API_KEY=\n# 임베딩·리랭커: OpenRouter (Voyage). hajeongun.dev 계정으로 만든다\nMARVIA_OPENROUTER_API_KEY=\n' >> .env
+printf '\n# LLM: Anthropic API (Claude Haiku 5.5). hajeongun.dev 계정의 Anthropic Console에서 키를 만든다\nMARVIA_ANTHROPIC_API_KEY=\n# 임베딩·리랭커: Voyage AI. hajeongun.dev 계정의 Voyage 대시보드에서 키를 만든다\nMARVIA_VOYAGE_API_KEY=\n' >> .env
 ```
 
 키가 들어갔는지는 값을 찍지 않고 있음·없음만 본다:
 
 ```bash
-uv run python -c "from marvia.config import Settings; s = Settings(); print('anthropic', bool(s.anthropic_api_key.get_secret_value()), 'openrouter', bool(s.openrouter_api_key.get_secret_value()))"
+uv run python -c "from marvia.config import Settings; s = Settings(); print('anthropic', bool(s.anthropic_api_key.get_secret_value()), 'voyage', bool(s.voyage_api_key.get_secret_value()))"
 ```
 
 - [ ] **Step 8: 손으로 불러 볼 스크립트**
@@ -286,7 +286,7 @@ print(
 )
 ```
 
-- [ ] **Step 9: 실제로 한 번 부르기 (정운 허락 뒤, 약 $0.001)**
+- [ ] **Step 9: 실제로 한 번 부르기 (비용 확인 뒤, 약 $0.001)**
 
 Run: `uv run python scripts/try_llm.py`
 Expected: `keywords=['실리콘', '주방매트', ...]`처럼 낱말 목록이 찍힌다. 오류가 나면 메시지만 보고(키 값은 찍지 않는다) 원인을 찾는다. 키가 아직 없으면 이 단계는 Task 10 앞으로 미룬다.
@@ -920,7 +920,7 @@ OK 수입식품안전관리 특별법 시행규칙 2026-09-30 단위 388개
 OK 수입식품등 신고 및 검사에 관한 규정 2025-09-01 단위 129개
 ```
 
-`MISS`나 `SKIP`이 나오면 그 문서 이름과 이유를 정운에게 보여 주고 멈춘다. `corpus/manifest.json`의 `title`이 `name`과 같은지 본다(수입식품안전관리 특별법은 제목에 "약칭: 수입식품법"이 붙는다).
+`MISS`나 `SKIP`이 나오면 그 문서 이름과 이유를 기록하고 멈춘다. `corpus/manifest.json`의 `title`이 `name`과 같은지 본다(수입식품안전관리 특별법은 제목에 "약칭: 수입식품법"이 붙는다).
 
 - [ ] **Step 6: 린트와 커밋**
 
@@ -1055,21 +1055,21 @@ git commit -m "feat(rag): Kiwi로 키워드 뽑기와 RAG 설정값 파일"
 
 ---
 
-### Task 5: OpenRouter 임베딩·리랭커
+### Task 5: Voyage AI 임베딩·리랭커
 
 **배울 것:** 임베딩(글 → 숫자 1024개, 뜻이 가까우면 숫자도 가깝다), 리랭커(질문과 글을 한 쌍씩 같이 읽고 점수를 매겨 다시 줄 세움. 임베딩보다 느리지만 정확하다), `httpx.MockTransport`(인터넷에 나가지 않고 가짜 응답을 돌려줘서 키 없이 요청 모양을 시험함).
 
 **Files:**
-- Create: `src/marvia/rag/openrouter.py`
-- Test: `tests/rag/test_openrouter.py`
+- Create: `src/marvia/rag/voyage.py`
+- Test: `tests/rag/test_voyage.py`
 
 **Interfaces:**
 - Consumes: `Settings` (Task 1)
-- Produces: `embed(texts: list[str], settings: Settings, transport=None) -> list[list[float]]`, `rerank(query: str, documents: list[str], settings: Settings, transport=None) -> list[float]`
+- Produces: `embed(texts: list[str], settings: Settings, input_type: Literal["query", "document"], transport=None) -> list[list[float]]`, `rerank(query: str, documents: list[str], settings: Settings, transport=None) -> list[float]`
 
 - [ ] **Step 1: 실패하는 테스트**
 
-`tests/rag/test_openrouter.py`:
+`tests/rag/test_voyage.py`:
 
 ```python
 import json
@@ -1078,10 +1078,10 @@ import httpx
 import pytest
 
 from marvia.config import Settings
-from marvia.rag.openrouter import embed, rerank
+from marvia.rag.voyage import embed, rerank
 
 # [왜] 진짜처럼 보이지 않는 가짜 키. embed_dim=3으로 짧은 벡터를 쓴다
-SETTINGS = Settings(_env_file=None, openrouter_api_key="sk-or-test-not-real", embed_dim=3)
+SETTINGS = Settings(_env_file=None, voyage_api_key="pa-test-not-real", embed_dim=3)
 
 
 def test_embed_sends_model_and_orders_by_index():
@@ -1096,11 +1096,16 @@ def test_embed_sends_model_and_orders_by_index():
         return httpx.Response(200, json={"data": data})
 
     # [왜] MockTransport는 인터넷에 나가지 않고 handler가 만든 응답을 돌려준다
-    vectors = embed(["가", "나"], SETTINGS, transport=httpx.MockTransport(handler))
+    vectors = embed(["가", "나"], SETTINGS, "document", transport=httpx.MockTransport(handler))
     assert vectors == [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
-    assert seen["url"] == "https://openrouter.ai/api/v1/embeddings"
-    assert seen["auth"] == "Bearer sk-or-test-not-real"
-    assert seen["body"] == {"model": "voyageai/voyage-4", "input": ["가", "나"]}
+    assert seen["url"] == "https://api.voyageai.com/v1/embeddings"
+    assert seen["auth"] == "Bearer pa-test-not-real"
+    assert seen["body"] == {
+        "model": "voyage-4",
+        "input": ["가", "나"],
+        "input_type": "document",
+        "output_dimension": 3,
+    }
 
 
 def test_embed_rejects_wrong_dimension():
@@ -1108,33 +1113,34 @@ def test_embed_rejects_wrong_dimension():
         return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0, 0.0]}]})
 
     with pytest.raises(ValueError, match="차원"):
-        embed(["가"], SETTINGS, transport=httpx.MockTransport(handler))
+        embed(["가"], SETTINGS, "query", transport=httpx.MockTransport(handler))
 
 
 def test_rerank_returns_scores_in_document_order():
     def handler(request: httpx.Request) -> httpx.Response:
         results = [{"index": 1, "relevance_score": 0.9}, {"index": 0, "relevance_score": 0.2}]
-        return httpx.Response(200, json={"results": results})
+        return httpx.Response(200, json={"data": results})
 
     assert rerank("질문", ["a", "b"], SETTINGS, transport=httpx.MockTransport(handler)) == [0.2, 0.9]
 ```
 
-Run: `uv run pytest tests/rag/test_openrouter.py -v`
+Run: `uv run pytest tests/rag/test_voyage.py -v`
 Expected: FAIL
 
 - [ ] **Step 2: 구현**
 
-`src/marvia/rag/openrouter.py`:
+`src/marvia/rag/voyage.py`:
 
 ```python
-"""OpenRouter로 임베딩과 리랭커를 부른다 (설계 13절, 2절 결정 14).
+"""Voyage AI API로 임베딩과 리랭커를 부른다 (설계 13절, 2절 결정 14).
 
 하지 않는 일: 재시도. 실패하면 httpx 오류를 그대로 올린다(색인 스크립트는 다시 돌리면 덮어쓴다).
-[주의] OpenRouter가 Voyage에 dimensions·input_type을 넘기는지 문서에 없어(10-30) 보내지 않는다.
-대신 받은 벡터의 차원을 설정 embed_dim과 비교한다.
+[주의] Anthropic API에는 임베딩·리랭커 모델이 없어 Voyage를 따로 부른다. 키는 MARVIA_VOYAGE_API_KEY.
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 import httpx
 
@@ -1143,11 +1149,11 @@ from marvia.config import Settings
 
 def _client(settings: Settings, transport: httpx.BaseTransport | None) -> httpx.Client:
     """키를 머리글에 붙인 HTTP 클라이언트. transport는 테스트가 가짜 응답을 끼울 때만 쓴다."""
-    key = settings.openrouter_api_key.get_secret_value()
+    key = settings.voyage_api_key.get_secret_value()
     if not key:
-        raise RuntimeError("MARVIA_OPENROUTER_API_KEY가 비어 있습니다. .env를 확인하세요")
+        raise RuntimeError("MARVIA_VOYAGE_API_KEY가 비어 있습니다. .env를 확인하세요")
     return httpx.Client(
-        base_url=settings.openrouter_url,
+        base_url=settings.voyage_url,
         headers={"Authorization": f"Bearer {key}"},
         timeout=60,
         transport=transport,
@@ -1155,13 +1161,24 @@ def _client(settings: Settings, transport: httpx.BaseTransport | None) -> httpx.
 
 
 def embed(
-    texts: list[str], settings: Settings, transport: httpx.BaseTransport | None = None
+    texts: list[str],
+    settings: Settings,
+    input_type: Literal["query", "document"],
+    transport: httpx.BaseTransport | None = None,
 ) -> list[list[float]]:
     """글 목록을 벡터 목록으로 바꾼다. 순서는 넣은 순서와 같다."""
+    body = {
+        "model": settings.embed_model,
+        "input": texts,
+        # [왜] 검색어는 "query", 색인할 조문은 "document".
+        # Voyage가 용도에 맞는 머리말을 붙여 검색이 더 잘 맞는다
+        "input_type": input_type,
+        "output_dimension": settings.embed_dim,  # [주의] DB 표의 vector(1024)와 같은 값
+    }
     with _client(settings, transport) as client:
-        response = client.post("/embeddings", json={"model": settings.embed_model, "input": texts})
+        response = client.post("/embeddings", json=body)
         response.raise_for_status()
-    # [왜] 응답의 순서가 넣은 순서라는 말이 문서에 없다. 각 항목의 index로 다시 맞춘다
+    # [왜] 각 항목에 index가 있다. 순서가 바뀌어 와도 넣은 순서로 다시 맞춘다
     data = sorted(response.json()["data"], key=lambda item: item["index"])
     vectors = [item["embedding"] for item in data]
     for vector in vectors:
@@ -1182,20 +1199,20 @@ def rerank(
         )
         response.raise_for_status()
     scores = [0.0] * len(documents)
-    for result in response.json()["results"]:  # 결과는 점수 순서로 오고, index가 원래 자리다
+    for result in response.json()["data"]:  # 결과는 점수 순서로 오고, index가 원래 자리다
         scores[result["index"]] = result["relevance_score"]
     return scores
 ```
 
 - [ ] **Step 3: 테스트 통과 확인과 커밋**
 
-Run: `uv run pytest tests/rag/test_openrouter.py -v`
+Run: `uv run pytest tests/rag/test_voyage.py -v`
 Expected: 3 passed
 
 ```bash
 uv run ruff check . && uv run pyright
-git add src/marvia/rag/openrouter.py tests/rag/test_openrouter.py
-git commit -m "feat(rag): OpenRouter 임베딩·리랭커 호출"
+git add src/marvia/rag/voyage.py tests/rag/test_voyage.py
+git commit -m "feat(rag): Voyage AI 임베딩·리랭커 호출"
 ```
 
 ---
@@ -1656,7 +1673,7 @@ git commit -m "feat(rag): 벡터·키워드 하이브리드 검색과 RRF"
 - Test: `tests/graph/test_rag.py`
 
 **Interfaces:**
-- Consumes: `Evidence` (Task 2), `hybrid_search` (Task 7), `openrouter.embed`·`openrouter.rerank` (Task 5), `chat_model`·`structured` (Task 1), `rules/rag.yaml`의 `search.rerank_top_n`·`loop.max_rewrites`
+- Consumes: `Evidence` (Task 2), `hybrid_search` (Task 7), `voyage.embed`·`voyage.rerank` (Task 5), `chat_model`·`structured` (Task 1), `rules/rag.yaml`의 `search.rerank_top_n`·`loop.max_rewrites`
 - Produces: `QueryAnalysis(question_type, as_of: date | None, search_query)`, `Grade(sufficient: bool, reason, missing)`, `Rewrite(search_query)`, `render(name: str, **values: str) -> str`
 - Produces: `RagState` (입력 `question`, `as_of` / 출력 `question_type`, `search_query`, `evidence: list[dict]`, `sufficient`, `missing`, `rewrites`)
 - Produces: `RagDeps(analyze, search, rerank, grade, rewrite)`, `build_rag_graph(deps: RagDeps)`, `live_deps(settings: Settings, conn) -> RagDeps`
@@ -1950,7 +1967,7 @@ from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
 from marvia.tools.rules import load_rules
 
 
-# [왜] 바깥 기능(LLM·DB·OpenRouter)을 함수로 받아 둔다. 테스트는 가짜 함수를 넣어 키·DB 없이 돈다
+# [왜] 바깥 기능(LLM·DB·Voyage)을 함수로 받아 둔다. 테스트는 가짜 함수를 넣어 키·DB 없이 돈다
 @dataclass(frozen=True)
 class RagDeps:
     """RAG 서브그래프가 쓰는 바깥 기능 묶음. 실제 값은 marvia.rag.live.live_deps가 만든다."""
@@ -2045,7 +2062,7 @@ Expected: 5 passed
 `src/marvia/rag/live.py` (테스트 없음. Task 10에서 실제로 돌려 본다):
 
 ```python
-"""실제 LLM·DB·OpenRouter로 RagDeps를 만든다 (계획 2 Task 8). 키와 DB가 필요하다.
+"""실제 LLM·DB·Voyage로 RagDeps를 만든다 (계획 2 Task 8). 키와 DB가 필요하다.
 
 하지 않는 일: 그래프 흐름(graph/rag.py). 테스트는 이 파일을 쓰지 않고 가짜 RagDeps를 만든다.
 """
@@ -2059,7 +2076,7 @@ import psycopg
 from marvia.config import Settings
 from marvia.graph.rag import RagDeps
 from marvia.llm import chat_model, structured
-from marvia.rag import openrouter
+from marvia.rag import voyage
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
 from marvia.rag.search import hybrid_search
@@ -2070,13 +2087,13 @@ def live_deps(settings: Settings, conn: psycopg.Connection) -> RagDeps:
     llm = chat_model(settings)
 
     def embed(texts: list[str]) -> list[list[float]]:
-        return openrouter.embed(texts, settings)
+        return voyage.embed(texts, settings, "query")
 
     def search(query: str, as_of: date) -> list[Evidence]:
         return hybrid_search(conn, query, embed, as_of)
 
     def rerank(query: str, texts: list[str]) -> list[float]:
-        return openrouter.rerank(query, texts, settings)
+        return voyage.rerank(query, texts, settings)
 
     return RagDeps(
         analyze=structured(llm, QueryAnalysis),
@@ -2102,7 +2119,7 @@ git commit -m "feat(graph): Agentic RAG 서브그래프 (분석·검색·리랭�
 
 ### Task 9: 맥락 문장
 
-**배울 것:** Contextual Retrieval(조문 단위마다 "어디에 속하고 어떤 상황에 쓰는지"를 LLM이 색인 때 한 번 써 붙여, 사용자가 쓰는 낱말로도 찾히게 함). 원래 방법은 문서 전체를 함께 넣지만 관세법 하나가 10만 토큰을 넘어 Haiku 5.5 값이 5배가 되는 구간(프롬프트 10만 토큰 초과)에 들어서, 제목 경로와 조문 글만 넣는다. 설계 14절에서 밀리면 먼저 빼는 항목이라 코드만 이 태스크에서 만들고, 실제 실행은 Task 10에서 정운이 정한다.
+**배울 것:** Contextual Retrieval(조문 단위마다 "어디에 속하고 어떤 상황에 쓰는지"를 LLM이 색인 때 한 번 써 붙여, 사용자가 쓰는 낱말로도 찾히게 함). 원래 방법은 문서 전체를 함께 넣지만 관세법 하나가 10만 토큰을 넘어 Haiku 5.5 값이 5배가 되는 구간(프롬프트 10만 토큰 초과)에 들어서, 제목 경로와 조문 글만 넣는다. 설계 14절에서 밀리면 먼저 빼는 항목이라 코드만 이 태스크에서 만들고, 실제 실행은 Task 10에서 정한다.
 
 **Files:**
 - Create: `src/marvia/rag/context.py`, `prompts/rag_context.md`
@@ -2217,7 +2234,7 @@ git commit -m "feat(rag): 맥락 문장(Contextual Retrieval) 만들기"
 `scripts/index_corpus.py`:
 
 ```python
-"""corpus/units를 로컬 DB에 색인한다 (계획 2 Task 10). OpenRouter 키 필요(--context면 Anthropic 키도).
+"""corpus/units를 로컬 DB에 색인한다 (계획 2 Task 10). Voyage 키 필요(--context면 Anthropic 키도).
 
 실행: uv run python scripts/index_corpus.py            맥락 문장 없이 (약 $0.1)
       uv run python scripts/index_corpus.py --context  맥락 문장 포함 (약 $1, 1시간 안팎)
@@ -2229,7 +2246,7 @@ from pathlib import Path
 from marvia.config import Settings
 from marvia.db import connect
 from marvia.llm import chat_model, structured
-from marvia.rag import openrouter
+from marvia.rag import voyage
 from marvia.rag.context import Context, make_contextualizer
 from marvia.rag.index import index_units, read_units
 
@@ -2243,7 +2260,7 @@ contextualize = make_contextualizer(structured(chat_model(settings), Context)) i
 
 
 def embed(texts: list[str]) -> list[list[float]]:
-    return openrouter.embed(texts, settings)
+    return voyage.embed(texts, settings, "document")
 
 
 with connect(settings.database_url) as conn:
@@ -2288,9 +2305,9 @@ uv run ruff check scripts && git add scripts/index_corpus.py scripts/try_rag.py
 git commit -m "feat(rag): 색인 스크립트와 RAG 손 시험 스크립트"
 ```
 
-- [ ] **Step 2: 정운 허락 받기**
+- [ ] **Step 2: 실행 여부 정하기**
 
-예상 비용을 보여 주고 허락을 받는다 [추정: 단위 7,337개 × 약 250토큰].
+예상 비용을 적고 실행 여부를 정한다 [추정: 단위 7,337개 × 약 250토큰].
 
 | 실행 | 예상 비용 | 시간 |
 |---|---|---|
@@ -2318,15 +2335,15 @@ uv run python scripts/try_rag.py "수입 화물이 검사대상으로 지정되�
 uv run python scripts/try_rag.py "같은 제품을 다시 수입하면 정밀검사를 면제받을 수 있나요?"
 ```
 
-결과를 정운에게 보여 주고 함께 읽는다. 정답을 단정하지 않고 다음을 본다.
+결과를 읽고 다음을 본다.
 
 - 상위 근거가 질문과 같은 주제의 조문인가 (수입식품법·시행규칙의 수입신고 조문, 관리대상화물 고시의 검사 조문)
 - 재수입 질문은 면제 조건이 시행규칙 별표 10에 있어(설계 7.1) 별표를 아직 넣지 않은 지금은 "부족"이 나올 수 있다. 그때 `missing`이 별표 또는 면제 조건을 가리키면 맞는 동작이다
 - 고쳐 쓴 횟수가 매번 2라면 채점 프롬프트가 너무 엄격한지 본다
 
-결과 기록은 정운이 원하면 위키 `Projects/Team_Projects/Marvia/evidence/`에 원장 줄로 남긴다(위키 규칙: 적을 것을 먼저 제안).
+결과 기록은 필요하면 위키 `Projects/Team_Projects/Marvia/evidence/`에 원장 줄로 남긴다.
 
-- [ ] **Step 5: (선택, 정운 허락 뒤) 맥락 문장 포함 색인**
+- [ ] **Step 5: (선택, 비용 확인 뒤) 맥락 문장 포함 색인**
 
 ```bash
 uv run python scripts/index_corpus.py --context
