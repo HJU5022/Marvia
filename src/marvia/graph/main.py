@@ -338,7 +338,7 @@ def build_main_graph(
     if loop == "agent":
         if deps.model is None:
             raise ValueError("에이전트 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다")
-        agent = build_agent(deps.model, make_tools(rag_graph, deps.today))
+        agent = build_agent(deps.model, make_tools(rag_graph, deps.today), permission_mode)
         graph.add_node("brief", brief)
         graph.add_node(
             "agent", agent
@@ -362,4 +362,4 @@ def build_main_graph(
     graph.add_edge("finish", END)
     # [왜] with_config로 그래프에 recursion_limit을 붙여 둔다. invoke 때 config를 넘기면 그 값이 이긴다
     limit = cfg["loop"]["agent_recursion_limit" if loop == "agent" else "recursion_limit"]
-    return graph.compile(checkpointer=checkpointer).with_config(recursion_limit=limit)
+    return graph.compile(checkpointer=checkpointer, store=store).with_config(recursion_limit=limit)

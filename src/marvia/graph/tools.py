@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from datetime import date
 from typing import Annotated
@@ -24,10 +25,14 @@ from pydantic import BaseModel, Field
 from marvia.graph.answer import cargo_lines
 from marvia.graph.identify import identify_number
 from marvia.identify.mask import mask_text
+from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
+
+# 가린 토큰 모양: [BL1], [CARGO2], [NUM3]
+TOKEN = re.compile(r"\[(?:BL|CARGO|NUM)\d+\]")
 
 
 def error_name(error: Exception) -> str:
@@ -189,4 +194,22 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         assumption = f"'{question}'에 답이 없어 권장안 '{label}'으로 진행했어요."
         return _reply(runtime, f"답이 없어 권장안으로 진행해요: {label}", assumptions=[assumption])
 
-    return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user]
+    @tool
+    def save_item_card(name: str, runtime: ToolRuntime) -> Command:
+        """Save the item facts checked with check_reimport as an item card for the next import. Needs the
+        user's approval. name: a short Korean item name without any cargo number.
+        """
+        item = runtime.state.get("item")
+        if not item:
+            return _reply(runtime, "저장할 품목 사실이 없어요. check_reimport를 먼저 부르세요.")
+        # [주의] 장기 기억에는 화물 번호(실제 번호나 토큰)를 넣지 않는다 (설계 8절 저장 기준)
+        if TOKEN.search(name) or read_numbers(name):
+            return _reply(runtime, "품목 이름에 화물 번호를 넣을 수 없어요. 품목 이름만 쓰세요.")
+        if runtime.store is None:
+            return _reply(runtime, "장기 기억 저장소가 연결되지 않았어요.")
+        # [왜] 사용자마다 칸을 나눈다. 첫 칸을 사용자로 두어야 남의 기억을 읽지 않는다 (설계 8절)
+        user = runtime.config.get("configurable", {}).get("user_id", "local")
+        runtime.store.put(("users", user, "items"), name, {"name": name, "facts": item})
+        return _reply(runtime, f"품목 카드 '{name}'을 저장했어요.")
+
+    return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user, save_item_card]

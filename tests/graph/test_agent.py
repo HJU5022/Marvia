@@ -6,6 +6,7 @@ import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from marvia.graph.agent import ONE_IN_PROGRESS
@@ -361,3 +362,41 @@ def test_question_must_be_alone(agent_deps):
     ]
     assert len(errors) == 2
     assert graph.get_state(cfg("a15")).values.get("evidence", []) == []  # 섞인 search_law는 돌지 않았다
+
+
+def _card_graph(agent_deps, store, permission_mode="ask", name="건고추"):
+    steps = (say(("check_reimport", {"facts": CHILI})), say(("save_item_card", {"name": name})), say())
+    return agent_graph(agent_deps, *steps, store=store, permission_mode=permission_mode)
+
+
+def test_saving_an_item_card_waits_for_approval(agent_deps):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store)
+    out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a16"))
+    request = out["__interrupt__"][0].value
+    assert request["action_requests"][0]["name"] == "save_item_card"
+    assert store.get(("users", "local", "items"), "건고추") is None  # 승인 전에는 저장하지 않는다
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("a16"))
+    assert store.get(("users", "local", "items"), "건고추").value["facts"]["category"] == "농산물·임산물"
+
+
+def test_rejected_item_card_is_not_saved(agent_deps):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store)
+    graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a17"))
+    graph.invoke(Command(resume={"decisions": [{"type": "reject", "message": "저장하지 마"}]}), cfg("a17"))
+    assert store.search(("users", "local", "items")) == []
+
+
+def test_auto_mode_saves_without_asking(agent_deps):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store, permission_mode="auto")
+    out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a18"))
+    assert "__interrupt__" not in out and store.get(("users", "local", "items"), "건고추") is not None
+
+
+def test_item_card_name_with_a_cargo_token_is_refused(agent_deps):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store, permission_mode="auto", name="[CARGO1] 건고추")
+    graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a19"))
+    assert store.search(("users", "local", "items")) == []

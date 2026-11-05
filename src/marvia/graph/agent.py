@@ -16,6 +16,8 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import (
     AgentMiddleware,
     ExtendedModelResponse,
+    HumanInTheLoopMiddleware,
+    InterruptOnConfig,
     ModelRequest,
     ModelResponse,
     TodoListMiddleware,
@@ -113,17 +115,36 @@ class Guards(AgentMiddleware[LoopState]):
         return handler(request)
 
 
-def build_agent(model: BaseChatModel, tools: list):
-    """에이전트 루프를 만든다."""
+def build_agent(model: BaseChatModel, tools: list, permission_mode: str):
+    """에이전트 루프를 만든다. permission_mode가 "ask"면 저장 같은 부작용 앞에서 승인을 받는다 (설계 6.3)."""
     cfg = load_rules("agent")
+    approval = cfg["approval"]
+    # [주의] always_ask(밖으로 나가는 메시지 등)는 auto 모드에서도 늘 묻는다 (설계 12절: 되돌리기 어려운 일)
+    gated = (approval["ask"] if permission_mode == "ask" else []) + approval["always_ask"]
     middleware: list[AgentMiddleware[Any, Any, Any]] = [
         TodoListMiddleware(),
         # [왜] 같은 차례에 법령 검색은 이 횟수까지. 넘는 호출은 오류 결과를 받고 모델이 다음 일을 고른다
         ToolCallLimitMiddleware(
             tool_name="search_law", run_limit=cfg["loop"]["max_searches"], exit_behavior="continue"
         ),
-        Guards(cfg["loop"]["max_llm_calls"]),
     ]
+    if gated:
+        # [왜] batched: 한 단계의 승인 요청을 interrupt 하나로 묶는다. 화면은 한 번에 카드 하나만 받는다
+        decisions = InterruptOnConfig(allowed_decisions=["approve", "edit", "reject"])
+        middleware.append(
+            HumanInTheLoopMiddleware(
+                interrupt_on={name: decisions for name in gated}, interrupt_mode="batched"
+            )
+        )
+    middleware.append(Guards(cfg["loop"]["max_llm_calls"]))
+    return create_agent(
+        model,
+        tools,
+        system_prompt=render("agent"),
+        middleware=middleware,
+        state_schema=LoopState,
+        name="agent",
+    )
     return create_agent(
         model,
         tools,

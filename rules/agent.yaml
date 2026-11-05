@@ -27,6 +27,12 @@ answer:
   # 끝없이 커지면 작성자 프롬프트가 커진다. 24 = 검색 세 번 몫 (11-06 손 시험: 검색 네 번에 14개)
   max_evidence: 24
 
+# 승인 (설계 6.3). ask: 권한 모드가 ask일 때 승인을 받을 도구. always_ask: auto 모드에서도 늘 묻는 도구
+# [주의] 밖으로 나가는 메시지 도구가 생기면 always_ask에 넣는다 (설계 12절: auto는 바깥 발송을 덮지 않는다)
+approval:
+  ask: [save_item_card]
+  always_ask: []
+
 finish:
   # 부분 답 끝에 늘 붙이는 다음 선택지 (설계 2절 결정 4의 ③)
   next_options:
