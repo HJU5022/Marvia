@@ -69,49 +69,78 @@ with connect(settings.database_url) as conn:
         )
         for i, text in enumerate(QUESTIONS):
             started = time.monotonic()
-            with get_usage_metadata_callback() as usage:
-                values, pauses = run(graph, text, f"{loop}-{i}")
-            tokens = usage.usage_metadata
-            cost = sum(
-                t["input_tokens"] * prices[m]["input"] / 1e6 + t["output_tokens"] * prices[m]["output"] / 1e6
-                for m, t in tokens.items()
+            try:
+                with get_usage_metadata_callback() as usage:
+                    values, pauses = run(graph, text, f"{loop}-{i}")
+                tokens = usage.usage_metadata
+                cost = sum(
+                    t["input_tokens"] * prices[m]["input"] / 1e6
+                    + t["output_tokens"] * prices[m]["output"] / 1e6
+                    for m, t in tokens.items()
+                )
+                messages = values.get("messages", [])
+                # [왜] 모델이 본 글·도구 인자·할 일·멈춤 내용에 실제 번호가 있었는지 코드로 확인한다
+                #      (fixture 번호는 DEMO 접두어)
+                seen = str([[m.content, getattr(m, "tool_calls", None)] for m in messages])
+                seen += str(values.get("todos", [])) + str(pauses)
+                rows.append(
+                    {
+                        "loop": loop,
+                        "question": text,
+                        "kind": kind(values["answer"]),
+                        "llm_calls": values.get("llm_calls"),
+                        "write_attempts": values.get("write_attempts"),
+                        "tokens": {
+                            m: {"in": t["input_tokens"], "out": t["output_tokens"]} for m, t in tokens.items()
+                        },
+                        "cost_usd": round(cost, 5),
+                        "seconds": round(time.monotonic() - started, 1),
+                        "pauses": len(pauses),
+                        "tool_calls": [
+                            c["name"] for m in messages for c in getattr(m, "tool_calls", None) or []
+                        ],
+                        "todos": values.get("todos", []),
+                        "assumptions": values.get("assumptions", []),
+                        "failed_tools": values.get("failed_tools", []),
+                        "verification": values.get("verification", []),
+                        "leak": "DEMO000" in seen,
+                        "answer": values["answer"],
+                    }
+                )
+            except Exception as error:  # [왜] 한 질문이 실패해도 돈을 낸 나머지 결과를 잃지 않는다
+                rows.append(
+                    {
+                        "loop": loop,
+                        "question": text,
+                        "kind": "error",
+                        "error": type(error).__name__,
+                        "seconds": round(time.monotonic() - started, 1),
+                    }
+                )
+            print(
+                loop,
+                i,
+                rows[-1]["kind"],
+                rows[-1].get("llm_calls"),
+                rows[-1].get("cost_usd"),
+                rows[-1]["seconds"],
             )
-            messages = values.get("messages", [])
-            # [왜] 모델이 본 글·도구 인자·할 일·멈춤 내용에 실제 번호가 있었는지 코드로 확인한다
-            #      (fixture 번호는 DEMO 접두어)
-            seen = str([[m.content, getattr(m, "tool_calls", None)] for m in messages])
-            seen += str(values.get("todos", [])) + str(pauses)
-            rows.append(
-                {
-                    "loop": loop,
-                    "question": text,
-                    "kind": kind(values["answer"]),
-                    "llm_calls": values.get("llm_calls"),
-                    "write_attempts": values.get("write_attempts"),
-                    "tokens": {
-                        m: {"in": t["input_tokens"], "out": t["output_tokens"]} for m, t in tokens.items()
-                    },
-                    "cost_usd": round(cost, 5),
-                    "seconds": round(time.monotonic() - started, 1),
-                    "pauses": len(pauses),
-                    "tool_calls": [c["name"] for m in messages for c in getattr(m, "tool_calls", None) or []],
-                    "todos": values.get("todos", []),
-                    "assumptions": values.get("assumptions", []),
-                    "failed_tools": values.get("failed_tools", []),
-                    "verification": values.get("verification", []),
-                    "leak": "DEMO000" in seen,
-                    "answer": values["answer"],
-                }
-            )
-            print(loop, i, rows[-1]["kind"], rows[-1]["llm_calls"], rows[-1]["cost_usd"], rows[-1]["seconds"])
 
 summary = {
     loop: {
         "full": sum(r["kind"] == "full" for r in rows if r["loop"] == loop),
         "partial": sum(r["kind"] == "partial" for r in rows if r["loop"] == loop),
-        "cost_usd": round(sum(r["cost_usd"] for r in rows if r["loop"] == loop), 4),
-        "llm_calls": [r["llm_calls"] for r in rows if r["loop"] == loop],
-        "leaks": sum(r["leak"] for r in rows if r["loop"] == loop),
+        "decline": sum(r["kind"] == "decline" for r in rows if r["loop"] == loop),
+        "errors": sum(r["kind"] == "error" for r in rows if r["loop"] == loop),
+        "cost_usd": round(sum(r.get("cost_usd", 0) for r in rows if r["loop"] == loop), 4),
+        "llm_calls": [r["llm_calls"] for r in rows if r["loop"] == loop and "llm_calls" in r],
+        "max_llm_calls": max(
+            (r["llm_calls"] for r in rows if r["loop"] == loop and "llm_calls" in r), default=None
+        ),
+        "max_cost_usd": max(
+            (r["cost_usd"] for r in rows if r["loop"] == loop and "cost_usd" in r), default=None
+        ),
+        "leaks": sum(r.get("leak", False) for r in rows if r["loop"] == loop),
     }
     for loop in ("planner", "agent")
 }
