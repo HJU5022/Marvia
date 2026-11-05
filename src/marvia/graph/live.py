@@ -24,4 +24,5 @@ def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
         plan=structured(llm, Plan),
         item=structured(llm, ItemFacts),
         write=structured(llm, Draft),
+        model=llm,  # [왜] 에이전트 길은 같은 모델에 도구를 묶어 부른다(create_agent가 bind_tools를 한다)
     )

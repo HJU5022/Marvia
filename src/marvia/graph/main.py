@@ -4,8 +4,11 @@
         plan → (진행 중인 할 일) search_law | extract_item | calc → plan ... / 할 일 없음·write → write
         → verify → 위반 없음: respond / 위반·횟수 남음: write / 그 밖: finish → END
         LLM 호출 수·남은 단계가 한도에 닿거나 LLM이 실패하면 plan·write 다음에 finish (설계 6.4)
-하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다), 대화 기록(messages)·장기 기억(Store).
-LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수를 넣어 키 없이 돈다.
+에이전트 길(loop="agent", 계획 3c): identify 다음 brief → agent(도구 루프, graph/agent.py)
+        → 멈춤: finish / 그 밖: write → verify → respond | finish
+        (작성·검증은 계획자 길과 같다)
+하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다), 차례를 넘는 대화 기록·장기 기억 읽기(계획 3d).
+LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수·가짜 모델을 넣어 키 없이 돈다.
 """
 
 from __future__ import annotations
@@ -17,14 +20,19 @@ from datetime import date
 
 import httpx
 import psycopg
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage, RemoveMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import interrupt
 
+from marvia.graph.agent import build_agent
 from marvia.graph.answer import cargo_lines, final_answer, partial_answer
 from marvia.graph.identify import build_identify_graph, lookup
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
-from marvia.graph.state import MarviaState
+from marvia.graph.state import MarviaState, merge_evidence
+from marvia.graph.tools import error_name, make_tools
 from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
@@ -45,6 +53,7 @@ class AgentDeps:
     item: Callable[[str], ItemFacts]  # 프롬프트 → 사용자가 말한 품목 사실
     write: Callable[[str], Draft]  # 프롬프트 → 답 초안
     today: Callable[[], date] = date.today  # [왜] 함수로 받아야 테스트가 날짜를 고정할 수 있다
+    model: BaseChatModel | None = None  # 에이전트 길의 도구 호출 모델 (계획 3c). 계획자 길은 쓰지 않는다
 
 
 def start(state: MarviaState) -> dict:
@@ -63,6 +72,13 @@ def start(state: MarviaState) -> dict:
         "write_attempts": 0,
         "llm_calls": 0,
         "failed_tools": [],
+        # 에이전트 길 칸 (계획 3c)
+        # [왜] REMOVE_ALL_MESSAGES: 지난 차례 메시지를 모두 지운다. 차례를 넘는 기억은 계획 3d
+        "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES)],
+        "todos": [],
+        "assumptions": [],
+        "stopped": "",
+        "out_of_scope": False,
     }
 
 
@@ -82,24 +98,14 @@ def ask(state: MarviaState) -> dict:
     return {"numbers": state.get("numbers", []) + chosen, "question": None}
 
 
-def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
-    """근거 묶음을 합친다. 같은 unit_id는 점수가 높은 것 하나만 남기고, 점수 높은 순으로 limit개까지 둔다."""
-    best: dict[str, dict] = {}
-    for item in old + new:
-        if item["unit_id"] not in best or item["score"] > best[item["unit_id"]]["score"]:
-            best[item["unit_id"]] = item
-    return sorted(best.values(), key=lambda item: item["score"], reverse=True)[:limit]
-
-
 # 실패하면 이번 차례를 부분 답으로 끝내는 LLM 노드
 LLM_NODES = ("plan", "extract_item", "write")
 
 
 def _failure(state: MarviaState, tool: str, error: Exception) -> dict:
     """실패한 도구를 failed_tools에 더한 칸. 오류 종류 이름만 남긴다."""
-    # [주의] 오류 글은 넣지 않는다. 접속 주소나 요청 글이 섞일 수 있다. LLMFailed는 원래 오류 이름을 담고 있다
-    message = str(error) if isinstance(error, LLMFailed) else type(error).__name__
-    return {"failed_tools": state.get("failed_tools", []) + [{"tool": tool, "message": message}]}
+    # [주의] 오류 글은 넣지 않는다. 접속 주소나 요청 글이 섞일 수 있다 (error_name)
+    return {"failed_tools": state.get("failed_tools", []) + [{"tool": tool, "message": error_name(error)}]}
 
 
 def _llm_failed(state: MarviaState) -> bool:
@@ -130,13 +136,21 @@ def finish(state: MarviaState) -> dict:
     return {"answer": unmask(text, state.get("mask_map", {}))}
 
 
-def _after_identify(state: MarviaState) -> str:
-    """갈림길: 물을 것이 있으면 ask, 없으면 plan."""
-    return "ask" if state.get("question") else "plan"
+def _after_agent(state: MarviaState) -> str:
+    """갈림길: 루프가 한도·LLM 실패로 멈췄으면 finish, 아니면 write."""
+    return "finish" if state.get("stopped") else "write"
 
 
-def build_main_graph(deps: AgentDeps, checkpointer=None):
-    """메인 순서도를 조립한다. checkpointer가 있어야 interrupt로 멈췄다가 이어 갈 수 있다."""
+def build_main_graph(
+    deps: AgentDeps, checkpointer=None, *, loop: str = "planner", store=None, permission_mode: str = "ask"
+):
+    """메인 순서도를 조립한다. checkpointer가 있어야 interrupt로 멈췄다가 이어 갈 수 있다.
+
+    loop: "planner"(계획 3a의 고정 계획자) 또는 "agent"(계획 3c의 도구 루프).
+    store: 장기 기억 저장소(LangGraph Store).
+    permission_mode: "ask"면 저장 같은 부작용 앞에서 승인을 받고,
+    "auto"면 always_ask 도구만 묻는다 (설계 6.3).
+    """
     cfg = load_rules("agent")
     rag_graph = build_rag_graph(deps.rag)  # [왜] 한 번만 만들고 search_law가 부를 때마다 다시 쓴다
 
@@ -280,6 +294,16 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
         """갈림길: 작성자 LLM이 실패했으면 finish, 아니면 verify."""
         return "finish" if _llm_failed(state) else "verify"
 
+    def brief(state: MarviaState) -> dict:
+        """에이전트 길: 이번 차례 질문(가린 글)과 화물 줄을 루프의 첫 메시지로 만든다."""
+        text = render(
+            "agent_turn",
+            today=deps.today().isoformat(),
+            cargos="\n".join(cargo_lines(state.get("cargos", []))),
+            question=state.get("masked_text", ""),
+        )
+        return {"messages": [HumanMessage(text)]}
+
     def after_verify(state: MarviaState) -> str:
         """갈림길: 통과면 respond, 위반인데 횟수가 남았으면 write, 아니면 finish."""
         if not state.get("verification"):
@@ -294,30 +318,44 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
     graph.add_node("identify", build_identify_graph())
     graph.add_node("ask", ask)
     graph.add_node("lookup", lookup)  # 식별 서브그래프의 조회 노드를 다시 쓴다
-    graph.add_node("plan", plan)
-    graph.add_node("search_law", search_law)
-    graph.add_node("extract_item", extract_item)
-    graph.add_node("calc", calc)
     graph.add_node("write", write)
     graph.add_node("verify", check)
     graph.add_node("respond", respond)
     graph.add_node("finish", finish)
     graph.add_edge(START, "start")
     graph.add_edge("start", "identify")
-    graph.add_conditional_edges("identify", _after_identify, ["ask", "plan"])
+    # [왜] 식별 뒤 첫 일: 계획자 길은 plan, 에이전트 길은 brief
+    first = "brief" if loop == "agent" else "plan"
+    graph.add_conditional_edges(
+        "identify", lambda state: "ask" if state.get("question") else first, ["ask", first]
+    )
     graph.add_edge("ask", "lookup")
-    graph.add_edge("lookup", "plan")
-    # [왜] 셋째 인자에 갈 수 있는 곳을 모두 적는다. 그림(get_graph)에 화살표가 빠지지 않는다
-    graph.add_conditional_edges("plan", route, ["search_law", "extract_item", "calc", "write", "finish"])
-    # [왜] 한 일을 보고 계획자가 다시 정한다. 이 세 화살표가 계획자 루프다
-    graph.add_edge("search_law", "plan")
-    graph.add_edge("extract_item", "plan")
-    graph.add_edge("calc", "plan")
+    graph.add_edge("lookup", first)
+    if loop == "agent":
+        if deps.model is None:
+            raise ValueError("에이전트 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다")
+        agent = build_agent(deps.model, make_tools(rag_graph, deps.today))
+        graph.add_node("brief", brief)
+        graph.add_node(
+            "agent", agent
+        )  # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다
+        graph.add_edge("brief", "agent")
+        graph.add_conditional_edges("agent", _after_agent, ["write", "finish"])
+    else:
+        graph.add_node("plan", plan)
+        graph.add_node("search_law", search_law)
+        graph.add_node("extract_item", extract_item)
+        graph.add_node("calc", calc)
+        # [왜] 셋째 인자에 갈 수 있는 곳을 모두 적는다. 그림(get_graph)에 화살표가 빠지지 않는다
+        graph.add_conditional_edges("plan", route, ["search_law", "extract_item", "calc", "write", "finish"])
+        # [왜] 한 일을 보고 계획자가 다시 정한다. 이 세 화살표가 계획자 루프다
+        graph.add_edge("search_law", "plan")
+        graph.add_edge("extract_item", "plan")
+        graph.add_edge("calc", "plan")
     graph.add_conditional_edges("write", after_write, ["verify", "finish"])
     graph.add_conditional_edges("verify", after_verify, ["respond", "write", "finish"])
     graph.add_edge("respond", END)
     graph.add_edge("finish", END)
     # [왜] with_config로 그래프에 recursion_limit을 붙여 둔다. invoke 때 config를 넘기면 그 값이 이긴다
-    return graph.compile(checkpointer=checkpointer).with_config(
-        recursion_limit=cfg["loop"]["recursion_limit"]
-    )
+    limit = cfg["loop"]["agent_recursion_limit" if loop == "agent" else "recursion_limit"]
+    return graph.compile(checkpointer=checkpointer).with_config(recursion_limit=limit)

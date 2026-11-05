@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -35,3 +37,7 @@ class Settings(BaseSettings):
     embed_dim: int = 1024  # [주의] migrations/001_corpus_units.sql의 vector(1024)와 같아야 한다
     rerank_model: str = "rerank-3"  # 리랭커 (Voyage AI)
     voyage_url: str = "https://api.voyageai.com/v1"
+
+    # 에이전트 (계획 3c). [왜] 고정 계획자(planner)를 기준선·대피로로 남기고, 같은 질문으로 둘을 비교한다
+    loop: Literal["planner", "agent"] = "planner"  # MARVIA_LOOP
+    permission_mode: Literal["ask", "auto"] = "ask"  # MARVIA_PERMISSION_MODE. auto여도 바깥 발송은 늘 묻는다
