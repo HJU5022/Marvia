@@ -41,7 +41,19 @@ def rrf(rankings: list[list[str]], k: int) -> list[tuple[str, float]]:
 
 
 def hybrid_search(conn: psycopg.Connection, query: str, embed: Embed, as_of: date) -> list[Evidence]:
-    """질문 하나로 근거 후보를 찾는다. score는 RRF 점수다."""
+    """질문 하나로 근거 후보를 찾는다. score는 RRF 점수다. DB 오류가 나면 연결을 되돌린 뒤 다시 던진다."""
+    try:
+        return _hybrid_search(conn, query, embed, as_of)
+    except psycopg.Error:
+        # [왜] 오류 뒤 트랜잭션이 실패 상태로 남으면 같은 연결의 다음 검색이
+        #   모두 InFailedSqlTransaction으로 죽는다
+        # [주의] 읽기 전용 검색이라 되돌릴 쓰기가 없다. autocommit은 쓰기 경로
+        #   (index_corpus)까지 바꾸므로 connect()에는 걸지 않는다
+        conn.rollback()
+        raise
+
+
+def _hybrid_search(conn: psycopg.Connection, query: str, embed: Embed, as_of: date) -> list[Evidence]:
     cfg = load_rules("rag")["search"]
     vector_ids = [row[0] for row in conn.execute(VECTOR_SQL, (as_of, embed([query])[0], cfg["vector_k"]))]
     # [왜] OR로 묶어야 낱말 하나만 맞아도 후보가 된다 (기본은 모든 낱말이 다 있어야 한다)
