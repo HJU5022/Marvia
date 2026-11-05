@@ -5,7 +5,7 @@
         → verify → 위반 없음: respond / 위반·횟수 남음: write / 그 밖: finish → END
         LLM 호출 수·남은 단계가 한도에 닿거나 LLM이 실패하면 plan·write 다음에 finish (설계 6.4)
 에이전트 길(loop="agent", 계획 3c): identify 다음 brief → agent(도구 루프, graph/agent.py)
-        → 멈춤: finish / 그 밖: write → verify → respond | finish
+        → 멈춤: finish / 도메인 밖: decline / 그 밖: write → verify → respond | finish
         (작성·검증은 계획자 길과 같다)
 하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다), 차례를 넘는 대화 기록·장기 기억 읽기(계획 3d).
 LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수·가짜 모델을 넣어 키 없이 돈다.
@@ -27,7 +27,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import interrupt
 
 from marvia.graph.agent import build_agent
-from marvia.graph.answer import cargo_lines, final_answer, partial_answer
+from marvia.graph.answer import cargo_lines, decline_answer, final_answer, partial_answer
 from marvia.graph.identify import build_identify_graph, lookup
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
@@ -151,9 +151,16 @@ def finish(state: MarviaState) -> dict:
     return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos}
 
 
+def decline(state: MarviaState) -> dict:
+    """도메인 밖 질문: 코드가 쓴 정중한 거절과 할 수 있는 일을 답으로 낸다 (설계 1절)."""
+    return {"answer": decline_answer()}
+
+
 def _after_agent(state: MarviaState) -> str:
-    """갈림길: 루프가 한도·LLM 실패로 멈췄으면 finish, 아니면 write."""
-    return "finish" if state.get("stopped") else "write"
+    """갈림길: 루프가 한도·LLM 실패로 멈췄으면 finish, 도메인 밖이면 decline, 아니면 write."""
+    if state.get("stopped"):
+        return "finish"
+    return "decline" if state.get("out_of_scope") else "write"
 
 
 def build_main_graph(
@@ -343,8 +350,10 @@ def build_main_graph(
         graph.add_node(
             "agent", agent
         )  # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다
+        graph.add_node("decline", decline)
         graph.add_edge("brief", "agent")
-        graph.add_conditional_edges("agent", _after_agent, ["write", "finish"])
+        graph.add_conditional_edges("agent", _after_agent, ["write", "decline", "finish"])
+        graph.add_edge("decline", END)
     else:
         graph.add_node("plan", plan)
         graph.add_node("search_law", search_law)

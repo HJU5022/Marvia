@@ -212,4 +212,12 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         runtime.store.put(("users", user, "items"), name, {"name": name, "facts": item})
         return _reply(runtime, f"품목 카드 '{name}'을 저장했어요.")
 
-    return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user, save_item_card]
+    # [왜] return_direct: 이 도구를 부르면 모델을 다시 부르지 않고 루프를 끝낸다. 거절 글은 코드가 쓴다
+    @tool(return_direct=True)
+    def decline(reason: str, runtime: ToolRuntime) -> Command:
+        """Use when the question is not about import cargo, customs procedures, or imported-food rules.
+        reason: one short Korean sentence.
+        """
+        return _reply(runtime, f"도메인 밖 질문: {reason}", out_of_scope=True)
+
+    return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user, save_item_card, decline]

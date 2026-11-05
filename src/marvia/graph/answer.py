@@ -95,3 +95,9 @@ def partial_answer(
         _bullets("다음에 할 수 있는 일", load_rules("agent")["finish"]["next_options"]),
     ]
     return "\n\n".join(part for part in parts if part)
+
+
+def decline_answer() -> str:
+    """도메인 밖 질문에 코드가 쓰는 정중한 거절과 할 수 있는 일 (설계 1절 "하지 않는 일")."""
+    scope = load_rules("agent")["scope"]
+    return f"{scope['decline']}\n\n" + _bullets("Marvia가 할 수 있는 일", scope["can_do"])

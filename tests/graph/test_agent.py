@@ -408,3 +408,13 @@ def test_item_card_name_with_a_cargo_token_is_refused(agent_deps):
     graph = _card_graph(agent_deps, store, permission_mode="auto", name="[CARGO1] 건고추")
     graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a19"))
     assert store.search(("users", "local", "items")) == []
+
+
+def test_out_of_domain_question_is_declined_by_code(agent_deps):
+    def never(prompt):
+        raise AssertionError("거절할 때는 작성자를 부르지 않는다")
+
+    graph = agent_graph(agent_deps, say(("decline", {"reason": "날씨 질문"})), write=never)
+    out = graph.invoke({"text": "내일 서울 날씨 어때?"}, cfg("a20"))
+    assert out["answer"].startswith("이 질문은 Marvia가 도울 수 있는 범위 밖이에요.")
+    assert "Marvia가 할 수 있는 일:" in out["answer"]
