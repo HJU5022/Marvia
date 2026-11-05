@@ -1,0 +1,5 @@
+# 모델 단가 (달러, 백만 토큰당). scripts/compare_loops.py가 비용을 셀 때 읽는다.
+# [주의] 프롬프트가 10만 토큰 이하일 때 값이다 (11-02 platform.claude.com pricing 문서 확인)
+claude-haiku-5-5:
+  input: 0.10
+  output: 0.50
