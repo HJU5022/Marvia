@@ -88,10 +88,15 @@ with connect(settings.database_url) as conn:
                 with get_usage_metadata_callback() as usage:
                     values, pauses = run(graph, text, f"{loop}-{i}", counter)
                 tokens = usage.usage_metadata
-                cost = sum(
-                    t["input_tokens"] * prices[m]["input"] / 1e6
-                    + t["output_tokens"] * prices[m]["output"] / 1e6
-                    for m, t in tokens.items()
+                # [왜] 가격표(rules/pricing.yaml)에 없는 모델이면 KeyError로 죽지 않고 비용을 None으로 남긴다
+                cost = (
+                    sum(
+                        t["input_tokens"] * prices[m]["input"] / 1e6
+                        + t["output_tokens"] * prices[m]["output"] / 1e6
+                        for m, t in tokens.items()
+                    )
+                    if all(m in prices for m in tokens)
+                    else None
                 )
                 messages = values.get("messages", [])
                 # [왜] 모델이 본 글·도구 인자·할 일·멈춤 내용에 실제 번호가 있었는지 코드로 확인한다
@@ -113,7 +118,7 @@ with connect(settings.database_url) as conn:
                         "tokens": {
                             m: {"in": t["input_tokens"], "out": t["output_tokens"]} for m, t in tokens.items()
                         },
-                        "cost_usd": round(cost, 5),
+                        "cost_usd": None if cost is None else round(cost, 5),
                         "seconds": round(time.monotonic() - started, 1),
                         "pauses": len(pauses),
                         "tool_calls": [
@@ -153,14 +158,15 @@ summary = {
         "no_evidence": sum(r["kind"] == "no_evidence" for r in rows if r["loop"] == loop),
         "decline": sum(r["kind"] == "decline" for r in rows if r["loop"] == loop),
         "errors": sum(r["kind"] == "error" for r in rows if r["loop"] == loop),
-        "cost_usd": round(sum(r.get("cost_usd", 0) for r in rows if r["loop"] == loop), 4),
+        "cost_usd": round(sum(r.get("cost_usd") or 0 for r in rows if r["loop"] == loop), 4),
         "llm_calls": [r["llm_calls"] for r in rows if r["loop"] == loop and "llm_calls" in r],
         "real_llm_calls": [r["real_llm_calls"] for r in rows if r["loop"] == loop and "real_llm_calls" in r],
         "max_llm_calls": max(
             (r["llm_calls"] for r in rows if r["loop"] == loop and "llm_calls" in r), default=None
         ),
         "max_cost_usd": max(
-            (r["cost_usd"] for r in rows if r["loop"] == loop and "cost_usd" in r), default=None
+            (r["cost_usd"] for r in rows if r["loop"] == loop and r.get("cost_usd") is not None),
+            default=None,
         ),
         "leaks": sum(r.get("leak", False) for r in rows if r["loop"] == loop),
     }
