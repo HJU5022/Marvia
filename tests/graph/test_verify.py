@@ -154,3 +154,44 @@ def test_numbers_and_articles_written_in_calc_allowed(cargos):
         forwarder_message="",
     )
     assert verify(draft, [], calc, cargos, MASK, TODAY) == []
+
+
+# 재수입 검사 결과는 코드 판정(calc.reimport.verdict)에서만 온다 (R-019, 설계 7.1)
+REIMPORT = {"reimport": {"verdict": "서류검사 요건 충족", "basis": [], "caveats": []}}
+
+
+def _say(text, calc, cargos):
+    draft = Draft(answer=text, citations=[], next_options=[], forwarder_message="")
+    return verify(draft, [], calc, cargos, MASK, TODAY)
+
+
+def test_reimport_verdict_without_code_check_is_a_violation(cargos):
+    out = _say("같은 제품이라 서류검사 요건 충족이에요.", {}, cargos)
+    assert any("재수입" in v for v in out)
+
+
+def test_reimport_verdict_matching_the_code_check_passes(cargos):
+    assert _say("이전 정밀검사 뒤라 서류검사 요건을 채워요.", REIMPORT, cargos) == []
+
+
+def test_reimport_verdict_differing_from_the_code_check_is_a_violation(cargos):
+    out = _say("이 품목은 정밀검사 대상이에요.", REIMPORT, cargos)
+    assert any("재수입" in v for v in out)
+
+
+@pytest.mark.parametrize("text", ["면제받을 수 있어요.", "정밀검사는 면제됩니다.", "검사가 면제돼요."])
+def test_reimport_exemption_is_never_asserted(cargos, text):
+    assert any("재수입" in v for v in _say(text, REIMPORT, cargos))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "면제라고 단정할 수 없어요.",
+        "서류검사 요건을 충족하는지는 확인이 필요해요.",
+        "정밀검사 대상이 되는 조건은 별표 10에 있어요.",
+        "서류검사 요건을 충족한다고 단정할 수 없어요.",
+    ],
+)
+def test_reimport_negation_and_conditions_are_not_flagged(cargos, text):
+    assert _say(text, {}, cargos) == []

@@ -6,6 +6,8 @@ from __future__ import annotations
 from marvia.identify.parse import Kind, normalize, read_numbers
 
 _LABEL: dict[str, str] = {"bl": "BL", "cargo_no": "CARGO", "unread": "NUM"}
+# [왜] 토큰 이름표 목록. 토큰 모양을 정규식으로 찾는 쪽(graph/tools.py)이 같은 목록을 쓴다
+LABELS = tuple(_LABEL.values())
 
 
 def token_for(mask_map: dict[str, str], value: str, kind: Kind | str) -> str:

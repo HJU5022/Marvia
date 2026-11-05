@@ -32,7 +32,7 @@ from marvia.graph.identify import build_identify_graph, lookup
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
 from marvia.graph.state import MarviaState, merge_evidence
-from marvia.graph.tools import cargo_deadlines, error_name, make_tools, worst_search_calls
+from marvia.graph.tools import cargo_deadlines, error_name, make_tools, search_calls, worst_search_calls
 from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
@@ -260,7 +260,7 @@ def build_main_graph(
             "gaps": gaps,
             # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기.
             #      검색 결과가 비면 채점을 건너뛰어 실제로는 더 적다. 상한으로 세어 호출 수 한도에만 쓴다
-            "llm_calls": state.get("llm_calls", 0) + 2 + 2 * out.get("rewrites", 0),
+            "llm_calls": state.get("llm_calls", 0) + search_calls(out.get("rewrites", 0)),
         }
 
     def extract_item(state: MarviaState) -> dict:

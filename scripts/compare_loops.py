@@ -12,7 +12,7 @@ import json
 import sys
 import time
 
-from langchain_core.callbacks import get_usage_metadata_callback
+from langchain_core.callbacks import BaseCallbackHandler, get_usage_metadata_callback
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
@@ -34,9 +34,19 @@ QUESTIONS = [
 ]
 
 
-def run(graph, text: str, thread: str) -> tuple[dict, list[dict]]:
+class CallCounter(BaseCallbackHandler):
+    """채팅 모델 호출을 실제로 센다 (RAG 안의 호출과 작성자 호출 포함)."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def on_chat_model_start(self, *args, **kwargs):
+        self.calls += 1
+
+
+def run(graph, text: str, thread: str, counter: CallCounter) -> tuple[dict, list[dict]]:
     """질문 하나를 끝까지 돌린다. 멈추면 권장안·거절로 이어 가고, 멈춘 내용을 함께 돌려준다."""
-    config = {"configurable": {"thread_id": thread}}
+    config = {"configurable": {"thread_id": thread}, "callbacks": [counter]}
     out = graph.invoke({"text": text}, config)
     pauses = []
     while "__interrupt__" in out:
@@ -50,14 +60,17 @@ def run(graph, text: str, thread: str) -> tuple[dict, list[dict]]:
         else:
             reply = {"timeout": True}
         out = graph.invoke(Command(resume=reply), config)
-    return graph.get_state(config).values | {"answer": out["answer"]}, pauses
+    return graph.get_state({"configurable": {"thread_id": thread}}).values | {"answer": out["answer"]}, pauses
 
 
-def kind(answer: str) -> str:
-    """답 종류: 부분 답, 거절, 정상 답."""
+def kind(answer: str, evidence_count: int, calc: dict) -> str:
+    """답 종류: 거절, 부분 답, 정상 답, 근거 없는 답."""
     if answer.startswith("이 질문은 Marvia가 도울 수 있는 범위 밖"):
         return "decline"
-    return "partial" if "끝까지 확인하지 못했어요" in answer else "full"
+    if "끝까지 확인하지 못했어요" in answer:
+        return "partial"
+    # [왜] 근거도 계산 값도 없이 나간 답은 정상 답으로 세지 않는다 (R-014: 검색이 모두 실패한 뒤의 답)
+    return "full" if evidence_count or any(calc.values()) else "no_evidence"
 
 
 settings = Settings()
@@ -70,9 +83,10 @@ with connect(settings.database_url) as conn:
         )
         for i, text in enumerate(QUESTIONS):
             started = time.monotonic()
+            counter = CallCounter()
             try:
                 with get_usage_metadata_callback() as usage:
-                    values, pauses = run(graph, text, f"{loop}-{i}")
+                    values, pauses = run(graph, text, f"{loop}-{i}", counter)
                 tokens = usage.usage_metadata
                 cost = sum(
                     t["input_tokens"] * prices[m]["input"] / 1e6
@@ -88,8 +102,13 @@ with connect(settings.database_url) as conn:
                     {
                         "loop": loop,
                         "question": text,
-                        "kind": kind(values["answer"]),
+                        "kind": kind(
+                            values["answer"], len(values.get("evidence", [])), values.get("calc", {})
+                        ),
                         "llm_calls": values.get("llm_calls"),
+                        "real_llm_calls": counter.calls,
+                        "evidence_count": len(values.get("evidence", [])),
+                        "calc_keys": [k for k, v in values.get("calc", {}).items() if v],
                         "write_attempts": values.get("write_attempts"),
                         "tokens": {
                             m: {"in": t["input_tokens"], "out": t["output_tokens"]} for m, t in tokens.items()
@@ -131,10 +150,12 @@ summary = {
     loop: {
         "full": sum(r["kind"] == "full" for r in rows if r["loop"] == loop),
         "partial": sum(r["kind"] == "partial" for r in rows if r["loop"] == loop),
+        "no_evidence": sum(r["kind"] == "no_evidence" for r in rows if r["loop"] == loop),
         "decline": sum(r["kind"] == "decline" for r in rows if r["loop"] == loop),
         "errors": sum(r["kind"] == "error" for r in rows if r["loop"] == loop),
         "cost_usd": round(sum(r.get("cost_usd", 0) for r in rows if r["loop"] == loop), 4),
         "llm_calls": [r["llm_calls"] for r in rows if r["loop"] == loop and "llm_calls" in r],
+        "real_llm_calls": [r["real_llm_calls"] for r in rows if r["loop"] == loop and "real_llm_calls" in r],
         "max_llm_calls": max(
             (r["llm_calls"] for r in rows if r["loop"] == loop and "llm_calls" in r), default=None
         ),

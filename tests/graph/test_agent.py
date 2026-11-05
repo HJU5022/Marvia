@@ -1,5 +1,7 @@
 """에이전트 길(계획 3c) 시험. 가짜 도구 호출 모델로 키 없이 돈다."""
 
+import asyncio
+
 import anthropic
 import httpx
 import pytest
@@ -12,6 +14,7 @@ from langgraph.types import Command
 from marvia.graph.agent import ONE_IN_PROGRESS
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
+from marvia.prompts import render
 from marvia.tools.rules import load_rules
 
 CITING = Draft(
@@ -588,3 +591,71 @@ def test_malformed_approval_reply_rejects_and_saves_nothing(agent_deps):
     graph.invoke(Command(resume=approval_reply("a", count)), cfg("a33"))
     assert store.search(("users", "local", "items")) == []
     assert graph.get_state(cfg("a33")).next == ()  # 차례가 끝났다 (더 멈춘 곳이 없다)
+
+
+# --- 비동기 길 (R-015): 같은 그래프가 ainvoke로도 돈다 ---
+
+
+def test_async_path_searches_then_writer_answers(agent_deps):
+    graph = agent_graph(
+        agent_deps, say(("search_law", {"query": "수입신고 기한"})), say(), write=lambda p: CITING
+    )
+    out = asyncio.run(graph.ainvoke({"text": "수입신고는 언제까지 해요?"}, cfg("as1")))
+    assert "관세법 > 제9장 통관 > 제241조" in out["answer"]
+    assert graph.get_state(cfg("as1")).values["llm_calls"] == 5
+
+
+def test_async_model_failure_gives_partial_answer(agent_deps):
+    deps = agent_deps(model=BrokenModel(messages=iter([])))
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent")
+    out = asyncio.run(graph.ainvoke({"text": "수입신고는 언제까지 해요?"}, cfg("as2")))
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert graph.get_state(cfg("as2")).values["stopped"] == "llm_failed"
+
+
+def test_async_malformed_todo_args_return_the_error(agent_deps):
+    graph = agent_graph(agent_deps, say(("write_todos", {"todos": None})), say())
+    out = asyncio.run(graph.ainvoke({"text": "DEMO0001 언제?"}, cfg("as3")))
+    errors = [
+        m for m in graph.get_state(cfg("as3")).values["messages"] if m.type == "tool" and m.status == "error"
+    ]
+    assert "answer" in out and len(errors) == 1
+
+
+def test_async_two_in_progress_todos_are_refused(agent_deps):
+    bad = {"todos": [{"content": "a", "status": "in_progress"}, {"content": "b", "status": "in_progress"}]}
+    graph = agent_graph(agent_deps, say(("write_todos", bad)), say())
+    asyncio.run(graph.ainvoke({"text": "DEMO0001 언제?"}, cfg("as4")))
+    messages = graph.get_state(cfg("as4")).values["messages"]
+    assert [m.content for m in messages if m.type == "tool" and m.status == "error"] == [ONE_IN_PROGRESS]
+
+
+def test_check_reimport_description_carries_the_flag_labels():
+    from datetime import date
+
+    from marvia.graph.tools import make_tools
+
+    tool = next(t for t in make_tools(None, date.today) if t.name == "check_reimport")
+    assert all(flag in tool.description for flag in load_rules("reimport")["forced"])
+
+
+def test_write_todos_tool_carries_our_description():
+    # [왜] 라이브러리 기본 설명은 진행 중 여러 개와 마지막 갱신 뒤 직접 답하기를 허용한다.
+    #      만든 에이전트(CompiledStateGraph)의 도구 노드에서 write_todos 도구를 꺼내 설명을 본다
+    from datetime import date
+
+    from marvia.graph.agent import build_agent
+    from marvia.graph.tools import make_tools
+
+    agent = build_agent(ToolModel(messages=iter([])), make_tools(None, date.today), "ask")
+    tool = agent.nodes["tools"].bound.tools_by_name["write_todos"]
+    assert tool.description == render("todos_tool").strip()  # 도구가 끝 줄바꿈을 지운다
+
+
+@pytest.mark.parametrize("mark", load_rules("agent")["memory"]["forbidden_marks"])
+def test_item_card_name_with_a_forbidden_mark_is_refused(agent_deps, mark):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store, permission_mode="auto", name=f"고추{mark}건")
+    graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("fm"))
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("fm"))
+    assert store.search(("users", "local", "items")) == []

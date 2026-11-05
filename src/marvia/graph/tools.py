@@ -24,15 +24,15 @@ from pydantic import BaseModel, Field
 
 from marvia.graph.answer import cargo_lines
 from marvia.graph.identify import identify_number
-from marvia.identify.mask import mask_text
+from marvia.identify.mask import LABELS, mask_text
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 
-# 가린 토큰 모양: [BL1], [CARGO2], [NUM3]
-TOKEN = re.compile(r"\[(?:BL|CARGO|NUM)\d+\]")
+# 가린 토큰 모양: [BL1], [CARGO2], [NUM3]. [왜] 이름표는 identify.mask의 것을 그대로 쓴다
+TOKEN = re.compile(r"\[(?:" + "|".join(LABELS) + r")\d+\]")
 
 
 def error_name(error: Exception) -> str:
@@ -65,10 +65,15 @@ def cargo_deadlines(cargos: list[dict], today: date) -> list[dict]:
     return deadlines
 
 
+def search_calls(rewrites: int) -> int:
+    """검색 한 번이 고쳐 쓰기 rewrites번으로 끝났을 때 RAG 안에서 부른 LLM 호출 수."""
+    # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기. 이 셈은 여기 한 곳에만 둔다
+    return 2 + 2 * rewrites
+
+
 def worst_search_calls() -> int:
     """검색 한 번이 RAG 안에서 부를 수 있는 LLM 호출의 최대 (계획자 길·에이전트 길이 함께 쓴다)."""
-    # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기
-    return 2 + 2 * load_rules("rag")["loop"]["max_rewrites"]
+    return search_calls(load_rules("rag")["loop"]["max_rewrites"])
 
 
 class Choice(BaseModel):
@@ -130,8 +135,7 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
             evidence=found,
             gaps=[missing] if missing else [],  # [왜] 빈 문장은 남기지 않는다
             searched=[query],
-            # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기 (계획 3a와 같은 셈)
-            llm_calls=2 + 2 * out.get("rewrites", 0),
+            llm_calls=search_calls(out.get("rewrites", 0)),
         )
 
     @tool
@@ -144,11 +148,17 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         text = json.dumps(deadlines, ensure_ascii=False) if deadlines else "기한을 셀 화물 단계가 없어요."
         return _reply(runtime, text, calc={"deadlines": deadlines})
 
-    @tool
+    # [왜] facts.flags에는 rules/reimport.yaml의 이름표만 들어간다. 모델이 이름표를 알아야 하므로
+    #      설명에 붙인다 (계획자 길의 extract_item 프롬프트와 같은 글)
+    flags = "\n".join(f"- {flag}: {item}" for flag, item in load_rules("reimport")["forced"].items())
+    reimport_description = (
+        "Check whether a re-imported food item meets the document-inspection conditions instead of a "
+        "precise inspection. Fill facts only with what the user said; unknown fields stay 모름 or empty. "
+        f"facts.flags takes only these labels:\n{flags}"
+    )
+
+    @tool(description=reimport_description)
     def check_reimport(facts: ItemFacts, runtime: ToolRuntime) -> Command:
-        """Check whether a re-imported food item meets the document-inspection conditions instead of a
-        precise inspection. Fill facts only with what the user said; unknown fields stay 모름 or empty.
-        """
         result = reimport_check(facts, today())
         return _reply(
             runtime,
@@ -176,6 +186,8 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
     @tool
     def ask_user(
         question: str,
+        # [왜] 2~3개는 설계 6.3의 고정값이다. 어노테이션은 import 때 평가돼 yaml을 읽을 수 없어
+        #      숫자로 둔다
         options: Annotated[list[Choice], Field(min_length=2, max_length=3)],
         runtime: ToolRuntime,
     ) -> Command:
@@ -230,9 +242,10 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         if TOKEN.search(name) or read_numbers(name):
             return _reply(runtime, "품목 이름에 화물 번호를 넣을 수 없어요. 품목 이름만 쓰세요.")
         name = name.strip()
-        max_name = load_rules("agent")["memory"]["max_item_name"]
+        memory = load_rules("agent")["memory"]
+        max_name = memory["max_item_name"]
         # [주의] 장기 기억에는 문장처럼 생긴 글을 넣지 않는다 (설계 8절 저장 기준)
-        if len(name) > max_name or any(mark in name for mark in ".?!:;\r\n"):
+        if len(name) > max_name or any(mark in name for mark in memory["forbidden_marks"]):
             return _reply(
                 runtime, f"품목 이름은 {max_name}자 안의 짧은 이름만 쓸 수 있어요. 문장은 저장하지 않아요."
             )

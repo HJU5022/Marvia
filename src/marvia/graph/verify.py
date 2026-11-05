@@ -44,6 +44,20 @@ def _won(match: re.Match) -> int:
     return sum(int(n.replace(",", "")) * _WON_UNIT.get(unit, 1) for n, unit in _WON_PIECE.findall(words))
 
 
+def _reimport_violations(shown: str, calc: dict) -> list[str]:
+    """답이 말한 재수입 검사 결과가 코드 판정과 다르거나 코드 판정이 없으면 위반 문장을 돌려준다."""
+    cfg = load_rules("verify")["reimport_verdicts"]
+    code_verdict = (calc.get("reimport") or {}).get("verdict")
+    out: list[str] = []
+    # [왜] "단정할 수 없어요" 같은 부정 문장은 결과를 말한 것이 아니라서 문장 단위로 건너뛴다
+    sentences = [s for s in re.split(r"(?<=[.?!])\s+|\n", shown) if not re.search(cfg["negation"], s)]
+    for stated, patterns in cfg["phrases"].items():
+        if stated != code_verdict and any(re.search(p, s) for p in patterns for s in sentences):
+            why = "코드 판정이 없다" if not code_verdict else f"코드 판정은 '{code_verdict}'이다"
+            out.append(f"재수입 검사 결과를 코드 판정과 다르게 말했다 ('{stated}', {why})")
+    return out
+
+
 def verify(
     draft: Draft,
     evidence: list[dict],
@@ -121,6 +135,9 @@ def verify(
     #      그 밖의 금액은 세액을 계산해 말한 것이다
     if any(_won(m) not in calc_numbers for m in _WON.finditer(shown)):
         violations.append("금지 표현: 세액을 계산해 말했다")
+
+    # 3-1. 재수입 검사 결과: 코드 판정(calc.reimport.verdict)과 같은 말만 한다 (설계 7.1)
+    violations += _reimport_violations(shown, calc)
 
     # 4. 번호: 실제 번호 대신 토큰만. [주의] 위반 문장에도 실제 번호 대신 토큰을 쓴다
     violations += [
