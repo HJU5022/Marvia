@@ -692,3 +692,26 @@ def test_agent_path_rewrites_at_most_the_agent_rule_per_search(agent_deps, fake_
 def test_worst_search_calls_takes_the_rewrite_count():
     assert worst_search_calls() == search_calls(load_rules("rag")["loop"]["max_rewrites"])
     assert worst_search_calls(1) == search_calls(1)
+
+
+def test_get_provision_adds_evidence_without_llm_calls(agent_deps):
+    graph = agent_graph(
+        agent_deps,
+        say(("get_provision", {"label": "관세법 제241조제3항"})),
+        say(),
+        write=lambda p: CITING,
+    )
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a_gp"))
+    values = graph.get_state(cfg("a_gp")).values
+    assert [e["unit_id"] for e in values["evidence"]] == ["L001556@20261002#제241조.3항"]
+    tool_text = "".join(str(m.content) for m in values["messages"] if m.type == "tool")
+    assert "[L001556@20261002#제241조.3항]" in tool_text
+    assert values["llm_calls"] == 2 + 1  # 모델 2 + 작성자 1. 조회는 LLM을 부르지 않는다
+
+
+def test_get_provision_unknown_label_adds_nothing(agent_deps):
+    graph = agent_graph(agent_deps, say(("get_provision", {"label": "시행규칙 별표 9"})), say())
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a_gp2"))
+    values = graph.get_state(cfg("a_gp2")).values
+    assert not values.get("evidence")
+    assert any("찾지 못했어요" in str(m.content) for m in values["messages"] if m.type == "tool")

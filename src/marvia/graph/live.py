@@ -13,6 +13,7 @@ from marvia.graph.main import AgentDeps
 from marvia.graph.schemas import Draft, Plan
 from marvia.llm import chat_model, structured
 from marvia.rag.live import live_deps
+from marvia.rag.provision import find_provision
 from marvia.tools.reimport import ItemFacts
 
 
@@ -24,5 +25,6 @@ def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
         plan=structured(llm, Plan),
         item=structured(llm, ItemFacts),
         write=structured(llm, Draft),
+        provision=lambda label, as_of: find_provision(conn, label, as_of),
         model=llm,  # [왜] 에이전트 길은 같은 모델에 도구를 묶어 부른다(create_agent가 bind_tools를 한다)
     )

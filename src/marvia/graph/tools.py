@@ -27,6 +27,7 @@ from marvia.graph.identify import identify_number
 from marvia.identify.mask import LABELS, mask_text
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
+from marvia.rag.models import Evidence
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
@@ -88,8 +89,13 @@ class Choice(BaseModel):
     description: str = Field(description="One Korean sentence on what happens if the user picks it")
 
 
-def make_tools(rag_graph, today: Callable[[], date]) -> list:
-    """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것)."""
+def make_tools(
+    rag_graph, today: Callable[[], date], provision: Callable[[str, date], list[Evidence]] | None = None
+) -> list:
+    """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것).
+
+    provision은 조문 이름표를 코퍼스 단위로 바꾸는 직접 조회다. 주면 get_provision 도구가 생긴다.
+    """
     max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
     # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
     worst_search = worst_search_calls(load_rules("agent")["loop"]["rag_rewrites"])
@@ -143,6 +149,26 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
             searched=[query],
             llm_calls=search_calls(out.get("rewrites", 0)),
         )
+
+    @tool
+    def get_provision(label: str, runtime: ToolRuntime) -> Command:
+        """Fetch the provision a basis label names, e.g. "관세법 제241조제3항", straight from the
+        indexed statutes (no search, no LLM call). Use it for the basis labels of calc_deadlines and
+        check_reimport instead of search_law. Labels that are not articles (annexes) are not found.
+        """
+        assert provision is not None
+        try:
+            found = provision(label, today())
+        except psycopg.Error as error:
+            name = error_name(error)
+            return _reply(
+                runtime, f"조회 실패: {name}", failed_tools=[{"tool": "get_provision", "message": name}]
+            )
+        if not found:
+            return _reply(runtime, f"찾지 못했어요: {label}. 이 이름표는 조문이 아니거나 코퍼스에 없어요.")
+        # [왜] 모델에게는 unit_id와 제목만 준다. 본문은 작성자가 evidence 칸에서 읽는다 (search_law와 같다)
+        lines = [f"[{e.unit_id}] {e.heading}" for e in found]
+        return _reply(runtime, "\n".join(lines), evidence=[e.model_dump(mode="json") for e in found])
 
     @tool
     def calc_deadlines(runtime: ToolRuntime) -> Command:
@@ -269,4 +295,5 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         """
         return _reply(runtime, f"도메인 밖 질문: {reason}", out_of_scope=True)
 
-    return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user, save_item_card, decline]
+    tools = [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user, save_item_card, decline]
+    return tools + [get_provision] if provision else tools

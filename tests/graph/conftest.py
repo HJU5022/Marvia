@@ -110,7 +110,17 @@ def fake_rag():
 
 
 @pytest.fixture
-def agent_deps(fake_rag):
+def fake_provision():
+    """가짜 조문 직접 조회. 관세법 제241조제3항만 UNIT으로 찾고 나머지는 못 찾는다."""
+
+    def provision(label, as_of):
+        return [UNIT] if label == "관세법 제241조제3항" else []
+
+    return provision
+
+
+@pytest.fixture
+def agent_deps(fake_rag, fake_provision):
     """가짜 AgentDeps를 만드는 함수. 바꿀 칸만 키워드로 넘긴다: agent_deps(write=...)."""
 
     def make(**changes) -> AgentDeps:
@@ -120,6 +130,7 @@ def agent_deps(fake_rag):
             "item": lambda prompt: NO_FACTS,
             "write": lambda prompt: PLAIN,
             "today": lambda: TODAY,
+            "provision": fake_provision,
         }
         return AgentDeps(**(base | changes))
 

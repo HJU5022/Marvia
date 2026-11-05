@@ -45,6 +45,7 @@ from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
+from marvia.rag.models import Evidence
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 
@@ -60,6 +61,8 @@ class AgentDeps:
     write: Callable[[str], Draft]  # 프롬프트 → 답 초안
     today: Callable[[], date] = date.today  # [왜] 함수로 받아야 테스트가 날짜를 고정할 수 있다
     model: BaseChatModel | None = None  # 에이전트 길의 도구 호출 모델 (계획 3c). 계획자 길은 쓰지 않는다
+    # 조문 이름표 → 코퍼스 단위 (LLM 없는 직접 조회, 에이전트 길의 get_provision). 없으면 그 도구도 없다
+    provision: Callable[[str, date], list[Evidence]] | None = None
 
 
 def start(state: MarviaState) -> dict:
@@ -376,7 +379,7 @@ def build_main_graph(
             raise ValueError("에이전트 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다")
         # [왜] 에이전트 길은 루프가 다시 찾으므로 RAG 안 고쳐 쓰기는 줄인다 (agent.yaml loop.rag_rewrites)
         agent_rag = build_rag_graph(deps.rag, max_rewrites=cfg["loop"]["rag_rewrites"])
-        agent = build_agent(deps.model, make_tools(agent_rag, deps.today), permission_mode)
+        agent = build_agent(deps.model, make_tools(agent_rag, deps.today, deps.provision), permission_mode)
         graph.add_node("brief", brief)
         graph.add_node(
             "agent", agent
