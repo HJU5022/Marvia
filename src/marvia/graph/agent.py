@@ -84,13 +84,16 @@ class Guards(AgentMiddleware[LoopState]):
         """할 일 목록을 쓸 때 끝나지 않은 일이 있으면 in_progress가 정확히 하나인지 본다 (설계 6.2)."""
         call = request.tool_call
         if call["name"] == "write_todos":
-            todos = call["args"].get("todos", [])
-            open_items = [todo for todo in todos if todo.get("status") != "completed"]
-            in_progress = sum(todo.get("status") == "in_progress" for todo in todos)
-            # [왜] TodoListMiddleware는 진행 중 개수를 검사하지 않는다 (11-06 소스 확인).
-            #      화면이 "지금 하는 일"을 하나로 보여 준다
-            if open_items and in_progress != 1:
-                return ToolMessage(ONE_IN_PROGRESS, tool_call_id=call["id"], status="error")
+            todos = call["args"].get("todos")
+            # [왜] 모양이 틀린 인자는 handler의 스키마 검사가 오류 결과로 돌려준다.
+            #      여기서 터지면 차례 전체가 멈춘다
+            if isinstance(todos, list) and all(isinstance(todo, dict) for todo in todos):
+                open_items = [todo for todo in todos if todo.get("status") != "completed"]
+                in_progress = sum(todo.get("status") == "in_progress" for todo in todos)
+                # [왜] TodoListMiddleware는 진행 중 개수를 검사하지 않는다 (11-06 소스 확인).
+                #      화면이 "지금 하는 일"을 하나로 보여 준다
+                if open_items and in_progress != 1:
+                    return ToolMessage(ONE_IN_PROGRESS, tool_call_id=call["id"], status="error")
         return handler(request)
 
 

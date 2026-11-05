@@ -7,6 +7,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
+from marvia.graph.agent import ONE_IN_PROGRESS
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
 from marvia.tools.rules import load_rules
@@ -41,6 +42,20 @@ class BrokenModel(ToolModel):
 
     def _generate(self, *args, **kwargs):
         raise anthropic.APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.test"))
+
+
+class FailsAfter(ToolModel):
+    """정해 둔 메시지를 다 낸 뒤에는 API 오류를 내는 가짜 모델."""
+
+    def _generate(self, *args, **kwargs):
+        # [왜] GenericFakeChatModel은 메시지가 떨어지면 next()가 StopIteration을 낸다
+        #      (langchain_core 소스 확인)
+        try:
+            return super()._generate(*args, **kwargs)
+        except StopIteration:
+            raise anthropic.APIConnectionError(
+                request=httpx.Request("POST", "https://api.anthropic.test")
+            ) from None
 
 
 def say(*calls: tuple[str, dict], text: str = "") -> AIMessage:
@@ -214,6 +229,21 @@ def test_llm_failure_in_loop_gives_partial_answer(agent_deps):
     assert graph.get_state(cfg("a9")).values["stopped"] == "llm_failed"
 
 
+def test_stopped_turn_puts_in_progress_todo_back_to_pending(agent_deps):
+    todos = {
+        "todos": [
+            {"content": "기한 계산", "status": "in_progress"},
+            {"content": "조문 찾기", "status": "pending"},
+        ]
+    }
+    deps = agent_deps(model=FailsAfter(messages=iter([say(("write_todos", todos))])))
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent")
+    out = graph.invoke({"text": "DEMO0001 언제까지 신고해요?"}, cfg("a9b"))
+    values = graph.get_state(cfg("a9b")).values
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert [t["status"] for t in values["todos"]] == ["pending", "pending"]
+
+
 def test_todo_list_keeps_one_in_progress_and_ends_completed(agent_deps):
     bad = {
         "todos": [
@@ -232,10 +262,20 @@ def test_todo_list_keeps_one_in_progress_and_ends_completed(agent_deps):
     values = graph.get_state(cfg("a10")).values
     errors = [m for m in values["messages"] if m.type == "tool" and m.status == "error"]
     assert len(errors) == 1  # 진행 중이 둘인 목록은 오류로 돌려준다
+    assert errors[0].content == ONE_IN_PROGRESS
     assert [t["status"] for t in values["todos"]] == [
         "completed",
         "pending",
     ]  # 답이 나오면 진행 중은 끝낸다
+
+
+def test_malformed_todo_args_do_not_crash_the_turn(agent_deps):
+    graph = agent_graph(agent_deps, say(("write_todos", {"todos": None})), say())
+    out = graph.invoke({"text": "DEMO0001 언제?"}, cfg("a10b"))
+    errors = [
+        m for m in graph.get_state(cfg("a10b")).values["messages"] if m.type == "tool" and m.status == "error"
+    ]
+    assert "answer" in out and len(errors) == 1
 
 
 def test_todo_updates_are_streamed(agent_deps):

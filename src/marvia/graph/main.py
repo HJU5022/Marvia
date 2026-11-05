@@ -130,6 +130,11 @@ def respond(state: MarviaState) -> dict:
 
 def finish(state: MarviaState) -> dict:
     """부분 답을 낸다 (설계 6.4). 검증을 넘지 못한 초안은 쓰지 않는다."""
+    # [왜] 멈춘 차례에는 끝나지 않은 일을 진행 중으로 남기지 않는다. 끝낸 것이 아니라 pending으로 돌린다
+    todos = [
+        todo | {"status": "pending"} if todo["status"] == "in_progress" else todo
+        for todo in state.get("todos", [])
+    ]
     text = partial_answer(
         state.get("cargos", []),
         state.get("calc", {}),
@@ -137,7 +142,7 @@ def finish(state: MarviaState) -> dict:
         state.get("gaps", []),
         state.get("failed_tools", []),
     )
-    return {"answer": unmask(text, state.get("mask_map", {}))}
+    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos}
 
 
 def _after_agent(state: MarviaState) -> str:
