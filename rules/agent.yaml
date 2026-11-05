@@ -33,7 +33,7 @@ approval:
   ask: [save_item_card]
   always_ask: []
 
-# 도메인 밖 질문에 코드가 쓰는 답 (설계 1절 "하지 않는 일")
+# 도메인 밖 질문에 코드가 쓰는 답 (설계 1절 범위(해상 수입 화물·통관·수입식품))
 scope:
   decline: 이 질문은 Marvia가 도울 수 있는 범위 밖이에요. Marvia는 수입 화물과 통관·수입식품 규정만 다뤄요.
   can_do:

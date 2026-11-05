@@ -98,6 +98,6 @@ def partial_answer(
 
 
 def decline_answer() -> str:
-    """도메인 밖 질문에 코드가 쓰는 정중한 거절과 할 수 있는 일 (설계 1절 "하지 않는 일")."""
+    """도메인 밖 거절과 할 수 있는 일을 코드가 쓴다 (설계 1절 범위: 해상 수입 화물·통관·수입식품)."""
     scope = load_rules("agent")["scope"]
     return f"{scope['decline']}\n\n" + _bullets("Marvia가 할 수 있는 일", scope["can_do"])

@@ -157,10 +157,13 @@ def decline(state: MarviaState) -> dict:
 
 
 def _after_agent(state: MarviaState) -> str:
-    """갈림길: 루프가 한도·LLM 실패로 멈췄으면 finish, 도메인 밖이면 decline, 아니면 write."""
+    """갈림길: 멈췄으면 finish, 도메인 밖이고 모은 것이 없으면 decline, 아니면 write."""
     if state.get("stopped"):
         return "finish"
-    return "decline" if state.get("out_of_scope") else "write"
+    # [왜] 도메인 안 질문이 섞여 근거·계산을 모았으면 거절하지 않고 답한다(애매하면 답하는 쪽)
+    if state.get("out_of_scope") and not state.get("evidence") and not state.get("calc"):
+        return "decline"
+    return "write"
 
 
 def build_main_graph(

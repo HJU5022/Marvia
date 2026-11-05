@@ -418,3 +418,11 @@ def test_out_of_domain_question_is_declined_by_code(agent_deps):
     out = graph.invoke({"text": "내일 서울 날씨 어때?"}, cfg("a20"))
     assert out["answer"].startswith("이 질문은 Marvia가 도울 수 있는 범위 밖이에요.")
     assert "Marvia가 할 수 있는 일:" in out["answer"]
+
+
+def test_mixed_question_is_answered_not_declined(agent_deps):
+    mixed = say(("search_law", {"query": "수입신고 기한"}), ("decline", {"reason": "날씨는 범위 밖"}))
+    graph = agent_graph(agent_deps, mixed, say(), write=lambda p: CITING)
+    out = graph.invoke({"text": "수입신고 기한이랑 내일 날씨 알려 줘"}, cfg("a20b"))
+    assert "관세법 > 제9장 통관 > 제241조" in out["answer"]  # 모은 근거로 답한다
+    assert not out["answer"].startswith("이 질문은 Marvia가 도울 수 있는 범위 밖이에요.")
