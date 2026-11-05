@@ -75,6 +75,11 @@ def merge_calc(old: dict, new: dict) -> dict:
     return {**old, **new}
 
 
+def keep_last(old: dict, new: dict) -> dict:
+    """나중 값으로 바꾸는 reducer. 같은 단계에 값이 둘 와도 오류 없이 마지막 값을 남긴다."""
+    return new
+
+
 def merge_cargos(old: list[dict], new: list[dict]) -> list[dict]:
     """화물 칸 합치기(reducer). 같은 토큰은 새 조회 결과로 바꾸고, 처음 보는 토큰은 뒤에 붙인다."""
     by_token = {cargo["token"]: cargo for cargo in old}
@@ -92,7 +97,8 @@ class LoopState(AgentState):
     evidence: NotRequired[Annotated[list[dict], add_evidence]]
     gaps: NotRequired[Annotated[list[str], operator.add]]
     calc: NotRequired[Annotated[dict, merge_calc]]
-    item: NotRequired[dict]
+    # [왜] 한 단계에 check_reimport를 둘 불러도 멈추지 않게 한다. 마지막 판정만 남는다(calc의 reimport와 같다)
+    item: NotRequired[Annotated[dict, keep_last]]
     failed_tools: NotRequired[Annotated[list[dict], operator.add]]
     # [왜] 더하기 reducer라 도구·모델 호출은 "몇 번 더 했다"만 돌려준다.
     #      RAG 안의 LLM 호출도 search_law가 더한다

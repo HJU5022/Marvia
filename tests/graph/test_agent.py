@@ -132,9 +132,23 @@ def test_reimport_facts_go_straight_to_the_code_check(agent_deps):
     assert values["item"]["category"] == "농산물·임산물"
 
 
+def test_two_reimport_checks_in_one_step_do_not_crash(agent_deps):
+    # [왜] 병렬로 부른 두 도구가 같은 칸(item)에 쓰면 reducer가 있어야 한다
+    other = CHILI | {"prior_precise": "안 받음"}
+    graph = agent_graph(
+        agent_deps, say(("check_reimport", {"facts": CHILI}), ("check_reimport", {"facts": other})), say()
+    )
+    graph.invoke({"text": "건고추 두 가지를 다시 들여와요"}, cfg("a6b"))
+    values = graph.get_state(cfg("a6b")).values
+    assert values["item"]["prior_precise"] in ("받음", "안 받음")
+
+
 def test_lookup_cargo_tool_uses_tokens_only(agent_deps):
-    graph = agent_graph(agent_deps, say(("lookup_cargo", {"tokens": ["[CARGO1]", "[BL9]"]})), say())
+    # DEMO0001은 B/L 모양이라 토큰이 [BL1]이다
+    graph = agent_graph(agent_deps, say(("lookup_cargo", {"tokens": ["[BL1]", "[BL9]"]})), say())
     graph.invoke({"text": "DEMO0001 다시 봐 줘"}, cfg("a7"))
     values = graph.get_state(cfg("a7")).values
     tool_text = [m.content for m in values["messages"] if m.type == "tool"][0]
     assert "[BL9]: 모르는 토큰이에요" in tool_text and "DEMO0001" not in tool_text
+    assert "[BL1]: 반입신고" in tool_text
+    assert [c["token"] for c in values["cargos"]] == ["[BL1]"]  # 같은 토큰은 바꾸고 늘리지 않는다
