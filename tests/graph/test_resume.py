@@ -35,3 +35,8 @@ def test_unknown_type_becomes_rejection_but_others_stay():
 def test_edit_that_renames_the_tool_is_rejected():
     edit = {"type": "edit", "edited_action": {"name": "decline", "args": {}}}
     assert approval_reply({"decisions": [edit]}, 1, ["save_item_card"]) == {"decisions": [REJECT]}
+
+
+def test_names_with_a_different_count_reject_all_without_raising():
+    raw = {"decisions": [{"type": "approve"}]}
+    assert approval_reply(raw, 1, ["a", "b"]) == {"decisions": [REJECT]}

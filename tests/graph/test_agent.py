@@ -587,4 +587,4 @@ def test_malformed_approval_reply_rejects_and_saves_nothing(agent_deps):
     count = len(out["__interrupt__"][0].value["action_requests"])
     graph.invoke(Command(resume=approval_reply("a", count)), cfg("a33"))
     assert store.search(("users", "local", "items")) == []
-    assert "__interrupt__" not in graph.get_state(cfg("a33")).values
+    assert graph.get_state(cfg("a33")).next == ()  # 차례가 끝났다 (더 멈춘 곳이 없다)

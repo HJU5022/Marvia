@@ -193,6 +193,10 @@ def build_main_graph(
         """계획자: 지금까지 한 일과 모은 것을 보고 남은 할 일을 다시 정한다 (설계 6.1)."""
         if _llm_failed(state):
             return {}  # [왜] 품목 사실 LLM이 이미 실패했다. 계획자를 또 부르지 않고 route가 finish로 보낸다
+        if state.get("llm_calls", 0) >= cfg["loop"]["max_llm_calls"]:
+            # [왜] 검색이나 품목 사실이 한도에 딱 닿거나 넘겼다. 계획자를 한 번 더 부르면 한도를 넘는다.
+            #      부르지 않고 route의 한도 검사가 finish로 보낸다
+            return {}
         # [왜] 방금 끝난 일(in_progress)은 done으로 남기고 아직 안 한 일(pending)은 버린다.
         #      남은 일은 계획자가 새로 낸다
         done = [step | {"status": "done"} for step in state.get("plan", []) if step["status"] != "pending"]

@@ -333,3 +333,22 @@ def test_planner_never_passes_the_llm_cap_with_a_worst_case_search(agent_deps, f
     out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t40"))
     assert "끝까지 확인하지 못했어요" in out["answer"]
     assert graph.get_state(cfg("t40")).values["llm_calls"] <= load_rules("agent")["loop"]["max_llm_calls"]
+
+
+def test_planner_is_not_called_once_a_search_reached_the_cap(agent_deps, fake_rag):
+    # 채점이 처음 둘은 충분, 그 뒤로는 늘 부족이라 검색 비용이 2, 2, 6, 6...이다
+    grades = iter([True, True])
+    rag = replace(
+        fake_rag(sufficient=False),
+        grade=lambda p: Grade(sufficient=next(grades, False), reason="시험", missing="빠진 근거"),
+    )
+    asked = []
+
+    def plan(prompt):
+        asked.append(prompt)
+        return Plan(steps=[Step(action="search_law", query=f"질의{len(asked)}", reason="더 찾는다")])
+
+    graph = build_main_graph(agent_deps(plan=plan, rag=rag), InMemorySaver())
+    out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t41"))
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert graph.get_state(cfg("t41")).values["llm_calls"] <= load_rules("agent")["loop"]["max_llm_calls"]

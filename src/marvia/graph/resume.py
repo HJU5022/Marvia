@@ -34,6 +34,9 @@ def _valid(decision: Any, name: str | None) -> bool:
 def approval_reply(raw: Any, count: int, names: list[str] | None = None) -> dict:
     """승인 응답을 {"decisions": [...]} (정확히 count개)로 만든다. 읽지 못한 결정은 거절로 바꾼다."""
     decisions = raw.get("decisions") if isinstance(raw, dict) else None
+    # [왜] 이름 목록과 개수가 다르면 짝을 알 수 없다. 오류를 내지 않고 모두 거절한다
+    if names is not None and len(names) != count:
+        return {"decisions": [dict(UNREADABLE) for _ in range(count)]}
     # [왜] 개수가 다르면 어느 결정이 어느 도구의 것인지 알 수 없다. 모두 거절한다
     if not isinstance(decisions, list) or len(decisions) != count:
         return {"decisions": [dict(UNREADABLE) for _ in range(count)]}
