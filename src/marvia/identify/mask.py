@@ -30,7 +30,7 @@ def mask_text(text: str) -> tuple[str, dict[str, str]]:
             tokens = [token_for(mask_map, normalize(read.raw), "unread")]
         else:
             tokens = [token_for(mask_map, n.value, n.kind) for n in read.numbers]
-        pieces.append(text[last:span.start])
+        pieces.append(text[last : span.start])
         pieces.append("".join(tokens))
         last = span.end
     pieces.append(text[last:])
