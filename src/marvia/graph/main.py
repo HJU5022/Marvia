@@ -32,7 +32,14 @@ from marvia.graph.identify import build_identify_graph, lookup
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
 from marvia.graph.state import MarviaState, merge_evidence
-from marvia.graph.tools import cargo_deadlines, error_name, make_tools, search_calls, worst_search_calls
+from marvia.graph.tools import (
+    cargo_deadlines,
+    error_name,
+    flag_labels,
+    make_tools,
+    search_calls,
+    worst_search_calls,
+)
 from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
@@ -258,7 +265,7 @@ def build_main_graph(
                 state.get("evidence", []), out.get("evidence", []), cfg["answer"]["max_evidence"]
             ),
             "gaps": gaps,
-            # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기.
+            # [왜] 호출 수 셈은 tools.search_calls 한 곳에 있다.
             #      검색 결과가 비면 채점을 건너뛰어 실제로는 더 적다. 상한으로 세어 호출 수 한도에만 쓴다
             "llm_calls": state.get("llm_calls", 0) + search_calls(out.get("rewrites", 0)),
         }
@@ -269,7 +276,7 @@ def build_main_graph(
             "item_facts",
             question=state.get("masked_text", ""),
             # [왜] 사유 이름만으로는 뜻이 모자라다(수입 최소량이 몇 kg인지 등). yaml 이름표를 함께 준다
-            flags="\n".join(f"- {flag}: {item}" for flag, item in load_rules("reimport")["forced"].items()),
+            flags=flag_labels(),
         )
         try:
             facts = deps.item(prompt)

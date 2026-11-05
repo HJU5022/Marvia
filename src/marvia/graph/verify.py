@@ -49,10 +49,18 @@ def _reimport_violations(shown: str, calc: dict) -> list[str]:
     cfg = load_rules("verify")["reimport_verdicts"]
     code_verdict = (calc.get("reimport") or {}).get("verdict")
     out: list[str] = []
-    # [왜] "단정할 수 없어요" 같은 부정 문장은 결과를 말한 것이 아니라서 문장 단위로 건너뛴다
-    sentences = [s for s in re.split(r"(?<=[.?!])\s+|\n", shown) if not re.search(cfg["negation"], s)]
+    # [왜] "단정할 수 없어요"처럼 결과 말 뒤에 부정이 오면 결과를 말한 것이 아니다 (문장 단위)
+    #      [주의] 부정은 서술어 뒤에 온다. 결과 말 앞의 부정("지나지 않았으니 충족해요")은
+    #      그 말을 지우지 못하므로 결과 말 뒤에서만 찾는다
+    sentences = re.split(r"(?<=[.?!])\s+|\n", shown)
     for stated, patterns in cfg["phrases"].items():
-        if stated != code_verdict and any(re.search(p, s) for p in patterns for s in sentences):
+        said = any(
+            not re.search(cfg["negation"], s[m.end() :])
+            for s in sentences
+            for p in patterns
+            for m in re.finditer(p, s)
+        )
+        if stated != code_verdict and said:
             why = "코드 판정이 없다" if not code_verdict else f"코드 판정은 '{code_verdict}'이다"
             out.append(f"재수입 검사 결과를 코드 판정과 다르게 말했다 ('{stated}', {why})")
     return out

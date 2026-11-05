@@ -39,8 +39,7 @@ def test_unmask_round_trip():
 def test_cargo_token_pattern_matches_every_label():
     # [왜] 품목 이름 검사의 토큰 정규식은 mask의 이름표에서 만든다. 이름표가 늘면 정규식도 따라가야 한다
     from marvia.graph.tools import TOKEN
-    from marvia.identify.mask import LABELS, token_for
+    from marvia.identify.mask import _LABEL, token_for
 
-    assert set(LABELS) == {"BL", "CARGO", "NUM"}
-    for kind in ("bl", "cargo_no", "unread"):
+    for kind in _LABEL:
         assert TOKEN.fullmatch(token_for({}, "X", kind))

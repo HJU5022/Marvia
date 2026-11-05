@@ -195,3 +195,17 @@ def test_reimport_exemption_is_never_asserted(cargos, text):
 )
 def test_reimport_negation_and_conditions_are_not_flagged(cargos, text):
     assert _say(text, {}, cargos) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "5년이 지나지 않았으니 서류검사 요건을 충족해요.",
+        "이전 검사에서 부적합이 아니었으니 서류검사 요건을 충족해요.",
+        "다시 정밀검사를 받지 않아도 되니 면제됩니다.",
+        "정밀검사 대상이 아니라 서류검사 요건 충족이에요.",
+    ],
+)
+def test_reimport_verdict_after_an_earlier_negation_is_still_flagged(cargos, text):
+    # [왜] 한국어 부정은 서술어 뒤에 온다. 결과 말 앞의 부정은 그 말을 지우지 못한다
+    assert any("재수입" in v for v in _say(text, {}, cargos))

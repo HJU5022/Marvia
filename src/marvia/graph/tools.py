@@ -65,6 +65,11 @@ def cargo_deadlines(cargos: list[dict], today: date) -> list[dict]:
     return deadlines
 
 
+def flag_labels() -> str:
+    """재수입 사유 이름표와 뜻을 한 줄씩 (계획자 길 프롬프트와 check_reimport 설명이 같은 글을 쓴다)."""
+    return "\n".join(f"- {flag}: {item}" for flag, item in load_rules("reimport")["forced"].items())
+
+
 def search_calls(rewrites: int) -> int:
     """검색 한 번이 고쳐 쓰기 rewrites번으로 끝났을 때 RAG 안에서 부른 LLM 호출 수."""
     # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기. 이 셈은 여기 한 곳에만 둔다
@@ -150,11 +155,10 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
 
     # [왜] facts.flags에는 rules/reimport.yaml의 이름표만 들어간다. 모델이 이름표를 알아야 하므로
     #      설명에 붙인다 (계획자 길의 extract_item 프롬프트와 같은 글)
-    flags = "\n".join(f"- {flag}: {item}" for flag, item in load_rules("reimport")["forced"].items())
     reimport_description = (
         "Check whether a re-imported food item meets the document-inspection conditions instead of a "
         "precise inspection. Fill facts only with what the user said; unknown fields stay 모름 or empty. "
-        f"facts.flags takes only these labels:\n{flags}"
+        f"facts.flags takes only these labels:\n{flag_labels()}"
     )
 
     @tool(description=reimport_description)
