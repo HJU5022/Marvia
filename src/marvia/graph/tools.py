@@ -205,6 +205,13 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         # [주의] 장기 기억에는 화물 번호(실제 번호나 토큰)를 넣지 않는다 (설계 8절 저장 기준)
         if TOKEN.search(name) or read_numbers(name):
             return _reply(runtime, "품목 이름에 화물 번호를 넣을 수 없어요. 품목 이름만 쓰세요.")
+        name = name.strip()
+        max_name = load_rules("agent")["memory"]["max_item_name"]
+        # [주의] 장기 기억에는 문장처럼 생긴 글을 넣지 않는다 (설계 8절 저장 기준)
+        if len(name) > max_name or any(mark in name for mark in ".?!:;\r\n"):
+            return _reply(
+                runtime, f"품목 이름은 {max_name}자 안의 짧은 이름만 쓸 수 있어요. 문장은 저장하지 않아요."
+            )
         if runtime.store is None:
             return _reply(runtime, "장기 기억 저장소가 연결되지 않았어요.")
         # [왜] 사용자마다 칸을 나눈다. 첫 칸을 사용자로 두어야 남의 기억을 읽지 않는다 (설계 8절)
