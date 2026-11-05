@@ -82,13 +82,13 @@ def ask(state: MarviaState) -> dict:
     return {"numbers": state.get("numbers", []) + chosen, "question": None}
 
 
-def merge_evidence(old: list[dict], new: list[dict]) -> list[dict]:
-    """근거 묶음을 합친다. 같은 unit_id는 점수가 높은 것 하나만 남기고 점수 높은 순으로 줄 세운다."""
+def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
+    """근거 묶음을 합친다. 같은 unit_id는 점수가 높은 것 하나만 남기고, 점수 높은 순으로 limit개까지 둔다."""
     best: dict[str, dict] = {}
     for item in old + new:
         if item["unit_id"] not in best or item["score"] > best[item["unit_id"]]["score"]:
             best[item["unit_id"]] = item
-    return sorted(best.values(), key=lambda item: item["score"], reverse=True)
+    return sorted(best.values(), key=lambda item: item["score"], reverse=True)[:limit]
 
 
 # 실패하면 이번 차례를 부분 답으로 끝내는 LLM 노드
@@ -192,11 +192,14 @@ def build_main_graph(deps: AgentDeps, checkpointer=None):
         except (httpx.HTTPError, psycopg.Error, LLMFailed) as error:
             # [왜] 검색 실패(Voyage·DB·RAG 안의 LLM)는 차례 전체를 멈추지 않는다.
             #      기록만 하고 계획자가 다음 길을 고른다 (설계 결정 4의 ①)
-            return _failure(state, "search_law", error)
+            # [왜] RAG는 늘 질의 분석 LLM부터 부른다. 어디서 실패했든 그 호출 하나는 일어났다
+            return {**_failure(state, "search_law", error), "llm_calls": state.get("llm_calls", 0) + 1}
         missing = "" if out.get("sufficient") else out.get("missing", "")
         gaps = state.get("gaps", []) + ([missing] if missing else [])  # [왜] 빈 문장은 남기지 않는다
         return {
-            "evidence": merge_evidence(state.get("evidence", []), out.get("evidence", [])),
+            "evidence": merge_evidence(
+                state.get("evidence", []), out.get("evidence", []), cfg["answer"]["max_evidence"]
+            ),
             "gaps": gaps,
             # [왜] 질의 분석 1 + 채점 (고쳐 쓰기 + 1) + 고쳐 쓰기 = 2 + 2 × 고쳐 쓰기.
             #      검색 결과가 비면 채점을 건너뛰어 실제로는 더 적다. 상한으로 세어 호출 수 한도에만 쓴다

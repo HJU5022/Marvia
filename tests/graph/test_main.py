@@ -195,7 +195,20 @@ def test_empty_plan_goes_to_write(agent_deps):
 def test_merge_keeps_best_score_per_unit():
     old = [{"unit_id": "A", "score": 0.2}, {"unit_id": "B", "score": 0.5}]
     new = [{"unit_id": "A", "score": 0.7}]
-    assert merge_evidence(old, new) == [{"unit_id": "A", "score": 0.7}, {"unit_id": "B", "score": 0.5}]
+    assert merge_evidence(old, new, limit=10) == [
+        {"unit_id": "A", "score": 0.7},
+        {"unit_id": "B", "score": 0.5},
+    ]
+
+
+def test_merge_keeps_only_top_scores_up_to_limit():
+    # [왜] 검색을 여러 번 하면 근거가 끝없이 쌓여 작성자 프롬프트가 커진다. 점수 높은 것만 남긴다
+    old = [{"unit_id": "A", "score": 0.7}, {"unit_id": "B", "score": 0.5}]
+    new = [{"unit_id": "C", "score": 0.9}]
+    assert merge_evidence(old, new, limit=2) == [
+        {"unit_id": "C", "score": 0.9},
+        {"unit_id": "A", "score": 0.7},
+    ]
 
 
 def test_calc_gives_deadline_from_stage_date(agent_deps, calc):
@@ -278,6 +291,15 @@ def test_search_failure_is_recorded_and_planner_sees_it(agent_deps, fake_rag):
     out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t17"))
     assert "search_law: ConnectError" in plan_prompts[1]  # 오류 글(연결 안 됨)은 넣지 않는다
     assert "시험 답이에요." in out["answer"]  # 검색이 실패해도 차례는 이어 간다
+
+
+def test_search_failure_still_counts_the_query_analysis_call(agent_deps, fake_rag):
+    # [왜] RAG는 늘 질의 분석 LLM부터 부른다. 실패해도 그 호출은 일어났으니 호출 수에 센다
+    rag = fake_rag(fail=httpx.ConnectError("연결 안 됨"))
+    graph = build_main_graph(agent_deps(rag=rag, plan=recording([], SEARCH, WRITE)), InMemorySaver())
+    graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t17b"))
+    # 계획자 1 + 실패한 검색 1 + 계획자 1 + 작성자 1
+    assert graph.get_state(cfg("t17b")).values["llm_calls"] == 4
 
 
 def test_planner_failure_gives_partial_answer(agent_deps):
