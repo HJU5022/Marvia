@@ -55,7 +55,7 @@ def _reimport_violations(shown: str, calc: dict) -> list[str]:
     sentences = re.split(r"(?<=[.?!])\s+|\n", shown)
     for stated, patterns in cfg["phrases"].items():
         said = any(
-            not re.search(cfg["negation"], s[m.end() :])
+            not re.search(cfg["negation"], re.split(cfg["clause_end"], s[m.end() :])[0])
             for s in sentences
             for p in patterns
             for m in re.finditer(p, s)

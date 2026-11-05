@@ -209,3 +209,18 @@ def test_reimport_negation_and_conditions_are_not_flagged(cargos, text):
 def test_reimport_verdict_after_an_earlier_negation_is_still_flagged(cargos, text):
     # [왜] 한국어 부정은 서술어 뒤에 온다. 결과 말 앞의 부정은 그 말을 지우지 못한다
     assert any("재수입" in v for v in _say(text, {}, cargos))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "서류검사 요건을 충족해요, 하지만 확정은 아니에요.",
+        "서류검사 요건을 충족하지만 확정은 아니에요.",
+        "서류검사 요건을 충족한다고 해도, 확정은 아니에요.",
+    ],
+)
+def test_reimport_verdict_followed_by_a_negation_in_another_clause_is_flagged(cargos, text):
+    # [왜] 부정은 같은 절 안에서만 결과 말을 지운다.
+    #      절 경계(rules/verify.yaml clause_end) 뒤의 부정은 세지 않는다.
+    #      알려진 한계: "충족한다고 해도, 단정할 수 없어요"도 위반으로 본다 (안전한 쪽)
+    assert any("재수입" in v for v in _say(text, {}, cargos))
