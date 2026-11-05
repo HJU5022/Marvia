@@ -6,6 +6,7 @@ import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
 
 from marvia.graph.agent import ONE_IN_PROGRESS
 from marvia.graph.main import build_main_graph
@@ -28,6 +29,8 @@ CHILI = {
     "prior_cert_on": "2026-03-10",
     "flags": [],
 }
+
+TWO = [{"label": "부산", "description": "부산항 기준"}, {"label": "인천", "description": "인천항 기준"}]
 
 
 class ToolModel(GenericFakeChatModel):
@@ -286,3 +289,47 @@ def test_todo_updates_are_streamed(agent_deps):
     stream = graph.stream({"text": "DEMO0001 언제?"}, cfg("a11"), stream_mode="updates", subgraphs=True)
     inside = [update for ns, chunk in stream if ns for update in chunk.values() if update]
     assert any(update.get("todos") == todos["todos"] for update in inside)
+
+
+def test_question_waits_for_a_choice(agent_deps):
+    ask = say(("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": TWO}))
+    graph = agent_graph(agent_deps, ask, say())
+    out = graph.invoke({"text": "장치기간이 궁금해요"}, cfg("a12"))
+    question = out["__interrupt__"][0].value
+    assert question["kind"] == "choice" and question["recommended"] == 0 and len(question["options"]) == 2
+    out = graph.invoke(Command(resume={"selected": 1}), cfg("a12"))
+    values = graph.get_state(cfg("a12")).values
+    assert "사용자 답: 인천" in all_text(values) and values["assumptions"] == []
+
+
+def test_no_answer_proceeds_with_the_recommended_option(agent_deps):
+    ask = say(("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": TWO}))
+    graph = agent_graph(agent_deps, ask, say())
+    graph.invoke({"text": "장치기간이 궁금해요"}, cfg("a13"))
+    # [왜] 시간 제한은 서버·화면이 잰다. 시간이 지나면 {"timeout": true}로 재개한다
+    out = graph.invoke(Command(resume={"timeout": True}), cfg("a13"))
+    assert "가정:" in out["answer"] and "권장안 '부산'" in out["answer"]
+
+
+def test_typed_answer_with_a_number_is_masked(agent_deps):
+    ask = say(("ask_user", {"question": "B/L 번호를 알려 주세요", "options": TWO}))
+    # DEMO0002는 B/L 모양이라 [BL1]이 된다
+    graph = agent_graph(agent_deps, ask, say(("lookup_cargo", {"tokens": ["[BL1]"]})), say())
+    graph.invoke({"text": "내 화물 어디야?"}, cfg("a14"))
+    graph.invoke(Command(resume={"custom": "DEMO0002로 봐 주세요"}), cfg("a14"))
+    values = graph.get_state(cfg("a14")).values
+    assert values["mask_map"] == {"[BL1]": "DEMO0002"} and "DEMO0002" not in all_text(values)
+    assert [c["token"] for c in values["cargos"]] == ["[BL1]"]  # 가린 토큰으로 조회했다
+
+
+def test_question_must_be_alone(agent_deps):
+    mixed = say(
+        ("ask_user", {"question": "어느 항구?", "options": TWO}), ("search_law", {"query": "장치기간"})
+    )
+    graph = agent_graph(agent_deps, mixed, say())
+    out = graph.invoke({"text": "장치기간이 궁금해요"}, cfg("a15"))
+    assert "__interrupt__" not in out  # 섞어 부르면 묻지 않고 오류로 돌려준다
+    errors = [
+        m for m in graph.get_state(cfg("a15")).values["messages"] if m.type == "tool" and m.status == "error"
+    ]
+    assert len(errors) == 2

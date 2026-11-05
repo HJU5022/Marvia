@@ -20,9 +20,11 @@ def token_for(mask_map: dict[str, str], value: str, kind: Kind | str) -> str:
     return token
 
 
-def mask_text(text: str) -> tuple[str, dict[str, str]]:
-    """글 속 번호 덩어리를 토큰으로 바꾼 글과 토큰 → 실제 값 표를 돌려준다."""
-    mask_map: dict[str, str] = {}
+def mask_text(text: str, known: dict[str, str] | None = None) -> tuple[str, dict[str, str]]:
+    """글 속 번호 덩어리를 토큰으로 바꾼 글과 토큰 → 실제 값 표를 돌려준다. known 표가 있으면 이어 쓴다."""
+    # [왜] 같은 차례에 나중에 받은 글(선택지에 직접 쓴 답 등)은 앞의 표를 이어 써야
+    #      같은 번호가 같은 토큰이 된다
+    mask_map: dict[str, str] = dict(known or {})
     pieces: list[str] = []
     last = 0
     for span, read in read_numbers(text):

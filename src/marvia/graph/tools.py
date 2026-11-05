@@ -17,10 +17,12 @@ import httpx
 import psycopg
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
-from langgraph.types import Command
+from langgraph.types import Command, interrupt
+from pydantic import BaseModel, Field
 
 from marvia.graph.answer import cargo_lines
 from marvia.graph.identify import identify_number
+from marvia.identify.mask import mask_text
 from marvia.llm import LLMFailed
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
@@ -55,6 +57,13 @@ def cargo_deadlines(cargos: list[dict], today: date) -> list[dict]:
             for deadline in import_deadlines(facts["stage"], stage_on, today)
         ]
     return deadlines
+
+
+class Choice(BaseModel):
+    """선택지 하나."""
+
+    label: str = Field(description="Short Korean label for the option")
+    description: str = Field(description="One Korean sentence on what happens if the user picks it")
 
 
 def make_tools(rag_graph, today: Callable[[], date]) -> list:
@@ -145,4 +154,30 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         ]
         return _reply(runtime, "\n".join(lines), cargos=cargos)
 
-    return [search_law, calc_deadlines, check_reimport, lookup_cargo]
+    @tool
+    def ask_user(question: str, options: list[Choice], runtime: ToolRuntime) -> Command:
+        """Ask the user one question with 2-3 options, the recommended option first. Use it only when you
+        cannot go on without the answer. Call it alone, with no other tool in the same turn.
+        """
+        payload = {
+            "kind": "choice",
+            "question": question,
+            "options": [option.model_dump() for option in options],
+            "recommended": 0,  # [왜] 권장안을 맨 앞에 둔다 (설계 결정 4의 ②)
+        }
+        # [주의] 재개하면 이 도구가 처음부터 다시 돈다. 그래서 interrupt 앞에는 바깥 일을 두지 않는다
+        reply = interrupt(payload) or {}
+        if reply.get("custom"):
+            # [주의] 직접 쓴 답에 실제 번호가 있을 수 있다. 이번 차례 표에 이어 가린 뒤에만 모델에게 준다
+            masked, mask_map = mask_text(str(reply["custom"]), runtime.state.get("mask_map", {}))
+            return _reply(runtime, f"사용자 답(직접 입력): {masked}", mask_map=mask_map)
+        selected = reply.get("selected")
+        # [왜] 화면에서 온 값이라 범위를 확인한다. 범위 밖이면 답이 없는 것으로 본다
+        if isinstance(selected, int) and 0 <= selected < len(options):
+            return _reply(runtime, f"사용자 답: {options[selected].label}")
+        # [왜] 답이 없거나 시간이 지나면 권장안으로 진행하고 가정으로 남긴다 (설계 결정 4의 ②)
+        label = options[0].label if options else "질문 없이 진행"
+        assumption = f"'{question}'에 답이 없어 권장안 '{label}'으로 진행했어요."
+        return _reply(runtime, f"답이 없어 권장안으로 진행해요: {label}", assumptions=[assumption])
+
+    return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user]

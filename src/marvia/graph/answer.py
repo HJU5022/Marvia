@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from marvia.tools.deadlines import kst_date
 from marvia.tools.rules import load_rules
 
@@ -42,8 +44,10 @@ def _bullets(title: str, items: list[str]) -> str:
     return f"{title}:\n" + "\n".join(f"- {item}" for item in items) if items else ""
 
 
-def final_answer(draft: dict, cargos: list[dict], evidence: list[dict]) -> str:
-    """검증을 통과한 초안으로 최종 답을 만든다 (가린 토큰 그대로)."""
+def final_answer(
+    draft: dict, cargos: list[dict], evidence: list[dict], assumptions: Sequence[str] = ()
+) -> str:
+    """검증을 통과한 초안으로 최종 답을 만든다 (가린 토큰 그대로). 권장안으로 진행한 가정도 보여 준다."""
     # [주의] 검증을 통과한 초안만 넣는다. 그래서 인용은 모두 근거 묶음에 있다
     by_id = {e["unit_id"]: e for e in evidence}
     citations = [
@@ -54,6 +58,8 @@ def final_answer(draft: dict, cargos: list[dict], evidence: list[dict]) -> str:
     parts = [
         _header(cargos),
         draft["answer"],
+        # [왜] 사용자가 답하지 않아 권장안으로 진행했으면 그 사실을 숨기지 않는다
+        _bullets("가정", list(assumptions)),
         _bullets("다음에 할 수 있는 일", draft["next_options"]),
         forwarder,
         _bullets("근거", citations),
@@ -62,7 +68,12 @@ def final_answer(draft: dict, cargos: list[dict], evidence: list[dict]) -> str:
 
 
 def partial_answer(
-    cargos: list[dict], calc: dict, evidence: list[dict], gaps: list[str], failed_tools: list[dict]
+    cargos: list[dict],
+    calc: dict,
+    evidence: list[dict],
+    gaps: list[str],
+    failed_tools: list[dict],
+    assumptions: Sequence[str] = (),
 ) -> str:
     """한도에 걸리거나 검증을 두 번 넘지 못했을 때의 부분 답 (설계 6.4, 결정 4의 ③). 초안은 쓰지 않는다."""
     calc_lines = [
@@ -80,6 +91,7 @@ def partial_answer(
         _bullets("찾은 근거", [f"{e['heading']} [{e['unit_id']}]" for e in evidence]),
         _bullets("빠진 근거", gaps),
         _bullets("실패한 도구", [f"{t['tool']}: {t['message']}" for t in failed_tools]),
+        _bullets("가정", list(assumptions)),
         _bullets("다음에 할 수 있는 일", load_rules("agent")["finish"]["next_options"]),
     ]
     return "\n\n".join(part for part in parts if part)

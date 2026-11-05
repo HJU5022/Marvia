@@ -32,13 +32,17 @@ from marvia.graph.state import LoopState
 from marvia.prompts import render
 from marvia.tools.rules import load_rules
 
+ASK_ALONE = (
+    "ask_user는 다른 도구 없이 혼자 불러야 해요. "
+    "묻기 전에 할 일이 있으면 먼저 하고, 물을 때는 ask_user만 부르세요."
+)
 ONE_IN_PROGRESS = (
     "할 일 목록에는 끝나지 않은 일이 있으면 in_progress가 정확히 하나여야 해요. 목록을 고쳐 다시 부르세요."
 )
 
 
 class Guards(AgentMiddleware[LoopState]):
-    """도메인 규칙 미들웨어: LLM 호출 상한, LLM 실패 기록, 진행 중 할 일 하나."""
+    """도메인 규칙 미들웨어: LLM 호출 상한, LLM 실패 기록, ask_user 혼자 부르기, 진행 중 할 일 하나."""
 
     # [왜] 이 미들웨어가 읽고 쓰는 칸(llm_calls, stopped, failed_tools)을 루프 공책에 더한다
     state_schema = LoopState
@@ -77,6 +81,16 @@ class Guards(AgentMiddleware[LoopState]):
                 model_response=ModelResponse(result=[AIMessage(content="")]), command=Command(update=update)
             )
         return ExtendedModelResponse(model_response=response, command=Command(update={"llm_calls": 1}))
+
+    @hook_config(can_jump_to=["model"])
+    def after_model(self, state: LoopState, runtime: Any) -> dict[str, Any] | None:
+        """모델이 ask_user를 다른 도구와 함께 불렀으면 모두 오류로 돌려주고 다시 부른다."""
+        calls = getattr(state["messages"][-1], "tool_calls", None) or []
+        if len(calls) > 1 and any(call["name"] == "ask_user" for call in calls):
+            # [왜] 질문(interrupt)과 다른 도구가 한 단계에 섞이면 재개할 때 다른 도구가 다시 돌 수 있다
+            errors = [ToolMessage(ASK_ALONE, tool_call_id=call["id"], status="error") for call in calls]
+            return {"messages": errors, "jump_to": "model"}
+        return None
 
     def wrap_tool_call(
         self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], ToolMessage | Command]

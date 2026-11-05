@@ -119,7 +119,12 @@ def _current_step(state: MarviaState) -> dict | None:
 
 def respond(state: MarviaState) -> dict:
     """검증을 통과한 초안으로 답을 만들고, 화면에 보내기 직전에 실제 번호로 되돌린다."""
-    text = final_answer(state.get("draft", {}), state.get("cargos", []), state.get("evidence", []))
+    text = final_answer(
+        state.get("draft", {}),
+        state.get("cargos", []),
+        state.get("evidence", []),
+        state.get("assumptions", []),
+    )
     # [왜] 답이 나왔으면 진행 중이던 할 일은 끝난 것이다. 화면에 진행 중 표시가 남지 않게 한다
     todos = [
         todo | {"status": "completed"} if todo["status"] == "in_progress" else todo
@@ -141,6 +146,7 @@ def finish(state: MarviaState) -> dict:
         state.get("evidence", []),
         state.get("gaps", []),
         state.get("failed_tools", []),
+        state.get("assumptions", []),
     )
     return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos}
 
