@@ -212,3 +212,37 @@ def test_llm_failure_in_loop_gives_partial_answer(agent_deps):
     out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a9"))
     assert "- agent: APIConnectionError" in out["answer"]
     assert graph.get_state(cfg("a9")).values["stopped"] == "llm_failed"
+
+
+def test_todo_list_keeps_one_in_progress_and_ends_completed(agent_deps):
+    bad = {
+        "todos": [
+            {"content": "기한 계산", "status": "in_progress"},
+            {"content": "조문 찾기", "status": "in_progress"},
+        ]
+    }
+    good = {
+        "todos": [
+            {"content": "기한 계산", "status": "in_progress"},
+            {"content": "조문 찾기", "status": "pending"},
+        ]
+    }
+    graph = agent_graph(agent_deps, say(("write_todos", bad)), say(("write_todos", good)), say())
+    graph.invoke({"text": "DEMO0001 언제까지 신고해요?"}, cfg("a10"))
+    values = graph.get_state(cfg("a10")).values
+    errors = [m for m in values["messages"] if m.type == "tool" and m.status == "error"]
+    assert len(errors) == 1  # 진행 중이 둘인 목록은 오류로 돌려준다
+    assert [t["status"] for t in values["todos"]] == [
+        "completed",
+        "pending",
+    ]  # 답이 나오면 진행 중은 끝낸다
+
+
+def test_todo_updates_are_streamed(agent_deps):
+    todos = {"todos": [{"content": "기한 계산", "status": "in_progress"}]}
+    graph = agent_graph(agent_deps, say(("write_todos", todos)), say())
+    # [왜] subgraphs=True: 루프(서브그래프) 안의 갱신도 (이름표, 갱신)으로 흘려보낸다.
+    #      화면은 이 갱신으로 할 일 목록을 그린다. start 노드의 빈 todos와 섞이지 않게 루프 안의 갱신만 본다
+    stream = graph.stream({"text": "DEMO0001 언제?"}, cfg("a11"), stream_mode="updates", subgraphs=True)
+    inside = [update for ns, chunk in stream if ns for update in chunk.values() if update]
+    assert any(update.get("todos") == todos["todos"] for update in inside)

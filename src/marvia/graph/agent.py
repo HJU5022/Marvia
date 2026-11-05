@@ -18,21 +18,27 @@ from langchain.agents.middleware import (
     ExtendedModelResponse,
     ModelRequest,
     ModelResponse,
+    TodoListMiddleware,
     ToolCallLimitMiddleware,
     hook_config,
 )
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from marvia.graph.state import LoopState
 from marvia.prompts import render
 from marvia.tools.rules import load_rules
 
+ONE_IN_PROGRESS = (
+    "할 일 목록에는 끝나지 않은 일이 있으면 in_progress가 정확히 하나여야 해요. 목록을 고쳐 다시 부르세요."
+)
+
 
 class Guards(AgentMiddleware[LoopState]):
-    """도메인 규칙 미들웨어: LLM 호출 상한, LLM 실패 기록."""
+    """도메인 규칙 미들웨어: LLM 호출 상한, LLM 실패 기록, 진행 중 할 일 하나."""
 
     # [왜] 이 미들웨어가 읽고 쓰는 칸(llm_calls, stopped, failed_tools)을 루프 공책에 더한다
     state_schema = LoopState
@@ -72,11 +78,27 @@ class Guards(AgentMiddleware[LoopState]):
             )
         return ExtendedModelResponse(model_response=response, command=Command(update={"llm_calls": 1}))
 
+    def wrap_tool_call(
+        self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], ToolMessage | Command]
+    ) -> ToolMessage | Command:
+        """할 일 목록을 쓸 때 끝나지 않은 일이 있으면 in_progress가 정확히 하나인지 본다 (설계 6.2)."""
+        call = request.tool_call
+        if call["name"] == "write_todos":
+            todos = call["args"].get("todos", [])
+            open_items = [todo for todo in todos if todo.get("status") != "completed"]
+            in_progress = sum(todo.get("status") == "in_progress" for todo in todos)
+            # [왜] TodoListMiddleware는 진행 중 개수를 검사하지 않는다 (11-06 소스 확인).
+            #      화면이 "지금 하는 일"을 하나로 보여 준다
+            if open_items and in_progress != 1:
+                return ToolMessage(ONE_IN_PROGRESS, tool_call_id=call["id"], status="error")
+        return handler(request)
+
 
 def build_agent(model: BaseChatModel, tools: list):
     """에이전트 루프를 만든다."""
     cfg = load_rules("agent")
     middleware: list[AgentMiddleware[Any, Any, Any]] = [
+        TodoListMiddleware(),
         # [왜] 같은 차례에 법령 검색은 이 횟수까지. 넘는 호출은 오류 결과를 받고 모델이 다음 일을 고른다
         ToolCallLimitMiddleware(
             tool_name="search_law", run_limit=cfg["loop"]["max_searches"], exit_behavior="continue"
