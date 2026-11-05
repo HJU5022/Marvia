@@ -184,15 +184,26 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
         if custom:
             # [주의] 직접 쓴 답에 실제 번호가 있을 수 있다. 이번 차례 표에 이어 가린 뒤에만 모델에게 준다
             masked, mask_map = mask_text(custom, runtime.state.get("mask_map", {}))
-            return _reply(runtime, f"사용자 답(직접 입력): {masked}", mask_map=mask_map)
+            return _reply(
+                runtime,
+                f"사용자 답(직접 입력): {masked}",
+                mask_map=mask_map,
+                clarifications=[f"{question} → {masked}"],
+            )
         selected = reply.get("selected")
         # [왜] 화면에서 온 값이라 범위를 확인한다. 범위 밖과 True(1이 아니다)는 답이 없는 것으로 본다
         if isinstance(selected, int) and not isinstance(selected, bool) and 0 <= selected < len(options):
-            return _reply(runtime, f"사용자 답: {options[selected].label}")
+            label = options[selected].label
+            return _reply(runtime, f"사용자 답: {label}", clarifications=[f"{question} → {label}"])
         # [왜] 답이 없거나 시간이 지나면 권장안으로 진행하고 가정으로 남긴다 (설계 결정 4의 ②)
         label = options[0].label
         assumption = f"'{question}'에 답이 없어 권장안 '{label}'으로 진행했어요."
-        return _reply(runtime, f"답이 없어 권장안으로 진행해요: {label}", assumptions=[assumption])
+        return _reply(
+            runtime,
+            f"답이 없어 권장안으로 진행해요: {label}",
+            assumptions=[assumption],
+            clarifications=[f"{question} → (답 없음, 권장안 '{label}'으로 진행)"],
+        )
 
     @tool
     def save_item_card(name: str, runtime: ToolRuntime) -> Command:

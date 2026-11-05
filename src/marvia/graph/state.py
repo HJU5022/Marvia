@@ -54,6 +54,7 @@ class MarviaState(IdentifyState, total=False):
     assumptions: list[str]  # 답이 없어 권장안으로 진행하며 세운 가정 (설계 결정 4의 ②)
     stopped: str  # 루프가 한도·LLM 실패로 멈췄으면 그 이유. 비었으면 정상 끝
     out_of_scope: bool  # 도메인 밖 질문이라 정중히 거절할 차례인가 (설계 1절 "하지 않는 일")
+    clarifications: list[str]  # 이번 차례에 사용자에게 물은 것과 답
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
@@ -92,7 +93,9 @@ def merge_cargos(old: list[dict], new: list[dict]) -> list[dict]:
 #      (없으면 LangGraph가 InvalidUpdateError를 낸다). 메인 공책은 루프가 끝난 뒤의 전체 값을 받아 덮어쓴다
 class LoopState(AgentState):
     masked_text: NotRequired[str]
-    mask_map: NotRequired[dict[str, str]]  # [주의] 도구 안에서 조회할 때만 쓴다. 메시지에 넣지 않는다
+    # [주의] 도구 안에서 조회할 때만 쓴다. 메시지에 넣지 않는다.
+    #        reducer가 없다. ask_user를 혼자 부르게 하는 Guards 덕에만 안전하다
+    mask_map: NotRequired[dict[str, str]]
     cargos: NotRequired[Annotated[list[dict], merge_cargos]]
     evidence: NotRequired[Annotated[list[dict], add_evidence]]
     gaps: NotRequired[Annotated[list[str], operator.add]]
@@ -108,7 +111,9 @@ class LoopState(AgentState):
         Annotated[list[str], operator.add]
     ]  # 이번 차례에 이미 찾은 질의 (같은 질의 다시 찾지 않기)
     stopped: NotRequired[str]
-    out_of_scope: NotRequired[bool]
+    # [왜] 같은 단계에 거절이 둘 와도 멈추지 않는다 (하나라도 거절이면 거절)
+    out_of_scope: NotRequired[Annotated[bool, operator.or_]]
+    clarifications: NotRequired[Annotated[list[str], operator.add]]
 
 
 # RAG 서브그래프의 공책 (설계 5.4). 메인 그래프와 칸을 나눠 쓰고, 계획 3에서 메인 그래프가 evidence를 받는다

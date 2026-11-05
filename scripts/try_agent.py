@@ -40,6 +40,7 @@ with connect(settings.database_url) as conn, get_usage_metadata_callback() as us
             # 승인 요청 (설계 6.3의 승인 통로): 승인하거나 거절한다
             for request in value["action_requests"]:
                 print("승인 요청:", request["name"], unmask(str(request["args"]), mask_map))
+                print(unmask(request.get("description", ""), mask_map))
             approve = input("승인(a) / 거절(그 밖): ").strip() == "a"
             decision = (
                 {"type": "approve"} if approve else {"type": "reject", "message": "사용자가 거절했어요"}

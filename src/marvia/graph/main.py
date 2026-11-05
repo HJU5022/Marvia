@@ -78,6 +78,7 @@ def start(state: MarviaState) -> dict:
         "assumptions": [],
         "stopped": "",
         "out_of_scope": False,
+        "clarifications": [],
     }
 
 
@@ -161,7 +162,7 @@ def _after_agent(state: MarviaState) -> str:
     if state.get("stopped"):
         return "finish"
     # [왜] 도메인 안 질문이 섞여 근거·계산을 모았으면 거절하지 않고 답한다(애매하면 답하는 쪽)
-    if state.get("out_of_scope") and not state.get("evidence") and not state.get("calc"):
+    if state.get("out_of_scope") and not state.get("evidence") and not any(state.get("calc", {}).values()):
         return "decline"
     return "write"
 
@@ -280,6 +281,7 @@ def build_main_graph(
             calc=json.dumps(state.get("calc", {}), ensure_ascii=False),
             evidence=evidence_block(state.get("evidence", [])),
             gaps="\n".join(state.get("gaps", [])),
+            clarifications="\n".join(state.get("clarifications", [])),
             violations="\n".join(state.get("verification", [])),
         )
         try:

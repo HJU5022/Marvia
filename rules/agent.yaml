@@ -16,7 +16,8 @@ loop:
   min_remaining_steps: 6
   recursion_limit: 40 # 한 차례의 그래프 단계 상한 (LangGraph 기본값 10007은 사실상 무제한, 11-02 실측)
   # 에이전트 루프 길의 단계 상한. [왜] 루프 한 바퀴가 모델·미들웨어 노드·도구로 여러 단계를 쓴다.
-  #      LLM 호출 상한(max_llm_calls)이 먼저 닿도록 넉넉히 둔다 (계획 3c Task 3 시험이 지킨다)
+  #      LLM 호출 상한(max_llm_calls)이 먼저 닿도록 넉넉히 둔다
+  #      (tests/graph/test_agent.py의 test_cheap_tool_loop_hits_the_llm_cap_before_the_recursion_limit이 지킨다)
   agent_recursion_limit: 200
   max_searches: 4 # 에이전트 루프 한 차례의 법령 검색 상한. 넘는 호출은 오류 결과를 받는다 (11-06 손 시험: 네 번 반복)
 

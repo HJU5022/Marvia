@@ -440,3 +440,81 @@ def test_mixed_question_is_answered_not_declined(agent_deps):
     out = graph.invoke({"text": "수입신고 기한이랑 내일 날씨 알려 줘"}, cfg("a20b"))
     assert "관세법 > 제9장 통관 > 제241조" in out["answer"]  # 모은 근거로 답한다
     assert not out["answer"].startswith("이 질문은 Marvia가 도울 수 있는 범위 밖이에요.")
+
+
+def _writer_prompts(prompts: list[str]):
+    """받은 프롬프트를 prompts에 적고 CITING을 돌려주는 가짜 작성자."""
+
+    def write(prompt: str):
+        prompts.append(prompt)
+        return CITING
+
+    return write
+
+
+def test_two_declines_in_one_step_do_not_crash(agent_deps):
+    # [왜] 병렬로 부른 두 거절이 같은 칸(out_of_scope)에 쓰면 reducer가 있어야 한다
+    twice = say(("decline", {"reason": "날씨"}), ("decline", {"reason": "주식"}))
+    graph = agent_graph(agent_deps, twice)
+    out = graph.invoke({"text": "내일 날씨랑 주식 알려 줘"}, cfg("f1"))
+    assert out["answer"].startswith("이 질문은 Marvia가 도울 수 있는 범위 밖이에요.")
+
+
+def test_chosen_option_reaches_the_writer(agent_deps):
+    prompts: list[str] = []
+    ask = say(("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": TWO}))
+    graph = agent_graph(agent_deps, ask, say(), write=_writer_prompts(prompts))
+    graph.invoke({"text": "장치기간이 궁금해요"}, cfg("f2"))
+    graph.invoke(Command(resume={"selected": 1}), cfg("f2"))
+    assert "인천" in prompts[-1].split("<clarifications>")[1].split("</clarifications>")[0]
+
+
+def test_timeout_assumption_reaches_the_writer(agent_deps):
+    prompts: list[str] = []
+    ask = say(("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": TWO}))
+    graph = agent_graph(agent_deps, ask, say(), write=_writer_prompts(prompts))
+    graph.invoke({"text": "장치기간이 궁금해요"}, cfg("f3"))
+    graph.invoke(Command(resume={"timeout": True}), cfg("f3"))
+    block = prompts[-1].split("<clarifications>")[1].split("</clarifications>")[0]
+    assert "답 없음, 권장안 '부산'" in block
+
+
+def test_cheap_tool_loop_hits_the_llm_cap_before_the_recursion_limit(agent_deps):
+    # [왜] 설계 6.4: RAG 없이 값싼 도구만 불러도 recursion_limit이 아니라 LLM 호출 상한이 먼저 닿는다
+    loop = [say(("calc_deadlines", {})) for _ in range(40)]
+    graph = agent_graph(agent_deps, *loop)
+    out = graph.invoke({"text": "DEMO0001 언제?"}, cfg("f4"))  # 기본 설정(agent_recursion_limit)
+    values = graph.get_state(cfg("f4")).values
+    assert values["stopped"] == "llm_calls"
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+
+
+def test_second_turn_on_one_thread_starts_fresh(agent_deps, fake_rag):
+    seen = []
+    rag = fake_rag()
+    counting = type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
+    query = {"query": "수입신고 기한"}
+    graph = agent_graph(
+        agent_deps,
+        say(("search_law", query)),
+        say(),
+        say(("search_law", query)),
+        say(),
+        rag=counting,
+        write=lambda p: CITING,
+    )
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("f5"))
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("f5"))
+    values = graph.get_state(cfg("f5")).values
+    assert len(seen) == 2  # searched가 지난 차례 질의를 막지 않는다
+    assert values["llm_calls"] == 5  # 0부터 다시 센다
+    assert [m.type for m in values["messages"]].count("human") == 1  # 이번 차례 메시지만 있다
+    assert sum(m.type == "ai" for m in values["messages"]) == 2
+
+
+def test_decline_with_empty_calc_still_declines(agent_deps):
+    # [왜] 화물이 없으면 calc_deadlines는 빈 기한만 낸다. 빈 값은 모은 일로 치지 않는다
+    both = say(("decline", {"reason": "날씨"}), ("calc_deadlines", {}))
+    graph = agent_graph(agent_deps, both, say())
+    out = graph.invoke({"text": "내일 날씨 어때?"}, cfg("f6"))
+    assert out["answer"].startswith("이 질문은 Marvia가 도울 수 있는 범위 밖이에요.")
