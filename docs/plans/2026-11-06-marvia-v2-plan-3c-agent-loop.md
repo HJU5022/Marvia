@@ -701,9 +701,11 @@ from typing import Literal
 
 `src/marvia/graph/live.py`: `write=structured(llm, Draft),` 아래에 넣는다:
 
+<!-- fmt: off -->
 ```python
         model=llm,  # [왜] 에이전트 길은 같은 모델에 도구를 묶어 부른다(create_agent가 bind_tools를 한다)
 ```
+<!-- fmt: on -->
 
 `.env.example` 끝에 넣는다:
 
@@ -907,6 +909,7 @@ from marvia.graph.tools import cargo_deadlines, error_name, make_tools
 
 `src/marvia/graph/tools.py`: `make_tools` 끝의 `return [search_law]`를 아래로 바꾼다:
 
+<!-- fmt: off -->
 ```python
     @tool
     def calc_deadlines(runtime: ToolRuntime) -> Command:
@@ -947,6 +950,7 @@ from marvia.graph.tools import cargo_deadlines, error_name, make_tools
 
     return [search_law, calc_deadlines, check_reimport, lookup_cargo]
 ```
+<!-- fmt: on -->
 
 [주의] `lookup_cargo`가 받는 것은 토큰이다. 모르는 토큰은 조회하지 않고 "모르는 토큰"이라고만 돌려준다. 실제 번호는 `mask_map[token]`으로 꺼내 조회에만 쓰고, 결과 줄은 `cargo_lines`가 토큰으로 쓴다.
 
@@ -1313,9 +1317,11 @@ ONE_IN_PROGRESS = (
 
 `build_agent`의 미들웨어 목록 맨 앞에 넣는다:
 
+<!-- fmt: off -->
 ```python
         TodoListMiddleware(),
 ```
+<!-- fmt: on -->
 
 - [ ] **Step 3: 답이 나오면 진행 중인 일 끝내기**
 
@@ -1483,6 +1489,7 @@ class Choice(BaseModel):
 
 `make_tools` 끝의 `return [...]`를 아래로 바꾼다:
 
+<!-- fmt: off -->
 ```python
     @tool
     def ask_user(question: str, options: list[Choice], runtime: ToolRuntime) -> Command:
@@ -1512,6 +1519,7 @@ class Choice(BaseModel):
 
     return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user]
 ```
+<!-- fmt: on -->
 
 [주의] 직접 쓴 답(`custom`)은 사용자 글이라 실제 번호가 있을 수 있다. 이번 차례 `mask_map`을 이어 가린 뒤에만 모델에게 주고, 늘어난 표는 `mask_map` 칸에 쓴다. 그 번호를 조회하려면 모델이 받은 토큰으로 `lookup_cargo`를 부른다.
 
@@ -1767,6 +1775,7 @@ TOKEN = re.compile(r"\[(?:BL|CARGO|NUM)\d+\]")
 
 `make_tools` 끝의 `return [...]`를 아래로 바꾼다:
 
+<!-- fmt: off -->
 ```python
     @tool
     def save_item_card(name: str, runtime: ToolRuntime) -> Command:
@@ -1788,6 +1797,7 @@ TOKEN = re.compile(r"\[(?:BL|CARGO|NUM)\d+\]")
 
     return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user, save_item_card]
 ```
+<!-- fmt: on -->
 
 [주의] 승인 화면에 보일 인자(`name`)와 저장할 값에 번호가 들어가지 않게, 이름은 모델이 짓되 토큰·번호 모양이면 거절한다. 품목 사실은 모델이 다시 쓰지 않고 `check_reimport`가 검증한 `item` 칸에서 가져온다.
 
@@ -1933,6 +1943,7 @@ Expected: FAIL 1개(`decline is not a valid tool`라 모델을 다시 부르고,
 
 `src/marvia/graph/tools.py`: `make_tools` 끝의 `return [...]`를 아래로 바꾼다:
 
+<!-- fmt: off -->
 ```python
     # [왜] return_direct: 이 도구를 부르면 모델을 다시 부르지 않고 루프를 끝낸다. 거절 글은 코드가 쓴다
     @tool(return_direct=True)
@@ -1944,6 +1955,7 @@ Expected: FAIL 1개(`decline is not a valid tool`라 모델을 다시 부르고,
 
     return [search_law, calc_deadlines, check_reimport, lookup_cargo, ask_user, save_item_card, decline]
 ```
+<!-- fmt: on -->
 
 `src/marvia/graph/answer.py` 끝에 넣는다:
 
