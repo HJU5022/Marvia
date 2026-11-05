@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -26,7 +27,7 @@ from langchain.agents.middleware import (
 )
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolCall, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
@@ -115,12 +116,22 @@ class Guards(AgentMiddleware[LoopState]):
         return handler(request)
 
 
+def describe_approval(tool_call: ToolCall, state: Any, runtime: Any) -> str:
+    """승인 카드 글: 할 일과 인자, 저장이면 저장될 품목 사실 (설계 8절: 승인된 사실만 저장)."""
+    args = json.dumps(tool_call["args"], ensure_ascii=False)
+    text = f"{tool_call['name']} 실행을 승인할까요?\n인자: {args}"
+    if tool_call["name"] == "save_item_card":
+        facts = json.dumps(state.get("item", {}), ensure_ascii=False)
+        text += f"\n저장할 품목 사실: {facts}"
+    return text
+
+
 def build_agent(model: BaseChatModel, tools: list, permission_mode: str):
-    """에이전트 루프를 만든다. permission_mode가 "ask"면 저장 같은 부작용 앞에서 승인을 받는다 (설계 6.3)."""
+    """에이전트 루프를 만든다. auto 모드만 ask 목록을 건너뛴다 (설계 6.3)."""
     cfg = load_rules("agent")
     approval = cfg["approval"]
-    # [주의] always_ask(밖으로 나가는 메시지 등)는 auto 모드에서도 늘 묻는다 (설계 12절: 되돌리기 어려운 일)
-    gated = (approval["ask"] if permission_mode == "ask" else []) + approval["always_ask"]
+    # [주의] auto가 아닌 값(오타 포함)은 모두 묻는 쪽으로 둔다. always_ask는 auto에서도 늘 묻는다 (설계 12절)
+    gated = (approval["ask"] if permission_mode != "auto" else []) + approval["always_ask"]
     middleware: list[AgentMiddleware[Any, Any, Any]] = [
         TodoListMiddleware(),
         # [왜] 같은 차례에 법령 검색은 이 횟수까지. 넘는 호출은 오류 결과를 받고 모델이 다음 일을 고른다
@@ -130,21 +141,15 @@ def build_agent(model: BaseChatModel, tools: list, permission_mode: str):
     ]
     if gated:
         # [왜] batched: 한 단계의 승인 요청을 interrupt 하나로 묶는다. 화면은 한 번에 카드 하나만 받는다
-        decisions = InterruptOnConfig(allowed_decisions=["approve", "edit", "reject"])
+        decisions = InterruptOnConfig(
+            allowed_decisions=["approve", "edit", "reject"], description=describe_approval
+        )
         middleware.append(
             HumanInTheLoopMiddleware(
                 interrupt_on={name: decisions for name in gated}, interrupt_mode="batched"
             )
         )
     middleware.append(Guards(cfg["loop"]["max_llm_calls"]))
-    return create_agent(
-        model,
-        tools,
-        system_prompt=render("agent"),
-        middleware=middleware,
-        state_schema=LoopState,
-        name="agent",
-    )
     return create_agent(
         model,
         tools,

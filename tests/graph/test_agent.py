@@ -375,6 +375,7 @@ def test_saving_an_item_card_waits_for_approval(agent_deps):
     out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a16"))
     request = out["__interrupt__"][0].value
     assert request["action_requests"][0]["name"] == "save_item_card"
+    assert "농산물·임산물" in request["action_requests"][0]["description"]  # 카드에 저장될 사실이 보인다
     assert store.get(("users", "local", "items"), "건고추") is None  # 승인 전에는 저장하지 않는다
     graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("a16"))
     assert store.get(("users", "local", "items"), "건고추").value["facts"]["category"] == "농산물·임산물"
@@ -393,6 +394,13 @@ def test_auto_mode_saves_without_asking(agent_deps):
     graph = _card_graph(agent_deps, store, permission_mode="auto")
     out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a18"))
     assert "__interrupt__" not in out and store.get(("users", "local", "items"), "건고추") is not None
+
+
+def test_unknown_permission_mode_still_asks(agent_deps):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store, permission_mode="Auto")
+    out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a18b"))
+    assert "__interrupt__" in out and store.search(("users", "local", "items")) == []
 
 
 def test_item_card_name_with_a_cargo_token_is_refused(agent_deps):
