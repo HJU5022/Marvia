@@ -32,13 +32,12 @@ from marvia.graph.identify import build_identify_graph, lookup
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
 from marvia.graph.state import MarviaState, merge_evidence
-from marvia.graph.tools import error_name, make_tools
+from marvia.graph.tools import cargo_deadlines, error_name, make_tools
 from marvia.graph.verify import verify
 from marvia.identify.mask import unmask
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
-from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 
@@ -237,18 +236,7 @@ def build_main_graph(
     def calc(state: MarviaState) -> dict:
         """계산: 화물 단계로 기한을, 품목 사실로 재수입 검사 판정을 낸다 (설계 7.1). LLM은 부르지 않는다."""
         today = deps.today()
-        deadlines = []
-        for cargo in state.get("cargos", []):
-            facts = cargo["facts"]
-            if not facts or not facts.get("stage_at"):
-                continue
-            # [주의] 단계 시각은 한국 날짜로 바꿔 센다 (화물 줄 cargo_lines·검증자와 같은 kst_date)
-            stage_on = kst_date(facts["stage_at"])
-            deadlines += [
-                {"cargo": cargo["token"], **deadline.model_dump(mode="json")}
-                for deadline in import_deadlines(facts["stage"], stage_on, today)
-            ]
-        result: dict = {"deadlines": deadlines}
+        result: dict = {"deadlines": cargo_deadlines(state.get("cargos", []), today)}
         item = state.get("item")
         if item:
             result["reimport"] = reimport_check(ItemFacts.model_validate(item), today).model_dump(mode="json")

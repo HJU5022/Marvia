@@ -16,6 +16,16 @@ CITING = Draft(
     forwarder_message="",
 )
 
+CHILI = {
+    "category": "농산물·임산물",
+    "same": ["생산국", "품명", "수출업소", "포장장소"],
+    "different": [],
+    "prior_precise": "받음",
+    "prior_result": "적합",
+    "prior_cert_on": "2026-03-10",
+    "flags": [],
+}
+
 
 class ToolModel(GenericFakeChatModel):
     """정해 둔 AIMessage를 차례로 내는 가짜 모델. bind_tools는 자기를 그대로 돌려준다."""
@@ -42,6 +52,15 @@ def cfg(thread_id: str) -> dict:
 def agent_graph(agent_deps, *messages, store=None, permission_mode="ask", **changes):
     deps = agent_deps(model=model(*messages), **changes)
     return build_main_graph(deps, InMemorySaver(), loop="agent", store=store, permission_mode=permission_mode)
+
+
+def all_text(values: dict) -> str:
+    """에이전트 메시지의 글과 도구 호출 인자를 한 글로 모은다 (번호가 새는지 볼 때)."""
+    parts = []
+    for message in values.get("messages", []):
+        parts.append(str(message.content))
+        parts += [str(call["args"]) for call in getattr(message, "tool_calls", None) or []]
+    return "\n".join(parts)
 
 
 def test_agent_searches_then_writer_answers(agent_deps):
@@ -94,3 +113,28 @@ def test_search_failure_is_recorded_and_loop_goes_on(agent_deps, fake_rag):
     values = graph.get_state(cfg("a4")).values
     assert values["failed_tools"] == [{"tool": "search_law", "message": "ConnectError"}]
     assert "시험 답이에요." in out["answer"]
+
+
+def test_deadlines_come_from_code_and_numbers_stay_masked(agent_deps):
+    graph = agent_graph(agent_deps, say(("calc_deadlines", {})), say())
+    out = graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("a5"))
+    values = graph.get_state(cfg("a5")).values
+    assert values["calc"]["deadlines"][0]["name"] == "수입신고 기한"
+    assert "DEMO0001" not in all_text(values)  # 모델이 본 글과 도구 인자에는 토큰만 있다
+    assert "DEMO0001" in out["answer"]  # 화면에 보낼 때만 되돌린다
+
+
+def test_reimport_facts_go_straight_to_the_code_check(agent_deps):
+    graph = agent_graph(agent_deps, say(("check_reimport", {"facts": CHILI})), say())
+    graph.invoke({"text": "건고추를 다시 들여와요"}, cfg("a6"))
+    values = graph.get_state(cfg("a6")).values
+    assert values["calc"]["reimport"]["verdict"] == "서류검사 요건 충족"
+    assert values["item"]["category"] == "농산물·임산물"
+
+
+def test_lookup_cargo_tool_uses_tokens_only(agent_deps):
+    graph = agent_graph(agent_deps, say(("lookup_cargo", {"tokens": ["[CARGO1]", "[BL9]"]})), say())
+    graph.invoke({"text": "DEMO0001 다시 봐 줘"}, cfg("a7"))
+    values = graph.get_state(cfg("a7")).values
+    tool_text = [m.content for m in values["messages"] if m.type == "tool"][0]
+    assert "[BL9]: 모르는 토큰이에요" in tool_text and "DEMO0001" not in tool_text

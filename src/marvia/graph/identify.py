@@ -41,29 +41,32 @@ def read(state: IdentifyState) -> dict:
     return {"masked_text": masked, "mask_map": mask_map, "numbers": numbers, "question": question}
 
 
+def identify_number(number: str, mask_map: dict[str, str]) -> dict:
+    """번호 하나를 조회해 화물 결과(dict)로 만든다. 실패도 결과로 남긴다. mask_map에 토큰을 더할 수 있다."""
+    kind = kind_of(number)
+    result = lookup_cargo(number)
+    found = isinstance(result, CargoFacts)  # 성공이면 CargoFacts, 실패면 ToolError
+    identity = CargoIdentity(
+        # [왜] 사용자가 선택지로 고른 번호는 원문 가림 때 없던 번호라 여기서 이름표를 새로 받을 수 있다
+        token=token_for(mask_map, number, kind),
+        kind=kind,
+        cargo_no=number if kind == "cargo_no" else None,
+        bl_no=number if kind == "bl" else None,
+        mrn=result.mrn if found else None,
+        vessel=result.vessel_name if found else None,
+        confidence="confirmed" if found else "unknown",
+        facts=result if found else None,
+        error=None if found else result,
+    )
+    # [왜] 공책에는 pydantic 객체 대신 기본 dict로 넣는다. Postgres 체크포인트에 그대로 저장하기 쉽다
+    return identity.model_dump(mode="json")
+
+
 def lookup(state: IdentifyState) -> dict:
     """확정한 번호를 하나씩 조회해 화물별 결과로 만든다. 실패도 결과로 남긴다."""
     # [왜] 공책의 dict를 직접 고치지 않고 복사해서 고친다. 노드는 바꾼 값을 돌려주는 방식으로만 공책을 바꾼다
     mask_map = dict(state.get("mask_map", {}))
-    cargos = []
-    for number in state.get("numbers", []):
-        kind = kind_of(number)
-        result = lookup_cargo(number)
-        found = isinstance(result, CargoFacts)  # 성공이면 CargoFacts, 실패면 ToolError
-        identity = CargoIdentity(
-            # [왜] 사용자가 선택지로 고른 번호는 원문 가림 때 없던 번호라 여기서 이름표를 새로 받을 수 있다
-            token=token_for(mask_map, number, kind),
-            kind=kind,
-            cargo_no=number if kind == "cargo_no" else None,
-            bl_no=number if kind == "bl" else None,
-            mrn=result.mrn if found else None,
-            vessel=result.vessel_name if found else None,
-            confidence="confirmed" if found else "unknown",
-            facts=result if found else None,
-            error=None if found else result,
-        )
-        # [왜] 공책에는 pydantic 객체 대신 기본 dict로 넣는다. Task 8에서 Postgres에 그대로 저장하기 쉽다
-        cargos.append(identity.model_dump(mode="json"))
+    cargos = [identify_number(number, mask_map) for number in state.get("numbers", [])]
     return {"cargos": cargos, "mask_map": mask_map}
 
 

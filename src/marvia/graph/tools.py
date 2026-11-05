@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import date
 
@@ -18,7 +19,11 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from marvia.graph.answer import cargo_lines
+from marvia.graph.identify import identify_number
 from marvia.llm import LLMFailed
+from marvia.tools.deadlines import import_deadlines, kst_date
+from marvia.tools.reimport import ItemFacts, reimport_check
 
 
 def error_name(error: Exception) -> str:
@@ -33,6 +38,22 @@ def _reply(runtime: ToolRuntime, text: str, **update) -> Command:
     #      모델이 부른 호출 id와 같아야 모델이 어느 호출의 결과인지 안다
     message = ToolMessage(text, tool_call_id=runtime.tool_call_id)
     return Command(update={**update, "messages": [message]})
+
+
+def cargo_deadlines(cargos: list[dict], today: date) -> list[dict]:
+    """화물마다 지금 단계로 법정 기한을 센다. 단계 시각이 없는 화물은 건너뛴다."""
+    deadlines = []
+    for cargo in cargos:
+        facts = cargo["facts"]
+        if not facts or not facts.get("stage_at"):
+            continue
+        # [주의] 단계 시각은 한국 날짜로 바꿔 센다 (화물 줄 cargo_lines·검증자와 같은 kst_date)
+        stage_on = kst_date(facts["stage_at"])
+        deadlines += [
+            {"cargo": cargo["token"], **deadline.model_dump(mode="json")}
+            for deadline in import_deadlines(facts["stage"], stage_on, today)
+        ]
+    return deadlines
 
 
 def make_tools(rag_graph, today: Callable[[], date]) -> list:
@@ -72,4 +93,41 @@ def make_tools(rag_graph, today: Callable[[], date]) -> list:
             llm_calls=2 + 2 * out.get("rewrites", 0),
         )
 
-    return [search_law]
+    @tool
+    def calc_deadlines(runtime: ToolRuntime) -> Command:
+        """Compute the legal deadlines (import declaration, duty payment, late-declaration surcharge) for
+        the cargo lines. Use it for "by when" questions about the user's cargo. Dates come only from
+        this tool.
+        """
+        deadlines = cargo_deadlines(runtime.state.get("cargos", []), today())
+        text = json.dumps(deadlines, ensure_ascii=False) if deadlines else "기한을 셀 화물 단계가 없어요."
+        return _reply(runtime, text, calc={"deadlines": deadlines})
+
+    @tool
+    def check_reimport(facts: ItemFacts, runtime: ToolRuntime) -> Command:
+        """Check whether a re-imported food item meets the document-inspection conditions instead of a
+        precise inspection. Fill facts only with what the user said; unknown fields stay 모름 or empty.
+        """
+        result = reimport_check(facts, today())
+        return _reply(
+            runtime,
+            result.model_dump_json(),
+            calc={"reimport": result.model_dump(mode="json")},
+            item=facts.model_dump(mode="json"),
+        )
+
+    @tool
+    def lookup_cargo(tokens: list[str], runtime: ToolRuntime) -> Command:
+        """Look up the customs status of cargo tokens such as [BL1] (for example a number the user gave in
+        an answer). Returns one line per cargo.
+        """
+        mask_map = dict(runtime.state.get("mask_map", {}))
+        known = [token for token in tokens if token in mask_map]
+        # [주의] 실제 번호는 여기서만 꺼낸다. 결과 줄(cargo_lines)은 토큰으로 쓴다
+        cargos = [identify_number(mask_map[token], mask_map) for token in known]
+        lines = cargo_lines(cargos) + [
+            f"{token}: 모르는 토큰이에요" for token in tokens if token not in mask_map
+        ]
+        return _reply(runtime, "\n".join(lines), cargos=cargos)
+
+    return [search_law, calc_deadlines, check_reimport, lookup_cargo]
