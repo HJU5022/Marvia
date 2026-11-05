@@ -55,3 +55,13 @@ class Broken:
 def test_structured_wraps_llm_errors(error):
     with pytest.raises(LLMFailed, match=type(error).__name__):
         structured(Broken(error), Answer)("프롬프트")
+
+
+def test_status_code_is_kept_in_the_failure():
+    # [왜] 429(잠시 뒤 다시)와 400(요청 모양 문제)은 다음 길이 다르다. 오류 글 없이 상태 코드만 남긴다
+    request = httpx.Request("POST", "https://api.anthropic.test")
+    error = anthropic.RateLimitError(
+        "요청 글이 섞일 수 있는 오류 글", response=httpx.Response(429, request=request), body=None
+    )
+    with pytest.raises(LLMFailed, match=r"^RateLimitError\(429\)$"):
+        structured(Broken(error), Answer)("프롬프트")

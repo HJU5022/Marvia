@@ -45,8 +45,11 @@ def chat_model(settings: Settings) -> BaseChatModel:
 
 def structured[T: BaseModel](llm: BaseChatModel, schema: type[T]) -> Callable[[str], T]:
     """프롬프트를 받아 schema 모양으로 답하는 함수를 만든다. 실패하면 LLMFailed를 던진다."""
-    # [왜] method="json_schema": Claude의 구조화 출력 기능으로 답의 모양을 강제한다.
-    # 기본값 function_calling은 도구 호출을 강제하는 방식이라, 생각(thinking)이 켜진 모델에서는 다른 길로 돈다
+    # [왜] method="json_schema": Claude의 구조화 출력(output_config.format)으로 답의 모양을 강제한다.
+    # 기본값 function_calling은 도구 호출을 강제하는데, 생각(thinking)을 켰거나
+    # 강제 도구 선택을 받지 않는 모델(Sonnet 5.5·Opus 5.5·Fable 5.1)이면 강제 없이 묶고,
+    # 도구를 부르지 않으면 OutputParserException이 난다 (langchain-anthropic 1.7.7, 11-06 확인).
+    # json_schema면 모델을 바꿔 비교해도 같은 길로 돈다
     runnable = llm.with_structured_output(schema, method="json_schema")
 
     def call(prompt: str) -> T:
@@ -56,7 +59,10 @@ def structured[T: BaseModel](llm: BaseChatModel, schema: type[T]) -> Callable[[s
             return cast(T, runnable.invoke(prompt))
         except (anthropic.APIError, OutputParserException) as error:
             # [왜] API 오류(시간 초과·429·5xx·인증)와 답 모양 오류만 잡는다. 코드 버그는 그대로 올라간다
-            # [주의] 오류 종류 이름만 남긴다. 오류 글에는 요청 내용이 섞일 수 있다
-            raise LLMFailed(type(error).__name__) from error
+            # [주의] 오류 종류 이름과 HTTP 상태 코드만 남긴다. 오류 글에는 요청 내용이 섞일 수 있다
+            # [왜] 429(잠시 뒤 다시)와 400(요청 모양 문제)은 다음 길이 달라 상태 코드는 남긴다
+            status = getattr(error, "status_code", None)
+            name = type(error).__name__
+            raise LLMFailed(f"{name}({status})" if status else name) from error
 
     return call
