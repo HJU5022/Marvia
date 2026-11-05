@@ -76,3 +76,8 @@ def test_question_is_wrapped_as_data_in_prompt():
     build_rag_graph(_deps([ENOUGH], seen=seen)).invoke(START_STATE)
     assert f"<question>\n{START_STATE['question']}\n</question>" in seen["analyze_prompt"]
     assert "Today is 2026-10-30." in seen["analyze_prompt"]
+
+
+def test_max_rewrites_override_replaces_the_rule_value():
+    out = build_rag_graph(_deps([NOT_ENOUGH] * 3), max_rewrites=1).invoke(START_STATE)
+    assert out["rewrites"] == 1 and out["sufficient"] is False

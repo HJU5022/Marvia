@@ -37,9 +37,10 @@ def evidence_block(evidence: list[dict]) -> str:
     return "\n\n".join(f"[{e['unit_id']}] {e['heading']}\n{e['text']}" for e in evidence)
 
 
-def build_rag_graph(deps: RagDeps):
-    """RAG 서브그래프를 만든다."""
+def build_rag_graph(deps: RagDeps, max_rewrites: int | None = None):
+    """RAG 서브그래프를 만든다. max_rewrites를 주면 rules/rag.yaml의 고쳐 쓰기 한도 대신 쓴다."""
     cfg = load_rules("rag")
+    limit = cfg["loop"]["max_rewrites"] if max_rewrites is None else max_rewrites
 
     def analyze(state: RagState) -> dict:
         """질문 유형·기준 날짜·검색 질의를 정한다."""
@@ -88,7 +89,7 @@ def build_rag_graph(deps: RagDeps):
 
     def after_grade(state: RagState) -> str:
         """충분하거나 고쳐 쓴 횟수가 한도에 닿으면 끝낸다."""
-        if state.get("sufficient") or state.get("rewrites", 0) >= cfg["loop"]["max_rewrites"]:
+        if state.get("sufficient") or state.get("rewrites", 0) >= limit:
             return END
         return "rewrite"
 

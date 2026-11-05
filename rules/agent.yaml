@@ -21,6 +21,9 @@ loop:
   #      시험: tests/graph/test_agent.py
   #            test_cheap_tool_loop_hits_the_llm_cap_before_the_recursion_limit
   agent_recursion_limit: 200
+  # 에이전트 길의 RAG 한 번 안에서 질의를 고쳐 쓰는 최대 횟수. 계획자 길은 rules/rag.yaml(2)을 쓴다.
+  # [왜] 에이전트 루프가 모델이 직접 다시 찾으므로 고쳐 쓰기 반복이 겹쳐 돈다(11-06 비교: 법령 질문 LLM 호출 17-19회)
+  rag_rewrites: 1
   max_searches: 4 # 에이전트 루프 한 차례의 법령 검색 상한. 넘는 호출은 오류 결과를 받는다 (11-06 손 시험: 네 번 반복)
 
 answer:

@@ -14,6 +14,7 @@ from langgraph.types import Command
 from marvia.graph.agent import ONE_IN_PROGRESS
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
+from marvia.graph.tools import search_calls, worst_search_calls
 from marvia.prompts import render
 from marvia.tools.rules import load_rules
 
@@ -204,7 +205,12 @@ def test_llm_cap_is_kept_exactly_and_ends_in_partial_answer(agent_deps, fake_rag
     assert "끝까지 확인하지 못했어요" in out["answer"] and f"LLM 호출 한도({cap}회)" in out["answer"]
 
 
-def test_search_is_refused_when_the_budget_would_pass_the_cap(agent_deps, fake_rag):
+def test_search_is_refused_when_the_budget_would_pass_the_cap(agent_deps, fake_rag, monkeypatch):
+    # [왜] 검색 횟수 상한이 먼저 닿지 않게 키우고, LLM 호출 예산 거절만 본다.
+    #      호출 상한도 한 번 더 큰 값으로 둔다: 상한 20은 검색 4번이 딱 맞아 모델 호출 쪽에서 먼저 멈춘다
+    loop = load_rules("agent")["loop"]
+    monkeypatch.setitem(loop, "max_searches", 99)
+    monkeypatch.setitem(loop, "max_llm_calls", loop["max_llm_calls"] + 1)
     seen = []
     rag = fake_rag(sufficient=False)
     counting = type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
@@ -212,11 +218,15 @@ def test_search_is_refused_when_the_budget_would_pass_the_cap(agent_deps, fake_r
     graph = agent_graph(agent_deps, *endless, rag=counting)
     graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a8b"))
     values = graph.get_state(cfg("a8b")).values
-    cap = load_rules("agent")["loop"]["max_llm_calls"]
-    # [왜] 검색 한 번의 최악은 2 + 2 × max_rewrites(=2)로 6. 두 번은 상한 안, 세 번째는 넘어서 거절된다
-    # [주의] seen은 RAG 안 검색 호출 수(고쳐 쓰기 포함)다.
-    #        한 번 찾기 = 초기 검색 + 고쳐 쓴 검색 2번이라 6 = 두 번 찾기
-    assert len(seen) == 3 * 2
+    cap = loop["max_llm_calls"]
+    worst = worst_search_calls(loop["rag_rewrites"])
+    # [왜] 모델 호출 1 뒤에 최악 worst를 더해도 상한 안이면 검색한다. 그 셈을 그대로 돌려 기대값을 얻는다
+    used = allowed = 0
+    while used + 1 + worst <= cap:
+        used += 1 + worst
+        allowed += 1
+    # [주의] seen은 RAG 안 검색 호출 수(고쳐 쓰기 포함)다: 한 번 찾기 = 1 + rag_rewrites
+    assert len(seen) == allowed * (1 + loop["rag_rewrites"])
     assert values["llm_calls"] == cap
     assert any("LLM 호출 한도가 가까워" in str(m.content) for m in values["messages"] if m.type == "tool")
 
@@ -659,3 +669,26 @@ def test_item_card_name_with_a_forbidden_mark_is_refused(agent_deps, mark):
     graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("fm"))
     graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("fm"))
     assert store.search(("users", "local", "items")) == []
+
+
+def test_agent_path_rewrites_at_most_the_agent_rule_per_search(agent_deps, fake_rag):
+    # [왜] 에이전트 길은 루프가 다시 찾으므로 RAG 안 고쳐 쓰기는 agent.yaml 값만 쓴다 (계획자 길은 rag.yaml)
+    seen = []
+    rag = fake_rag(sufficient=False)
+    counting = type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
+    graph = agent_graph(
+        agent_deps,
+        say(("search_law", {"query": "수입신고 기한"})),
+        say(),
+        rag=counting,
+        write=lambda p: CITING,
+    )
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a_rw"))
+    rewrites = load_rules("agent")["loop"]["rag_rewrites"]
+    assert len(seen) == 1 + rewrites
+    assert graph.get_state(cfg("a_rw")).values["llm_calls"] == 2 + search_calls(rewrites) + 1
+
+
+def test_worst_search_calls_takes_the_rewrite_count():
+    assert worst_search_calls() == search_calls(load_rules("rag")["loop"]["max_rewrites"])
+    assert worst_search_calls(1) == search_calls(1)

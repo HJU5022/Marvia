@@ -76,9 +76,9 @@ def search_calls(rewrites: int) -> int:
     return 2 + 2 * rewrites
 
 
-def worst_search_calls() -> int:
-    """검색 한 번이 RAG 안에서 부를 수 있는 LLM 호출의 최대 (계획자 길·에이전트 길이 함께 쓴다)."""
-    return search_calls(load_rules("rag")["loop"]["max_rewrites"])
+def worst_search_calls(rewrites: int | None = None) -> int:
+    """검색 한 번이 RAG 안에서 부를 수 있는 LLM 호출의 최대. rewrites가 없으면 rag.yaml 값(계획자 길)."""
+    return search_calls(load_rules("rag")["loop"]["max_rewrites"] if rewrites is None else rewrites)
 
 
 class Choice(BaseModel):
@@ -91,7 +91,8 @@ class Choice(BaseModel):
 def make_tools(rag_graph, today: Callable[[], date]) -> list:
     """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것)."""
     max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
-    worst_search = worst_search_calls()
+    # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
+    worst_search = worst_search_calls(load_rules("agent")["loop"]["rag_rewrites"])
     max_searches = load_rules("agent")["loop"]["max_searches"]
 
     @tool
