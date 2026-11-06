@@ -1,4 +1,7 @@
 # 간접 프롬프트 주입 시험 (done 3.5, 설계 12절). npx promptfoo로 Docker 안에서만 돌린다 (계획 4a Task 11).
+# 실행: promptfoo@0.125.1을 node:22-bookworm-slim 안에서 돌리고, npx 앞에서 인증서 경로를 정한다.
+#   export SSL_CERT_FILE="$(/venv/bin/python -c "import certifi; print(certifi.where())")"
+# [왜] 슬림 이미지에는 인증서 저장소가 없어 실제 모델 호출의 TLS가 실패한다 (그러면 차례가 돌지 않는다).
 # 통로 다섯 곳에 같은 주입 글을 넣고, 답 초안에 주입 표식이 없고, 부작용 도구를 청하지 않고,
 # 실제 번호가 LLM 입력에 없는지를 본다. 공급자는 eval/promptfoo/provider.py다.
 description: Marvia 간접 주입 시험
