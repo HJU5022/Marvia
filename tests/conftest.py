@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from db_required import db_unreachable
 from psycopg.conninfo import make_conninfo
 
 from marvia.config import Settings
@@ -21,7 +22,7 @@ def db():
     try:
         conn = psycopg.connect(URL, connect_timeout=2)
     except psycopg.OperationalError:
-        pytest.skip("로컬 Postgres가 꺼져 있음 (docker compose up -d db)")
+        db_unreachable()
     # [왜] 스키마는 DB 안의 폴더 같은 것. 실제 색인(public)과 섞이지 않게 시험용 스키마에 따로 만든다
     conn.execute("CREATE EXTENSION IF NOT EXISTS vector SCHEMA public")
     conn.execute(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE")
@@ -44,7 +45,7 @@ def test_url():
     try:
         conn = psycopg.connect(URL, connect_timeout=2, autocommit=True)
     except psycopg.OperationalError:
-        pytest.skip("로컬 Postgres가 꺼져 있음 (docker compose up -d db)")
+        db_unreachable()
     conn.execute(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE")
     conn.execute(f"CREATE SCHEMA {SCHEMA}")
     # [왜] search_path: 라이브러리가 만드는 표(checkpoints, store)가 public이 아니라 시험용 스키마에 생긴다

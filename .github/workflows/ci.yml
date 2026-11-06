@@ -49,3 +49,5 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pyright
       - run: uv run pytest -q
+        env:
+          MARVIA_REQUIRE_DB: "1" # DB에 못 닿으면 DB 시험을 건너뛰지 않고 실패시킨다
