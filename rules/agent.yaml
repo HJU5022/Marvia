@@ -52,8 +52,8 @@ answer:
 # [주의] 밖으로 나가는 메시지 도구가 생기면 always_ask에 넣는다 (설계 12절: auto는 바깥 발송을 덮지 않는다)
 approval:
   ask: [] # 권한 모드가 ask일 때만 묻는 도구용. 지금은 없다
-  # 장기 기억에 쓰는 도구는 auto에서도 늘 묻는다 (설계 8절·12절: 기억은 승인 뒤에만)
-  always_ask: [save_item_card, save_preference]
+  # 장기 기억과 감시 목록에 쓰는 도구는 auto에서도 늘 묻는다 (설계 8절·12절: 남는 일은 승인 뒤에만)
+  always_ask: [save_item_card, save_preference, watch_cargo]
 
 # 장기 기억 저장 기준 (설계 8절). 품목 카드 이름은 짧은 품목 이름만 받는다
 memory:

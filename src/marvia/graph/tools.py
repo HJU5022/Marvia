@@ -36,6 +36,7 @@ from marvia.rag.models import Evidence
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
+from marvia.watch import WatchDeps
 
 # 가린 토큰 모양: [BL1], [CARGO2], [NUM3]. [왜] 이름표는 identify.mask의 것을 그대로 쓴다
 TOKEN = re.compile(r"\[(?:" + "|".join(LABELS) + r")\d+\]")
@@ -105,12 +106,14 @@ def make_tools(
     provision: Callable[[str, date], list[Evidence]] | None = None,
     model: BaseChatModel | None = None,
     web: httpx.Client | None = None,
+    watch: WatchDeps | None = None,
 ) -> list:
     """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것).
 
     provision은 조문 이름표를 코퍼스 단위로 바꾸는 직접 조회다. 주면 get_provision 도구가 생긴다.
     model을 주면 그 모델로 도는 조사 서브에이전트 도구 research가 생긴다 (계획 3d).
     web을 주면 공식 사이트에서 법령을 이름으로 찾는 official_lookup이 생긴다 (계획 3d).
+    watch를 주면 화물을 감시 목록에 넣는 watch_cargo가 생긴다 (계획 3d).
     """
     max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
     # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
@@ -354,6 +357,7 @@ def make_tools(
     law_tools = [search_law] + ([get_provision] if provision else [])
     extra = [_research_tool(model, law_tools, today)] if model is not None else []
     extra += [_official_tool(web)] if web is not None else []
+    extra += [_watch_tool(watch)] if watch is not None else []
     tools = [
         search_law,
         calc_deadlines,
@@ -457,3 +461,23 @@ def _official_tool(web: httpx.Client):
         return _reply(runtime, text, official=[source])
 
     return official_lookup
+
+
+def _watch_tool(watch: WatchDeps):
+    """화물을 감시 목록에 넣는 도구 watch_cargo를 만든다 (계획 3d). 승인 뒤에만 돈다(approval.always_ask)."""
+
+    @tool
+    def watch_cargo(token: str, runtime: ToolRuntime) -> Command:
+        """Add a cargo token such as [BL1] to the user's watch list. Its customs status is re-checked from
+        time to time, and a change is shown at the start of the next conversation. Use it only when the
+        user asks to keep an eye on a cargo. Needs the user's approval.
+        """
+        number = runtime.state.get("mask_map", {}).get(token)
+        if number is None:
+            return _reply(runtime, f"{token}: 모르는 토큰이에요")
+        cargo = next((c for c in runtime.state.get("cargos", []) if c["token"] == token and c["facts"]), None)
+        # [주의] 실제 번호는 서버의 감시 표에만 들어간다. 모델에게 주는 글과 인자는 토큰뿐이다 (설계 12절)
+        watch.add(user_of(runtime.config), number, cargo["facts"]["stage"] if cargo else "")
+        return _reply(runtime, f"{token}을 감시 목록에 넣었어요. 단계가 바뀌면 다음 대화 처음에 알려 드려요.")
+
+    return watch_cargo

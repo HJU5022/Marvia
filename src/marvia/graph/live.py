@@ -23,6 +23,7 @@ from marvia.rag.live import live_deps
 from marvia.rag.provision import find_provision
 from marvia.tools.reimport import ItemFacts
 from marvia.tools.rules import load_rules
+from marvia.watch import live_watch
 
 
 def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
@@ -37,6 +38,7 @@ def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
         model=llm,  # [왜] 에이전트 길은 같은 모델에 도구를 묶어 부른다(create_agent가 bind_tools를 한다)
         # [왜] follow_redirects=False: 넘겨 주는 주소를 따라가면 허용 목록 밖으로 갈 수 있다 (official_lookup)
         web=httpx.Client(timeout=load_rules("agent")["official"]["timeout_s"], follow_redirects=False),
+        watch=live_watch(conn),  # [왜] 감시 표는 같은 로컬 DB에 있다(migrations/002_watch.sql)
     )
 
 

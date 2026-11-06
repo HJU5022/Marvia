@@ -53,6 +53,7 @@ from marvia.prompts import render
 from marvia.rag.models import Evidence
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
+from marvia.watch import WatchDeps
 
 
 # [왜] 바깥 기능(LLM·RAG)을 함수로 받아 둔다. RagDeps와 같은 방식이다
@@ -70,6 +71,7 @@ class AgentDeps:
     provision: Callable[[str, date], list[Evidence]] | None = None
     # 공식 사이트 조회용 HTTP 클라이언트 (에이전트 길의 official_lookup, 계획 3d). 없으면 그 도구도 없다
     web: httpx.Client | None = None
+    watch: WatchDeps | None = None  # 감시 목록 (에이전트 길의 watch_cargo, 계획 3d). 없으면 그 도구도 없다
 
 
 def start(state: MarviaState) -> dict:
@@ -421,7 +423,7 @@ def build_main_graph(
             raise ValueError("에이전트 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다")
         # [왜] 에이전트 길은 루프가 다시 찾으므로 RAG 안 고쳐 쓰기는 줄인다 (agent.yaml loop.rag_rewrites)
         agent_rag = build_rag_graph(deps.rag, max_rewrites=cfg["loop"]["rag_rewrites"])
-        tools = make_tools(agent_rag, deps.today, deps.provision, deps.model, deps.web)
+        tools = make_tools(agent_rag, deps.today, deps.provision, deps.model, deps.web, deps.watch)
         agent = build_agent(deps.model, tools, permission_mode)
         graph.add_node("brief", brief)
         graph.add_node(

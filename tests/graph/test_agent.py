@@ -1091,3 +1091,35 @@ def test_official_lookup_result_is_a_data_tag_the_title_cannot_close(agent_deps)
     assert text.count("</official_source>") == 1  # 끝 태그는 코드가 쓴 하나뿐이다
     assert "<official_source>\n[색인 밖 공식 출처, 인용 불가] 식품위생법" in text
     assert "&lt;/official_source>" in text
+
+
+# --- 감시 목록 (계획 3d) ---
+
+
+class FakeWatch:
+    """감시 목록 가짜. 넣은 것을 적어 두고, 정해 둔 변화를 한 번만 돌려준다."""
+
+    def __init__(self, news: list[dict] | None = None):
+        self.added: list[tuple[str, str, str]] = []
+        self.left = list(news or [])
+
+    def deps(self):
+        from marvia.watch import WatchDeps
+
+        return WatchDeps(add=lambda *row: self.added.append(row), news=self.take)
+
+    def take(self, user: str) -> list[dict]:
+        out, self.left = self.left, []
+        return out
+
+
+def test_watching_a_cargo_waits_for_approval_and_keeps_the_number_server_side(agent_deps):
+    watch = FakeWatch()
+    ask = say(("watch_cargo", {"token": "[BL1]"}))
+    graph = agent_graph(agent_deps, ask, say(), permission_mode="auto", watch=watch.deps())
+    out = graph.invoke({"text": "DEMO0001 계속 지켜봐 줘"}, cfg("w1"))
+    assert out["__interrupt__"][0].value["action_requests"][0]["args"] == {"token": "[BL1]"}  # 카드에도 토큰
+    assert watch.added == []  # 승인 전에는 넣지 않는다
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("w1"))
+    assert watch.added == [("local", "DEMO0001", "반입신고")]  # 실제 번호는 서버 쪽 감시 표에만 간다
+    assert "DEMO0001" not in all_text(graph.get_state(cfg("w1")).values)
