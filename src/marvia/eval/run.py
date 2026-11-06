@@ -89,6 +89,7 @@ def eval_deps(deps: AgentDeps, item: Item, today: date, log: list[dict]) -> Agen
         rag=replace(rag, grade=grade, rewrite=rewrite, search=search),
         provision=provision if real_provision else None,
         today=lambda: today,
+        web=None,  # [왜] 평가 결과가 바깥 사이트에 기대면 안 된다. official_lookup은 묶이지 않는다
         watch=WatchDeps(
             add=lambda user, number, stage: None, news=lambda user: [], ack=lambda user, ids: None
         ),

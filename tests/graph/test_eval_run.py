@@ -208,3 +208,21 @@ def test_eval_run_binds_a_watch_stub_so_the_never_check_can_fire(agent_deps):
     assert deps.watch is not None
     deps.watch.add("u", "DEMO0001", "")  # 가짜라 DB 없이 돈다
     assert deps.watch.news("u") == []
+
+
+def test_eval_run_has_no_outside_lookup(agent_deps):
+    # [왜] 색인 밖 문항은 "바깥 조회 없음"을 전제한다. 평가 결과가 바깥 사이트에 기대면 안 된다
+    from dataclasses import replace
+
+    import httpx
+
+    live = replace(agent_deps(), web=httpx.Client())
+    deps = eval_deps(live, item("식물방역법은 언제부터예요?"), TODAY, [])
+    assert deps.web is None
+    from marvia.graph.tools import make_tools
+
+    def bound(d):  # main.py가 도구를 묶는 부름과 같다
+        return {t.name for t in make_tools(None, d.today, d.provision, d.model, d.web, d.watch)}
+
+    assert "official_lookup" in bound(live)  # 대조: 바깥 조회가 있으면 묶인다
+    assert "official_lookup" not in bound(deps)
