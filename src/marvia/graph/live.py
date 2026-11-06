@@ -33,7 +33,7 @@ def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
     #      watch=None이면 그래프에 watch_cargo와 새 소식이 없다
     # 틀린 모양의 키(ValueError)도 같다. 오류 글을 그대로 올리지 않는다
     try:
-        watch = live_watch(conn, watch_keys(settings.watch_key.get_secret_value()))
+        watch = live_watch(conn, watch_keys(settings.data_key.get_secret_value()))
     except ValueError:
         watch = None
     return AgentDeps(

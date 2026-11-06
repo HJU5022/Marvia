@@ -40,14 +40,14 @@ def derive_key(secret: str, info: bytes) -> bytes:
 
 
 def watch_keys(secret: str) -> WatchKeys:
-    """MARVIA_WATCH_KEY 하나에서 암호화 키와 해시 키를 따로 뽑는다."""
+    """MARVIA_DATA_KEY 하나에서 감시 표의 암호화 키와 해시 키를 따로 뽑는다."""
     # [왜] HKDF는 비밀번호용 느린 해시가 아니다. 사람이 친 짧은 비밀은 DB를 훔친 쪽이 대입으로 풀 수 있어,
     #      Fernet.generate_key()로 만든 무작위 키만 받는다(틀린 모양이면 Fernet이 ValueError를 낸다)
     # [주의] 오류 글에 비밀을 넣지 않는다. from None으로 원래 오류의 이어짐도 끊는다
     try:
         Fernet(secret)
     except ValueError:
-        raise ValueError("MARVIA_WATCH_KEY가 비어 있거나 올바른 Fernet 키가 아닙니다") from None
+        raise ValueError("MARVIA_DATA_KEY가 비어 있거나 올바른 Fernet 키가 아닙니다") from None
     # [왜] 한 비밀에서 키 둘을 따로 뽑아, 한 쪽 쓰임이 새도 다른 쪽이 열리지 않게 한다
     fernet = Fernet(base64.urlsafe_b64encode(derive_key(secret, ENCRYPT_INFO)))  # Fernet은 base64 키를 받는다
     return WatchKeys(fernet=fernet, hash_key=derive_key(secret, HASH_INFO))

@@ -14,11 +14,11 @@ from marvia.watch import recheck, watch_keys
 
 settings = Settings()
 try:
-    keys = watch_keys(settings.watch_key.get_secret_value())
+    keys = watch_keys(settings.data_key.get_secret_value())
 except ValueError:
     # [왜] 키가 없거나 틀리면 표의 번호를 풀 수 없다. DB를 건드리기 전에 멈춘다
     # [주의] 키 값은 출력하지 않는다
-    print("MARVIA_WATCH_KEY가 없거나 올바른 키가 아닙니다. .env를 확인한 뒤 다시 실행하세요.")
+    print("MARVIA_DATA_KEY가 없거나 올바른 키가 아닙니다. .env를 확인한 뒤 다시 실행하세요.")
     sys.exit(1)
 
 with connect(settings.database_url) as conn:

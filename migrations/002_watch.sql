@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS watches (
     id bigserial PRIMARY KEY,
     user_id text NOT NULL,
-    number_enc text NOT NULL, -- Fernet 토큰. 키는 MARVIA_WATCH_KEY
+    number_enc text NOT NULL, -- Fernet 토큰. 키는 MARVIA_DATA_KEY에서 뽑는다
     number_hash text NOT NULL, -- 키가 있는 HMAC-SHA256 16진수. 같은 번호 검사에만 쓴다
     stage text NOT NULL DEFAULT '', -- 마지막으로 본 통관 단계. 모르면 빈 글
     created_at timestamptz NOT NULL DEFAULT now(),
