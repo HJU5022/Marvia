@@ -85,6 +85,8 @@ domain.add_argument("--marvia", help="scripts/run_eval.py run이 쓴 .raw.json")
 args = parser.parse_args()
 
 if args.command == "domain-prompts":
+    if inside_repo(Path(args.out)):
+        raise SystemExit(f"저장소 안에는 쓰지 않는다: {args.out}")
     data, out = load_set(), Path(args.out)
     (out / "unipass").mkdir(parents=True, exist_ok=True)
     # [왜] 범용 도구도 같은 가공 화물 상태를 본다. UNI-PASS 화면을 사용자가 옮겨 주는 경우와 같다
