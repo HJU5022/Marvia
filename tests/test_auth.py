@@ -1,6 +1,8 @@
 """화면 서버 로그인 확인 시험 (계획 4b Task 4, C4). 시험 안에서 만든 ES256 키로 돌고 네트워크를 안 쓴다."""
 
+import io
 import time
+import urllib.request
 
 import jwt
 import pytest
@@ -15,7 +17,7 @@ OTHER = ec.generate_private_key(ec.SECP256R1())
 SETTINGS = Settings(_env_file=None, supabase_url=BASE, owner_ids="owner-1, owner-2")
 
 
-def token(key=KEY, **changes) -> str:
+def token(key=KEY, headers=None, **changes) -> str:
     claims = {
         "sub": "owner-1",
         "iss": f"{BASE}/auth/v1",
@@ -23,7 +25,7 @@ def token(key=KEY, **changes) -> str:
         "exp": int(time.time()) + 300,
     }
     claims = {k: v for k, v in (claims | changes).items() if v is not None}
-    return jwt.encode(claims, key, algorithm="ES256")
+    return jwt.encode(claims, key, algorithm="ES256", headers=headers)
 
 
 def forged(algorithm: str, key) -> str:
@@ -48,7 +50,7 @@ def test_a_signed_token_of_an_owner_gives_its_user_id():
     "bad",
     [
         token(OTHER),  # 서명이 다른 키
-        token(exp=int(time.time()) - 10),  # 만료
+        token(exp=int(time.time()) - 120),  # 만료 (leeway 30초보다 오래전)
         token(iss="https://other.supabase.test/auth/v1"),  # 다른 프로젝트가 발급
         token(aud="anon"),  # 로그인한 사용자 토큰이 아니다
         token(exp=None),  # 만료 시각이 없다
@@ -128,3 +130,63 @@ def test_the_server_refuses_to_start_with_langsmith_tracing_on(monkeypatch, name
         check_startup(ok)
     monkeypatch.setenv(name, "false")
     check_startup(ok)  # 꺼 두면 뜬다
+
+
+def over_the_wire(monkeypatch, reply):
+    """JWKS 받기를 네트워크 없이 바꿔 끼운다. reply가 예외면 던지고, 아니면 그 바이트를 200 본문으로 준다."""
+    asked = []
+
+    def fake_open(self, request, data=None, timeout=None):
+        asked.append((request.full_url, timeout))
+        if isinstance(reply, Exception):
+            raise reply
+        return io.BytesIO(reply)
+
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", fake_open)
+    return asked
+
+
+@pytest.mark.parametrize(
+    "reply", [b"<html>not json</html>", ConnectionResetError("reset")], ids=["non-json-200", "reset"]
+)
+def test_a_broken_key_list_is_401_not_a_raw_exception(monkeypatch, reply):
+    asked = over_the_wire(monkeypatch, reply)
+    verify = supabase_verifier(SETTINGS)
+    with pytest.raises(AuthError) as refused:
+        user_from_header(f"Bearer {token(headers={'kid': 'k1'})}", verify)
+    assert refused.value.status == 401 and str(refused.value) == "로그인을 확인하지 못했어요"
+    assert asked[0][1] == 5  # rules/server.yaml auth.jwks_timeout_s
+
+
+@pytest.mark.parametrize(("ahead", "ok"), [(10, True), (120, False)], ids=["within-leeway", "beyond-leeway"])
+def test_clock_skew_is_allowed_only_up_to_the_leeway(ahead, ok):
+    early = token(iat=int(time.time()) + ahead)
+    if ok:
+        assert user_from_header(f"Bearer {early}", VERIFY) == "owner-1"
+    else:
+        with pytest.raises(AuthError) as refused:
+            user_from_header(f"Bearer {early}", VERIFY)
+        assert refused.value.status == 401
+
+
+def test_a_permission_error_from_the_key_lookup_is_not_swallowed():
+    # [왜] MissingUser는 PermissionError(OSError의 하위)다. 키 받기 오류를 잡는 except가 넓어지면 삼켜진다
+
+    def broken(raw):
+        raise PermissionError("not a fetch error")
+
+    with pytest.raises(PermissionError):
+        user_from_header(f"Bearer {token()}", supabase_verifier(SETTINGS, signing_key=broken))
+
+
+def test_the_server_refuses_to_start_with_a_plain_http_supabase_url(monkeypatch):
+    for name in (
+        "K_SERVICE",
+        "LANGSMITH_TRACING",
+        "LANGSMITH_TRACING_V2",
+        "LANGCHAIN_TRACING",
+        "LANGCHAIN_TRACING_V2",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match="https"):
+        check_startup(Settings(_env_file=None, supabase_url="http://demo.supabase.test", owner_ids="owner-1"))

@@ -8,6 +8,8 @@ pool:
 
 auth:
   audience: authenticated # Supabase가 로그인한 사용자 토큰에 넣는 aud
+  jwks_timeout_s: 5 # 공개키 목록을 받는 제한 시간(초). PyJWT 기본 30초면 Supabase가 느릴 때 로그인이 줄을 선다
+  leeway_s: 30 # 서버와 Supabase 시계 차이를 봐주는 초 (exp·iat·nbf)
   algorithms: [ES256] # [주의] 목록을 열면 alg를 HS256·none으로 바꾼 위조 토큰이 통할 수 있다
 
 request:

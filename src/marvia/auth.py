@@ -4,6 +4,7 @@
 - supabase(기본): Supabase Auth가 발급한 JWT를 공개키(JWKS, ES256)로 확인한다. aud·iss·exp·sub가 없으면
   거절하고, sub가 소유자 목록(MARVIA_OWNER_IDS)에 없으면 403이다. 우리 쪽에 JWT 비밀값을 두지 않는다.
 - dev: 이 컴퓨터에서 화면을 돌려 볼 때만 쓰는 고정 토큰(MARVIA_DEV_TOKEN). 사용자는 DEV_USER 하나다.
+시작 검사(check_startup)는 트레이싱 환경 변수(R-069)와 로그인 설정(https, 소유자, 개발 로그인)을 본다.
 하지 않는 일: 로그인 화면·가입(Supabase가 한다), 토큰 발급. 가입 막기는 Supabase 설정에서 한다(배포 절차서).
 """
 
@@ -43,7 +44,7 @@ def owners(settings: Settings) -> set[str]:
 
 
 def check_startup(settings: Settings) -> None:
-    """서버를 띄우기 전에 로그인 설정을 본다. 맞지 않으면 시작하지 않는다(fail-closed)."""
+    """띄우기 전에 트레이싱 환경 변수(R-069)와 로그인 설정을 본다. 맞지 않으면 시작하지 않는다."""
     # [왜] langsmith는 이 환경 변수만으로 추적을 켜고 콜백 값(실제 번호 포함)을 scrub 없이 밖으로 보낸다
     #      (R-069). 트레이서 연결 작업이 scrub을 거치게 하기 전까지 켜진 채로는 뜨지 않는다.
     #      이름은 langsmith/utils.py의 tracing_is_enabled가 보는 것(접두어 LANGSMITH·LANGCHAIN의
@@ -62,6 +63,8 @@ def check_startup(settings: Settings) -> None:
         return
     if not settings.supabase_url:
         raise RuntimeError("MARVIA_SUPABASE_URL이 없어 로그인을 확인할 수 없습니다")
+    if not settings.supabase_url.startswith("https://"):
+        raise RuntimeError("MARVIA_SUPABASE_URL은 https://로 시작해야 합니다(공개키를 평문으로 받지 않는다)")
     if not owners(settings):
         raise RuntimeError("MARVIA_OWNER_IDS가 비어 있습니다. 쓸 수 있는 사용자를 정해야 서버가 뜹니다")
 
@@ -73,7 +76,7 @@ def supabase_verifier(settings: Settings, signing_key: Callable[[str], Any] | No
     cfg = load_rules("server")["auth"]
     if signing_key is None:
         # [왜] 공개키 목록은 한 번 받아 두고, 토큰의 kid가 목록에 없을 때만 다시 받는다(PyJWKClient 캐시)
-        client = jwt.PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json")
+        client = jwt.PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json", timeout=cfg["jwks_timeout_s"])
 
         def from_jwks(token: str) -> Any:
             return client.get_signing_key_from_jwt(token).key
@@ -84,12 +87,21 @@ def supabase_verifier(settings: Settings, signing_key: Callable[[str], Any] | No
 
     def verify(token: str) -> str:
         try:
+            key = key_of(token)
+        except (jwt.PyJWTError, ValueError, OSError) as error:
+            # [주의] 공개키 받기 오류(JSON 아님, 연결 끊김)도 401이다. 사유 글은 넣지 않는다.
+            #        MissingUser(PermissionError)가 이 길로 들어오면 안 되므로 키 받기 둘레만 잡는다
+            if isinstance(error, PermissionError):
+                raise
+            raise AuthError(401, "로그인을 확인하지 못했어요") from None
+        try:
             claims = jwt.decode(
                 token,
-                key_of(token),
+                key,
                 algorithms=cfg["algorithms"],
                 audience=cfg["audience"],
                 issuer=f"{base}/auth/v1",  # [왜] 다른 Supabase 프로젝트에서 받은 토큰을 막는다
+                leeway=cfg["leeway_s"],
                 options={"require": ["exp", "sub", "iss", "aud"]},
             )
         except jwt.PyJWTError:
