@@ -95,7 +95,7 @@ def unsupported(rows: list[dict], items: dict[str, Item]) -> dict:
 
 
 def false_not_found(rows: list[dict], items: dict[str, Item]) -> dict:
-    """지어낸 없음: 맞는 행동에 not_found가 없는 문항에서 "근거에 없다"고 답한 줄의 비율 (count는 줄 수)."""
+    """없다고 잘못 답함: 맞는 행동에 not_found가 없는 문항에서 "근거에 없다"고 답한 줄의 비율."""
     # [왜] 없음을 남발하면 근거 없는 답 비율에서 빠져 점수가 오른다. 그 길을 따로 센다
     picked = [r for r in rows if "not_found" not in items[r["id"]].behaviour]
     hits = [float(r["behaviour"] == "not_found") for r in picked]
@@ -204,7 +204,7 @@ TABLE = [
     ("blocked_accuracy", "막힘 행동"),
     ("unsupported", "근거 없는 답"),
     ("unsupported_all", "근거 없는 답(전 문항)"),
-    ("false_not_found", "지어낸 없음"),
+    ("false_not_found", "없다고 잘못 답함"),
     ("calc_accuracy", "계산"),
     ("recall", "R@k"),
     ("mrr", "MRR"),
@@ -626,30 +626,42 @@ def spread(summaries: list[dict]) -> dict:
     return out
 
 
-def spread_groups(results: list[dict]) -> dict[tuple[str, str], list[dict]]:
-    """결과 파일들을 설정(길, 모델)별로 묶는다. 한 묶음에 평가셋 파일이 다른 결과가 섞이면 거절한다."""
-    groups: dict[tuple[str, str], list[dict]] = {}
+def metric_names(k: int) -> dict[str, str]:
+    """요약 열쇠 → 표에 쓰는 한국어 이름. report의 TABLE을 그대로 쓴다(이름 목록을 둘로 두지 않는다)."""
+    return {(f"recall_at_{k}" if key == "recall" else key): name for key, name in TABLE}
+
+
+def spread_groups(results: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
+    """결과 파일들을 (길, 모델, 커밋)별로 묶는다. 같은 묶음에 평가셋 파일이 다른 결과가 섞이면 거절한다."""
+    # [왜] 같은 설정이어도 커밋이 다르면 다른 코드의 결과다. 한 평균으로 섞지 않고 따로 센다
+    groups: dict[tuple[str, str, str], list[dict]] = {}
     for result in results:
-        groups.setdefault((result["meta"]["loop"], result["meta"]["model"]), []).append(result)
-    for (loop, model), group in groups.items():
+        meta = result["meta"]
+        groups.setdefault((meta["loop"], meta["model"], meta.get("commit", "?")), []).append(result)
+    for (loop, model, commit), group in groups.items():
         shas = sorted({r["meta"]["set_sha256"][:12] for r in group})
         if len(shas) > 1:
             raise ValueError(
-                f"{loop}-{model}: 평가셋 파일이 다르다 ({', '.join(shas)}). 같은 판끼리만 묶는다"
+                f"{loop}-{model}-{commit}: 평가셋 파일이 다르다 ({', '.join(shas)}). 같은 판끼리만 묶는다"
             )
     return groups
 
 
-def spread_table(setting: tuple[str, str], set_sha: str, stats: dict) -> str:
-    """설정 하나의 평균·범위 표 (마크다운). 머리에 길·모델·평가셋 sha를 적는다."""
-    loop, model = setting
+def spread_table(group: list[dict], set_label: str, stats: dict) -> str:
+    """묶음 하나의 평균·범위 표 (마크다운). 머리에 길·모델·커밋·평가셋, 아래에 평균 낸 실행 태그를 적는다."""
+    meta = group[0]["meta"]
+    names = metric_names(meta["k"])
     lines = [
-        f"### {loop} {model} (평가셋 sha {set_sha[:12]})",
+        f"### {meta['loop']} {meta['model']} (커밋 {meta.get('commit', '?')}, {set_label})",
+        "",
+        "평균 낸 실행: " + ", ".join(r["meta"].get("tag") or "(태그 없음)" for r in group),
         "",
         "| 지표 | 평균 | 최소~최대 | 잰 실행 | 분모 |",
         "|---|---|---|---|---|",
     ]
     for key, s in stats.items():
         denominator = "/".join(str(n) for n in s["n"]) or "-"
-        lines.append(f"| {key} | {s['mean']} | {s['min']}~{s['max']} | {s['runs']} | {denominator} |")
+        lines.append(
+            f"| {names.get(key, key)} | {s['mean']} | {s['min']}~{s['max']} | {s['runs']} | {denominator} |"
+        )
     return "\n".join(lines)

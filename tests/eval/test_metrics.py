@@ -465,7 +465,7 @@ def test_false_not_found_counts_not_found_rows_on_items_that_do_not_expect_it():
     assert false_not_found(rows, items) == {"value": 0.5, "n": 2, "count": 1}  # S1, R1 중 S1
     assert false_not_found([row("H1", behaviour="not_found")], items) == {"value": None, "n": 0, "count": 0}
     summary = summarize([row("S1", behaviour="not_found")], items, 8)
-    assert summary["false_not_found"]["count"] == 1 and "지어낸 없음" in compare_table(
+    assert summary["false_not_found"]["count"] == 1 and "없다고 잘못 답함" in compare_table(
         [{"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summary}]
     )
 
@@ -480,9 +480,17 @@ def test_base_behaviour_scores_a_v2_row_the_way_v1_would():
     assert rows[0]["behaviour"] == "not_found"  # 원본은 바꾸지 않는다
 
 
-def _result(tag, sha, loop="agent", model="m", **summary):
+def _result(tag, sha, loop="agent", model="m", commit="c1", **summary):
     return {
-        "meta": {"loop": loop, "model": model, "tag": tag, "set": "v2", "set_sha256": sha, "k": 8},
+        "meta": {
+            "loop": loop,
+            "model": model,
+            "tag": tag,
+            "set": "v2",
+            "set_sha256": sha,
+            "commit": commit,
+            "k": 8,
+        },
         "summary": summary,
     }
 
@@ -500,13 +508,27 @@ def test_spread_gives_mean_min_max_and_denominators_for_each_shared_metric():
     assert "only_here" not in out and "behaviours" not in out  # 모든 실행에 있고 숫자인 지표만
 
 
-def test_spread_groups_by_loop_and_model_and_refuses_mixed_set_files():
+def test_spread_groups_by_loop_model_and_commit_and_refuses_mixed_set_files():
     a = [_result("v2r1", "aa"), _result("v2r2", "aa"), _result("x", "aa", loop="planner")]
     groups = spread_groups(a)
-    assert sorted(groups) == [("agent", "m"), ("planner", "m")] and len(groups[("agent", "m")]) == 2
+    assert sorted(groups) == [("agent", "m", "c1"), ("planner", "m", "c1")]
+    assert len(groups[("agent", "m", "c1")]) == 2
+    # [왜] 같은 길·모델·평가셋이어도 커밋이 다르면 다른 코드의 결과라 따로 센다
+    apart = spread_groups([_result("v2r1", "aa"), _result("v2r2", "aa", commit="c2")])
+    assert sorted(apart) == [("agent", "m", "c1"), ("agent", "m", "c2")]
     with pytest.raises(ValueError, match="평가셋 파일이 다르다"):
         spread_groups([_result("v2r1", "aa"), _result("v2r2", "bb")])
-    assert "agent" in spread_table(("agent", "m"), "aa", spread([{"errors": 0}, {"errors": 1}]))
+
+
+def test_spread_table_names_the_files_and_uses_the_report_labels():
+    group = [_result("v2r1", "aa"), _result("v2r2", "aa")]
+    stats = spread(
+        [{"behaviour_accuracy": {"value": 0.5, "n": 4}, "false_not_found": {"value": 0.0, "n": 9}}] * 2
+    )
+    text = spread_table(group, "aa", stats)
+    assert "v2r1" in text and "v2r2" in text and "c1" in text  # 어떤 파일 어느 커밋을 평균했나
+    assert "행동 정확도" in text and "없다고 잘못 답함" in text  # report와 같은 이름
+    assert "behaviour_accuracy" not in text and "false_not_found" not in text
 
 
 def test_set_view_names_the_set_and_tells_a_v1_view_of_a_v2_run_from_a_foreign_file():

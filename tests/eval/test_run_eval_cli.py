@@ -106,7 +106,7 @@ def test_report_scores_with_the_chosen_set_and_warns_when_the_result_came_from_a
         check=False,
     )
     v1, v2 = run("--set", "v1"), run("--set", "v2")
-    assert v1.returncode == 0 and "[주의]" not in v1.stdout and "지어낸 없음" in v1.stdout
+    assert v1.returncode == 0 and "[주의]" not in v1.stdout and "없다고 잘못 답함" in v1.stdout
     # [왜] 저장 결과의 set_sha256은 v1 파일의 것이다. v2로 채점하면 다른 파일이라고 알린다
     assert v2.returncode == 0 and "[주의]" in v2.stdout
 
@@ -138,7 +138,7 @@ def _v2_run(tmp_path, name, tag):
     from marvia.eval.dataset import SET_V2_PATH, file_sha256
 
     data = json.loads((ROOT / "eval/results/agent-claude-haiku-5-5.json").read_text(encoding="utf-8"))
-    data["meta"] |= {"set": "v2", "set_sha256": file_sha256(SET_V2_PATH), "tag": tag}
+    data["meta"] |= {"set": "v2", "set_sha256": file_sha256(SET_V2_PATH), "tag": tag, "commit": "c2c068d"}
     for row in data["rows"]:
         row["behaviour_base"] = row["behaviour"]
     path = tmp_path / name
@@ -166,7 +166,42 @@ def test_report_labels_the_set_and_does_not_warn_for_the_v1_view_of_a_v2_run(tmp
 def test_spread_prints_mean_and_range_and_refuses_mixed_set_files(tmp_path):
     first, second = _v2_run(tmp_path, "a.json", "v2r1"), _v2_run(tmp_path, "b.json", "v2r2")
     done = _cli("spread", first, second)
-    assert done.returncode == 0 and "| mrr |" in done.stdout and "실행 2번" in done.stdout
-    v1 = ROOT / "eval/results/agent-claude-haiku-5-5.json"
-    mixed = _cli("spread", first, v1)
+    assert done.returncode == 0 and "| MRR |" in done.stdout and "실행 2번" in done.stdout
+    v1 = json.loads((ROOT / "eval/results/agent-claude-haiku-5-5.json").read_text(encoding="utf-8"))
+    v1["meta"]["commit"] = "c2c068d"  # 커밋이 같아야 같은 묶음이다
+    foreign = tmp_path / "v1.json"
+    foreign.write_text(json.dumps(v1), encoding="utf-8")
+    mixed = _cli("spread", first, foreign)
     assert mixed.returncode != 0 and "평가셋 파일이 다르다" in mixed.stderr
+
+
+def test_report_line_names_the_tag_and_the_default_set_is_v2(tmp_path):
+    run = _v2_run(tmp_path, "a.json", "v2r1")
+    done = _cli("report", run)  # --set을 안 주면 v2다
+    assert "- agent-claude-haiku-5-5-v2r1: v2 (sha" in done.stdout and "[주의]" not in done.stdout
+
+
+def test_spread_lists_files_and_defaults_to_v2_and_groups_by_commit(tmp_path):
+    first, second = _v2_run(tmp_path, "a.json", "v2r1"), _v2_run(tmp_path, "b.json", "v2r2")
+    data = json.loads(second.read_text(encoding="utf-8"))
+    data["meta"]["commit"] = "other00"
+    third = tmp_path / "c.json"
+    third.write_text(json.dumps(data), encoding="utf-8")
+    done = _cli("spread", first, second, third)
+    assert done.returncode == 0 and "행동 정확도" in done.stdout and "없다고 잘못 답함" in done.stdout
+    assert done.stdout.count("### ") == 2 and "c2c068d" in done.stdout and "other00" in done.stdout
+
+
+def test_spread_set_v1_scores_v2_runs_on_behaviour_base_and_refuses_runs_without_it(tmp_path):
+    run = _v2_run(tmp_path, "a.json", "v2r1")
+    view = _cli("spread", "--set", "v1", run)
+    assert view.returncode == 0 and "v1 기준으로 본 v2 실행" in view.stdout
+    data = json.loads(run.read_text(encoding="utf-8"))
+    for row in data["rows"]:
+        del row["behaviour_base"]
+    bare = tmp_path / "bare.json"
+    bare.write_text(json.dumps(data), encoding="utf-8")
+    refused = _cli("spread", "--set", "v1", bare)
+    assert refused.returncode != 0 and "behaviour_base" in refused.stderr
+    v1_file = ROOT / "eval/results/agent-claude-haiku-5-5.json"
+    assert _cli("spread", v1_file).returncode != 0  # 기본 v2로는 v1 파일을 채점하지 않는다

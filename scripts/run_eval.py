@@ -68,20 +68,26 @@ run.add_argument("--ids", default="", help="이 문항만 (쉼표로)")
 run.add_argument("--limit", type=int, default=0, help="앞에서 이만큼만")
 run.add_argument("--max-cost", type=float, default=load_rules("eval")["run"]["max_cost_usd"])
 run.add_argument("--dry-run", action="store_true", help="어림 비용만 찍고 끝낸다")
-# [왜] 기본은 v1이다. v2는 동결한 뒤에 기본으로 바꾼다. meta의 set·set_sha256이 어느 판인지 남긴다
-run.add_argument("--set", choices=list(SETS), default="v1", help="평가셋 판 (eval/set_<판>.yaml)")
+# [왜] v2를 동결(f09fe11)해서 기본이 v2다. meta의 set·set_sha256이 어느 판인지 남긴다
+run.add_argument("--set", choices=list(SETS), default="v2", help="평가셋 판 (eval/set_<판>.yaml)")
 run.add_argument("--tag", default="", help="결과 파일 이름 뒤에 붙일 말 (예: ctx는 맥락 문장 색인)")
 report = sub.add_parser("report", help="결과 파일들을 지금 코드로 다시 채점해 표로 (키 없음)")
 report.add_argument("files", nargs="+")
 report.add_argument(
     "--set",
     choices=list(SETS),
-    default="v1",
+    default="v2",
     help="이 판의 정답으로 다시 채점한다 (v1이면 behaviour_base로 센다)",
 )
 report.add_argument("--common", action="store_true", help="모든 파일에 있는 문항만으로 비교한다")
 spread_cmd = sub.add_parser("spread", help="같은 설정의 결과 파일들을 지표마다 평균과 범위로 (키 없음)")
 spread_cmd.add_argument("files", nargs="+")
+spread_cmd.add_argument(
+    "--set",
+    choices=list(SETS),
+    default="v2",
+    help="이 판으로 채점한다 (v1이면 v2 실행을 behaviour_base로 센다)",
+)
 sheet = sub.add_parser("sheet", help="사람 채점지 (키 없음). 답 글이 들어 있어 저장소 밖에 쓴다")
 sheet.add_argument("result")
 sheet.add_argument("raw")
@@ -187,18 +193,24 @@ if args.command == "spread":
         groups = spread_groups(results)
     except ValueError as error:
         raise SystemExit(str(error)) from None
-    by_sha = {file_sha256(path): path for path in SETS.values()}
+    set_path = SETS[args.set]
+    items = {i.id: i for i in load_set(set_path).items}
     blocks = []
-    for setting, group in groups.items():
-        sha = group[0]["meta"]["set_sha256"]
-        if sha not in by_sha:
-            raise SystemExit(
-                f"{setting[0]}-{setting[1]}: 지금 저장소의 어느 평가셋 파일과도 sha가 다르다 ({sha[:12]})"
-            )
-        items = {i.id: i for i in load_set(by_sha[sha]).items}
-        # [왜] 저장한 요약 대신 지금 지표 코드로 다시 센다 (report와 같다)
-        summaries = [summarize(r["rows"], items, r["meta"]["k"]) for r in group]
-        blocks.append(spread_table(setting, sha, spread(summaries)) + f"\n\n실행 {len(group)}번")
+    for group in groups.values():
+        summaries = []
+        for result in group:
+            label, warn = set_view(result["meta"], result["rows"], args.set, file_sha256(set_path))
+            tag = result["meta"].get("tag") or "(태그 없음)"
+            if warn:
+                # [왜] 다른 평가셋 파일의 결과이거나 behaviour_base가 없는 v2 실행은 이 판으로 셀 수 없다
+                raise SystemExit(
+                    f"{tag}: --set {args.set}로 채점할 수 없다 ({label}). "
+                    "v2 실행을 v1로 세려면 줄에 behaviour_base가 있어야 한다"
+                )
+            rows = with_base_behaviour(result["rows"]) if args.set == "v1" else result["rows"]
+            # [왜] 저장한 요약 대신 지금 지표 코드로 다시 센다 (report와 같다)
+            summaries.append(summarize(rows, items, result["meta"]["k"]))
+        blocks.append(spread_table(group, label, spread(summaries)) + f"\n\n실행 {len(group)}번")
     print("\n\n".join(blocks))
     raise SystemExit(0)
 
@@ -281,7 +293,9 @@ if args.command == "report":
     by_id = {i.id: i for i in load_set(set_path).items}
     common = set.intersection(*({r["id"] for r in result["rows"]} for result in results))
     for result in results:
-        name = f"{result['meta']['loop']}-{result['meta']['model']}"
+        meta = result["meta"]
+        # [왜] 같은 길·모델의 여러 실행(v2r1~v2r3)을 줄마다 가를 수 있게 태그를 붙인다
+        name = f"{meta['loop']}-{meta['model']}" + (f"-{meta['tag']}" if meta.get("tag") else "")
         label, warn = set_view(result["meta"], result["rows"], args.set, file_sha256(set_path))
         print(f"- {name}: {label}")
         if warn:
