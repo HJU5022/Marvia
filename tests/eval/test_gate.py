@@ -3,7 +3,7 @@
 import json
 
 from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
-from marvia.eval.metrics import floors, gate_missing, gate_violations, summarize
+from marvia.eval.metrics import floors, gate_missing, gate_uncovered, gate_violations, summarize
 from marvia.tools.rules import load_rules
 
 
@@ -59,5 +59,17 @@ def test_committed_run_still_meets_its_floors():
     assert result["meta"]["set_sha256"] == file_sha256(SET_PATH)
     assert gate_missing(gate["floors"]) == []  # [왜] 빈 바닥값이면 아래 비교가 아무것도 보지 않고 통과한다
     items = {item.id: item for item in load_set().items}
+    assert gate_uncovered(result["rows"], items) == []  # [왜] 일부만 담은 파일은 그 일부로만 판정돼 통과한다
     summary = summarize(result["rows"], items, result["meta"]["k"])
     assert gate_violations(summary, gate["floors"]) == []
+
+
+def test_gate_file_missing_an_item_or_repeating_one_is_not_covering_the_set(tmp_path):
+    gate = load_rules("eval")["gate"]
+    full = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
+    items = {item.id: item for item in load_set().items}
+    trimmed = tmp_path / "trimmed.json"  # 상한에서 멈춘 일부 결과를 흉내 낸다
+    trimmed.write_text(json.dumps(full | {"rows": full["rows"][:-1]}), encoding="utf-8")
+    rows = json.loads(trimmed.read_text(encoding="utf-8"))["rows"]
+    assert gate_uncovered(rows, items) == [f"빠짐: {full['rows'][-1]['id']}"]
+    assert gate_uncovered(full["rows"] + full["rows"][:1], items) == [f"겹침: {full['rows'][0]['id']}"]

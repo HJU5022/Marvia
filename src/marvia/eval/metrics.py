@@ -292,6 +292,19 @@ def gate_missing(bounds: dict) -> list[str]:
     return [key for key, cap in REQUIRED_BOUNDS.items() if bounds.get(key) != {"max": cap}]
 
 
+def gate_uncovered(rows: list[dict], items: dict[str, Item]) -> list[str]:
+    """결과 줄이 평가셋 문항을 빠짐없이 한 번씩 덮지 않은 곳을 돌려준다. 빈 목록이면 모두 덮음.
+
+    [왜] 상한에서 멈춘 결과도 종료 코드 0으로 저장돼, 일부만 담은 파일이 일부로만 판정돼 통과한다.
+    """
+    seen = Counter(row["id"] for row in rows)
+    return (
+        [f"빠짐: {i}" for i in items if i not in seen]
+        + [f"겹침: {i}" for i, n in seen.items() if n > 1]
+        + [f"셋에 없음: {i}" for i in seen if i not in items]
+    )
+
+
 def trajectory_violations(tools: list[str], spec: Trajectory, never: list[str], max_calls: int) -> list[str]:
     """에이전트 길의 도구 호출 순서가 문항 조건을 어긴 곳을 한 줄씩 돌려준다 (done 3.4). 빈 목록이면 통과.
 
