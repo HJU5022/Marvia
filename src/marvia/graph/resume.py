@@ -2,7 +2,7 @@
 
 하지 않는 일: 승인 여부 판단, 승인 카드 만들기(graph/agent.py), 질문(ask_user) 응답 정리.
 [주의] 읽지 못한 값은 승인으로 보지 않고 거절로 돌린다(실행하지 않는 쪽이 안전하다).
-remask_reply는 화면 서버가 재개하기 전에 승인 결정의 글을 다시 가린다 (done 1.4, 계획 4b Task 6).
+remask_reply는 화면 서버가 재개하기 전에 승인 결정의 글을 다시 가린다 (done 1.4, 계획 4b Task 5b).
 """
 
 from __future__ import annotations

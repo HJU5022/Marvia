@@ -51,7 +51,7 @@ def test_names_with_a_different_count_reject_all_without_raising():
     assert approval_reply(raw, 1, ["a", "b"]) == {"decisions": [REJECT]}
 
 
-# --- 재개 값 다시 가리기 (done 1.4, 계획 4b Task 6) ---
+# --- 재개 값 다시 가리기 (done 1.4, 계획 4b Task 5b) ---
 
 MAP = {"[BL1]": "DEMO0001"}
 

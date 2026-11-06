@@ -157,6 +157,9 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
             names = [request["name"] for request in value["action_requests"]]
             # [왜] 모양을 본 뒤(approval_reply) 고친 인자·거절 글의 실제 번호를 이 대화의 토큰으로 다시 가린다
             reply = approval_reply(raw, len(names), names)
+            # shortcut: 부모 상태의 mask_map은 이번 차례 시작 때 값이라 같은 차례에 ask_user로 들어온
+            #   번호가 아직 없다(그 번호로 고치면 거절된다). 올릴 때: get_state(config, subgraphs=True)로
+            #   끼어든 서브그래프의 표를 읽는다
             return Command(resume=remask_reply(reply, state.values.get("mask_map", {})))
         choice = {key: raw[key] for key in CHOICE_KEYS if key in raw}
         if len(str(choice.get("custom", ""))) > max_text:
