@@ -312,3 +312,8 @@ def test_ragas_means_score_faithfulness_apart_for_items_with_calc_lines():
     assert out["faithfulness"]["value"] == 1.0 and out["faithfulness"]["n"] == 1
     assert out["faithfulness_calc"]["value"] == 0.0 and out["faithfulness_calc"]["n"] == 1
     assert out["context_recall"]["value"] == 0.75 and out["context_recall"]["n"] == 2
+
+
+def test_summary_rounds_the_seconds_median_to_one_decimal():
+    rows = [row("R1", seconds=18.7), row("U1", seconds=18.9)]  # 가운데 값 18.799999999999997
+    assert summarize(rows, ITEMS, 8)["seconds_median"] == 18.8

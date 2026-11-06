@@ -158,7 +158,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "cost_per_item_mean": round(statistics.fmean(costs), 5) if costs else None,
         "cost_per_item_max": max(costs) if costs else None,
         "cost_usd": round(sum(r.get("cost_usd") or 0 for r in rows), 4),
-        "seconds_median": statistics.median([r["seconds"] for r in rows]) if rows else None,
+        "seconds_median": round(statistics.median([r["seconds"] for r in rows]), 1) if rows else None,
     }
 
 
