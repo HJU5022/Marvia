@@ -11,7 +11,7 @@ import base64
 import hashlib
 import hmac
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import psycopg
 from cryptography.fernet import Fernet, InvalidToken
@@ -30,7 +30,8 @@ class WatchKeys:
     """감시 표의 번호를 암호화하는 Fernet과 같은 번호 검사용 해시 키."""
 
     fernet: Fernet
-    hash_key: bytes
+    # [주의] 기본 repr는 바이트를 그대로 찍는다. 로그나 예외 글에 해시 키가 새지 않게 repr에서 뺀다
+    hash_key: bytes = field(repr=False)
 
 
 def derive_key(secret: str, info: bytes) -> bytes:

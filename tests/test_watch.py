@@ -114,3 +114,10 @@ def test_forget_user_deletes_only_that_users_watches_and_events(db, keys):
     assert db.execute("SELECT count(*) FROM watch_events").fetchone()[0] == 1  # u1의 기록은 함께 사라졌다
     assert [n["number"] for n in take_news(db, keys, "u2")] == ["DEMO0002"]  # u2는 그대로
     assert forget_user(db, "nobody") == 0
+
+
+def test_watch_keys_repr_hides_hash_key():
+    secret = Fernet.generate_key().decode()
+    assert repr(derive_key(secret, HASH_INFO)) not in repr(
+        watch_keys(secret)
+    )  # 로그에 해시 키가 찍히지 않는다
