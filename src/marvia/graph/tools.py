@@ -375,7 +375,7 @@ def make_tools(
     law_tools = [search_law] + ([get_provision] if provision else [])
     extra = [_research_tool(model, law_tools, today)] if model is not None else []
     extra += [_official_tool(web)] if web is not None else []
-    extra += [_watch_tool(watch)] if watch is not None else []
+    extra += _watch_tools(watch) if watch is not None else []
     tools = [
         search_law,
         calc_deadlines,
@@ -488,8 +488,8 @@ def _official_tool(web: httpx.Client):
     return official_lookup
 
 
-def _watch_tool(watch: WatchDeps):
-    """화물을 감시 목록에 넣는 도구 watch_cargo를 만든다 (계획 3d). 승인 뒤에만 돈다(approval.always_ask)."""
+def _watch_tools(watch: WatchDeps) -> list:
+    """감시 목록 도구: watch_cargo(계획 3d), remove가 있으면 unwatch_cargo(R-033). 둘 다 승인 뒤에만 돈다."""
 
     @tool
     def watch_cargo(token: str, runtime: ToolRuntime) -> Command:
@@ -523,4 +523,30 @@ def _watch_tool(watch: WatchDeps):
             actions=[f"{token} 감시 목록에 넣음"],
         )
 
-    return watch_cargo
+    if watch.remove is None:
+        return [watch_cargo]
+    remove = watch.remove
+
+    @tool
+    def unwatch_cargo(token: str, runtime: ToolRuntime) -> Command:
+        """Remove a cargo token such as [BL1] from the user's watch list, with its recorded changes. Use it
+        only when the user asks to stop watching a cargo. Needs the user's approval.
+        """
+        number = runtime.state.get("mask_map", {}).get(token)
+        if number is None:
+            return _reply(runtime, f"{token}: 모르는 토큰이에요")
+        try:
+            # [주의] 실제 번호는 서버의 감시 표에서 찾는 데만 쓴다. 모델에게 주는 글은 토큰뿐이다 (설계 12절)
+            removed = remove(user_of(runtime.config), number)
+        except psycopg.Error as error:
+            name = error_name(error)
+            return _reply(
+                runtime,
+                f"감시 목록 지우기 실패: {name}",
+                failed_tools=[{"tool": "unwatch_cargo", "message": name}],
+            )
+        if not removed:
+            return _reply(runtime, f"{token}은 감시 목록에 없어요.")
+        return _reply(runtime, f"{token}을 감시 목록에서 뺐어요.", actions=[f"{token} 감시 목록에서 뺌"])
+
+    return [watch_cargo, unwatch_cargo]

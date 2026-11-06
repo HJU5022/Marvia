@@ -1464,3 +1464,26 @@ def test_the_server_graph_refuses_to_run_without_a_user_id(agent_deps):
     server_graph = graph.with_config(configurable={"surface": "server"})
     with pytest.raises(MissingUser):
         server_graph.invoke({"text": "수입신고 기한?"}, {"configurable": {"thread_id": "no-user"}})
+
+
+def test_unwatching_a_cargo_waits_for_approval_and_removes_it_server_side(agent_deps):
+    # [왜] R-033: 감시를 끄는 일도 남는 일이라 승인 뒤에만 한다. 실제 번호는 서버의 감시 표에서 찾는 데만 쓴다
+    from marvia.watch import WatchDeps
+
+    removed: list[tuple[str, str]] = []
+    watch = WatchDeps(
+        add=lambda *row: None,
+        news=lambda user: [],
+        ack=lambda user, ids: None,
+        remove=lambda user, number: removed.append((user, number)) or 1,
+    )
+    ask = say(("unwatch_cargo", {"token": "[BL1]"}))
+    graph = agent_graph(agent_deps, ask, say(), permission_mode="auto", watch=watch)
+    out = graph.invoke({"text": "DEMO0001 그만 지켜봐 줘"}, cfg("uw1"))
+    # auto여도 묻는다. 카드에도 토큰만 있다
+    assert out["__interrupt__"][0].value["action_requests"][0]["args"] == {"token": "[BL1]"}
+    assert removed == []  # 승인 전에는 지우지 않는다
+    out = graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("uw1"))
+    assert removed == [("local", "DEMO0001")]
+    assert "DEMO0001 감시 목록에서 뺌" in out["answer"]  # 화면 답에는 되돌린 번호, 공책에는 토큰
+    assert "DEMO0001" not in all_text(graph.get_state(cfg("uw1")).values)

@@ -16,6 +16,7 @@ from marvia.watch import (
     forget_user,
     number_hash,
     recheck,
+    remove_watch,
     take_news,
     watch_keys,
 )
@@ -142,6 +143,18 @@ def test_forget_user_deletes_only_that_users_watches_and_events(db, keys):
     assert db.execute("SELECT count(*) FROM watch_events").fetchone()[0] == 1  # u1의 기록은 함께 사라졌다
     assert [n["number"] for n in take_news(db, keys, "u2")] == ["DEMO0001"]  # u2는 그대로
     assert forget_user(db, "nobody") == 0
+
+
+def test_remove_watch_deletes_one_cargo_and_its_events_for_that_user_only(db, keys):
+    # [왜] R-033: 감시를 끄면 그 화물의 줄과 변화 기록이 남지 않는다. 같은 번호의 남의 감시는 그대로다
+    add_watch(db, keys, "u1", "DEMO0001", "반입신고")
+    add_watch(db, keys, "u1", "DEMO0002", "반입신고")
+    add_watch(db, keys, "u2", "DEMO0001", "반입신고")
+    recheck(db, keys, cleared)
+    assert remove_watch(db, keys, "u1", "DEMO0001") == 1
+    assert [n["number"] for n in take_news(db, keys, "u1")] == ["DEMO0002"]  # 지운 화물의 변화도 사라졌다
+    assert [n["number"] for n in take_news(db, keys, "u2")] == ["DEMO0001"]
+    assert remove_watch(db, keys, "u1", "DEMO0001") == 0  # 이미 지웠다
 
 
 def test_watch_keys_repr_hides_hash_key():

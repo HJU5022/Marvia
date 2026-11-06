@@ -66,6 +66,8 @@ class WatchDeps:
     # 사용자 → 아직 보이지 않은 변화 [{"id", "number", "old_stage", "new_stage"}]. 꺼내기만 한다
     news: Callable[[str], list[dict]]
     ack: Callable[[str, list[int]], None]  # (사용자, 변화 id들) → 답에 보인 변화를 본 것으로 표시
+    # (사용자, 실제 번호) → 그 화물을 감시 목록에서 지우고 지운 수. 없으면 unwatch_cargo 도구도 없다 (R-033)
+    remove: Callable[[str, str], int] | None = None
 
 
 def add_watch(conn: psycopg.Connection, keys: WatchKeys, user: str, number: str, stage: str) -> None:
@@ -155,10 +157,26 @@ def ack_news(conn: psycopg.Connection, user: str, ids: list[int]) -> None:
         raise
 
 
+def remove_watch(conn: psycopg.Connection, keys: WatchKeys, user: str, number: str) -> int:
+    """사용자의 감시 목록에서 화물 하나를 지운다. 그 변화 기록도 함께 지워진다. 지운 줄 수를 돌려준다."""
+    try:
+        # [왜] 번호는 암호문이라 같은 번호를 해시로 찾는다(add_watch의 UNIQUE와 같은 열).
+        #      watch_events는 ON DELETE CASCADE라 그 화물의 변화 기록도 함께 지워진다
+        deleted = conn.execute(
+            "DELETE FROM watches WHERE user_id = %s AND number_hash = %s", (user, number_hash(keys, number))
+        ).rowcount
+        conn.commit()
+    except psycopg.Error:
+        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌린 뒤 다시 던진다
+        conn.rollback()
+        raise
+    return deleted
+
+
 def forget_user(conn: psycopg.Connection, user: str) -> int:
     """사용자의 감시 목록과 변화 기록을 모두 지우고 지운 감시 수를 돌려준다.
 
-    계정 삭제용이다 (설계 8절). 화물 하나만 감시를 끄는 기능은 화면과 함께 온다 (done.md 4.1).
+    계정 삭제용이다 (설계 8절). 화물 하나만 끄는 일은 remove_watch(unwatch_cargo 도구)가 한다.
     """
     try:
         # [왜] watch_events는 ON DELETE CASCADE라 감시 줄을 지우면 변화 기록도 함께 지워진다
@@ -177,4 +195,5 @@ def live_watch(conn: psycopg.Connection, keys: WatchKeys) -> WatchDeps:
         add=lambda user, number, stage: add_watch(conn, keys, user, number, stage),
         news=lambda user: take_news(conn, keys, user),
         ack=lambda user, ids: ack_news(conn, user, ids),
+        remove=lambda user, number: remove_watch(conn, keys, user, number),
     )
