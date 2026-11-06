@@ -25,6 +25,7 @@ from marvia.eval.run import (
     save_result,
     stop_reason,
 )
+from marvia.graph.answer import NOT_FOUND_LEAD
 from marvia.graph.schemas import Draft
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, Rewrite
@@ -131,6 +132,9 @@ def test_behaviour_reads_the_answer_shape():
         behaviour({"answer": "x", "draft": {"citations": []}, "calc": {"deadlines": []}}, []) == "unsupported"
     )
     assert behaviour({"answer": "x"}, [{"kind": "choice"}]) == "choice"
+    cited = {"citations": ["U1"]}
+    assert behaviour({"answer": f"{NOT_FOUND_LEAD}\n\n근거", "draft": cited}, []) == "not_found"
+    assert behaviour({"answer": "근거만 있는 답", "draft": cited}, []) == "answer"
 
 
 def test_cost_and_estimate_use_the_price_table():

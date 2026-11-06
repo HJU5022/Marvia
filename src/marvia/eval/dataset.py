@@ -23,8 +23,9 @@ CORPUS_UNITS = ROOT / "corpus" / "units"
 
 # 실행 결과의 행동 이름. 코드가 답 모양으로 정한다 (run.behaviour)
 # answer: 근거·계산·화물 사실이 있는 답 / guide: 번호를 물을 포워더 문장이 있는 답(설계 4.1의 ③)
+# not_found: 근거에 물은 대상이 없다고 밝힌 답
 # choice: 선택지 질문 / partial: 부분 답 / decline: 도메인 밖 거절 / unsupported: 근거·계산·화물 없이 낸 답
-Behaviour = Literal["answer", "guide", "choice", "partial", "decline", "unsupported"]
+Behaviour = Literal["answer", "guide", "choice", "partial", "not_found", "decline", "unsupported"]
 Verdict = Literal["서류검사 요건 충족", "정밀검사 대상", "사실 부족", "대상 아님"]
 
 

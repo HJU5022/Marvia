@@ -25,7 +25,7 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from marvia.eval.dataset import Item
-from marvia.graph.answer import PARTIAL_LEAD, cargo_lines
+from marvia.graph.answer import NOT_FOUND_LEAD, PARTIAL_LEAD, cargo_lines
 from marvia.graph.main import AgentDeps, build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.identify.mask import mask_text
@@ -132,6 +132,8 @@ def behaviour(values: dict, pauses: list[dict]) -> str:
         return "decline"
     if PARTIAL_LEAD in answer:
         return "partial"
+    if NOT_FOUND_LEAD in answer:
+        return "not_found"
     if draft.get("forwarder_message"):
         return "guide"
     found = any(cargo.get("facts") for cargo in values.get("cargos", []))
