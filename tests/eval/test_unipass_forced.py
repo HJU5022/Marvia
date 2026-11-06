@@ -52,8 +52,8 @@ def test_compare_loops_forces_replay_before_it_touches_anything(live_with_a_fake
 
 
 def test_eval_runs_use_the_direct_rag_path_even_if_the_environment_says_mcp(monkeypatch, tmp_path):
-    # [왜] 평가의 graph_added는 리랭커 앞 그래프 후보 수여야 한다. mcp 길은 리랭커 뒤 상위 n개만 보이고 300자
-    #      넘는 질의를 거절한다 (계획 3b 최종 검토 I-1)
+    # [왜] 평가의 graph_added는 리랭커 앞 그래프 후보 수여야 한다. mcp 길은 리랭커 뒤 상위 n개만 보인다
+    #      (계획 3b 최종 검토 I-1)
     monkeypatch.setenv("MARVIA_RAG_VIA", "mcp")
     monkeypatch.setenv("MARVIA_GRAPH", "off")
     seen: list[str] = []

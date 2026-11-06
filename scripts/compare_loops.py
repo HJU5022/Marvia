@@ -77,8 +77,8 @@ def kind(answer: str, evidence_count: int, calc: dict) -> str:
 
 # [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
 os.environ["MARVIA_UNIPASS_MODE"] = "replay"
-# [왜] 평가의 graph_added는 리랭커 앞 그래프 후보 수여야 한다. mcp 길은 리랭커 뒤 상위 n개만 보이고 300자 넘는
-#      질의를 거절한다. 두 길은 같은 상위 8개를 준다(계획 3b G7). 평가는 늘 direct로 돈다
+# [왜] 평가의 graph_added는 리랭커 앞 그래프 후보 수여야 한다. mcp 길은 리랭커 뒤 상위 n개만 보인다.
+#      두 길은 같은 상위 8개를 준다(계획 3b G7). 평가는 늘 direct로 돈다
 os.environ["MARVIA_RAG_VIA"] = "direct"
 settings = Settings()
 prices = load_rules("pricing")
@@ -86,7 +86,7 @@ rows = []
 with (
     connect(settings.database_url),  # [왜] 표가 없으면 만든다(마이그레이션). 읽기는 아래 풀로 한다
     read_pool(settings.database_url) as pool,
-    # [왜] 감시 목록은 따로 autocommit 연결을 쓴다. 다른 도구가 conn을 되돌려도 감시 줄이 남는다 (R-041)
+    # [왜] 감시 목록은 따로 autocommit 연결을 쓴다. 다른 도구가 검색 연결을 되돌려도 감시 줄이 남는다 (R-041)
     psycopg.connect(settings.database_url, autocommit=True) as watch_conn,
 ):
     for loop in ("planner", "agent"):

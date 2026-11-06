@@ -53,7 +53,7 @@ config = {"configurable": {"thread_id": args.thread, "user_id": args.user}}
 with (
     connect(settings.database_url),  # [왜] 표가 없으면 만든다(마이그레이션). 읽기는 아래 풀로 한다
     read_pool(settings.database_url) as pool,
-    # [왜] 감시 목록은 따로 autocommit 연결을 쓴다. 다른 도구가 conn을 되돌려도 감시 줄이 남는다 (R-041)
+    # [왜] 감시 목록은 따로 autocommit 연결을 쓴다. 다른 도구가 검색 연결을 되돌려도 감시 줄이 남는다 (R-041)
     psycopg.connect(settings.database_url, autocommit=True) as watch_conn,
     live_memory(settings.database_url, settings.data_key.get_secret_value()) as (saver, store),
     get_usage_metadata_callback() as usage,
