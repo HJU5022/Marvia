@@ -2,11 +2,14 @@
 
 하지 않는 일: 승인 여부 판단, 승인 카드 만들기(graph/agent.py), 질문(ask_user) 응답 정리.
 [주의] 읽지 못한 값은 승인으로 보지 않고 거절로 돌린다(실행하지 않는 쪽이 안전하다).
+remask_reply는 화면 서버가 재개하기 전에 승인 결정의 글을 다시 가린다 (done 1.4, 계획 4b Task 6).
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+from marvia.identify.mask import mask_text
 
 UNREADABLE = {"type": "reject", "message": "승인 값을 읽지 못해 실행하지 않았어요"}
 
@@ -46,3 +49,43 @@ def approval_reply(raw: Any, count: int, names: list[str] | None = None) -> dict
             for i, decision in enumerate(decisions)
         ]
     }
+
+
+NEW_NUMBER = {"type": "reject", "message": "고친 값에 이 대화에 없던 화물 번호가 있어 실행하지 않았어요"}
+REJECTED = "사용자가 거절했어요"
+
+
+def _remask(value: Any, mask_map: dict[str, str]) -> tuple[Any, bool]:
+    """값 안의 모든 글을 이 대화의 가림 표로 다시 가린다. 표에 없던 번호가 나왔는지도 돌려준다."""
+    if isinstance(value, str):
+        masked, grown = mask_text(value, mask_map)
+        return masked, len(grown) > len(mask_map)
+    if isinstance(value, dict):
+        pairs = {key: _remask(item, mask_map) for key, item in value.items()}
+        return {key: masked for key, (masked, _) in pairs.items()}, any(fresh for _, fresh in pairs.values())
+    if isinstance(value, list):
+        items = [_remask(item, mask_map) for item in value]
+        return [masked for masked, _ in items], any(fresh for _, fresh in items)
+    return value, False
+
+
+def remask_reply(reply: dict, mask_map: dict[str, str]) -> dict:
+    """approval_reply를 거친 승인 응답에서 고친 인자와 거절 글의 실제 번호를 이 대화의 토큰으로 바꾼다.
+
+    [왜] 화면은 토큰을 실제 번호로 되돌려 보인다. 사람이 고친 인자와 거절 글은 실제 번호를 담아 돌아오고,
+         승인 미들웨어는 고친 인자로 도구 호출 메시지를 바꾸고 거절 글을 도구 결과로 모델에 준다 (설계 12절).
+    [주의] 이 대화의 가림 표에 없던 번호는 새 토큰을 만들지 않는다. 고치기는 거절로,
+           거절 글은 정해 둔 글로 바꾼다.
+    """
+    decisions = []
+    for decision in reply["decisions"]:
+        if decision["type"] == "edit":
+            args, fresh = _remask(decision["edited_action"]["args"], mask_map)
+            edited = {**decision, "edited_action": {**decision["edited_action"], "args": args}}
+            decisions.append(dict(NEW_NUMBER) if fresh else edited)
+        elif decision["type"] == "reject":
+            message, fresh = _remask(decision["message"], mask_map)
+            decisions.append({**decision, "message": REJECTED if fresh else message})
+        else:
+            decisions.append(decision)
+    return {"decisions": decisions}

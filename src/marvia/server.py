@@ -52,7 +52,7 @@ from marvia.config import Settings
 from marvia.db import read_pool
 from marvia.graph.live import agent_deps, live_memory
 from marvia.graph.main import build_main_graph
-from marvia.graph.resume import approval_reply
+from marvia.graph.resume import approval_reply, remask_reply
 from marvia.graph.state import merge_cargos, merge_evidence
 from marvia.graph.tools import SERVER_SURFACE
 from marvia.tools.rules import load_rules
@@ -155,8 +155,9 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
         raw = raw if isinstance(raw, dict) else {}
         if "action_requests" in value:
             names = [request["name"] for request in value["action_requests"]]
-            # [왜] 모양이 틀린 결정은 거절로 바꾼다(approval_reply). 고친 인자 다시 가리기는 Task 5b
-            return Command(resume=approval_reply(raw, len(names), names))
+            # [왜] 모양을 본 뒤(approval_reply) 고친 인자·거절 글의 실제 번호를 이 대화의 토큰으로 다시 가린다
+            reply = approval_reply(raw, len(names), names)
+            return Command(resume=remask_reply(reply, state.values.get("mask_map", {})))
         choice = {key: raw[key] for key in CHOICE_KEYS if key in raw}
         if len(str(choice.get("custom", ""))) > max_text:
             raise Refused(422, "글이 너무 길어요")

@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 from marvia.auth import AuthError
 from marvia.graph.main import build_main_graph
 from marvia.server import build_app
+from marvia.watch import WatchDeps
 
 TOKENS = {"tok-a": "user-a", "tok-b": "user-b"}
 TWO = [{"label": "부산", "description": "부산항 기준"}, {"label": "인천", "description": "인천항 기준"}]
@@ -229,3 +230,21 @@ def test_the_view_links_only_to_the_official_site_over_https(evidence):
     ]
     values = {"evidence": [dict(evidence[0], unit_id=f"u{i}", source_url=url) for i, url in enumerate(urls)]}
     assert [e["source_url"] for e in screen_view(values)["evidence"]] == [urls[0], None, None, None]
+
+
+def test_an_approval_card_shows_real_numbers_but_the_model_gets_tokens_back(agent_deps):
+    inputs, added = Inputs(), []
+    watch = WatchDeps(add=lambda *row: added.append(row), news=lambda user: [], ack=lambda user, ids: None)
+    steps = (say("watch_cargo", {"token": "[BL1]"}, 1), AIMessage(""))
+    deps = agent_deps(model=ToolModel(messages=iter(steps)), watch=watch)
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
+    # [왜] 그래프에 기록 콜백을 붙여 모델이 받은 글을 모두 본다
+    app = build_app(graph.with_config(callbacks=[inputs]), verify, web_origin="http://web.test")
+    client = TestClient(app)
+    card = run(client, body("t3", "DEMO0001 계속 지켜봐 줘"))[-1]["outcome"]["interrupts"][0]
+    assert card["reason"] == "approval" and card["metadata"]["actions"][0]["args"] == {"token": "DEMO0001"}
+    edit = {"type": "edit", "edited_action": {"name": "watch_cargo", "args": {"token": "DEMO0001"}}}
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"decisions": [edit]}}]
+    assert run(client, body("t3", resume=resume))[-1]["outcome"] == {"type": "success"}
+    assert added == [("user-a", "DEMO0001", "반입신고")]  # 다시 가린 [BL1]로 도구가 돌았다
+    assert not any("DEMO0001" in text for text in inputs.seen)  # 모델은 화면에서 온 실제 번호를 받지 않았다
