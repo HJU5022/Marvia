@@ -1022,3 +1022,19 @@ def test_official_lookup_keeps_only_a_short_title(agent_deps):
     graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o3"))
     name = graph.get_state(cfg("o3")).values["official"][0]["name"]
     assert len(name) == load_rules("agent")["official"]["max_title"]
+
+
+def test_official_lookup_does_not_follow_a_redirect_even_if_the_client_would(agent_deps):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url)
+        return httpx.Response(301, headers={"Location": "https://evil.example/law"})
+
+    # 넘겨 받은 클라이언트가 리다이렉트를 따르도록 켜져 있어도 도구가 막아야 한다
+    web = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    look = say(("official_lookup", {"law_name": "식품위생법"}))
+    graph = agent_graph(agent_deps, look, say(), web=web)
+    graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o4"))
+    assert [url.host for url in seen] == ["www.law.go.kr"]
+    assert not graph.get_state(cfg("o4")).values.get("official")

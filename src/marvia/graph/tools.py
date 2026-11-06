@@ -423,12 +423,13 @@ def _official_tool(web: httpx.Client):
         if httpx.URL(url).host not in official["allowed_hosts"]:
             return _reply(runtime, "허용하지 않은 사이트라 조회하지 않아요.")
         try:
-            response = web.get(url)
+            # [왜] 클라이언트 설정에 기대지 않고 호출마다 리다이렉트를 끈다 (허용 목록 밖으로 새지 않게)
+            response = web.get(url, follow_redirects=False)
         except httpx.HTTPError as error:
             name = error_name(error)
             failed = [{"tool": "official_lookup", "message": name}]
             return _reply(runtime, f"공식 조회 실패: {name}", failed_tools=failed)
-        # [왜] 다른 주소로 넘기는 답(3xx)은 따라가지 않는다. 넘어간 곳이 허용 목록 밖일 수 있다
+        # [왜] 다른 주소로 넘기는 답(3xx)은 위에서 따라가지 않았으니 여기서 찾지 못한 것으로 본다
         info = law_info(response.text) if response.status_code == 200 else None
         if info is None:
             return _reply(runtime, f"공식 사이트에서 찾지 못했어요: {law_name}")
