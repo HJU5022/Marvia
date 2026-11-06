@@ -77,7 +77,9 @@ def build_rag_graph(deps: RagDeps, max_rewrites: int | None = None):
     def retrieve(state: RagState) -> dict:
         """하이브리드 검색으로 후보를 찾고, 리랭커로 다시 줄 세워 상위 n개를 근거로 남긴다."""
         # [왜] 노드가 채우는 칸은 .get으로 읽는다. 처음 넣는 칸(question, as_of)만 []로 바로 읽는다
-        query = state.get("search_query", "")
+        # [왜] 규정 검색 MCP 서버는 상한(mcp.max_query)을 넘는 질의를 거절한다. 질의는 LLM이 쓴 글이라 길이를
+        #      믿지 않는다. 두 길(direct, mcp)이 같은 질의를 쓰게 여기서 자른다
+        query = state.get("search_query", "")[: cfg["mcp"]["max_query"]]
         if deps.ranked is not None:
             found = deps.ranked(query, state["as_of"])
         else:

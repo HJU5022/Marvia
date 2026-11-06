@@ -103,3 +103,21 @@ def test_ranked_dep_replaces_search_and_rerank():
     out = build_rag_graph(deps).invoke(START_STATE)
     assert [e["unit_id"] for e in out["evidence"]] == ["LTEST@20261002#제9조"]
     assert "search" not in seen
+
+
+def test_a_long_query_still_goes_through_the_mcp_server():
+    # [왜] 질의 분석 LLM이 쓴 질의가 MCP 서버의 글자 수 상한(rules/rag.yaml mcp.max_query)을 넘으면
+    #      서버가 거절해 검색 전체가 실패했다. 서버로 보내기 전에 상한까지 자른다 (계획 3b에서 넘어온 일)
+    from marvia.rag.mcp import MAX_QUERY, build_server, mcp_ranked
+
+    seen: list[str] = []
+
+    def ranked(query: str, when: date) -> list[Evidence]:
+        seen.append(query)
+        return [_evidence("제2조", "정밀검사를 면제할 수 있다")]
+
+    long = QueryAnalysis(question_type="문구 해석", as_of=None, search_query="정밀검사 면제 " * 60)
+    deps = replace(_deps([ENOUGH]), analyze=lambda prompt: long, ranked=mcp_ranked(build_server(ranked)))
+    out = build_rag_graph(deps).invoke(START_STATE)
+    assert [e["unit_id"] for e in out["evidence"]] == ["LTEST@20261002#제2조"]
+    assert len(seen[0]) == MAX_QUERY
