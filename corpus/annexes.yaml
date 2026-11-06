@@ -1,0 +1,21 @@
+# 별표 원본 목록 (설계 5.2, 계획 3b Task 1). scripts/build_annex.py가 읽는다.
+# 파일 번호(flseq)를 찾는 길 (11-06 확인):
+#   법령 별표 목록   https://www.law.go.kr/LSW/lsBylInfoR.do?lsiSeq=<판 번호>&efYd=<시행일> 의 <option value="별표순번,…">
+#   별표 파일 번호   https://www.law.go.kr/LSW/lsBylContentsInfoR.do?bylSeq=<별표순번> 의 hanFlSeq(HWP)·pdfFlSeq(PDF)
+#   행정규칙 별표    본문 페이지(corpus/raw/A36852.html)의 flDownload.do?flSeq= 링크
+# [주의] 법령이 개정되면 번호가 바뀐다. 형식은 받은 파일의 앞 바이트로 본다(HEAD 요청은 404를 준다)
+- doc_id: L012500
+  number: "9" # 수입식품등의 검사방법(제30조 관련), 별표순번 18525653
+  format: hwp
+  flseq: 170143823
+  view_url: https://www.law.go.kr/LSW/lsBylInfoPLinkR.do?lsiSeq=290799&bylNo=0009&bylBrNo=00&bylCls=BE&bylEfYd=20260930&bylEfYdYn=Y
+- doc_id: L012500
+  number: "10" # 수입식품등의 구분기준(제32조 관련), 별표순번 18525655
+  format: hwp
+  flseq: 170143843
+  view_url: https://www.law.go.kr/LSW/lsBylInfoPLinkR.do?lsiSeq=290799&bylNo=0010&bylBrNo=00&bylCls=BE&bylEfYd=20260930&bylEfYdYn=Y
+- doc_id: A36852
+  number: "1" # 수입신고수리물품 반출의무 및 신고지연 가산세 적용대상 보세구역. 사이트는 .hwp로 주지만 실제로는 HWPX(zip)다
+  format: hwpx
+  flseq: 164115845
+  view_url: https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000275032

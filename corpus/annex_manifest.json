@@ -1,0 +1,35 @@
+[
+ {
+  "doc_id": "L012500",
+  "number": "9",
+  "format": "hwp",
+  "flseq": 170143823,
+  "view_url": "https://www.law.go.kr/LSW/lsBylInfoPLinkR.do?lsiSeq=290799&bylNo=0009&bylBrNo=00&bylCls=BE&bylEfYd=20260930&bylEfYdYn=Y",
+  "lines": 80,
+  "units": 54,
+  "file_sha256": "ac6dad5f66b1fdc0fa16f3f79f554986e1d76c6cc243c0a2d51c913542109e9a",
+  "amended": "2024-06-14"
+ },
+ {
+  "doc_id": "L012500",
+  "number": "10",
+  "format": "hwp",
+  "flseq": 170143843,
+  "view_url": "https://www.law.go.kr/LSW/lsBylInfoPLinkR.do?lsiSeq=290799&bylNo=0010&bylBrNo=00&bylCls=BE&bylEfYd=20260930&bylEfYdYn=Y",
+  "lines": 23,
+  "units": 16,
+  "file_sha256": "fe76e881827559f2476069a6baeaa90d1245cb43cb953c8611c413271a6af3e0",
+  "amended": "2025-07-23"
+ },
+ {
+  "doc_id": "A36852",
+  "number": "1",
+  "format": "hwpx",
+  "flseq": 164115845,
+  "view_url": "https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000275032",
+  "lines": 109,
+  "units": 5,
+  "file_sha256": "5b8d849cead92b8cc1a8d066104415a572e86ade37d0766c5e3325fd996875a3",
+  "amended": null
+ }
+]
