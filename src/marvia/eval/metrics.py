@@ -9,11 +9,13 @@
 from __future__ import annotations
 
 import math
+import re
 import statistics
 from collections import Counter
 from collections.abc import Iterable
+from datetime import date
 
-from marvia.eval.dataset import Item, Trajectory
+from marvia.eval.dataset import Domain, Item, Trajectory
 from marvia.eval.run import articles
 from marvia.tools.rules import load_rules
 
@@ -387,4 +389,44 @@ def rag_table(results: list[dict]) -> str:
         sufficient = s["false_sufficient"]
         cells.append("-" if sufficient["value"] is None else f"{sufficient['value']:.2f} ({sufficient['n']})")
         lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def _mentions_date(text: str, day: date) -> bool:
+    """글에 그 날짜가 있나: 2026-11-26, 2026.11.26, 2026년 11월 26일, 11월 26일."""
+    y, m, d = day.year, day.month, day.day
+    full = rf"{y}\s*[-./년]\s*0?{m}\s*[-./월]\s*0?{d}(?!\d)"
+    short = rf"(?<!\d)0?{m}\s*월\s*0?{d}\s*일"
+    return bool(re.search(full, text) or re.search(short, text))
+
+
+def _mentions_article(text: str, article: str) -> bool:
+    """글에 그 법령과 조문 번호가 있나. article은 "관세법 제241조" 모양이고, 제241조의2는 제241조가 아니다."""
+    law, label = article.rsplit(" ", 1)
+    found = re.fullmatch(r"제(\d+)조(?:의(\d+))?", label)
+    assert found, article
+    number, sub = found.groups()
+    pattern = rf"(?<!\d)제?\s*{number}\s*조" + (rf"\s*의\s*{sub}" if sub else r"(?!\s*의\s*\d)")
+    return law in text and bool(re.search(pattern, text))
+
+
+def free_answer_score(text: str, domain: Domain) -> dict:
+    """자유 글 답에서 통관 단계·기한·조문을 찾는다 (done 3.8). 범용 도구와 Marvia의 답에 같은 자를 댄다."""
+    return {
+        "stage": None if domain.stage is None else domain.stage in text,
+        "due": None if domain.due is None else _mentions_date(text, domain.due),
+        "article": None if domain.article is None else _mentions_article(text, domain.article),
+    }
+
+
+def domain_table(answers: dict[str, dict[str, str]], items: dict[str, Item]) -> str:
+    """도구별(Marvia, Claude Code, Codex) 단계·기한·조문을 맞힌 수의 표. answers: {도구: {문항 id: 답}}."""
+    lines = ["| 도구 | 통관 단계 | 기한 | 조문 | 답한 문항 |", "|---|---|---|---|---|"]
+    for tool, by_id in answers.items():
+        scores = [free_answer_score(text, d) for i, text in by_id.items() if (d := items[i].domain)]
+        cells = [tool]
+        for key in ("stage", "due", "article"):
+            marks = [s[key] for s in scores if s[key] is not None]
+            cells.append(f"{sum(marks)}/{len(marks)}")
+        lines.append("| " + " | ".join(cells + [str(len(scores))]) + " |")
     return "\n".join(lines)

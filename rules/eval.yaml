@@ -77,3 +77,12 @@ trajectory:
 rag_observations:
   top: 8 # 한 조문 쏠림을 볼 근거 수 (리랭커 상위 8개, rules/rag.yaml rerank_top_n)
   alert: 0.75 # 한 조문이 이 몫 이상이면 쏠림으로 센다. [왜] 11-02 관찰은 8개 중 7개(0.875)였다
+
+# 범용 도구 비교 (done 3.8, eval/domain_protocol.md). 같은 질문과 같은 가공 화물 파일을 준다
+domain:
+  # 범용 도구에게 줄 글. {as_of}와 {question}을 채운다 (scripts/run_eval.py domain-prompts)
+  prompt: |-
+    오늘은 {as_of}입니다. 이 폴더의 unipass/ 아래 JSON 파일은 화물 번호별 UNI-PASS 화물통관진행정보 조회 결과를 옮긴 것입니다(stage는 통관 단계, stage_at은 그 단계가 된 시각).
+    아래 질문에 한국어로 답해 주세요. 기한이 있으면 날짜를 적고, 근거가 되는 법령 이름과 조문 번호를 함께 적어 주세요.
+
+    질문: {question}

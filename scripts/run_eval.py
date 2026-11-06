@@ -6,6 +6,8 @@
       uv run python scripts/run_eval.py sheet <결과.json> <결과.raw.json> --out <채점지.md>   (사람 채점 10건)
       uv run python scripts/run_eval.py agree eval/human_v1.yaml <ragas 점수.json>   (사람·LLM 채점 일치율)
       uv run python scripts/run_eval.py floors eval/results/<결과.json> --write   (CI 문 바닥값)
+      uv run python scripts/run_eval.py domain-prompts --out <저장소 밖 폴더>   (범용 도구에게 줄 질문 글)
+      uv run python scripts/run_eval.py domain <도구 폴더> ... --marvia <결과.raw.json>   (범용 도구 비교 표)
 run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 키도 DB도 쓰지 않는다.
 키 두 개(MARVIA_ANTHROPIC_API_KEY, MARVIA_VOYAGE_API_KEY), 로컬 DB, 색인이 필요하다.
 묻는 질문에는 권장안(시간 초과)으로, 승인 요청에는 거절로 답한다. 대화 기록은 메모리에만 둔다.
@@ -16,6 +18,7 @@ run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 �
 
 import argparse
 import json
+import shutil
 from datetime import date
 from pathlib import Path
 
@@ -25,6 +28,7 @@ from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
 from marvia.eval.metrics import (
     agreement,
     compare_table,
+    domain_table,
     floors,
     human_faithful,
     rag_table,
@@ -71,7 +75,39 @@ gate = sub.add_parser(
 )
 gate.add_argument("result", help="저장소 안의 결과 파일 (예: eval/results/agent-claude-haiku-5-5.json)")
 gate.add_argument("--write", action="store_true", help="rules/eval.yaml의 gate 묶음을 바꾸거나 끝에 더한다")
+prompts = sub.add_parser(
+    "domain-prompts", help="범용 도구 비교 문항의 질문 글과 가공 화물 파일을 폴더에 쓴다"
+)
+prompts.add_argument("--out", required=True, help="저장소 밖 폴더. 범용 도구를 이 폴더에서 돌린다")
+domain = sub.add_parser("domain", help="범용 도구 답 폴더(<문항 id>.txt)와 Marvia 답을 같은 자로 잰다")
+domain.add_argument("folders", nargs="*", help="도구마다 한 폴더. 폴더 이름이 표의 도구 이름이다")
+domain.add_argument("--marvia", help="scripts/run_eval.py run이 쓴 .raw.json")
 args = parser.parse_args()
+
+if args.command == "domain-prompts":
+    data, out = load_set(), Path(args.out)
+    (out / "unipass").mkdir(parents=True, exist_ok=True)
+    # [왜] 범용 도구도 같은 가공 화물 상태를 본다. UNI-PASS 화면을 사용자가 옮겨 주는 경우와 같다
+    for path in sorted((ROOT / "fixtures" / "unipass").glob("*.json")):
+        shutil.copy(path, out / "unipass" / path.name)
+    template = load_rules("eval")["domain"]["prompt"]
+    picked = [i for i in data.items if i.domain]
+    for item in picked:
+        text = template.format(as_of=data.as_of.isoformat(), question=item.question)
+        (out / f"{item.id}.txt").write_text(text, encoding="utf-8")
+    print(f"{len(picked)}문항: {', '.join(i.id for i in picked)} → {out}")
+    raise SystemExit(0)
+
+if args.command == "domain":
+    items = {i.id: i for i in load_set().items}
+    answers = {}
+    if args.marvia:
+        raws = json.loads(Path(args.marvia).read_text(encoding="utf-8"))
+        answers["Marvia"] = {r["id"]: r.get("answer", "") for r in raws if items[r["id"]].domain}
+    for folder in map(Path, args.folders):
+        answers[folder.name] = {p.stem: p.read_text(encoding="utf-8") for p in sorted(folder.glob("*.txt"))}
+    print(domain_table(answers, items))
+    raise SystemExit(0)
 
 if args.command == "floors":
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))

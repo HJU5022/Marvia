@@ -1,8 +1,10 @@
 """평가 지표 시험 (done 3.2). 실행 결과 줄을 손으로 만들어 키 없이 돈다."""
 
+from datetime import date
+
 import pytest
 
-from marvia.eval.dataset import Item
+from marvia.eval.dataset import Domain, Item
 from marvia.eval.metrics import (
     agreement,
     behaviour_accuracy,
@@ -10,7 +12,9 @@ from marvia.eval.metrics import (
     calc_ok,
     compare_table,
     correct_citation,
+    domain_table,
     false_sufficient,
+    free_answer_score,
     human_faithful,
     matches,
     mrr,
@@ -276,3 +280,23 @@ def test_top_article_share_short_head_and_rows_without_a_grade_round():
     rows = [row("R1", rag=short), row("R2", rag=[{"step": "rewrite", "articles": []}]), row("R3")]
     got = top_article_share(rows, 8, 0.75)
     assert got == {"value": round(2 / 3, 4), "n": 1, "over": 0, "skipped": 2}
+
+
+def test_free_answer_score_finds_stage_date_and_article_in_any_common_form():
+    domain = Domain(stage="반입신고", due=date(2026, 11, 26), article="관세법 제241조")
+    text = "반입신고 단계라 2026년 11월 26일까지 신고해야 합니다 (관세법 241조 3항)."
+    assert free_answer_score(text, domain) == {"stage": True, "due": True, "article": True}
+    other = "11/26까지예요. 관세법 제241조의2에 따라."  # 단계 없음, 다른 날짜 꼴, 다른 조문
+    assert free_answer_score(other, domain) == {"stage": False, "due": False, "article": False}
+    assert free_answer_score("11월 26일", Domain(due=date(2026, 11, 26))) == {
+        "stage": None,
+        "due": True,
+        "article": None,
+    }
+
+
+def test_domain_table_counts_hits_per_tool():
+    items = {"D1": item("D1", domain={"due": "2026-11-17", "article": "관세법 제9조"}), "S1": ITEMS["S1"]}
+    answers = {"Marvia": {"D1": "2026-11-17까지 (관세법 제9조제1항제1호)"}, "도구": {"D1": "보름 안에 내요"}}
+    lines = domain_table(answers, items).splitlines()
+    assert lines[2] == "| Marvia | 0/0 | 1/1 | 1/1 | 1 |" and lines[3] == "| 도구 | 0/0 | 0/1 | 0/1 | 1 |"
