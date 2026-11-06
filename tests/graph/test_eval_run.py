@@ -342,7 +342,7 @@ def test_error_row_reads_the_checkpoints_mask_map_for_numbers_masked_after_the_q
 
 
 def test_observe_keeps_citations_of_a_not_found_row():
-    # [왜] wrong_evidence와 ragas cited_texts가 이 인용을 봐야 한다
+    # [왜] wrong_evidence와 정답 근거 인용률이 이 인용을 봐야 한다 (ragas는 answer·guide 줄만 채점한다)
     values = {"answer": f"{NOT_FOUND_LEAD}\n\n근거", "draft": {"citations": ["U1"]}}
     row = observe(values, [], LlmWatch(), "agent", [])
     assert row["behaviour"] == "not_found" and row["cited"] == ["U1"]
