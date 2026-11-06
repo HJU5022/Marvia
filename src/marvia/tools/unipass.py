@@ -53,6 +53,10 @@ def _get(client: httpx.Client, params: dict, sleep: Callable[[float], None]) -> 
         except httpx.TransportError:  # [주의] 예외 글에 주소가 있다. 종류만 본다
             last = "unavailable"
             continue
+        except httpx.HTTPError:
+            # [왜] 잘못된 압축 본문(DecodingError) 같은 나머지 httpx 오류도 정한 모양으로 돌려준다.
+            #      예외 객체의 요청 주소에는 키와 번호가 있어 밖으로 내보내지 않는다(raise 없이 버린다)
+            return _error("bad_response")
         if response.status_code >= 500:
             last = "unavailable"
             continue

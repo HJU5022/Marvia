@@ -35,6 +35,8 @@ from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
 from marvia.tools.reimport import ItemFacts
 from marvia.watch import WatchDeps
 
+# [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
+os.environ["MARVIA_UNIPASS_MODE"] = "replay"
 TODAY = date(2026, 11, 6)
 # 글자만이라 번호 읽기가 가리지 않는다 (번호 꼴 표식은 토큰으로 가려져 시험이 되지 못했다)
 MARKER = "ZEBRAQUOKKA"

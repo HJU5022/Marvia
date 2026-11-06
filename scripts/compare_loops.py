@@ -9,6 +9,7 @@
 """
 
 import json
+import os
 import sys
 import time
 
@@ -74,6 +75,8 @@ def kind(answer: str, evidence_count: int, calc: dict) -> str:
     return "full" if evidence_count or any(calc.values()) else "no_evidence"
 
 
+# [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
+os.environ["MARVIA_UNIPASS_MODE"] = "replay"
 settings = Settings()
 prices = load_rules("pricing")
 rows = []

@@ -127,3 +127,21 @@ def test_live_without_a_key_refuses_without_calling(monkeypatch):
     monkeypatch.setattr(unipass.httpx, "Client", lambda *a, **k: pytest.fail("키 없이 HTTP를 열었다"))
     error = lookup_cargo(CARGO_NO)
     assert isinstance(error, ToolError) and error.code == "no_key"
+
+
+def test_any_httpx_error_becomes_a_fixed_error_without_the_key():
+    # [왜] 잘못된 압축 본문 같은 TransportError 밖의 httpx 오류도 정한 모양으로 돌려준다. 예외 객체의 요청
+    #      주소에는 키와 번호가 있어 밖으로 내보내지 않는다 (계획 3b Task 7 검토 I-2)
+    # stream으로 만들면 본문을 client.get이 읽을 때 풀려, 실제 호출처럼 그 안에서 DecodingError가 난다
+    broken = httpx.Response(
+        200, headers={"Content-Encoding": "gzip"}, stream=httpx.ByteStream(b"not gzip data")
+    )
+    error, seen = _fetch(broken)
+    assert error == ToolError(
+        code="bad_response", message=unipass.CFG["messages"]["bad_response"], retryable=False
+    )
+    assert len(seen) == 1  # 다시 시도하지 않는다
+    assert KEY not in repr(error) and CARGO_NO not in repr(error)
+    raised, _ = _fetch(httpx.DecodingError(f"https://x/?crkyCn={KEY}&cargMtNo={CARGO_NO}"))
+    assert isinstance(raised, ToolError) and raised.code == "bad_response"
+    assert KEY not in repr(raised) and KEY not in raised.message
