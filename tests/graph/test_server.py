@@ -355,3 +355,42 @@ def test_a_cancelled_card_resumes_without_its_payload_on_the_recommended_path(ag
     assert run(client, body("t16", resume=resume))[-1]["outcome"] == {"type": "success"}
     said = "".join(graph.get_state({"configurable": {"thread_id": "user-a/t16"}}).values["clarifications"])
     assert "부산" in said and "인천" not in said
+
+
+@pytest.mark.parametrize(("host_env", "expected"), [(None, "127.0.0.1"), ("0.0.0.0", "0.0.0.0")])
+def test_main_listens_on_loopback_unless_marvia_host_says_otherwise(
+    monkeypatch, tmp_path, host_env, expected
+):
+    # [왜] 컨테이너 밖에서 돌리면 이 컴퓨터의 모든 주소에서 듣지 않게 한다. 컨테이너는 MARVIA_HOST로 연다
+    from contextlib import contextmanager
+
+    from marvia import server
+
+    @contextmanager
+    def fake(*args, **kwargs):
+        yield (None, None) if args and isinstance(args[0], str) and len(args) == 2 else None
+
+    monkeypatch.chdir(tmp_path)
+    for name, value in {
+        "MARVIA_AUTH": "dev",
+        "MARVIA_DEV_TOKEN": "local-dev-token",
+        "MARVIA_ANTHROPIC_API_KEY": "k",
+        "MARVIA_VOYAGE_API_KEY": "k",
+        "MARVIA_DATA_KEY": "k",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("MARVIA_HOST", raising=False)
+    if host_env:
+        monkeypatch.setenv("MARVIA_HOST", host_env)
+    seen = {}
+    monkeypatch.setattr(server, "live_memory", fake)
+    monkeypatch.setattr(server, "read_pool", fake)
+    monkeypatch.setattr(server.psycopg, "connect", fake)
+    monkeypatch.setattr(server, "agent_deps", lambda *a: None)
+    monkeypatch.setattr(server, "build_main_graph", lambda *a, **k: None)
+    monkeypatch.setattr(server, "build_app", lambda *a, **k: None)
+    monkeypatch.setattr(server.uvicorn, "run", lambda app, **kwargs: seen.update(kwargs))
+    monkeypatch.setenv("PORT", "9999")
+    server.main()
+    assert seen == {"host": expected, "port": 9999}

@@ -307,8 +307,9 @@ def main() -> None:
             deps, saver, loop=settings.loop, store=store, permission_mode=settings.permission_mode
         )
         app = build_app(graph, verify, web_origin=settings.web_origin)
-        # [주의] 컨테이너 안에서는 모든 주소에서 듣는다. 이 컴퓨터에서는 compose가 127.0.0.1로만 연다
-        uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+        # [주의] 기본은 127.0.0.1이다. 컨테이너 안에서만 MARVIA_HOST=0.0.0.0을 주고
+        #        compose가 바깥 쪽을 127.0.0.1로 연다
+        uvicorn.run(app, host=settings.host, port=int(os.environ.get("PORT", "8080")))
 
 
 if __name__ == "__main__":

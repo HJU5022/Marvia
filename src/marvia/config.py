@@ -71,4 +71,5 @@ class Settings(BaseSettings):
     # MARVIA_OWNER_IDS. 쓸 수 있는 사용자 id(토큰 sub)를 쉼표로. 비면 supabase 모드 서버가 뜨지 않는다
     owner_ids: str = ""
     dev_token: SecretStr = SecretStr("")  # MARVIA_DEV_TOKEN. auth=dev일 때만 받는 고정 토큰
+    host: str = "127.0.0.1"  # MARVIA_HOST. 서버가 듣는 주소. 컨테이너(Dockerfile·compose)만 0.0.0.0으로 연다
     web_origin: str = "http://localhost:3000"  # MARVIA_WEB_ORIGIN. 화면 주소. CORS는 이 origin만 연다
