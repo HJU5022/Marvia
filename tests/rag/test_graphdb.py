@@ -8,7 +8,8 @@ import pytest
 from marvia.config import Settings
 from marvia.eval.dataset import CORPUS_UNITS
 from marvia.rag.edges import build_edges
-from marvia.rag.graphdb import connect_graph, graph_meta, load_graph, neighbors
+from marvia.rag.graphdb import connect_graph, graph_meta, load_graph, load_item_graph, neighbors
+from marvia.rag.items import Grounding, Item, ItemGraph, Requirement
 from marvia.rag.models import SearchFailed, Unit
 
 
@@ -104,3 +105,21 @@ def test_reloading_replaces_edges_with_the_current_result(graph_db):
         "MATCH (:Law {doc_id: $doc})-[r:DELEGATES_TO]->() RETURN count(r) AS n", {"doc": doc}
     ).records[0]["n"]
     assert delegates == 0
+
+
+def test_item_requirements_add_their_grounding_units(graph_db):
+    driver, doc = graph_db
+    _load(driver, doc)
+    grounding = Grounding(unit_id=f"{doc}@20261002#별표10.4호.다목", quote="농산물")
+    req = Requirement(
+        name=f"{doc} 정밀검사", grounded_in=[grounding], needs=[f"{doc} 성적서"], by=[f"{doc} 식약처"]
+    )
+    load_item_graph(driver, ItemGraph(reviewed="시험", items=[Item(name=f"{doc} 건고추", requires=[req])]))
+    assert neighbors(driver, [], [f"{doc} 건고추"]) == [f"{doc}@20261002#별표10.4호.다목"]
+    assert neighbors(driver, [], ["없는 품목"]) == []
+    found = driver.execute_query(
+        "MATCH (:Requirement {name: $r})-[:NEEDS]->(d:Document), (:Requirement {name: $r})-[:BY]->(a:Agency) "
+        "RETURN d.name AS d, a.name AS a",
+        {"r": f"{doc} 정밀검사"},
+    ).records
+    assert [(r["d"], r["a"]) for r in found] == [(f"{doc} 성적서", f"{doc} 식약처")]

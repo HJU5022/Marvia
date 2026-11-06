@@ -1,4 +1,4 @@
-"""법령 그래프를 Neo4j에 넣고, 검색 때 이웃 단위의 unit_id를 찾는다 (설계 5.5, 계획 3b Task 3·4).
+"""법령 그래프를 Neo4j에 넣고, 검색 때 이웃 단위의 unit_id를 찾는다 (설계 5.5, 계획 3b Task 3·4·5).
 
 하지 않는 일: 간선 만들기(edges.py), 글·시행일 고르기. 그래프는 unit_id만 돌려주고 글과 시행일 거르기는
 Postgres가 한다(search.py). 그래서 두 저장소가 어긋나도 없는 단위를 근거로 내지 않는다.
@@ -18,6 +18,7 @@ from neo4j.exceptions import DriverError, Neo4jError
 
 from marvia.config import Settings
 from marvia.rag.edges import Edges
+from marvia.rag.items import ItemGraph, item_names, load_items
 from marvia.rag.models import SearchFailed, Unit
 from marvia.tools.rules import load_rules
 
@@ -117,22 +118,68 @@ def units_sha256(folder: Path) -> str:
     return hashlib.sha256(b"".join(p.read_bytes() for p in sorted(folder.glob("*.jsonl")))).hexdigest()
 
 
-# --- 검색 때 이웃 찾기 (Task 4) ---
+# --- 검색 때 이웃 찾기 (Task 4), 품목 요건 (Task 5) ---
 
-# [왜] 방향 없이 1단계: 시드가 가리키는 단위(제30조.1항 → 별표 9)와 시드를 가리키는 단위(별표 9 → 제30조)
+ITEMS: LiteralString = """
+UNWIND $rows AS r
+MERGE (i:Item {name: r.item})
+MERGE (q:Requirement {name: r.requirement})
+MERGE (i)-[:REQUIRES]->(q)
+WITH q, r
+UNWIND r.units AS uid
+MATCH (u:Unit {unit_id: uid})
+MERGE (q)-[:GROUNDED_IN]->(u)
+"""
+NEEDS: LiteralString = """
+UNWIND $rows AS r
+MATCH (q:Requirement {name: r.requirement})
+UNWIND r.needs AS name
+MERGE (d:Document {name: name})
+MERGE (q)-[:NEEDS]->(d)
+"""
+BY: LiteralString = """
+UNWIND $rows AS r
+MATCH (q:Requirement {name: r.requirement})
+UNWIND r.by AS name
+MERGE (a:Agency {name: name})
+MERGE (q)-[:BY]->(a)
+"""
+# [왜] 방향 없이 1단계: 시드가 가리키는 단위(제30조.1항 → 별표 9)와 시드를 가리키는 단위(별표 9 → 제30조).
+#      질의에 대표 품목 이름이 있으면 그 품목 요건의 근거 단위도 더한다. UNION이 겹치는 id를 하나로 줄인다
 NEIGHBORS: LiteralString = """
 MATCH (s:Unit)-[:REFERS_TO]-(t:Unit)
 WHERE s.unit_id IN $seeds
-RETURN DISTINCT t.unit_id AS unit_id
+RETURN t.unit_id AS unit_id
+UNION
+MATCH (i:Item)-[:REQUIRES]->(:Requirement)-[:GROUNDED_IN]->(u:Unit)
+WHERE i.name IN $items
+RETURN u.unit_id AS unit_id
 """
 
 
-def neighbors(driver: Driver, seeds: list[str]) -> list[str]:
-    """시드와 REFERS_TO로 이어진 단위의 unit_id. 못 닿으면 SearchFailed."""
-    if not seeds:
+def load_item_graph(driver: Driver, graph: ItemGraph) -> None:
+    """품목·요건·서류·기관 노드와 REQUIRES·GROUNDED_IN·NEEDS·BY 간선을 넣는다. 단위 노드가 먼저다."""
+    rows = [
+        {
+            "item": item.name,
+            "requirement": req.name,
+            "units": [g.unit_id for g in req.grounded_in],
+            "needs": req.needs,
+            "by": req.by,
+        }
+        for item in graph.items
+        for req in item.requires
+    ]
+    for statement in (ITEMS, NEEDS, BY):
+        driver.execute_query(statement, {"rows": rows})
+
+
+def neighbors(driver: Driver, seeds: list[str], items: list[str] | None = None) -> list[str]:
+    """시드와 REFERS_TO로 이어진 단위, 품목 요건의 근거 단위의 unit_id. 못 닿으면 SearchFailed."""
+    if not seeds and not items:
         return []
     try:
-        params = {"seeds": seeds}
+        params = {"seeds": seeds, "items": items or []}
         records = driver.execute_query(NEIGHBORS, params, routing_=RoutingControl.READ).records
     except (Neo4jError, DriverError) as error:
         # [왜] 조용히 하이브리드만 쓰면 "그래프 켬" 실행이 실제로는 꺼진 채 돈다(사전 부검 F1)
@@ -143,4 +190,5 @@ def neighbors(driver: Driver, seeds: list[str]) -> list[str]:
 def graph_expand(settings: Settings) -> Callable[[list[str], str], list[str]]:
     """검색이 부를 그래프 확장 함수. 드라이버는 프로세스가 끝날 때까지 하나를 쓴다."""
     driver = connect_graph(settings)
-    return lambda seeds, query: neighbors(driver, seeds)
+    items = load_items().items
+    return lambda seeds, query: neighbors(driver, seeds, item_names(query, items))
