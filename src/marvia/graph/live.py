@@ -1,7 +1,7 @@
 """실제 LLM·DB·Voyage로 AgentDeps를 만든다 (계획 3a Task 8). 키와 DB가 필요하다.
 대화 기록(checkpointer)과 장기 기억(Store)도 Postgres에 둔다 (계획 3d, 설계 8절).
-대화 기록은 MARVIA_DATA_KEY에서 뽑은 키로 암호화한다 (R-034).
-암호(AesGcm)를 쓰는 곳이 live_memory뿐이라 여기 둔다.
+대화 기록은 MARVIA_DATA_KEY에서 뽑은 키로 암호화하고, 암호화하지 않은 값은 읽지 않는다 (R-034, R-038).
+암호(AesGcm, EncryptedOnly)를 쓰는 곳이 live_memory뿐이라 여기 둔다.
 
 하지 않는 일: 그래프 흐름(graph/main.py). 테스트는 이 파일 대신 가짜 AgentDeps를 쓴다(conftest.py).
 LLM 실패는 llm.structured가 LLMFailed로 바꿔 던지고, 그래프가 잡아 부분 답으로 간다.
@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 import httpx
 import psycopg
@@ -78,6 +79,23 @@ class AesGcm:
         return self.aead.decrypt(ciphertext[:NONCE_BYTES], ciphertext[NONCE_BYTES:], None)
 
 
+class EncryptedOnly(EncryptedSerializer):
+    """암호화한 값만 읽는 체크포인트 직렬화기. 쓰기는 라이브러리 그대로 늘 암호화한다."""
+
+    def loads_typed(self, data: tuple[str, bytes]) -> Any:
+        # [왜] 라이브러리는 형식 이름에 "+암호 이름"이 없으면 평문으로 푼다(encrypted.py loads_typed).
+        #      그러면 암호화 전에 쓴 줄과 DB에 직접 넣은 평문 줄도 읽혀 모델 입력까지 간다 (R-038)
+        # [주의] 오류 글에 값을 넣지 않는다. 평문 줄에는 실제 번호가 있을 수 있다
+        if "+" not in data[0]:
+            raise ValueError("암호화되지 않은 체크포인트 값은 읽지 않습니다")
+        return super().loads_typed(data)
+
+
+def checkpoint_serde(secret: str) -> EncryptedSerializer:
+    """대화 기록(checkpointer) 직렬화기. MARVIA_DATA_KEY에서 뽑은 키로 AES-GCM 암호화한다."""
+    return EncryptedOnly(AesGcm(derive_key(secret, CHECKPOINT_INFO)))
+
+
 @contextmanager
 def live_memory(url: str, secret: str) -> Iterator[tuple[PostgresSaver, PostgresStore]]:
     """대화 기록(checkpointer)은 암호화해서, 장기 기억(Store)은 그대로 Postgres에 둔다. 표가 없으면 만든다."""
@@ -89,7 +107,7 @@ def live_memory(url: str, secret: str) -> Iterator[tuple[PostgresSaver, Postgres
     # [주의] PostgresSaver.put은 str·int 같은 단순 값 칸을 직렬화기 없이 checkpoints 표 JSONB에 그대로 둔다.
     #        그래서 text(사용자 원문)와 answer(번호를 되돌린 답)는 평문으로 남는다.
     #        서버 쪽에서 막는 일은 done.md 4.1
-    serde = EncryptedSerializer(AesGcm(derive_key(secret, CHECKPOINT_INFO)))
+    serde = checkpoint_serde(secret)
     with (
         # [왜] from_conn_string은 serde를 받지 않는다. 그 함수와 같은 설정으로 연결을 열고
         #      저장기를 직접 만든다. with 블록을 나가면 연결이 닫힌다
