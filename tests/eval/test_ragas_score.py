@@ -88,3 +88,36 @@ def test_a_cargo_item_with_no_cited_text_is_still_scored():
     # [왜] 화물 문항(R15 같은)은 인용 없이 화물 줄만 있어도 빼지 않는다
     raw = [NEW | {"cited_texts": [], "calc_lines": ["[BL1]: 반입신고"], "ranked_texts": []}]
     assert [s["id"] for s in ragas_score.samples(raw, {"R1": "r"})] == ["R1"]
+
+
+def test_empty_contexts_score_zero_for_faithfulness_and_recall_and_none_for_precision():
+    import asyncio
+
+    class Boom:
+        async def ascore(self, **kwargs):  # 판정 호출이 일어나면 안 된다
+            raise AssertionError("judge called")
+
+    sample = NEW | {"cited_texts": [], "calc_lines": [], "ranked_texts": []}
+    metrics = {"faithfulness": Boom(), "context_precision": Boom(), "context_recall": Boom()}
+    out = asyncio.run(ragas_score.score(sample, metrics))
+    assert out["faithfulness"] == 0.0 and out["context_recall"] == 0.0 and out["context_precision"] is None
+    assert out["errors"] == [
+        "faithfulness: no_contexts=0",
+        "context_precision: no_contexts",
+        "context_recall: no_contexts=0",
+    ]
+
+
+def test_reference_items_that_were_not_scored_are_listed_with_the_reason():
+    raw = [
+        NEW | {"id": "R1", "cited_texts": [], "calc_lines": [], "ranked_texts": []},
+        NEW | {"id": "R2", "behaviour": "decline", "cited_texts": [], "calc_lines": [], "ranked_texts": []},
+        {"id": "R3", "error": "X"},  # 오류 줄은 행동이 없다
+    ]
+    refs = {"R1": "r", "R2": "r", "R3": "r", "R4": "r", "S1": ""}  # S1은 정답 글이 없다
+    todo = ragas_score.samples(raw, refs)
+    assert ragas_score.not_scored(raw, refs, todo) == [
+        ("R2", "decline"),
+        ("R3", "error"),
+        ("R4", "raw에 없음"),
+    ]

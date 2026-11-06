@@ -53,6 +53,13 @@ def samples(raw: list[dict], references: dict[str, str]) -> list[dict]:
     ]
 
 
+def not_scored(raw: list[dict], references: dict[str, str], todo: list[dict]) -> list[tuple[str, str]]:
+    """정답 글이 있는데 채점하지 않은 문항과 이유(행동 이름). 모르게 빠지는 문항이 없게 찍는다."""
+    done = {s["id"] for s in todo}
+    behaviour = {r["id"]: r.get("behaviour", "error") for r in raw}
+    return [(i, behaviour.get(i, "raw에 없음")) for i, text in references.items() if text and i not in done]
+
+
 def contexts_for(sample: dict) -> dict[str, list[str]]:
     """지표마다 넘길 글. 충실도는 인용한 조문+계산·화물 줄, 정밀도·재현율은 RAG 순위."""
     return {
@@ -112,11 +119,12 @@ async def score(sample: dict, metrics: dict) -> dict:
         ),
     }
     for name, call in calls.items():
-        if not texts[
-            name
-        ]:  # [왜] 빈 맥락은 ragas가 오류를 내거나 0점을 준다. 문항은 빼지 않고 못 잰 값으로 남긴다
-            out[name] = None
-            out["errors"].append(f"{name}: no_contexts")
+        if not texts[name]:
+            # [왜] 빈 맥락: 충실도(근거 없는 답)와 재현율(찾은 것 없음)은 0점. 판정 호출 없이 넣는다.
+            #      정밀도는 분모가 없어 정의되지 않으니 못 잰 값으로 둔다 (11-06 판정, 계획 4a 문서 ragas 절)
+            zero = name != "context_precision"
+            out[name] = 0.0 if zero else None
+            out["errors"].append(f"{name}: no_contexts" + ("=0" if zero else ""))
             continue
         try:
             value = (await call(metrics[name])).value
@@ -145,7 +153,11 @@ def main() -> None:
     cfg, prices = load("rules/eval.yaml"), load("rules/pricing.yaml")
     judge = cfg["judge"]
     references = {item["id"]: item.get("reference", "") for item in load("eval/set_v1.yaml")["items"]}
-    todo = samples(json.loads(Path(args.raw).read_text(encoding="utf-8")), references)
+    raw = json.loads(Path(args.raw).read_text(encoding="utf-8"))
+    todo = samples(raw, references)
+    skipped = not_scored(raw, references, todo)
+    if skipped:
+        print("채점하지 않은 정답 글 문항: " + ", ".join(f"{i}({why})" for i, why in skipped))
     # [왜] faithfulness 2번(주장 뽑기, 판정) + 근거마다 정밀도 1번 + 재현율 1번
     calls = sum(3 + len(s["ranked_texts"]) for s in todo)
     price = prices[judge["model"]]
