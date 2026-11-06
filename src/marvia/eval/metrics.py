@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import functools
 import math
 import re
 import statistics
@@ -15,7 +16,9 @@ from collections import Counter
 from collections.abc import Iterable
 from datetime import date
 
-from marvia.eval.dataset import Domain, Item, Trajectory
+import yaml
+
+from marvia.eval.dataset import ROOT, Domain, Item, Trajectory
 from marvia.eval.run import articles
 from marvia.tools.rules import load_rules
 
@@ -478,30 +481,44 @@ def _mentions_date(text: str, day: date) -> bool:
 
 
 _AFTER_LAW = "[ \\t」』\"'”’]"  # 법령 이름 뒤에 올 수 있는 글자: 공백, 닫는 낫표·따옴표 (줄바꿈은 아니다)
-# 다른 법령 이름의 시작: 한글+법, 시행령, 시행규칙. 말미 조사는 허용한다
-# shortcut: "신고방법"처럼 법으로 끝나는 낱말도 경계로 본다. 오탐이 보이면 corpus/sources.yaml 목록으로 바꾼다
-_OTHER_LAW = re.compile(
-    r"(?<![가-힣])[가-힣]{2,}법(?:(?![가-힣])|(?=[은는이가과와의을를에도]))|시행령|시행규칙|[\n]|[.!?](?=\s|$)"
-)
+
+
+@functools.cache
+def _boundaries() -> tuple[re.Pattern, re.Pattern]:
+    """범위를 끊는 이름 둘: 말뭉치 법령 이름(corpus/sources.yaml), 조문이 바로 붙은 법령 꼴 이름."""
+    names = sorted(
+        (d["name"] for d in yaml.safe_load((ROOT / "corpus" / "sources.yaml").read_text("utf-8"))), key=len
+    )
+    corpus = re.compile(r"(?<![가-힣])(?:" + "|".join(re.escape(n) for n in reversed(names)) + ")")
+    # [주의] 말뭉치 밖 법령 꼴 이름(…법, …령, …규칙, …고시, …규정)은 제N조가 바로 붙을 때만 경계다.
+    #        그래야 "신고방법은 제241조" 같은 보통 낱말이 범위를 끊지 않는다
+    lawlike = re.compile(rf"(?<![가-힣])(?:[가-힣]+(?:법|령|규칙)|[가-힣]*(?:고시|규정)){_AFTER_LAW}*제\d+조")
+    return corpus, lawlike
+
+
+# 범위의 끝: 빈 줄(문단 끝), 문장 끝
+_SCOPE_END = re.compile(r"\n[ \t]*\n|(?<!\d)[.!?](?=\s|$)")
 
 
 def _mentions_article(text: str, article: str) -> bool:
     """글에 그 법령의 그 조문이 있나. article은 "관세법 제241조" 모양이고, 제241조의2는 제241조가 아니다.
 
-    법령 이름(앞에 한글이 없는 것)이 나오면 다음 다른 법령 이름, 줄 끝, 문장 끝까지가 그 법령의 범위다.
-    조문은 그 범위 안에서 찾는다. 이름 바로 뒤에 시행령·시행규칙이 오면 다른 법령이다.
+    법령 이름(앞에 한글이 없는 것)이 나오면 다음 경계까지가 그 법령의 범위다. 경계는 말뭉치의 다른
+    법령 이름, 조문이 바로 붙은 법령 꼴 이름, 빈 줄, 문장 끝이다.
+    이름 바로 뒤에 시행령·시행규칙이 오면 다른 법령이다.
     """
     law, label = article.rsplit(" ", 1)
     found = re.fullmatch(r"제(\d+)조(?:의(\d+))?", label)
     assert found, article
     number, sub = found.groups()
     pattern = rf"(?<!\d)제?\s*{number}\s*조" + (rf"\s*의\s*{sub}" if sub else r"(?!\s*의\s*\d)")
+    corpus, lawlike = _boundaries()
     for start in re.finditer(rf"(?<![가-힣]){re.escape(law)}", text):
         rest = text[start.end() :]
         if re.match(rf"{_AFTER_LAW}*(시행령|시행규칙)", rest):
             continue  # [왜] "관세법 시행령"은 관세법이 아니다
-        stop = _OTHER_LAW.search(rest)
-        if re.search(pattern, rest[: stop.start()] if stop else rest):
+        ends = [m.start() for p in (corpus, lawlike, _SCOPE_END) if (m := p.search(rest))]
+        if re.search(pattern, rest[: min(ends)] if ends else rest):
             return True
     return False
 

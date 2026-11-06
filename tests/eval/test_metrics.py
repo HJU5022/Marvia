@@ -397,8 +397,34 @@ HEADING = "관세법 > 제9장 통관 > 제241조(수출ㆍ수입 또는 반송�
         ("관세법 제241조의2", "관세법 제241조", False),
         ("구관세법 제241조", "관세법 제241조", False),
         ("관세법 제3조입니다. 제9조는 다른 법의 것이에요", "관세법 제9조", False),
-        ("관세법\n제9조", "관세법 제9조", False),  # 줄이 바뀌면 범위가 끝난다
+        ("관세법\n제9조", "관세법 제9조", True),  # 줄바꿈 하나로는 범위가 끝나지 않는다
+        ("관세법 제226조\n\n식물방역법 제10조", "관세법 제10조", False),
+        ("관세법 제226조\n\n제10조는 다른 문단", "관세법 제10조", False),  # 빈 줄이 문단 끝이다
+        ("관세법 제226조와 보세화물관리에 관한 고시 제10조", "관세법 제10조", False),
+        ("관세법 제241조 및 「보세화물 관리에 관한 고시」 제9조", "관세법 제9조", False),
+        ("관세법에 따른 신고방법은 제241조에 있다", "관세법 제241조", True),
+        ("### 관세법\n- 제241조(수출ㆍ수입 또는 반송의 신고)", "관세법 제241조", True),
+        ("관세법 제226조와 식물방역법 제10조", "관세법 제226조", True),
     ],
 )
 def test_article_is_looked_for_inside_the_scope_of_the_same_law(text, article, expected):
     assert free_answer_score(text, Domain(article=article))["article"] is expected
+
+
+def test_every_corpus_heading_counts_for_its_own_law_and_article():
+    # [왜] Marvia는 인용 줄에 근거의 제목 경로를 쓴다. 그 줄이 자기 법령·조문으로 세어져야 한다 (RI-1)
+    import json
+    import re
+
+    from marvia.eval.dataset import CORPUS_UNITS
+
+    misses = []
+    for path in sorted(CORPUS_UNITS.glob("*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            unit = json.loads(line)
+            found = re.search(r"#(제\d+조(?:의\d+)?)", unit["unit_id"])
+            if found:
+                article = f"{unit['law_name']} {found.group(1)}"
+                if not free_answer_score(unit["heading"], Domain(article=article))["article"]:
+                    misses.append((unit["unit_id"], unit["heading"]))
+    assert misses == []
