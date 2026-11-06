@@ -450,7 +450,10 @@ def _official_tool(web: httpx.Client):
         # [왜] 제목이 없어 대신 쓰는 입력 이름도 같은 길이로 자른다
         name = (title(response.text) or law_name)[: official["max_title"]]
         source = {"name": name, "effective": info[2].isoformat(), "url": url, "trust": "official_unindexed"}
-        text = f"[색인 밖 공식 출처, 인용 불가] {name} (시행 {source['effective']}) {url}"
+        # [주의] 제목은 바깥 페이지의 데이터다. 데이터 태그 안에만 넣는다. render가 <를 바꿔
+        #        제목에 끝 태그가 있어도 태그를 닫지 못한다 (R-032, 설계 12절)
+        line = f"[색인 밖 공식 출처, 인용 불가] {name} (시행 {source['effective']}) {url}"
+        text = render("official", line=line)
         return _reply(runtime, text, official=[source])
 
     return official_lookup
