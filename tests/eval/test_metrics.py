@@ -27,6 +27,7 @@ from marvia.eval.metrics import (
     trajectory_violations,
     unscored,
     unsupported,
+    unsupported_all,
     wrong_evidence,
 )
 
@@ -328,3 +329,11 @@ def test_cargo_count_lines_show_the_found_count_for_the_named_items():
     }
     assert cargo_count_lines([result], ["R09", "R10"]) == ["agent m: R09 2건, R10 1건"]
     assert cargo_count_lines([result], ["R01"]) == ["agent m: R01 (기록 없음)"]
+
+
+def test_unsupported_all_counts_every_item_not_only_those_that_should_be_answered():
+    # [왜] 답하지 않아야 할 문항(U01~U04)에서 근거 없이 답한 것은 기존 비율에 보이지 않았다 (R-058)
+    rows = [row("R1", behaviour="unsupported"), row("S1"), row("U1", behaviour="unsupported")]
+    assert unsupported(rows, ITEMS) == {"value": 0.5, "n": 2}
+    assert unsupported_all(rows) == {"value": 0.6667, "n": 3}
+    assert unsupported_all([]) == {"value": None, "n": 0}

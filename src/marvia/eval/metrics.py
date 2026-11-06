@@ -85,6 +85,11 @@ def unsupported(rows: list[dict], items: dict[str, Item]) -> dict:
     return _mean([float(r["behaviour"] == "unsupported") for r in picked])
 
 
+def unsupported_all(rows: list[dict]) -> dict:
+    """근거 없이 답한 비율, 모든 문항 기준. 답하지 않아야 할 문항에서 근거 없이 답한 것도 센다."""
+    return _mean([float(r["behaviour"] == "unsupported") for r in rows])
+
+
 def recall_at_k(rows: list[dict], items: dict[str, Item], k: int) -> dict:
     """검색 R@k: RAG 순위(row.retrieved) 앞 k개가 정답 근거를 몇 개 덮는지의 문항 평균."""
     values = []
@@ -133,6 +138,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "blocked_accuracy": behaviour_accuracy(rows, items, "blocked"),
         "unrelated_accuracy": behaviour_accuracy(rows, items, "unrelated"),
         "unsupported": unsupported(rows, items),
+        "unsupported_all": unsupported_all(rows),
         "calc_accuracy": calc_accuracy(rows, items),
         f"recall_at_{k}": recall_at_k(rows, items, k),
         "mrr": mrr(rows, items),
@@ -169,6 +175,7 @@ TABLE = [
     ("behaviour_accuracy", "행동 정확도"),
     ("blocked_accuracy", "막힘 행동"),
     ("unsupported", "근거 없는 답"),
+    ("unsupported_all", "근거 없는 답(전 문항)"),
     ("calc_accuracy", "계산"),
     ("recall", "R@k"),
     ("mrr", "MRR"),
