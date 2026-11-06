@@ -52,3 +52,6 @@ evals/fixtures/replay/positions/
 
 # 국가법령정보센터에서 받은 HTML 원본. 단위 파일(corpus/units)만 올린다
 corpus/raw/
+
+# 평가 실행의 답 글(raw)은 저장소에 넣지 않는다 (위키 근거 폴더에 둔다)
+*.raw.json

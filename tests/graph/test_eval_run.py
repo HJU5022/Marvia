@@ -1,6 +1,7 @@
 """평가 실행 시험 (done 3.2). 가짜 모델·가짜 RAG로 키 없이 돈다. tests/graph 준비물(agent_deps)을 쓴다."""
 
 from dataclasses import replace
+from pathlib import Path
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
@@ -14,6 +15,7 @@ from marvia.eval.run import (
     estimate,
     evaluate_item,
     existing_results,
+    inside_repo,
     observe,
     preflight,
     result_name,
@@ -178,3 +180,8 @@ def test_leak_flag_turns_true_when_an_llm_input_holds_a_real_number():
     assert observe(values, [], watch, "agent", [])["leak"] is True
     assert observe({"mask_map": {"[BL1]": "DEMO0002"}}, [], watch, "agent", [])["leak"] is False
     assert watch.calls == 1
+
+
+def test_out_folder_inside_the_repo_is_refused(tmp_path):
+    assert inside_repo(Path("eval/results")) and inside_repo(Path.cwd() / "x")
+    assert not inside_repo(tmp_path)

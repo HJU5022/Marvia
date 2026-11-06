@@ -276,3 +276,8 @@ def existing_results(out: Path, loops: list[str], models: list[str], tag: str) -
     return [
         out / f"{n}{ext}" for n in names for ext in (".json", ".raw.json") if (out / f"{n}{ext}").exists()
     ]
+
+
+def inside_repo(out: Path) -> bool:
+    """결과 폴더가 저장소 안인가. [왜] raw에는 답 글이 있어 저장소에 들어가면 안 된다 (CLAUDE.md)"""
+    return out.resolve().is_relative_to(Path(__file__).resolve().parents[3])

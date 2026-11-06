@@ -18,7 +18,15 @@ from pathlib import Path
 
 from marvia.eval.dataset import SET_PATH, file_sha256, load_set
 from marvia.eval.metrics import compare_table, summarize
-from marvia.eval.run import estimate, evaluate_item, existing_results, preflight, result_name, stop_reason
+from marvia.eval.run import (
+    estimate,
+    evaluate_item,
+    existing_results,
+    inside_repo,
+    preflight,
+    result_name,
+    stop_reason,
+)
 from marvia.tools.rules import load_rules
 
 parser = argparse.ArgumentParser(description="평가셋 실행과 요약")
@@ -66,6 +74,8 @@ problems = preflight(len(items), loops, models, prices, args.max_cost)
 problems += [
     f"결과 파일이 이미 있다: {path}" for path in existing_results(Path(args.out), loops, models, args.tag)
 ]
+if inside_repo(Path(args.out)):
+    problems.append(f"--out은 저장소 밖이어야 한다: {args.out}")
 for problem in problems:
     print(f"[멈춤] {problem}")
 if problems:
