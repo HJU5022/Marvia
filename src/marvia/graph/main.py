@@ -7,7 +7,8 @@
 에이전트 길(loop="agent", 계획 3c): identify 다음 brief → agent(도구 루프, graph/agent.py)
         → 멈춤: finish / 도메인 밖: decline / 그 밖: write → verify → respond | finish
         (작성·검증은 계획자 길과 같다)
-하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다), 차례를 넘는 대화 기록·장기 기억 읽기(계획 3d).
+        에이전트 길의 대화 기록(messages)은 차례를 넘어 이어지고, 답(가린 글)이 기록 끝에 붙는다 (계획 3d)
+하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다).
 LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수·가짜 모델을 넣어 키 없이 돈다.
 """
 
@@ -21,9 +22,8 @@ from datetime import date
 import httpx
 import psycopg
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, RemoveMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import interrupt
 
 from marvia.graph.agent import build_agent
@@ -68,6 +68,7 @@ class AgentDeps:
 def start(state: MarviaState) -> dict:
     """새 차례를 시작한다. 같은 대화(thread)의 지난 차례 근거·초안·횟수를 비운다."""
     # [왜] checkpointer는 thread마다 공책을 이어 쓴다. 비우지 않으면 지난 질문의 근거와 초안이 섞인다
+    # [주의] 대화 기록(messages)과 가림 표(mask_map)는 비우지 않는다. 차례를 넘는 기억이다 (계획 3d)
     return {
         # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 이번 차례가 멈췄을 때 결과에 남지 않게 비운다
         "answer": "",
@@ -82,8 +83,6 @@ def start(state: MarviaState) -> dict:
         "llm_calls": 0,
         "failed_tools": [],
         # 에이전트 길 칸 (계획 3c)
-        # [왜] REMOVE_ALL_MESSAGES: 지난 차례 메시지를 모두 지운다. 차례를 넘는 기억은 계획 3d
-        "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES)],
         "todos": [],
         "assumptions": [],
         "stopped": "",
@@ -128,6 +127,13 @@ def _current_step(state: MarviaState) -> dict | None:
     return next((step for step in state.get("plan", []) if step["status"] == "in_progress"), None)
 
 
+def _remember(state: MarviaState, text: str) -> dict:
+    """에이전트 길이면 이번 차례 답(가린 글)을 대화 기록 끝에 더한다. 다음 차례 모델이 앞의 답을 읽는다."""
+    # [왜] 기록은 에이전트 길에만 있다(brief가 차례의 첫 메시지를 넣는다). 계획자 길은 메시지를 쓰지 않는다
+    # [주의] 화면에 보낼 글(실제 번호)이 아니라 가린 글을 넣는다. 기록은 다음 차례 LLM에 간다
+    return {"messages": [AIMessage(text)]} if state.get("messages") else {}
+
+
 def respond(state: MarviaState) -> dict:
     """검증을 통과한 초안으로 답을 만들고, 화면에 보내기 직전에 실제 번호로 되돌린다."""
     text = final_answer(
@@ -141,7 +147,7 @@ def respond(state: MarviaState) -> dict:
         todo | {"status": "completed"} if todo["status"] == "in_progress" else todo
         for todo in state.get("todos", [])
     ]
-    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos}
+    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, text)}
 
 
 def finish(state: MarviaState) -> dict:
@@ -155,7 +161,7 @@ def finish(state: MarviaState) -> dict:
         state.get("failed_tools", []),
         state.get("assumptions", []),
     )
-    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos}
+    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, text)}
 
 
 def _pending_todos(state: MarviaState) -> list[dict]:
@@ -168,7 +174,8 @@ def _pending_todos(state: MarviaState) -> list[dict]:
 
 def decline(state: MarviaState) -> dict:
     """도메인 밖 질문: 코드가 쓴 정중한 거절과 할 수 있는 일을 답으로 낸다 (설계 1절)."""
-    return {"answer": decline_answer(), "todos": _pending_todos(state)}
+    text = decline_answer()
+    return {"answer": text, "todos": _pending_todos(state), **_remember(state, text)}
 
 
 def _after_agent(state: MarviaState) -> str:

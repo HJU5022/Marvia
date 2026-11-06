@@ -5,6 +5,7 @@ import asyncio
 import anthropic
 import httpx
 import pytest
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -508,7 +509,7 @@ def test_cheap_tool_loop_hits_the_llm_cap_before_the_recursion_limit(agent_deps)
     assert "끝까지 확인하지 못했어요" in out["answer"]
 
 
-def test_second_turn_on_one_thread_starts_fresh(agent_deps, fake_rag):
+def test_second_turn_keeps_the_conversation_and_resets_turn_fields(agent_deps, fake_rag):
     seen = []
     rag = fake_rag()
     counting = type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
@@ -527,8 +528,8 @@ def test_second_turn_on_one_thread_starts_fresh(agent_deps, fake_rag):
     values = graph.get_state(cfg("f5")).values
     assert len(seen) == 2  # searched가 지난 차례 질의를 막지 않는다
     assert values["llm_calls"] == 5  # 0부터 다시 센다
-    assert [m.type for m in values["messages"]].count("human") == 1  # 이번 차례 메시지만 있다
-    assert sum(m.type == "ai" for m in values["messages"]) == 2
+    assert [m.type for m in values["messages"]].count("human") == 2  # 두 차례의 질문이 모두 남는다
+    assert sum(m.type == "ai" for m in values["messages"]) == 6  # 차례마다 모델 2 + 답 1
 
 
 def test_decline_with_empty_calc_still_declines(agent_deps):
@@ -715,3 +716,43 @@ def test_get_provision_unknown_label_adds_nothing(agent_deps):
     values = graph.get_state(cfg("a_gp2")).values
     assert not values.get("evidence")
     assert any("찾지 못했어요" in str(m.content) for m in values["messages"] if m.type == "tool")
+
+
+# --- 차례를 넘는 대화 기억 (계획 3d) ---
+
+
+class Inputs(BaseCallbackHandler):
+    """LLM에 들어간 메시지 글과 도구 호출 인자를 호출마다 모은다 (모델이 무엇을 보는지, 번호가 새는지)."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def on_chat_model_start(self, serialized, messages, **kwargs):
+        parts = [f"{m.content} {getattr(m, 'tool_calls', '')}" for batch in messages for m in batch]
+        self.calls.append("\n".join(parts))
+
+
+def test_next_turn_sees_the_earlier_turn_and_its_answer(agent_deps):
+    inputs = Inputs()
+    graph = agent_graph(agent_deps, say(("calc_deadlines", {})), say(), say())
+    config = {"configurable": {"thread_id": "m1"}, "callbacks": [inputs]}
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
+    graph.invoke({"text": "그 화물은 어느 항구에 있어요?"}, config)
+    last = inputs.calls[-1]  # 두 번째 차례의 모델 호출
+    assert "[BL1] 언제까지 수입신고 해야 해요?" in last  # 앞 차례 질문
+    assert "시험 답이에요." in last  # 앞 차례 답 (가린 글)
+    assert not any("DEMO0001" in call for call in inputs.calls)  # 어느 LLM 호출에도 실제 번호가 없다
+
+
+def test_new_message_after_an_unanswered_question_starts_a_clean_turn(agent_deps):
+    ask = say(("ask_user", {"question": "어느 항이에요?", "options": TWO}))
+    graph = agent_graph(agent_deps, ask, say())
+    assert "__interrupt__" in graph.invoke({"text": "장치기간이 궁금해요"}, cfg("m2"))
+    out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("m2"))  # 답하지 않고 새로 묻는다
+    messages = graph.get_state(cfg("m2")).values["messages"]
+    calls = {c["id"] for m in messages if m.type == "ai" for c in m.tool_calls}
+    results = {m.tool_call_id for m in messages if m.type == "tool"}
+    # [왜] 결과 없는 도구 호출이 기록에 남으면 다음 모델 호출을 API가 거절한다.
+    #      멈춘 루프의 메시지는 부모 기록에 들어오지 않는다
+    assert calls == results
+    assert "시험 답이에요." in out["answer"]

@@ -2,7 +2,7 @@
 
 하지 않는 일: 값 계산. 계획 1은 식별과 답, 계획 2는 RAG 칸, 계획 3a는 근거·계산·초안·검증 칸,
 계획 3c는 에이전트 루프 칸(messages, todos, assumptions, stopped, out_of_scope)과 루프 공책(LoopState)을 둔다.
-아직 빼는 칸: 차례를 넘는 대화 기록과 Store(장기 기억)는 계획 3d.
+계획 3d부터 messages와 mask_map은 차례를 넘어 이어진다(start가 비우지 않는다).
 """
 
 from __future__ import annotations
@@ -49,7 +49,8 @@ class MarviaState(IdentifyState, total=False):
     # 아래는 에이전트 루프 칸 (계획 3c). 계획자 길에서는 쓰지 않는다
     # [왜] add_messages: 메시지 목록을 덮어쓰지 않고 id로 합친다.
     #      루프가 돌려준 전체 목록을 다시 받아도 겹치지 않는다
-    messages: Annotated[list[AnyMessage], add_messages]  # 이번 차례 에이전트 대화 (가린 글만)
+    # 에이전트 대화 기록 (가린 글만). 차례를 넘어 이어지고 길면 brief가 앞부분을 요약한다
+    messages: Annotated[list[AnyMessage], add_messages]
     todos: list[dict]  # 화면에 보일 할 일 [{"content", "status"}]. 진행 중은 하나 (설계 6.2)
     assumptions: list[str]  # 답이 없어 권장안으로 진행하며 세운 가정 (설계 결정 4의 ②)
     stopped: str  # 루프가 한도·LLM 실패로 멈췄으면 그 이유. 비었으면 정상 끝
