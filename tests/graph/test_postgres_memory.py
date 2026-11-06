@@ -3,18 +3,14 @@
 """
 
 import psycopg
-import pytest
 from cryptography.fernet import Fernet
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.types import Command
-from psycopg.conninfo import make_conninfo
 
-from marvia.config import Settings
 from marvia.graph.live import live_memory
 from marvia.graph.main import build_main_graph
 
-URL = Settings().database_url
 CHILI = {
     "category": "농산물·임산물",
     "same": ["생산국", "품명", "수출업소", "포장장소"],
@@ -37,21 +33,6 @@ def model(*calls: tuple[str, dict]) -> ToolModel:
     """도구 호출 하나씩을 담은 메시지들 뒤에 루프를 끝내는 빈 답을 붙인 가짜 모델."""
     steps = [AIMessage("", tool_calls=[{"name": n, "args": a, "id": f"c-{n}"}]) for n, a in calls]
     return ToolModel(messages=iter([*steps, AIMessage("")]))
-
-
-@pytest.fixture
-def test_url():
-    """marvia_test 스키마를 만들고 그 스키마를 먼저 보는 접속 문자열을 준다. 끝나면 스키마째 지운다."""
-    try:
-        conn = psycopg.connect(URL, connect_timeout=2, autocommit=True)
-    except psycopg.OperationalError:
-        pytest.skip("로컬 Postgres가 꺼져 있음 (docker compose up -d db)")
-    conn.execute("DROP SCHEMA IF EXISTS marvia_test CASCADE")
-    conn.execute("CREATE SCHEMA marvia_test")
-    # [왜] search_path: 라이브러리가 만드는 표(checkpoints, store)가 public이 아니라 marvia_test에 생긴다
-    yield make_conninfo(URL, options="-c search_path=marvia_test")
-    conn.execute("DROP SCHEMA marvia_test CASCADE")
-    conn.close()
 
 
 def test_conversation_and_item_card_survive_a_restart(agent_deps, test_url):
