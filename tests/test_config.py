@@ -35,3 +35,10 @@ def test_key_is_hidden_when_printed(monkeypatch):
     settings = Settings(_env_file=None)
     assert "sk-test-not-real" not in repr(settings)
     assert settings.anthropic_api_key.get_secret_value() == "sk-test-not-real"
+
+
+def test_loop_defaults_to_the_agent(monkeypatch):
+    # [왜] 평가셋 v1(계획 4a Task 4)의 기준 실행에서 에이전트 길이 미리 정한 기준을 넘어 기본값이 되었다.
+    #      고정 계획자는 MARVIA_LOOP=planner로 남는다
+    monkeypatch.delenv("MARVIA_LOOP", raising=False)
+    assert Settings(_env_file=None).loop == "agent"

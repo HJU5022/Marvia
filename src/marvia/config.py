@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     rerank_model: str = "rerank-3"  # 리랭커 (Voyage AI)
     voyage_url: str = "https://api.voyageai.com/v1"
 
-    # 에이전트 (계획 3c). [왜] 고정 계획자(planner)를 기준선·대피로로 남기고, 같은 질문으로 둘을 비교한다
-    loop: Literal["planner", "agent"] = "planner"  # MARVIA_LOOP
+    # 에이전트 (계획 3c). [왜] 고정 계획자(planner)를 기준선·대피로로 남기고, 같은 평가셋으로 둘을 비교한다
+    # [왜] 기본값 agent: 평가셋 v1 기준 실행에서 미리 정한 기준을 넘었다 (계획 4a Task 4)
+    loop: Literal["planner", "agent"] = "agent"  # MARVIA_LOOP
     permission_mode: Literal["ask", "auto"] = "ask"  # MARVIA_PERMISSION_MODE. auto여도 바깥 발송은 늘 묻는다
