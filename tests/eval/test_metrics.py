@@ -351,7 +351,6 @@ def test_article_must_follow_the_law_name_directly():
     assert hit("관세법 제241조에 따라") and hit("관세법제241조") and hit("관세법 241조 3항")
     assert not hit("관세법 시행령 제241조에 따라")
     assert not hit("관세법 시행규칙 제241조에 따라")
-    assert not hit("관세법은 이렇고 제241조는 따로 있다")
     assert hit("관세법 시행령 제9조와 관세법 제241조")  # 둘 다 있으면 맞는 쪽을 찾는다
     assert free_answer_score("관세법 시행령 제241조", Domain(article="관세법 시행령 제241조"))["article"]
 
@@ -377,3 +376,29 @@ def test_cap_breaches_uses_the_larger_of_the_graph_count_and_the_real_count():
     # [왜] 오류 줄은 llm_calls가 None이지만 real_llm_calls는 이미 상한을 넘었을 수 있다
     over = row("R1", llm_calls=None, real_llm_calls=23)
     assert summarize([over, row("S1", llm_calls=3, real_llm_calls=3)], ITEMS, 8)["cap_breaches"] == 1
+
+
+HEADING = "관세법 > 제9장 통관 > 제241조(수출ㆍ수입 또는 반송의 신고) [L001556@20261002#제241조.3항]"
+
+
+@pytest.mark.parametrize(
+    ("text", "article", "expected"),
+    [
+        (HEADING, "관세법 제241조", True),  # Marvia 자신의 인용 줄
+        ("관세법 시행령 > 제9장 통관 > 제241조(신고)", "관세법 제241조", False),
+        ("관세법 제241조 및 제9조", "관세법 제9조", True),
+        ("관세법 제241조, 제226조", "관세법 제226조", True),
+        ("관세법 제226조와 식물방역법 제10조", "관세법 제10조", False),
+        ("관세법 제226조와 식물방역법 제10조", "관세법 제226조", True),
+        ("관세법 시행령 제241조", "관세법 제241조", False),
+        ("「관세법 시행령」 제241조", "관세법 제241조", False),
+        ("관세법은 이렇고, 관세법 시행령 제241조는", "관세법 제241조", False),
+        ("「관세법」 제241조에 따라", "관세법 제241조", True),
+        ("관세법 제241조의2", "관세법 제241조", False),
+        ("구관세법 제241조", "관세법 제241조", False),
+        ("관세법 제3조입니다. 제9조는 다른 법의 것이에요", "관세법 제9조", False),
+        ("관세법\n제9조", "관세법 제9조", False),  # 줄이 바뀌면 범위가 끝난다
+    ],
+)
+def test_article_is_looked_for_inside_the_scope_of_the_same_law(text, article, expected):
+    assert free_answer_score(text, Domain(article=article))["article"] is expected

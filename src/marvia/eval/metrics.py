@@ -475,19 +475,33 @@ def _mentions_date(text: str, day: date) -> bool:
     return bool(re.search(full, text) or re.search(short, text))
 
 
-_AFTER_LAW = "[\\s」』\"'”’]"  # 법령 이름 뒤에 올 수 있는 글자: 공백, 닫는 낫표·따옴표
+_AFTER_LAW = "[ \\t」』\"'”’]"  # 법령 이름 뒤에 올 수 있는 글자: 공백, 닫는 낫표·따옴표 (줄바꿈은 아니다)
+# 다른 법령 이름의 시작: 한글+법, 시행령, 시행규칙. 말미 조사는 허용한다
+# shortcut: "신고방법"처럼 법으로 끝나는 낱말도 경계로 본다. 오탐이 보이면 corpus/sources.yaml 목록으로 바꾼다
+_OTHER_LAW = re.compile(
+    r"(?<![가-힣])[가-힣]{2,}법(?:(?![가-힣])|(?=[은는이가과와의을를에도]))|시행령|시행규칙|[\n]|[.!?](?=\s|$)"
+)
 
 
 def _mentions_article(text: str, article: str) -> bool:
-    """글에 그 법령과 조문 번호가 있나. article은 "관세법 제241조" 모양이고, 제241조의2는 제241조가 아니다."""
+    """글에 그 법령의 그 조문이 있나. article은 "관세법 제241조" 모양이고, 제241조의2는 제241조가 아니다.
+
+    법령 이름(앞에 한글이 없는 것)이 나오면 다음 다른 법령 이름, 줄 끝, 문장 끝까지가 그 법령의 범위다.
+    조문은 그 범위 안에서 찾는다. 이름 바로 뒤에 시행령·시행규칙이 오면 다른 법령이다.
+    """
     law, label = article.rsplit(" ", 1)
     found = re.fullmatch(r"제(\d+)조(?:의(\d+))?", label)
     assert found, article
     number, sub = found.groups()
     pattern = rf"(?<!\d)제?\s*{number}\s*조" + (rf"\s*의\s*{sub}" if sub else r"(?!\s*의\s*\d)")
-    # [왜] 법령 이름 바로 뒤(공백, 닫는 낫표·따옴표만)에 조문이 와야 한다.
-    #      "관세법 시행령 제241조"는 관세법 제241조가 아니다
-    return bool(re.search(rf"(?<![가-힣]){re.escape(law)}{_AFTER_LAW}*{pattern}", text))
+    for start in re.finditer(rf"(?<![가-힣]){re.escape(law)}", text):
+        rest = text[start.end() :]
+        if re.match(rf"{_AFTER_LAW}*(시행령|시행규칙)", rest):
+            continue  # [왜] "관세법 시행령"은 관세법이 아니다
+        stop = _OTHER_LAW.search(rest)
+        if re.search(pattern, rest[: stop.start()] if stop else rest):
+            return True
+    return False
 
 
 def free_answer_score(text: str, domain: Domain) -> dict:
