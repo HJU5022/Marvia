@@ -94,7 +94,10 @@ print(out["answer"])
 print()
 if settings.loop == "agent":
     print("할 일:", " / ".join(f"{t['content']}({t['status']})" for t in values.get("todos", [])) or "없음")
-    tools = [c["name"] for m in values.get("messages", []) for c in getattr(m, "tool_calls", None) or []]
+    messages = values.get("messages", [])
+    # [왜] 기록은 차례를 넘어 이어진다. 이번 차례 질문(마지막 사람 메시지) 뒤의 호출만 센다
+    last = max((i for i, m in enumerate(messages) if m.type == "human"), default=-1)
+    tools = [c["name"] for m in messages[last + 1 :] for c in getattr(m, "tool_calls", None) or []]
     print("도구 호출:", ", ".join(tools) or "없음")
 else:
     print("할 일:", " → ".join(f"{step['action']}({step['status']})" for step in values.get("plan", [])))
