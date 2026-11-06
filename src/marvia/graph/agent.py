@@ -215,4 +215,7 @@ def build_summary(model: BaseChatModel) -> SummarizationMiddleware:
         trigger=("tokens", memory["summary_trigger_tokens"]),
         keep=("messages", memory["summary_keep_messages"]),
         summarizer=summarize,
+        # [왜] 기본값(4000 토큰)은 요약할 메시지의 앞쪽을 잘라 버리고, 잘린 앞부분은 요약되지 않은 채 기록에서
+        #      지워진다. 앞 요약이 기록의 첫 메시지라서 두 번째 요약부터 앞 요약이 사라진다
+        trim_tokens_to_summarize=None,
     )

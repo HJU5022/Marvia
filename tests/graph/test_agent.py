@@ -796,3 +796,25 @@ def test_summary_failure_ends_in_a_partial_answer(agent_deps, monkeypatch):
     assert "끝까지 확인하지 못했어요" in out["answer"]
     assert values["stopped"] == "llm_failed"
     assert values["failed_tools"] == [{"tool": "summary", "message": "APIConnectionError"}]
+
+
+def test_an_earlier_summary_reaches_the_next_summary(agent_deps, monkeypatch):
+    _short_memory(monkeypatch)
+    inputs = Inputs()
+    graph = agent_graph(
+        agent_deps,
+        say(("calc_deadlines", {})),
+        say(),
+        AIMessage("첫째 요약 표식"),
+        say(),
+        AIMessage("둘째 요약"),
+        say(),
+    )
+    config = {"configurable": {"thread_id": "m5"}, "callbacks": [inputs]}
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, config)
+    # [왜] 이 질문은 라이브러리 기본 잘라내기(4000 토큰)보다 길다
+    graph.invoke({"text": "자세히 알려 주세요 " * 2000}, config)
+    graph.invoke({"text": "하나 더 물어볼게요"}, config)
+    # [왜] 요약은 앞 요약(기록의 첫 메시지)을 입력에 넣어야 한다. 잘라내면 앞 요약이 통째로 사라진다
+    summary_calls = [call for call in inputs.calls if "<conversation>" in call]
+    assert "첫째 요약 표식" in summary_calls[-1]
