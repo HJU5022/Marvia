@@ -13,11 +13,13 @@ from marvia.db import connect
 from marvia.watch import recheck, watch_keys
 
 settings = Settings()
-secret = settings.watch_key.get_secret_value()
-if not secret:
-    # [왜] 키 없이는 표의 번호를 풀 수 없다. DB를 건드리기 전에 멈춘다
-    print("MARVIA_WATCH_KEY가 설정되지 않았습니다. .env에 키를 넣은 뒤 다시 실행하세요.")
+try:
+    keys = watch_keys(settings.watch_key.get_secret_value())
+except ValueError:
+    # [왜] 키가 없거나 틀리면 표의 번호를 풀 수 없다. DB를 건드리기 전에 멈춘다
+    # [주의] 키 값은 출력하지 않는다
+    print("MARVIA_WATCH_KEY가 없거나 올바른 키가 아닙니다. .env를 확인한 뒤 다시 실행하세요.")
     sys.exit(1)
 
 with connect(settings.database_url) as conn:
-    print("단계가 바뀐 화물:", recheck(conn, watch_keys(secret)))
+    print("단계가 바뀐 화물:", recheck(conn, keys))

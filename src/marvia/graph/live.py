@@ -31,8 +31,11 @@ def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
     llm = chat_model(settings)
     # [왜] 키가 없으면 실제 번호를 저장하지 않는다(fail-closed).
     #      watch=None이면 그래프에 watch_cargo와 새 소식이 없다
-    secret = settings.watch_key.get_secret_value()
-    watch = live_watch(conn, watch_keys(secret)) if secret else None
+    # 틀린 모양의 키(ValueError)도 같다. 오류 글을 그대로 올리지 않는다
+    try:
+        watch = live_watch(conn, watch_keys(settings.watch_key.get_secret_value()))
+    except ValueError:
+        watch = None
     return AgentDeps(
         rag=live_deps(settings, conn),  # 계획 2의 RAG 바깥 기능을 그대로 쓴다
         plan=structured(llm, Plan),

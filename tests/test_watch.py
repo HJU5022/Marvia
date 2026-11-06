@@ -94,6 +94,9 @@ def test_watch_keys_are_two_separate_keys():
     assert watch_keys(secret).hash_key == derive_key(secret, HASH_INFO)
     with pytest.raises(ValueError):
         watch_keys("")
+    with pytest.raises(ValueError, match="올바른") as err:
+        watch_keys("short-typed-secret")  # 사람이 친 짧은 비밀은 받지 않는다
+    assert "short-typed-secret" not in str(err.value)  # 오류 글에 비밀이 없다
 
 
 def test_row_with_another_key_is_skipped(db, keys):
