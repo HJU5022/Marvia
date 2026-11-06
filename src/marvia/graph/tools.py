@@ -32,7 +32,7 @@ from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
 from marvia.rag.fetch import law_info, law_search_url, title
-from marvia.rag.models import Evidence
+from marvia.rag.models import Evidence, SearchFailed
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
@@ -44,8 +44,8 @@ TOKEN = re.compile(r"\[(?:" + "|".join(LABELS) + r")\d+\]")
 
 def error_name(error: Exception) -> str:
     """실패 기록에 남길 이름. 오류 글은 넣지 않는다(접속 주소나 요청 글이 섞일 수 있다)."""
-    # [왜] LLMFailed는 이미 오류 종류 이름(과 상태 코드)만 담고 있다 (llm.structured)
-    return str(error) if isinstance(error, LLMFailed) else type(error).__name__
+    # [왜] LLMFailed·SearchFailed는 코드가 정한 짧은 이름만 담고 있다 (llm.structured, rag/graphdb.py)
+    return str(error) if isinstance(error, (LLMFailed, SearchFailed)) else type(error).__name__
 
 
 def user_of(config: RunnableConfig) -> str:
@@ -145,7 +145,7 @@ def make_tools(
             )
         try:
             out = rag_graph.invoke({"question": query, "as_of": today()})
-        except (httpx.HTTPError, psycopg.Error, LLMFailed) as error:
+        except (httpx.HTTPError, psycopg.Error, LLMFailed, SearchFailed) as error:
             # [왜] 검색 실패는 차례를 멈추지 않는다. 기록만 하고 모델이 다음 길을 고른다 (설계 결정 4의 ①)
             # [왜] RAG는 어느 단계에서든 실패할 수 있다. 실패 지점을 모르니 최악의 호출 수를 센다
             #      (상한을 넘지 않게)

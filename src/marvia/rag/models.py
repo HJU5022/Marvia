@@ -35,3 +35,9 @@ class Evidence(BaseModel):
     source_url: str
     text: str
     score: float  # 마지막 단계의 점수. 클수록 질문과 가깝다
+    # 어디서 온 후보인가: hybrid(벡터·키워드 RRF), graph(그래프 이웃, 계획 3b). 평가가 그래프 후보 수를 센다
+    origin: str = "hybrid"
+
+
+class SearchFailed(Exception):
+    """검색 길(그래프·MCP)이 실패했다. 글은 코드가 정한 짧은 이름뿐이라 기록에 그대로 남겨도 된다."""

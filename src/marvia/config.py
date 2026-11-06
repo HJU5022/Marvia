@@ -50,3 +50,5 @@ class Settings(BaseSettings):
     neo4j_url: str = "bolt://localhost:7688"  # MARVIA_NEO4J_URL
     neo4j_user: str = "neo4j"
     neo4j_password: SecretStr = SecretStr("marvia-local")  # MARVIA_NEO4J_PASSWORD
+    # [왜] 끄고 켜서 같은 커밋으로 비교한다(계획 3b Task 6). 켜고 Neo4j에 못 닿으면 검색 실패로 남는다
+    graph: Literal["off", "on"] = "off"  # MARVIA_GRAPH

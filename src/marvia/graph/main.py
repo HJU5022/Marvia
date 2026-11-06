@@ -51,7 +51,7 @@ from marvia.identify.mask import token_for, unmask
 from marvia.identify.parse import kind_of, read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
-from marvia.rag.models import Evidence
+from marvia.rag.models import Evidence, SearchFailed
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 from marvia.watch import WatchDeps
@@ -291,7 +291,7 @@ def build_main_graph(
         # [왜] RAG 공책(RagState)은 메인 공책과 칸이 달라 노드 안에서 따로 부른다 (LangGraph 문서의 방식)
         try:
             out = rag_graph.invoke({"question": query, "as_of": deps.today()})
-        except (httpx.HTTPError, psycopg.Error, LLMFailed) as error:
+        except (httpx.HTTPError, psycopg.Error, LLMFailed, SearchFailed) as error:
             # [왜] 검색 실패(Voyage·DB·RAG 안의 LLM)는 차례 전체를 멈추지 않는다.
             #      기록만 하고 계획자가 다음 길을 고른다 (설계 결정 4의 ①)
             # [왜] RAG는 늘 질의 분석 LLM부터 부른다. 어디서 실패했든 그 호출 하나는 일어났다

@@ -3,10 +3,13 @@
 import json
 from datetime import date
 
+import pytest
+
+from marvia.config import Settings
 from marvia.eval.dataset import CORPUS_UNITS
 from marvia.rag.edges import build_edges
-from marvia.rag.graphdb import graph_meta, load_graph
-from marvia.rag.models import Unit
+from marvia.rag.graphdb import connect_graph, graph_meta, load_graph, neighbors
+from marvia.rag.models import SearchFailed, Unit
 
 
 def _units(doc: str) -> list[Unit]:
@@ -59,3 +62,23 @@ def test_fixture_doc_id_is_a_fixture_value_never_a_corpus_doc_id(graph_db):
     real = {m["doc_id"] for m in manifest}
     assert doc.startswith("TEST") and doc not in real
     assert not any(r.startswith("TEST") for r in real)
+
+
+def test_neighbors_follow_references_both_ways(graph_db):
+    driver, doc = graph_db
+    _load(driver, doc)
+    near = set(neighbors(driver, [f"{doc}@20261002#제30조.1항"]))
+    assert near == {f"{doc}@20261002#별표9.2호.가목.7)"}
+    # [왜] 별표에서 출발하면 그 별표를 가리키는 조문(들어오는 간선)과 별표가 가리키는 단위를 함께 본다
+    assert set(neighbors(driver, [f"{doc}@20261002#별표9.2호.가목.7)"])) == {
+        f"{doc}@20261002#제30조.1항",
+        f"{doc}@20261002#별표10.4호.다목",
+    }
+    assert neighbors(driver, []) == [] and neighbors(driver, [f"{doc}@20261002#없는조"]) == []
+
+
+def test_unreachable_neo4j_is_a_search_failure_not_an_empty_result():
+    driver = connect_graph(Settings(neo4j_url="bolt://127.0.0.1:1"))
+    with pytest.raises(SearchFailed, match="graph_unavailable"):
+        neighbors(driver, ["LTEST@20261002#제1조"])
+    driver.close()

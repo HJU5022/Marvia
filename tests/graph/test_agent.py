@@ -18,6 +18,7 @@ from marvia.graph.schemas import Draft
 from marvia.graph.tools import search_calls, worst_search_calls
 from marvia.llm import LLMFailed
 from marvia.prompts import render
+from marvia.rag.models import SearchFailed
 from marvia.tools.rules import load_rules
 
 CITING = Draft(
@@ -150,6 +151,15 @@ def test_search_failure_is_recorded_and_loop_goes_on(agent_deps, fake_rag):
     assert "끝까지 확인하지 못했어요" in out["answer"]
     assert "search_law: ConnectError" in out["answer"]
     assert "시험 답이에요." not in out["answer"]
+
+
+def test_graph_failure_is_recorded_as_a_search_failure(agent_deps, fake_rag):
+    # [왜] 그래프가 꺼진 채 "그래프 켬"으로 재는 일을 막는다. 하이브리드만 쓰고 넘어가지 않는다 (사전 부검 F1)
+    rag = fake_rag(fail=SearchFailed("graph_unavailable"))
+    graph = agent_graph(agent_deps, say(("search_law", {"query": "수입신고 기한"})), say(), rag=rag)
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("a4g"))
+    values = graph.get_state(cfg("a4g")).values
+    assert values["failed_tools"] == [{"tool": "search_law", "message": "graph_unavailable"}]
 
 
 def test_deadlines_come_from_code_and_numbers_stay_masked(agent_deps):

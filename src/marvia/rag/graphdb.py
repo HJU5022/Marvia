@@ -9,14 +9,16 @@ Postgres가 한다(search.py). 그래서 두 저장소가 어긋나도 없는 �
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
 from typing import LiteralString
 
 from neo4j import Driver, GraphDatabase, RoutingControl
+from neo4j.exceptions import DriverError, Neo4jError
 
 from marvia.config import Settings
 from marvia.rag.edges import Edges
-from marvia.rag.models import Unit
+from marvia.rag.models import SearchFailed, Unit
 from marvia.tools.rules import load_rules
 
 # [왜] 제약을 먼저 만들어야 MERGE가 색인으로 찾는다. 없으면 7천 번의 MERGE가 매번 전체를 훑는다
@@ -97,3 +99,32 @@ def graph_meta(driver: Driver, name: str, docs: list[str]) -> dict:
 def units_sha256(folder: Path) -> str:
     """단위 파일들(*.jsonl)을 이름 순서로 이어 붙인 sha256. 그래프가 어느 코퍼스로 만들어졌는지 남긴다."""
     return hashlib.sha256(b"".join(p.read_bytes() for p in sorted(folder.glob("*.jsonl")))).hexdigest()
+
+
+# --- 검색 때 이웃 찾기 (Task 4) ---
+
+# [왜] 방향 없이 1단계: 시드가 가리키는 단위(제30조.1항 → 별표 9)와 시드를 가리키는 단위(별표 9 → 제30조)
+NEIGHBORS: LiteralString = """
+MATCH (s:Unit)-[:REFERS_TO]-(t:Unit)
+WHERE s.unit_id IN $seeds
+RETURN DISTINCT t.unit_id AS unit_id
+"""
+
+
+def neighbors(driver: Driver, seeds: list[str]) -> list[str]:
+    """시드와 REFERS_TO로 이어진 단위의 unit_id. 못 닿으면 SearchFailed."""
+    if not seeds:
+        return []
+    try:
+        params = {"seeds": seeds}
+        records = driver.execute_query(NEIGHBORS, params, routing_=RoutingControl.READ).records
+    except (Neo4jError, DriverError) as error:
+        # [왜] 조용히 하이브리드만 쓰면 "그래프 켬" 실행이 실제로는 꺼진 채 돈다(사전 부검 F1)
+        raise SearchFailed("graph_unavailable") from error
+    return [r["unit_id"] for r in records]
+
+
+def graph_expand(settings: Settings) -> Callable[[list[str], str], list[str]]:
+    """검색이 부를 그래프 확장 함수. 드라이버는 프로세스가 끝날 때까지 하나를 쓴다."""
+    driver = connect_graph(settings)
+    return lambda seeds, query: neighbors(driver, seeds)

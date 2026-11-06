@@ -54,10 +54,21 @@ with connect(settings.database_url) as conn:
     rows = []
     for item in items.values():
         found = find(mask_text(item.question)[0], data.as_of)
-        rows.append({"id": item.id, "retrieved": [e.unit_id for e in found]})
+        rows.append(
+            {
+                "id": item.id,
+                "retrieved": [e.unit_id for e in found],
+                "graph": sum(e.origin == "graph" for e in found),
+            }
+        )
         print(item.id, rows[-1]["retrieved"][:3])
 summary = {"r_at_k": recall_at_k(rows, items, k), "mrr": mrr(rows, items), "k": k}
-meta = {"tag": args.tag, "commit": args.commit, "annex_units": annex[0] if annex else 0}
+meta = {
+    "tag": args.tag,
+    "commit": args.commit,
+    "graph": settings.graph,
+    "annex_units": annex[0] if annex else 0,
+}
 out = Path(args.out)
 out.mkdir(parents=True, exist_ok=True)
 (out / f"retrieval-{args.tag}.json").write_text(

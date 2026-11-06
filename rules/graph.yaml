@@ -29,3 +29,8 @@ driver:
 
 load:
   batch: 1000 # UNWIND 한 번에 넣는 줄 수
+
+# 검색 때 그래프 확장 (계획 3b Task 4)
+expand:
+  seeds: 5 # 하이브리드 상위 몇 개에서 출발하나
+  max_candidates: 10 # 그래프가 더하는 후보의 최대 수. 질의 벡터에 가까운 순서로 자른다
