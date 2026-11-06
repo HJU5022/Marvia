@@ -1134,3 +1134,16 @@ def test_watched_cargo_change_is_shown_at_the_start_of_the_next_turn(agent_deps)
     # [왜] 화면에 보낼 답에만 실제 번호를 되돌린다. 모델은 토큰 글만 본다
     assert out["answer"].startswith("감시 중인 화물 변화:\n- DEMO0001: 반입신고 → 수입신고수리")
     assert "[BL1]: 반입신고 → 수입신고수리" in inputs.calls[0] and "DEMO0001" not in inputs.calls[0]
+
+
+def test_a_db_error_in_the_news_step_does_not_stop_the_turn(agent_deps):
+    import psycopg
+
+    from marvia.watch import WatchDeps
+
+    def broken(user: str):
+        raise psycopg.OperationalError("db down")
+
+    graph = agent_graph(agent_deps, say(), watch=WatchDeps(add=lambda *row: None, news=broken))
+    out = graph.invoke({"text": "안녕하세요"}, cfg("w3"))
+    assert out["answer"] and not out["answer"].startswith("감시 중인 화물 변화")

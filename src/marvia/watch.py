@@ -60,13 +60,18 @@ def recheck(conn: psycopg.Connection, lookup: Callable[[str], CargoFacts | ToolE
 
 def take_news(conn: psycopg.Connection, user: str) -> list[dict]:
     """사용자의 아직 보이지 않은 변화를 꺼내고 본 것으로 표시한다. 기록된 순서대로 돌려준다."""
-    rows = conn.execute(
-        "UPDATE watch_events AS e SET seen = true FROM watches AS w "
-        "WHERE e.watch_id = w.id AND w.user_id = %s AND NOT e.seen "
-        "RETURNING e.id, w.number, e.old_stage, e.new_stage",
-        (user,),
-    ).fetchall()
-    conn.commit()
+    try:
+        rows = conn.execute(
+            "UPDATE watch_events AS e SET seen = true FROM watches AS w "
+            "WHERE e.watch_id = w.id AND w.user_id = %s AND NOT e.seen "
+            "RETURNING e.id, w.number, e.old_stage, e.new_stage",
+            (user,),
+        ).fetchall()
+        conn.commit()
+    except psycopg.Error:
+        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌려 seen 표시도 취소한다
+        conn.rollback()
+        raise
     # [왜] UPDATE ... RETURNING은 순서를 정해 주지 않는다. 기록 id 순서로 정렬한다
     return [{"number": n, "old_stage": old, "new_stage": new} for _, n, old, new in sorted(rows)]
 

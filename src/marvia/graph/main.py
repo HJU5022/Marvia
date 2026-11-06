@@ -400,12 +400,18 @@ def build_main_graph(
         """에이전트 길: 감시 중인 화물의 새 변화를 꺼내 이번 차례에 보일 줄(토큰 글)로 둔다 (계획 3d)."""
         if deps.watch is None:
             return {}
+        try:
+            news_rows = deps.watch.news(user_of(config))
+        except psycopg.Error:
+            # [왜] 알림은 덤이다. DB 오류로 차례 전체를 죽이지 않고 변화 없이 간다.
+            #      UPDATE를 확정하지 않았으니 잃는 변화는 없고 다음 차례에 다시 나온다
+            return {}
         mask_map = dict(state.get("mask_map", {}))
         # [주의] 변화에는 실제 번호가 있다. 이 대화의 가림 표로 토큰을 받아 토큰 글로만 공책에 둔다
         lines = [
             f"{token_for(mask_map, n['number'], kind_of(n['number']))}: "
             f"{n['old_stage'] or '처음 확인'} → {n['new_stage']}"
-            for n in deps.watch.news(user_of(config))
+            for n in news_rows
         ]
         return {"watch_news": lines, "mask_map": mask_map}
 
