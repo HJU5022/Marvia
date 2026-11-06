@@ -1167,3 +1167,16 @@ def test_a_db_error_in_watch_cargo_is_recorded_and_the_turn_ends(agent_deps):
     assert graph.get_state(cfg("w4")).values["failed_tools"] == [
         {"tool": "watch_cargo", "message": "OperationalError"}
     ]
+
+
+def test_watch_cargo_refuses_an_unread_number_token(agent_deps):
+    watch = FakeWatch()
+    ask = say(("watch_cargo", {"token": "[NUM1]"}))
+    graph = agent_graph(agent_deps, ask, say(), permission_mode="auto", watch=watch.deps())
+    # [왜] [NUM1]은 읽지 못한 번호 덩어리다. 조회할 수 없어 감시해도 영원히 다시 조회만 한다
+    graph.invoke({"text": "MOCK12345678TEST87654321 지켜봐 줘"}, cfg("w5"))
+    graph.invoke(Command(resume={"custom": "MOCK12345678"}), cfg("w5"))  # 되묻는 질문에 직접 답한다
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("w5"))
+    assert watch.added == []
+    text = [m.content for m in graph.get_state(cfg("w5")).values["messages"] if m.type == "tool"][0]
+    assert "감시할 수 없는 번호" in text

@@ -8,6 +8,8 @@ from marvia.identify.parse import Kind, normalize, read_numbers
 _LABEL: dict[str, str] = {"bl": "BL", "cargo_no": "CARGO", "unread": "NUM"}
 # [왜] 토큰 이름표 목록. 토큰 모양을 정규식으로 찾는 쪽(graph/tools.py)이 같은 목록을 쓴다
 LABELS = tuple(_LABEL.values())
+# [왜] 읽은 번호(B/L·화물관리번호)의 이름표. 읽지 못한 덩어리(NUM)는 조회할 수 없어 뺀다
+READ_LABELS = tuple(label for kind, label in _LABEL.items() if kind != "unread")
 
 
 def token_for(mask_map: dict[str, str], value: str, kind: Kind | str) -> str:

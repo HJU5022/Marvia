@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from marvia.graph.agent import build_researcher
 from marvia.graph.answer import cargo_lines
 from marvia.graph.identify import build_lookup_graph
-from marvia.identify.mask import LABELS, mask_text
+from marvia.identify.mask import LABELS, READ_LABELS, mask_text
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
@@ -475,6 +475,9 @@ def _watch_tool(watch: WatchDeps):
         number = runtime.state.get("mask_map", {}).get(token)
         if number is None:
             return _reply(runtime, f"{token}: 모르는 토큰이에요")
+        if not token.startswith(tuple(f"[{label}" for label in READ_LABELS)):
+            # [왜] 읽지 못한 덩어리([NUMn])는 조회가 될 수 없어 감시 목록에 넣으면 영원히 다시 조회만 한다
+            return _reply(runtime, f"{token}: 조회할 수 없어서 감시할 수 없는 번호예요")
         cargo = next((c for c in runtime.state.get("cargos", []) if c["token"] == token and c["facts"]), None)
         # [주의] 실제 번호는 서버의 감시 표에만 들어간다. 모델에게 주는 글과 인자는 토큰뿐이다 (설계 12절)
         try:
