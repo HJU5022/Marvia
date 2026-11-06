@@ -434,7 +434,13 @@ def _official_tool(web: httpx.Client):
             message = f"HTTP {response.status_code}"
             failed = [{"tool": "official_lookup", "message": message}]
             return _reply(runtime, f"공식 조회 실패: {message}", failed_tools=failed)
-        info = law_info(response.text)
+        try:
+            info = law_info(response.text)
+        except ValueError as error:
+            # [주의] 페이지는 데이터라 날짜가 불가능할 수 있다(20260230). 실패로 남겨 차례를 살린다
+            name = error_name(error)
+            failed = [{"tool": "official_lookup", "message": name}]
+            return _reply(runtime, f"공식 조회 실패: {name}", failed_tools=failed)
         if info is None:
             return _reply(runtime, f"공식 사이트에서 찾지 못했어요: {law_name}")
         # [주의] 페이지 본문은 읽지 않는다. 숨은 칸의 시행일과 제목만 쓰고, 제목은 길이를 자른다 (설계 12절)

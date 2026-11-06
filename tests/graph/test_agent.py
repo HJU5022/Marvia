@@ -1051,3 +1051,12 @@ def test_official_lookup_records_a_non_200_answer_as_a_failure(agent_deps):
     values = graph.get_state(cfg("o5")).values
     assert {"tool": "official_lookup", "message": "HTTP 503"} in values["failed_tools"]
     assert not values.get("official")
+
+
+def test_official_lookup_records_an_impossible_date_as_a_failure(agent_deps):
+    look = say(("official_lookup", {"law_name": "식품위생법"}))
+    graph = agent_graph(agent_deps, look, say(), web=law_site([], LAW_PAGE.replace("20260101", "20260230")))
+    graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o6"))
+    values = graph.get_state(cfg("o6")).values
+    assert [f["tool"] for f in values["failed_tools"]] == ["official_lookup"]
+    assert not values.get("official")
