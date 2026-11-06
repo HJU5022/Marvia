@@ -129,3 +129,8 @@ def test_evidence_backed_counts_only_answers_and_survives_error_rows():
     ]
     assert summarize(rows, ITEMS, 8)["evidence_backed"] == {"value": 0.3333, "n": 3}
     assert summarize([row("U1", behaviour="decline")], ITEMS, 8)["evidence_backed"] == {"value": None, "n": 0}
+
+
+def test_wrong_evidence_counts_a_repeated_citation_once():
+    rows = [row("R1", cited=[A + "제241조.3항"]), row("R2", cited=[A + "제100조", A + "제100조"])]
+    assert wrong_evidence(rows, ITEMS) == {"value": 0.5, "n": 2}

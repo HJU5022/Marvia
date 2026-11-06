@@ -57,6 +57,7 @@ def correct_citation(rows: list[dict], items: dict[str, Item]) -> dict:
 def wrong_evidence(rows: list[dict], items: dict[str, Item]) -> dict:
     """잘못된 근거 비율: 채점하는 문항의 인용 가운데 정답도 also_ok도 아닌 인용의 비율.
 
+    단위는 인용(n = 인용 수)이다. 한 줄에서 같은 unit_id를 여러 번 인용해도 한 번만 센다.
     채점하는 문항은 정답 근거가 있는 문항과 비관련 문항(인용하면 모두 틀림)이다.
     정답 없는 관련 문항(화물 상태, 번호 없음)의 인용은 세지 않는다.
     """
@@ -64,7 +65,7 @@ def wrong_evidence(rows: list[dict], items: dict[str, Item]) -> dict:
     for r in rows:
         item = items[r["id"]]
         if item.gold or item.group == "unrelated":
-            flags += [float(not matches(c, item.gold + item.also_ok)) for c in r["cited"]]
+            flags += [float(not matches(c, item.gold + item.also_ok)) for c in set(r["cited"])]
     return _mean(flags)
 
 
