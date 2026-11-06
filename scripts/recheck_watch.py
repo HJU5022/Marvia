@@ -6,9 +6,18 @@
 지금 조회는 재생 데이터(unipass_replay)다. 실제 UNI-PASS 조회는 계획 3b에서 같은 함수 모양으로 붙인다.
 """
 
+import sys
+
 from marvia.config import Settings
 from marvia.db import connect
-from marvia.watch import recheck
+from marvia.watch import recheck, watch_keys
 
-with connect(Settings().database_url) as conn:
-    print("단계가 바뀐 화물:", recheck(conn))
+settings = Settings()
+secret = settings.watch_key.get_secret_value()
+if not secret:
+    # [왜] 키 없이는 표의 번호를 풀 수 없다. DB를 건드리기 전에 멈춘다
+    print("MARVIA_WATCH_KEY가 설정되지 않았습니다. .env에 키를 넣은 뒤 다시 실행하세요.")
+    sys.exit(1)
+
+with connect(settings.database_url) as conn:
+    print("단계가 바뀐 화물:", recheck(conn, watch_keys(secret)))
