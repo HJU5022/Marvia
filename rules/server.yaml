@@ -5,3 +5,7 @@ pool:
   min_size: 1
   max_size: 8 # [왜] 한 단계의 병렬 search_law(agent.yaml loop.max_concurrency)보다 크게 둔다
   timeout_s: 10 # 빌릴 연결이 없을 때 기다리는 초. 넘으면 psycopg_pool.PoolTimeout(검색 실패로 남는다)
+
+auth:
+  audience: authenticated # Supabase가 로그인한 사용자 토큰에 넣는 aud
+  algorithms: [ES256] # [주의] 목록을 열면 alg를 HS256·none으로 바꾼 위조 토큰이 통할 수 있다

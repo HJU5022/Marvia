@@ -1,0 +1,93 @@
+"""화면 서버 로그인 확인 시험 (계획 4b Task 4, C4). 시험 안에서 만든 ES256 키로 돌고 네트워크를 안 쓴다."""
+
+import time
+
+import jwt
+import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
+
+from marvia.auth import DEV_USER, AuthError, check_startup, dev_verifier, supabase_verifier, user_from_header
+from marvia.config import Settings
+
+BASE = "https://demo.supabase.test"
+KEY = ec.generate_private_key(ec.SECP256R1())  # [왜] 시험 안에서 만든 키. 저장소에 키를 두지 않는다
+OTHER = ec.generate_private_key(ec.SECP256R1())
+SETTINGS = Settings(_env_file=None, supabase_url=BASE, owner_ids="owner-1, owner-2")
+
+
+def token(key=KEY, **changes) -> str:
+    claims = {
+        "sub": "owner-1",
+        "iss": f"{BASE}/auth/v1",
+        "aud": "authenticated",
+        "exp": int(time.time()) + 300,
+    }
+    claims = {k: v for k, v in (claims | changes).items() if v is not None}
+    return jwt.encode(claims, key, algorithm="ES256")
+
+
+VERIFY = supabase_verifier(SETTINGS, signing_key=lambda raw: KEY.public_key())
+
+
+def test_a_signed_token_of_an_owner_gives_its_user_id():
+    assert user_from_header(f"Bearer {token()}", VERIFY) == "owner-1"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        token(OTHER),  # 서명이 다른 키
+        token(exp=int(time.time()) - 10),  # 만료
+        token(iss="https://other.supabase.test/auth/v1"),  # 다른 프로젝트가 발급
+        token(aud="anon"),  # 로그인한 사용자 토큰이 아니다
+        token(exp=None),  # 만료 시각이 없다
+        "not-a-jwt",
+    ],
+    ids=["signature", "expired", "issuer", "audience", "no-exp", "garbage"],
+)
+def test_bad_tokens_are_401_without_the_reason_text(bad):
+    with pytest.raises(AuthError) as refused:
+        user_from_header(f"Bearer {bad}", VERIFY)
+    assert refused.value.status == 401 and str(refused.value) == "로그인을 확인하지 못했어요"
+
+
+def test_a_signed_token_outside_the_owner_list_is_403():
+    with pytest.raises(AuthError) as refused:
+        user_from_header(f"Bearer {token(sub='stranger')}", VERIFY)
+    assert refused.value.status == 403
+
+
+@pytest.mark.parametrize("header", [None, "", "Basic abc", "Bearer ", "Bearer"])
+def test_a_missing_or_other_scheme_header_is_401(header):
+    with pytest.raises(AuthError) as refused:
+        user_from_header(header, VERIFY)
+    assert refused.value.status == 401
+
+
+def test_dev_login_takes_only_its_fixed_token():
+    verify = dev_verifier(Settings(_env_file=None, auth="dev", dev_token="local-dev-token"))
+    assert user_from_header("Bearer local-dev-token", verify) == DEV_USER
+    with pytest.raises(AuthError):
+        user_from_header("Bearer local-dev-token-x", verify)
+
+
+@pytest.mark.parametrize(
+    ("changes", "cloud_run", "message"),
+    [
+        ({"auth": "dev", "dev_token": "t"}, True, "Cloud Run"),
+        ({"auth": "dev"}, False, "MARVIA_DEV_TOKEN"),
+        ({"owner_ids": "owner-1"}, False, "MARVIA_SUPABASE_URL"),
+        ({"supabase_url": BASE}, False, "MARVIA_OWNER_IDS"),
+    ],
+    ids=["dev-on-cloud-run", "dev-without-token", "no-supabase-url", "no-owners"],
+)
+def test_the_server_refuses_to_start_with_an_unsafe_login_setting(monkeypatch, changes, cloud_run, message):
+    # [왜] 개발 로그인이 운영에 켜진 채 배포되거나, 로그인 확인 없이 뜨는 일을 시작에서 막는다 (fail-closed)
+    for name in ("MARVIA_AUTH", "MARVIA_SUPABASE_URL", "MARVIA_OWNER_IDS", "MARVIA_DEV_TOKEN"):
+        monkeypatch.delenv(name, raising=False)  # [왜] 셸에 걸린 값이 시험의 빈 설정을 채우지 않게 한다
+    if cloud_run:
+        monkeypatch.setenv("K_SERVICE", "marvia-api")  # Cloud Run이 넣는 환경 변수
+    else:
+        monkeypatch.delenv("K_SERVICE", raising=False)
+    with pytest.raises(RuntimeError, match=message):
+        check_startup(Settings(_env_file=None, **changes))

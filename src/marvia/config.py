@@ -62,3 +62,13 @@ class Settings(BaseSettings):
     # 규정 검색 MCP (계획 3b Task 8). [왜] mcp면 에이전트 RAG가 같은 MCP 서버를 메모리 통로로 부른다(설계 9절)
     rag_via: Literal["direct", "mcp"] = "mcp"  # MARVIA_RAG_VIA
     mcp_token: SecretStr = SecretStr("")  # MARVIA_MCP_TOKEN. 비면 scripts/serve_mcp.py가 뜨지 않는다
+
+    # 화면 서버 (계획 4b, 설계 10절·12절).
+    # [왜] 사용자는 서명을 확인한 토큰에서만 꺼낸다. 화면이 보낸 값은 믿지 않는다
+    # MARVIA_AUTH. dev는 이 컴퓨터에서만 쓴다(Cloud Run이면 시작을 거절한다)
+    auth: Literal["supabase", "dev"] = "supabase"
+    supabase_url: str = ""  # MARVIA_SUPABASE_URL (https://<프로젝트>.supabase.co). 비밀이 아니다
+    # MARVIA_OWNER_IDS. 쓸 수 있는 사용자 id(토큰 sub)를 쉼표로. 비면 supabase 모드 서버가 뜨지 않는다
+    owner_ids: str = ""
+    dev_token: SecretStr = SecretStr("")  # MARVIA_DEV_TOKEN. auth=dev일 때만 받는 고정 토큰
+    web_origin: str = "http://localhost:3000"  # MARVIA_WEB_ORIGIN. 화면 주소. CORS는 이 origin만 연다
