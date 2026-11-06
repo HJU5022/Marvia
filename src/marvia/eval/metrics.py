@@ -148,3 +148,40 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "cost_usd": round(sum(r.get("cost_usd") or 0 for r in rows), 4),
         "seconds_median": statistics.median([r["seconds"] for r in rows]) if rows else None,
     }
+
+
+# 비교 표의 칸: (요약 열쇠, 표 머리). recall은 meta.k로 열쇠를 만든다
+TABLE = [
+    ("correct_citation", "정답 근거 인용률"),
+    ("wrong_evidence", "잘못된 근거"),
+    ("behaviour_accuracy", "행동 정확도"),
+    ("blocked_accuracy", "막힘 행동"),
+    ("unsupported", "근거 없는 답"),
+    ("calc_accuracy", "계산"),
+    ("recall", "R@k"),
+    ("mrr", "MRR"),
+]
+
+
+def compare_table(results: list[dict]) -> str:
+    """실행 결과 파일들(길 × 모델)의 요약을 마크다운 표 하나로 만든다 (done 3.7 모델 비교표)."""
+    head = (
+        ["길", "모델"]
+        + [name for _, name in TABLE]
+        + ["근거 있는 답", "LLM 호출 중앙값·최대", "상한 넘음", "비용 합·문항당 최대($)", "시간 중앙값(초)"]
+        + ["오류", "새는 번호"]
+    )
+    lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for result in results:
+        meta, summary = result["meta"], result["summary"]
+        cells = [meta["loop"] + (f" ({meta['tag']})" if meta.get("tag") else ""), meta["model"]]
+        for key, _ in TABLE:
+            metric = summary[f"recall_at_{meta['k']}" if key == "recall" else key]
+            cells.append("-" if metric["value"] is None else f"{metric['value']:.2f} ({metric['n']})")
+        backed = summary["evidence_backed"]
+        cells.append("-" if backed["value"] is None else f"{backed['value']:.2f} ({backed['n']})")
+        cells += [f"{summary['llm_calls_median']}·{summary['llm_calls_max']}", summary["cap_breaches"]]
+        cells += [f"{summary['cost_usd']}·{summary['cost_per_item_max']}", summary["seconds_median"]]
+        cells += [summary["errors"], summary["leaks"]]
+        lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
+    return "\n".join(lines)

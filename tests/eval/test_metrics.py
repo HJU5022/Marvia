@@ -4,6 +4,7 @@ from marvia.eval.dataset import Item
 from marvia.eval.metrics import (
     behaviour_accuracy,
     calc_ok,
+    compare_table,
     correct_citation,
     matches,
     mrr,
@@ -134,3 +135,16 @@ def test_evidence_backed_counts_only_answers_and_survives_error_rows():
 def test_wrong_evidence_counts_a_repeated_citation_once():
     rows = [row("R1", cited=[A + "제241조.3항"]), row("R2", cited=[A + "제100조", A + "제100조"])]
     assert wrong_evidence(rows, ITEMS) == {"value": 0.5, "n": 2}
+
+
+def test_compare_table_has_one_line_per_run():
+    rows = [
+        row("R1", cited=[A + "제241조.3항"], evidence=[A + "제241조.3항"], real_llm_calls=3, cost_usd=0.01)
+    ]
+    result = {
+        "meta": {"loop": "agent", "model": "m", "k": 8, "tag": "ctx"},
+        "summary": summarize(rows, ITEMS, 8),
+    }
+    lines = compare_table([result, result]).splitlines()
+    assert len(lines) == 4  # 머리, 구분, 실행 둘
+    assert lines[2].startswith("| agent (ctx) | m | 1.00 (1) | 0.00 (1) |")
