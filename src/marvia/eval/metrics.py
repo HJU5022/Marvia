@@ -176,6 +176,19 @@ TABLE = [
 ]
 
 
+def cargo_count_lines(results: list[dict], ids: list[str]) -> list[str]:
+    """결과마다 문항별로 읽은 화물 수 한 줄 (R09: 붙여 쓴 번호가 몇 건으로 읽혔나)."""
+    lines = []
+    for result in results:
+        by_id = {r["id"]: r for r in result["rows"]}
+        cells = [
+            f"{i} {by_id[i]['cargo_count']}건" if "cargo_count" in by_id.get(i, {}) else f"{i} (기록 없음)"
+            for i in ids
+        ]
+        lines.append(f"{result['meta']['loop']} {result['meta']['model']}: " + ", ".join(cells))
+    return lines
+
+
 def compare_table(results: list[dict]) -> str:
     """실행 결과 파일들(길 × 모델)의 요약을 마크다운 표 하나로 만든다 (done 3.7 모델 비교표)."""
     head = (

@@ -231,3 +231,14 @@ def test_eval_run_has_no_outside_lookup(agent_deps):
 
     assert "official_lookup" in bound(live)  # 대조: 바깥 조회가 있으면 묶인다
     assert "official_lookup" not in bound(deps)
+
+
+def test_row_records_how_many_cargos_were_found_and_their_stage_names_but_no_number():
+    cargos = [
+        {"token": "[BL1]", "facts": {"stage": "반입신고", "stage_at": None}, "error": None},
+        {"token": "[BL2]", "facts": None, "error": {"message": "x", "code": "e"}},
+    ]
+    row = observe({"cargos": cargos, "mask_map": {"[BL1]": "DEMO0001"}}, [], LlmWatch(), "agent", [])
+    assert row["cargo_count"] == 2 and row["stages"] == ["반입신고"]
+    assert "DEMO0001" not in str(row["stages"])
+    assert observe({}, [], LlmWatch(), "agent", [])["cargo_count"] == 0

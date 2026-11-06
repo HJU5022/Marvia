@@ -163,6 +163,9 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
             "deadlines": [{"name": d["name"], "due": d["due"]} for d in calc.get("deadlines", [])],
             "reimport": (calc.get("reimport") or {}).get("verdict"),
         },
+        # [왜] 붙여 쓴 번호를 몇 건으로 읽었나(R09)와 찾은 단계. 번호는 남기지 않는다
+        "cargo_count": len(values.get("cargos", [])),
+        "stages": [c["facts"]["stage"] for c in values.get("cargos", []) if c.get("facts")],
         "tools": [c["name"] for m in messages for c in getattr(m, "tool_calls", None) or []],
         "plan": [step["action"] for step in values.get("plan", [])] if loop == "planner" else [],
         "llm_calls": values.get("llm_calls"),
@@ -229,6 +232,8 @@ def evaluate_item(
             "evidence": [],
             "retrieved": [],
             "calc": {},
+            "cargo_count": 0,
+            "stages": [],
             "tools": [],
             "plan": [],
         }

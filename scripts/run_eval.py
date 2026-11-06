@@ -27,6 +27,7 @@ import yaml
 from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
 from marvia.eval.metrics import (
     agreement,
+    cargo_count_lines,
     compare_table,
     domain_table,
     floors,
@@ -222,6 +223,8 @@ if args.command == "report":
     print(compare_table(results))
     print()
     print(rag_table(results))
+    print()
+    print("\n".join(cargo_count_lines(results, ["R09", "R10"])))
     raise SystemExit(0)
 
 data = load_set()

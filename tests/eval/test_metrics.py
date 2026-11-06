@@ -317,3 +317,14 @@ def test_ragas_means_score_faithfulness_apart_for_items_with_calc_lines():
 def test_summary_rounds_the_seconds_median_to_one_decimal():
     rows = [row("R1", seconds=18.7), row("U1", seconds=18.9)]  # 가운데 값 18.799999999999997
     assert summarize(rows, ITEMS, 8)["seconds_median"] == 18.8
+
+
+def test_cargo_count_lines_show_the_found_count_for_the_named_items():
+    from marvia.eval.metrics import cargo_count_lines
+
+    result = {
+        "meta": {"loop": "agent", "model": "m"},
+        "rows": [{"id": "R09", "cargo_count": 2}, {"id": "R10", "cargo_count": 1}, {"id": "R01"}],
+    }
+    assert cargo_count_lines([result], ["R09", "R10"]) == ["agent m: R09 2건, R10 1건"]
+    assert cargo_count_lines([result], ["R01"]) == ["agent m: R01 (기록 없음)"]
