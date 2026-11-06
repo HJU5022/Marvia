@@ -25,6 +25,7 @@ import psycopg
 from langchain.agents import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
@@ -41,6 +42,7 @@ from marvia.graph.tools import (
     flag_labels,
     make_tools,
     search_calls,
+    user_of,
     worst_search_calls,
 )
 from marvia.graph.verify import verify
@@ -306,11 +308,17 @@ def build_main_graph(
             result["reimport"] = reimport_check(ItemFacts.model_validate(item), today).model_dump(mode="json")
         return {"calc": result}
 
-    def write(state: MarviaState) -> dict:
+    def depth(config: RunnableConfig) -> str:
+        """작성자에게 줄 설명 깊이: 사용자가 승인해 저장한 설정, 없으면 rules의 기본값 (설계 8절 prefs)."""
+        saved = store.get(("users", user_of(config), "prefs"), "depth") if store is not None else None
+        return saved.value["depth"] if saved else cfg["memory"]["default_depth"]
+
+    def write(state: MarviaState, config: RunnableConfig) -> dict:
         """작성자: 가린 질문·화물 줄·계산·근거로 답 초안을 쓴다. 지난 위반이 있으면 함께 넘긴다."""
         prompt = render(
             "write",
             today=deps.today().isoformat(),
+            depth=depth(config),
             # [주의] 원문(text)이 아니라 가린 글만 넘긴다. 실제 번호는 LLM에 가지 않는다
             question=state.get("masked_text", ""),
             cargos="\n".join(cargo_lines(state.get("cargos", []))),
