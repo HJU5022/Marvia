@@ -18,7 +18,9 @@ from marvia.tools.unipass_replay import lookup_cargo
 def read(state: IdentifyState) -> dict:
     """번호를 읽고 가린다. 애매한 덩어리가 있으면 선택지 질문을 만든다."""
     text = state.get("text", "")
-    masked, mask_map = mask_text(text)
+    # [왜] 같은 대화(thread)의 앞 차례 표를 이어 쓴다. 차례가 바뀌어도 같은 번호는 같은 토큰이고,
+    #      모델이 기록에서 본 [BL1]을 이번 차례에도 조회할 수 있다 (계획 3d)
+    masked, mask_map = mask_text(text, state.get("mask_map"))
     numbers: list[str] = []
     question = None
     for _, read_result in read_numbers(text):

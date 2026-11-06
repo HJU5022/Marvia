@@ -24,3 +24,12 @@ def test_unknown_number_kept_with_error():
     cargo = out["cargos"][0]
     assert cargo["confidence"] == "unknown"
     assert cargo["error"]["code"] == "not_found"
+
+
+def test_mask_table_continues_from_the_previous_turn():
+    out = build_identify_graph().invoke(
+        {"text": "DEMO0002하고 DEMO0001 둘 다 봐 줘", "mask_map": {"[BL1]": "DEMO0001"}}
+    )
+    assert out["masked_text"] == "[BL2]하고 [BL1] 둘 다 봐 줘"
+    assert out["mask_map"] == {"[BL1]": "DEMO0001", "[BL2]": "DEMO0002"}
+    assert [c["token"] for c in out["cargos"]] == ["[BL2]", "[BL1]"]
