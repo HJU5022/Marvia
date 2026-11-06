@@ -26,6 +26,17 @@ def token(key=KEY, **changes) -> str:
     return jwt.encode(claims, key, algorithm="ES256")
 
 
+def forged(algorithm: str, key) -> str:
+    """alg를 바꿔 만든 위조 토큰. 내용(claims)은 올바른 토큰과 같다."""
+    claims = {
+        "sub": "owner-1",
+        "iss": f"{BASE}/auth/v1",
+        "aud": "authenticated",
+        "exp": int(time.time()) + 300,
+    }
+    return jwt.encode(claims, key, algorithm=algorithm)
+
+
 VERIFY = supabase_verifier(SETTINGS, signing_key=lambda raw: KEY.public_key())
 
 
@@ -42,8 +53,12 @@ def test_a_signed_token_of_an_owner_gives_its_user_id():
         token(aud="anon"),  # 로그인한 사용자 토큰이 아니다
         token(exp=None),  # 만료 시각이 없다
         "not-a-jwt",
+        forged(
+            "HS256", "x" * 64
+        ),  # [왜] 알고리즘 목록을 ES256 하나로 닫았는지 본다. 목록이 열리면 이 토큰이 통한다
+        forged("none", None),  # 서명 없는 토큰
     ],
-    ids=["signature", "expired", "issuer", "audience", "no-exp", "garbage"],
+    ids=["signature", "expired", "issuer", "audience", "no-exp", "garbage", "alg-hs256", "alg-none"],
 )
 def test_bad_tokens_are_401_without_the_reason_text(bad):
     with pytest.raises(AuthError) as refused:
