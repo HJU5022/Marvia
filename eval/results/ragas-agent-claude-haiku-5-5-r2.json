@@ -1,0 +1,120 @@
+{
+ "meta": {
+  "judge": "claude-sonnet-5-5",
+  "ragas": "0.4.3",
+  "anthropic": "2.3.0",
+  "raw": "agent-claude-haiku-5-5-r2.raw.json",
+  "label": "LLM 채점, 사람 일치 미확인",
+  "commit": "0848c2c",
+  "contexts": 8,
+  "contexts_rule": "cited+calc",
+  "not_scored": [
+   {
+    "id": "R13",
+    "behaviour": "partial"
+   }
+  ],
+  "tokens": {
+   "in": 226217,
+   "out": 40174
+  },
+  "cost_usd": 0.8542,
+  "stopped": false
+ },
+ "scores": [
+  {
+   "id": "R01",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.5454545454545454,
+   "context_precision": 0.99999999998,
+   "context_recall": 1.0
+  },
+  {
+   "id": "R02",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.4,
+   "context_precision": 0.9999999999875,
+   "context_recall": 1.0
+  },
+  {
+   "id": "R03",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.8,
+   "context_precision": 0.691666666649375,
+   "context_recall": 1.0
+  },
+  {
+   "id": "R04",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.8,
+   "context_precision": 0.0,
+   "context_recall": 0.0
+  },
+  {
+   "id": "R05",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.6666666666666666,
+   "context_precision": 0.9999999999,
+   "context_recall": 1.0
+  },
+  {
+   "id": "R06",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.8181818181818182,
+   "context_precision": 0.7545918367239141,
+   "context_recall": 1.0
+  },
+  {
+   "id": "R07",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.8181818181818182,
+   "context_precision": 0.0,
+   "context_recall": 0.2
+  },
+  {
+   "id": "R08",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.6666666666666666,
+   "context_precision": 0.0,
+   "context_recall": 0.0
+  },
+  {
+   "id": "R12",
+   "loop": "agent",
+   "errors": [
+    "context_precision: no_contexts",
+    "context_recall: no_contexts=0"
+   ],
+   "faithfulness": 0.8,
+   "context_precision": null,
+   "context_recall": 0.0
+  },
+  {
+   "id": "R14",
+   "loop": "agent",
+   "errors": [
+    "context_precision: no_contexts",
+    "context_recall: no_contexts=0"
+   ],
+   "faithfulness": 0.5714285714285714,
+   "context_precision": null,
+   "context_recall": 0.0
+  },
+  {
+   "id": "R15",
+   "loop": "agent",
+   "errors": [],
+   "faithfulness": 0.6666666666666666,
+   "context_precision": 0.99999999998,
+   "context_recall": 0.5
+  }
+ ]
+}
