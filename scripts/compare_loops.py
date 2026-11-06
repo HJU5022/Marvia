@@ -77,6 +77,9 @@ def kind(answer: str, evidence_count: int, calc: dict) -> str:
 
 # [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
 os.environ["MARVIA_UNIPASS_MODE"] = "replay"
+# [왜] 평가의 graph_added는 리랭커 앞 그래프 후보 수여야 한다. mcp 길은 리랭커 뒤 상위 n개만 보이고 300자 넘는
+#      질의를 거절한다. 두 길은 같은 상위 8개를 준다(계획 3b G7). 평가는 늘 direct로 돈다
+os.environ["MARVIA_RAG_VIA"] = "direct"
 settings = Settings()
 prices = load_rules("pricing")
 rows = []

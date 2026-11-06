@@ -512,18 +512,25 @@ def test_spread_groups_by_loop_model_commit_and_graph_and_refuses_mixed_set_file
     a = [_result("v2r1", "aa"), _result("v2r2", "aa"), _result("x", "aa", loop="planner")]
     groups = spread_groups(a)
     # [왜] 옛 결과 파일에는 meta.graph가 없다. "off"로 묶어 지금 묶음이 바뀌지 않는다
-    assert sorted(groups) == [("agent", "m", "c1", "off"), ("planner", "m", "c1", "off")]
-    assert len(groups[("agent", "m", "c1", "off")]) == 2
+    assert sorted(groups) == [("agent", "m", "c1", "off", "direct"), ("planner", "m", "c1", "off", "direct")]
+    assert len(groups[("agent", "m", "c1", "off", "direct")]) == 2
     # [왜] 같은 길·모델·평가셋이어도 커밋이 다르면 다른 코드의 결과라 따로 센다
     apart = spread_groups([_result("v2r1", "aa"), _result("v2r2", "aa", commit="c2")])
-    assert sorted(apart) == [("agent", "m", "c1", "off"), ("agent", "m", "c2", "off")]
+    assert sorted(apart) == [("agent", "m", "c1", "off", "direct"), ("agent", "m", "c2", "off", "direct")]
     # [왜] 설정 A(off)와 B(on)는 같은 커밋에서 돈다. 한 평균으로 섞으면 비교가 사라진다 (계획 3b)
     off, on = _result("3bA-t1", "aa"), _result("3bB-t1", "aa")
     on["meta"]["graph"] = "on"
     split = spread_groups([off, on])
-    assert sorted(split) == [("agent", "m", "c1", "off"), ("agent", "m", "c1", "on")]
+    assert sorted(split) == [("agent", "m", "c1", "off", "direct"), ("agent", "m", "c1", "on", "direct")]
     assert "그래프 on" in spread_table([on], "aa", {})
     assert "그래프 off" in spread_table([off], "aa", {})
+    # [왜] 같은 커밋·설정이라도 검색 길(direct·mcp)이 다르면 graph_added의 뜻이 달라 따로 센다.
+    #      옛 결과 파일에는 meta.rag_via가 없다(그때는 direct뿐이었다)
+    via = _result("v2r3", "aa")
+    via["meta"]["rag_via"] = "mcp"
+    both = spread_groups([_result("v2r1", "aa"), via])
+    assert sorted(both) == [("agent", "m", "c1", "off", "direct"), ("agent", "m", "c1", "off", "mcp")]
+    assert "검색 mcp" in spread_table([via], "aa", {}) and "검색 direct" in spread_table([off], "aa", {})
     bad = _result("3bA-t2", "aa")
     bad["meta"]["problems"] = ["leaks 1"]
     with pytest.raises(ValueError, match="무효 실행"):

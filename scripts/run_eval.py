@@ -356,6 +356,9 @@ from marvia.rag.graphdb import connect_graph, graph_meta, units_sha256  # noqa: 
 
 # [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
 os.environ["MARVIA_UNIPASS_MODE"] = "replay"
+# [왜] 평가의 graph_added는 리랭커 앞 그래프 후보 수여야 한다. mcp 길은 리랭커 뒤 상위 n개만 보이고 300자 넘는
+#      질의를 거절한다. 두 길은 같은 상위 8개를 준다(계획 3b G7). 평가는 늘 direct로 돈다
+os.environ["MARVIA_RAG_VIA"] = "direct"
 # [왜] 실행 유효성(계획 3b 사전 등록)에 쓸 값: DB의 별표 단위 수, 단위 파일 sha, 그래프 메타
 ANNEX_SQL = "SELECT count(*) FROM corpus_units WHERE split_part(unit_id, '#', 2) LIKE '별표%'"
 faults = {i.id for i in items if i.fault}
