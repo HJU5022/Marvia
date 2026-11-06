@@ -418,6 +418,9 @@ def _official_tool(web: httpx.Client):
         name, e.g. "식품위생법". Returns only its title, effective date and link. It is an official source
         outside the index with a lower trust level: it cannot be cited, and its text is not read.
         """
+        # [주의] 이름은 바깥 사이트 주소에 실려 나간다. 화물 번호(실제 번호나 토큰)는 보내지 않는다
+        if TOKEN.search(law_name) or read_numbers(law_name):
+            return _reply(runtime, "법령 이름에 화물 번호를 넣을 수 없어요. 법령 이름만 쓰세요.")
         url = law_search_url(law_name.strip())
         # [주의] 허용한 정부 사이트만 부른다. 주소는 우리 코드(fetch.py)가 만들지만, 바뀌어도 여기서 막는다
         if httpx.URL(url).host not in official["allowed_hosts"]:

@@ -1060,3 +1060,12 @@ def test_official_lookup_records_an_impossible_date_as_a_failure(agent_deps):
     values = graph.get_state(cfg("o6")).values
     assert [f["tool"] for f in values["failed_tools"]] == ["official_lookup"]
     assert not values.get("official")
+
+
+@pytest.mark.parametrize("law_name", ["식품위생법 [BL1]", "식품위생법 DEMO0001"])
+def test_official_lookup_refuses_a_name_with_a_cargo_number_or_token(agent_deps, law_name):
+    seen = []
+    look = say(("official_lookup", {"law_name": law_name}))
+    graph = agent_graph(agent_deps, look, say(), web=law_site(seen))
+    graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o7"))
+    assert seen == [] and not graph.get_state(cfg("o7")).values.get("official")
