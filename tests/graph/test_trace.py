@@ -100,3 +100,29 @@ def test_scrub_walks_send_packets_models_and_unknown_objects():
         "unit_id": "L001556@20261002#제241조.3항",
         "n": 3,
     }
+
+
+def test_scrub_takes_the_value_by_position_or_as_data_keyword():
+    # [왜] Langfuse 클라이언트는 마스크 함수를 mask(data=...)로 부른다
+    assert scrub("DEMO0001") == MASK
+    assert scrub(data="DEMO0001") == MASK
+
+
+def test_scrub_survives_odd_keys_cycles_and_broken_objects():
+    class Broken:
+        def __str__(self):
+            raise RuntimeError("DEMO0009")
+
+    looped: list = ["DEMO0001"]
+    looped.append(looped)
+    odd = scrub({("DEMO0001", 1): "a", frozenset({"DEMO0002"}): "b", Broken(): "c", 7: "d"})
+    assert "DEMO" not in json.dumps(odd, ensure_ascii=False) and 7 in odd and len(odd) == 4
+    assert MASK in json.dumps(scrub(looped), ensure_ascii=False)
+    assert scrub(Broken()) == MASK
+
+
+def test_distinct_number_keys_keep_both_values():
+    # [왜] 서로 다른 번호 키가 같은 가림 키로 합쳐져 값 하나가 사라지지 않게 한다
+    cleaned = scrub({"DEMO0001": "a", "DEMO0002": "b"})
+    assert sorted(cleaned.values()) == ["a", "b"] and len(cleaned) == 2
+    assert all("DEMO" not in key for key in cleaned)
