@@ -48,9 +48,26 @@ def error_name(error: Exception) -> str:
     return str(error) if isinstance(error, (LLMFailed, SearchFailed)) else type(error).__name__
 
 
+# 화면 서버가 컴파일한 그래프에 붙이는 표시 (server.build_app). 이 표시가 있으면 user_id 없이 돌지 않는다
+SERVER_SURFACE = "server"
+
+
+class MissingUser(PermissionError):
+    """화면 서버 길에서 user_id 없이 사용자 데이터에 닿으려 했다 (R-048)."""
+
+
 def user_of(config: RunnableConfig) -> str:
-    """장기 기억을 나누는 사용자 id. 실행 설정의 configurable.user_id, 없으면 "local"(로그인 전)."""
-    return config.get("configurable", {}).get("user_id", "local")
+    """장기 기억·감시를 나누는 사용자 id. 실행 설정의 configurable.user_id.
+
+    없으면 CLI·시험 길에서만 "local"이다. 화면 서버 길(configurable.surface == "server")에서는 MissingUser를
+    낸다. [왜] 로그인한 사람이 없는데 "local" 칸을 함께 쓰면 남의 기억과 감시를 읽고 쓴다 (R-048, fail-closed)
+    """
+    configurable = config.get("configurable", {})
+    if configurable.get("user_id"):
+        return configurable["user_id"]
+    if configurable.get("surface") == SERVER_SURFACE:
+        raise MissingUser("화면 서버 길에는 user_id가 있어야 합니다")
+    return "local"
 
 
 def _reply(runtime: ToolRuntime, text: str, **update) -> Command:

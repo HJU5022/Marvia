@@ -15,7 +15,7 @@ from langgraph.types import Command
 from marvia.graph.agent import ONE_IN_PROGRESS
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
-from marvia.graph.tools import search_calls, worst_search_calls
+from marvia.graph.tools import MissingUser, search_calls, worst_search_calls
 from marvia.llm import LLMFailed
 from marvia.prompts import render
 from marvia.rag.models import SearchFailed
@@ -1456,3 +1456,11 @@ def test_agent_loop_puts_not_found_lead_at_the_top(agent_deps):
     graph = agent_graph(agent_deps, say(), write=lambda p: missing)
     out = graph.invoke({"text": "관세법 제999조는 뭐라고 해요?"}, cfg("nf2"))
     assert out["answer"].startswith(NOT_FOUND_LEAD) and missing.answer in out["answer"]
+
+
+def test_the_server_graph_refuses_to_run_without_a_user_id(agent_deps):
+    # [왜] R-048: 로그인 없는 길이 "local" 칸을 함께 쓰지 않는다. 서버가 붙이는 표시가 있으면 멈춘다
+    graph = agent_graph(agent_deps, say(), store=InMemoryStore())
+    server_graph = graph.with_config(configurable={"surface": "server"})
+    with pytest.raises(MissingUser):
+        server_graph.invoke({"text": "수입신고 기한?"}, {"configurable": {"thread_id": "no-user"}})
