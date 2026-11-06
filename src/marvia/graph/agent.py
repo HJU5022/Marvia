@@ -214,7 +214,8 @@ def build_summary(model: BaseChatModel) -> SummarizationMiddleware:
         """요약할 메시지(가린 글)를 우리 프롬프트로 모델에게 요약시킨다."""
         # [왜] summarizer 함수를 주면 라이브러리의 재시도(3회)를 건너뛴다.
         #      SDK가 이미 재시도한다(agent.yaml llm.max_retries)
-        return str(model.invoke(render("summary", history=get_buffer_string(messages))).text)
+        history = summary_history(messages, memory["summary_max_input_chars"])
+        return str(model.invoke(render("summary", history=history)).text)
 
     return SummarizationMiddleware(
         model,  # [왜] 토큰 어림셈에만 쓴다. 요약 글은 summarize가 쓴다
@@ -222,9 +223,25 @@ def build_summary(model: BaseChatModel) -> SummarizationMiddleware:
         keep=("messages", memory["summary_keep_messages"]),
         summarizer=summarize,
         # [왜] 기본값(4000 토큰)은 요약할 메시지의 앞쪽을 잘라 버리고, 잘린 앞부분은 요약되지 않은 채 기록에서
-        #      지워진다. 앞 요약이 기록의 첫 메시지라서 두 번째 요약부터 앞 요약이 사라진다
+        #      지워진다. 앞 요약이 기록의 첫 메시지라서 두 번째 요약부터 앞 요약이 사라진다.
+        #      상한은 앞 요약을 지키는 summary_history가 대신 둔다
         trim_tokens_to_summarize=None,
     )
+
+
+def summary_history(messages: list[AnyMessage], cap: int) -> str:
+    """요약기에 줄 기록 글. 앞 요약은 늘 맨 앞에 두고, cap(글자 수)을 넘으면 그 뒤 기록의 앞쪽을 뺀다."""
+    # [왜] 앞 요약은 기록의 첫 메시지이고 라이브러리가 lc_source 표시를 붙인다(brief가 그대로 둔다).
+    #      빼면 그 앞의 대화가 기록에서 영영 사라진다
+    earlier = bool(messages) and messages[0].additional_kwargs.get("lc_source") == "summarization"
+    first = messages[:1] if earlier else []
+    # [주의] 앞 요약도 cap 안에 자른다. 짧게 쓰라고 시켰지만 모델이 쓴 글이라 길이를 믿지 않는다
+    head = get_buffer_string(first)[:cap]
+    rest = get_buffer_string(messages[len(first) :])
+    room = max(cap - len(head) - 1, 0)  # [왜] 1은 앞 요약과 나머지 사이 줄바꿈
+    # [왜] 최근 부분(지금 묻는 일에 가까운 쪽)을 남긴다. 라이브러리의 문맥 넘침 재시도도 끝쪽을 남긴다
+    tail = rest[len(rest) - room :] if len(rest) > room else rest
+    return "\n".join(part for part in (head, tail) if part)
 
 
 def build_researcher(model: BaseChatModel, tools: list):

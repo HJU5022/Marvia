@@ -837,6 +837,26 @@ def test_an_earlier_summary_reaches_the_next_summary(agent_deps, monkeypatch):
     assert "첫째 요약 표식" in summary_calls[-1]
 
 
+def test_a_very_long_history_is_cut_to_the_cap_and_keeps_the_earlier_summary(agent_deps, monkeypatch):
+    _short_memory(monkeypatch)
+    cap = 2000
+    monkeypatch.setitem(load_rules("agent")["memory"], "summary_max_input_chars", cap)
+    inputs = Inputs()
+    summaries = (AIMessage("첫째 요약 표식"), say(), AIMessage("둘째 요약"), say())
+    graph = agent_graph(agent_deps, say(("calc_deadlines", {})), say(), *summaries)
+    config = {"configurable": {"thread_id": "m7"}, "callbacks": [inputs]}
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, config)
+    graph.invoke({"text": "자세히 알려 주세요 " * 2000 + "끝 표식"}, config)  # 상한의 열 배가 넘는 붙여넣기
+    graph.invoke({"text": "하나 더 물어볼게요"}, config)
+    last = [call for call in inputs.calls if "<conversation>" in call][-1]
+    history = last.split("<conversation>\n")[1].split("\n</conversation>")[0]
+    # [왜] 상한은 render가 <를 바꾸기 전의 글자 수다
+    assert len(history.replace("&lt;", "<")) <= cap
+    assert "첫째 요약 표식" in history  # 앞 요약은 잘리지 않는다
+    assert "끝 표식" in history  # 최근 부분이 남는다
+    assert "시험 답이에요." not in history  # 가운데(첫 차례 답)가 빠진다
+
+
 # --- 장기 기억 읽기와 설정 (계획 3d) ---
 
 
