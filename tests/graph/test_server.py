@@ -248,3 +248,17 @@ def test_an_approval_card_shows_real_numbers_but_the_model_gets_tokens_back(agen
     assert run(client, body("t3", resume=resume))[-1]["outcome"] == {"type": "success"}
     assert added == [("user-a", "DEMO0001", "반입신고")]  # 다시 가린 [BL1]로 도구가 돌았다
     assert not any("DEMO0001" in text for text in inputs.seen)  # 모델은 화면에서 온 실제 번호를 받지 않았다
+
+
+def test_an_edit_with_a_number_new_to_the_thread_ends_as_a_rejection_and_adds_nothing(agent_deps):
+    added = []
+    watch = WatchDeps(add=lambda *row: added.append(row), news=lambda user: [], ack=lambda user, ids: None)
+    steps = (say("watch_cargo", {"token": "[BL1]"}, 1), AIMessage(""))
+    deps = agent_deps(model=ToolModel(messages=iter(steps)), watch=watch)
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
+    client = TestClient(build_app(graph, verify, web_origin="http://web.test"))
+    card = run(client, body("t10", "DEMO0001 계속 지켜봐 줘"))[-1]["outcome"]["interrupts"][0]
+    edit = {"type": "edit", "edited_action": {"name": "watch_cargo", "args": {"token": "DEMO0009"}}}
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"decisions": [edit]}}]
+    assert run(client, body("t10", resume=resume))[-1]["outcome"] == {"type": "success"}
+    assert added == []

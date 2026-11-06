@@ -129,3 +129,54 @@ def test_the_model_never_sees_a_number_typed_on_the_approval_card(agent_deps, de
     assert "__interrupt__" in out
     # [왜] 다시 가리지 않으면 실패하는 시험인지 함께 본다 (가린 쪽만 0이다)
     assert any("DEMO0001" in text for text in inputs.seen) is (not remask)
+
+
+@pytest.mark.parametrize("args", [{"DEMO0001": "x"}, {"note": 123456789012}], ids=["key", "int-value"])
+def test_a_number_in_a_key_or_a_non_text_value_is_refused(args):
+    # [왜] 고친 인자는 json.dumps 알림으로 모델에 간다. 키와 숫자 값도 글이 된다
+    assert remask_reply({"decisions": [_edit(args)]}, MAP) == {"decisions": [NEW_NUMBER]}
+
+
+def test_decisions_are_rebuilt_from_fixed_keys_only():
+    reply = {
+        "decisions": [
+            {"type": "approve", "message": "DEMO0009"},
+            {"type": "reject", "message": "no", "why": "DEMO0009"},
+            {"type": "edit", "edited_action": {"name": "n", "args": {"a": 1}, "note": "DEMO0009"}, "x": 1},
+        ]
+    }
+    assert remask_reply(reply, MAP) == {
+        "decisions": [
+            {"type": "approve"},
+            {"type": "reject", "message": "no"},
+            {"type": "edit", "edited_action": {"name": "n", "args": {"a": 1}}},
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    ("args", "needle"),
+    [
+        ({"name": "건고추", "DEMO0001": "x"}, "DEMO0001"),
+        ({"name": "건고추", "note": 123456789012}, "123456789012"),
+    ],
+    ids=["key", "int-value"],
+)
+def test_the_model_never_sees_a_number_in_an_edited_key_or_number_value(agent_deps, args, needle):
+    steps = [
+        AIMessage("", tool_calls=[{"name": "check_reimport", "args": {"facts": CHILI}, "id": "c1"}]),
+        AIMessage("", tool_calls=[{"name": "save_item_card", "args": {"name": "건고추"}, "id": "c2"}]),
+        AIMessage(""),
+    ]
+    graph = build_main_graph(
+        agent_deps(model=ToolModel(messages=iter(steps))),
+        InMemorySaver(),
+        loop="agent",
+        store=InMemoryStore(),
+    )
+    inputs = Inputs()
+    config = {"configurable": {"thread_id": "keys"}, "callbacks": [inputs]}
+    graph.invoke({"text": "DEMO0001 건고추 카드로 기억해 줘"}, config)
+    reply = approval_reply({"decisions": [_edit(args)]}, 1, ["save_item_card"])
+    graph.invoke(Command(resume=remask_reply(reply, graph.get_state(config).values["mask_map"])), config)
+    assert not any(needle in text for text in inputs.seen)
