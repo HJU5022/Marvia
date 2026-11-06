@@ -58,6 +58,8 @@ with connect(settings.database_url) as conn:
             {
                 "id": item.id,
                 "retrieved": [e.unit_id for e in found],
+                # [주의] 리랭커 상위 k 안의 그래프 단위 수다. 평가 실행의 graph_added와 다르다
+                #        (graph_added는 리랭커 앞 그래프 후보 수)
                 "graph": sum(e.origin == "graph" for e in found),
             }
         )

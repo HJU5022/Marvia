@@ -22,6 +22,7 @@ from marvia.eval.run import (
     preflight,
     ragas_contexts,
     result_name,
+    run_problems,
     save_result,
     stop_reason,
 )
@@ -69,7 +70,9 @@ def test_agent_row_keeps_citations_evidence_tools_and_rag_log(agent_deps):
     assert row["cited"] == ["L001556@20261002#제241조.3항"]
     assert row["evidence"] == ["L001556@20261002#제241조.3항"]
     assert row["tools"] == ["search_law"]
-    assert row["rag"][0] == {"step": "grade", "sufficient": True, "units": ["L001556@20261002#제241조.3항"]}
+    # [왜] 계획 3b부터 rag 기록에 검색 단계({"step": "search", "graph": n})도 있다. 채점 단계만 본다
+    grades = [e for e in row["rag"] if e["step"] == "grade"]
+    assert grades[0] == {"step": "grade", "sufficient": True, "units": ["L001556@20261002#제241조.3항"]}
     assert row["leak"] is False  # DEMO0001은 어떤 LLM 입력에도 없다
     # [주의] 줄에는 답 글이 없다. 답 글은 raw에만 있다
     assert "반입일부터" not in str(row) and "반입일부터" in raw["draft"]
@@ -358,3 +361,40 @@ def test_behaviour_base_is_the_v1_classification_without_the_not_found_rule():
     plain = observe({"answer": "x", "draft": {"citations": ["U1"]}}, [], LlmWatch(), "agent", [])
     assert plain["behaviour_base"] == plain["behaviour"] == "answer"
     assert behaviour(cited, [], not_found=False) == "answer"
+
+
+def test_graph_candidates_are_counted_per_item(agent_deps, fake_rag):
+    # [왜] "그래프 켬" 실행이 실제로 그래프 후보를 받았는지 줄에 남긴다 (계획 3b 사전 부검 F1)
+    found = [
+        unit(1),
+        unit(2).model_copy(update={"origin": "graph"}),
+        unit(3).model_copy(update={"origin": "graph"}),
+    ]
+    rag = replace(
+        fake_rag(), search=lambda query, as_of: found, rerank=lambda query, texts: [0.5] * len(texts)
+    )
+    deps = agent_deps(model=model(("search_law", {"query": "q"})), rag=rag, write=lambda prompt: CITING)
+    row, _ = evaluate_item(deps, item("DEMO0001 q"), "agent", TODAY, PRICES)
+    assert row["graph_added"] == 2
+
+
+def test_run_problems_reject_runs_that_did_not_measure_what_they_claim():
+    clean = {"errors": 0, "leaks": 0, "cap_breaches": 0}
+    rows = [
+        {"id": "R07", "failed": ["agent: LLM 호출 한도(20회)에 닿았어요"], "graph_added": 0},
+        {"id": "B02", "failed": ["search_law: ConnectError"], "graph_added": 0},  # 일부러 끊은 문항
+    ]
+    off = {"annex_units": 75, "graph": "off", "unipass_mode": "replay"}
+    assert run_problems(off, rows, clean, {"B02"}) == []
+    on = off | {"graph": "on", "graph_meta": {"sha": "a"}, "units_sha256": "a"}
+    assert run_problems(on, rows, clean, {"B02"}) == ["그래프 켬인데 그래프가 더한 후보가 0이다"]
+    stale = on | {"units_sha256": "b"}
+    assert run_problems(stale, [rows[0] | {"graph_added": 3}], clean, set()) == [
+        "그래프가 지금 단위 파일로 만든 것이 아니다 (sha 다름)"
+    ]
+    broken = [{"id": "R01", "failed": ["search_law: graph_unavailable"]}]
+    assert run_problems({"annex_units": 0}, broken, clean | {"leaks": 1}, set()) == [
+        "DB에 별표 단위가 없다 (scripts/index_corpus.py)",
+        "leaks 1",
+        "검색 길이 실패한 문항: R01",
+    ]

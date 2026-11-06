@@ -52,6 +52,7 @@ from marvia.eval.run import (
     inside_repo,
     preflight,
     result_name,
+    run_problems,
     save_result,
     stop_reason,
 )
@@ -341,6 +342,12 @@ import psycopg  # noqa: E402
 from marvia.config import Settings  # noqa: E402
 from marvia.db import connect  # noqa: E402
 from marvia.graph.live import agent_deps  # noqa: E402
+from marvia.rag.graphdb import connect_graph, graph_meta, units_sha256  # noqa: E402
+
+# [왜] 실행 유효성(계획 3b 사전 등록)에 쓸 값: DB의 별표 단위 수, 단위 파일 sha, 그래프 메타
+ANNEX_SQL = "SELECT count(*) FROM corpus_units WHERE split_part(unit_id, '#', 2) LIKE '별표%'"
+UNITS_DIR = ROOT / "corpus" / "units"
+faults = {i.id for i in items if i.fault}
 
 out = Path(args.out)
 out.mkdir(parents=True, exist_ok=True)
@@ -355,6 +362,9 @@ for model in models:
         psycopg.connect(settings.database_url, autocommit=True) as watch_conn,
     ):
         deps = agent_deps(settings, conn, watch_conn)
+        annex_units = conn.execute(ANNEX_SQL).fetchone()[0]
+        docs = sorted({p.name.split(".")[0] for p in UNITS_DIR.glob("*.jsonl")})
+        graph = graph_meta(connect_graph(settings), "main", docs) if settings.graph == "on" else {}
         for loop in loops:
             rows, raws, halt = [], [], None
             meta = {
@@ -368,6 +378,10 @@ for model in models:
                 "run_on": date.today().isoformat(),
                 "k": k,
                 "price": prices.get(model),
+                "graph": settings.graph,
+                "graph_meta": graph,
+                "annex_units": annex_units,
+                "units_sha256": units_sha256(UNITS_DIR),
             }
             name = result_name(loop, model, args.tag)
             for item in items:
@@ -395,8 +409,11 @@ for model in models:
                     print(f"[멈춤] {item.id}: {halt}")
                     break
             summary = summarize(rows, by_id, k)
+            meta["problems"] = run_problems(meta, rows, summary, faults)
             save_result(out, name, meta, summary, rows, raws)  # 문항이 하나도 없어도 빈 파일을 남긴다
             print(json.dumps(summary, ensure_ascii=False))
+            for problem in meta["problems"]:
+                print(f"[무효] {name}: {problem}")
             if halt:  # [왜] 이미 쓴 줄은 위에서 파일로 남겼다. 더 돌리지 않는다
                 print(f"쓴 돈 약 ${spent:.4f}")
                 raise SystemExit(1)

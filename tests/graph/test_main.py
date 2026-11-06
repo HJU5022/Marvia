@@ -8,6 +8,7 @@ from marvia.graph.main import build_main_graph, merge_evidence
 from marvia.graph.schemas import Draft, Plan, Step
 from marvia.graph.tools import worst_search_calls
 from marvia.llm import LLMFailed
+from marvia.rag.models import SearchFailed
 from marvia.rag.schemas import Grade
 from marvia.tools.reimport import ItemFacts
 from marvia.tools.rules import load_rules
@@ -294,6 +295,21 @@ def test_search_failure_is_recorded_and_planner_sees_it(agent_deps, fake_rag):
     out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t17"))
     assert "search_law: ConnectError" in plan_prompts[1]  # 오류 글(연결 안 됨)은 넣지 않는다
     assert "시험 답이에요." in out["answer"]  # 검색이 실패해도 차례는 이어 간다
+
+
+def test_graph_outage_is_a_failed_search_step_on_the_planner_path(agent_deps, fake_rag):
+    # [왜] SearchFailed("graph_unavailable")가 나도 계획자 길은 죽지 않고 실패한 검색 단계로 남긴다
+    plan_prompts: list[str] = []
+    rag = fake_rag(fail=SearchFailed("graph_unavailable"))
+    graph = build_main_graph(
+        agent_deps(rag=rag, plan=recording(plan_prompts, SEARCH, WRITE)), InMemorySaver()
+    )
+    out = graph.invoke({"text": "수입신고 기한이 언제예요?"}, cfg("t17g"))
+    assert graph.get_state(cfg("t17g")).values["failed_tools"] == [
+        {"tool": "search_law", "message": "graph_unavailable"}
+    ]
+    assert "search_law: graph_unavailable" in plan_prompts[1]
+    assert "시험 답이에요." in out["answer"]
 
 
 def test_search_failure_still_counts_the_query_analysis_call(agent_deps, fake_rag):

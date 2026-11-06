@@ -80,6 +80,11 @@ def eval_deps(
         if item.fault == "search":
             raise httpx.ConnectError("평가 실행이 검색을 일부러 끊었다")
         found = rag.search(query, as_of)
+        # [왜] 그래프가 실제로 후보를 더했는지 문항마다 센다. 실행 유효성 검사가 본다 (계획 3b)
+        # [주의] 이 수는 리랭커 앞의 그래프 후보 수다. retrieval_check의 "graph" 칸(리랭커 상위 k 안의
+        #        그래프 단위)과 다르다. "설정 B에서 그래프 후보 > 0" 유효성 규칙(run_problems)은
+        #        이 수(graph_added)를 쓴다
+        log.append({"step": "search", "graph": sum(e.origin == "graph" for e in found)})
         if seen is not None:
             # [왜] RAG는 시도마다 근거를 갈아 끼운다. 본 글을 그때그때 잡아 둔다 (raw에만, 줄에는 안 넣는다)
             for e in found:
@@ -145,6 +150,37 @@ def behaviour(values: dict, pauses: list[dict], *, not_found: bool = True) -> st
     return "unsupported"
 
 
+def run_problems(meta: dict, rows: list[dict], summary: dict, faults: set[str]) -> list[str]:
+    """세기 전에 보는 실행 유효성 (계획 3b 사전 등록). 문제가 있으면 그 실행은 세지 않고 다시 돈다."""
+    problems = []
+    if not meta.get("annex_units"):
+        problems.append("DB에 별표 단위가 없다 (scripts/index_corpus.py)")
+    if meta.get("graph") == "on":
+        graph = meta.get("graph_meta") or {}
+        if not graph.get("sha"):
+            problems.append("그래프 메타(sha)가 없다 (scripts/build_graph.py)")
+        elif graph["sha"] != meta.get("units_sha256"):
+            problems.append("그래프가 지금 단위 파일로 만든 것이 아니다 (sha 다름)")
+        if not sum(r.get("graph_added", 0) for r in rows):
+            problems.append("그래프 켬인데 그래프가 더한 후보가 0이다")
+    if meta.get("unipass_mode", "replay") != "replay":
+        problems.append("UNI-PASS 재생 모드가 아니다")
+    for key in ("errors", "leaks", "cap_breaches"):
+        if summary.get(key):
+            problems.append(f"{key} {summary[key]}")
+    # [왜] fault 문항(B02)은 검색을 일부러 끊어 실패가 정답이다. 나머지 문항의 검색 길 실패만 센다.
+    #      LLM 호출 한도에 닿은 차례("agent: …")는 행동 결과라 여기서 세지 않는다
+    search_failed = sorted(
+        r["id"]
+        for r in rows
+        if r["id"] not in faults
+        and any(f.startswith(("search_law:", "get_provision:")) for f in r.get("failed", []))
+    )
+    if search_failed:
+        problems.append(f"검색 길이 실패한 문항: {', '.join(search_failed)}")
+    return problems
+
+
 def cost_usd(tokens: dict, prices: dict) -> float | None:
     """모델별 토큰 수 × 단가(rules/pricing.yaml). 가격표에 없는 모델이 있으면 None."""
     if not all(model in prices for model in tokens):
@@ -174,6 +210,7 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
         "evidence": [e["unit_id"] for e in values.get("evidence", [])],  # 점수 높은 순 (merge_evidence)
         # [왜] R@k·MRR은 RAG 순위로 잰다. 묶음은 get_provision 근거(점수 1.0)가 앞선다
         "retrieved": list(dict.fromkeys(u for e in log if e["step"] == "grade" for u in e["units"])),
+        "graph_added": sum(e["graph"] for e in log if e["step"] == "search"),
         "calc": {
             "deadlines": [{"name": d["name"], "due": d["due"]} for d in calc.get("deadlines", [])],
             "reimport": (calc.get("reimport") or {}).get("verdict"),
