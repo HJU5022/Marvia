@@ -5,10 +5,10 @@ Answer depth: {depth} (짧게: two or three sentences; 보통: a short paragraph
 
 Return:
 - answer: Korean and plain, at the answer depth above. Use only the cargo lines, the calculation results, and the evidence below. If they do not answer the question, say what is still missing instead of guessing.
-- citations: the unit_id of every evidence item you rely on, copied exactly from inside the square brackets. Never cite anything else. If any evidence is given, cite at least one.
+- citations: the unit_id of every evidence item you rely on, copied exactly from inside the square brackets. Never cite anything else. If any evidence is given and not_in_evidence is false, cite at least one.
 - next_options: two or three short Korean next steps the user can take.
 - forwarder_message: only when the user asks about their own cargo and there is no cargo line, a short Korean message the user can send to their forwarder asking for the B/L number or the cargo control number (화물관리번호). Otherwise an empty string.
-- not_in_evidence: true only when the user asked about a specific article, clause, rule, date or subject and the evidence below does not contain it; the user then sees a fixed notice before your answer. Otherwise false.
+- not_in_evidence: true only when the user asked about a specific article, clause, rule, date or subject and the evidence below does not contain it; the user then sees a fixed notice before your answer. Otherwise false. If calculation results or cargo lines are given, keep it false and say in the answer what is still missing. When it is true, do not repeat the missing article or clause number in the answer; the notice already says it is not in the evidence.
 
 Rules for answer:
 - When you name an article such as 제241조, cite an evidence item whose heading has that article, or write it exactly as the calculation results write it.

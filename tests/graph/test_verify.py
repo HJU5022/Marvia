@@ -254,3 +254,11 @@ def test_not_in_evidence_with_found_cargo_is_a_violation(evidence, cargos):
 def test_not_in_evidence_alone_is_not_a_violation(evidence):
     draft = GOOD.model_copy(update={"not_in_evidence": True, "citations": [], "answer": "근거에 없어요."})
     assert verify(draft, evidence, {}, [], MASK, TODAY) == []
+
+
+def test_not_in_evidence_answer_naming_an_uncited_article_is_still_a_violation(evidence):
+    # [왜] 근거에 없는 조문 번호를 답에 되풀이하면 걸린다. 그래서 프롬프트가 번호를 쓰지 말라고 한다
+    draft = GOOD.model_copy(
+        update={"not_in_evidence": True, "citations": [], "answer": "제999조는 근거에 없어요."}
+    )
+    assert verify(draft, evidence, {}, [], MASK, TODAY) == ["인용한 근거에 없는 조문: 제999조"]
