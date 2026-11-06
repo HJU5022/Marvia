@@ -1,5 +1,7 @@
 """tests/graph 공용 준비물. 테스트 함수가 인자 이름(evidence, cargos, fake_rag, agent_deps 등)으로 받는다."""
 
+import threading
+import time
 from datetime import date
 
 import pytest
@@ -135,3 +137,25 @@ def agent_deps(fake_rag, fake_provision):
         return AgentDeps(**(base | changes))
 
     return make
+
+
+@pytest.fixture
+def slow_lookup(monkeypatch):
+    """화물 조회를 조금 늦추고, 동시에 돈 조회 수의 최대(peak)를 센다 (병렬 조회 시험)."""
+    from marvia.graph import identify
+
+    real = identify.lookup_cargo
+    lock = threading.Lock()
+    seen = {"active": 0, "peak": 0}
+
+    def slow(number):
+        with lock:
+            seen["active"] += 1
+            seen["peak"] = max(seen["peak"], seen["active"])
+        time.sleep(0.05)  # [왜] 조회가 겹칠 시간을 준다
+        with lock:
+            seen["active"] -= 1
+        return real(number)
+
+    monkeypatch.setattr(identify, "lookup_cargo", slow)
+    return seen

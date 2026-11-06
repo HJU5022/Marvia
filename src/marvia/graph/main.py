@@ -32,7 +32,7 @@ from langgraph.types import interrupt
 
 from marvia.graph.agent import MODEL_ERRORS, build_agent, build_summary
 from marvia.graph.answer import cargo_lines, decline_answer, final_answer, partial_answer
-from marvia.graph.identify import build_identify_graph, lookup
+from marvia.graph.identify import build_identify_graph, build_lookup_graph
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
 from marvia.graph.state import MarviaState, merge_evidence
@@ -397,7 +397,7 @@ def build_main_graph(
     # [왜] 컴파일한 서브그래프도 노드 하나처럼 넣을 수 있다. 공책 칸 이름이 같아서 그대로 주고받는다
     graph.add_node("identify", build_identify_graph())
     graph.add_node("ask", ask)
-    graph.add_node("lookup", lookup)  # 식별 서브그래프의 조회 노드를 다시 쓴다
+    graph.add_node("lookup", build_lookup_graph())  # 식별 서브그래프와 같은 조회 서브그래프를 다시 쓴다
     graph.add_node("write", write)
     graph.add_node("verify", check)
     graph.add_node("respond", respond)
@@ -444,6 +444,8 @@ def build_main_graph(
     graph.add_conditional_edges("verify", after_verify, ["respond", "write", "finish"])
     graph.add_edge("respond", END)
     graph.add_edge("finish", END)
-    # [왜] with_config로 그래프에 recursion_limit을 붙여 둔다. invoke 때 config를 넘기면 그 값이 이긴다
+    # [왜] with_config로 그래프에 recursion_limit을 붙여 둔다. invoke 때 config를 넘기면 그 값이 이긴다.
+    #      max_concurrency는 한 단계에 함께 도는 작업(Send 갈래, 병렬 도구) 수를 서브그래프까지 막는다
     limit = cfg["loop"]["agent_recursion_limit" if loop == "agent" else "recursion_limit"]
-    return graph.compile(checkpointer=checkpointer, store=store).with_config(recursion_limit=limit)
+    compiled = graph.compile(checkpointer=checkpointer, store=store)
+    return compiled.with_config(recursion_limit=limit, max_concurrency=cfg["loop"]["max_concurrency"])

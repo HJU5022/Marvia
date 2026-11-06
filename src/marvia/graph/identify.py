@@ -2,11 +2,16 @@
 
 하지 않는 일: 사용자에게 직접 묻기. 애매하면 question에 담아 끝내고, 묻는 일은 메인 그래프만 한다 (설계 6.3).
 순서도: START → read → (애매하면 END, 아니면 lookup) → END
+조회(lookup)는 따로 컴파일한 서브그래프다: assign → 번호마다 Send("one") → collect (설계 4.3, 계획 3d)
 """
 
 from __future__ import annotations
 
+import operator
+from typing import Annotated, TypedDict
+
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Send
 
 from marvia.graph.state import IdentifyState
 from marvia.identify.mask import mask_text, token_for
@@ -69,12 +74,66 @@ def identify_number(number: str, mask_map: dict[str, str]) -> dict:
     return identity.model_dump(mode="json")
 
 
-def lookup(state: IdentifyState) -> dict:
-    """확정한 번호를 하나씩 조회해 화물별 결과로 만든다. 실패도 결과로 남긴다."""
+class LookupState(IdentifyState, total=False):
+    """조회 서브그래프의 공책: 식별 칸에 갈래 결과 칸을 더한다. found는 서브그래프 밖으로 내보내지 않는다."""
+
+    # [왜] Send 갈래들이 같은 단계에 함께 쓴다. 합치는 함수가 없으면 InvalidUpdateError가 난다 (강의 13강)
+    found: Annotated[list[dict], operator.add]  # {"idx": 처음 순서, "cargo": 화물 결과}
+
+
+class LookupTask(TypedDict):
+    """Send 갈래 하나가 받는 입력. 갈래는 공책 전체가 아니라 이것만 받는다."""
+
+    idx: int  # 처음 번호 순서. 끝난 순서와 상관없이 이 순서로 모은다
+    number: str  # 조회할 실제 번호
+    mask_map: dict[str, str]  # 이 번호의 토큰이 이미 든 가림 표
+
+
+def assign(state: IdentifyState) -> dict:
+    """조회할 번호마다 토큰을 먼저 정한다."""
+    # [왜] 갈래마다 토큰을 만들면 같은 이름표([BL2])가 두 번호에 붙을 수 있다. 나누기 전에 한 곳에서 정한다
     # [왜] 공책의 dict를 직접 고치지 않고 복사해서 고친다. 노드는 바꾼 값을 돌려주는 방식으로만 공책을 바꾼다
     mask_map = dict(state.get("mask_map", {}))
-    cargos = [identify_number(number, mask_map) for number in state.get("numbers", [])]
-    return {"cargos": cargos, "mask_map": mask_map}
+    for number in state.get("numbers", []):
+        token_for(mask_map, number, kind_of(number))
+    return {"mask_map": mask_map}
+
+
+def fan_out(state: IdentifyState) -> list[Send] | str:
+    """번호마다 갈래(Send) 하나를 보낸다. 번호가 없으면 바로 모으기로 간다."""
+    numbers = state.get("numbers", [])
+    if not numbers:
+        return "collect"
+    mask_map = state.get("mask_map", {})
+    return [Send("one", {"idx": i, "number": n, "mask_map": mask_map}) for i, n in enumerate(numbers)]
+
+
+def one(state: LookupTask) -> dict:
+    """갈래 하나: 번호 하나를 조회해 순서 번호와 함께 돌려준다. 실패도 결과다(identify_number)."""
+    # [왜] 표 복사본을 넘긴다. 토큰은 assign이 넣어 두어 identify_number가 표를 바꿀 일이 없다
+    cargo = identify_number(state["number"], dict(state["mask_map"]))
+    return {"found": [{"idx": state["idx"], "cargo": cargo}]}
+
+
+def collect(state: LookupState) -> dict:
+    """갈래 결과를 처음 번호 순서대로 화물 칸에 둔다."""
+    # [왜] 갈래가 끝나는 순서는 정해져 있지 않다. 순서 번호로 정렬한다 (강의 13강)
+    return {"cargos": [found["cargo"] for found in sorted(state.get("found", []), key=lambda f: f["idx"])]}
+
+
+def build_lookup_graph():
+    """조회 서브그래프: 번호마다 Send로 나눠 함께 조회하고 처음 순서대로 모은다 (설계 4.3)."""
+    # [왜] 들고 나는 모양은 식별 공책으로 둔다. 갈래 결과 칸(found)은 부모에 돌려주지 않는다
+    graph = StateGraph(LookupState, input_schema=IdentifyState, output_schema=IdentifyState)
+    graph.add_node("assign", assign)
+    graph.add_node("one", one)
+    graph.add_node("collect", collect)
+    graph.add_edge(START, "assign")
+    graph.add_conditional_edges("assign", fan_out, ["one", "collect"])
+    # [왜] 같은 단계에 보낸 갈래가 모두 끝나야 다음 단계의 collect가 한 번 돈다
+    graph.add_edge("one", "collect")
+    graph.add_edge("collect", END)
+    return graph.compile()
 
 
 def _after_read(state: IdentifyState) -> str:
@@ -86,7 +145,7 @@ def build_identify_graph():
     """식별 순서도를 조립해 실행 기계로 만든다."""
     graph = StateGraph(IdentifyState)  # 공책 모양을 알려 준다
     graph.add_node("read", read)  # 작업자 등록
-    graph.add_node("lookup", lookup)
+    graph.add_node("lookup", build_lookup_graph())  # [왜] 컴파일한 그래프도 노드 하나로 넣는다
     graph.add_edge(START, "read")  # 화살표: 시작하면 read
     # 갈림길: read가 끝나면 _after_read가 고른 곳으로 간다. 셋째 인자는 갈 수 있는 곳 목록(그림 그리기용)
     graph.add_conditional_edges("read", _after_read, ["lookup", END])

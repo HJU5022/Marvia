@@ -361,3 +361,12 @@ def test_same_number_keeps_its_token_on_the_next_turn(agent_deps):
     values = graph.get_state(cfg("t42")).values
     assert values["masked_text"] == "[BL2]도 있고 [BL1]도 다시 봐 줘"  # 앞 차례의 [BL1]을 그대로 쓴다
     assert "DEMO0001" in values["answer"] and "DEMO0002" in values["answer"]
+
+
+def test_numbers_are_looked_up_in_parallel_within_the_rule_limit(agent_deps, slow_lookup):
+    numbers = [f"NOPE000{i}" for i in range(1, 7)]
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    graph.invoke({"text": " ".join(numbers) + " 어디야?"}, cfg("t43"))
+    values = graph.get_state(cfg("t43")).values
+    assert 1 < slow_lookup["peak"] <= load_rules("agent")["loop"]["max_concurrency"]
+    assert [c["token"] for c in values["cargos"]] == [f"[BL{i}]" for i in range(1, 7)]  # 처음 순서 그대로
