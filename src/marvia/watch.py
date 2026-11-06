@@ -63,7 +63,9 @@ class WatchDeps:
     """그래프가 쓰는 감시 목록 기능 묶음. 실제 값은 live_watch가 만들고, 시험은 가짜 함수를 넣는다."""
 
     add: Callable[[str, str, str], None]  # (사용자, 실제 번호, 지금 단계) → 감시 목록에 넣기
-    news: Callable[[str], list[dict]]  # 사용자 → 아직 보이지 않은 변화 [{"number", "old_stage", "new_stage"}]
+    # 사용자 → 아직 보이지 않은 변화 [{"id", "number", "old_stage", "new_stage"}]. 꺼내기만 한다
+    news: Callable[[str], list[dict]]
+    ack: Callable[[str, list[int]], None]  # (사용자, 변화 id들) → 답에 보인 변화를 본 것으로 표시
 
 
 def add_watch(conn: psycopg.Connection, keys: WatchKeys, user: str, number: str, stage: str) -> None:
@@ -112,29 +114,45 @@ def recheck(
 
 
 def take_news(conn: psycopg.Connection, keys: WatchKeys, user: str) -> list[dict]:
-    """사용자의 아직 보이지 않은 변화를 꺼내고 본 것으로 표시한다. 기록된 순서대로 돌려준다."""
+    """사용자의 아직 보이지 않은 변화를 기록된 순서대로 꺼낸다. 본 것 표시는 답에 보인 뒤 ack_news가 한다."""
+    # [왜] 꺼낼 때 표시하면 답이 나오기 전에 멈춘 차례(승인 대기 중 새 질문, 오류)에서 변화를 영영 잃는다
     try:
         rows = conn.execute(
-            "UPDATE watch_events AS e SET seen = true FROM watches AS w "
-            "WHERE e.watch_id = w.id AND w.user_id = %s AND NOT e.seen "
-            "RETURNING e.id, w.number_enc, e.old_stage, e.new_stage",
+            "SELECT e.id, w.number_enc, e.old_stage, e.new_stage FROM watch_events AS e "
+            "JOIN watches AS w ON e.watch_id = w.id WHERE w.user_id = %s AND NOT e.seen ORDER BY e.id",
             (user,),
         ).fetchall()
-        conn.commit()
+        conn.commit()  # 읽기 트랜잭션을 닫는다
     except psycopg.Error:
-        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌려 seen 표시도 취소한다
+        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌린 뒤 다시 던진다
         conn.rollback()
         raise
-    # [왜] UPDATE ... RETURNING은 순서를 정해 주지 않는다. 기록 id 순서로 정렬한다
     news = []
-    for _, enc, old, new in sorted(rows):
+    for event_id, enc, old, new in rows:
         try:
             number = keys.fernet.decrypt(enc.encode()).decode()
         except InvalidToken:
-            # [왜] 키를 바꾼 뒤 남은 줄은 번호를 알 수 없어 알릴 수 없다. 나머지 소식은 그대로 보인다
+            # [왜] 키를 바꾼 뒤 남은 줄은 번호를 알 수 없어 알릴 수 없다. 나머지 소식은 그대로 보인다.
+            #      보이지 않았으니 표시도 하지 않는다. 맞는 키로 돌아오면 그때 보인다
             continue
-        news.append({"number": number, "old_stage": old, "new_stage": new})
+        news.append({"id": event_id, "number": number, "old_stage": old, "new_stage": new})
     return news
+
+
+def ack_news(conn: psycopg.Connection, user: str, ids: list[int]) -> None:
+    """답에 보인 변화를 본 것으로 표시한다. 그 사용자의 감시 목록 기록만 바꾼다."""
+    try:
+        # [주의] id만으로 바꾸지 않는다. 남의 기록 id가 와도 그 사용자의 줄이 아니면 그대로 둔다
+        conn.execute(
+            "UPDATE watch_events AS e SET seen = true FROM watches AS w "
+            "WHERE e.watch_id = w.id AND w.user_id = %s AND e.id = ANY(%s)",
+            (user, ids),
+        )
+        conn.commit()
+    except psycopg.Error:
+        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌린 뒤 다시 던진다
+        conn.rollback()
+        raise
 
 
 def forget_user(conn: psycopg.Connection, user: str) -> int:
@@ -158,4 +176,5 @@ def live_watch(conn: psycopg.Connection, keys: WatchKeys) -> WatchDeps:
     return WatchDeps(
         add=lambda user, number, stage: add_watch(conn, keys, user, number, stage),
         news=lambda user: take_news(conn, keys, user),
+        ack=lambda user, ids: ack_news(conn, user, ids),
     )

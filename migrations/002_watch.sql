@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS watches (
     UNIQUE (user_id, number_hash) -- [왜] 암호문은 넣을 때마다 달라서 해시로 같은 화물을 가린다
 );
 
--- 다시 조회해 단계가 바뀐 기록. 다음 대화 처음에 보여 주면 seen을 참으로 바꾼다
+-- 다시 조회해 단계가 바뀐 기록. 다음 대화의 답에 보인 뒤에야 seen을 참으로 바꾼다(marvia.watch.ack_news).
+-- 꺼내기만 하고 답이 나오지 않은 차례의 변화는 다음 차례에 다시 보인다
 CREATE TABLE IF NOT EXISTS watch_events (
     id bigserial PRIMARY KEY,
     watch_id bigint NOT NULL REFERENCES watches (id) ON DELETE CASCADE,

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import date
 
@@ -98,7 +99,9 @@ def start(state: MarviaState) -> dict:
         "out_of_scope": False,
         "clarifications": [],
         "official": [],
+        # [왜] 지난 차례에 답이 나오지 않아 표시하지 못한 변화는 news 노드가 DB에서 다시 꺼낸다
         "watch_news": [],
+        "watch_ids": [],
         "actions": [],
     }
 
@@ -413,7 +416,7 @@ def build_main_graph(
             news_rows = deps.watch.news(user_of(config))
         except psycopg.Error:
             # [왜] 알림은 덤이다. DB 오류로 차례 전체를 죽이지 않고 변화 없이 간다.
-            #      UPDATE를 확정하지 않았으니 잃는 변화는 없고 다음 차례에 다시 나온다
+            #      꺼내기만 하고 표시하지 않으니 잃는 변화는 없고 다음 차례에 다시 나온다
             return {}
         mask_map = dict(state.get("mask_map", {}))
         # [주의] 변화에는 실제 번호가 있다. 이 대화의 가림 표로 토큰을 받아 토큰 글로만 공책에 둔다
@@ -422,7 +425,23 @@ def build_main_graph(
             f"{n['old_stage'] or '처음 확인'} → {n['new_stage']}"
             for n in news_rows
         ]
-        return {"watch_news": lines, "mask_map": mask_map}
+        return {"watch_news": lines, "watch_ids": [n["id"] for n in news_rows], "mask_map": mask_map}
+
+    # [주의] 돌려주는 타입을 Callable로 적지 않는다. 인자 이름(config)이 빠져 add_node 타입 검사가 거절한다
+    def shown(node: Callable[[MarviaState], dict]):
+        """답을 내는 노드(respond·finish·decline)를 감싸, 그 답에 보인 감시 변화를 본 것으로 표시한다."""
+
+        def run(state: MarviaState, config: RunnableConfig) -> dict:
+            update = node(state)
+            ids = state.get("watch_ids", [])
+            if deps.watch is not None and ids:
+                # [왜] 표시하지 못하면 다음 차례에 같은 변화가 다시 보인다. 잃는 것보다 낫다.
+                #      DB 오류로 이번 답을 막지 않는다
+                with suppress(psycopg.Error):
+                    deps.watch.ack(user_of(config), ids)
+            return update
+
+        return run
 
     def after_verify(state: MarviaState) -> str:
         """갈림길: 통과면 respond, 위반인데 횟수가 남았으면 write, 아니면 finish."""
@@ -440,8 +459,8 @@ def build_main_graph(
     graph.add_node("lookup", build_lookup_graph())  # 식별 서브그래프와 같은 조회 서브그래프를 다시 쓴다
     graph.add_node("write", write)
     graph.add_node("verify", check)
-    graph.add_node("respond", respond)
-    graph.add_node("finish", finish)
+    graph.add_node("respond", shown(respond))
+    graph.add_node("finish", shown(finish))
     graph.add_edge(START, "start")
     graph.add_edge("start", "identify")
     # [왜] 식별 뒤 첫 일: 계획자 길은 plan, 에이전트 길은 news(감시 변화) → brief
@@ -464,7 +483,7 @@ def build_main_graph(
         graph.add_node(
             "agent", agent
         )  # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다
-        graph.add_node("decline", decline)
+        graph.add_node("decline", shown(decline))
         # [왜] 요약 LLM이 실패해 멈췄으면 루프를 돌리지 않고 부분 답으로 간다
         graph.add_conditional_edges(
             "brief", lambda state: "finish" if state.get("stopped") else "agent", ["agent", "finish"]

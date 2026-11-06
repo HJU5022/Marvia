@@ -59,6 +59,7 @@ class MarviaState(IdentifyState, total=False):
     # 색인 밖 공식 출처 {"name", "effective", "url", "trust"} (계획 3d). 근거 묶음이 아니라 인용할 수 없다
     official: list[dict]
     watch_news: list[str]  # 감시 중인 화물의 새 변화 (토큰 글, 계획 3d). 이번 차례 답 맨 앞에 보인다
+    watch_ids: list[int]  # 그 변화의 기록 id. 답을 낸 뒤(respond·finish·decline) 본 것으로 표시한다
     # 이번 차례에 승인을 받고 실제로 한 일 (토큰 글). 코드가 답 아래에 쓰고 작성자에게 데이터로 준다
     actions: list[str]
 

@@ -10,6 +10,7 @@ from marvia.identify.models import CargoFacts, ToolError
 from marvia.watch import (
     ENCRYPT_INFO,
     HASH_INFO,
+    ack_news,
     add_watch,
     derive_key,
     forget_user,
@@ -30,6 +31,11 @@ def keys():
     return make_keys()
 
 
+def changes(news: list[dict]) -> list[dict]:
+    """꺼낸 변화에서 기록 id를 뺀 모양 (id는 DB가 매겨 시험마다 다르다)."""
+    return [{k: v for k, v in n.items() if k != "id"} for n in news]
+
+
 def cleared(number: str) -> CargoFacts:
     """수입신고 수리 단계로 바뀐 가짜 조회 결과."""
     return CargoFacts(number=number, stage="수입신고수리", fetched_at=datetime.now(UTC))
@@ -42,8 +48,12 @@ def test_recheck_records_a_stage_change_once(db, keys):
     assert recheck(db, keys, cleared) == 1
     assert recheck(db, keys, cleared) == 0  # 이미 기록한 단계는 다시 기록하지 않는다
     change = {"number": "DEMO0001", "old_stage": "반입신고", "new_stage": "수입신고수리"}
-    assert take_news(db, keys, "u1") == [change]
-    assert take_news(db, keys, "u1") == []  # 한 번 보인 변화는 다시 보이지 않는다
+    news = take_news(db, keys, "u1")
+    assert changes(news) == [change]
+    # [왜] 꺼내기만 하고 답에 보이지 못한 차례(승인 대기 중 새 질문 등)가 있다. 그때 변화를 잃지 않는다
+    assert changes(take_news(db, keys, "u1")) == [change]
+    ack_news(db, "u1", [n["id"] for n in news])
+    assert take_news(db, keys, "u1") == []  # 답에 보인 뒤에는 다시 보이지 않는다
 
 
 def test_news_is_kept_per_user(db, keys):
@@ -70,7 +80,7 @@ def test_one_raising_lookup_does_not_stop_the_other_rows(db, keys):
 
     assert recheck(db, keys, lookup) == 1  # 첫 줄은 건너뛰고 둘째 줄의 변화는 기록한다
     change = {"number": "DEMO0002", "old_stage": "반입신고", "new_stage": "수입신고수리"}
-    assert take_news(db, keys, "u1") == [change]
+    assert changes(take_news(db, keys, "u1")) == [change]
 
 
 def test_real_number_is_not_stored_in_plain_text(db, keys):
@@ -79,6 +89,19 @@ def test_real_number_is_not_stored_in_plain_text(db, keys):
     assert all("DEMO0001" not in str(value) for value in row)  # 어느 칸에도 실제 번호가 없다
     assert recheck(db, keys, cleared) == 1  # 그래도 복호화해 다시 조회한다
     assert take_news(db, keys, "u1")[0]["number"] == "DEMO0001"
+
+
+def test_ack_marks_only_that_users_events_as_seen(db, keys):
+    add_watch(db, keys, "u1", "DEMO0001", "반입신고")
+    add_watch(db, keys, "u2", "DEMO0001", "반입신고")
+    recheck(db, keys, cleared)
+    u1_ids = [n["id"] for n in take_news(db, keys, "u1")]
+    u2_ids = [n["id"] for n in take_news(db, keys, "u2")]
+    ack_news(db, "u2", u1_ids)  # 남의 기록 id로는 표시하지 못한다
+    assert [n["id"] for n in take_news(db, keys, "u1")] == u1_ids
+    ack_news(db, "u1", u1_ids)
+    assert take_news(db, keys, "u1") == []
+    assert [n["id"] for n in take_news(db, keys, "u2")] == u2_ids  # u2의 변화는 그대로 남는다
 
 
 def test_hash_depends_on_key():
@@ -106,7 +129,7 @@ def test_row_with_another_key_is_skipped(db, keys):
     add_watch(db, keys, "u1", "DEMO0002", "반입신고")
     assert recheck(db, keys, cleared) == 1  # 못 푸는 줄은 건너뛰고 나머지는 바뀐다
     change = {"number": "DEMO0002", "old_stage": "반입신고", "new_stage": "수입신고수리"}
-    assert take_news(db, keys, "u1") == [change]
+    assert changes(take_news(db, keys, "u1")) == [change]
 
 
 def test_forget_user_deletes_only_that_users_watches_and_events(db, keys):

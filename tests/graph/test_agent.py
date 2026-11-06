@@ -1123,20 +1123,24 @@ def test_official_lookup_result_is_a_data_tag_the_title_cannot_close(agent_deps)
 
 
 class FakeWatch:
-    """감시 목록 가짜. 넣은 것을 적어 두고, 정해 둔 변화를 한 번만 돌려준다."""
+    """감시 목록 가짜. 넣은 것을 적어 두고, 정해 둔 변화를 본 것으로 표시(ack)될 때까지 돌려준다."""
 
     def __init__(self, news: list[dict] | None = None):
         self.added: list[tuple[str, str, str]] = []
-        self.left = list(news or [])
+        self.left = [{"id": i, **n} for i, n in enumerate(news or [], start=1)]  # DB의 기록 id처럼 매긴다
+        self.acked: list[tuple[str, list[int]]] = []
 
     def deps(self):
         from marvia.watch import WatchDeps
 
-        return WatchDeps(add=lambda *row: self.added.append(row), news=self.take)
+        return WatchDeps(add=lambda *row: self.added.append(row), news=self.take, ack=self.ack)
 
     def take(self, user: str) -> list[dict]:
-        out, self.left = self.left, []
-        return out
+        return list(self.left)
+
+    def ack(self, user: str, ids: list[int]) -> None:
+        self.acked.append((user, ids))
+        self.left = [n for n in self.left if n["id"] not in ids]
 
 
 def test_watching_a_cargo_waits_for_approval_and_keeps_the_number_server_side(agent_deps):
@@ -1162,6 +1166,42 @@ def test_watched_cargo_change_is_shown_at_the_start_of_the_next_turn(agent_deps)
     assert "[BL1]: 반입신고 → 수입신고수리" in inputs.calls[0] and "DEMO0001" not in inputs.calls[0]
 
 
+NEWS = [{"number": "DEMO0001", "old_stage": "반입신고", "new_stage": "수입신고수리"}]
+SHOWN = "감시 중인 화물 변화:\n- DEMO0001: 반입신고 → 수입신고수리"
+
+
+def test_watch_news_of_a_turn_that_did_not_answer_is_shown_in_the_next_turn(agent_deps):
+    watch = FakeWatch(NEWS)
+    ask = say(("save_preference", {"depth": "자세히"}))
+    graph = agent_graph(agent_deps, ask, say(), say(), store=InMemoryStore(), watch=watch.deps())
+    # 첫 차례: 변화를 꺼냈지만 승인 카드에서 멈춰 답이 나오지 않았다
+    assert "__interrupt__" in graph.invoke({"text": "앞으로 자세히 설명해 줘"}, cfg("w2b"))
+    assert watch.acked == []
+    # 승인하지 않고 새로 묻는다. 새 차례가 같은 변화를 다시 꺼내 답에 보인다
+    out = graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("w2b"))
+    assert out["answer"].startswith(SHOWN)
+    assert watch.acked == [("local", [1])]  # 답에 보인 뒤에야 본 것으로 표시한다
+    # 답이 나온 차례 뒤에는 다시 보이지 않는다
+    out = graph.invoke({"text": "반입신고는 언제 해요?"}, cfg("w2b"))
+    assert not out["answer"].startswith("감시 중인 화물 변화")
+
+
+def test_a_db_error_while_marking_news_seen_keeps_the_answer(agent_deps):
+    import psycopg
+
+    from marvia.watch import WatchDeps
+
+    def broken(user: str, ids: list[int]):
+        raise psycopg.OperationalError("db down")
+
+    fake = FakeWatch(NEWS)
+    watch = WatchDeps(add=lambda *row: None, news=fake.take, ack=broken)
+    graph = agent_graph(agent_deps, say(), watch=watch)
+    out = graph.invoke({"text": "안녕하세요"}, cfg("w2c"))
+    # [왜] 표시하지 못한 변화는 다음 차례에 다시 보인다. 잃는 것보다 낫다. 이번 답은 그대로 낸다
+    assert out["answer"].startswith(SHOWN) and "시험 답이에요." in out["answer"]
+
+
 def test_a_db_error_in_the_news_step_does_not_stop_the_turn(agent_deps):
     import psycopg
 
@@ -1170,7 +1210,8 @@ def test_a_db_error_in_the_news_step_does_not_stop_the_turn(agent_deps):
     def broken(user: str):
         raise psycopg.OperationalError("db down")
 
-    graph = agent_graph(agent_deps, say(), watch=WatchDeps(add=lambda *row: None, news=broken))
+    watch = WatchDeps(add=lambda *row: None, news=broken, ack=lambda *ids: None)
+    graph = agent_graph(agent_deps, say(), watch=watch)
     out = graph.invoke({"text": "안녕하세요"}, cfg("w3"))
     assert out["answer"] and not out["answer"].startswith("감시 중인 화물 변화")
 
@@ -1184,9 +1225,8 @@ def test_a_db_error_in_watch_cargo_is_recorded_and_the_turn_ends(agent_deps):
         raise psycopg.OperationalError("db down")
 
     ask = say(("watch_cargo", {"token": "[BL1]"}))
-    graph = agent_graph(
-        agent_deps, ask, say(), permission_mode="auto", watch=WatchDeps(add=broken, news=lambda user: [])
-    )
+    watch = WatchDeps(add=broken, news=lambda user: [], ack=lambda *ids: None)
+    graph = agent_graph(agent_deps, ask, say(), permission_mode="auto", watch=watch)
     graph.invoke({"text": "DEMO0001 계속 지켜봐 줘"}, cfg("w4"))
     out = graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("w4"))
     assert out["answer"]
@@ -1260,7 +1300,7 @@ def test_no_real_number_reaches_any_llm_call_across_the_new_paths(agent_deps, mo
     config = {"configurable": {"thread_id": "leak"}, "callbacks": [inputs]}
     graph.invoke({"text": "DEMO0001DEMO0002 기한 근거 찾고 둘째는 지켜봐 줘"}, config)
     graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), config)
-    watch.left = [{"number": "DEMO0002", "old_stage": "수입신고", "new_stage": "수입신고수리"}]
+    watch.left = [{"id": 1, "number": "DEMO0002", "old_stage": "수입신고", "new_stage": "수입신고수리"}]
     out = graph.invoke({"text": "고마워요"}, config)
     assert watch.added == [("local", "DEMO0002", "수입신고")]
     assert out["answer"].startswith("감시 중인 화물 변화:\n- DEMO0002: 수입신고 → 수입신고수리")
