@@ -174,7 +174,7 @@ def make_tools(
     def get_provision(label: str, runtime: ToolRuntime) -> Command:
         """Fetch the provision a basis label names, e.g. "관세법 제241조제3항", straight from the
         indexed statutes (no search, no LLM call). Use it for the basis labels of calc_deadlines and
-        check_reimport instead of search_law. Labels that are not articles (annexes) are not found.
+        check_reimport instead of search_law. Annex labels such as "시행규칙 별표 9 제2호가목7)" work too.
         """
         assert provision is not None
         try:

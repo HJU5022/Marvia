@@ -32,3 +32,13 @@ def test_agent_prompt_sends_multi_document_conditions_to_research_first():
     assert "single article" in line  # 한 조문을 찾는 질문에는 쓰지 않는다
     tools = make_tools(None, date.today, model=GenericFakeChatModel(messages=iter([])))
     assert "research" in {t.name for t in tools}
+
+
+def test_agent_prompt_and_tool_say_annex_labels_are_found():
+    # [왜] 전에는 "별표는 못 찾는다"고 적혀 있었다. 남으면 모델이 별표 단위를 찾지 않는다(사전 부검 F3)
+    text = (Path(__file__).resolve().parents[1] / "prompts" / "agent.md").read_text(encoding="utf-8")
+    line = next(row for row in text.splitlines() if row.startswith("- get_provision"))
+    assert "get_provision finds them" in line and "cannot find" not in line
+    tools = {t.name: t for t in make_tools(None, date.today, provision=lambda label, as_of: [])}
+    assert "Annex labels" in tools["get_provision"].description
+    assert "not found" not in tools["get_provision"].description
