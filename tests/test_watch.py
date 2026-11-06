@@ -32,3 +32,17 @@ def test_failed_lookup_is_not_a_change(db):
     add_watch(db, "u1", "NOPE0001", "")
     missing = ToolError(code="not_found", message="재생 데이터에 없는 번호입니다", retryable=False)
     assert recheck(db, lambda number: missing) == 0
+
+
+def test_one_raising_lookup_does_not_stop_the_other_rows(db):
+    add_watch(db, "u1", "DEMO0001", "반입신고")
+    add_watch(db, "u1", "DEMO0002", "반입신고")
+
+    def lookup(number: str):
+        if number == "DEMO0001":
+            raise ValueError("깨진 재생 데이터")
+        return cleared(number)
+
+    assert recheck(db, lookup) == 1  # 첫 줄은 건너뛰고 둘째 줄의 변화는 기록한다
+    change = {"number": "DEMO0002", "old_stage": "반입신고", "new_stage": "수입신고수리"}
+    assert take_news(db, "u1") == [change]

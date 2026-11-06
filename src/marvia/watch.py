@@ -38,7 +38,12 @@ def recheck(conn: psycopg.Connection, lookup: Callable[[str], CargoFacts | ToolE
     changed = 0
     watches = conn.execute("SELECT id, number, stage FROM watches ORDER BY id").fetchall()
     for watch_id, number, stage in watches:
-        result = lookup(number)
+        try:
+            result = lookup(number)
+        except (OSError, ValueError):
+            # [왜] 한 줄의 조회 오류가 다른 줄까지 멈추지 않게 건너뛰고 다음 실행에서 다시 본다
+            #      (graph/identify.py의 identify_number와 같은 규칙)
+            continue
         # [왜] 조회 실패는 단계 변화가 아니다. 기록하지 않고 다음 실행에서 다시 본다
         if not isinstance(result, CargoFacts) or result.stage == stage:
             continue
@@ -47,8 +52,9 @@ def recheck(conn: psycopg.Connection, lookup: Callable[[str], CargoFacts | ToolE
             (watch_id, stage, result.stage),
         )
         conn.execute("UPDATE watches SET stage = %s WHERE id = %s", (result.stage, watch_id))
+        conn.commit()  # [왜] 줄마다 확정한다. 뒤 줄에서 죽어도 앞에서 찾은 변화는 남는다
         changed += 1
-    conn.commit()
+    conn.commit()  # 바뀐 줄이 없어도 읽기 트랜잭션을 닫는다
     return changed
 
 
