@@ -14,6 +14,7 @@ from collections import Counter
 from collections.abc import Iterable
 
 from marvia.eval.dataset import Item, Trajectory
+from marvia.eval.run import articles
 from marvia.tools.rules import load_rules
 
 
@@ -118,6 +119,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
     # [왜] 그래프가 센 호출(llm_calls)은 루프 상한과 작성자 상한을 합친 값을 넘을 수 없다 (설계 6.4)
     cap = limits["loop"]["max_llm_calls"] + limits["answer"]["max_write_attempts"]
     path = load_rules("eval")["trajectory"]
+    seen = load_rules("eval")["rag_observations"]
     return {
         "n": len(rows),
         "errors": sum(bool(r.get("error")) for r in rows),
@@ -134,6 +136,10 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "mrr": mrr(rows, items),
         # [왜] 계획자 길은 도구를 부르지 않는다. 에이전트 길 줄이 없으면 None이다
         "trajectory": trajectory_pass(rows, items, path["never"], path["max_calls"]),
+        # 11-02 RAG 관찰 세 가지 (done 3.3). 근거 채점·고쳐 쓰기 기록(rag)과 검색 근거 순서로 센다
+        "stray_articles": stray_articles(rows, items),
+        "top_article_share": top_article_share(rows, seen["top"], seen["alert"]),
+        "false_sufficient": false_sufficient(rows, items),
         "llm_calls_median": statistics.median(calls) if calls else None,
         "llm_calls_max": max(calls) if calls else None,
         # [왜] 두 길을 같은 통계로 잰다(R-040). 근거 있는 답 비율 = 내용 있는 답을 낸 줄(answer, unsupported)
@@ -308,3 +314,73 @@ def trajectory_pass(rows: list[dict], items: dict[str, Item], never: list[str], 
         not trajectory_violations(r["tools"], items[r["id"]].trajectory, never, max_calls) for r in picked
     ]
     return _mean([float(f) for f in flags])
+
+
+def _article(unit_id: str) -> str:
+    """unit_id의 조문 이름. L001556@20261002#제241조.3항 → 제241조."""
+    return unit_id.split("#", 1)[1].split(".", 1)[0]
+
+
+def stray_articles(rows: list[dict], items: dict[str, Item]) -> dict:
+    """질문 밖 조문(11-02 관찰 ①): 고친 질의에 질문에도 정답·also_ok에도 없는 조문 번호가 든 비율."""
+    flags = []
+    for r in rows:
+        item = items[r["id"]]
+        allowed = set(articles(item.question)) | {_article(u) for u in item.gold + item.also_ok}
+        flags += [
+            float(bool(set(e["articles"]) - allowed)) for e in r.get("rag", []) if e["step"] == "rewrite"
+        ]
+    return _mean(flags)
+
+
+def top_article_share(rows: list[dict], top: int, alert: float) -> dict:
+    """한 조문 쏠림(11-02 관찰 ②): 근거 앞 top개 가운데 가장 많은 한 조문의 몫. 11-02에는 8개 중 7개였다."""
+    shares = []
+    for r in rows:
+        head = r["retrieved"][
+            :top
+        ]  # [왜] 리랭커 순서의 검색 근거. evidence는 get_provision 근거가 섞여 순서가 다르다
+        if head:
+            # [왜] 법령까지 넣어 센다. 관세법 제9조와 시행령 제9조는 다른 조문이다
+            keys = [u.split(".", 1)[0] for u in head]
+            shares.append(Counter(keys).most_common(1)[0][1] / len(head))
+    return _mean(shares) | {"over": sum(share >= alert for share in shares)}
+
+
+def false_sufficient(rows: list[dict], items: dict[str, Item]) -> dict:
+    """근거 없이 충분(11-02 관찰 ③): 정답이 있는 문항의 "충분" 채점 가운데 본 근거에 정답이 없던 비율."""
+    flags = []
+    for r in rows:
+        gold = items[r["id"]].gold
+        if gold:
+            graded = [e for e in r.get("rag", []) if e["step"] == "grade" and e["sufficient"]]
+            flags += [float(not any(matches(u, gold) for u in e["units"])) for e in graded]
+    return _mean(flags)
+
+
+def rag_table(results: list[dict]) -> str:
+    """검색 실험 표 (done 3.3): 맥락 문장 켜기·끄기와 11-02 관찰 세 가지."""
+    head = [
+        "길",
+        "모델",
+        "R@k",
+        "MRR",
+        "정답 근거 인용률",
+        "질문 밖 조문",
+        "한 조문 몫(넘은 수)",
+        "근거 없이 충분",
+    ]
+    lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for result in results:
+        meta, s = result["meta"], result["summary"]
+        cells = [meta["loop"] + (f" ({meta['tag']})" if meta.get("tag") else ""), meta["model"]]
+        for metric in [s[f"recall_at_{meta['k']}"], s["mrr"], s["correct_citation"], s["stray_articles"]]:
+            cells.append("-" if metric["value"] is None else f"{metric['value']:.2f} ({metric['n']})")
+        share = s["top_article_share"]
+        cells.append(
+            "-" if share["value"] is None else f"{share['value']:.2f} ({share['over']}/{share['n']})"
+        )
+        sufficient = s["false_sufficient"]
+        cells.append("-" if sufficient["value"] is None else f"{sufficient['value']:.2f} ({sufficient['n']})")
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)

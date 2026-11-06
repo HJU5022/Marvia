@@ -10,12 +10,15 @@ from marvia.eval.metrics import (
     calc_ok,
     compare_table,
     correct_citation,
+    false_sufficient,
     human_faithful,
     matches,
     mrr,
     ragas_means,
     recall_at_k,
+    stray_articles,
     summarize,
+    top_article_share,
     trajectory_pass,
     trajectory_violations,
     unscored,
@@ -239,3 +242,17 @@ def test_trajectory_pass_counts_only_agent_rows_without_errors():
         row("S1", loop="planner", tools=[]),
     ]
     assert trajectory_pass(rows, ITEMS, ["watch_cargo"], 12) == {"value": 0.5, "n": 2}
+
+
+def test_rag_observations_from_the_rag_log_and_evidence_order():
+    rag = [
+        {"step": "grade", "sufficient": True, "units": [A + "제100조.1항"]},  # 정답 없이 "충분"
+        {"step": "rewrite", "articles": ["제248조"]},  # 질문에도 정답에도 없는 조문
+        {"step": "grade", "sufficient": True, "units": [A + "제241조.3항"]},
+        {"step": "rewrite", "articles": ["제8조"]},  # also_ok 조문은 질문 밖이 아니다
+    ]
+    head = [A + "제27조.1항.1호"] * 7 + [A + "제20조.1항"]  # 8개 중 7개가 한 조문
+    rows = [row("R1", rag=rag, retrieved=head), row("S1", retrieved=[A + "제1조"])]
+    assert stray_articles(rows, ITEMS) == {"value": 0.5, "n": 2}
+    assert false_sufficient(rows, ITEMS) == {"value": 0.5, "n": 2}
+    assert top_article_share(rows, 8, 0.75) == {"value": round((0.875 + 1.0) / 2, 4), "n": 2, "over": 2}

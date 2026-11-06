@@ -27,6 +27,7 @@ from marvia.eval.metrics import (
     compare_table,
     floors,
     human_faithful,
+    rag_table,
     ragas_means,
     summarize,
     unscored,
@@ -169,6 +170,8 @@ if args.command == "report":
         rows = [r for r in result["rows"] if not args.common or r["id"] in common]
         result["summary"] = summarize(rows, by_id, result["meta"]["k"])
     print(compare_table(results))
+    print()
+    print(rag_table(results))
     raise SystemExit(0)
 
 data = load_set()
