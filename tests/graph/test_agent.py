@@ -574,11 +574,12 @@ def test_decline_puts_in_progress_todo_back_to_pending(agent_deps):
 
 
 def test_known_token_is_not_looked_up_again(agent_deps, monkeypatch):
-    import marvia.graph.tools as tools_module
+    from marvia.graph import identify
 
     calls = []
-    real = tools_module.identify_number
-    monkeypatch.setattr(tools_module, "identify_number", lambda n, m: calls.append(n) or real(n, m))
+    real = identify.lookup_cargo
+    # [왜] 조회는 식별과 도구가 함께 쓰는 조회 서브그래프 안에서 일어난다. 가장 안쪽 조회 함수를 센다
+    monkeypatch.setattr(identify, "lookup_cargo", lambda n: calls.append(n) or real(n))
     graph = agent_graph(
         agent_deps,
         say(("lookup_cargo", {"tokens": ["[BL1]"]})),
@@ -588,7 +589,7 @@ def test_known_token_is_not_looked_up_again(agent_deps, monkeypatch):
     graph.invoke({"text": "DEMO0001 다시 봐 줘"}, cfg("a32"))
     values = graph.get_state(cfg("a32")).values
     texts = [m.content for m in values["messages"] if m.type == "tool"]
-    assert len(calls) == 0  # 식별 단계에서 이미 조회한 화물은 다시 조회하지 않는다
+    assert calls == ["DEMO0001"]  # 식별 단계의 한 번뿐이다. 도구는 이미 조회한 화물을 다시 조회하지 않는다
     assert all("[BL1]: 반입신고" in text for text in texts)
 
 
@@ -949,3 +950,19 @@ def test_research_continues_the_parents_search_count(agent_deps, fake_rag):
     #      서브가 searched 없이 시작하면 D가 돌고, 서브의 새 질의를 부모에 돌려주지 않으면 E가 돈다
     # [왜] searched는 메인 그래프 공책 칸이 아니라 읽을 수 없어 RAG 검색 횟수를 센다 (A, B, C)
     assert len(seen) == 3
+
+
+# --- 여러 화물 병렬 조회 (계획 3d) ---
+
+
+def test_lookup_cargo_looks_up_new_tokens_in_parallel(agent_deps, slow_lookup):
+    ask = say(("ask_user", {"question": "B/L 번호를 알려 주세요", "options": TWO}))
+    look = say(("lookup_cargo", {"tokens": ["[BL1]", "[BL2]", "[BL3]"]}))
+    graph = agent_graph(agent_deps, ask, look, say())
+    graph.invoke({"text": "내 화물 어디야?"}, cfg("p1"))
+    # [왜] 직접 쓴 답의 번호는 가리기만 하고 조회하지 않는다. 그래서 세 토큰 모두 도구가 새로 조회한다
+    graph.invoke(Command(resume={"custom": "DEMO0001 DEMO0002 NOPE0003"}), cfg("p1"))
+    values = graph.get_state(cfg("p1")).values
+    assert slow_lookup["peak"] > 1
+    assert [c["token"] for c in values["cargos"]] == ["[BL1]", "[BL2]", "[BL3]"]
+    assert "DEMO0001" not in all_text(values)

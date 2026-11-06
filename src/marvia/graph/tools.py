@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from marvia.graph.agent import build_researcher
 from marvia.graph.answer import cargo_lines
-from marvia.graph.identify import identify_number
+from marvia.graph.identify import build_lookup_graph
 from marvia.identify.mask import LABELS, mask_text
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
@@ -113,6 +113,7 @@ def make_tools(
     # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
     worst_search = worst_search_calls(load_rules("agent")["loop"]["rag_rewrites"])
     max_searches = load_rules("agent")["loop"]["max_searches"]
+    lookup_graph = build_lookup_graph()  # [왜] 식별과 같은 조회 서브그래프: 번호마다 Send 갈래로 조회한다
 
     @tool
     def search_law(query: str, runtime: ToolRuntime) -> Command:
@@ -220,8 +221,12 @@ def make_tools(
         known = [token for token in tokens if token in mask_map]
         # [왜] 이미 사실을 얻은 화물은 다시 조회하지 않고 지금 줄을 돌려준다 (같은 조회에 돈과 시간이 든다)
         have = {c["token"]: c for c in runtime.state.get("cargos", []) if c["facts"]}
+        need = [token for token in known if token not in have]
         # [주의] 실제 번호는 여기서만 꺼낸다. 결과 줄(cargo_lines)은 토큰으로 쓴다
-        cargos = [have.get(token) or identify_number(mask_map[token], mask_map) for token in known]
+        numbers = [mask_map[token] for token in need]
+        fresh = lookup_graph.invoke({"numbers": numbers, "mask_map": mask_map})["cargos"] if need else []
+        found = have | {cargo["token"]: cargo for cargo in fresh}
+        cargos = [found[token] for token in known]
         lines = cargo_lines(cargos) + [
             f"{token}: 모르는 토큰이에요" for token in tokens if token not in mask_map
         ]
