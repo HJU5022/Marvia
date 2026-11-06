@@ -21,3 +21,6 @@ provision:
   # 조문 직접 조회(get_provision)의 법령 이름 줄임말. 계산 도구(rules/reimport.yaml)가 "시행규칙 별표 9 …"로 쓴다
   law_alias:
     시행규칙: 수입식품안전관리 특별법 시행규칙
+
+mcp:
+  max_query: 300 # search_regulations 질의 글자 수 상한

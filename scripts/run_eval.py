@@ -404,6 +404,7 @@ for model in models:
                 "annex_units": annex_units,
                 "units_sha256": units_sha256(CORPUS_UNITS),
                 "unipass_mode": settings.unipass_mode,
+                "rag_via": settings.rag_via,
             }
             name = result_name(loop, model, args.tag)
             for item in items:

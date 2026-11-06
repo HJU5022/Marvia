@@ -47,7 +47,7 @@ k = load_rules("eval")["retrieval_k"]
 settings = Settings()
 with connect(settings.database_url) as conn:
     rag = live_deps(settings, conn)
-    find = partial(top_ranked, rag.search, rag.rerank)
+    find = rag.ranked or partial(top_ranked, rag.search, rag.rerank)
     annex = conn.execute(
         "SELECT count(*) FROM corpus_units WHERE split_part(unit_id, '#', 2) LIKE '별표%'"
     ).fetchone()
@@ -69,6 +69,7 @@ meta = {
     "tag": args.tag,
     "commit": args.commit,
     "graph": settings.graph,
+    "rag_via": settings.rag_via,
     "annex_units": annex[0] if annex else 0,
 }
 out = Path(args.out)

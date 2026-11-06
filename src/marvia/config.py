@@ -56,3 +56,7 @@ class Settings(BaseSettings):
     # UNI-PASS 조회 (계획 3b Task 7). [왜] 기본이 재생이라 키가 있어도 시험·평가는 실제 API를 부르지 않는다
     unipass_mode: Literal["replay", "live"] = "replay"  # MARVIA_UNIPASS_MODE
     unipass_key: SecretStr = SecretStr("")  # MARVIA_UNIPASS_KEY (crkyCn). 실제 키는 직접 넣는다
+
+    # 규정 검색 MCP (계획 3b Task 8). [왜] mcp면 에이전트 RAG가 같은 MCP 서버를 메모리 통로로 부른다(설계 9절)
+    rag_via: Literal["direct", "mcp"] = "mcp"  # MARVIA_RAG_VIA
+    mcp_token: SecretStr = SecretStr("")  # MARVIA_MCP_TOKEN. 비면 scripts/serve_mcp.py가 뜨지 않는다

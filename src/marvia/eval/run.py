@@ -76,20 +76,25 @@ def eval_deps(
         log.append({"step": "rewrite", "articles": articles(result.search_query)})
         return result
 
-    def search(query: str, as_of: date) -> list[Evidence]:
-        if item.fault == "search":
-            raise httpx.ConnectError("평가 실행이 검색을 일부러 끊었다")
-        found = rag.search(query, as_of)
-        # [왜] 그래프가 실제로 후보를 더했는지 문항마다 센다. 실행 유효성 검사가 본다 (계획 3b)
-        # [주의] 이 수는 리랭커 앞의 그래프 후보 수다. retrieval_check의 "graph" 칸(리랭커 상위 k 안의
-        #        그래프 단위)과 다르다. "설정 B에서 그래프 후보 > 0" 유효성 규칙(run_problems)은
-        #        이 수(graph_added)를 쓴다
-        log.append({"step": "search", "graph": sum(e.origin == "graph" for e in found)})
-        if seen is not None:
-            # [왜] RAG는 시도마다 근거를 갈아 끼운다. 본 글을 그때그때 잡아 둔다 (raw에만, 줄에는 안 넣는다)
-            for e in found:
-                seen.setdefault(e.unit_id, e.text)
-        return found
+    def watched(find):
+        """검색 함수를 감싼다: fault 문항이면 끊고, 그래프 후보 수와 본 글을 적는다."""
+
+        def run(query: str, as_of: date) -> list[Evidence]:
+            if item.fault == "search":
+                raise httpx.ConnectError("평가 실행이 검색을 일부러 끊었다")
+            found = find(query, as_of)
+            # [왜] 그래프가 실제로 후보를 더했는지 문항마다 센다. 실행 유효성 검사가 본다 (계획 3b).
+            #      [주의] direct 길(search)은 리랭커 앞 후보 수이고, MCP 길(ranked)은 리랭커 뒤 상위 n개
+            #      안의 그래프 후보 수다. 유효성 규칙(설정 B에서 > 0)은 둘 다 이 수(graph_added)를 쓴다.
+            #      retrieval_check의 "graph" 칸은 늘 리랭커 뒤 수다
+            log.append({"step": "search", "graph": sum(e.origin == "graph" for e in found)})
+            if seen is not None:
+                # [왜] RAG는 시도마다 근거를 갈아 끼운다. 본 글을 그때그때 잡아 둔다 (raw에만 쓴다)
+                for e in found:
+                    seen.setdefault(e.unit_id, e.text)
+            return found
+
+        return run
 
     def provision(label: str, as_of: date) -> list[Evidence]:
         if item.fault == "search":
@@ -99,7 +104,13 @@ def eval_deps(
 
     return replace(
         deps,
-        rag=replace(rag, grade=grade, rewrite=rewrite, search=search),
+        rag=replace(
+            rag,
+            grade=grade,
+            rewrite=rewrite,
+            search=watched(rag.search),
+            ranked=watched(rag.ranked) if rag.ranked else None,
+        ),
         provision=provision if real_provision else None,
         today=lambda: today,
         web=None,  # [왜] 평가 결과가 바깥 사이트에 기대면 안 된다. official_lookup은 묶이지 않는다

@@ -30,6 +30,8 @@ class RagDeps:
     rerank: Callable[[str, list[str]], list[float]]  # (질의, 글 목록) → 글마다 점수
     grade: Callable[[str], Grade]  # 프롬프트 → 근거 채점
     rewrite: Callable[[str], Rewrite]  # 프롬프트 → 고친 질의
+    # (질의, 기준 날짜) → 리랭커까지 끝난 상위 n개. 있으면 search·rerank 대신 쓴다 (MCP 길, 계획 3b Task 8)
+    ranked: Callable[[str, date], list[Evidence]] | None = None
 
 
 def top_ranked(
@@ -76,7 +78,10 @@ def build_rag_graph(deps: RagDeps, max_rewrites: int | None = None):
         """하이브리드 검색으로 후보를 찾고, 리랭커로 다시 줄 세워 상위 n개를 근거로 남긴다."""
         # [왜] 노드가 채우는 칸은 .get으로 읽는다. 처음 넣는 칸(question, as_of)만 []로 바로 읽는다
         query = state.get("search_query", "")
-        found = top_ranked(deps.search, deps.rerank, query, state["as_of"])
+        if deps.ranked is not None:
+            found = deps.ranked(query, state["as_of"])
+        else:
+            found = top_ranked(deps.search, deps.rerank, query, state["as_of"])
         # [왜] mode="json"은 날짜를 "2026-10-02" 글로 바꾼다. 체크포인트와 화면에 그대로 넘길 수 있다
         return {"evidence": [e.model_dump(mode="json") for e in found]}
 

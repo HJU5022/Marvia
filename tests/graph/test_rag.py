@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date
 
 from marvia.graph.rag import RagDeps, build_rag_graph, top_ranked
@@ -91,3 +92,14 @@ def test_top_ranked_sorts_by_the_reranker_and_keeps_the_top_n():
         f"LTEST@20261002#제{i}조" for i in range(10, 2, -1)
     ]  # rerank_top_n 8
     assert found[0].score == 9.0
+
+
+def test_ranked_dep_replaces_search_and_rerank():
+    # [왜] MCP 길(계획 3b Task 8)은 검색·리랭커를 서버가 하고 RAG는 결과만 받는다
+    seen: dict = {}
+    deps = replace(
+        _deps([ENOUGH], seen=seen), ranked=lambda query, when: [_evidence("제9조", "MCP가 준 근거")]
+    )
+    out = build_rag_graph(deps).invoke(START_STATE)
+    assert [e["unit_id"] for e in out["evidence"]] == ["LTEST@20261002#제9조"]
+    assert "search" not in seen

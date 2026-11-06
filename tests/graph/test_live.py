@@ -72,3 +72,10 @@ def test_watch_is_off_without_a_valid_data_key(secret, on):
     #      차례를 멈추지 않고 감시 도구와 새 소식만 뺀다
     settings = Settings(_env_file=None, anthropic_api_key="sk-test-not-real", data_key=secret)
     assert (agent_deps(settings, None, Recorder()).watch is not None) is on
+
+
+def test_rag_goes_through_the_mcp_server_by_default_and_direct_on_request():
+    # [왜] 설계 9절: 에이전트 RAG도 같은 MCP 서버를 MCP 클라이언트로 부른다. direct는 비교·대피로다
+    base = {"_env_file": None, "anthropic_api_key": "sk-test-not-real"}
+    assert agent_deps(Settings(**base), None, None).rag.ranked is not None
+    assert agent_deps(Settings(**base, rag_via="direct"), None, None).rag.ranked is None

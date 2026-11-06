@@ -10,10 +10,11 @@ from datetime import date
 import psycopg
 
 from marvia.config import Settings
-from marvia.graph.rag import RagDeps
+from marvia.graph.rag import RagDeps, top_ranked
 from marvia.llm import chat_model, structured
 from marvia.rag import voyage
 from marvia.rag.graphdb import graph_expand
+from marvia.rag.mcp import build_server, mcp_ranked
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
 from marvia.rag.search import hybrid_search
@@ -34,10 +35,14 @@ def live_deps(settings: Settings, conn: psycopg.Connection) -> RagDeps:
     def rerank(query: str, texts: list[str]) -> list[float]:
         return voyage.rerank(query, texts, settings)
 
+    # [왜] mcp: 같은 검색 함수를 MCP 서버에 싣고, RAG는 MCP 클라이언트로 그 서버를 부른다 (설계 9절)
+    via_mcp = settings.rag_via == "mcp"
+    ranked = mcp_ranked(build_server(lambda q, d: top_ranked(search, rerank, q, d))) if via_mcp else None
     return RagDeps(
         analyze=structured(llm, QueryAnalysis),
         search=search,
         rerank=rerank,
         grade=structured(llm, Grade),
         rewrite=structured(llm, Rewrite),
+        ranked=ranked,
     )
