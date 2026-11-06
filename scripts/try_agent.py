@@ -5,6 +5,8 @@
       MARVIA_LOOP=agent uv run python scripts/try_agent.py "..."   (도구 루프 길, 계획 3c)
       MARVIA_LOOP=agent uv run python scripts/try_agent.py --thread t1 "그 화물 납부 기한은?"
         (같은 --thread로 다시 돌리면 앞 차례 기록과 가림 표를 이어 쓴다, 계획 3d)
+      MARVIA_LOOP=agent uv run python scripts/try_agent.py --image bl.png "이 화물 지금 어디야?"
+        (사진은 이 컴퓨터에서 OCR로 읽고 번호 덩어리만 질문 앞에 붙인다. Docker 안에서 돌린다)
 대화 기록과 장기 기억은 로컬 Postgres에 남는다(live_memory).
 하지 않는 일: 비용 계산(scripts/compare_loops.py).
 """
@@ -20,12 +22,19 @@ from marvia.graph.live import agent_deps, live_memory
 from marvia.graph.main import build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.identify.mask import unmask
+from marvia.identify.ocr import photo_clues, read_image
 
 parser = argparse.ArgumentParser(description="에이전트를 한 차례 돌린다")
 parser.add_argument("question", nargs="*", help="질문 (없으면 대표 화물 질문)")
 parser.add_argument("--thread", default="try-agent", help="대화 id. 같은 값이면 앞 차례를 이어 간다")
 parser.add_argument("--user", default="local", help="장기 기억을 나누는 사용자 id")
+parser.add_argument("--image", help="서류 사진 경로. 이 컴퓨터에서 읽어 번호 덩어리만 질문 앞에 붙인다")
 args = parser.parse_args()
+# [왜] 인자 없이 돌리면 대표 화물 질문 하나로 돈다 (try_main.py와 같은 방식)
+text = " ".join(args.question) or "DEMO0001 언제까지 수입신고 해야 해요?"
+if args.image:
+    # [주의] 사진은 밖으로 보내지 않는다. 사진 글의 상호·주소도 넘기지 않고 번호 덩어리만 붙인다 (설계 4.2)
+    text = f"{photo_clues(read_image(args.image))} {text}"
 
 settings = Settings()
 config = {"configurable": {"thread_id": args.thread, "user_id": args.user}}
@@ -42,8 +51,7 @@ with (
         store=store,
         permission_mode=settings.permission_mode,
     )
-    # [왜] 인자 없이 돌리면 대표 화물 질문 하나로 돈다 (try_main.py와 같은 방식)
-    out = graph.invoke({"text": " ".join(args.question) or "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
+    out = graph.invoke({"text": text}, config)
     while "__interrupt__" in out:
         value = out["__interrupt__"][0].value
         # [주의] 화면(여기서는 터미널)에 보일 때만 토큰을 실제 번호로 되돌린다
