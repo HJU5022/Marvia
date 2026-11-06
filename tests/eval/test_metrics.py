@@ -337,3 +337,26 @@ def test_unsupported_all_counts_every_item_not_only_those_that_should_be_answere
     assert unsupported(rows, ITEMS) == {"value": 0.5, "n": 2}
     assert unsupported_all(rows) == {"value": 0.6667, "n": 3}
     assert unsupported_all([]) == {"value": None, "n": 0}
+
+
+def test_article_must_follow_the_law_name_directly():
+    # [왜] 법령 이름과 조문 번호를 따로 찾으면 "관세법 시행령 제241조"가 "관세법 제241조"로 통과했다 (R-063)
+    domain = Domain(article="관세법 제241조")
+
+    def hit(text: str) -> bool:
+        return free_answer_score(text, domain)["article"]
+
+    assert hit("관세법 제241조에 따라") and hit("관세법제241조") and hit("관세법 241조 3항")
+    assert not hit("관세법 시행령 제241조에 따라")
+    assert not hit("관세법 시행규칙 제241조에 따라")
+    assert not hit("관세법은 이렇고 제241조는 따로 있다")
+    assert hit("관세법 시행령 제9조와 관세법 제241조")  # 둘 다 있으면 맞는 쪽을 찾는다
+    assert free_answer_score("관세법 시행령 제241조", Domain(article="관세법 시행령 제241조"))["article"]
+
+
+def test_article_after_a_quoted_law_name_counts():
+    # [왜] 한국 법령 인용에서 가장 흔한 꼴은 「관세법」 제241조다
+    domain = Domain(article="관세법 제241조")
+    for text in ["「관세법」 제241조에 따라", "『관세법』제241조", '"관세법" 제241조', "'관세법' 제241조"]:
+        assert free_answer_score(text, domain)["article"], text
+    assert not free_answer_score("「관세법 시행령」 제241조에 따라", domain)["article"]

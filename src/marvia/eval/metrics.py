@@ -470,6 +470,9 @@ def _mentions_date(text: str, day: date) -> bool:
     return bool(re.search(full, text) or re.search(short, text))
 
 
+_AFTER_LAW = "[\\s」』\"'”’]"  # 법령 이름 뒤에 올 수 있는 글자: 공백, 닫는 낫표·따옴표
+
+
 def _mentions_article(text: str, article: str) -> bool:
     """글에 그 법령과 조문 번호가 있나. article은 "관세법 제241조" 모양이고, 제241조의2는 제241조가 아니다."""
     law, label = article.rsplit(" ", 1)
@@ -477,7 +480,9 @@ def _mentions_article(text: str, article: str) -> bool:
     assert found, article
     number, sub = found.groups()
     pattern = rf"(?<!\d)제?\s*{number}\s*조" + (rf"\s*의\s*{sub}" if sub else r"(?!\s*의\s*\d)")
-    return law in text and bool(re.search(pattern, text))
+    # [왜] 법령 이름 바로 뒤(공백, 닫는 낫표·따옴표만)에 조문이 와야 한다.
+    #      "관세법 시행령 제241조"는 관세법 제241조가 아니다
+    return bool(re.search(rf"(?<![가-힣]){re.escape(law)}{_AFTER_LAW}*{pattern}", text))
 
 
 def free_answer_score(text: str, domain: Domain) -> dict:
