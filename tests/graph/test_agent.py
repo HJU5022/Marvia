@@ -1210,3 +1210,28 @@ def test_no_real_number_reaches_any_llm_call_across_the_new_paths(agent_deps, mo
     # [왜] 첫 차례 부모 4 + 조사 서브에이전트 2, 둘째 차례 요약 1 + 부모 1. 어느 입력에도 실제 번호가 없다
     assert len(inputs.calls) == 8
     assert not any(number in call for call in inputs.calls for number in ("DEMO0001", "DEMO0002"))
+
+
+# --- 승인 카드에서 고치기 (done 1.4의 edit 길) ---
+
+
+def _edit(name):
+    return {"type": "edit", "edited_action": {"name": "save_item_card", "args": {"name": name}}}
+
+
+def test_edited_item_card_is_saved_under_the_edited_name(agent_deps):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store)
+    graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a16e"))
+    graph.invoke(Command(resume={"decisions": [_edit("고추")]}), cfg("a16e"))
+    assert store.get(("users", "local", "items"), "건고추") is None  # 모델이 고른 이름으로는 저장하지 않는다
+    assert store.get(("users", "local", "items"), "고추").value["facts"]["category"] == "농산물·임산물"
+
+
+def test_edited_item_card_name_still_goes_through_the_name_checks(agent_deps):
+    store = InMemoryStore()
+    graph = _card_graph(agent_deps, store)
+    graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("a16f"))
+    # [왜] 사람이 고친 값도 도구가 같은 검사를 한다. 승인 카드는 검사를 건너뛰는 길이 아니다
+    graph.invoke(Command(resume={"decisions": [_edit("[CARGO1] 고추")]}), cfg("a16f"))
+    assert store.search(("users", "local", "items")) == []
