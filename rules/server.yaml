@@ -1,0 +1,7 @@
+# 화면 서버와 그 DB 연결의 설정값 (설계 10절·13절, 계획 4b). src/marvia/db.py·auth.py·server.py·view.py가 읽는다.
+
+pool:
+  # 검색·조문 조회가 빌려 쓰는 읽기 연결 풀 (R-066). 한 차례의 병렬 검색과 동시 요청을 함께 받는다
+  min_size: 1
+  max_size: 8 # [왜] 한 단계의 병렬 search_law(agent.yaml loop.max_concurrency)보다 크게 둔다
+  timeout_s: 10 # 빌릴 연결이 없을 때 기다리는 초. 넘으면 psycopg_pool.PoolTimeout(검색 실패로 남는다)

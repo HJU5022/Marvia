@@ -2,6 +2,7 @@
 
 하지 않는 일: 적용 기록 표. 1차는 migrations/*.sql을 이름 순서로 모두 돌리고,
 파일마다 IF NOT EXISTS로 써서 여러 번 돌려도 같게 한다.
+읽기 연결 풀(read_pool)은 마이그레이션을 돌리지 않는다. 표가 있는 DB에 붙는다 (계획 4b, R-066).
 """
 
 from __future__ import annotations
@@ -9,6 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import psycopg
+from psycopg_pool import ConnectionPool
+
+from marvia.tools.rules import load_rules
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 
@@ -27,3 +31,25 @@ def connect(url: str) -> psycopg.Connection:
     conn = psycopg.connect(url)
     apply_migrations(conn)
     return conn
+
+
+def read_pool(url: str) -> ConnectionPool:
+    """검색·조문 조회가 부를 때마다 빌려 쓰는 읽기 연결 풀. with 블록으로 열고 닫는다.
+
+    [왜] 연결 하나를 RAG 검색·조문 조회·MCP 서버·병렬 search_law가 함께 쓰면, SELECT 뒤 트랜잭션이
+         "idle in transaction"으로 남아 VACUUM과 CREATE INDEX CONCURRENTLY를 막고(11-06 실측: 시험이 멈춤),
+         한 요청의 오류가 함께 쓰는 연결을 실패 상태로 만들어 다른 요청까지 죽인다 (R-066).
+    [왜] autocommit: 문장마다 바로 끝나 읽은 뒤 열린 트랜잭션이 없다. 검색은 읽기만 해서 묶을 트랜잭션이 없다.
+    [주의] 쓰기(색인·감시 표)는 이 풀을 쓰지 않는다. connect()나 따로 연 연결을 쓴다.
+    """
+    cfg = load_rules("server")["pool"]
+    # [왜] open=False: 만들기만 하고 with 블록에 들어갈 때 연다.
+    #      라이브러리가 암묵적 열기를 곧 없앤다고 경고한다(psycopg_pool pool.py)
+    return ConnectionPool(
+        url,
+        kwargs={"autocommit": True},
+        min_size=cfg["min_size"],
+        max_size=cfg["max_size"],
+        timeout=cfg["timeout_s"],
+        open=False,
+    )
