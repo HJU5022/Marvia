@@ -80,7 +80,7 @@ def start(state: MarviaState) -> dict:
     # [왜] checkpointer는 thread마다 공책을 이어 쓴다. 비우지 않으면 지난 질문의 근거와 초안이 섞인다
     # [주의] 대화 기록(messages)과 가림 표(mask_map)는 비우지 않는다. 차례를 넘는 기억이다 (계획 3d)
     return {
-        # [왜] 지난 차례 답(실제 번호를 되돌린 글)이 이번 차례가 멈췄을 때 결과에 남지 않게 비운다
+        # [왜] answer는 저장하지 않는 칸이지만, 같은 실행 안에서 이전 값이 이번 결과에 섞이지 않게 비운다
         "answer": "",
         "plan": [],
         "evidence": [],

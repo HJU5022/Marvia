@@ -24,7 +24,8 @@ from marvia.tools.rules import load_rules
 # [왜] total=False: 모든 칸이 처음부터 있을 필요는 없다. 노드가 하나씩 채워 간다
 class IdentifyState(TypedDict, total=False):
     # 사용자가 준 단서 글 원문. [주의] LLM에 넘기지 않는다
-    # [왜] UntrackedValue: 이 차례 안에서만 살고 체크포인트에 저장하지 않는다. 원문에는 실제 번호가 있고,
+    # [왜] UntrackedValue: invoke·stream 한 번의 실행 안에서만 살고 체크포인트에 저장하지 않는다.
+    #      재개하면 빈 칸이다. 원문에는 실제 번호가 있고,
     #      PostgresSaver는 str 칸을 직렬화기(암호화) 없이 JSONB로 둔다 (R-035)
     text: Annotated[str, UntrackedValue(str)]
     masked_text: str  # 번호를 가린 글. LLM에 넘겨도 되는 글
@@ -35,7 +36,7 @@ class IdentifyState(TypedDict, total=False):
 
 
 # [왜] 메인 그래프는 식별 칸을 모두 쓰고 아래 칸을 더 쓴다. 상속으로 같은 칸을 두 번 적지 않는다
-# [주의] 아래 칸(answer 빼고)은 start 노드가 차례마다 비운다. 칸을 더하면 start에도 더한다
+# [주의] 아래 칸은 start 노드가 차례마다 비운다. 칸을 더하면 start에도 더한다
 class MarviaState(IdentifyState, total=False):
     plan: list[dict]  # 할 일 [{"action", "query", "reason", "status"}]. 진행 중은 하나 (설계 6.2)
     evidence: list[dict]  # 근거 묶음 (Evidence를 dict로 바꾼 것). unit_id마다 하나, 점수 높은 순
