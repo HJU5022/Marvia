@@ -31,6 +31,7 @@ from marvia.eval.metrics import (
     compare_table,
     domain_table,
     floors,
+    gate_block,
     human_faithful,
     rag_table,
     ragas_means,
@@ -75,6 +76,7 @@ gate = sub.add_parser(
     "floors", help="저장소에 둔 결과 파일로 CI 문의 바닥값을 rules/eval.yaml 모양으로 찍는다"
 )
 gate.add_argument("result", help="저장소 안의 결과 파일 (예: eval/results/agent-claude-haiku-5-5.json)")
+gate.add_argument("--ruling", help="바닥이 내려가거나 천장이 올라갈 때 남기는 판정 이유 (gate.rulings)")
 gate.add_argument("--write", action="store_true", help="rules/eval.yaml의 gate 묶음을 바꾸거나 끝에 더한다")
 prompts = sub.add_parser(
     "domain-prompts", help="범용 도구 비교 문항의 질문 글과 가공 화물 파일을 폴더에 쓴다"
@@ -115,7 +117,14 @@ if args.command == "domain":
 if args.command == "floors":
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))
     summary = summarize(result["rows"], {i.id: i for i in load_set().items}, result["meta"]["k"])
-    block = {"gate": {"file": args.result, "floors": floors(summary, result["meta"]["k"])}}
+    new_floors = floors(summary, result["meta"]["k"])
+    old_gate = load_rules("eval")["gate"]
+    try:
+        block = {"gate": gate_block(args.result, new_floors, old_gate, args.ruling, date.today().isoformat())}
+    except ValueError as error:
+        if args.write:
+            raise SystemExit(str(error)) from None
+        block = {"gate": {"file": args.result, "floors": new_floors}}  # 찍기만 할 때는 막지 않는다
     mark = "# CI 문 (done 3.6)"  # rules/eval.yaml에서 gate 묶음을 알아보는 표식
     text = (
         f"{mark}: 기준 실행(커밋 {result['meta']['commit']})에서 한 문항만큼 둔 바닥·천장값.\n"

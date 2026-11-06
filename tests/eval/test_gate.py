@@ -1,9 +1,20 @@
 """CI 평가 문 시험 (done 3.6). 저장소에 둔 실행 결과(파생 값)를 지금 코드로 다시 채점해 바닥값과 비교한다."""
 
 import json
+import subprocess
+import sys
+
+import pytest
 
 from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
-from marvia.eval.metrics import floors, gate_missing, gate_uncovered, gate_violations, summarize
+from marvia.eval.metrics import (
+    floors,
+    gate_block,
+    gate_missing,
+    gate_uncovered,
+    gate_violations,
+    summarize,
+)
 from marvia.tools.rules import load_rules
 
 
@@ -73,3 +84,60 @@ def test_gate_file_missing_an_item_or_repeating_one_is_not_covering_the_set(tmp_
     rows = json.loads(trimmed.read_text(encoding="utf-8"))["rows"]
     assert gate_uncovered(rows, items) == [f"빠짐: {full['rows'][-1]['id']}"]
     assert gate_uncovered(full["rows"] + full["rows"][:1], items) == [f"겹침: {full['rows'][0]['id']}"]
+
+
+def test_gate_floors_are_exactly_what_the_code_makes_from_the_gate_file():
+    # [왜] 바닥값을 손으로 낮추면 CI 문이 조용히 느슨해진다 (R-060). 코드가 만든 값과 같아야 한다
+    gate = load_rules("eval")["gate"]
+    result = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
+    items = {item.id: item for item in load_set().items}
+    summary = summarize(result["rows"], items, result["meta"]["k"])
+    assert gate["floors"] == floors(summary, result["meta"]["k"])
+
+
+def test_stored_summary_equals_the_rescored_one_for_every_metric_it_has():
+    gate = load_rules("eval")["gate"]
+    result = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
+    items = {item.id: item for item in load_set().items}
+    again = summarize(result["rows"], items, result["meta"]["k"])
+    assert {k: again[k] for k in result["summary"]} == result["summary"]
+
+
+OLD = {"file": "f.json", "floors": {"errors": {"max": 0}, "mrr": {"min": 0.5}, "unsupported": {"max": 0.1}}}
+
+
+def test_a_looser_floor_needs_a_ruling_and_is_recorded_with_it():
+    lower = OLD["floors"] | {"mrr": {"min": 0.4}, "unsupported": {"max": 0.2}}
+    with pytest.raises(ValueError, match="mrr"):
+        gate_block("f.json", lower, OLD, None, "2026-11-06")
+    block = gate_block("f.json", lower, OLD, "평가셋 v2로 바뀜", "2026-11-06")
+    assert block["rulings"] == [
+        {"date": "2026-11-06", "metric": "mrr", "old": 0.5, "new": 0.4, "reason": "평가셋 v2로 바뀜"},
+        {"date": "2026-11-06", "metric": "unsupported", "old": 0.1, "new": 0.2, "reason": "평가셋 v2로 바뀜"},
+    ]
+
+
+def test_a_tighter_floor_needs_no_ruling_and_keeps_the_earlier_rulings():
+    tighter = OLD["floors"] | {"mrr": {"min": 0.6}}
+    kept = [{"date": "2026-10-01", "metric": "mrr", "old": 0.6, "new": 0.5, "reason": "x"}]
+    block = gate_block("f.json", tighter, OLD | {"rulings": kept}, None, "2026-11-06")
+    assert block["floors"]["mrr"] == {"min": 0.6} and block["rulings"] == kept
+
+
+def test_floors_write_refuses_a_looser_floor_without_a_ruling_and_leaves_the_rules_alone(tmp_path):
+    gate = load_rules("eval")["gate"]
+    result = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
+    for row in result["rows"]:
+        row["cited"] = []  # 정답 근거 인용률이 내려간다
+    worse = tmp_path / "worse.json"
+    worse.write_text(json.dumps(result), encoding="utf-8")
+    rules = ROOT / "rules" / "eval.yaml"
+    before = rules.read_text(encoding="utf-8")
+    done = subprocess.run(
+        [sys.executable, "scripts/run_eval.py", "floors", str(worse), "--write"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode != 0 and "--ruling" in done.stderr and "correct_citation" in done.stderr
+    assert rules.read_text(encoding="utf-8") == before

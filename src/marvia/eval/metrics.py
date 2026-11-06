@@ -301,6 +301,30 @@ def floors(summary: dict, k: int) -> dict:
     return out
 
 
+def loosened(old: dict, new: dict) -> list[dict]:
+    """바닥이 내려갔거나 천장이 올라갔거나 사라진 지표를 {metric, old, new}로 돌려준다."""
+    out = []
+    for key, bound in old.items():
+        side = "min" if "min" in bound else "max"
+        now = new.get(key, {}).get(side)
+        if now is None or (now < bound[side] if side == "min" else now > bound[side]):
+            out.append({"metric": key, "old": bound[side], "new": now})
+    return out
+
+
+def gate_block(file: str, new_floors: dict, old_gate: dict, ruling: str | None, today: str) -> dict:
+    """rules/eval.yaml에 쓸 gate 묶음. 느슨해지는 값은 판정 이유(ruling) 없이는 거절한다."""
+    # [왜] 결과를 보고 바닥값을 조용히 내리면 CI 문이 아무것도 못 막는다 (R-060). 내리려면 이유를 남긴다
+    changes = loosened(old_gate.get("floors", {}), new_floors)
+    rulings = list(old_gate.get("rulings", []))
+    if changes:
+        if not ruling:
+            names = ", ".join(c["metric"] for c in changes)
+            raise ValueError(f'바닥이 내려가거나 천장이 올라간다({names}). --ruling "<이유>"가 있어야 쓴다')
+        rulings += [{"date": today, **c, "reason": ruling} for c in changes]
+    return {"file": file, "floors": new_floors} | ({"rulings": rulings} if rulings else {})
+
+
 def gate_violations(summary: dict, bounds: dict) -> list[str]:
     """요약이 바닥·천장값을 어긴 지표를 한 줄씩 돌려준다. 빈 목록이면 통과. 못 잰 지표도 어긴 것으로 본다."""
     out = []
