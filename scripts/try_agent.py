@@ -20,7 +20,7 @@ from langchain_core.callbacks import get_usage_metadata_callback
 from langgraph.types import Command
 
 from marvia.config import Settings
-from marvia.db import connect
+from marvia.db import connect, read_pool
 from marvia.graph.live import agent_deps, live_memory
 from marvia.graph.main import build_main_graph
 from marvia.graph.resume import approval_reply
@@ -51,14 +51,15 @@ except ValueError:
 config = {"configurable": {"thread_id": args.thread, "user_id": args.user}}
 # [왜] get_usage_metadata_callback: 이 블록 안의 LLM 호출(RAG 서브그래프 안 포함)의 토큰 수를 모델별로 더한다
 with (
-    connect(settings.database_url) as conn,
+    connect(settings.database_url),  # [왜] 표가 없으면 만든다(마이그레이션). 읽기는 아래 풀로 한다
+    read_pool(settings.database_url) as pool,
     # [왜] 감시 목록은 따로 autocommit 연결을 쓴다. 다른 도구가 conn을 되돌려도 감시 줄이 남는다 (R-041)
     psycopg.connect(settings.database_url, autocommit=True) as watch_conn,
     live_memory(settings.database_url, settings.data_key.get_secret_value()) as (saver, store),
     get_usage_metadata_callback() as usage,
 ):
     graph = build_main_graph(
-        agent_deps(settings, conn, watch_conn),
+        agent_deps(settings, pool, watch_conn),
         saver,
         loop=settings.loop,
         store=store,

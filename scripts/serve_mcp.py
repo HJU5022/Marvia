@@ -11,7 +11,7 @@ from functools import partial
 import uvicorn
 
 from marvia.config import Settings
-from marvia.db import connect
+from marvia.db import read_pool
 from marvia.graph.rag import top_ranked
 from marvia.rag.live import live_deps
 from marvia.rag.mcp import build_server, http_app
@@ -22,8 +22,9 @@ parser.add_argument("--port", type=int, default=8766)
 args = parser.parse_args()
 
 settings = Settings()
-with connect(settings.database_url) as conn:
-    rag = live_deps(settings, conn)
+# [왜] 오래 도는 서버는 요청마다 풀에서 연결을 빌린다. 연결 하나를 겹치는 요청이 함께 쓰지 않는다 (R-066)
+with read_pool(settings.database_url) as pool:
+    rag = live_deps(settings, pool)
     server = build_server(partial(top_ranked, rag.search, rag.rerank))
     uvicorn.run(
         http_app(server, settings.mcp_token.get_secret_value(), args.host), host=args.host, port=args.port

@@ -7,13 +7,13 @@ import sys
 from datetime import date
 
 from marvia.config import Settings
-from marvia.db import connect
+from marvia.db import read_pool
 from marvia.graph.rag import build_rag_graph
 from marvia.rag.live import live_deps
 
 settings = Settings()
-with connect(settings.database_url) as conn:
-    out = build_rag_graph(live_deps(settings, conn)).invoke({"question": sys.argv[1], "as_of": date.today()})
+with read_pool(settings.database_url) as pool:
+    out = build_rag_graph(live_deps(settings, pool)).invoke({"question": sys.argv[1], "as_of": date.today()})
 
 print(
     "질문 유형:",

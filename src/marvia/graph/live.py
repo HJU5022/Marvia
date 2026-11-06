@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 from collections.abc import Collection, Iterator
 from contextlib import contextmanager
+from datetime import date
 from typing import Any
 
 import httpx
@@ -22,12 +23,14 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
 from langgraph.store.postgres import PostgresStore
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import ConnectionPool
 
 from marvia.config import Settings
 from marvia.graph.main import AgentDeps
 from marvia.graph.schemas import Draft, Plan
 from marvia.llm import chat_model, structured
 from marvia.rag.live import live_deps
+from marvia.rag.models import Evidence
 from marvia.rag.provision import find_provision
 from marvia.tools.reimport import ItemFacts
 from marvia.tools.rules import load_rules
@@ -39,10 +42,11 @@ CIPHER_NAME = "aesgcm"  # 직렬화 형식 뒤에 "+aesgcm"으로 붙는다. 이
 NONCE_BYTES = 12  # AES-GCM이 권하는 nonce 길이
 
 
-def agent_deps(settings: Settings, conn: psycopg.Connection, watch_conn: psycopg.Connection) -> AgentDeps:
+def agent_deps(settings: Settings, pool: ConnectionPool, watch_conn: psycopg.Connection) -> AgentDeps:
     """설정의 모델과 로컬 DB로 AgentDeps를 만든다. 만들기만 하고 부르지는 않는다.
 
-    conn: RAG 검색·조문 조회가 함께 쓰는 연결. watch_conn: 감시 목록만 쓰는 autocommit 연결.
+    pool: RAG 검색·조문 조회가 부를 때마다 빌리는 읽기 연결 풀(db.read_pool). watch_conn: 감시 목록만 쓰는
+    autocommit 연결.
     """
     llm = chat_model(settings)
     # [왜] 키가 없으면 실제 번호를 저장하지 않는다(fail-closed).
@@ -55,16 +59,22 @@ def agent_deps(settings: Settings, conn: psycopg.Connection, watch_conn: psycopg
     except ValueError:
         watch = None
     return AgentDeps(
-        rag=live_deps(settings, conn),  # 계획 2의 RAG 바깥 기능을 그대로 쓴다
+        rag=live_deps(settings, pool),  # 계획 2의 RAG 바깥 기능을 그대로 쓴다
         plan=structured(llm, Plan),
         item=structured(llm, ItemFacts),
         write=structured(llm, Draft),
-        provision=lambda label, as_of: find_provision(conn, label, as_of),
+        provision=lambda label, as_of: _provision(pool, label, as_of),
         model=llm,  # [왜] 에이전트 길은 같은 모델에 도구를 묶어 부른다(create_agent가 bind_tools를 한다)
         # [왜] follow_redirects=False: 넘겨 주는 주소를 따라가면 허용 목록 밖으로 갈 수 있다 (official_lookup)
         web=httpx.Client(timeout=load_rules("agent")["official"]["timeout_s"], follow_redirects=False),
         watch=watch,  # 감시 표는 같은 로컬 DB에 있다(migrations/002_watch.sql)
     )
+
+
+def _provision(pool: ConnectionPool, label: str, as_of: date) -> list[Evidence]:
+    """조문 직접 조회. 부를 때마다 풀에서 연결을 빌린다 (R-066)."""
+    with pool.connection() as conn:
+        return find_provision(conn, label, as_of)
 
 
 class AesGcm:

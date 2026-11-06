@@ -20,7 +20,7 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from marvia.config import Settings
-from marvia.db import connect
+from marvia.db import connect, read_pool
 from marvia.graph.live import agent_deps
 from marvia.graph.main import build_main_graph
 from marvia.graph.resume import approval_reply
@@ -84,13 +84,14 @@ settings = Settings()
 prices = load_rules("pricing")
 rows = []
 with (
-    connect(settings.database_url) as conn,
+    connect(settings.database_url),  # [왜] 표가 없으면 만든다(마이그레이션). 읽기는 아래 풀로 한다
+    read_pool(settings.database_url) as pool,
     # [왜] 감시 목록은 따로 autocommit 연결을 쓴다. 다른 도구가 conn을 되돌려도 감시 줄이 남는다 (R-041)
     psycopg.connect(settings.database_url, autocommit=True) as watch_conn,
 ):
     for loop in ("planner", "agent"):
         graph = build_main_graph(
-            agent_deps(settings, conn, watch_conn), InMemorySaver(), loop=loop, store=InMemoryStore()
+            agent_deps(settings, pool, watch_conn), InMemorySaver(), loop=loop, store=InMemoryStore()
         )
         for i, text in enumerate(QUESTIONS):
             started = time.monotonic()

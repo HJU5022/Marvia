@@ -349,7 +349,7 @@ if args.dry_run:
 import psycopg  # noqa: E402
 
 from marvia.config import Settings  # noqa: E402
-from marvia.db import connect  # noqa: E402
+from marvia.db import connect, read_pool  # noqa: E402
 from marvia.eval.dataset import CORPUS_UNITS  # noqa: E402
 from marvia.graph.live import agent_deps  # noqa: E402
 from marvia.rag.edges import build_edges  # noqa: E402
@@ -379,11 +379,13 @@ for model in models:
     settings = Settings(chat_model=model)
     with (
         connect(settings.database_url) as conn,
+        read_pool(settings.database_url) as pool,  # [왜] 검색·조문 조회는 풀에서 빌린다 (R-066)
         # [왜] agent_deps는 감시 목록용 연결을 따로 받는다 (R-041). 평가 실행은 감시를 끄므로 쓰지 않는다
         psycopg.connect(settings.database_url, autocommit=True) as watch_conn,
     ):
-        deps = agent_deps(settings, conn, watch_conn)
+        deps = agent_deps(settings, pool, watch_conn)
         annex_units = conn.execute(ANNEX_SQL).fetchone()[0]
+        conn.commit()  # [왜] 읽은 뒤 트랜잭션을 닫는다. 긴 실행 내내 열려 있지 않게 (R-066)
         docs = sorted({p.name.split(".")[0] for p in CORPUS_UNITS.glob("*.jsonl")})
         graph = {}
         # [왜] 그래프가 지금 코드로 만든 간선 수와 같은지 대조한다. 켠 설정에서만 센다

@@ -17,7 +17,7 @@ from langchain_core.callbacks import get_usage_metadata_callback
 from pydantic import BaseModel
 
 from marvia.config import Settings
-from marvia.db import connect
+from marvia.db import read_pool
 from marvia.eval.run import cost_usd, inside_repo
 from marvia.graph.rag import evidence_block, top_ranked
 from marvia.llm import chat_model, structured
@@ -46,8 +46,8 @@ if inside_repo(Path(args.out)):
 settings = Settings()
 prices = load_rules("pricing")
 items = []
-with connect(settings.database_url) as conn, get_usage_metadata_callback() as usage:
-    rag = live_deps(settings, conn)
+with read_pool(settings.database_url) as pool, get_usage_metadata_callback() as usage:
+    rag = live_deps(settings, pool)
     find = partial(top_ranked, rag.search, rag.rerank)
     extract = structured(chat_model(settings), Extracted)
     for name, aliases in ITEMS.items():

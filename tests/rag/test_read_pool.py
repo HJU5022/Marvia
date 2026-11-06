@@ -3,6 +3,7 @@
 로컬 DB가 꺼져 있으면 건너뛴다(MARVIA_REQUIRE_DB=1이면 실패).
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from uuid import uuid4
 
@@ -12,10 +13,14 @@ from psycopg.conninfo import make_conninfo
 
 from marvia.config import Settings
 from marvia.db import read_pool
+from marvia.rag import voyage
 from marvia.rag.index import index_units
+from marvia.rag.live import live_deps
+from marvia.rag.models import SearchFailed
 from marvia.rag.search import hybrid_search
 
 AS_OF = date(2026, 10, 30)
+BROKEN = "고장 난 질의"  # 이 질의만 임베딩 차원이 틀려 DB 오류를 낸다
 
 
 def idle_in_transaction(url: str, name: str) -> int:
@@ -43,6 +48,9 @@ def pooled(db, make_unit, fake_embed):
     return make_conninfo(Settings().database_url, options=options, application_name=name), name
 
 
+SETTINGS = Settings(_env_file=None, anthropic_api_key="sk-test-not-real", voyage_api_key="test", graph="off")
+
+
 def test_a_search_leaves_no_connection_idle_in_transaction(pooled, fake_embed):
     url, name = pooled
     with read_pool(url) as pool:
@@ -50,3 +58,34 @@ def test_a_search_leaves_no_connection_idle_in_transaction(pooled, fake_embed):
             hits = hybrid_search(conn, "정밀검사 면제", fake_embed, AS_OF)
         assert hits[0].unit_id == "LTEST@20261002#제2조"
         assert idle_in_transaction(url, name) == 0  # [왜] 지금(HEAD)의 공유 연결은 1이었다 (11-07 실측)
+
+
+def test_concurrent_mcp_searches_do_not_break_each_other(pooled, fake_embed, monkeypatch):
+    url, name = pooled
+
+    def embed(texts, settings, input_type):
+        # [왜] 차원이 3인 벡터는 vector(1024) 칸과 맞지 않아 DB 오류가 난다.
+        #      동시 요청 하나만 일부러 실패시킨다
+        return [[0.0] * 3 for _ in texts] if BROKEN in texts[0] else fake_embed(texts)
+
+    monkeypatch.setattr(voyage, "embed", embed)
+    monkeypatch.setattr(
+        voyage, "rerank", lambda query, texts, settings: [1.0 / (i + 1) for i in range(len(texts))]
+    )
+    queries = ["정밀검사 면제"] * 7 + [BROKEN]
+    with read_pool(url) as pool:
+        rag = live_deps(SETTINGS, pool)  # 기본 rag_via=mcp: 같은 MCP 서버를 메모리 통로로 부른다
+        assert rag.ranked is not None
+
+        def one(query: str):
+            try:
+                return rag.ranked(query, AS_OF)
+            except SearchFailed as error:
+                return error
+
+        with ThreadPoolExecutor(max_workers=8) as workers:
+            results = list(workers.map(one, queries))
+        assert idle_in_transaction(url, name) == 0
+    # [왜] 한 요청의 DB 오류가 같은 연결을 쓰는 다른 요청을 실패 상태로 만들지 않는다. 고장 난 질의만 실패한다
+    assert [isinstance(r, SearchFailed) for r in results] == [False] * 7 + [True]
+    assert all(r[0].unit_id == "LTEST@20261002#제2조" for r in results[:7])

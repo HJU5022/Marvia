@@ -37,7 +37,7 @@ if not args.out or inside_repo(Path(args.out)):
 
 # [왜] 키·DB가 필요한 모듈은 인자 검사 뒤에 읽는다
 from marvia.config import Settings  # noqa: E402
-from marvia.db import connect  # noqa: E402
+from marvia.db import connect, read_pool  # noqa: E402
 from marvia.graph.rag import top_ranked  # noqa: E402
 from marvia.rag.live import live_deps  # noqa: E402
 
@@ -45,12 +45,13 @@ data = load_set()
 items = {i.id: i for i in data.items if i.gold}
 k = load_rules("eval")["retrieval_k"]
 settings = Settings()
-with connect(settings.database_url) as conn:
-    rag = live_deps(settings, conn)
+with connect(settings.database_url) as conn, read_pool(settings.database_url) as pool:
+    rag = live_deps(settings, pool)
     find = rag.ranked or partial(top_ranked, rag.search, rag.rerank)
     annex = conn.execute(
         "SELECT count(*) FROM corpus_units WHERE split_part(unit_id, '#', 2) LIKE '별표%'"
     ).fetchone()
+    conn.commit()  # [왜] 읽은 뒤 트랜잭션을 닫는다 (R-066)
     rows = []
     for item in items.values():
         found = find(mask_text(item.question)[0], data.as_of)
