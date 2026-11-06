@@ -114,3 +114,18 @@ def test_summary_uses_the_same_statistics_for_both_loops():
     assert out["evidence_backed"] == {"value": 0.6667, "n": 3}
     assert (out["cap_breaches"], out["llm_calls_median"], out["llm_calls_max"]) == (1, 9, 23)
     assert (out["cost_per_item_mean"], out["cost_per_item_max"]) == (0.005, 0.01)
+
+
+def test_evidence_backed_counts_only_answers_and_survives_error_rows():
+    # [왜] 거절·되물음·안내 줄은 분모에 넣지 않는다. 오류 줄은 calc가 None이어도 터지지 않는다
+    rows = [
+        row("R1", cited=[A + "제241조.3항"]),
+        row("S1"),
+        row("R2", behaviour="unsupported"),  # 근거 없는 답: 분모에 들어가고 근거 있는 답이 아니다
+        row("S1", behaviour="guide", cited=[A + "제8조.1항"]),  # 포워더 안내: 분모에서 뺀다
+        row("U1", behaviour="decline"),
+        row("B1", behaviour="choice"),
+        row("R2", behaviour="error", calc=None),
+    ]
+    assert summarize(rows, ITEMS, 8)["evidence_backed"] == {"value": 0.3333, "n": 3}
+    assert summarize([row("U1", behaviour="decline")], ITEMS, 8)["evidence_backed"] == {"value": None, "n": 0}

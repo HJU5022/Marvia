@@ -131,11 +131,14 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "mrr": mrr(rows, items),
         "llm_calls_median": statistics.median(calls) if calls else None,
         "llm_calls_max": max(calls) if calls else None,
-        # [왜] 두 길을 같은 통계로 잰다(R-040). 근거 있는 답 = 인용이나 코드 계산이 있는 답
+        # [왜] 두 길을 같은 통계로 잰다(R-040). 근거 있는 답 비율 = 내용 있는 답을 낸 줄(answer, unsupported)
+        #      가운데 인용이나 코드 계산이 있는 줄. unsupported를 분모에 넣어야 비율이 부풀지 않는다.
+        #      거절·되물음·포워더 안내(guide, 번호 없이 맞는 행동)는 뺀다
         "evidence_backed": _mean(
             [
-                float(r["behaviour"] in ("answer", "guide") and bool(r["cited"] or any(r["calc"].values())))
+                float(bool(r["cited"] or any((r.get("calc") or {}).values())))
                 for r in rows
+                if r["behaviour"] in ("answer", "unsupported")
             ]
         ),
         "cap_breaches": sum((r.get("llm_calls") or 0) > cap for r in rows),
