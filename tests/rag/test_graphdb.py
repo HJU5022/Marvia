@@ -178,3 +178,26 @@ def test_item_graph_reload_only_touches_nodes_of_its_own_owner(graph_db):
     load_item_graph(driver, ItemGraph(reviewed="시험", items=[]), owner=doc)
     # [왜] 소유자가 다른 노드는 지워지지 않는다. 시험(TEST 소유자)이 실제 그래프(main)를 못 건드리는 이유다
     assert neighbors(driver, [], [f"{doc} 다른 품목"]) == [f"{doc}@20261002#제32조"]
+
+
+def test_graph_meta_is_written_only_after_the_item_graph_is_loaded(graph_db, monkeypatch):
+    # [왜] 품목 적재가 실패했는데 메타가 이미 새 sha를 가지면 반쯤 만든 그래프가 최신으로 보인다
+    from marvia.rag import graphdb
+
+    driver, doc = graph_db
+    units = _units(doc)
+    edges = build_edges(units)
+    edges.delegates = []
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("품목 적재 실패")
+
+    monkeypatch.setattr(graphdb, "load_item_graph", broken)
+    items = ItemGraph(reviewed="시험", items=[])
+    with pytest.raises(RuntimeError):
+        load_graph(
+            driver, units, edges, name=doc, sha="s", items_sha="i", built_at="t", items=items, items_owner=doc
+        )
+    assert graph_meta(driver, doc, [doc]) == {}
+    with pytest.raises(ValueError, match="items_owner"):
+        load_graph(driver, units, edges, name=doc, sha="s", items_sha="i", built_at="t", items=items)

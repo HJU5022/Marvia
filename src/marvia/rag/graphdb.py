@@ -82,7 +82,16 @@ def _batches(rows: list, size: int):
 
 
 def load_graph(
-    driver: Driver, units: list[Unit], edges: Edges, *, name: str, sha: str, items_sha: str, built_at: str
+    driver: Driver,
+    units: list[Unit],
+    edges: Edges,
+    *,
+    name: str,
+    sha: str,
+    items_sha: str,
+    built_at: str,
+    items: ItemGraph | None = None,
+    items_owner: str | None = None,
 ) -> None:
     """단위·법령 노드는 MERGE로, 간선은 지금 결과로 바꿔 넣는다. 두 번 넣어도 같다. 메타에 sha를 남긴다."""
     size = load_rules("graph")["load"]["batch"]
@@ -107,6 +116,12 @@ def load_graph(
 
     with driver.session() as session:
         session.execute_write(replace_edges)
+    if items is not None:
+        if not items_owner:
+            raise ValueError("items를 주면 items_owner도 줘야 한다 (기본값이 없다)")
+        # [왜] 메타는 맨 끝에 쓴다. 품목 적재가 실패했는데 메타가 새 sha를 가지면
+        #      반쯤 만든 그래프가 최신으로 보인다
+        load_item_graph(driver, items, owner=items_owner)
     driver.execute_query(META, {"name": name, "sha": sha, "items_sha": items_sha, "built_at": built_at})
 
 

@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from db_required import db_unreachable, graph_test_settings, neo4j_unreachable
+from db_required import db_unreachable, graph_test_settings, neo4j_unreachable, real_graph_problem
 from neo4j.exceptions import DriverError, Neo4jError
 from psycopg.conninfo import make_conninfo
 
@@ -75,6 +75,15 @@ def graph_db():
     except (DriverError, Neo4jError, OSError):
         driver.close()
         neo4j_unreachable()
+    # [왜] 주소가 달라 보여도 개발 그래프가 든 서버면 멈춘다. 시험은 그 흔적을 만들 수 없다
+    #      (main 그래프, TEST 아닌 Unit)
+    main_graphs = driver.execute_query("MATCH (g:Graph {name: 'main'}) RETURN count(g) AS c").records[0]["c"]
+    real_units = driver.execute_query(
+        "MATCH (u:Unit) WHERE NOT u.doc_id STARTS WITH 'TEST' RETURN count(u) AS c"
+    ).records[0]["c"]
+    if problem := real_graph_problem(main_graphs, real_units):
+        driver.close()
+        pytest.fail(problem, pytrace=False)
     doc = f"TEST{uuid4().hex[:10]}"
     yield driver, doc
     # [왜] 시험 노드는 문서 id(Unit·Law)나 이름 앞머리(Graph·Item·Requirement·Document·Agency)가 doc이다

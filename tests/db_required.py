@@ -45,3 +45,25 @@ def graph_test_settings(settings: Settings | None = None) -> Settings:
             pytrace=False,
         )
     return settings.model_copy(update={"neo4j_url": settings.neo4j_test_url})
+
+
+def real_graph_problem(main_graphs: int, real_units: int, fail: bool = False) -> str | None:
+    """붙은 서버에 실제 그래프의 흔적이 있으면 그 까닭 글을 돌려준다(fail이면 pytest.fail). 없으면 None."""
+    # [왜] 주소 글자 비교는 다른 이름으로 개발 서버를 가리키면 지나간다
+    #      (bolt://neo4j:7687, host.docker.internal:7688). 그래서 서버 안을 본다:
+    #      이름이 main인 Graph 노드나 doc_id가 TEST로 시작하지 않는 Unit은 시험이 만들 수
+    #      없으니 실제 그래프의 것이다
+    reasons = []
+    if main_graphs:
+        reasons.append(f"Graph 'main' 노드 {main_graphs}개")
+    if real_units:
+        reasons.append(f"TEST가 아닌 Unit {real_units}개")
+    if not reasons:
+        return None
+    message = (
+        f"시험용 Neo4j에 실제 그래프가 들어 있다 ({', '.join(reasons)}). "
+        "개발 그래프 서버에는 시험을 돌리지 않는다"
+    )
+    if fail:
+        pytest.fail(message, pytrace=False)
+    return message

@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from marvia.config import Settings
 from marvia.eval.dataset import CORPUS_UNITS
 from marvia.rag.edges import build_edges
-from marvia.rag.graphdb import connect_graph, graph_meta, load_graph, load_item_graph, units_sha256
+from marvia.rag.graphdb import connect_graph, graph_meta, load_graph, units_sha256
 from marvia.rag.index import read_units
 from marvia.rag.items import items_sha256, load_items
 
@@ -40,7 +40,8 @@ load_graph(
     sha=units_sha256(CORPUS_UNITS),
     items_sha=items_sha256(),
     built_at=built_at,
+    items=load_items(),
+    items_owner="main",
 )
-load_item_graph(driver, load_items(), owner="main")
 print(graph_meta(driver, "main", sorted({u.doc_id for u in units})))
 driver.close()
