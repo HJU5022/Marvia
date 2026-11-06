@@ -1,0 +1,94 @@
+# Marvia v2 계획 4a-2: 평가셋 v2
+
+**목표:** 평가셋 v1의 채점 기준에서 독립 리뷰가 찾은 결함(E-4, E-7)을 고친 v2를 만들어 동결하고, 설정마다 세 번 돌려
+평균과 범위로 적는다. README·포트폴리오의 숫자는 이 결과로 쓴다.
+
+**설계:** docs/specs/2026-10-28-marvia-v2-design.md 11절. 계획 4a 문서의 "이 숫자의 알려진 한계 (11-06 독립 리뷰)" 절.
+
+## 지킬 것
+
+- 질문은 바꾸지 않는다. 고치는 것은 채점 기준(맞는 행동, also_ok, 식별 기대값)뿐이다. v2의 `id`, `group`, `kind`,
+  `question`, `fault`, `gold`, `reference`, `calc`, `trajectory`, `human`, `domain`은 v1과 같아야 하고 시험이 이를 확인한다.
+- v1(`eval/set_v1.yaml`, sha256 `7e6bdf59...`)과 v1 결과 파일은 지우지도 고치지도 않는다.
+- 고친 문항마다 `v2_change`에 무엇을 왜 고쳤는지 한 줄을 적는다.
+- 고친 정답은 v1 때처럼 독립 대조를 거친 뒤 sha256으로 동결한다.
+- 숫자·판정은 코드가 낸다. LLM 판정으로 행동을 가르지 않는다.
+
+## 왜 고치나
+
+| 결함 | v1에서 생긴 일 |
+|---|---|
+| E-4 | U05~U10은 맞는 행동에 `unsupported`가 있다. `unsupported`는 "근거·계산·화물이 없는 답" 전부라서, "근거에 없다"고 정직하게 답한 것과 모델 기억으로 지어낸 답을 가르지 못한다. 거꾸로 2차 실행의 U05·U06·U09·U10처럼 "근거에 없어 확인할 수 없다"고 말하면서 관련 조문을 인용한 답은 `answer`로 잡혀 틀림이 된다. U08은 `answer`와 제241조 전체를 받아 제9항 내용을 지어내도 통과한다 |
+| E-7 | R09(붙여 쓴 두 번호)와 R10은 화물 사실이 하나라도 있으면 맞는 행동이다. 두 번호 중 하나만 찾아도, 단계가 틀려도 맞다 |
+
+## Task 1: "찾지 못함"을 코드가 알아보는 신호
+
+배울 것: 부분 답(`PARTIAL_LEAD`)처럼, 모델이 구조화 출력의 칸으로 신호를 내고 코드가 정한 문장을 붙이면 채점이
+글 내용을 해석하지 않고 그 문장만 찾으면 된다.
+
+- `Draft`에 `not_in_evidence: bool = False`를 더한다. 칸 설명(모델이 읽는 지시): 사용자가 특정 조문·항·규정·시점·대상을
+  물었는데 근거 묶음에 그것이 없을 때만 true.
+- `graph/answer.py`에 `NOT_FOUND_LEAD = "물으신 조문이나 내용은 지금 가진 근거에 없어요."`를 두고, `final_answer`가
+  `not_in_evidence`가 참이면 이 문장을 작성자 답 앞에 붙인다. 근거·인용은 그대로 보인다.
+- `eval/run.py behaviour()`의 순서: choice, decline, partial, not_found(`NOT_FOUND_LEAD`가 답에 있음), guide, answer,
+  unsupported. `dataset.Behaviour`에 `not_found`를 더한다.
+- 계획자 길과 에이전트 길이 같은 `Draft`를 쓰므로 두 길 모두에 들어간다.
+- 시험(키 없음, 가짜 모델): 칸이 참이면 답 맨 앞에 문장이 있고 인용 줄은 그대로; 칸이 거짓이면 문장이 없음; 옛 초안
+  (칸 없음)도 읽힘; `behaviour()`가 문장과 인용이 함께 있는 답을 `not_found`로, 문장 없는 인용 답을 `answer`로 정함.
+
+커밋: `feat(graph): 근거에 물은 대상이 없으면 정한 문장을 답 앞에 붙임`
+
+## Task 2: 평가셋 v2 파일과 식별 기대값
+
+- `Item`에 `identify: Identify | None = None`을 더한다. `Identify`는 `cargos: int`(읽어야 할 화물 수)와
+  `stages: list[str]`(찾아야 할 단계 이름, 순서 무관).
+- `behaviour_ok`는 `identify`가 있으면 줄의 `cargo_count`가 같고 `stages`가 같은 모음일 때만 맞다고 본다.
+- `eval/set_v2.yaml`은 v1을 복사하고 아래만 바꾼다. 정답 값은 재생 데이터 `fixtures/unipass/*.json`의 `stage`에서
+  가져온다(모델 답에서 가져오지 않는다).
+
+| 문항 | v1 | v2 | 이유 |
+|---|---|---|---|
+| U05, U06 | `[unsupported, partial, guide]` | `[not_found, partial, guide]` | E-4: 정직한 "없음"만 맞음, 지어낸 근거 없는 답은 틀림 |
+| U07, U09, U10 | `[unsupported, partial]` | `[not_found, partial]` | E-4 |
+| U08 | `[unsupported, partial, answer]`, also_ok 제241조 | `[not_found, partial]`, also_ok 제241조 유지 | E-4: 제9항이 없다고 하지 않은 답은 틀림. 다른 항 인용은 여전히 틀린 근거가 아님 |
+| R09 | `[answer]` | `[answer]`, `identify: {cargos: 2, stages: [반입신고, 수입신고]}` | E-7: DEMO0001 반입신고, DEMO0002 수입신고 |
+| R10 | `[answer]` | `[answer]`, `identify: {cargos: 1, stages: [입항]}` | E-7: MOCK12345678 입항 |
+
+- `dataset.py`: `SET_V2_PATH`, `load_set(path)`는 그대로 쓰고, `run_eval.py run`과 `report`에 `--set v1|v2`(기본 v2는
+  동결 뒤). 결과 meta의 `set`과 `set_sha256`이 어느 판인지 보인다.
+- 시험: v2와 v1의 문항별 고정 칸이 같음; `v2_change`는 고친 문항에만 있고 비지 않음; v1 파일 해시가 그대로임;
+  `identify`가 있는 문항에서 화물 수나 단계가 다르면 틀림.
+
+커밋: `feat(eval): 채점 기준만 고친 평가셋 v2와 식별 기대값`
+
+## Task 3: 독립 대조와 동결
+
+- 고친 일곱 문항을 v1 때(`fcfbb42`)처럼 별도 검토자가 본다: U05~U10의 "물은 대상이 코퍼스에 없다"가 맞는지(말뭉치
+  `corpus/` 원문과 단위 목록으로), R09·R10 기대값이 재생 데이터와 같은지, 질문이 그대로인지. 결과는
+  `eval/gold_check_v2.md`(맞음·고침·뺌과 근거).
+- 고칠 것이 나오면 고치고 이유를 `v2_change`에 더한다. 그 뒤 sha256을 `dataset.py`의 v2 상수와 시험에 넣어 동결한다.
+
+커밋: `test(eval): 평가셋 v2를 독립 대조 뒤 해시로 동결함`
+
+## Task 4: 설정마다 세 번 실행 (유료)
+
+- 코드(키 없음): `run_eval.py spread <결과...>`가 같은 설정(길·모델·평가셋)의 결과 파일들을 받아 지표마다 평균과
+  최소~최대, 분모를 표로 찍는다. 시험 있음.
+- 실행: Docker, 동결 커밋의 사본, 에이전트·계획자 Haiku 5.5, 각 세 번(태그 `v2r1`~`v2r3`), 한 번 상한 $0.4. 어림
+  한 번 약 $0.26, 실제는 어림의 약 절반이었다. 합계 어림 약 $1.5, 실제 약 $0.9.
+- CI 문(실행 전에 정함): v2의 첫 실행 `agent ... v2r1`을 문 파일로 하고 바닥값은 코드로 만든다. 세 실행 가운데 고르지
+  않는다. 이것은 새 판의 첫 바닥값이라 결과를 보고 낮추는 일이 아니다. v1 문 파일은 v1 결과와 함께 남긴다.
+- ragas는 이번에 돌리지 않는다(v2는 정답 글을 바꾸지 않았다).
+
+커밋: `feat(eval): 같은 설정의 여러 실행을 평균과 범위로 보임`, `docs: 평가셋 v2 세 번 실행 결과 파일을 남김`
+
+## Task 5: 문서
+
+- 이 문서에 실행 결과(설정마다 평균·범위, v1 대비 고친 문항이 바꾼 값), 설계서 11절, 계획 4a 문서의 한계 표(v2에서
+  고친 것 표시), 위키 원장과 근거 폴더.
+
+## 끝나면 되는 것
+
+- `eval/set_v2.yaml` 동결(해시), 독립 대조 기록, v1 그대로.
+- 에이전트·계획자 Haiku 각 세 번의 평균·범위 표. README·포트폴리오는 이 범위를 쓴다.
+- 시험·ruff·Docker pyright 통과, CI 초록.
