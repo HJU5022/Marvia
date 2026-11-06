@@ -334,17 +334,19 @@ def stray_articles(rows: list[dict], items: dict[str, Item]) -> dict:
 
 
 def top_article_share(rows: list[dict], top: int, alert: float) -> dict:
-    """한 조문 쏠림(11-02 관찰 ②): 근거 앞 top개 가운데 가장 많은 한 조문의 몫. 11-02에는 8개 중 7개였다."""
-    shares = []
+    """한 조문 쏠림(11-02 관찰 ②): 첫 채점 묶음 앞 top개 중 한 조문의 최대 몫. 11-02에는 8개 중 7개."""
+    shares, skipped = [], 0
     for r in rows:
-        head = r["retrieved"][
-            :top
-        ]  # [왜] 리랭커 순서의 검색 근거. evidence는 get_provision 근거가 섞여 순서가 다르다
-        if head:
-            # [왜] 법령까지 넣어 센다. 관세법 제9조와 시행령 제9조는 다른 조문이다
-            keys = [u.split(".", 1)[0] for u in head]
-            shares.append(Counter(keys).most_common(1)[0][1] / len(head))
-    return _mean(shares) | {"over": sum(share >= alert for share in shares)}
+        # [왜] 첫 채점 묶음만 본다. retrieved는 모든 묶음의 합집합이라 뒷 묶음이 앞 묶음에 섞인다
+        first = next((e["units"] for e in r.get("rag", []) if e["step"] == "grade"), None)
+        if not first:
+            skipped += 1  # 채점 묶음이 없는 줄(검색을 안 탄 문항)은 따로 센다
+            continue
+        head = first[:top]
+        # [왜] 법령까지 넣어 센다. 관세법 제9조와 시행령 제9조는 다른 조문이다
+        keys = [u.split(".", 1)[0] for u in head]
+        shares.append(Counter(keys).most_common(1)[0][1] / len(head))
+    return _mean(shares) | {"over": sum(share >= alert for share in shares), "skipped": skipped}
 
 
 def false_sufficient(rows: list[dict], items: dict[str, Item]) -> dict:
@@ -378,7 +380,9 @@ def rag_table(results: list[dict]) -> str:
             cells.append("-" if metric["value"] is None else f"{metric['value']:.2f} ({metric['n']})")
         share = s["top_article_share"]
         cells.append(
-            "-" if share["value"] is None else f"{share['value']:.2f} ({share['over']}/{share['n']})"
+            "-"
+            if share["value"] is None
+            else f"{share['value']:.2f} ({share['over']}/{share['n']}, 빠짐 {share['skipped']})"
         )
         sufficient = s["false_sufficient"]
         cells.append("-" if sufficient["value"] is None else f"{sufficient['value']:.2f} ({sufficient['n']})")

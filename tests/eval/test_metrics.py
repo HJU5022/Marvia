@@ -251,8 +251,28 @@ def test_rag_observations_from_the_rag_log_and_evidence_order():
         {"step": "grade", "sufficient": True, "units": [A + "제241조.3항"]},
         {"step": "rewrite", "articles": ["제8조"]},  # also_ok 조문은 질문 밖이 아니다
     ]
-    head = [A + "제27조.1항.1호"] * 7 + [A + "제20조.1항"]  # 8개 중 7개가 한 조문
-    rows = [row("R1", rag=rag, retrieved=head), row("S1", retrieved=[A + "제1조"])]
+    rows = [
+        row("R1", rag=rag),
+        row("S1", rag=[{"step": "grade", "sufficient": True, "units": [A + "제1조"]}]),
+    ]
     assert stray_articles(rows, ITEMS) == {"value": 0.5, "n": 2}
     assert false_sufficient(rows, ITEMS) == {"value": 0.5, "n": 2}
-    assert top_article_share(rows, 8, 0.75) == {"value": round((0.875 + 1.0) / 2, 4), "n": 2, "over": 2}
+
+
+def grade(*units: str) -> dict:
+    return {"step": "grade", "sufficient": False, "units": list(units)}
+
+
+def test_top_article_share_counts_only_the_first_grade_round():
+    head = [A + "제27조.1항.1호"] * 7 + [A + "제20조.1항"]  # 8개 중 7개가 한 조문
+    later = [A + "제1조", A + "제2조"]  # 둘째 묶음은 세지 않는다
+    rows = [row("R1", rag=[grade(*head), grade(*later)]), row("R2", rag=[grade(A + "제1조", A + "제2조")])]
+    got = top_article_share(rows, 8, 0.75)
+    assert got == {"value": round((0.875 + 0.5) / 2, 4), "n": 2, "over": 1, "skipped": 0}
+
+
+def test_top_article_share_short_head_and_rows_without_a_grade_round():
+    short = [grade(A + "제9조.1항", A + "제9조.2항", A + "제10조")]  # 8개보다 짧은 첫 묶음
+    rows = [row("R1", rag=short), row("R2", rag=[{"step": "rewrite", "articles": []}]), row("R3")]
+    got = top_article_share(rows, 8, 0.75)
+    assert got == {"value": round(2 / 3, 4), "n": 1, "over": 0, "skipped": 2}
