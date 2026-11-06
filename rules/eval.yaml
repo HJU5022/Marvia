@@ -36,11 +36,11 @@ judge:
   call_tokens: {input: 2500, output: 300}
   max_cost_usd: 1.5 # ragas 실행 한 번의 상한(달러)
 
-# CI 문 (done 3.6): 기준 실행(커밋 ae1891c)에서 한 문항만큼 둔 바닥·천장값.
+# CI 문 (done 3.6): 기준 실행(커밋 c2c068d)에서 한 문항만큼 둔 바닥·천장값.
 # 새 기준 실행을 커밋할 때만 다시 만든다. 결과를 보고 값을 낮추지 않는다
 gate:
-  file: eval/results/agent-claude-haiku-5-5.json
-  set: v1 # 이 문 파일을 채점하는 평가셋 판 (eval/set_<판>.yaml)
+  file: eval/results/agent-claude-haiku-5-5-v2r1.json
+  set: v2
   floors:
     errors:
       max: 0
@@ -49,23 +49,32 @@ gate:
     cap_breaches:
       max: 0
     correct_citation:
-      min: 0.66
+      min: 0.74
     behaviour_accuracy:
-      min: 0.76
+      min: 0.89
     blocked_accuracy:
       min: 0.8
     calc_accuracy:
       min: 0.8
     mrr:
-      min: 0.33
+      min: 0.29
     trajectory:
       min: 0.93
     recall_at_8:
-      min: 0.41
+      min: 0.45
     wrong_evidence:
-      max: 0.42
+      max: 0.29
     unsupported:
       max: 0.07
+    false_not_found:
+      max: 0.09
+  rulings:
+  - date: '2026-11-06'
+    metric: mrr
+    old: 0.33
+    new: 0.29
+    reason: '새 판 v2의 첫 문: 문 파일은 실행 전에 agent v2r1로 정했고 세 실행 가운데 고르지 않았다(계획 4a-2 Task
+      4). v1 문과 판이 달라 값을 견주어 낮춘 것이 아니다'
 
 # 에이전트 길 도구 호출 궤적 검사 (done 3.4). 문항별 조건은 eval/set_v1.yaml의 trajectory
 trajectory:
