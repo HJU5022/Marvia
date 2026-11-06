@@ -121,3 +121,14 @@ def test_a_long_query_still_goes_through_the_mcp_server():
     out = build_rag_graph(deps).invoke(START_STATE)
     assert [e["unit_id"] for e in out["evidence"]] == ["LTEST@20261002#제2조"]
     assert len(seen[0]) == MAX_QUERY
+
+
+def test_a_long_query_is_cut_on_the_direct_path_too():
+    # [왜] 두 길(direct, mcp)이 같은 질의를 쓴다. direct 길의 search가 받는 질의도 상한까지 잘려야 한다
+    from marvia.rag.mcp import MAX_QUERY
+
+    seen: dict = {}
+    long = QueryAnalysis(question_type="문구 해석", as_of=None, search_query="정밀검사 면제 " * 60)
+    deps = replace(_deps([ENOUGH], seen=seen), analyze=lambda prompt: long)
+    build_rag_graph(deps).invoke(START_STATE)
+    assert len(seen["search"][0][0]) == MAX_QUERY

@@ -56,6 +56,8 @@ def test_a_search_leaves_no_connection_idle_in_transaction(pooled, fake_embed):
     with read_pool(url) as pool:
         with pool.connection() as conn:
             hits = hybrid_search(conn, "정밀검사 면제", fake_embed, AS_OF)
+            # [왜] 빌린 동안 열린 트랜잭션이 없어야 한다. autocommit을 빼면 여기서 1이 된다
+            assert idle_in_transaction(url, name) == 0
         assert hits[0].unit_id == "LTEST@20261002#제2조"
         assert idle_in_transaction(url, name) == 0  # [왜] 지금(HEAD)의 공유 연결은 1이었다 (11-07 실측)
 
