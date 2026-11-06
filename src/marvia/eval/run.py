@@ -165,7 +165,7 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
     return {
         "behaviour": kind,
         # [왜] 인용은 검증을 지난 답에만 있다. 부분 답의 "찾은 근거"는 인용이 아니다
-        "cited": list(draft.get("citations", [])) if kind in ("answer", "guide") else [],
+        "cited": list(draft.get("citations", [])) if kind in ("answer", "guide", "not_found") else [],
         "evidence": [e["unit_id"] for e in values.get("evidence", [])],  # 점수 높은 순 (merge_evidence)
         # [왜] R@k·MRR은 RAG 순위로 잰다. 묶음은 get_provision 근거(점수 1.0)가 앞선다
         "retrieved": list(dict.fromkeys(u for e in log if e["step"] == "grade" for u in e["units"])),

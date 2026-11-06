@@ -339,3 +339,10 @@ def test_error_row_reads_the_checkpoints_mask_map_for_numbers_masked_after_the_q
     deps = agent_deps(model=Boom(messages=iter([])))
     row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
     assert seen_real and row["error"] == "RuntimeError" and row["leak"] is True
+
+
+def test_observe_keeps_citations_of_a_not_found_row():
+    # [왜] wrong_evidence와 ragas cited_texts가 이 인용을 봐야 한다
+    values = {"answer": f"{NOT_FOUND_LEAD}\n\n근거", "draft": {"citations": ["U1"]}}
+    row = observe(values, [], LlmWatch(), "agent", [])
+    assert row["behaviour"] == "not_found" and row["cited"] == ["U1"]
