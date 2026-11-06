@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "ag-ui-protocol==1.0.0",
     "anthropic>=2.3.0",
+    "anyio>=4.15.1",
     "cryptography>=50.0.2",
     "httpx>=0.28.1",
     "kiwipiepy>=0.24.1",

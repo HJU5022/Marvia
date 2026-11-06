@@ -7,15 +7,19 @@ ag-ui-langgraph 어댑터를 쓰지 않고 ag-ui-protocol의 이벤트 타입·�
 흐름: POST /agui → 로그인 확인(auth) → thread 잠금 → 작업 스레드 하나에서 graph.stream → 큐 → SSE
      RUN_STARTED → STATE_SNAPSHOT(할 일·읽은 번호·화물·근거가 바뀔 때마다) → (답이면 TEXT_MESSAGE_*)
      → RUN_FINISHED(outcome success 또는 interrupt + 카드) | RUN_ERROR
+잠금(running)은 이 프로세스 안에서만 지킨다. 배포는 인스턴스 하나로 돌린다(여럿이면 thread 키에
+pg_try_advisory_lock을 거는 것으로 올린다).
 하지 않는 일: 화면 그리기(web/), 가림 판단(identify), 모델 호출, 표 만들기(python -m marvia.migrate).
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import queue
 import re
 import threading
+import traceback
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
@@ -57,6 +61,8 @@ from marvia.graph.state import merge_cargos, merge_evidence
 from marvia.graph.tools import SERVER_SURFACE
 from marvia.tools.rules import load_rules
 from marvia.view import interrupt_card, screen_view
+
+LOG = logging.getLogger(__name__)
 
 # [왜] 화면이 정하는 thread id는 이름 공간 안의 이름일 뿐이다.
 #      서버가 "사용자/이름"으로 묶어 남의 대화에 닿지 못한다
@@ -106,6 +112,9 @@ def turn_events(
     """한 차례를 돌리며 AG-UI 이벤트를 낸다. 작업 스레드 하나에서 끝까지 돈다(동기 그래프와 저장기)."""
     yield RunStartedEvent(thread_id=thread, run_id=run)
     answer = ""
+    tail: list[
+        BaseEvent
+    ] = []  # [왜] 끝 이벤트는 만들기가 다 된 뒤에 한꺼번에 낸다. 중간에 죽어도 짝이 깨지지 않는다
     try:
         live = dict(graph.get_state(config).values)  # [왜] 재개 차례도 지난 화물·읽은 번호를 이어 보인다
         for namespace, chunk in graph.stream(payload, config, stream_mode="updates", subgraphs=True):
@@ -118,26 +127,36 @@ def turn_events(
                     if node != "__interrupt__" and _merge(live, part, inside=bool(namespace)):
                         yield StateSnapshotEvent(snapshot=screen_view(live))
         state = graph.get_state(config)
+        if state.interrupts:
+            # [왜] 질문과 승인은 한 번에 하나씩 멈춘다 (batched, ask_user 혼자 부르기)
+            pending = state.interrupts[0]
+            card = interrupt_card(pending.value, state.values.get("mask_map", {}))
+            stopped = CardInterrupt(id=pending.id, reason=card["kind"], metadata=card)
+            outcome = RunFinishedInterruptOutcome(interrupts=[stopped])
+            tail = [RunFinishedEvent(thread_id=thread, run_id=run, outcome=outcome)]
+        else:
+            message = f"{run}-answer"
+            tail = [
+                TextMessageStartEvent(message_id=message, role="assistant"),
+                TextMessageContentEvent(message_id=message, delta=answer),
+                TextMessageEndEvent(message_id=message),
+                RunFinishedEvent(thread_id=thread, run_id=run, outcome=RunFinishedSuccessOutcome()),
+            ]
     except Exception as error:
-        # [왜] 어떤 실패든 화면에 끝을 알린다. 오류 글은 보내지 않는다(번호·주소가 섞일 수 있다)
+        # [왜] 어떤 실패든 화면에 끝을 알린다. 오류 글은 화면에도 기록에도 남기지 않는다(번호가 섞일 수 있다).
+        #      기록에는 예외 종류와 난 자리(파일:줄:함수)만 남긴다
+        frames = traceback.extract_tb(error.__traceback__)
+        where = (
+            f"{os.path.basename(frames[-1].filename)}:{frames[-1].lineno}:{frames[-1].name}"
+            if frames
+            else "?"
+        )
+        LOG.error("차례 실패 %s at %s", type(error).__name__, where)
         yield RunErrorEvent(
             message="이번 차례를 끝내지 못했어요. 다시 물어봐 주세요.", code=type(error).__name__
         )
         return
-    if state.interrupts:
-        pending = state.interrupts[
-            0
-        ]  # [왜] 질문과 승인은 한 번에 하나씩 멈춘다 (batched, ask_user 혼자 부르기)
-        card = interrupt_card(pending.value, state.values.get("mask_map", {}))
-        stopped = CardInterrupt(id=pending.id, reason=card["kind"], metadata=card)
-        outcome = RunFinishedInterruptOutcome(interrupts=[stopped])
-        yield RunFinishedEvent(thread_id=thread, run_id=run, outcome=outcome)
-        return
-    message = f"{run}-answer"
-    yield TextMessageStartEvent(message_id=message, role="assistant")
-    yield TextMessageContentEvent(message_id=message, delta=answer)
-    yield TextMessageEndEvent(message_id=message)
-    yield RunFinishedEvent(thread_id=thread, run_id=run, outcome=RunFinishedSuccessOutcome())
+    yield from tail
 
 
 def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
@@ -207,7 +226,10 @@ def build_app(graph, verify: Verify, *, web_origin: str) -> Starlette:
 
     async def run(request: Request) -> Response:
         try:
-            user = user_from_header(request.headers.get("authorization"), verify)
+            # [왜] 공개키를 받아 오는 동안 열린 SSE 흐름이 멈추지 않게 이벤트 루프 밖에서 부른다
+            user = await anyio.to_thread.run_sync(
+                user_from_header, request.headers.get("authorization"), verify
+            )
             body = RunAgentInput.model_validate_json(await request.body())
         except AuthError as error:
             return JSONResponse({"error": str(error)}, status_code=error.status)

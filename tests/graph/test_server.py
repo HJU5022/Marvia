@@ -1,7 +1,10 @@
 """화면 서버(AG-UI SSE) 시험 (계획 4b Task 5·6, C4·C5·C6·C7). 가짜 모델로 키·네트워크 없이 돈다."""
 
+import asyncio
 import json
+import logging
 import threading
+from types import SimpleNamespace
 
 import pytest
 from langchain_core.callbacks import BaseCallbackHandler
@@ -262,3 +265,56 @@ def test_an_edit_with_a_number_new_to_the_thread_ends_as_a_rejection_and_adds_no
     resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"decisions": [edit]}}]
     assert run(client, body("t10", resume=resume))[-1]["outcome"] == {"type": "success"}
     assert added == []
+
+
+class Stub:
+    """그래프 자리에 들어가는 가짜: get_state와 stream만 있다."""
+
+    def __init__(self, interrupts=(), error: Exception | None = None):
+        self.interrupts, self.error = list(interrupts), error
+
+    def with_config(self, **kwargs):
+        return self
+
+    def get_state(self, config):
+        return SimpleNamespace(values={}, interrupts=self.interrupts)
+
+    def stream(self, *args, **kwargs):
+        if self.error:
+            raise self.error
+        return iter([])
+
+
+def test_a_failure_after_the_graph_run_still_ends_with_one_run_error():
+    # [왜] 모르는 모양의 interrupt 값으로 카드 만들기가 죽어도 끝 이벤트가 정확히 하나여야 한다 (C6)
+    unknown = SimpleNamespace(id="i1", value={"weird": 1})
+    client = TestClient(build_app(Stub([unknown]), verify, web_origin="http://web.test"))
+    order = kinds(run(client, body("t11", "질문")))
+    assert order == ["RUN_STARTED", "RUN_ERROR"]
+
+
+def test_the_server_log_names_the_error_class_and_place_but_never_the_message(caplog):
+    client = TestClient(
+        build_app(Stub(error=RuntimeError("DEMO0001 비밀")), verify, web_origin="http://x.test")
+    )
+    with caplog.at_level(logging.INFO):
+        events = run(client, body("t12", "질문"))
+    assert kinds(events)[-1] == "RUN_ERROR"
+    assert "RuntimeError" in caplog.text and "server.py" in caplog.text
+    assert "DEMO0001" not in caplog.text
+
+
+def test_the_login_check_runs_off_the_event_loop():
+    on_loop = []
+
+    def checking(token):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return "user-a"
+
+    client = TestClient(build_app(Stub(), checking, web_origin="http://web.test"))
+    run(client, body("t13", "질문"))
+    assert on_loop == [False]

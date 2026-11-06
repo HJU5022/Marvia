@@ -845,6 +845,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },
     { name = "anthropic" },
+    { name = "anyio" },
     { name = "cryptography" },
     { name = "httpx" },
     { name = "kiwipiepy" },
@@ -876,6 +877,7 @@ dev = [
 requires-dist = [
     { name = "ag-ui-protocol", specifier = "==1.0.0" },
     { name = "anthropic", specifier = ">=2.3.0" },
+    { name = "anyio", specifier = ">=4.15.1" },
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "kiwipiepy", specifier = ">=0.24.1" },
