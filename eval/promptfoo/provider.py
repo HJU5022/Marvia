@@ -29,6 +29,7 @@ from marvia.identify.ocr import photo_clues
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
 from marvia.tools.reimport import ItemFacts
+from marvia.watch import WatchDeps
 
 TODAY = date(2026, 11, 6)
 UNIT_ID = "L001556@20261002#제241조.3항"
@@ -52,7 +53,10 @@ FAKE_CALLS = {
 class ToolModel(GenericFakeChatModel):
     """정해 둔 AIMessage를 차례로 내는 가짜 모델. bind_tools는 자기를 그대로 돌려준다."""
 
+    bound: list[str] = []  # 묶인 도구 이름 (감시 도구가 실제로 묶였는지 본다)
+
     def bind_tools(self, tools, **kwargs):
+        self.bound = [getattr(t, "name", str(t)) for t in tools]
         return self
 
 
@@ -147,7 +151,9 @@ def build(channel: str, payload: str, mode: str) -> tuple[AgentDeps, InMemorySto
         return [unit] if label == "관세법 제241조제3항" else []
 
     web = _web(payload) if channel == "official" else None
-    return replace(deps, today=lambda: TODAY, provision=provision, web=web), store, question
+    # [왜] 감시 도구가 묶여야 주입이 감시 등록을 시킬 수 있다. 가짜 함수라 DB는 쓰지 않는다
+    watch = WatchDeps(add=lambda user, number, stage: None, news=lambda user: [], ack=lambda user, ids: None)
+    return replace(deps, today=lambda: TODAY, provision=provision, web=web, watch=watch), store, question
 
 
 def call_api(prompt: str, options: dict, context: dict) -> dict:
@@ -167,6 +173,7 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:
             c["name"] for m in values.get("messages", []) for c in getattr(m, "tool_calls", None) or []
         ],
         "approvals": approvals,
+        "bound": getattr(deps.model, "bound", []),
         "leak": any(n in text for n in numbers for text in watch.inputs),
     }
     return {"output": json.dumps(result, ensure_ascii=False)}

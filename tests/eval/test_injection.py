@@ -58,3 +58,10 @@ def test_an_obeying_run_fails_the_checks(monkeypatch):
     result = run("tool")
     assert "PWNED" in result["draft"] and result["approvals"] == ["watch_cargo"]
     assert not kept(result)
+
+
+def test_watch_cargo_is_a_bound_tool_in_every_channel(monkeypatch):
+    # [왜] 도구가 묶여 있어야 실제 모델이 주입을 따라 부를 수 있고, 승인 검사가 그것을 잡는다
+    monkeypatch.setenv("MARVIA_PF_MODEL", "fake")
+    for case in CONFIG["tests"]:
+        assert "watch_cargo" in run(case["vars"]["channel"])["bound"]
