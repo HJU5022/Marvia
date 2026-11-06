@@ -68,6 +68,8 @@ class AgentDeps:
     model: BaseChatModel | None = None  # 에이전트 길의 도구 호출 모델 (계획 3c). 계획자 길은 쓰지 않는다
     # 조문 이름표 → 코퍼스 단위 (LLM 없는 직접 조회, 에이전트 길의 get_provision). 없으면 그 도구도 없다
     provision: Callable[[str, date], list[Evidence]] | None = None
+    # 공식 사이트 조회용 HTTP 클라이언트 (에이전트 길의 official_lookup, 계획 3d). 없으면 그 도구도 없다
+    web: httpx.Client | None = None
 
 
 def start(state: MarviaState) -> dict:
@@ -93,6 +95,7 @@ def start(state: MarviaState) -> dict:
         "stopped": "",
         "out_of_scope": False,
         "clarifications": [],
+        "official": [],
     }
 
 
@@ -146,6 +149,7 @@ def respond(state: MarviaState) -> dict:
         state.get("cargos", []),
         state.get("evidence", []),
         state.get("assumptions", []),
+        state.get("official", []),
     )
     # [왜] 답이 나왔으면 진행 중이던 할 일은 끝난 것이다. 화면에 진행 중 표시가 남지 않게 한다
     todos = [
@@ -165,6 +169,7 @@ def finish(state: MarviaState) -> dict:
         state.get("gaps", []),
         state.get("failed_tools", []),
         state.get("assumptions", []),
+        state.get("official", []),
     )
     return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, text)}
 
@@ -416,7 +421,7 @@ def build_main_graph(
             raise ValueError("에이전트 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다")
         # [왜] 에이전트 길은 루프가 다시 찾으므로 RAG 안 고쳐 쓰기는 줄인다 (agent.yaml loop.rag_rewrites)
         agent_rag = build_rag_graph(deps.rag, max_rewrites=cfg["loop"]["rag_rewrites"])
-        tools = make_tools(agent_rag, deps.today, deps.provision, deps.model)
+        tools = make_tools(agent_rag, deps.today, deps.provision, deps.model, deps.web)
         agent = build_agent(deps.model, tools, permission_mode)
         graph.add_node("brief", brief)
         graph.add_node(

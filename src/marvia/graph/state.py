@@ -56,6 +56,8 @@ class MarviaState(IdentifyState, total=False):
     stopped: str  # 루프가 한도·LLM 실패로 멈췄으면 그 이유. 비었으면 정상 끝
     out_of_scope: bool  # 도메인 밖 질문이라 정중히 거절할 차례인가 (설계 1절 "하지 않는 일")
     clarifications: list[str]  # 이번 차례에 사용자에게 물은 것과 답
+    # 색인 밖 공식 출처 {"name", "effective", "url", "trust"} (계획 3d). 근거 묶음이 아니라 인용할 수 없다
+    official: list[dict]
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
@@ -115,6 +117,7 @@ class LoopState(AgentState):
     # [왜] 같은 단계에 거절이 둘 와도 멈추지 않는다 (하나라도 거절이면 거절)
     out_of_scope: NotRequired[Annotated[bool, operator.or_]]
     clarifications: NotRequired[Annotated[list[str], operator.add]]
+    official: NotRequired[Annotated[list[dict], operator.add]]
 
 
 # RAG 서브그래프의 공책 (설계 5.4). 메인 그래프와 칸을 나눠 쓰고, 계획 3에서 메인 그래프가 evidence를 받는다

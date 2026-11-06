@@ -31,6 +31,7 @@ from marvia.identify.mask import LABELS, mask_text
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
+from marvia.rag.fetch import law_info, law_search_url, title
 from marvia.rag.models import Evidence
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
@@ -103,11 +104,13 @@ def make_tools(
     today: Callable[[], date],
     provision: Callable[[str, date], list[Evidence]] | None = None,
     model: BaseChatModel | None = None,
+    web: httpx.Client | None = None,
 ) -> list:
     """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것).
 
     provision은 조문 이름표를 코퍼스 단위로 바꾸는 직접 조회다. 주면 get_provision 도구가 생긴다.
     model을 주면 그 모델로 도는 조사 서브에이전트 도구 research가 생긴다 (계획 3d).
+    web을 주면 공식 사이트에서 법령을 이름으로 찾는 official_lookup이 생긴다 (계획 3d).
     """
     max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
     # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
@@ -350,6 +353,7 @@ def make_tools(
 
     law_tools = [search_law] + ([get_provision] if provision else [])
     extra = [_research_tool(model, law_tools, today)] if model is not None else []
+    extra += [_official_tool(web)] if web is not None else []
     tools = [
         search_law,
         calc_deadlines,
@@ -402,3 +406,36 @@ def _research_tool(model: BaseChatModel, law_tools: list, today: Callable[[], da
         )
 
     return research
+
+
+def _official_tool(web: httpx.Client):
+    """색인 밖 법령을 공식 사이트에서 이름으로 찾는 도구 official_lookup을 만든다 (설계 결정 8의 C층)."""
+    official = load_rules("agent")["official"]
+
+    @tool
+    def official_lookup(law_name: str, runtime: ToolRuntime) -> Command:
+        """Look up a statute that search_law cannot find in the index on the official law site, by its exact
+        name, e.g. "식품위생법". Returns only its title, effective date and link. It is an official source
+        outside the index with a lower trust level: it cannot be cited, and its text is not read.
+        """
+        url = law_search_url(law_name.strip())
+        # [주의] 허용한 정부 사이트만 부른다. 주소는 우리 코드(fetch.py)가 만들지만, 바뀌어도 여기서 막는다
+        if httpx.URL(url).host not in official["allowed_hosts"]:
+            return _reply(runtime, "허용하지 않은 사이트라 조회하지 않아요.")
+        try:
+            response = web.get(url)
+        except httpx.HTTPError as error:
+            name = error_name(error)
+            failed = [{"tool": "official_lookup", "message": name}]
+            return _reply(runtime, f"공식 조회 실패: {name}", failed_tools=failed)
+        # [왜] 다른 주소로 넘기는 답(3xx)은 따라가지 않는다. 넘어간 곳이 허용 목록 밖일 수 있다
+        info = law_info(response.text) if response.status_code == 200 else None
+        if info is None:
+            return _reply(runtime, f"공식 사이트에서 찾지 못했어요: {law_name}")
+        # [주의] 페이지 본문은 읽지 않는다. 숨은 칸의 시행일과 제목만 쓰고, 제목은 길이를 자른다 (설계 12절)
+        name = title(response.text)[: official["max_title"]] or law_name
+        source = {"name": name, "effective": info[2].isoformat(), "url": url, "trust": "official_unindexed"}
+        text = f"[색인 밖 공식 출처, 인용 불가] {name} (시행 {source['effective']}) {url}"
+        return _reply(runtime, text, official=[source])
+
+    return official_lookup

@@ -44,8 +44,18 @@ def _bullets(title: str, items: list[str]) -> str:
     return f"{title}:\n" + "\n".join(f"- {item}" for item in items) if items else ""
 
 
+def _official(sources: Sequence[dict]) -> str:
+    """색인 밖 공식 출처 목록 (계획 3d). 근거(인용)와 다른 이름표로 따로 보인다."""
+    lines = [f"{s['name']} (시행 {s['effective']}) {s['url']}" for s in sources]
+    return _bullets("공식 출처(색인 밖)", lines)
+
+
 def final_answer(
-    draft: dict, cargos: list[dict], evidence: list[dict], assumptions: Sequence[str] = ()
+    draft: dict,
+    cargos: list[dict],
+    evidence: list[dict],
+    assumptions: Sequence[str] = (),
+    official: Sequence[dict] = (),
 ) -> str:
     """검증을 통과한 초안으로 최종 답을 만든다 (가린 토큰 그대로). 권장안으로 진행한 가정도 보여 준다."""
     # [주의] 검증을 통과한 초안만 넣는다. 그래서 인용은 모두 근거 묶음에 있다
@@ -63,6 +73,8 @@ def final_answer(
         _bullets("다음에 할 수 있는 일", draft["next_options"]),
         forwarder,
         _bullets("근거", citations),
+        # [왜] 공식 사이트에서 이름으로 찾은 출처는 코퍼스 근거보다 믿음 단계가 낮다. 인용과 섞지 않는다
+        _official(official),
     ]
     return "\n\n".join(part for part in parts if part)
 
@@ -74,6 +86,7 @@ def partial_answer(
     gaps: list[str],
     failed_tools: list[dict],
     assumptions: Sequence[str] = (),
+    official: Sequence[dict] = (),
 ) -> str:
     """한도에 걸리거나 검증을 두 번 넘지 못했을 때의 부분 답 (설계 6.4, 결정 4의 ③). 초안은 쓰지 않는다."""
     calc_lines = [
@@ -89,6 +102,7 @@ def partial_answer(
         "끝까지 확인하지 못했어요. 지금까지 확인한 것만 적어요.",
         _bullets("계산한 것", calc_lines),
         _bullets("찾은 근거", [f"{e['heading']} [{e['unit_id']}]" for e in evidence]),
+        _official(official),
         _bullets("빠진 근거", gaps),
         _bullets("실패한 도구", [f"{t['tool']}: {t['message']}" for t in failed_tools]),
         _bullets("가정", list(assumptions)),
