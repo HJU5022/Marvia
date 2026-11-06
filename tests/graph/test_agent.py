@@ -933,3 +933,19 @@ def test_research_llm_failure_ends_the_turn_in_a_partial_answer(agent_deps):
     # [왜] 부모 모델을 한 번 더 부르면 같은 모델이 또 실패해 기록이 두 줄이 된다. 서브 실패 한 줄뿐이어야 한다
     assert values["failed_tools"] == [{"tool": "research", "message": "APIConnectionError"}]
     assert "끝까지 확인하지 못했어요" in out["answer"]
+
+
+def test_research_continues_the_parents_search_count(agent_deps, fake_rag):
+    seen = []
+    rag = fake_rag()
+    counting = type(rag)(**{**rag.__dict__, "search": lambda q, d: seen.append(q) or rag.search(q, d)})
+    ask = lambda q: say(("search_law", {"query": q}))  # noqa: E731
+    sub = (ask("질의 C"), ask("질의 D"), say(text="끝"))
+    graph = agent_graph(
+        agent_deps, ask("질의 A"), ask("질의 B"), say(RESEARCH), *sub, ask("질의 E"), say(), rag=counting
+    )
+    graph.invoke({"text": "수입신고 기한의 근거를 찾아 줘"}, cfg("s5"))
+    # [왜] 상한은 3이다. 부모 둘 + 서브 첫째까지 찾고, 서브 둘째(D)와 서브 뒤 부모의 검색(E)은 거절된다.
+    #      서브가 searched 없이 시작하면 D가 돌고, 서브의 새 질의를 부모에 돌려주지 않으면 E가 돈다
+    # [왜] searched는 메인 그래프 공책 칸이 아니라 읽을 수 없어 RAG 검색 횟수를 센다 (A, B, C)
+    assert len(seen) == 3
