@@ -1,0 +1,54 @@
+reviewed: 독립 대조, 사람 검토 전 (11-07)
+items:
+- name: 실리콘 주방 매트
+  aliases:
+  - 실리콘 주방매트
+  - 실리콘 매트
+  requires:
+  - name: 수입신고
+    grounded_in:
+    - unit_id: L012247@20261008#제20조.1항
+      quote: 영업자가 판매를 목적으로 하거나
+    needs: []
+    by:
+    - 식품의약품안전처장
+- name: 건고추
+  aliases:
+  - 마른 고추
+  - 건조 고추
+  requires:
+  - name: 수입신고
+    grounded_in:
+    - unit_id: L012247@20261008#제20조.1항
+      quote: 식품의약품안전처장에게 수입신고를 하여야 한다
+    needs: []
+    by:
+    - 식품의약품안전처장
+  - name: 식품 신고 수리
+    grounded_in:
+    - unit_id: L012247@20261008#제20조.3항
+      quote: 이 법에 적합하면 신고를 수리하여야 하고
+    needs: []
+    by:
+    - 식품의약품안전처장
+  - name: 세관 신고수리
+    grounded_in:
+    - unit_id: A36893@20251217#제35조.1항.1호
+      quote: 세관장은 수입신고한 내용을 심사한 후
+    needs: []
+    by:
+    - 세관장
+  - name: 수입신고 제출서류
+    grounded_in:
+    - unit_id: A36893@20251217#제15조.1항.1호
+      quote: 송품장
+    - unit_id: A36893@20251217#제15조.1항.3호
+      quote: 선하증권(B/L)사본이나 항공화물운송장(AWB)사본
+    - unit_id: A36893@20251217#제15조.1항.5호
+      quote: 원산지증명서(해당물품에 한한다)
+    needs:
+    - 송품장
+    - 선하증권(B/L)사본
+    - 항공화물운송장(AWB)사본
+    - 원산지증명서
+    by: []

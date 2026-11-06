@@ -2,7 +2,9 @@
 
 from datetime import date
 
-from marvia.rag.items import Grounding, Item, ItemGraph, Requirement, check_items, item_names
+from marvia.eval.dataset import CORPUS_UNITS
+from marvia.rag.index import read_units
+from marvia.rag.items import Grounding, Item, ItemGraph, Requirement, check_items, item_names, load_items
 from marvia.rag.models import Unit
 
 UNIT = Unit(
@@ -38,3 +40,11 @@ def test_item_names_match_names_and_aliases_ignoring_spaces():
     items = _graph(UNIT.unit_id, "x").items
     assert item_names("마른고추 재수입 정밀검사", items) == ["건고추"]
     assert item_names("실리콘 주방 매트 수입신고", items) == []
+
+
+def test_committed_items_file_is_grounded_in_the_corpus_and_labelled():
+    graph = load_items()
+    assert {i.name for i in graph.items} == {"실리콘 주방 매트", "건고추"}  # 설계 5.5의 1차 대표 품목
+    assert "사람 검토 전" in graph.reviewed  # [왜] 사람 검토는 아직이다. 표시가 남아야 한다
+    units = {u.unit_id: u for u in read_units(CORPUS_UNITS)}
+    assert check_items(graph, units) == []
