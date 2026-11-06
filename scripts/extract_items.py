@@ -22,7 +22,7 @@ from marvia.eval.run import cost_usd, inside_repo
 from marvia.graph.rag import evidence_block, top_ranked
 from marvia.llm import chat_model, structured
 from marvia.prompts import render
-from marvia.rag.items import Item, ItemGraph, Requirement
+from marvia.rag.items import Item, ItemGraph, Requirement, known_cost
 from marvia.rag.live import live_deps
 from marvia.tools.rules import load_rules
 
@@ -58,7 +58,7 @@ with connect(settings.database_url) as conn, get_usage_metadata_callback() as us
         tokens = {
             m: {"in": t["input_tokens"], "out": t["output_tokens"]} for m, t in usage.usage_metadata.items()
         }
-        spent = cost_usd(tokens, prices) or 0.0
+        spent = known_cost(cost_usd(tokens, prices))
         print(f"{name}: 요건 {len(items[-1].requires)}개, 근거 후보 {len(found)}개, 누계 ${spent:.4f}")
         if spent > args.max_cost:
             sys.exit(f"[멈춤] 상한 ${args.max_cost}를 넘었다")

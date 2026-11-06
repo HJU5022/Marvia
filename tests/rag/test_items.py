@@ -2,9 +2,20 @@
 
 from datetime import date
 
+import pytest
+
 from marvia.eval.dataset import CORPUS_UNITS
 from marvia.rag.index import read_units
-from marvia.rag.items import Grounding, Item, ItemGraph, Requirement, check_items, item_names, load_items
+from marvia.rag.items import (
+    Grounding,
+    Item,
+    ItemGraph,
+    Requirement,
+    check_items,
+    item_names,
+    known_cost,
+    load_items,
+)
 from marvia.rag.models import Unit
 
 UNIT = Unit(
@@ -34,6 +45,31 @@ def test_check_items_flags_missing_units_and_quotes_not_in_the_text():
     assert check_items(_graph("LTEST@20261002#제9조", "아무"), units) == [
         "건고추/수입신고: 코퍼스에 없는 단위 LTEST@20261002#제9조"
     ]
+
+
+def test_check_items_flags_document_and_agency_names_missing_from_the_grounding_text():
+    # [왜] 근거 구절이 맞아도 서류·기관 이름을 LLM이 지어낼 수 있다. 이름도 근거 단위 글에 그대로 있어야 한다
+    units = {UNIT.unit_id: UNIT}
+    grounding = Grounding(unit_id=UNIT.unit_id, quote="수입신고를 하여야")
+
+    def graph(needs: list[str], by: list[str]) -> ItemGraph:
+        req = Requirement(name="수입신고", grounded_in=[grounding], needs=needs, by=by)
+        return ItemGraph(reviewed="시험", items=[Item(name="건고추", requires=[req])])
+
+    assert check_items(graph(["수입신고"], ["한국"]), units) == [
+        "건고추/수입신고: 기관 이름이 근거 글에 없다: 한국"
+    ]
+    assert check_items(graph(["지어낸 서류"], []), units) == [
+        "건고추/수입신고: 서류 이름이 근거 글에 없다: 지어낸 서류"
+    ]
+    assert check_items(graph(["수입신고"], ["수입"]), units) == []
+
+
+def test_known_cost_stops_when_the_model_has_no_price():
+    # [왜] 단가를 모르는 모델이면 누계가 0으로 남아 --max-cost가 한 번도 걸리지 않는다
+    assert known_cost(0.0123) == 0.0123
+    with pytest.raises(SystemExit, match="단가를 모르는 모델이다"):
+        known_cost(None)
 
 
 def test_item_names_match_names_and_aliases_ignoring_spaces():

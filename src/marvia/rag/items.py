@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import yaml
@@ -62,7 +63,7 @@ def load_items(path: Path = ITEMS_PATH) -> ItemGraph:
 
 
 def check_items(graph: ItemGraph, units: dict[str, Unit]) -> list[str]:
-    """근거 단위가 코퍼스에 있고 구절이 그 글에 그대로 있는지 본다. 문제마다 한 줄, 없으면 빈 목록."""
+    """근거 단위가 코퍼스에 있고 구절·서류 이름·기관 이름이 그 글에 그대로 있는지 본다. 문제마다 한 줄."""
     problems = []
     for item in graph.items:
         for req in item.requires:
@@ -72,6 +73,14 @@ def check_items(graph: ItemGraph, units: dict[str, Unit]) -> list[str]:
                     problems.append(f"{item.name}/{req.name}: 코퍼스에 없는 단위 {g.unit_id}")
                 elif g.quote not in unit.text:
                     problems.append(f"{item.name}/{req.name}: 구절이 {g.unit_id} 글에 없다")
+            # [왜] 서류·기관 이름도 LLM이 지어낼 수 있다. 그 요건의 근거 단위 글 중 하나에 그대로 있어야 한다
+            texts = [u.text for g in req.grounded_in if (u := units.get(g.unit_id))]
+            for kind, names in (("서류", req.needs), ("기관", req.by)):
+                problems += [
+                    f"{item.name}/{req.name}: {kind} 이름이 근거 글에 없다: {n}"
+                    for n in names
+                    if not any(n in t for t in texts)
+                ]
     return problems
 
 
@@ -81,3 +90,10 @@ def item_names(query: str, items: list[Item]) -> list[str]:
     #      부검 F9)
     flat = query.replace(" ", "")
     return [i.name for i in items if any(n.replace(" ", "") in flat for n in [i.name, *i.aliases])]
+
+
+def known_cost(cost: float | None) -> float:
+    """뽑기 누계 비용. 단가를 모르는 모델이면(None) 상한이 조용히 풀리지 않게 멈춘다."""
+    if cost is None:
+        sys.exit("[멈춤] 단가를 모르는 모델이다 (rules/pricing.yaml)")
+    return cost
