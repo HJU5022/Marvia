@@ -64,6 +64,9 @@ class Guards(AgentMiddleware[LoopState]):
     @hook_config(can_jump_to=["end"])
     def before_model(self, state: LoopState, runtime: Any) -> dict[str, Any] | None:
         """모델을 부르기 전: 이번 차례 LLM 호출 수(RAG 안의 호출 포함)가 상한이면 루프를 끝낸다 (설계 6.4)."""
+        # [왜] 도구(조사 서브에이전트)가 LLM 실패로 stopped를 써 두었으면 같은 모델을 다시 부르지 않고 끝낸다
+        if state.get("stopped"):
+            return {"jump_to": "end"}
         if state.get("llm_calls", 0) < self.max_llm_calls:
             return None
         failed = [{"tool": self.label, "message": f"LLM 호출 한도({self.max_llm_calls}회)에 닿았어요"}]

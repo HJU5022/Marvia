@@ -921,3 +921,15 @@ def test_research_must_be_alone(agent_deps):
     values = graph.get_state(cfg("s3")).values
     errors = [m for m in values["messages"] if m.type == "tool" and m.status == "error"]
     assert len(errors) == 2 and not values.get("evidence")
+
+
+def test_research_llm_failure_ends_the_turn_in_a_partial_answer(agent_deps):
+    # 부모 모델이 research를 부른 뒤 같은 모델이 서브에서 API 오류를 낸다
+    deps = agent_deps(model=FailsAfter(messages=iter([say(RESEARCH)])))
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent")
+    out = graph.invoke({"text": "수입신고 기한의 근거를 찾아 줘"}, cfg("s4"))
+    values = graph.get_state(cfg("s4")).values
+    assert values["stopped"] == "llm_failed"
+    # [왜] 부모 모델을 한 번 더 부르면 같은 모델이 또 실패해 기록이 두 줄이 된다. 서브 실패 한 줄뿐이어야 한다
+    assert values["failed_tools"] == [{"tool": "research", "message": "APIConnectionError"}]
+    assert "끝까지 확인하지 못했어요" in out["answer"]

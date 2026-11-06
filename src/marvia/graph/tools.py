@@ -392,6 +392,8 @@ def _research_tool(model: BaseChatModel, law_tools: list, today: Callable[[], da
             searched=out.get("searched", [])[len(searched) :],
             llm_calls=out.get("llm_calls", start) - start,
             failed_tools=out.get("failed_tools", []),
+            # [왜] 설계 6.4: LLM 실패는 부분 답으로 끝난다. 서브도 같은 모델이라 부모가 다시 불러도 실패한다
+            **({"stopped": "llm_failed"} if out.get("stopped") == "llm_failed" else {}),
         )
 
     return research
