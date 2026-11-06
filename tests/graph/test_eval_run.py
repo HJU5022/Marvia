@@ -334,4 +334,4 @@ def test_error_row_reads_the_checkpoints_mask_map_for_numbers_masked_after_the_q
     monkeypatch.setattr("marvia.eval.run.mask_text", lambda text: (text, {}))  # 질문 번호 경로를 끈다
     deps = agent_deps(model=Boom(messages=iter([])))
     row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
-    assert seen_real and row["leak"] is True
+    assert seen_real and row["error"] == "RuntimeError" and row["leak"] is True

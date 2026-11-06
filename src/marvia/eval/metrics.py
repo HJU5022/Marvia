@@ -480,7 +480,9 @@ def _mentions_date(text: str, day: date) -> bool:
     return bool(re.search(full, text) or re.search(short, text))
 
 
-_AFTER_LAW = "[ \\t」』\"'”’]"  # 법령 이름 뒤에 올 수 있는 글자: 공백, 닫는 낫표·따옴표 (줄바꿈은 아니다)
+_AFTER_LAW = (
+    "[ \\t」』\"'”’*:]"  # 법령 이름 뒤에 올 수 있는 글자: 공백, 닫는 낫표·따옴표, 굵은 글씨 별표, 쌍점
+)
 
 
 @functools.cache
