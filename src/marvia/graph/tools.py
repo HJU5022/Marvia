@@ -377,6 +377,7 @@ def _research_tool(model: BaseChatModel, law_tools: list, today: Callable[[], da
     """조사 서브에이전트를 감싼 도구 research를 만든다 (계획 3d, 설계 6.1)."""
     researcher = build_researcher(model, law_tools)
     max_summary = load_rules("agent")["research"]["max_summary"]
+    max_searches = load_rules("agent")["loop"]["max_searches"]
 
     @tool
     def research(question: str, runtime: ToolRuntime) -> Command:
@@ -386,6 +387,12 @@ def _research_tool(model: BaseChatModel, law_tools: list, today: Callable[[], da
         """
         start = runtime.state.get("llm_calls", 0)
         searched = runtime.state.get("searched", [])
+        # [왜] 검색 상한은 부모와 함께 쓴다. 다 썼으면 서브는 찾지 못하고 LLM 호출만 쓴다.
+        #      서브를 돌리지 않는다 (11-06 손 시험)
+        if len(searched) >= max_searches:
+            return _reply(
+                runtime, "이번 차례 검색 횟수를 다 써서 조사할 수 없어요. 지금까지 찾은 것으로 끝내세요."
+            )
         turn = render("research_turn", today=today().isoformat(), question=question)
         # [왜] 부모의 호출 수와 찾은 질의에서 이어 센다. 서브의 Guards·search_law가 부모와 같은 상한을 지킨다
         # [주의] create_agent의 타입 표시는 입력을 messages 하나로 적지만, 실제 입력 스키마는

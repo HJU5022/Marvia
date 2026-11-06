@@ -952,6 +952,22 @@ def test_research_continues_the_parents_search_count(agent_deps, fake_rag):
     assert len(seen) == 3
 
 
+def test_research_does_not_run_once_the_parent_used_every_search(agent_deps):
+    # [왜] 검색을 다 쓴 뒤의 서브는 찾지 못하고 LLM 호출만 쓴다 (11-06 손 시험 셋째 차례)
+    inputs = Inputs()
+    ask = lambda q: say(("search_law", {"query": q}))  # noqa: E731
+    searches = [ask(f"질의 {i}") for i in range(load_rules("agent")["loop"]["max_searches"])]
+    # 서브가 돌면 첫 say()를 서브가 먹고 부모가 둘째를 먹는다. 돌지 않으면 부모가 첫 say()로 끝낸다
+    graph = agent_graph(agent_deps, *searches, say(RESEARCH), say(), say(), write=lambda p: CITING)
+    config = {"configurable": {"thread_id": "s6"}, "callbacks": [inputs]}
+    graph.invoke({"text": "수입신고 기한의 근거를 찾아 줘"}, config)
+    values = graph.get_state(config).values
+    assert len(inputs.calls) == len(searches) + 2  # 부모 모델 호출뿐이다 (검색들 + research + 끝)
+    assert values["llm_calls"] == len(searches) + 2 + 2 * len(searches) + 1  # + RAG 2씩 + 작성자 1
+    tool_text = [m.content for m in values["messages"] if m.type == "tool"][-1]
+    assert tool_text.startswith("이번 차례 검색 횟수를 다 써서 조사할 수 없어요")
+
+
 # --- 여러 화물 병렬 조회 (계획 3d) ---
 
 
