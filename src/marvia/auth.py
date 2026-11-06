@@ -20,6 +20,12 @@ from marvia.config import Settings
 from marvia.tools.rules import load_rules
 
 DEV_USER = "dev-owner"
+TRACING_VARS = (
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING_V2",
+    "LANGSMITH_TRACING",
+    "LANGCHAIN_TRACING",
+)
 Verify = Callable[[str], str]  # 토큰 → 사용자 id. 통과 못 하면 AuthError
 
 
@@ -38,6 +44,15 @@ def owners(settings: Settings) -> set[str]:
 
 def check_startup(settings: Settings) -> None:
     """서버를 띄우기 전에 로그인 설정을 본다. 맞지 않으면 시작하지 않는다(fail-closed)."""
+    # [왜] langsmith는 이 환경 변수만으로 추적을 켜고 콜백 값(실제 번호 포함)을 scrub 없이 밖으로 보낸다
+    #      (R-069). 트레이서 연결 작업이 scrub을 거치게 하기 전까지 켜진 채로는 뜨지 않는다.
+    #      이름은 langsmith/utils.py의 tracing_is_enabled가 보는 것(접두어 LANGSMITH·LANGCHAIN의
+    #      TRACING_V2, TRACING)이고 켜는 값은 "true"다
+    for name in TRACING_VARS:
+        if os.environ.get(name, "").strip().lower() == "true":
+            raise RuntimeError(
+                f"{name}=true라 트레이스가 켜집니다. 가림(scrub) 없이 밖으로 나가므로 시작하지 않습니다"
+            )
     if settings.auth == "dev":
         # [왜] K_SERVICE는 Cloud Run이 넣는 환경 변수다. 개발 로그인이 운영에 켜진 채 배포되는 일을 막는다
         if os.environ.get("K_SERVICE"):

@@ -91,3 +91,25 @@ def test_the_server_refuses_to_start_with_an_unsafe_login_setting(monkeypatch, c
         monkeypatch.delenv("K_SERVICE", raising=False)
     with pytest.raises(RuntimeError, match=message):
         check_startup(Settings(_env_file=None, **changes))
+
+
+@pytest.mark.parametrize(
+    "name", ["LANGSMITH_TRACING", "LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING", "LANGCHAIN_TRACING_V2"]
+)
+@pytest.mark.parametrize("auth", ["supabase", "dev"])
+def test_the_server_refuses_to_start_with_langsmith_tracing_on(monkeypatch, name, auth):
+    # [왜] R-069: langsmith는 환경 변수만으로 추적을 켜고 콜백 값을 scrub 없이 밖으로 보낸다
+    for var in (
+        "K_SERVICE",
+        "LANGSMITH_TRACING",
+        "LANGSMITH_TRACING_V2",
+        "LANGCHAIN_TRACING",
+        "LANGCHAIN_TRACING_V2",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv(name, "true")
+    ok = Settings(_env_file=None, supabase_url=BASE, owner_ids="owner-1", auth=auth, dev_token="t")
+    with pytest.raises(RuntimeError, match=name):
+        check_startup(ok)
+    monkeypatch.setenv(name, "false")
+    check_startup(ok)  # 꺼 두면 뜬다
