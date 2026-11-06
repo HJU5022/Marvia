@@ -1,16 +1,27 @@
 """그래프 시험 준비물의 경계 시험 (사고 뒤 고침). 키·Neo4j 없이 돈다."""
 
 import pytest
-from db_required import graph_test_settings
+from db_required import _server, graph_test_settings
 
 from marvia.config import Settings
 
 
-def test_graph_tests_use_the_test_neo4j_not_the_dev_one():
+def test_graph_tests_connect_to_the_configured_test_url_on_another_server_than_dev():
     # [왜] 커뮤니티판은 사용자 DB가 하나라, 개발 그래프와 같은 서버에 시험을 돌리면 실제 노드가 지워질 수 있다
-    #      (실제로 품목 그래프가 지워졌다). 시험은 따로 띄운 neo4j-test만 쓴다
-    settings = graph_test_settings(Settings(_env_file=None))
-    assert settings.neo4j_url == "bolt://localhost:7689" and settings.neo4j_url != Settings().neo4j_url
+    #      (실제로 품목 그래프가 지워졌다). 지킬 성질은 "설정한 시험 주소로 붙고, 개발과 다른 서버"다.
+    #      기본값 문자열은 검증 세션처럼 다른 주소를 줄 때 달라지므로 여기서 단언하지 않는다
+    configured = Settings(_env_file=None)
+    used = graph_test_settings(configured)
+    assert used.neo4j_url == configured.neo4j_test_url
+    assert _server(used.neo4j_url) != _server(configured.neo4j_url)
+
+
+def test_the_test_url_defaults_to_the_compose_neo4j_test_only_when_the_variable_is_unset(monkeypatch):
+    monkeypatch.delenv("MARVIA_NEO4J_TEST_URL", raising=False)
+    monkeypatch.delenv("MARVIA_NEO4J_URL", raising=False)
+    assert graph_test_settings(Settings(_env_file=None)).neo4j_url == "bolt://localhost:7689"
+    monkeypatch.setenv("MARVIA_NEO4J_TEST_URL", "bolt://other:7687")
+    assert graph_test_settings(Settings(_env_file=None)).neo4j_url == "bolt://other:7687"
 
 
 def test_the_fixture_refuses_to_run_when_the_test_url_is_the_dev_url():
