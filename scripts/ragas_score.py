@@ -59,6 +59,16 @@ def judge_llm(model: str, client):
     return llm
 
 
+def spent_usd(used: dict, price: dict) -> float:
+    """지금까지 센 토큰의 실제 비용(달러)."""
+    return (used["in"] * price["input"] + used["out"] * price["output"]) / 1e6
+
+
+def over_cap(used: dict, price: dict, cap: float) -> bool:
+    # [왜] 어림은 [추정]이고 instructor 재시도가 호출을 늘린다. 실제 쓴 돈이 상한에 닿으면 멈춘다
+    return spent_usd(used, price) >= cap
+
+
 async def score(sample: dict, metrics: dict) -> dict:
     """문항 하나를 세 지표로 잰다. 지표 하나가 실패해도 나머지는 남긴다."""
     out = {"id": sample["id"], "loop": sample.get("loop"), "errors": []}
@@ -135,11 +145,20 @@ def main() -> None:
         "context_recall": ContextRecall(llm=llm),
     }
 
+    stopped = False
+
     async def run_all() -> list[dict]:
-        return [await score(s, metrics) for s in todo]  # [왜] 한 번에 하나씩: 요청 한도(429)를 넘지 않는다
+        nonlocal stopped
+        done = []
+        for s in todo:  # [왜] 한 번에 하나씩: 요청 한도(429)를 넘지 않는다
+            if over_cap(used, price, judge["max_cost_usd"]):
+                stopped = True
+                break
+            done.append(await score(s, metrics))
+        return done
 
     scores = asyncio.run(run_all())
-    cost = used["in"] * price["input"] / 1e6 + used["out"] * price["output"] / 1e6
+    cost = spent_usd(used, price)
     meta = {
         "judge": judge["model"],
         "ragas": ragas.__version__,
@@ -148,11 +167,16 @@ def main() -> None:
         "contexts": cfg["ragas"]["contexts"],
         "tokens": used,
         "cost_usd": round(cost, 4),
+        "stopped": stopped,
     }
     Path(args.out).write_text(
         json.dumps({"meta": meta, "scores": scores}, ensure_ascii=False, indent=1), encoding="utf-8"
     )
     print(json.dumps(meta, ensure_ascii=False))
+    if stopped:
+        raise SystemExit(
+            f"실제 비용이 상한 ${judge['max_cost_usd']}에 닿아 {len(scores)}/{len(todo)}문항에서 멈췄다"
+        )
 
 
 if __name__ == "__main__":
