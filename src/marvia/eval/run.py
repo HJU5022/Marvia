@@ -249,6 +249,12 @@ def evaluate_item(
         # [왜] 죽은 실행도 그때까지 LLM 입력에 실제 번호가 갔는지 본다.
         #      공책 칸이 없으니 질문에서 번호를 읽는다
         asked = [n for n in mask_text(item.question)[1].values() if n]
+        # 체크포인트에 남은 가림 표가 있으면 질문 뒤에 가려진 번호도 센다
+        try:
+            snap = graph.get_state({"configurable": {"thread_id": f"eval-{loop}-{item.id}"}}).values
+            asked += [n for n in (snap.get("mask_map") or {}).values() if n]
+        except Exception:  # [왜] 그래프가 처음부터 못 돌았으면 상태가 없다. 질문 번호만으로 본다
+            pass
         leak = any(n in text for n in asked for text in watch.inputs)
         row |= {"llm_calls": None, "failed": [], "leak": leak, "error": type(error).__name__}
     # [왜] 실패한 문항도 그때까지 쓴 토큰은 센다. 돈은 이미 나갔다

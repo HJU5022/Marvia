@@ -34,7 +34,6 @@ def load(name: str) -> dict:
 
 
 NEW_FIELDS = ("cited_texts", "calc_lines", "ranked_texts")
-CONTEXTS_RULE = "cited+calc"  # 점수 파일 meta에 남기는 맥락 규칙 이름
 
 
 def samples(raw: list[dict], references: dict[str, str]) -> list[dict]:
@@ -220,7 +219,7 @@ def main() -> None:
         "raw": Path(args.raw).name,
         **provenance(judge, args.commit),
         "contexts": cfg["ragas"]["contexts"],
-        "contexts_rule": CONTEXTS_RULE,
+        "contexts_rule": cfg["ragas"]["contexts_rule"],
         "tokens": used,
         "cost_usd": round(cost, 4),
         "stopped": stopped,

@@ -118,7 +118,7 @@ if args.command == "floors":
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))
     summary = summarize(result["rows"], {i.id: i for i in load_set().items}, result["meta"]["k"])
     new_floors = floors(summary, result["meta"]["k"])
-    old_gate = load_rules("eval")["gate"]
+    old_gate = load_rules("eval").get("gate", {})
     try:
         block = {"gate": gate_block(args.result, new_floors, old_gate, args.ruling, date.today().isoformat())}
     except ValueError as error:
@@ -185,7 +185,7 @@ if args.command == "agree":
     # [왜] 계산·화물 줄이 맥락에 없던 옛 점수 파일(contexts_rule 없음)은
     #      계산 문항 충실도가 낮게 나온다. 일치율에서 뺀다
     rule = score_file.get("meta", {}).get("contexts_rule")
-    calc_ids = set() if rule == "cited+calc" else {i.id for i in load_set().items if i.calc}
+    calc_ids = set() if rule == cfg["ragas"]["contexts_rule"] else {i.id for i in load_set().items if i.calc}
     judge = {s["id"]: s.get("faithfulness") for s in scores if s["id"] not in calc_ids}
     try:
         human = human_faithful(grades)
@@ -198,11 +198,9 @@ if args.command == "agree":
     trusted = not missing and rate["value"] is not None and rate["value"] >= cfg["judge"]["min_agreement"]
     # [왜] 사람 채점은 충실도에만 있다. 일치율은 충실도의 것이라 정밀도·재현율 라벨은 늘 미확인이다 (R-063)
     unchecked = cfg["judge"]["unchecked_label"]
-    labels = {
-        m: "LLM 채점, 사람 일치 확인" if m == "faithfulness" and trusted else unchecked
-        for m in cfg["ragas"]["metrics"]
-    }
     means = ragas_means(scores, cfg["ragas"]["metrics"], calc_ids)
+    # [왜] 출력의 모든 ragas 칸에 라벨을 단다 (옛 규칙 파일의 faithfulness_calc도 미확인)
+    labels = {m: "LLM 채점, 사람 일치 확인" if m == "faithfulness" and trusted else unchecked for m in means}
     print(
         json.dumps(
             {

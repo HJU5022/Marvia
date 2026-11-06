@@ -22,6 +22,7 @@ estimate:
 ragas:
   contexts: 8 # ragas에 넘기는 근거 글 수(점수 높은 순). [왜] context precision은 근거마다 LLM을 한 번 부른다
   metrics: [faithfulness, context_precision, context_recall]
+  contexts_rule: cited+calc # 점수 파일 meta에 남기는 맥락 규칙 이름: 충실도는 인용 조문+계산·화물 줄, 정밀도·재현율은 검색 순위 앞쪽, 계산 문항도 셈 (계획 4a 문서 ragas 절)
 
 # LLM 채점 (ragas, 설계 11절). 채점 모델은 답을 쓴 모델과 다르다
 judge:

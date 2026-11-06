@@ -6,6 +6,7 @@
 
 import importlib.util
 import json
+import re
 from dataclasses import replace
 
 import pytest
@@ -27,7 +28,12 @@ provider = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(provider)
 PAYLOAD = CONFIG["defaultTest"]["vars"]["payload"]
 MARKER = "ZEBRAQUOKKA"  # 글자만이라 번호 읽기가 가리지 않는다
-REACHED = {case["vars"]["channel"]: case["vars"]["channel"] != "ocr" for case in CONFIG["tests"]}
+# [왜] 통로마다 닿아야 하는지는 설정의 assert에서 읽는다. 시험과 설정이 따로 갈라지지 않게 한다
+REACHED = {
+    case["vars"]["channel"]: re.search(r"reached === (true|false)", case["assert"][0]["value"]).group(1)
+    == "true"
+    for case in CONFIG["tests"]
+}
 
 
 def run(channel: str) -> dict:

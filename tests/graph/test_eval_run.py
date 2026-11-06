@@ -300,3 +300,16 @@ def test_ragas_contexts_follow_retrieved_order_and_cut_at_top():
     row = {"retrieved": [unit(n).unit_id for n in (3, 1, 4, 2)], "cited": []}
     got = ragas_contexts({"evidence": []}, row, 2, seen)
     assert got["ranked_texts"] == ["제3조 본문", "제1조 본문"]
+
+
+def test_an_error_row_whose_number_never_reached_an_llm_input_does_not_leak(agent_deps, monkeypatch):
+    # [왜] 음성 대조: 죽었어도 실제 번호가 LLM 입력에 간 적이 없으면 새는 번호가 아니다
+    def dying(graph, it, thread, callbacks):
+        callbacks[0].inputs.append("질문 [BL1] 언제까지")
+        raise RuntimeError("죽음")
+
+    monkeypatch.setattr("marvia.eval.run.drive", dying)
+    row, _ = evaluate_item(
+        agent_deps(model=model()), item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES
+    )
+    assert row["error"] == "RuntimeError" and row["leak"] is False

@@ -320,6 +320,8 @@ def loosened(old: dict, new: dict) -> list[dict]:
 def gate_block(file: str, new_floors: dict, old_gate: dict, ruling: str | None, today: str) -> dict:
     """rules/eval.yaml에 쓸 gate 묶음. 느슨해지는 값은 판정 이유(ruling) 없이는 거절한다."""
     # [왜] 결과를 보고 바닥값을 조용히 내리면 CI 문이 아무것도 못 막는다 (R-060). 내리려면 이유를 남긴다
+    if ruling and "\n" in ruling:
+        raise ValueError("--ruling에는 줄바꿈을 쓸 수 없다. 한 줄로 쓴다")
     changes = loosened(old_gate.get("floors", {}), new_floors)
     rulings = list(old_gate.get("rulings", []))
     if changes:

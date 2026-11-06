@@ -6,7 +6,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from marvia.tools.rules import load_rules
+
 ROOT = Path(__file__).resolve().parents[2]
+RULE = load_rules("eval")["ragas"]["contexts_rule"]  # 이름은 규칙 파일에 둔다
 
 
 def test_sheet_refuses_to_write_answer_text_inside_the_repo():
@@ -83,8 +86,11 @@ def test_agree_leaves_calc_items_out_of_the_faithfulness_agreement(tmp_path):
 def test_agree_keeps_calc_items_in_a_file_scored_with_cited_and_calc_contexts(tmp_path):
     grades = "{R01: {faithful: 1}, R12: {faithful: 1}}"
     scores = [{"id": "R01", "faithfulness": 0.9}, {"id": "R12", "faithfulness": 0.9}]
-    out = json.loads(agree(tmp_path, grades, scores, {"contexts_rule": "cited+calc"}).stdout)
-    assert out["contexts_rule"] == "cited+calc" and out["human_items"] == 2 and out["calc_excluded"] == []
-    assert "faithfulness_calc" not in out["ragas"]
+    out = json.loads(agree(tmp_path, grades, scores, {"contexts_rule": RULE}).stdout)
+    assert out["contexts_rule"] == RULE and out["human_items"] == 2 and out["calc_excluded"] == []
+    assert "faithfulness_calc" not in out["ragas"] and set(out["labels"]) == set(out["ragas"])
     old = json.loads(agree(tmp_path, grades, scores).stdout)
     assert old["contexts_rule"].startswith("없음")
+    # [왜] 출력의 모든 ragas 칸에 라벨이 있어야 한다. 옛 규칙 파일의 faithfulness_calc도 미확인이다
+    assert set(old["labels"]) == set(old["ragas"]) and "faithfulness_calc" in old["labels"]
+    assert old["labels"]["faithfulness_calc"] == load_rules("eval")["judge"]["unchecked_label"]

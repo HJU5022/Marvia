@@ -133,11 +133,21 @@ def test_floors_write_refuses_a_looser_floor_without_a_ruling_and_leaves_the_rul
     worse.write_text(json.dumps(result), encoding="utf-8")
     rules = ROOT / "rules" / "eval.yaml"
     before = rules.read_text(encoding="utf-8")
-    done = subprocess.run(
-        [sys.executable, "scripts/run_eval.py", "floors", str(worse), "--write"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        done = subprocess.run(
+            [sys.executable, "scripts/run_eval.py", "floors", str(worse), "--write"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        # [왜] 거절이 깨지면 스크립트가 진짜 규칙 파일을 덮어쓴다. 단언이 실패해도 되돌려 둔다
+        rules.write_text(before, encoding="utf-8")
     assert done.returncode != 0 and "--ruling" in done.stderr and "correct_citation" in done.stderr
     assert rules.read_text(encoding="utf-8") == before
+
+
+def test_a_ruling_with_a_line_break_is_refused():
+    # [왜] 빈 줄이 든 이유는 YAML 여러 줄 글이 되어 다음 --write가 gate 묶음을 중간에서 자른다
+    with pytest.raises(ValueError, match="줄바꿈"):
+        gate_block("f.json", OLD["floors"] | {"mrr": {"min": 0.4}}, OLD, "a\n\nb", "2026-11-06")
