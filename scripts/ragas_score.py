@@ -1,5 +1,7 @@
 """ragas로 답의 근거 충실도와 근거 묶음의 정밀도·재현율을 잰다 (done 3.2).
 
+맥락: faithfulness는 인용한 조문+작성자가 본 계산·화물 줄(cited+calc),
+     context precision·recall은 RAG 순위 앞쪽 글.
 지표: faithfulness, context precision(reference 기준), context recall.
 
 돈이 든다(채점 모델 호출). 실행 전에 --dry-run으로 어림 비용을 본다.
@@ -31,13 +33,33 @@ def load(name: str) -> dict:
     return yaml.safe_load((ROOT / name).read_text(encoding="utf-8"))
 
 
+NEW_FIELDS = ("cited_texts", "calc_lines", "ranked_texts")
+CONTEXTS_RULE = "cited+calc"  # 점수 파일 meta에 남기는 맥락 규칙 이름
+
+
 def samples(raw: list[dict], references: dict[str, str]) -> list[dict]:
-    """채점할 문항: 정답 글(reference)이 있고, 초안이 화면에 나간 답(answer·guide)이고, 근거 글이 있는 것."""
+    """채점할 문항: 정답 글(reference)이 있고, 초안이 화면에 나간 답(answer·guide)인 것."""
+    # [왜] 옛 raw(contexts만 있는 것)로 조용히 대신 재면 점수 뜻이 달라진다. 이유를 대고 멈춘다
+    old = [r["id"] for r in raw if "question" in r and not all(f in r for f in NEW_FIELDS)]
+    if old:
+        raise SystemExit(
+            f"옛 raw 파일이다({', '.join(old[:3])} 등). {'·'.join(NEW_FIELDS)}가 없다. "
+            "run_eval run으로 다시 만든다"
+        )
     return [
         r | {"reference": references[r["id"]]}
         for r in raw
-        if references.get(r["id"]) and r.get("behaviour") in ("answer", "guide") and r.get("contexts")
+        if references.get(r["id"]) and r.get("behaviour") in ("answer", "guide")
     ]
+
+
+def contexts_for(sample: dict) -> dict[str, list[str]]:
+    """지표마다 넘길 글. 충실도는 인용한 조문+계산·화물 줄, 정밀도·재현율은 RAG 순위."""
+    return {
+        "faithfulness": sample["cited_texts"] + sample["calc_lines"],
+        "context_precision": sample["ranked_texts"],
+        "context_recall": sample["ranked_texts"],
+    }
 
 
 def judge_llm(model: str, client):
@@ -73,22 +95,29 @@ def over_cap(used: dict, price: dict, cap: float) -> bool:
 async def score(sample: dict, metrics: dict) -> dict:
     """문항 하나를 세 지표로 잰다. 지표 하나가 실패해도 나머지는 남긴다."""
     out = {"id": sample["id"], "loop": sample.get("loop"), "errors": []}
+    texts = contexts_for(sample)
     calls = {
         "faithfulness": lambda m: m.ascore(
-            user_input=sample["question"], response=sample["draft"], retrieved_contexts=sample["contexts"]
+            user_input=sample["question"], response=sample["draft"], retrieved_contexts=texts["faithfulness"]
         ),
         "context_precision": lambda m: m.ascore(
             user_input=sample["question"],
             reference=sample["reference"],
-            retrieved_contexts=sample["contexts"],
+            retrieved_contexts=texts["context_precision"],
         ),
         "context_recall": lambda m: m.ascore(
             user_input=sample["question"],
             reference=sample["reference"],
-            retrieved_contexts=sample["contexts"],
+            retrieved_contexts=texts["context_recall"],
         ),
     }
     for name, call in calls.items():
+        if not texts[
+            name
+        ]:  # [왜] 빈 맥락은 ragas가 오류를 내거나 0점을 준다. 문항은 빼지 않고 못 잰 값으로 남긴다
+            out[name] = None
+            out["errors"].append(f"{name}: no_contexts")
+            continue
         try:
             value = (await call(metrics[name])).value
             # [왜] ragas는 실패해도 NaN을 돌려줄 수 있다. NaN은 None으로 남겨 평균에서 뺀다 (강의 IV 3주 05강)
@@ -118,7 +147,7 @@ def main() -> None:
     references = {item["id"]: item.get("reference", "") for item in load("eval/set_v1.yaml")["items"]}
     todo = samples(json.loads(Path(args.raw).read_text(encoding="utf-8")), references)
     # [왜] faithfulness 2번(주장 뽑기, 판정) + 근거마다 정밀도 1번 + 재현율 1번
-    calls = sum(3 + len(s["contexts"]) for s in todo)
+    calls = sum(3 + len(s["ranked_texts"]) for s in todo)
     price = prices[judge["model"]]
     each = (
         judge["call_tokens"]["input"] * price["input"] + judge["call_tokens"]["output"] * price["output"]
@@ -179,6 +208,7 @@ def main() -> None:
         "raw": Path(args.raw).name,
         **provenance(judge, args.commit),
         "contexts": cfg["ragas"]["contexts"],
+        "contexts_rule": CONTEXTS_RULE,
         "tokens": used,
         "cost_usd": round(cost, 4),
         "stopped": stopped,

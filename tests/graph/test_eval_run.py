@@ -71,6 +71,11 @@ def test_agent_row_keeps_citations_evidence_tools_and_rag_log(agent_deps):
     # [주의] 줄에는 답 글이 없다. 답 글은 raw에만 있다
     assert "반입일부터" not in str(row) and "반입일부터" in raw["draft"]
     assert raw["question"] == "[BL1] 언제까지 수입신고 해요?"
+    # [왜] ragas 충실도는 답이 인용한 조문과 작성자가 본 계산·화물 줄로, 정밀도·재현율은 RAG 순위로 잰다
+    assert len(raw["cited_texts"]) == 1 and "반입일부터" in raw["cited_texts"][0]
+    assert raw["ranked_texts"] == raw["cited_texts"]
+    assert any(line.startswith("[BL1]:") for line in raw["calc_lines"])
+    assert "DEMO0001" not in str(raw["calc_lines"])  # 가린 글만
 
 
 def test_planner_row_records_the_plan_and_cargo_answer(agent_deps):

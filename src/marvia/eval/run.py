@@ -25,7 +25,7 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from marvia.eval.dataset import Item
-from marvia.graph.answer import PARTIAL_LEAD
+from marvia.graph.answer import PARTIAL_LEAD, cargo_lines
 from marvia.graph.main import AgentDeps, build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.rag.models import Evidence
@@ -171,6 +171,22 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
     }
 
 
+def ragas_contexts(values: dict, row: dict, top: int) -> dict:
+    """ragas에 넘길 글 셋. 충실도는 인용한 조문과 작성자가 본 계산·화물 줄, 정밀도·재현율은 RAG 순위."""
+    # [왜] 점수 높은 순 앞 8개(옛 contexts)는 인용한 조문도 RAG 순위도 아니라 어긋났다 (R-056)
+    texts = {e["unit_id"]: e["text"] for e in values.get("evidence", [])}
+    calc = values.get("calc") or {}
+    # [주의] 작성자 프롬프트가 받는 가린 글과 같다 (graph/main.py write). 실제 번호는 없다
+    calc_lines = cargo_lines(values.get("cargos", [])) + (
+        [json.dumps(calc, ensure_ascii=False)] if calc else []
+    )
+    return {
+        "cited_texts": [texts[u] for u in row["cited"] if u in texts],
+        "calc_lines": calc_lines,
+        "ranked_texts": [texts[u] for u in row["retrieved"] if u in texts][:top],
+    }
+
+
 def evaluate_item(
     deps: AgentDeps, item: Item, loop: str, today: date, prices: dict, *, permission_mode: str = "ask"
 ) -> tuple[dict, dict]:
@@ -202,7 +218,7 @@ def evaluate_item(
             "question": values.get("masked_text", ""),
             "draft": draft.get("answer", ""),
             "answer": values.get("answer", ""),
-            "contexts": [e["text"] for e in values.get("evidence", [])[:top]],
+            **ragas_contexts(values, row, top),
         }
     except (
         Exception

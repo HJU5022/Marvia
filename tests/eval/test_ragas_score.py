@@ -35,7 +35,10 @@ def test_dry_run_fails_when_the_estimate_is_over_the_cap(tmp_path):
         for i in yaml.safe_load((root / "eval/set_v1.yaml").read_text("utf-8"))["items"]
         if i.get("reference")
     ]
-    raw = [{"id": i, "behaviour": "answer", "contexts": ["c"] * 8} for i in ids] * 3
+    raw = [
+        {"id": i, "behaviour": "answer", "cited_texts": ["c"], "calc_lines": [], "ranked_texts": ["c"] * 8}
+        for i in ids
+    ] * 3
     raw_path = tmp_path / "r.raw.json"
     raw_path.write_text(json.dumps(raw), encoding="utf-8")
     done = subprocess.run(
@@ -61,3 +64,27 @@ def test_provenance_carries_the_unchecked_label_and_the_run_commit_but_no_answer
         "commit": "ae1891c",
     }
     assert ragas_score.provenance(judge, None)["commit"] == "미상"
+
+
+NEW = {"id": "R1", "question": "q", "draft": "d", "behaviour": "answer", "reference": "r"}
+
+
+def test_each_metric_gets_its_own_contexts():
+    sample = NEW | {"cited_texts": ["조문"], "calc_lines": ["[BL1]: 반입신고"], "ranked_texts": ["a", "b"]}
+    got = ragas_score.contexts_for(sample)
+    assert got["faithfulness"] == ["조문", "[BL1]: 반입신고"]
+    assert got["context_precision"] == got["context_recall"] == ["a", "b"]
+
+
+def test_a_raw_file_without_the_new_fields_is_refused_with_a_message():
+    import pytest
+
+    old = [{"id": "R1", "question": "q", "behaviour": "answer", "contexts": ["c"]}]
+    with pytest.raises(SystemExit, match="cited_texts"):
+        ragas_score.samples(old, {"R1": "r"})
+
+
+def test_a_cargo_item_with_no_cited_text_is_still_scored():
+    # [왜] 화물 문항(R15 같은)은 인용 없이 화물 줄만 있어도 빼지 않는다
+    raw = [NEW | {"cited_texts": [], "calc_lines": ["[BL1]: 반입신고"], "ranked_texts": []}]
+    assert [s["id"] for s in ragas_score.samples(raw, {"R1": "r"})] == ["R1"]

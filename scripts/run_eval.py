@@ -170,9 +170,12 @@ if args.command == "sheet":
 if args.command == "agree":
     cfg = load_rules("eval")
     grades = yaml.safe_load(Path(args.human).read_text(encoding="utf-8"))["grades"]
-    scores = json.loads(Path(args.scores).read_text(encoding="utf-8"))["scores"]
-    # [왜] 계산·화물 줄은 ragas 맥락에 없어 계산 문항 충실도는 낮게 나온다. 일치율에서 뺀다
-    calc_ids = {i.id for i in load_set().items if i.calc}
+    score_file = json.loads(Path(args.scores).read_text(encoding="utf-8"))
+    scores = score_file["scores"]
+    # [왜] 계산·화물 줄이 맥락에 없던 옛 점수 파일(contexts_rule 없음)은
+    #      계산 문항 충실도가 낮게 나온다. 일치율에서 뺀다
+    rule = score_file.get("meta", {}).get("contexts_rule")
+    calc_ids = set() if rule == "cited+calc" else {i.id for i in load_set().items if i.calc}
     judge = {s["id"]: s.get("faithfulness") for s in scores if s["id"] not in calc_ids}
     try:
         human = human_faithful(grades)
@@ -193,7 +196,10 @@ if args.command == "agree":
                 "missing": missing,
                 "label": label,
                 "calc_excluded": excluded,
-                "note": "계산·화물 줄은 ragas 맥락에 없어 낮게 나옴 (faithfulness_calc 따로, 일치율 제외)",
+                "contexts_rule": rule or "없음(옛 규칙: 계산 문항 충실도 제외)",
+                "note": "계산·화물 줄은 ragas 맥락에 없어 낮게 나옴 (faithfulness_calc 따로, 일치율 제외)"
+                if calc_ids
+                else "계산·화물 줄이 맥락에 든 점수 파일: 모든 문항을 센다",
                 "ragas": means,
             },
             ensure_ascii=False,

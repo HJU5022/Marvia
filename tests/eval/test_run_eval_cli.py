@@ -21,10 +21,10 @@ def test_sheet_refuses_to_write_answer_text_inside_the_repo():
     assert not out.exists()
 
 
-def agree(tmp_path: Path, grades: str, scores: list[dict]):
+def agree(tmp_path: Path, grades: str, scores: list[dict], meta: dict | None = None):
     human, score = tmp_path / "h.yaml", tmp_path / "s.json"
     human.write_text(f"grades: {grades}\n", encoding="utf-8")
-    score.write_text(json.dumps({"scores": scores}), encoding="utf-8")
+    score.write_text(json.dumps({"meta": meta or {}, "scores": scores}), encoding="utf-8")
     return subprocess.run(
         [sys.executable, "scripts/run_eval.py", "agree", str(human), str(score)],
         cwd=ROOT,
@@ -75,3 +75,13 @@ def test_agree_leaves_calc_items_out_of_the_faithfulness_agreement(tmp_path):
     assert out["agreement"]["value"] == 1.0 and out["human_items"] == 1 and out["missing"] == []
     assert out["calc_excluded"] == ["R12"] and out["ragas"]["faithfulness_calc"]["value"] == 0.0
     assert "계산·화물 줄은 ragas 맥락에 없어 낮게 나옴" in out["note"]
+
+
+def test_agree_keeps_calc_items_in_a_file_scored_with_cited_and_calc_contexts(tmp_path):
+    grades = "{R01: {faithful: 1}, R12: {faithful: 1}}"
+    scores = [{"id": "R01", "faithfulness": 0.9}, {"id": "R12", "faithfulness": 0.9}]
+    out = json.loads(agree(tmp_path, grades, scores, {"contexts_rule": "cited+calc"}).stdout)
+    assert out["contexts_rule"] == "cited+calc" and out["human_items"] == 2 and out["calc_excluded"] == []
+    assert "faithfulness_calc" not in out["ragas"]
+    old = json.loads(agree(tmp_path, grades, scores).stdout)
+    assert old["contexts_rule"].startswith("없음")
