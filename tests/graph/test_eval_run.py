@@ -6,7 +6,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
 from marvia.eval.dataset import Item, load_set
-from marvia.eval.run import articles, behaviour, cost_usd, estimate, evaluate_item
+from marvia.eval.run import articles, behaviour, cost_usd, estimate, evaluate_item, preflight, stop_reason
 from marvia.graph.schemas import Draft
 from marvia.rag.schemas import Rewrite
 from marvia.tools.rules import load_rules
@@ -116,3 +116,19 @@ def test_cost_and_estimate_use_the_price_table():
     haiku = (per["input"] * 0.10 + per["output"] * 0.50) / 1e6 * 30
     assert plan[0] == {"loop": "agent", "model": "claude-haiku-5-5", "items": 30, "usd": round(haiku, 3)}
     assert plan[1]["usd"] > plan[0]["usd"] * 10  # Sonnet 단가가 Haiku의 20배다
+
+
+def test_preflight_refuses_unpriced_models_and_over_cap_estimates():
+    assert preflight(30, ["agent"], ["claude-haiku-5-5"], PRICES, 1.0) == []
+    unpriced = preflight(30, ["agent"], ["claude-opus-5-5"], PRICES, 1.0)
+    assert len(unpriced) == 1 and "claude-opus-5-5" in unpriced[0]
+    over = preflight(30, ["planner", "agent"], ["claude-sonnet-5-5"], PRICES, 0.5)
+    assert len(over) == 1 and "상한" in over[0]
+
+
+def test_stop_reason_fires_on_unpriced_or_unmetered_rows():
+    ok = {"cost_usd": 0.01, "real_llm_calls": 3, "tokens": {"m": {"in": 1, "out": 1}}}
+    assert stop_reason(ok) is None
+    assert stop_reason(ok | {"cost_usd": None}) is not None
+    assert stop_reason(ok | {"tokens": {}}) is not None
+    assert stop_reason({"cost_usd": 0.0, "real_llm_calls": 0, "tokens": {}}) is None  # 호출이 없던 줄

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from marvia.eval.dataset import SET_PATH, file_sha256, load_set
 from marvia.eval.metrics import compare_table, summarize
-from marvia.eval.run import estimate, evaluate_item
+from marvia.eval.run import estimate, evaluate_item, preflight, stop_reason
 from marvia.tools.rules import load_rules
 
 parser = argparse.ArgumentParser(description="평가셋 실행과 요약")
@@ -62,6 +62,11 @@ plan = estimate(len(items), loops, models, prices)
 for line in plan:
     print(f"어림 비용 {line['loop']} {line['model']} {line['items']}문항: ${line['usd']}")
 print(f"합계 약 ${sum(line['usd'] or 0 for line in plan):.3f} (실행 상한 ${args.max_cost})")
+problems = preflight(len(items), loops, models, prices, args.max_cost)
+for problem in problems:
+    print(f"[멈춤] {problem}")
+if problems:
+    raise SystemExit(1)
 if args.dry_run:
     raise SystemExit(0)
 
@@ -86,7 +91,7 @@ for model in models:
     ):
         deps = agent_deps(settings, conn, watch_conn)
         for loop in loops:
-            rows, raws = [], []
+            rows, raws, halt = [], [], None
             for item in items:
                 if spent >= args.max_cost:
                     print(f"상한 ${args.max_cost}에 닿아 {item.id}부터 돌리지 않았다")
@@ -96,6 +101,7 @@ for model in models:
                 rows.append(row)
                 raws.append(raw)
                 spent += row["cost_usd"] or 0
+                halt = stop_reason(row)
                 print(
                     loop,
                     model,
@@ -105,6 +111,9 @@ for model in models:
                     row["cost_usd"],
                     row["seconds"],
                 )
+                if halt:
+                    print(f"[멈춤] {item.id}: {halt}")
+                    break
             meta = {
                 "tag": args.tag,
                 "set": data.version,
@@ -126,4 +135,7 @@ for model in models:
                 json.dumps(raws, ensure_ascii=False, indent=1), encoding="utf-8"
             )
             print(json.dumps(result["summary"], ensure_ascii=False))
+            if halt:  # [왜] 이미 쓴 줄은 위에서 파일로 남겼다. 더 돌리지 않는다
+                print(f"쓴 돈 약 ${spent:.4f}")
+                raise SystemExit(1)
 print(f"쓴 돈 약 ${spent:.4f}")

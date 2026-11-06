@@ -232,3 +232,23 @@ def estimate(items: int, loops: list[str], models: list[str], prices: dict) -> l
             for loop in loops
         ]
     return rows
+
+
+def preflight(items: int, loops: list[str], models: list[str], prices: dict, max_cost: float) -> list[str]:
+    """유료 호출 전에 막을 까닭들. 단가 없는 모델이나 상한을 넘는 어림 비용이면 비어 있지 않다."""
+    problems = [f"단가표(rules/pricing.yaml)에 없는 모델: {m}" for m in models if m not in prices]
+    if problems:
+        return problems
+    total = sum(line["usd"] for line in estimate(items, loops, models, prices))
+    if total > max_cost:
+        problems.append(f"어림 비용 ${total:.3f}가 상한 ${max_cost}를 넘는다")
+    return problems
+
+
+def stop_reason(row: dict) -> str | None:
+    """돈이 새는 줄이면 실행을 멈출 까닭. 비용을 못 셌거나 호출이 있는데 토큰이 없으면 상한이 듣지 않는다."""
+    if row["cost_usd"] is None:
+        return "비용을 셀 수 없다 (단가표에 없는 모델 이름)"
+    if row["real_llm_calls"] and not row["tokens"]:
+        return "LLM 호출은 있는데 토큰 사용량이 없다"
+    return None
