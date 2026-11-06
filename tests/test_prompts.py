@@ -1,6 +1,10 @@
+from datetime import date
 from pathlib import Path
 
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+
 from marvia.graph.schemas import Draft
+from marvia.graph.tools import make_tools
 from marvia.prompts import render
 
 
@@ -19,3 +23,12 @@ def test_not_in_evidence_scope_is_the_same_in_the_schema_and_the_writer_prompt()
     assert "cargo number" in line and "cargo fact" in line
     assert all(word in schema for word in ("조문", "항", "규정", "시행"))
     assert all(word in line for word in ("article", "clause", "rule", "effective date"))
+
+
+def test_agent_prompt_sends_multi_document_conditions_to_research_first():
+    text = (Path(__file__).resolve().parents[1] / "prompts" / "agent.md").read_text(encoding="utf-8")
+    line = next(row for row in text.splitlines() if row.startswith("- research"))
+    assert "before search_law" in line and "annex" in line and "decree" in line
+    assert "single article" in line  # 한 조문을 찾는 질문에는 쓰지 않는다
+    tools = make_tools(None, date.today, model=GenericFakeChatModel(messages=iter([])))
+    assert "research" in {t.name for t in tools}
