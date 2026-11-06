@@ -1,4 +1,4 @@
-"""감시 목록 표와 다시 조회 (계획 3d). 로컬 DB의 marvia_test 스키마에서 돈다."""
+"""감시 목록 표와 다시 조회 (계획 3d). 로컬 DB의 시험용 스키마(실행마다 새 marvia_test_*)에서 돈다."""
 
 import base64
 from datetime import UTC, datetime
