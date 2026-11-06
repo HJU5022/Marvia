@@ -1295,7 +1295,8 @@ def test_no_real_number_reaches_any_llm_call_across_the_new_paths(agent_deps, mo
         say(),
     )
     turn2 = (AIMessage("요약: [BL1]과 [BL2]를 물었고 [BL2]를 감시해요"), say())
-    deps = {"store": InMemoryStore(), "watch": watch.deps(), "web": law_site([]), "write": keep([])}
+    prompts: list[str] = []  # [왜] 작성자도 실제 실행에서는 LLM 호출이다. 그 입력도 본다
+    deps = {"store": InMemoryStore(), "watch": watch.deps(), "web": law_site([]), "write": keep(prompts)}
     graph = agent_graph(agent_deps, *turn1, *turn2, **deps)
     config = {"configurable": {"thread_id": "leak"}, "callbacks": [inputs]}
     graph.invoke({"text": "DEMO0001DEMO0002 기한 근거 찾고 둘째는 지켜봐 줘"}, config)
@@ -1307,6 +1308,8 @@ def test_no_real_number_reaches_any_llm_call_across_the_new_paths(agent_deps, mo
     # [왜] 첫 차례 부모 4 + 조사 서브에이전트 2, 둘째 차례 요약 1 + 부모 1. 어느 입력에도 실제 번호가 없다
     assert len(inputs.calls) == 8
     assert not any(number in call for call in inputs.calls for number in ("DEMO0001", "DEMO0002"))
+    assert prompts  # 작성자를 불렀다 (빈 목록이면 아래 검사가 아무것도 보지 않는다)
+    assert not any(number in prompt for prompt in prompts for number in ("DEMO0001", "DEMO0002"))
 
 
 # --- 승인 카드에서 고치기 (done 1.4의 edit 길) ---
