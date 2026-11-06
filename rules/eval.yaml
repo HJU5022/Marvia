@@ -40,6 +40,7 @@ judge:
 # 새 기준 실행을 커밋할 때만 다시 만든다. 결과를 보고 값을 낮추지 않는다
 gate:
   file: eval/results/agent-claude-haiku-5-5.json
+  set: v1 # 이 문 파일을 채점하는 평가셋 판 (eval/set_<판>.yaml)
   floors:
     errors:
       max: 0

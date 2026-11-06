@@ -131,3 +131,42 @@ def test_run_dry_run_accepts_an_unfrozen_v2_set(tmp_path):
         check=False,
     )
     assert done.returncode == 0 and "합계" in done.stdout
+
+
+def _v2_run(tmp_path, name, tag):
+    """저장소에 둔 v1 결과를 v2 실행처럼 바꾼 사본 (meta가 v2 파일 sha, 줄에 behaviour_base)."""
+    from marvia.eval.dataset import SET_V2_PATH, file_sha256
+
+    data = json.loads((ROOT / "eval/results/agent-claude-haiku-5-5.json").read_text(encoding="utf-8"))
+    data["meta"] |= {"set": "v2", "set_sha256": file_sha256(SET_V2_PATH), "tag": tag}
+    for row in data["rows"]:
+        row["behaviour_base"] = row["behaviour"]
+    path = tmp_path / name
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def _cli(*args):
+    return subprocess.run(
+        [sys.executable, "scripts/run_eval.py", *map(str, args)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_report_labels_the_set_and_does_not_warn_for_the_v1_view_of_a_v2_run(tmp_path):
+    run = _v2_run(tmp_path, "a.json", "v2r1")
+    as_v1, as_v2 = _cli("report", "--set", "v1", run), _cli("report", "--set", "v2", run)
+    assert as_v1.returncode == 0 and "v1 기준으로 본 v2 실행" in as_v1.stdout and "[주의]" not in as_v1.stdout
+    assert as_v2.returncode == 0 and "v2 (sha" in as_v2.stdout and "[주의]" not in as_v2.stdout
+
+
+def test_spread_prints_mean_and_range_and_refuses_mixed_set_files(tmp_path):
+    first, second = _v2_run(tmp_path, "a.json", "v2r1"), _v2_run(tmp_path, "b.json", "v2r2")
+    done = _cli("spread", first, second)
+    assert done.returncode == 0 and "| mrr |" in done.stdout and "실행 2번" in done.stdout
+    v1 = ROOT / "eval/results/agent-claude-haiku-5-5.json"
+    mixed = _cli("spread", first, v1)
+    assert mixed.returncode != 0 and "평가셋 파일이 다르다" in mixed.stderr

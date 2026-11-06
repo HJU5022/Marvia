@@ -16,12 +16,17 @@ from marvia.eval.metrics import (
     domain_table,
     false_not_found,
     false_sufficient,
+    floors,
     free_answer_score,
     human_faithful,
     matches,
     mrr,
     ragas_means,
     recall_at_k,
+    set_view,
+    spread,
+    spread_groups,
+    spread_table,
     stray_articles,
     summarize,
     top_article_share,
@@ -473,3 +478,56 @@ def test_base_behaviour_scores_a_v2_row_the_way_v1_would():
     old = row("S1")  # behaviour_base가 없는 v1 줄은 그대로다
     assert with_base_behaviour([old]) == [old]
     assert rows[0]["behaviour"] == "not_found"  # 원본은 바꾸지 않는다
+
+
+def _result(tag, sha, loop="agent", model="m", **summary):
+    return {
+        "meta": {"loop": loop, "model": model, "tag": tag, "set": "v2", "set_sha256": sha, "k": 8},
+        "summary": summary,
+    }
+
+
+def test_spread_gives_mean_min_max_and_denominators_for_each_shared_metric():
+    runs = [
+        {"errors": 0, "mrr": {"value": 0.4, "n": 10}, "only_here": 1},
+        {"errors": 2, "mrr": {"value": 0.6, "n": 10}},
+        {"errors": 1, "mrr": {"value": None, "n": 0}, "behaviours": {"answer": 3}},
+    ]
+    out = spread(runs)
+    assert out["errors"] == {"mean": 1.0, "min": 0, "max": 2, "runs": 3, "n": []}
+    # [왜] 못 잰 실행(None)은 평균에서 빼고, 몇 번 쟀는지는 runs로 보인다
+    assert out["mrr"] == {"mean": 0.5, "min": 0.4, "max": 0.6, "runs": 2, "n": [10]}
+    assert "only_here" not in out and "behaviours" not in out  # 모든 실행에 있고 숫자인 지표만
+
+
+def test_spread_groups_by_loop_and_model_and_refuses_mixed_set_files():
+    a = [_result("v2r1", "aa"), _result("v2r2", "aa"), _result("x", "aa", loop="planner")]
+    groups = spread_groups(a)
+    assert sorted(groups) == [("agent", "m"), ("planner", "m")] and len(groups[("agent", "m")]) == 2
+    with pytest.raises(ValueError, match="평가셋 파일이 다르다"):
+        spread_groups([_result("v2r1", "aa"), _result("v2r2", "bb")])
+    assert "agent" in spread_table(("agent", "m"), "aa", spread([{"errors": 0}, {"errors": 1}]))
+
+
+def test_set_view_names_the_set_and_tells_a_v1_view_of_a_v2_run_from_a_foreign_file():
+    v2_rows = [{"id": "U05", "behaviour_base": "unsupported"}]
+    own = set_view({"set": "v2", "set_sha256": "b" * 64}, v2_rows, "v2", "b" * 64)
+    assert own == ("v2 (sha bbbbbbbbbbbb)로 채점", False)
+    view = set_view({"set": "v2", "set_sha256": "b" * 64}, v2_rows, "v1", "a" * 64)
+    assert view[1] is False and "v1 기준으로 본 v2 실행" in view[0]
+    # [왜] behaviour_base가 없는 줄이나 v2가 아닌 파일의 결과는 옛 결과 경고를 그대로 낸다
+    assert set_view({"set": "v2", "set_sha256": "b" * 64}, [{"id": "U05"}], "v1", "a" * 64)[1] is True
+    assert set_view({"set": "v1", "set_sha256": "c" * 64}, v2_rows, "v1", "a" * 64)[1] is True
+    assert set_view({"set": "v1", "set_sha256": "a" * 64}, [{"id": "R01"}], "v1", "a" * 64)[1] is False
+
+
+def test_floors_add_the_false_not_found_ceiling_only_for_a_v2_gate():
+    metric = {"value": 0.8, "n": 10}
+    summary = {key: metric for key in ["correct_citation", "behaviour_accuracy", "blocked_accuracy"]}
+    summary |= {"calc_accuracy": metric, "mrr": metric, "recall_at_8": metric, "trajectory": metric}
+    summary |= {"wrong_evidence": metric, "unsupported": {"value": 0.0, "n": 16}}
+    summary |= {"false_not_found": {"value": 0.0, "n": 20, "count": 0}}
+    assert "false_not_found" not in floors(summary, 8)  # v1 문은 그대로
+    assert floors(summary, 8, "v2")["false_not_found"] == {"max": 0.05}  # 한 문항(1/20)만큼
+    summary["false_not_found"] = {"value": None, "n": 0, "count": 0}
+    assert "false_not_found" not in floors(summary, 8, "v2")

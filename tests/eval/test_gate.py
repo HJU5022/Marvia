@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
+from marvia.eval.dataset import ROOT, SETS, file_sha256, load_set
 from marvia.eval.metrics import (
     floors,
     gate_block,
@@ -66,10 +66,11 @@ _KEYS += ["wrong_evidence", "unsupported", "trajectory"]
 def test_committed_run_still_meets_its_floors():
     gate = load_rules("eval")["gate"]
     result = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
+    assert gate["set"] in SETS  # [왜] 문 파일을 어느 평가셋으로 채점하는지 규칙 파일이 이름으로 말한다
     # [왜] 평가셋이 바뀐 뒤의 저장 결과는 지금 정답으로 채점할 수 없다. 다시 돌려 결과를 바꾼다
-    assert result["meta"]["set_sha256"] == file_sha256(SET_PATH)
+    assert result["meta"]["set_sha256"] == file_sha256(SETS[gate["set"]])
     assert gate_missing(gate["floors"]) == []  # [왜] 빈 바닥값이면 아래 비교가 아무것도 보지 않고 통과한다
-    items = {item.id: item for item in load_set().items}
+    items = {item.id: item for item in load_set(SETS[gate["set"]]).items}
     assert gate_uncovered(result["rows"], items) == []  # [왜] 일부만 담은 파일은 그 일부로만 판정돼 통과한다
     summary = summarize(result["rows"], items, result["meta"]["k"])
     assert gate_violations(summary, gate["floors"]) == []
@@ -78,7 +79,7 @@ def test_committed_run_still_meets_its_floors():
 def test_gate_file_missing_an_item_or_repeating_one_is_not_covering_the_set(tmp_path):
     gate = load_rules("eval")["gate"]
     full = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
-    items = {item.id: item for item in load_set().items}
+    items = {item.id: item for item in load_set(SETS[gate["set"]]).items}
     trimmed = tmp_path / "trimmed.json"  # 상한에서 멈춘 일부 결과를 흉내 낸다
     trimmed.write_text(json.dumps(full | {"rows": full["rows"][:-1]}), encoding="utf-8")
     rows = json.loads(trimmed.read_text(encoding="utf-8"))["rows"]
@@ -90,15 +91,15 @@ def test_gate_floors_are_exactly_what_the_code_makes_from_the_gate_file():
     # [왜] 바닥값을 손으로 낮추면 CI 문이 조용히 느슨해진다 (R-060). 코드가 만든 값과 같아야 한다
     gate = load_rules("eval")["gate"]
     result = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
-    items = {item.id: item for item in load_set().items}
+    items = {item.id: item for item in load_set(SETS[gate["set"]]).items}
     summary = summarize(result["rows"], items, result["meta"]["k"])
-    assert gate["floors"] == floors(summary, result["meta"]["k"])
+    assert gate["floors"] == floors(summary, result["meta"]["k"], gate["set"])
 
 
 def test_stored_summary_equals_the_rescored_one_for_every_metric_it_has():
     gate = load_rules("eval")["gate"]
     result = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
-    items = {item.id: item for item in load_set().items}
+    items = {item.id: item for item in load_set(SETS[gate["set"]]).items}
     again = summarize(result["rows"], items, result["meta"]["k"])
     assert {k: again[k] for k in result["summary"]} == result["summary"]
 
@@ -152,3 +153,20 @@ def test_a_ruling_with_a_line_break_is_refused():
     # [왜] 빈 줄이 든 이유는 YAML 여러 줄 글이 되어 다음 --write가 gate 묶음을 중간에서 자른다
     with pytest.raises(ValueError, match="줄바꿈"):
         gate_block("f.json", OLD["floors"] | {"mrr": {"min": 0.4}}, OLD, "a\n\nb", "2026-11-06")
+
+
+def test_gate_block_records_the_set_it_was_built_on():
+    block = gate_block("f.json", OLD["floors"], OLD, None, "2026-11-06", "v2")
+    assert list(block) == ["file", "set", "floors"] and block["set"] == "v2"
+    assert "set" not in gate_block("f.json", OLD["floors"], OLD, None, "2026-11-06")
+
+
+def test_floors_command_refuses_a_result_that_was_run_on_another_set_file():
+    gate = load_rules("eval")["gate"]
+    done = subprocess.run(
+        [sys.executable, "scripts/run_eval.py", "floors", gate["file"], "--set", "v2"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode != 0 and "평가셋" in done.stderr + done.stdout

@@ -315,8 +315,11 @@ def _cents(value: float) -> float:
     return round(value * 100, 6)
 
 
-def floors(summary: dict, k: int) -> dict:
-    """기준 실행의 요약으로 CI 문의 바닥·천장값을 만든다. 오류, 새는 번호, 호출 상한 넘음은 늘 0이다."""
+def floors(summary: dict, k: int, set_name: str = "v1") -> dict:
+    """기준 실행의 요약으로 CI 문의 바닥·천장값을 만든다. 오류, 새는 번호, 호출 상한 넘음은 늘 0이다.
+
+    set_name이 v2면 지어낸 없음(false_not_found) 천장도 만든다. [왜] v1 문의 값은 그대로 두려고 v2에만 더한다.
+    """
     out: dict = {"errors": {"max": 0}, "leaks": {"max": 0}, "cap_breaches": {"max": 0}}
     for key in HIGHER + [f"recall_at_{k}"]:
         metric = summary[key]
@@ -327,6 +330,10 @@ def floors(summary: dict, k: int) -> dict:
         metric = summary[key]
         if metric["value"] is not None:
             out[key] = {"max": min(1.0, math.ceil(_cents(metric["value"] + 1 / metric["n"])) / 100)}
+    # [왜] 없음을 남발해 근거 없는 답 비율을 낮추는 길을 문이 막는다. 천장 규칙은 다른 천장과 같다
+    metric = summary.get("false_not_found") or {"value": None, "n": 1}
+    if set_name == "v2" and metric["value"] is not None:
+        out["false_not_found"] = {"max": min(1.0, math.ceil(_cents(metric["value"] + 1 / metric["n"])) / 100)}
     return out
 
 
@@ -341,7 +348,14 @@ def loosened(old: dict, new: dict) -> list[dict]:
     return out
 
 
-def gate_block(file: str, new_floors: dict, old_gate: dict, ruling: str | None, today: str) -> dict:
+def gate_block(
+    file: str,
+    new_floors: dict,
+    old_gate: dict,
+    ruling: str | None,
+    today: str,
+    set_name: str | None = None,
+) -> dict:
     """rules/eval.yaml에 쓸 gate 묶음. 느슨해지는 값은 판정 이유(ruling) 없이는 거절한다."""
     # [왜] 결과를 보고 바닥값을 조용히 내리면 CI 문이 아무것도 못 막는다 (R-060). 내리려면 이유를 남긴다
     if ruling and "\n" in ruling:
@@ -353,7 +367,8 @@ def gate_block(file: str, new_floors: dict, old_gate: dict, ruling: str | None, 
             names = ", ".join(c["metric"] for c in changes)
             raise ValueError(f'바닥이 내려가거나 천장이 올라간다({names}). --ruling "<이유>"가 있어야 쓴다')
         rulings += [{"date": today, **c, "reason": ruling} for c in changes]
-    return {"file": file, "floors": new_floors} | ({"rulings": rulings} if rulings else {})
+    head = {"file": file} | ({"set": set_name} if set_name else {})
+    return head | {"floors": new_floors} | ({"rulings": rulings} if rulings else {})
 
 
 def gate_violations(summary: dict, bounds: dict) -> list[str]:
@@ -565,4 +580,76 @@ def domain_table(answers: dict[str, dict[str, str]], items: dict[str, Item]) -> 
             marks = [s[key] for s in scores if s[key] is not None]
             cells.append(f"{sum(marks)}/{len(marks)}")
         lines.append("| " + " | ".join(cells + [str(len(scores))]) + " |")
+    return "\n".join(lines)
+
+
+def set_view(meta: dict, rows: list[dict], chosen: str, chosen_sha: str) -> tuple[str, bool]:
+    """결과 하나를 어느 평가셋으로 채점했는지 한 줄 글과, 옛 결과 경고를 낼지(True)를 돌려준다."""
+    run_sha = meta["set_sha256"]
+    if run_sha == chosen_sha:
+        return f"{chosen} (sha {chosen_sha[:12]})로 채점", False
+    # [왜] v2 실행 줄은 behaviour_base를 갖고 있어 v1 기준으로 다시 셀 수 있다. 다른 평가셋 파일에서 돌린
+    #      옛 결과(경고 대상)와 다르다. 이 경우만 "v1 기준으로 본 v2 실행"이라 밝히고 경고는 끈다
+    if chosen == "v1" and meta.get("set") == "v2" and any("behaviour_base" in r for r in rows):
+        return f"v1 기준으로 본 v2 실행 (실행 판 v2 sha {run_sha[:12]}, 채점 v1 sha {chosen_sha[:12]})", False
+    return f"{chosen} (sha {chosen_sha[:12]})로 채점, 실행은 sha {run_sha[:12]}", True
+
+
+def spread(summaries: list[dict]) -> dict:
+    """같은 설정의 여러 실행 요약에서 지표마다 평균·최소·최대를 낸다. 모든 실행에 있고 숫자인 지표만 본다.
+
+    값은 숫자이거나 {"value", "n"} 묶음이다. 못 잰(None) 실행은 평균에서 빼고 runs(잰 실행 수)로 보인다.
+    n은 잰 실행들의 분모(문항 수)를 겹치지 않게 모은 목록이다.
+    """
+    out = {}
+    for key in summaries[0] if summaries else []:
+        cells = [s.get(key) for s in summaries]
+        if any(c is None for c in cells):
+            continue
+        scalar = [c for c in cells if isinstance(c, int | float) and not isinstance(c, bool)]
+        packed = [c for c in cells if isinstance(c, dict) and "value" in c]
+        if len(scalar) == len(cells):
+            values, denominators = scalar, []
+        elif len(packed) == len(cells):
+            values = [c["value"] for c in packed if c["value"] is not None]
+            denominators = sorted({c["n"] for c in packed if c["value"] is not None})
+        else:
+            continue
+        if values:
+            out[key] = {
+                "mean": round(statistics.fmean(values), 4),
+                "min": min(values),
+                "max": max(values),
+                "runs": len(values),
+                "n": denominators,
+            }
+    return out
+
+
+def spread_groups(results: list[dict]) -> dict[tuple[str, str], list[dict]]:
+    """결과 파일들을 설정(길, 모델)별로 묶는다. 한 묶음에 평가셋 파일이 다른 결과가 섞이면 거절한다."""
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for result in results:
+        groups.setdefault((result["meta"]["loop"], result["meta"]["model"]), []).append(result)
+    for (loop, model), group in groups.items():
+        shas = sorted({r["meta"]["set_sha256"][:12] for r in group})
+        if len(shas) > 1:
+            raise ValueError(
+                f"{loop}-{model}: 평가셋 파일이 다르다 ({', '.join(shas)}). 같은 판끼리만 묶는다"
+            )
+    return groups
+
+
+def spread_table(setting: tuple[str, str], set_sha: str, stats: dict) -> str:
+    """설정 하나의 평균·범위 표 (마크다운). 머리에 길·모델·평가셋 sha를 적는다."""
+    loop, model = setting
+    lines = [
+        f"### {loop} {model} (평가셋 sha {set_sha[:12]})",
+        "",
+        "| 지표 | 평균 | 최소~최대 | 잰 실행 | 분모 |",
+        "|---|---|---|---|---|",
+    ]
+    for key, s in stats.items():
+        denominator = "/".join(str(n) for n in s["n"]) or "-"
+        lines.append(f"| {key} | {s['mean']} | {s['min']}~{s['max']} | {s['runs']} | {denominator} |")
     return "\n".join(lines)

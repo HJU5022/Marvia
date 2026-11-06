@@ -37,6 +37,10 @@ from marvia.eval.metrics import (
     human_faithful,
     rag_table,
     ragas_means,
+    set_view,
+    spread,
+    spread_groups,
+    spread_table,
     summarize,
     unscored,
     with_base_behaviour,
@@ -76,6 +80,8 @@ report.add_argument(
     help="이 판의 정답으로 다시 채점한다 (v1이면 behaviour_base로 센다)",
 )
 report.add_argument("--common", action="store_true", help="모든 파일에 있는 문항만으로 비교한다")
+spread_cmd = sub.add_parser("spread", help="같은 설정의 결과 파일들을 지표마다 평균과 범위로 (키 없음)")
+spread_cmd.add_argument("files", nargs="+")
 sheet = sub.add_parser("sheet", help="사람 채점지 (키 없음). 답 글이 들어 있어 저장소 밖에 쓴다")
 sheet.add_argument("result")
 sheet.add_argument("raw")
@@ -87,6 +93,9 @@ gate = sub.add_parser(
     "floors", help="저장소에 둔 결과 파일로 CI 문의 바닥값을 rules/eval.yaml 모양으로 찍는다"
 )
 gate.add_argument("result", help="저장소 안의 결과 파일 (예: eval/results/agent-claude-haiku-5-5.json)")
+gate.add_argument(
+    "--set", choices=list(SETS), help="이 문 파일을 채점할 평가셋 판. 없으면 rules/eval.yaml gate.set"
+)
 gate.add_argument("--ruling", help="바닥이 내려가거나 천장이 올라갈 때 남기는 판정 이유 (gate.rulings)")
 gate.add_argument("--write", action="store_true", help="rules/eval.yaml의 gate 묶음을 바꾸거나 끝에 더한다")
 prompts = sub.add_parser(
@@ -127,15 +136,29 @@ if args.command == "domain":
 
 if args.command == "floors":
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))
-    summary = summarize(result["rows"], {i.id: i for i in load_set().items}, result["meta"]["k"])
-    new_floors = floors(summary, result["meta"]["k"])
+    set_name = args.set or load_rules("eval").get("gate", {}).get("set", "v1")
+    # [왜] 다른 평가셋 파일에서 돌린 결과를 이 판의 정답으로 채점하면 바닥값이 엉뚱하다
+    if result["meta"]["set_sha256"] != file_sha256(SETS[set_name]):
+        raise SystemExit(
+            f"{args.result}는 평가셋 {set_name} 파일에서 돌린 결과가 아니다 (--set으로 판을 고른다)"
+        )
+    summary = summarize(
+        result["rows"], {i.id: i for i in load_set(SETS[set_name]).items}, result["meta"]["k"]
+    )
+    new_floors = floors(summary, result["meta"]["k"], set_name)
     old_gate = load_rules("eval").get("gate", {})
     try:
-        block = {"gate": gate_block(args.result, new_floors, old_gate, args.ruling, date.today().isoformat())}
+        block = {
+            "gate": gate_block(
+                args.result, new_floors, old_gate, args.ruling, date.today().isoformat(), set_name
+            )
+        }
     except ValueError as error:
         if args.write:
             raise SystemExit(str(error)) from None
-        block = {"gate": {"file": args.result, "floors": new_floors}}  # 찍기만 할 때는 막지 않는다
+        block = {
+            "gate": {"file": args.result, "set": set_name, "floors": new_floors}
+        }  # 찍기만 할 때는 막지 않는다
     mark = "# CI 문 (done 3.6)"  # rules/eval.yaml에서 gate 묶음을 알아보는 표식
     text = (
         f"{mark}: 기준 실행(커밋 {result['meta']['commit']})에서 한 문항만큼 둔 바닥·천장값.\n"
@@ -158,13 +181,34 @@ if args.command == "floors":
     print(f"rules/eval.yaml의 gate 묶음을 썼다 ({args.result})")
     raise SystemExit(0)
 
+if args.command == "spread":
+    results = [json.loads(Path(f).read_text(encoding="utf-8")) for f in args.files]
+    try:
+        groups = spread_groups(results)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
+    by_sha = {file_sha256(path): path for path in SETS.values()}
+    blocks = []
+    for setting, group in groups.items():
+        sha = group[0]["meta"]["set_sha256"]
+        if sha not in by_sha:
+            raise SystemExit(
+                f"{setting[0]}-{setting[1]}: 지금 저장소의 어느 평가셋 파일과도 sha가 다르다 ({sha[:12]})"
+            )
+        items = {i.id: i for i in load_set(by_sha[sha]).items}
+        # [왜] 저장한 요약 대신 지금 지표 코드로 다시 센다 (report와 같다)
+        summaries = [summarize(r["rows"], items, r["meta"]["k"]) for r in group]
+        blocks.append(spread_table(setting, sha, spread(summaries)) + f"\n\n실행 {len(group)}번")
+    print("\n\n".join(blocks))
+    raise SystemExit(0)
+
 if args.command == "sheet":
     if inside_repo(Path(args.out)):
         raise SystemExit(f"답 글이 들어 있어 저장소 안에는 쓰지 않는다: {args.out}")
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))
     raws = {r["id"]: r for r in json.loads(Path(args.raw).read_text(encoding="utf-8"))}
     rows = {r["id"]: r for r in result["rows"]}
-    picked = [i for i in load_set().items if i.human]
+    picked = [i for i in load_set(SETS[load_rules("eval").get("gate", {}).get("set", "v1")]).items if i.human]
     meta = result["meta"]
     lines = [
         f"# 사람 채점지: {meta['loop']}-{meta['model']} (커밋 {meta['commit']})",
@@ -237,10 +281,11 @@ if args.command == "report":
     by_id = {i.id: i for i in load_set(set_path).items}
     common = set.intersection(*({r["id"] for r in result["rows"]} for result in results))
     for result in results:
-        if result["meta"]["set_sha256"] != file_sha256(set_path):
-            print(
-                f"[주의] {result['meta']['loop']}-{result['meta']['model']}: 평가셋이 바뀐 뒤의 결과가 아니다"
-            )
+        name = f"{result['meta']['loop']}-{result['meta']['model']}"
+        label, warn = set_view(result["meta"], result["rows"], args.set, file_sha256(set_path))
+        print(f"- {name}: {label}")
+        if warn:
+            print(f"[주의] {name}: 평가셋이 바뀐 뒤의 결과가 아니다")
         # [왜] 저장한 요약 대신 지금 지표 코드로 다시 센다. 지표를 더하면 지난 실행도 새 지표로 보인다
         rows = [r for r in result["rows"] if not args.common or r["id"] in common]
         # [왜] v1 정답에는 찾지 못함이 없다. v2 실행 줄도 찾지 못함 규칙 없는 분류로 세야 v1 점수와 같다
