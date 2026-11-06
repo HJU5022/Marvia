@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from marvia.graph.state import IdentifyState
 from marvia.identify.mask import mask_text, token_for
-from marvia.identify.models import CargoFacts, CargoIdentity
+from marvia.identify.models import CargoFacts, CargoIdentity, ToolError
 from marvia.identify.parse import kind_of, read_numbers
 from marvia.tools.unipass_replay import lookup_cargo
 
@@ -46,7 +46,12 @@ def read(state: IdentifyState) -> dict:
 def identify_number(number: str, mask_map: dict[str, str]) -> dict:
     """번호 하나를 조회해 화물 결과(dict)로 만든다. 실패도 결과로 남긴다. mask_map에 토큰을 더할 수 있다."""
     kind = kind_of(number)
-    result = lookup_cargo(number)
+    try:
+        result = lookup_cargo(number)
+    except (OSError, ValueError) as error:
+        # [왜] 번호 하나의 조회 오류가 다른 화물 조회까지 멈추지 않게 실패도 결과로 남긴다 (계획 3d).
+        #      오류 글 대신 종류 이름만 둔다. 오류 글에 실제 번호나 파일 경로가 섞일 수 있다
+        result = ToolError(code="lookup_failed", message=type(error).__name__, retryable=True)
     found = isinstance(result, CargoFacts)  # 성공이면 CargoFacts, 실패면 ToolError
     identity = CargoIdentity(
         # [왜] 사용자가 선택지로 고른 번호는 원문 가림 때 없던 번호라 여기서 이름표를 새로 받을 수 있다

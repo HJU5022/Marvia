@@ -33,3 +33,19 @@ def test_mask_table_continues_from_the_previous_turn():
     assert out["masked_text"] == "[BL2]하고 [BL1] 둘 다 봐 줘"
     assert out["mask_map"] == {"[BL1]": "DEMO0001", "[BL2]": "DEMO0002"}
     assert [c["token"] for c in out["cargos"]] == ["[BL2]", "[BL1]"]
+
+
+def test_one_failed_lookup_does_not_stop_the_others(monkeypatch):
+    from marvia.graph import identify
+
+    real = identify.lookup_cargo
+
+    def flaky(number):
+        if number == "DEMO0002":
+            raise OSError("읽기 오류")
+        return real(number)
+
+    monkeypatch.setattr(identify, "lookup_cargo", flaky)
+    out = run("DEMO0001DEMO0002 어디야?")
+    assert [c["facts"] is not None for c in out["cargos"]] == [True, False]
+    assert out["cargos"][1]["error"] == {"code": "lookup_failed", "message": "OSError", "retryable": True}
