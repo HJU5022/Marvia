@@ -10,7 +10,9 @@
    "out": 49643
   },
   "cost_usd": 1.0693,
-  "stopped": false
+  "stopped": false,
+  "label": "LLM 채점, 사람 일치 미확인",
+  "commit": "ae1891c"
  },
  "scores": [
   {
