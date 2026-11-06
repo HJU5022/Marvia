@@ -66,3 +66,12 @@ def test_domain_prompts_refuses_to_write_inside_the_repo(tmp_path):
             shutil.move(out, tmp_path / out.name)
     assert done.returncode != 0 and "저장소 안" in done.stderr
     assert not wrote
+
+
+def test_agree_leaves_calc_items_out_of_the_faithfulness_agreement(tmp_path):
+    grades = "{R01: {faithful: 1}, R12: {faithful: 1}}"
+    scores = [{"id": "R01", "faithfulness": 0.9}, {"id": "R12", "faithfulness": 0.0}]
+    out = json.loads(agree(tmp_path, grades, scores).stdout)
+    assert out["agreement"]["value"] == 1.0 and out["human_items"] == 1 and out["missing"] == []
+    assert out["calc_excluded"] == ["R12"] and out["ragas"]["faithfulness_calc"]["value"] == 0.0
+    assert "계산·화물 줄은 ragas 맥락에 없어 낮게 나옴" in out["note"]

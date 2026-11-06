@@ -218,13 +218,26 @@ def agreement(human: dict[str, float], judge: dict[str, float | None], cuts: lis
     }
 
 
-def ragas_means(scores: list[dict], metrics: list[str]) -> dict:
-    """ragas 점수의 지표별 평균. 못 잰 값(None, NaN)은 평균에서 빼고 따로 센다."""
+def ragas_means(scores: list[dict], metrics: list[str], calc_ids: Iterable[str] = ()) -> dict:
+    """ragas 점수의 지표별 평균. 못 잰 값(None, NaN)은 평균에서 빼고 따로 센다.
+
+    calc_ids(계산 줄이 있는 문항)는 충실도에서 빼고 faithfulness_calc로 따로 낸다. 다른 지표는 모두 센다.
+    """
     # [왜] 강의 IV 3주 05강: evaluate()는 실패해도 NaN을 돌려주고, NaN이 섞이면 평균이 조용히 바뀐다
+    # [왜] 계산·화물 줄은 ragas 맥락(근거 글)에 없어 계산 문항의 충실도는 0.00~0.30으로 낮게 나온다
+    calc = set(calc_ids)
+
+    def mean_of(name: str, rows: list[dict]) -> dict:
+        values = [s[name] for s in rows if s.get(name) is not None and s[name] == s[name]]
+        return _mean(values) | {"missing": len(rows) - len(values)}
+
     out = {}
     for name in metrics:
-        values = [s[name] for s in scores if s.get(name) is not None and s[name] == s[name]]
-        out[name] = _mean(values) | {"missing": len(scores) - len(values)}
+        if name == "faithfulness" and calc:
+            out[name] = mean_of(name, [s for s in scores if s.get("id") not in calc])
+            out["faithfulness_calc"] = mean_of(name, [s for s in scores if s.get("id") in calc])
+        else:
+            out[name] = mean_of(name, scores)
     return out
 
 

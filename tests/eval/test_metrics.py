@@ -300,3 +300,15 @@ def test_domain_table_counts_hits_per_tool():
     answers = {"Marvia": {"D1": "2026-11-17까지 (관세법 제9조제1항제1호)"}, "도구": {"D1": "보름 안에 내요"}}
     lines = domain_table(answers, items).splitlines()
     assert lines[2] == "| Marvia | 0/0 | 1/1 | 1/1 | 1 |" and lines[3] == "| 도구 | 0/0 | 0/1 | 0/1 | 1 |"
+
+
+def test_ragas_means_score_faithfulness_apart_for_items_with_calc_lines():
+    scores = [
+        {"id": "R01", "faithfulness": 1.0, "context_recall": 1.0},
+        {"id": "R12", "faithfulness": 0.0, "context_recall": 0.5},
+    ]
+    out = ragas_means(scores, ["faithfulness", "context_recall"], calc_ids={"R12"})
+    # [왜] 계산·화물 줄은 ragas 맥락에 없어, 계산 문항의 충실도는 채점자 의견 차이가 아닌 이유로 낮다
+    assert out["faithfulness"]["value"] == 1.0 and out["faithfulness"]["n"] == 1
+    assert out["faithfulness_calc"]["value"] == 0.0 and out["faithfulness_calc"]["n"] == 1
+    assert out["context_recall"]["value"] == 0.75 and out["context_recall"]["n"] == 2

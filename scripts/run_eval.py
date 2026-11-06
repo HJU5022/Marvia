@@ -171,16 +171,20 @@ if args.command == "agree":
     cfg = load_rules("eval")
     grades = yaml.safe_load(Path(args.human).read_text(encoding="utf-8"))["grades"]
     scores = json.loads(Path(args.scores).read_text(encoding="utf-8"))["scores"]
-    judge = {s["id"]: s.get("faithfulness") for s in scores}
+    # [왜] 계산·화물 줄은 ragas 맥락에 없어 계산 문항 충실도는 낮게 나온다. 일치율에서 뺀다
+    calc_ids = {i.id for i in load_set().items if i.calc}
+    judge = {s["id"]: s.get("faithfulness") for s in scores if s["id"] not in calc_ids}
     try:
         human = human_faithful(grades)
     except ValueError as error:
         raise SystemExit(str(error)) from None
+    excluded = sorted(set(human) & calc_ids)
+    human = {i: g for i, g in human.items() if i not in calc_ids}
     rate = agreement(human, judge, cfg["judge"]["buckets"])
     missing = unscored(human, judge)
     trusted = not missing and rate["value"] is not None and rate["value"] >= cfg["judge"]["min_agreement"]
     label = "LLM 채점, 사람 일치 확인" if trusted else cfg["judge"]["unchecked_label"]
-    means = ragas_means(scores, cfg["ragas"]["metrics"])
+    means = ragas_means(scores, cfg["ragas"]["metrics"], calc_ids)
     print(
         json.dumps(
             {
@@ -188,6 +192,8 @@ if args.command == "agree":
                 "human_items": len(human),
                 "missing": missing,
                 "label": label,
+                "calc_excluded": excluded,
+                "note": "계산·화물 줄은 ragas 맥락에 없어 낮게 나옴 (faithfulness_calc 따로, 일치율 제외)",
                 "ragas": means,
             },
             ensure_ascii=False,
