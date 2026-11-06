@@ -1123,3 +1123,14 @@ def test_watching_a_cargo_waits_for_approval_and_keeps_the_number_server_side(ag
     graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("w1"))
     assert watch.added == [("local", "DEMO0001", "반입신고")]  # 실제 번호는 서버 쪽 감시 표에만 간다
     assert "DEMO0001" not in all_text(graph.get_state(cfg("w1")).values)
+
+
+def test_watched_cargo_change_is_shown_at_the_start_of_the_next_turn(agent_deps):
+    inputs = Inputs()
+    watch = FakeWatch([{"number": "DEMO0001", "old_stage": "반입신고", "new_stage": "수입신고수리"}])
+    graph = agent_graph(agent_deps, say(), watch=watch.deps())
+    config = {"configurable": {"thread_id": "w2"}, "callbacks": [inputs]}
+    out = graph.invoke({"text": "안녕하세요"}, config)
+    # [왜] 화면에 보낼 답에만 실제 번호를 되돌린다. 모델은 토큰 글만 본다
+    assert out["answer"].startswith("감시 중인 화물 변화:\n- DEMO0001: 반입신고 → 수입신고수리")
+    assert "[BL1]: 반입신고 → 수입신고수리" in inputs.calls[0] and "DEMO0001" not in inputs.calls[0]

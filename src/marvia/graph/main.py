@@ -31,7 +31,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from marvia.graph.agent import MODEL_ERRORS, build_agent, build_summary
-from marvia.graph.answer import cargo_lines, decline_answer, final_answer, partial_answer
+from marvia.graph.answer import cargo_lines, decline_answer, final_answer, partial_answer, with_news
 from marvia.graph.identify import build_identify_graph, build_lookup_graph
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
@@ -46,8 +46,8 @@ from marvia.graph.tools import (
     worst_search_calls,
 )
 from marvia.graph.verify import verify
-from marvia.identify.mask import unmask
-from marvia.identify.parse import read_numbers
+from marvia.identify.mask import token_for, unmask
+from marvia.identify.parse import kind_of, read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
 from marvia.rag.models import Evidence
@@ -98,6 +98,7 @@ def start(state: MarviaState) -> dict:
         "out_of_scope": False,
         "clarifications": [],
         "official": [],
+        "watch_news": [],
     }
 
 
@@ -146,13 +147,14 @@ def _remember(state: MarviaState, text: str) -> dict:
 
 def respond(state: MarviaState) -> dict:
     """검증을 통과한 초안으로 답을 만들고, 화면에 보내기 직전에 실제 번호로 되돌린다."""
-    text = final_answer(
+    body = final_answer(
         state.get("draft", {}),
         state.get("cargos", []),
         state.get("evidence", []),
         state.get("assumptions", []),
         state.get("official", []),
     )
+    text = with_news(state.get("watch_news", []), body)
     # [왜] 답이 나왔으면 진행 중이던 할 일은 끝난 것이다. 화면에 진행 중 표시가 남지 않게 한다
     todos = [
         todo | {"status": "completed"} if todo["status"] == "in_progress" else todo
@@ -164,7 +166,7 @@ def respond(state: MarviaState) -> dict:
 def finish(state: MarviaState) -> dict:
     """부분 답을 낸다 (설계 6.4). 검증을 넘지 못한 초안은 쓰지 않는다."""
     todos = _pending_todos(state)
-    text = partial_answer(
+    body = partial_answer(
         state.get("cargos", []),
         state.get("calc", {}),
         state.get("evidence", []),
@@ -173,6 +175,7 @@ def finish(state: MarviaState) -> dict:
         state.get("assumptions", []),
         state.get("official", []),
     )
+    text = with_news(state.get("watch_news", []), body)
     return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, text)}
 
 
@@ -186,8 +189,9 @@ def _pending_todos(state: MarviaState) -> list[dict]:
 
 def decline(state: MarviaState) -> dict:
     """도메인 밖 질문: 코드가 쓴 정중한 거절과 할 수 있는 일을 답으로 낸다 (설계 1절)."""
-    text = decline_answer()
-    return {"answer": text, "todos": _pending_todos(state), **_remember(state, text)}
+    text = with_news(state.get("watch_news", []), decline_answer())
+    answer = unmask(text, state.get("mask_map", {}))
+    return {"answer": answer, "todos": _pending_todos(state), **_remember(state, text)}
 
 
 def _after_agent(state: MarviaState) -> str:
@@ -388,8 +392,22 @@ def build_main_graph(
             today=deps.today().isoformat(),
             cargos="\n".join(cargo_lines(state.get("cargos", []))),
             question=state.get("masked_text", ""),
+            news="\n".join(state.get("watch_news", [])),
         )
         return update | {"messages": update["messages"] + [HumanMessage(text)]}
+
+    def news(state: MarviaState, config: RunnableConfig) -> dict:
+        """에이전트 길: 감시 중인 화물의 새 변화를 꺼내 이번 차례에 보일 줄(토큰 글)로 둔다 (계획 3d)."""
+        if deps.watch is None:
+            return {}
+        mask_map = dict(state.get("mask_map", {}))
+        # [주의] 변화에는 실제 번호가 있다. 이 대화의 가림 표로 토큰을 받아 토큰 글로만 공책에 둔다
+        lines = [
+            f"{token_for(mask_map, n['number'], kind_of(n['number']))}: "
+            f"{n['old_stage'] or '처음 확인'} → {n['new_stage']}"
+            for n in deps.watch.news(user_of(config))
+        ]
+        return {"watch_news": lines, "mask_map": mask_map}
 
     def after_verify(state: MarviaState) -> str:
         """갈림길: 통과면 respond, 위반인데 횟수가 남았으면 write, 아니면 finish."""
@@ -411,8 +429,8 @@ def build_main_graph(
     graph.add_node("finish", finish)
     graph.add_edge(START, "start")
     graph.add_edge("start", "identify")
-    # [왜] 식별 뒤 첫 일: 계획자 길은 plan, 에이전트 길은 brief
-    first = "brief" if loop == "agent" else "plan"
+    # [왜] 식별 뒤 첫 일: 계획자 길은 plan, 에이전트 길은 news(감시 변화) → brief
+    first = "news" if loop == "agent" else "plan"
     graph.add_conditional_edges(
         "identify", lambda state: "ask" if state.get("question") else first, ["ask", first]
     )
@@ -425,7 +443,9 @@ def build_main_graph(
         agent_rag = build_rag_graph(deps.rag, max_rewrites=cfg["loop"]["rag_rewrites"])
         tools = make_tools(agent_rag, deps.today, deps.provision, deps.model, deps.web, deps.watch)
         agent = build_agent(deps.model, tools, permission_mode)
+        graph.add_node("news", news)
         graph.add_node("brief", brief)
+        graph.add_edge("news", "brief")
         graph.add_node(
             "agent", agent
         )  # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다

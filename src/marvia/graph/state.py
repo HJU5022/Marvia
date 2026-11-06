@@ -58,6 +58,7 @@ class MarviaState(IdentifyState, total=False):
     clarifications: list[str]  # 이번 차례에 사용자에게 물은 것과 답
     # 색인 밖 공식 출처 {"name", "effective", "url", "trust"} (계획 3d). 근거 묶음이 아니라 인용할 수 없다
     official: list[dict]
+    watch_news: list[str]  # 감시 중인 화물의 새 변화 (토큰 글, 계획 3d). 이번 차례 답 맨 앞에 보인다
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:

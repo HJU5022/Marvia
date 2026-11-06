@@ -7,6 +7,12 @@ Earlier turns of this conversation, if any, are above. Provisions found in earli
 {cargos}
 </cargo_lines>
 
+Changes to the user's watched cargo since the last conversation. The user sees them above the answer.
+
+<watch_news>
+{news}
+</watch_news>
+
 <question>
 {question}
 </question>

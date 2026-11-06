@@ -111,6 +111,12 @@ def partial_answer(
     return "\n\n".join(part for part in parts if part)
 
 
+def with_news(news: Sequence[str], text: str) -> str:
+    """답 맨 앞에 감시 중인 화물의 새 변화를 붙인다 (계획 3d). 변화가 없으면 답 그대로."""
+    block = _bullets("감시 중인 화물 변화", list(news))
+    return f"{block}\n\n{text}" if block else text
+
+
 def decline_answer() -> str:
     """도메인 밖 거절과 할 수 있는 일을 코드가 쓴다 (설계 1절 범위: 해상 수입 화물·통관·수입식품)."""
     scope = load_rules("agent")["scope"]
