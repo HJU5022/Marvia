@@ -1069,3 +1069,13 @@ def test_official_lookup_refuses_a_name_with_a_cargo_number_or_token(agent_deps,
     graph = agent_graph(agent_deps, look, say(), web=law_site(seen))
     graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o7"))
     assert seen == [] and not graph.get_state(cfg("o7")).values.get("official")
+
+
+def test_official_lookup_caps_the_fallback_title_too(agent_deps):
+    long_name = "식품위생법" * 40
+    page = LAW_PAGE.replace("<h2>식품위생법</h2>", "")  # 제목이 없는 페이지
+    look = say(("official_lookup", {"law_name": long_name}))
+    graph = agent_graph(agent_deps, look, say(), web=law_site([], page))
+    graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o8"))
+    name = graph.get_state(cfg("o8")).values["official"][0]["name"]
+    assert len(name) == load_rules("agent")["official"]["max_title"]

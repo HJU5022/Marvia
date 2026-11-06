@@ -447,7 +447,8 @@ def _official_tool(web: httpx.Client):
         if info is None:
             return _reply(runtime, f"공식 사이트에서 찾지 못했어요: {law_name}")
         # [주의] 페이지 본문은 읽지 않는다. 숨은 칸의 시행일과 제목만 쓰고, 제목은 길이를 자른다 (설계 12절)
-        name = title(response.text)[: official["max_title"]] or law_name
+        # [왜] 제목이 없어 대신 쓰는 입력 이름도 같은 길이로 자른다
+        name = (title(response.text) or law_name)[: official["max_title"]]
         source = {"name": name, "effective": info[2].isoformat(), "url": url, "trust": "official_unindexed"}
         text = f"[색인 밖 공식 출처, 인용 불가] {name} (시행 {source['effective']}) {url}"
         return _reply(runtime, text, official=[source])
