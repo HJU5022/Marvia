@@ -1,9 +1,10 @@
 """감시 목록 표와 다시 조회 (계획 3d). 로컬 DB의 marvia_test 스키마에서 돈다."""
 
+import base64
 from datetime import UTC, datetime
 
 import pytest
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from marvia.identify.models import CargoFacts, ToolError
 from marvia.watch import (
@@ -124,3 +125,12 @@ def test_watch_keys_repr_hides_hash_key():
     assert repr(derive_key(secret, HASH_INFO)) not in repr(
         watch_keys(secret)
     )  # 로그에 해시 키가 찍히지 않는다
+
+
+def test_fernet_uses_the_derived_encrypt_key():
+    secret = Fernet.generate_key().decode()
+    token = watch_keys(secret).fernet.encrypt(b"DEMO0001")
+    derived = Fernet(base64.urlsafe_b64encode(derive_key(secret, ENCRYPT_INFO)))
+    assert derived.decrypt(token) == b"DEMO0001"  # 파생한 암호화 키로 풀린다
+    with pytest.raises(InvalidToken):
+        Fernet(secret).decrypt(token)  # 비밀 그대로는 열리지 않는다
