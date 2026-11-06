@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import replace
@@ -281,3 +282,10 @@ def existing_results(out: Path, loops: list[str], models: list[str], tag: str) -
 def inside_repo(out: Path) -> bool:
     """결과 폴더가 저장소 안인가. [왜] raw에는 답 글이 있어 저장소에 들어가면 안 된다 (CLAUDE.md)"""
     return out.resolve().is_relative_to(Path(__file__).resolve().parents[3])
+
+
+def save_result(out: Path, name: str, meta: dict, summary: dict, rows: list[dict], raws: list[dict]) -> None:
+    """결과 파일 둘(<이름>.json, <이름>.raw.json)을 통째로 다시 쓴다. 문항마다 불러 멈춰도 남게 한다."""
+    result = {"meta": meta, "summary": summary, "rows": rows}
+    (out / f"{name}.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    (out / f"{name}.raw.json").write_text(json.dumps(raws, ensure_ascii=False, indent=1), encoding="utf-8")

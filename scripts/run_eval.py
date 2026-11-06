@@ -25,6 +25,7 @@ from marvia.eval.run import (
     inside_repo,
     preflight,
     result_name,
+    save_result,
     stop_reason,
 )
 from marvia.tools.rules import load_rules
@@ -105,28 +106,6 @@ for model in models:
         deps = agent_deps(settings, conn, watch_conn)
         for loop in loops:
             rows, raws, halt = [], [], None
-            for item in items:
-                if spent >= args.max_cost:
-                    print(f"상한 ${args.max_cost}에 닿아 {item.id}부터 돌리지 않았다")
-                    break
-                row, raw = evaluate_item(deps, item, loop, data.as_of, prices)
-                row["model"] = model
-                rows.append(row)
-                raws.append(raw)
-                spent += row["cost_usd"] or 0
-                halt = stop_reason(row)
-                print(
-                    loop,
-                    model,
-                    item.id,
-                    row["behaviour"],
-                    row["real_llm_calls"],
-                    row["cost_usd"],
-                    row["seconds"],
-                )
-                if halt:
-                    print(f"[멈춤] {item.id}: {halt}")
-                    break
             meta = {
                 "tag": args.tag,
                 "set": data.version,
@@ -139,15 +118,34 @@ for model in models:
                 "k": k,
                 "price": prices.get(model),
             }
-            result = {"meta": meta, "summary": summarize(rows, by_id, k), "rows": rows}
             name = result_name(loop, model, args.tag)
-            (out / f"{name}.json").write_text(
-                json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8"
-            )
-            (out / f"{name}.raw.json").write_text(
-                json.dumps(raws, ensure_ascii=False, indent=1), encoding="utf-8"
-            )
-            print(json.dumps(result["summary"], ensure_ascii=False))
+            for item in items:
+                if spent >= args.max_cost:
+                    print(f"상한 ${args.max_cost}에 닿아 {item.id}부터 돌리지 않았다")
+                    break
+                row, raw = evaluate_item(deps, item, loop, data.as_of, prices)
+                row["model"] = model
+                rows.append(row)
+                raws.append(raw)
+                spent += row["cost_usd"] or 0
+                halt = stop_reason(row)
+                # [왜] 문항마다 쓴다. Ctrl-C나 오류로 멈춰도 돈을 낸 줄이 남는다
+                save_result(out, name, meta, summarize(rows, by_id, k), rows, raws)
+                print(
+                    loop,
+                    model,
+                    item.id,
+                    row["behaviour"],
+                    row["real_llm_calls"],
+                    row["cost_usd"],
+                    row["seconds"],
+                )
+                if halt:
+                    print(f"[멈춤] {item.id}: {halt}")
+                    break
+            summary = summarize(rows, by_id, k)
+            save_result(out, name, meta, summary, rows, raws)  # 문항이 하나도 없어도 빈 파일을 남긴다
+            print(json.dumps(summary, ensure_ascii=False))
             if halt:  # [왜] 이미 쓴 줄은 위에서 파일로 남겼다. 더 돌리지 않는다
                 print(f"쓴 돈 약 ${spent:.4f}")
                 raise SystemExit(1)

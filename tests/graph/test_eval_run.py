@@ -1,5 +1,6 @@
 """평가 실행 시험 (done 3.2). 가짜 모델·가짜 RAG로 키 없이 돈다. tests/graph 준비물(agent_deps)을 쓴다."""
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from marvia.eval.run import (
     observe,
     preflight,
     result_name,
+    save_result,
     stop_reason,
 )
 from marvia.graph.schemas import Draft
@@ -185,3 +187,15 @@ def test_leak_flag_turns_true_when_an_llm_input_holds_a_real_number():
 def test_out_folder_inside_the_repo_is_refused(tmp_path):
     assert inside_repo(Path("eval/results")) and inside_repo(Path.cwd() / "x")
     assert not inside_repo(tmp_path)
+
+
+def test_save_result_rewrites_both_files_each_time(tmp_path):
+    # [왜] 문항이 끝날 때마다 쓴다. 중간에 멈춰도 돈을 낸 줄이 남고, 파일 모양은 report가 읽는 그대로다
+    save_result(
+        tmp_path, "agent-m", {"loop": "agent"}, {"n": 1}, [{"id": "R1"}], [{"id": "R1", "draft": "x"}]
+    )
+    save_result(tmp_path, "agent-m", {"loop": "agent"}, {"n": 2}, [{"id": "R1"}, {"id": "R2"}], [])
+    result = json.loads((tmp_path / "agent-m.json").read_text(encoding="utf-8"))
+    assert result["rows"] == [{"id": "R1"}, {"id": "R2"}] and result["summary"] == {"n": 2}
+    assert result["meta"] == {"loop": "agent"}
+    assert (tmp_path / "agent-m.raw.json").exists()
