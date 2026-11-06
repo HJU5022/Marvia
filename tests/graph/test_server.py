@@ -394,3 +394,54 @@ def test_main_listens_on_loopback_unless_marvia_host_says_otherwise(
     monkeypatch.setenv("PORT", "9999")
     server.main()
     assert seen == {"host": expected, "port": 9999}
+
+
+def test_a_failed_run_sends_the_fixed_error_text_and_the_next_request_is_served():
+    client = TestClient(
+        build_app(Stub(error=RuntimeError("DEMO0001 비밀")), verify, web_origin="http://x.test")
+    )
+    for _ in range(2):  # [왜] 둘째 요청이 200이면 실패한 차례가 잠금을 풀었다는 뜻이다
+        last = run(client, body("t17", "질문"))[-1]
+        assert (
+            last["type"] == "RUN_ERROR"
+            and last["message"] == "이번 차례를 끝내지 못했어요. 다시 물어봐 주세요."
+        )
+        assert "DEMO0001" not in json.dumps(last, ensure_ascii=False)
+
+
+def test_a_body_over_the_cap_is_413(agent_deps):
+    _, client = served(agent_deps)
+    big = body("t18", "질문") | {"state": {"pad": "x" * 70000}}
+    response = client.post("/agui", json=big, headers={"Authorization": "Bearer tok-a"})
+    assert response.status_code == 413
+
+
+def test_resuming_with_another_card_id_while_one_is_pending_is_409(agent_deps):
+    ask = say("ask_user", {"question": "어느 항이에요?", "options": TWO}, 1)
+    graph, client = served(agent_deps, ask, AIMessage(""))
+    run(client, body("t19", "장치기간이 궁금해요"))
+    resume = [{"interruptId": "another-card", "status": "resolved", "payload": {"selected": 1}}]
+    response = client.post(
+        "/agui", json=body("t19", resume=resume), headers={"Authorization": "Bearer tok-a"}
+    )
+    assert response.status_code == 409
+    assert graph.get_state({"configurable": {"thread_id": "user-a/t19"}}).interrupts  # 카드는 그대로다
+
+
+def test_the_real_run_carries_the_server_surface_and_the_tokens_user(agent_deps, monkeypatch):
+    # [왜] turn_events가 받은 설정만 보는 R-072 시험과 달리, 그래프 안에서 user_of가 실제로 본 설정을 본다
+    from marvia.graph import main, tools
+
+    seen: list[dict] = []
+    real = tools.user_of
+
+    def spy(config):
+        seen.append(dict(config["configurable"]))
+        return real(config)
+
+    monkeypatch.setattr(tools, "user_of", spy)
+    monkeypatch.setattr(main, "user_of", spy)
+    graph, client = served(agent_deps, AIMessage(""))
+    evil = {"configurable": {"surface": "cli", "user_id": "evil"}}
+    run(client, body("t20", "DEMO0001 언제까지?", forwardedProps=evil))
+    assert seen and all(c["surface"] == tools.SERVER_SURFACE and c["user_id"] == "user-a" for c in seen)
