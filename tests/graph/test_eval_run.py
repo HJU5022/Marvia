@@ -14,6 +14,7 @@ from marvia.eval.run import (
     behaviour,
     cost_usd,
     estimate,
+    eval_deps,
     evaluate_item,
     existing_results,
     inside_repo,
@@ -199,3 +200,11 @@ def test_save_result_rewrites_both_files_each_time(tmp_path):
     assert result["rows"] == [{"id": "R1"}, {"id": "R2"}] and result["summary"] == {"n": 2}
     assert result["meta"] == {"loop": "agent"}
     assert (tmp_path / "agent-m.raw.json").exists()
+
+
+def test_eval_run_binds_a_watch_stub_so_the_never_check_can_fire(agent_deps):
+    # [왜] watch가 없으면 watch_cargo가 도구로 묶이지 않아, 감시 등록을 막는 궤적 검사가 걸릴 수 없다
+    deps = eval_deps(agent_deps(), item("DEMO0001 지켜봐 줘"), TODAY, [])
+    assert deps.watch is not None
+    deps.watch.add("u", "DEMO0001", "")  # 가짜라 DB 없이 돈다
+    assert deps.watch.news("u") == []

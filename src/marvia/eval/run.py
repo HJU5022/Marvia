@@ -30,6 +30,7 @@ from marvia.graph.main import AgentDeps, build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.rag.models import Evidence
 from marvia.tools.rules import load_rules
+from marvia.watch import WatchDeps
 
 # 근거 채점 프롬프트의 근거 줄 머리 [L001556@20261002#제241조.3항] (graph/rag.py evidence_block)
 UNIT_ID = re.compile(r"\[([A-Z]\d+@\d{8}#[^\]\s]+)\]")
@@ -55,7 +56,8 @@ class LlmWatch(BaseCallbackHandler):
 
 
 def eval_deps(deps: AgentDeps, item: Item, today: date, log: list[dict]) -> AgentDeps:
-    """평가 실행용 AgentDeps. 감시 목록은 끄고(평가는 DB 감시 표를 건드리지 않는다), 날짜를 고정한다."""
+    """평가 실행용 AgentDeps. 감시 목록은 DB 없는 가짜로 묶고, 날짜를 고정한다."""
+    # [왜] 감시 도구가 묶여야 watch_cargo를 막는 궤적 검사(rules/eval.yaml never)가 실제로 걸린다
     rag = deps.rag
     real_provision = deps.provision
 
@@ -87,7 +89,9 @@ def eval_deps(deps: AgentDeps, item: Item, today: date, log: list[dict]) -> Agen
         rag=replace(rag, grade=grade, rewrite=rewrite, search=search),
         provision=provision if real_provision else None,
         today=lambda: today,
-        watch=None,
+        watch=WatchDeps(
+            add=lambda user, number, stage: None, news=lambda user: [], ack=lambda user, ids: None
+        ),
     )
 
 
