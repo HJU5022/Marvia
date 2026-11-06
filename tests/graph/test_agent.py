@@ -1038,3 +1038,16 @@ def test_official_lookup_does_not_follow_a_redirect_even_if_the_client_would(age
     graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o4"))
     assert [url.host for url in seen] == ["www.law.go.kr"]
     assert not graph.get_state(cfg("o4")).values.get("official")
+
+
+def test_official_lookup_records_a_non_200_answer_as_a_failure(agent_deps):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="busy")
+
+    web = httpx.Client(transport=httpx.MockTransport(handler))
+    look = say(("official_lookup", {"law_name": "식품위생법"}))
+    graph = agent_graph(agent_deps, look, say(), web=web)
+    graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o5"))
+    values = graph.get_state(cfg("o5")).values
+    assert {"tool": "official_lookup", "message": "HTTP 503"} in values["failed_tools"]
+    assert not values.get("official")

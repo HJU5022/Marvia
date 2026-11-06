@@ -429,8 +429,12 @@ def _official_tool(web: httpx.Client):
             name = error_name(error)
             failed = [{"tool": "official_lookup", "message": name}]
             return _reply(runtime, f"공식 조회 실패: {name}", failed_tools=failed)
-        # [왜] 다른 주소로 넘기는 답(3xx)은 위에서 따라가지 않았으니 여기서 찾지 못한 것으로 본다
-        info = law_info(response.text) if response.status_code == 200 else None
+        # [왜] 200이 아닌 답(5xx, 429, 3xx)은 "없는 법령"이 아니라 조회 실패다. 3xx는 위에서 따라가지 않았다
+        if response.status_code != 200:
+            message = f"HTTP {response.status_code}"
+            failed = [{"tool": "official_lookup", "message": message}]
+            return _reply(runtime, f"공식 조회 실패: {message}", failed_tools=failed)
+        info = law_info(response.text)
         if info is None:
             return _reply(runtime, f"공식 사이트에서 찾지 못했어요: {law_name}")
         # [주의] 페이지 본문은 읽지 않는다. 숨은 칸의 시행일과 제목만 쓰고, 제목은 길이를 자른다 (설계 12절)
