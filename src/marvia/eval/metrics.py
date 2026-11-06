@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import Counter
 from collections.abc import Iterable
@@ -227,3 +228,44 @@ def unscored(human: dict[str, float], judge: dict[str, float | None]) -> list[st
     """사람 채점은 있는데 LLM 채점 값이 없는(못 쟀거나 NaN) 문항."""
     # [왜] 일부만 견준 일치율로 '사람 일치 확인'을 달면 안 된다: 사람 채점 문항을 모두 견줄 때만 확인으로 친다
     return sorted(i for i in human if judge.get(i) is None or judge[i] != judge[i])
+
+
+# CI 문이 보는 지표. 높을수록 좋은 것은 바닥값(min), 낮을수록 좋은 것은 천장값(max)을 둔다
+HIGHER = ["correct_citation", "behaviour_accuracy", "blocked_accuracy", "calc_accuracy", "mrr"]
+LOWER = ["wrong_evidence", "unsupported"]
+
+
+def _cents(value: float) -> float:
+    """값 × 100을 소수 여섯째 자리에서 반올림한다."""
+    # [왜] 0.1 + 0.05가 0.15000000000000002가 되어 올림이 한 칸 더 가지 않게 한다
+    return round(value * 100, 6)
+
+
+def floors(summary: dict, k: int) -> dict:
+    """기준 실행의 요약으로 CI 문의 바닥·천장값을 만든다. 오류, 새는 번호, 호출 상한 넘음은 늘 0이다."""
+    out: dict = {"errors": {"max": 0}, "leaks": {"max": 0}, "cap_breaches": {"max": 0}}
+    for key in HIGHER + [f"recall_at_{k}"]:
+        metric = summary[key]
+        if metric["value"] is not None:
+            # [왜] 실제 모델 실행은 같은 코드에서도 한 문항쯤 흔들린다. 한 문항만큼(1/n) 아래까지 통과시킨다
+            out[key] = {"min": max(0.0, math.floor(_cents(metric["value"] - 1 / metric["n"])) / 100)}
+    for key in LOWER:
+        metric = summary[key]
+        if metric["value"] is not None:
+            out[key] = {"max": min(1.0, math.ceil(_cents(metric["value"] + 1 / metric["n"])) / 100)}
+    return out
+
+
+def gate_violations(summary: dict, bounds: dict) -> list[str]:
+    """요약이 바닥·천장값을 어긴 지표를 한 줄씩 돌려준다. 빈 목록이면 통과. 못 잰 지표도 어긴 것으로 본다."""
+    out = []
+    for key, bound in bounds.items():
+        metric = summary.get(key)
+        value = metric["value"] if isinstance(metric, dict) else metric
+        if value is None:
+            out.append(f"{key}: 재지 못했다")
+        elif "min" in bound and value < bound["min"]:
+            out.append(f"{key}: {value} < 바닥 {bound['min']}")
+        elif "max" in bound and value > bound["max"]:
+            out.append(f"{key}: {value} > 천장 {bound['max']}")
+    return out

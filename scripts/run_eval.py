@@ -5,6 +5,7 @@
       uv run python scripts/run_eval.py report <결과.json> ...   (키 없음: 요약 표를 마크다운으로)
       uv run python scripts/run_eval.py sheet <결과.json> <결과.raw.json> --out <채점지.md>   (사람 채점 10건)
       uv run python scripts/run_eval.py agree eval/human_v1.yaml <ragas 점수.json>   (사람·LLM 채점 일치율)
+      uv run python scripts/run_eval.py floors eval/results/<결과.json> --write   (CI 문 바닥값)
 run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 키도 DB도 쓰지 않는다.
 키 두 개(MARVIA_ANTHROPIC_API_KEY, MARVIA_VOYAGE_API_KEY), 로컬 DB, 색인이 필요하다.
 묻는 질문에는 권장안(시간 초과)으로, 승인 요청에는 거절로 답한다. 대화 기록은 메모리에만 둔다.
@@ -20,8 +21,16 @@ from pathlib import Path
 
 import yaml
 
-from marvia.eval.dataset import SET_PATH, file_sha256, load_set
-from marvia.eval.metrics import agreement, compare_table, human_faithful, ragas_means, summarize, unscored
+from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
+from marvia.eval.metrics import (
+    agreement,
+    compare_table,
+    floors,
+    human_faithful,
+    ragas_means,
+    summarize,
+    unscored,
+)
 from marvia.eval.run import (
     estimate,
     evaluate_item,
@@ -56,7 +65,38 @@ sheet.add_argument("--out", required=True)
 agree = sub.add_parser("agree", help="사람 채점과 ragas faithfulness의 일치율 (키 없음)")
 agree.add_argument("human", help="eval/human_v1.yaml")
 agree.add_argument("scores", help="scripts/ragas_score.py가 쓴 점수 파일")
+gate = sub.add_parser(
+    "floors", help="저장소에 둔 결과 파일로 CI 문의 바닥값을 rules/eval.yaml 모양으로 찍는다"
+)
+gate.add_argument("result", help="저장소 안의 결과 파일 (예: eval/results/agent-claude-haiku-5-5.json)")
+gate.add_argument("--write", action="store_true", help="rules/eval.yaml의 gate 묶음을 바꾸거나 끝에 더한다")
 args = parser.parse_args()
+
+if args.command == "floors":
+    result = json.loads(Path(args.result).read_text(encoding="utf-8"))
+    summary = summarize(result["rows"], {i.id: i for i in load_set().items}, result["meta"]["k"])
+    block = {"gate": {"file": args.result, "floors": floors(summary, result["meta"]["k"])}}
+    mark = "# CI 문 (done 3.6)"  # rules/eval.yaml에서 gate 묶음을 알아보는 표식
+    text = (
+        f"{mark}: 기준 실행(커밋 {result['meta']['commit']})에서 한 문항만큼 둔 바닥·천장값.\n"
+        "# 새 기준 실행을 커밋할 때만 다시 만든다. 결과를 보고 값을 낮추지 않는다\n"
+        + yaml.safe_dump(block, allow_unicode=True, sort_keys=False)
+    )
+    if not args.write:
+        print(text, end="")
+        raise SystemExit(0)
+    rules = ROOT / "rules" / "eval.yaml"
+    old = rules.read_text(encoding="utf-8")
+    start = old.find(mark)
+    if start < 0:
+        new = old.rstrip("\n") + "\n\n" + text
+    else:
+        # [왜] gate 묶음 안에는 빈 줄이 없다. 묶음은 표식 줄부터 다음 빈 줄(없으면 파일 끝)까지다
+        end = old.find("\n\n", start)
+        new = old[:start] + text + (old[end + 1 :] if end >= 0 else "")
+    rules.write_text(new, encoding="utf-8")
+    print(f"rules/eval.yaml의 gate 묶음을 썼다 ({args.result})")
+    raise SystemExit(0)
 
 if args.command == "sheet":
     if inside_repo(Path(args.out)):
