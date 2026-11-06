@@ -311,7 +311,10 @@ def build_main_graph(
     def depth(config: RunnableConfig) -> str:
         """작성자에게 줄 설명 깊이: 사용자가 승인해 저장한 설정, 없으면 rules의 기본값 (설계 8절 prefs)."""
         saved = store.get(("users", user_of(config), "prefs"), "depth") if store is not None else None
-        return saved.value["depth"] if saved else cfg["memory"]["default_depth"]
+        # [주의] 저장된 값은 예전 데이터다. 허용 목록에 있을 때만 쓴다. 프롬프트의 지시 줄로 들어가기 때문이다
+        if saved and saved.value["depth"] in cfg["memory"]["depths"]:
+            return saved.value["depth"]
+        return cfg["memory"]["default_depth"]
 
     def write(state: MarviaState, config: RunnableConfig) -> dict:
         """작성자: 가린 질문·화물 줄·계산·근거로 답 초안을 쓴다. 지난 위반이 있으면 함께 넘긴다."""
