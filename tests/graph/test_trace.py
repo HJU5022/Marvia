@@ -6,6 +6,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.errors import GraphInterrupt
 from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command, Send
 
@@ -47,6 +48,9 @@ class Record(BaseCallbackHandler):
     def on_tool_start(self, serialized, input_str, *, inputs=None, **kwargs):
         self.payloads.append([input_str, inputs])
 
+    def on_tool_error(self, error, *, inputs=None, **kwargs):
+        self.payloads.append([error, inputs])  # [왜] Langfuse 핸들러는 도구 오류에도 입력을 함께 내보낸다
+
     def on_tool_end(self, output, **kwargs):
         self.payloads.append(output)
 
@@ -55,6 +59,16 @@ class Record(BaseCallbackHandler):
 
     def on_llm_end(self, response, **kwargs):
         self.payloads.append(response)
+
+
+def _flat(value):
+    """콜백 값 안의 모든 값을 평평하게 푼다(dict·list·tuple을 따라간다)."""
+    yield value
+    if isinstance(value, dict):
+        value = [*value.keys(), *value.values()]
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _flat(item)
 
 
 def test_every_callback_payload_is_free_of_numbers_after_scrub(agent_deps):
@@ -83,6 +97,11 @@ def test_every_callback_payload_is_free_of_numbers_after_scrub(agent_deps):
     out = graph.invoke(Command(resume={"custom": "DEMO0003부터 봐 주세요"}), config)
     assert "DEMO0001" in out["answer"]
     raw = json.dumps(record.payloads, ensure_ascii=False, default=str)
+    # [왜] 번호별이 아니라 길별로 본다: 첫 입력에도 있는 번호가 길이 빠진 것을 가리지 않게
+    seen = list(_flat(record.payloads))
+    assert any(isinstance(item, Send) for item in seen)  # 조회 갈래(Send 묶음)
+    assert any(isinstance(item, GraphInterrupt) for item in seen)  # 끼어들기가 오류 길로 온 것
+    assert any(item == {"query": "수입신고 기한"} for item in seen)  # 조사 서브에이전트 안의 도구 입력
     # [왜] 가림을 빼면 실패하는 시험인지 먼저 본다: 길마다 넣은 번호가 가리기 전 값에는 모두 있다
     assert all(number in raw for number in NUMBERS)
     scrubbed = json.dumps(scrub(record.payloads), ensure_ascii=False)
