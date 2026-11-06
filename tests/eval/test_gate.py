@@ -162,9 +162,10 @@ def test_gate_block_records_the_set_it_was_built_on():
 
 
 def test_floors_command_refuses_a_result_that_was_run_on_another_set_file():
-    gate = load_rules("eval")["gate"]
+    # [왜] 지금 문 파일에 기대지 않는다. 커밋된 v1 기준 실행(ae1891c)을 v2로 채점하라고 하면 거절해야 한다
+    v1_result = "eval/results/agent-claude-haiku-5-5.json"
     done = subprocess.run(
-        [sys.executable, "scripts/run_eval.py", "floors", gate["file"], "--set", "v2"],
+        [sys.executable, "scripts/run_eval.py", "floors", v1_result, "--set", "v2"],
         cwd=ROOT,
         capture_output=True,
         text=True,
