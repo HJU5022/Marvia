@@ -756,3 +756,43 @@ def test_new_message_after_an_unanswered_question_starts_a_clean_turn(agent_deps
     #      멈춘 루프의 메시지는 부모 기록에 들어오지 않는다
     assert calls == results
     assert "시험 답이에요." in out["answer"]
+
+
+# 가짜 작성자의 기본 초안과 같은 글 (conftest의 PLAIN)
+PLAIN_DRAFT = Draft(answer="시험 답이에요.", citations=[], next_options=[], forwarder_message="")
+
+
+def _short_memory(monkeypatch):
+    """요약이 바로 일어나게 규칙 값을 줄인다: 토큰이 조금만 있어도 요약하고 최근 메시지 하나만 둔다."""
+    memory = load_rules("agent")["memory"]
+    monkeypatch.setitem(memory, "summary_trigger_tokens", 1)
+    monkeypatch.setitem(memory, "summary_keep_messages", 1)
+
+
+def test_long_conversation_is_summarized_before_the_next_turn(agent_deps, monkeypatch):
+    _short_memory(monkeypatch)
+    prompts = []
+    turn1 = (say(("calc_deadlines", {})), say())
+    # [왜] 두 번째 차례는 brief의 요약 호출이 먼저 모델을 부르고, 그다음 루프가 부른다
+    turn2 = (AIMessage("요약: [BL1] 수입신고 기한을 물었어요"), say())
+    graph = agent_graph(agent_deps, *turn1, *turn2, write=lambda p: prompts.append(p) or PLAIN_DRAFT)
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("m3"))
+    graph.invoke({"text": "고마워요. 하나 더 물어볼게요"}, cfg("m3"))
+    values = graph.get_state(cfg("m3")).values
+    messages = values["messages"]
+    assert messages[0].type == "human" and "요약: [BL1] 수입신고 기한을 물었어요" in messages[0].content
+    assert len(messages) == 5  # 요약 1 + 남긴 앞 답 1 + 이번 차례 질문·모델·답 3
+    assert values["llm_calls"] == 3  # 요약 1 + 모델 1 + 작성자 1
+    assert "요약:" not in prompts[-1]  # 작성자는 기록을 읽지 않는다. 숫자는 공책 칸에서만 온다
+
+
+def test_summary_failure_ends_in_a_partial_answer(agent_deps, monkeypatch):
+    _short_memory(monkeypatch)
+    deps = agent_deps(model=FailsAfter(messages=iter([say()])))
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent")
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("m4"))
+    out = graph.invoke({"text": "하나 더 물어볼게요"}, cfg("m4"))  # 요약 호출이 실패한다
+    values = graph.get_state(cfg("m4")).values
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+    assert values["stopped"] == "llm_failed"
+    assert values["failed_tools"] == [{"tool": "summary", "message": "APIConnectionError"}]

@@ -7,7 +7,8 @@
 에이전트 길(loop="agent", 계획 3c): identify 다음 brief → agent(도구 루프, graph/agent.py)
         → 멈춤: finish / 도메인 밖: decline / 그 밖: write → verify → respond | finish
         (작성·검증은 계획자 길과 같다)
-        에이전트 길의 대화 기록(messages)은 차례를 넘어 이어지고, 답(가린 글)이 기록 끝에 붙는다 (계획 3d)
+        에이전트 길의 대화 기록(messages)은 차례를 넘어 이어지고, 답(가린 글)이 기록 끝에 붙는다 (계획 3d).
+        기록이 길면 brief가 앞부분을 요약하고, 요약 LLM이 실패하면 brief 다음에 finish
 하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다).
 LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수·가짜 모델을 넣어 키 없이 돈다.
 """
@@ -21,12 +22,14 @@ from datetime import date
 
 import httpx
 import psycopg
+from langchain.agents import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from marvia.graph.agent import build_agent
+from marvia.graph.agent import MODEL_ERRORS, build_agent, build_summary
 from marvia.graph.answer import cargo_lines, decline_answer, final_answer, partial_answer
 from marvia.graph.identify import build_identify_graph, lookup
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
@@ -344,15 +347,31 @@ def build_main_graph(
         """갈림길: 작성자 LLM이 실패했으면 finish, 아니면 verify."""
         return "finish" if _llm_failed(state) else "verify"
 
-    def brief(state: MarviaState) -> dict:
-        """에이전트 길: 이번 차례 질문(가린 글)과 화물 줄을 루프의 첫 메시지로 만든다."""
+    # [왜] 에이전트 길에만 모델이 있다. 계획자 길은 대화 기록을 쓰지 않아 요약도 하지 않는다
+    summary = build_summary(deps.model) if deps.model is not None else None
+
+    def brief(state: MarviaState, runtime: Runtime) -> dict:
+        """에이전트 길: 기록이 길면 앞부분을 요약하고, 이번 차례 질문(가린 글)과 화물 줄을 메시지로 더한다."""
+        update: dict = {"messages": []}
+        if summary is not None:
+            try:
+                # [왜] 루프(서브그래프) 안에서 요약하면 부모 공책의 기록은 줄지 않는다(11-06 실측).
+                #      부모 노드에서 요약 미들웨어의 before_model 훅을 직접 부른다. 돌려주는 값은
+                #      [기록 모두 지우기, 요약 메시지, 남길 최근 메시지]이고 add_messages가 그대로 적용한다
+                short = summary.before_model(AgentState(messages=state.get("messages", [])), runtime)
+            except MODEL_ERRORS as error:
+                # [왜] 요약 LLM이 실패하면 다른 LLM 실패와 같이 부분 답으로 간다 (설계 6.4)
+                return {"stopped": "llm_failed", **_failure(state, "summary", error)}
+            if short:
+                # [왜] 요약 한 번은 LLM 호출 한 번이다. 이번 차례 상한에 함께 센다
+                update = {"messages": short["messages"], "llm_calls": state.get("llm_calls", 0) + 1}
         text = render(
             "agent_turn",
             today=deps.today().isoformat(),
             cargos="\n".join(cargo_lines(state.get("cargos", []))),
             question=state.get("masked_text", ""),
         )
-        return {"messages": [HumanMessage(text)]}
+        return update | {"messages": update["messages"] + [HumanMessage(text)]}
 
     def after_verify(state: MarviaState) -> str:
         """갈림길: 통과면 respond, 위반인데 횟수가 남았으면 write, 아니면 finish."""
@@ -392,7 +411,10 @@ def build_main_graph(
             "agent", agent
         )  # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다
         graph.add_node("decline", decline)
-        graph.add_edge("brief", "agent")
+        # [왜] 요약 LLM이 실패해 멈췄으면 루프를 돌리지 않고 부분 답으로 간다
+        graph.add_conditional_edges(
+            "brief", lambda state: "finish" if state.get("stopped") else "agent", ["agent", "finish"]
+        )
         graph.add_conditional_edges("agent", _after_agent, ["write", "decline", "finish"])
         graph.add_edge("decline", END)
     else:

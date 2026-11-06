@@ -4,6 +4,7 @@
 기본 미들웨어가 하고, 도메인 규칙은 이 파일의 Guards가 지킨다.
 하지 않는 일: 답 쓰기와 검증. 루프가 끝나면 메인 그래프의 작성자 → 검증자가
 공책 칸(evidence, calc)으로 답을 쓴다.
+긴 대화 요약기(build_summary)도 여기서 만들지만, 부르는 곳은 메인 그래프의 brief 노드다 (계획 3d).
 """
 
 from __future__ import annotations
@@ -21,13 +22,14 @@ from langchain.agents.middleware import (
     InterruptOnConfig,
     ModelRequest,
     ModelResponse,
+    SummarizationMiddleware,
     TodoListMiddleware,
     ToolCallLimitMiddleware,
     hook_config,
 )
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolCall, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, ToolCall, ToolMessage, get_buffer_string
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
@@ -36,7 +38,7 @@ from marvia.prompts import render
 from marvia.tools.rules import load_rules
 
 # [왜] 모델 호출 실패로 보는 오류: API 오류와 구조화 출력 모양 오류
-_MODEL_ERRORS = (anthropic.APIError, OutputParserException)
+MODEL_ERRORS = (anthropic.APIError, OutputParserException)
 ASK_ALONE = (
     "ask_user는 다른 도구 없이 혼자 불러야 해요. "
     "묻기 전에 할 일이 있으면 먼저 하고, 물을 때는 ask_user만 부르세요."
@@ -93,7 +95,7 @@ class Guards(AgentMiddleware[LoopState]):
         """모델 호출 한 번을 감싼다: 호출 수를 세고, API 오류·모양 오류면 기록하고 루프를 끝낸다."""
         try:
             return self._counted(handler(request))
-        except _MODEL_ERRORS as error:
+        except MODEL_ERRORS as error:
             return self._failed(error)
 
     async def awrap_model_call(
@@ -102,7 +104,7 @@ class Guards(AgentMiddleware[LoopState]):
         """wrap_model_call의 비동기 짝. [왜] ainvoke에서는 이 이름만 불린다 (langchain 미들웨어 소스 확인)."""
         try:
             return self._counted(await handler(request))
-        except _MODEL_ERRORS as error:
+        except MODEL_ERRORS as error:
             return self._failed(error)
 
     @hook_config(can_jump_to=["model"])
@@ -195,4 +197,22 @@ def build_agent(model: BaseChatModel, tools: list, permission_mode: str):
         middleware=middleware,
         state_schema=LoopState,
         name="agent",
+    )
+
+
+def build_summary(model: BaseChatModel) -> SummarizationMiddleware:
+    """긴 대화 요약기 (계획 3d). 언제·어디까지 요약할지는 라이브러리가, 요약 글은 우리 프롬프트가 쓴다."""
+    memory = load_rules("agent")["memory"]
+
+    def summarize(messages: list[AnyMessage]) -> str:
+        """요약할 메시지(가린 글)를 우리 프롬프트로 모델에게 요약시킨다."""
+        # [왜] summarizer 함수를 주면 라이브러리의 재시도(3회)를 건너뛴다.
+        #      SDK가 이미 재시도한다(agent.yaml llm.max_retries)
+        return str(model.invoke(render("summary", history=get_buffer_string(messages))).text)
+
+    return SummarizationMiddleware(
+        model,  # [왜] 토큰 어림셈에만 쓴다. 요약 글은 summarize가 쓴다
+        trigger=("tokens", memory["summary_trigger_tokens"]),
+        keep=("messages", memory["summary_keep_messages"]),
+        summarizer=summarize,
     )
