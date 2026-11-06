@@ -21,8 +21,9 @@ services:
       # [주의] Neo4j 5는 8자보다 짧은 비밀번호로는 뜨지 않는다(이미지 docker-entrypoint.sh, 11-06 확인)
       NEO4J_AUTH: neo4j/marvia-local # src/marvia/config.py 기본값과 같다. 내 컴퓨터에서만 쓰는 값
     ports:
-      - "7688:7687" # bolt. [왜] 7687은 강의 실습 Neo4j 컨테이너와 겹친다
-      - "7475:7474" # 브라우저 (http://localhost:7475)
+      # [왜] 127.0.0.1을 붙여야 이 컴퓨터에서만 열린다. 포트만 적으면 같은 망의 다른 기기가 기본 비밀번호로 붙는다
+      - "127.0.0.1:7688:7687" # bolt. [왜] 7687은 강의 실습 Neo4j 컨테이너와 겹친다
+      - "127.0.0.1:7475:7474" # 브라우저 (http://localhost:7475)
     volumes:
       - neo4jdata_v2:/data
 volumes:
