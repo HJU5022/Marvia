@@ -373,10 +373,11 @@ def test_planner_is_not_called_once_a_search_reached_the_cap(agent_deps, fake_ra
 def test_same_number_keeps_its_token_on_the_next_turn(agent_deps):
     graph = build_main_graph(agent_deps(), InMemorySaver())
     graph.invoke({"text": "DEMO0001 언제까지 신고해요?"}, cfg("t42"))
-    graph.invoke({"text": "DEMO0002도 있고 DEMO0001도 다시 봐 줘"}, cfg("t42"))
+    out = graph.invoke({"text": "DEMO0002도 있고 DEMO0001도 다시 봐 줘"}, cfg("t42"))
     values = graph.get_state(cfg("t42")).values
     assert values["masked_text"] == "[BL2]도 있고 [BL1]도 다시 봐 줘"  # 앞 차례의 [BL1]을 그대로 쓴다
-    assert "DEMO0001" in values["answer"] and "DEMO0002" in values["answer"]
+    # [왜] 답은 저장하지 않는 칸이라 get_state가 아니라 invoke 결과에서 읽는다 (R-035)
+    assert "DEMO0001" in out["answer"] and "DEMO0002" in out["answer"]
 
 
 def test_numbers_are_looked_up_in_parallel_within_the_rule_limit(agent_deps, slow_lookup):

@@ -129,8 +129,9 @@ def live_memory(url: str, secret: str) -> Iterator[tuple[PostgresSaver, Postgres
     # [왜] 직렬화기를 거치는 칸(가림 표, 화물, 메시지, Send 묶음, 재개 값, 도구 안 서브그래프 상태)이
     #      모두 암호문이 된다. 장기 기억(품목 카드, 설명 깊이)은 검사에서 번호를 받지 않아 암호화하지 않는다
     # [주의] PostgresSaver.put은 str·int 같은 단순 값 칸을 직렬화기 없이 checkpoints 표 JSONB에 그대로 둔다.
-    #        그래서 text(사용자 원문)와 answer(번호를 되돌린 답)는 평문으로 남는다.
-    #        서버 쪽에서 막는 일은 done.md 4.1
+    #        실제 번호가 든 str 칸(text 원문, answer 답)은 저장하지 않는 칸(UntrackedValue)이라
+    #        표에 오지 않는다
+    #        (graph/state.py, R-035)
     serde = checkpoint_serde(secret)
     with (
         # [왜] from_conn_string은 serde를 받지 않는다. 그 함수와 같은 설정으로 연결을 열고

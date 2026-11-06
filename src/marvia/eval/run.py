@@ -135,7 +135,10 @@ def drive(graph, item: Item, thread: str, callbacks: list) -> tuple[dict, list[d
         else:
             reply = {"timeout": True}
         out = graph.invoke(Command(resume=reply), config)
-    return graph.get_state({"configurable": {"thread_id": thread}}).values, pauses
+    values = graph.get_state({"configurable": {"thread_id": thread}}).values
+    # [왜] 답(answer)은 체크포인트에 저장하지 않는 칸이라 get_state에 없다 (R-035).
+    #      마지막 invoke 결과에서 읽는다
+    return values | {"answer": out.get("answer", "")}, pauses
 
 
 def behaviour(values: dict, pauses: list[dict], *, not_found: bool = True) -> str:

@@ -58,35 +58,40 @@ def test_conversation_and_item_card_survive_a_restart(agent_deps, test_url):
     assert "품목 카드 건고추" in [m.content for m in messages if m.type == "tool"][-1]
 
 
-def test_checkpoints_keep_real_numbers_only_in_the_plain_text_and_answer_channels(agent_deps, test_url):
+def test_no_checkpoint_row_holds_a_real_number(agent_deps, test_url):
+    # [왜] R-035: str 칸(text 원문, answer 답)은 PostgresSaver가 직렬화기 없이 JSONB로 둔다.
+    #      저장하지 않는 칸으로 바꿨으니 질문·끼어들기·재개(고친 인자에 실제 번호)를 지난 뒤에도
+    #      0줄이어야 한다
     key = Fernet.generate_key().decode()
     config = {"configurable": {"thread_id": "pg-encrypted", "user_id": "u1"}}
+    calls = model(
+        ("calc_deadlines", {}), ("check_reimport", {"facts": CHILI}), ("save_item_card", {"name": "고추"})
+    )
+    edit = {"type": "edit", "edited_action": {"name": "save_item_card", "args": {"name": "DEMO0002 고추"}}}
     with live_memory(test_url, key) as (saver, store):
-        deps = agent_deps(model=model(("calc_deadlines", {})))
-        graph = build_main_graph(deps, saver, loop="agent", store=store)
-        graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
+        graph = build_main_graph(agent_deps(model=calls), saver, loop="agent", store=store)
+        assert "__interrupt__" in graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
+        out = graph.invoke(Command(resume={"decisions": [edit]}), config)
+        assert "DEMO0001" in out["answer"]  # 화면에 보낼 답은 invoke 결과에만 있다
     # 새 연결, 같은 키: 암호화한 기록을 풀어 읽는다
     with live_memory(test_url, key) as (saver, store):
         graph = build_main_graph(agent_deps(model=model()), saver, loop="agent", store=store)
-        assert graph.get_state(config).values["mask_map"] == {"[BL1]": "DEMO0001"}
+        values = graph.get_state(config).values
+        assert values["mask_map"] == {"[BL1]": "DEMO0001"}
+        assert "text" not in values and "answer" not in values  # 저장하지 않는 칸
     with psycopg.connect(test_url) as conn:
-        # 직렬화기를 거치는 칸(가림 표, 화물, 메시지, Send 묶음, 재개 값)은 모두 암호문이다
-        blobs = "SELECT channel FROM checkpoint_blobs WHERE position('DEMO0001'::bytea IN blob) > 0"
-        writes = "SELECT channel FROM checkpoint_writes WHERE position('DEMO0001'::bytea IN blob) > 0"
-        assert conn.execute(blobs).fetchall() == []
-        assert conn.execute(writes).fetchall() == []
-        others = (
-            "SELECT checkpoint_id FROM checkpoints WHERE metadata::text LIKE '%DEMO0001%' "
-            "OR (checkpoint - 'channel_values')::text LIKE '%DEMO0001%'"
-        )
-        assert conn.execute(others).fetchall() == []
-        # [주의] str 칸은 PostgresSaver가 직렬화기 없이 JSONB로 둔다.
-        #        남은 평문은 text·answer뿐이다 (done.md 4.1)
-        plain = (
-            "SELECT DISTINCT c.key FROM checkpoints, jsonb_each(checkpoint -> 'channel_values') AS c "
-            "WHERE c.value::text LIKE '%DEMO0001%'"
-        )
-        assert {row[0] for row in conn.execute(plain).fetchall()} <= {"text", "answer"}
+        for number in ("DEMO0001", "DEMO0002"):
+            blobs = "SELECT channel FROM checkpoint_blobs WHERE position(%s::bytea IN blob) > 0"
+            writes = "SELECT channel FROM checkpoint_writes WHERE position(%s::bytea IN blob) > 0"
+            assert conn.execute(blobs, (number.encode(),)).fetchall() == [], number
+            assert conn.execute(writes, (number.encode(),)).fetchall() == [], number
+            # [왜] 인라인 값(channel_values)과 metadata까지 checkpoints 줄 전체를 본다.
+            #      허용하는 평문 칸은 없다
+            rows = (
+                "SELECT checkpoint_id FROM checkpoints "
+                "WHERE checkpoint::text LIKE %s OR metadata::text LIKE %s"
+            )
+            assert conn.execute(rows, (f"%{number}%", f"%{number}%")).fetchall() == [], number
 
 
 # 엄격 직렬화 모드에서 그래프를 컴파일하고, 그 그래프가 쓰는 직렬화기에 평문·암호문 값을 읽혀 본다

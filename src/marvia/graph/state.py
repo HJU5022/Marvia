@@ -13,6 +13,7 @@ from typing import Annotated, NotRequired, Required, TypedDict
 
 from langchain.agents import AgentState
 from langchain_core.messages import AnyMessage
+from langgraph.channels import UntrackedValue
 from langgraph.graph.message import add_messages
 from langgraph.managed import RemainingSteps
 
@@ -22,7 +23,10 @@ from marvia.tools.rules import load_rules
 # [왜] TypedDict는 "이 dict에는 이런 칸이 있다"를 적어 두는 문법이다. 실행 중 검사는 하지 않고 pyright가 본다
 # [왜] total=False: 모든 칸이 처음부터 있을 필요는 없다. 노드가 하나씩 채워 간다
 class IdentifyState(TypedDict, total=False):
-    text: str  # 사용자가 준 단서 글 원문. [주의] LLM에 넘기지 않는다
+    # 사용자가 준 단서 글 원문. [주의] LLM에 넘기지 않는다
+    # [왜] UntrackedValue: 이 차례 안에서만 살고 체크포인트에 저장하지 않는다. 원문에는 실제 번호가 있고,
+    #      PostgresSaver는 str 칸을 직렬화기(암호화) 없이 JSONB로 둔다 (R-035)
+    text: Annotated[str, UntrackedValue(str)]
     masked_text: str  # 번호를 가린 글. LLM에 넘겨도 되는 글
     mask_map: dict[str, str]  # [BL1] → 실제 번호
     numbers: list[str]  # 조회할 번호 (확정한 것만)
@@ -45,7 +49,8 @@ class MarviaState(IdentifyState, total=False):
     failed_tools: list[dict]  # 실패한 도구 호출 {"tool", "message"}
     # [왜] LangGraph가 단계마다 채우는 값(recursion_limit까지 남은 단계 수). 읽기만 하고 start도 비우지 않는다
     remaining_steps: RemainingSteps
-    answer: str  # 화면에 보낼 답 (번호를 되돌린 글)
+    # 화면에 보낼 답 (번호를 되돌린 글). [왜] text와 같은 까닭으로 저장하지 않는다. invoke 결과에서만 읽는다
+    answer: Annotated[str, UntrackedValue(str)]
     # 아래는 에이전트 루프 칸 (계획 3c). 계획자 길에서는 쓰지 않는다
     # [왜] add_messages: 메시지 목록을 덮어쓰지 않고 id로 합친다.
     #      루프가 돌려준 전체 목록을 다시 받아도 겹치지 않는다
