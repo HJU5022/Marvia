@@ -343,6 +343,9 @@ def build_main_graph(
             # [왜] ensure_ascii=False: 한글을 \uXXXX로 바꾸지 않아야 LLM이 읽는다
             calc=json.dumps(state.get("calc", {}), ensure_ascii=False),
             evidence=evidence_block(state.get("evidence", [])),
+            # [왜] 작성자가 모르면 코드가 쓴 공식 출처 줄 위에 "찾지 못했다"고 쓴다.
+            #      인용할 수 없어 주소는 뺀다(코드가 답 아래에 쓴다)
+            official="\n".join(f"{s['name']} (시행 {s['effective']})" for s in state.get("official", [])),
             gaps="\n".join(state.get("gaps", [])),
             clarifications="\n".join(state.get("clarifications", [])),
             # [왜] 도구 결과는 messages에만 있어 작성자가 못 본다. 한 일을 모르면 한 일과 반대로 답한다

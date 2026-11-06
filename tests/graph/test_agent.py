@@ -1006,6 +1006,16 @@ def test_official_lookup_lists_a_lower_trust_source_apart_from_evidence(agent_de
     assert "공식 출처(색인 밖):\n- 식품위생법 (시행 2026-01-01) https://www.law.go.kr/" in out["answer"]
 
 
+def test_writer_gets_the_official_sources_as_data_it_cannot_cite(agent_deps):
+    # [왜] 작성자가 공식 출처를 모르면 코드가 쓴 공식 출처 줄 바로 위에 "찾지 못했어요"라고 쓴다
+    prompts: list[str] = []
+    look = say(("official_lookup", {"law_name": "식품위생법"}))
+    graph = agent_graph(agent_deps, look, say(), web=law_site([]), write=keep(prompts))
+    graph.invoke({"text": "식품위생법은 언제부터 시행됐어요?"}, cfg("o1b"))
+    block = prompts[-1].split("<official_sources>")[1].split("</official_sources>")[0]
+    assert block.strip() == "식품위생법 (시행 2026-01-01)"  # 이름과 시행일만. 주소는 코드가 답 아래에 쓴다
+
+
 def test_official_lookup_calls_only_allowed_sites(agent_deps, monkeypatch):
     monkeypatch.setitem(load_rules("agent")["official"], "allowed_hosts", [])
     seen = []
