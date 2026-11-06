@@ -32,6 +32,24 @@ class RagDeps:
     rewrite: Callable[[str], Rewrite]  # 프롬프트 → 고친 질의
 
 
+def top_ranked(
+    search: Callable[[str, date], list[Evidence]],
+    rerank: Callable[[str, list[str]], list[float]],
+    query: str,
+    as_of: date,
+) -> list[Evidence]:
+    """후보를 찾아 리랭커 점수로 다시 줄 세우고 상위 n개를 돌려준다. score는 리랭커 점수다."""
+    candidates = search(query, as_of)
+    if not candidates:
+        return []
+    scores = rerank(query, [c.text for c in candidates])
+    ranked = sorted(zip(candidates, scores, strict=True), key=lambda pair: pair[1], reverse=True)
+    # [왜] model_copy(update=…)로 점수만 리랭커 점수로 바꾼 새 객체를 만든다
+    return [
+        c.model_copy(update={"score": s}) for c, s in ranked[: load_rules("rag")["search"]["rerank_top_n"]]
+    ]
+
+
 def evidence_block(evidence: list[dict]) -> str:
     """프롬프트에 넣을 근거 글. unit_id를 앞에 붙여 어느 조문인지 보이게 한다. 작성자 프롬프트도 쓴다."""
     return "\n\n".join(f"[{e['unit_id']}] {e['heading']}\n{e['text']}" for e in evidence)
@@ -58,15 +76,9 @@ def build_rag_graph(deps: RagDeps, max_rewrites: int | None = None):
         """하이브리드 검색으로 후보를 찾고, 리랭커로 다시 줄 세워 상위 n개를 근거로 남긴다."""
         # [왜] 노드가 채우는 칸은 .get으로 읽는다. 처음 넣는 칸(question, as_of)만 []로 바로 읽는다
         query = state.get("search_query", "")
-        candidates = deps.search(query, state["as_of"])
-        if not candidates:
-            return {"evidence": []}
-        scores = deps.rerank(query, [c.text for c in candidates])
-        ranked = sorted(zip(candidates, scores, strict=True), key=lambda pair: pair[1], reverse=True)
-        top = ranked[: cfg["search"]["rerank_top_n"]]
-        # [왜] model_copy(update=…)로 점수만 리랭커 점수로 바꾼 새 객체를 만든다
+        found = top_ranked(deps.search, deps.rerank, query, state["as_of"])
         # [왜] mode="json"은 날짜를 "2026-10-02" 글로 바꾼다. 체크포인트와 화면에 그대로 넘길 수 있다
-        return {"evidence": [c.model_copy(update={"score": s}).model_dump(mode="json") for c, s in top]}
+        return {"evidence": [e.model_dump(mode="json") for e in found]}
 
     def grade(state: RagState) -> dict:
         """근거가 질문에 답하기에 충분한지 채점한다."""

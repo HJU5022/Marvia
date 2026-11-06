@@ -1,6 +1,6 @@
 from datetime import date
 
-from marvia.graph.rag import RagDeps, build_rag_graph
+from marvia.graph.rag import RagDeps, build_rag_graph, top_ranked
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, QueryAnalysis, Rewrite
 
@@ -81,3 +81,13 @@ def test_question_is_wrapped_as_data_in_prompt():
 def test_max_rewrites_override_replaces_the_rule_value():
     out = build_rag_graph(_deps([NOT_ENOUGH] * 3), max_rewrites=1).invoke(START_STATE)
     assert out["rewrites"] == 1 and out["sufficient"] is False
+
+
+def test_top_ranked_sorts_by_the_reranker_and_keeps_the_top_n():
+    many = [_evidence(f"제{i}조", f"글 {i}") for i in range(1, 11)]
+    scores = lambda query, texts: [float(i) for i in range(len(texts))]  # noqa: E731
+    found = top_ranked(lambda query, when: many, scores, "질의", date(2026, 10, 30))
+    assert [e.unit_id for e in found] == [
+        f"LTEST@20261002#제{i}조" for i in range(10, 2, -1)
+    ]  # rerank_top_n 8
+    assert found[0].score == 9.0
