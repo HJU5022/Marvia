@@ -1431,3 +1431,18 @@ def test_edited_item_card_name_still_goes_through_the_name_checks(agent_deps):
     # [왜] 사람이 고친 값도 도구가 같은 검사를 한다. 승인 카드는 검사를 건너뛰는 길이 아니다
     graph.invoke(Command(resume={"decisions": [_edit("[CARGO1] 고추")]}), cfg("a16f"))
     assert store.search(("users", "local", "items")) == []
+
+
+def test_agent_loop_puts_not_found_lead_at_the_top(agent_deps):
+    from marvia.graph.answer import NOT_FOUND_LEAD
+
+    missing = Draft(
+        answer="그 조문은 근거에 없어요.",
+        citations=[],
+        next_options=[],
+        forwarder_message="",
+        not_in_evidence=True,
+    )
+    graph = agent_graph(agent_deps, say(), write=lambda p: missing)
+    out = graph.invoke({"text": "관세법 제999조는 뭐라고 해요?"}, cfg("nf2"))
+    assert out["answer"].startswith(NOT_FOUND_LEAD) and missing.answer in out["answer"]

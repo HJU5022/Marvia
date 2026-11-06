@@ -18,6 +18,14 @@ class Draft(BaseModel):
     citations: list[str] = Field(description="답이 기댄 근거의 unit_id. 근거 묶음의 대괄호 안 글 그대로")
     next_options: list[str] = Field(description="사용자가 다음에 할 수 있는 일 두세 개")
     forwarder_message: str = Field(description="포워더에게 번호를 물을 메시지. 필요 없으면 빈 글")
+    # [왜] 기본값이 있어야 칸이 없던 옛 초안과 Draft(...) 키워드 호출이 그대로 읽힌다
+    not_in_evidence: bool = Field(
+        default=False,
+        description=(
+            "사용자가 특정 조문·항·규정·시점·대상을 물었는데 근거 묶음에 그것이 없을 때만 true. "
+            "근거가 있거나 일반 질문이면 false"
+        ),
+    )
 
 
 class Step(BaseModel):

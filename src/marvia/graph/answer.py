@@ -18,6 +18,9 @@ FORWARDER_LEAD = (
 DONE_TITLE = "이번 차례에 한 일"  # 최종 답과 부분 답이 같은 제목을 쓴다
 # 부분 답의 첫 줄. [왜] 평가 실행(eval/run.py)이 이 글로 부분 답을 알아본다. 바꾸면 그쪽도 함께 바뀐다
 PARTIAL_LEAD = "끝까지 확인하지 못했어요. 지금까지 확인한 것만 적어요."
+# 근거에 물은 대상이 없다는 신호의 문장.
+# [왜] 평가 실행(eval/run.py)이 이 글로 "찾지 못함"을 알아본다. 바꾸면 그쪽도 함께 바뀐다
+NOT_FOUND_LEAD = "물으신 조문이나 내용은 지금 가진 근거에 없어요."
 
 
 def cargo_lines(cargos: list[dict]) -> list[str]:
@@ -71,6 +74,8 @@ def final_answer(
     forwarder = f"{FORWARDER_LEAD}\n{draft['forwarder_message']}" if draft["forwarder_message"] else ""
     parts = [
         _header(cargos),
+        # [주의] 옛 초안에는 칸이 없다. .get으로 읽는다
+        NOT_FOUND_LEAD if draft.get("not_in_evidence") else "",
         draft["answer"],
         # [왜] 승인 뒤 실제로 한 일은 코드가 쓴다. 작성자 글이 틀려도 한 일은 바르게 보인다
         _bullets(DONE_TITLE, list(actions)),

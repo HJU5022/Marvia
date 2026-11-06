@@ -1,4 +1,5 @@
-from marvia.graph.answer import cargo_lines, final_answer, partial_answer
+from marvia.graph.answer import NOT_FOUND_LEAD, cargo_lines, final_answer, partial_answer
+from marvia.graph.schemas import Draft
 from marvia.tools.rules import load_rules
 
 DRAFT = {
@@ -68,3 +69,21 @@ def test_partial_answer_shows_done_actions_right_after_the_lead_line():
     # [왜] 승인한 감시를 넣은 뒤 한도에 걸려도 한 일은 보인다
     text = partial_answer([], {}, [], [], [], actions=["[BL1] 감시 목록에 넣음"])
     assert "지금까지 확인한 것만 적어요.\n\n이번 차례에 한 일:\n- [BL1] 감시 목록에 넣음" in text
+
+
+def test_not_found_lead_goes_before_the_writer_answer_and_citations_stay(cargos, evidence):
+    # [왜] 근거에 물은 조문이 없다는 신호는 코드가 정한 문장으로 붙는다. 채점은 이 문장만 찾는다
+    text = final_answer(DRAFT | {"not_in_evidence": True}, cargos, evidence)
+    assert NOT_FOUND_LEAD in text
+    assert text.index(NOT_FOUND_LEAD) < text.index(DRAFT["answer"])
+    assert "근거:" in text and "L001556@20261002#제241조.3항" in text
+
+
+def test_no_not_found_lead_when_flag_false_or_old_draft_without_the_field(cargos, evidence):
+    assert NOT_FOUND_LEAD not in final_answer(DRAFT | {"not_in_evidence": False}, cargos, evidence)
+    assert NOT_FOUND_LEAD not in final_answer(DRAFT, cargos, evidence)  # 칸이 없던 옛 초안
+
+
+def test_draft_not_in_evidence_defaults_false():
+    old = {k: DRAFT[k] for k in ("answer", "citations", "next_options", "forwarder_message")}
+    assert Draft.model_validate(old).not_in_evidence is False

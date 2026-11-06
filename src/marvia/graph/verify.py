@@ -87,8 +87,13 @@ def verify(
 
     # 1. 인용: 근거 묶음의 unit_id만, 근거가 있으면 하나 이상, 답에 쓴 조문은 인용한 근거에 있어야 한다
     violations += [f"근거 묶음에 없는 인용: {c}" for c in draft.citations if c not in by_id]
-    if evidence and not draft.citations:
+    # [왜] 근거에 물은 것이 없다고 밝힌 답에 인용을 강요하면 상관없는 근거를 끌어다 쓴다.
+    #      인용이 있으면 위 줄에서 그대로 검사한다
+    if evidence and not draft.citations and not draft.not_in_evidence:
         violations.append("근거가 있는데 인용이 없다")
+    # [왜] 없다고 해 놓고 코드가 계산하거나 찾은 결과가 있으면 앞뒤가 안 맞는다. 기존 검증 실패 길로 간다
+    if draft.not_in_evidence and (any(calc.values()) or any(c.get("facts") for c in cargos)):
+        violations.append("근거에 없다고 했는데 코드가 계산하거나 찾은 결과가 있다")
     # [왜] 계산 결과 글은 코드와 rules/*.yaml이 만든 값이라, 그 안에 적힌 조문 이름은 답에 옮겨도 된다.
     #      인용(unit_id)은 여전히 근거 묶음에서만 온다
     calc_json = json.dumps(calc, ensure_ascii=False)

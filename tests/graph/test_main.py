@@ -370,3 +370,20 @@ def test_numbers_are_looked_up_in_parallel_within_the_rule_limit(agent_deps, slo
     values = graph.get_state(cfg("t43")).values
     assert 1 < slow_lookup["peak"] <= load_rules("agent")["loop"]["max_concurrency"]
     assert [c["token"] for c in values["cargos"]] == [f"[BL{i}]" for i in range(1, 7)]  # 처음 순서 그대로
+
+
+MISSING = Draft(
+    answer="그 조문은 근거에 없어요.",
+    citations=[],
+    next_options=[],
+    forwarder_message="",
+    not_in_evidence=True,
+)
+
+
+def test_planner_loop_puts_not_found_lead_at_the_top(agent_deps):
+    from marvia.graph.answer import NOT_FOUND_LEAD
+
+    graph = build_main_graph(agent_deps(write=lambda prompt: MISSING), InMemorySaver())
+    out = graph.invoke({"text": "관세법 제999조는 뭐라고 해요?"}, cfg("nf1"))
+    assert out["answer"].startswith(NOT_FOUND_LEAD) and MISSING.answer in out["answer"]

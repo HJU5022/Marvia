@@ -224,3 +224,33 @@ def test_reimport_verdict_followed_by_a_negation_in_another_clause_is_flagged(ca
     #      절 경계(rules/verify.yaml clause_end) 뒤의 부정은 세지 않는다.
     #      알려진 한계: "충족한다고 해도, 단정할 수 없어요"도 위반으로 본다 (안전한 쪽)
     assert any("재수입" in v for v in _say(text, {}, cargos))
+
+
+def test_not_in_evidence_skips_the_missing_citation_rule(check):
+    # [왜] 근거에 물은 것이 없다는 답에 인용을 강요하면 상관없는 근거를 끌어다 쓰게 된다
+    assert "근거가 있는데 인용이 없다" not in check(citations=[], not_in_evidence=True)
+    assert "근거가 있는데 인용이 없다" in check(citations=[], not_in_evidence=False)
+
+
+def test_not_in_evidence_still_checks_given_citations(evidence):
+    draft = GOOD.model_copy(
+        update={"not_in_evidence": True, "answer": "근거에 없어요.", "citations": ["LNOPE@20260101#제1조"]}
+    )
+    assert verify(draft, evidence, {}, [], MASK, TODAY) == ["근거 묶음에 없는 인용: LNOPE@20260101#제1조"]
+
+
+CONTRADICTION = "근거에 없다고 했는데 코드가 계산하거나 찾은 결과가 있다"
+
+
+def test_not_in_evidence_with_calc_result_is_a_violation(check):
+    assert CONTRADICTION in check(not_in_evidence=True)  # calc 픽스처에 기한 계산이 있다
+
+
+def test_not_in_evidence_with_found_cargo_is_a_violation(evidence, cargos):
+    draft = GOOD.model_copy(update={"not_in_evidence": True})
+    assert CONTRADICTION in verify(draft, evidence, {}, cargos, MASK, TODAY)
+
+
+def test_not_in_evidence_alone_is_not_a_violation(evidence):
+    draft = GOOD.model_copy(update={"not_in_evidence": True, "citations": [], "answer": "근거에 없어요."})
+    assert verify(draft, evidence, {}, [], MASK, TODAY) == []
