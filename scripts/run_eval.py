@@ -59,6 +59,8 @@ agree.add_argument("scores", help="scripts/ragas_score.py가 쓴 점수 파일")
 args = parser.parse_args()
 
 if args.command == "sheet":
+    if inside_repo(Path(args.out)):
+        raise SystemExit(f"답 글이 들어 있어 저장소 안에는 쓰지 않는다: {args.out}")
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))
     raws = {r["id"]: r for r in json.loads(Path(args.raw).read_text(encoding="utf-8"))}
     rows = {r["id"]: r for r in result["rows"]}
