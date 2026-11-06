@@ -12,6 +12,7 @@ import json
 import sys
 import time
 
+import psycopg
 from langchain_core.callbacks import BaseCallbackHandler, get_usage_metadata_callback
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
@@ -76,10 +77,14 @@ def kind(answer: str, evidence_count: int, calc: dict) -> str:
 settings = Settings()
 prices = load_rules("pricing")
 rows = []
-with connect(settings.database_url) as conn:
+with (
+    connect(settings.database_url) as conn,
+    # [왜] 감시 목록은 따로 autocommit 연결을 쓴다. 다른 도구가 conn을 되돌려도 감시 줄이 남는다 (R-041)
+    psycopg.connect(settings.database_url, autocommit=True) as watch_conn,
+):
     for loop in ("planner", "agent"):
         graph = build_main_graph(
-            agent_deps(settings, conn), InMemorySaver(), loop=loop, store=InMemoryStore()
+            agent_deps(settings, conn, watch_conn), InMemorySaver(), loop=loop, store=InMemoryStore()
         )
         for i, text in enumerate(QUESTIONS):
             started = time.monotonic()

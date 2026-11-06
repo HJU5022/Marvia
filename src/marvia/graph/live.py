@@ -38,14 +38,19 @@ CIPHER_NAME = "aesgcm"  # 직렬화 형식 뒤에 "+aesgcm"으로 붙는다. 이
 NONCE_BYTES = 12  # AES-GCM이 권하는 nonce 길이
 
 
-def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
-    """설정의 모델과 로컬 DB로 AgentDeps를 만든다. 만들기만 하고 부르지는 않는다."""
+def agent_deps(settings: Settings, conn: psycopg.Connection, watch_conn: psycopg.Connection) -> AgentDeps:
+    """설정의 모델과 로컬 DB로 AgentDeps를 만든다. 만들기만 하고 부르지는 않는다.
+
+    conn: RAG 검색·조문 조회가 함께 쓰는 연결. watch_conn: 감시 목록만 쓰는 autocommit 연결.
+    """
     llm = chat_model(settings)
     # [왜] 키가 없으면 실제 번호를 저장하지 않는다(fail-closed).
     #      watch=None이면 그래프에 watch_cargo와 새 소식이 없다
     # 틀린 모양의 키(ValueError)도 같다. 오류 글을 그대로 올리지 않는다
+    # [왜] 감시는 따로 연결을 쓴다. 같은 단계 도구는 동시에 돌고, 검색·조문 조회는 DB 오류에 conn을 되돌린다.
+    #      그 되돌리기가 감시 줄 INSERT와 commit 사이에 끼면 넣었다고 답한 감시 줄이 사라진다 (R-041)
     try:
-        watch = live_watch(conn, watch_keys(settings.data_key.get_secret_value()))
+        watch = live_watch(watch_conn, watch_keys(settings.data_key.get_secret_value()))
     except ValueError:
         watch = None
     return AgentDeps(
