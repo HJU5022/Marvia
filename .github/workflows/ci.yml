@@ -23,7 +23,8 @@ jobs:
     # [왜] DB 시험(색인·검색·대화 기록·감시 표)도 돌린다. 로컬과 같은 이미지에 같은 계정이다(docker-compose.yml)
     services:
       db:
-        image: pgvector/pgvector:pg16
+        # pgvector/pgvector:pg16 (여러 구조 묶음의 해시. 올릴 때는 새 해시로 바꾼다)
+        image: pgvector/pgvector@sha256:0dd3149a06e4579a0d70d8fef9945636cd514005e7237deb27f9b67886f8dc4f
         env:
           POSTGRES_USER: marvia
           POSTGRES_PASSWORD: marvia
@@ -40,11 +41,13 @@ jobs:
     steps:
       # [주의] 바깥 액션은 커밋 해시로 고정한다. 태그는 옮겨질 수 있다
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # 이후 단계에 저장소 자격 증명을 남기지 않는다
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.9.30" # 로컬 Docker 검사와 같은 uv
           enable-cache: true
-      - run: uv sync --frozen
+      - run: uv sync --locked # 잠금 파일이 pyproject와 어긋나면 실패한다
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyright
