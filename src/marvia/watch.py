@@ -131,6 +131,22 @@ def take_news(conn: psycopg.Connection, keys: WatchKeys, user: str) -> list[dict
     return news
 
 
+def forget_user(conn: psycopg.Connection, user: str) -> int:
+    """사용자의 감시 목록과 변화 기록을 모두 지우고 지운 감시 수를 돌려준다.
+
+    계정 삭제용이다 (설계 8절). 화물 하나만 감시를 끄는 기능은 화면과 함께 온다 (done.md 4.1).
+    """
+    try:
+        # [왜] watch_events는 ON DELETE CASCADE라 감시 줄을 지우면 변화 기록도 함께 지워진다
+        deleted = conn.execute("DELETE FROM watches WHERE user_id = %s", (user,)).rowcount
+        conn.commit()
+    except psycopg.Error:
+        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌린 뒤 다시 던진다
+        conn.rollback()
+        raise
+    return deleted
+
+
 def live_watch(conn: psycopg.Connection, keys: WatchKeys) -> WatchDeps:
     """로컬 DB 연결과 키로 감시 목록 기능을 만든다."""
     return WatchDeps(
