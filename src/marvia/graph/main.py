@@ -124,6 +124,8 @@ def ask(state: MarviaState) -> dict:
 
 # 실패하면 이번 차례를 부분 답으로 끝내는 LLM 노드
 LLM_NODES = ("plan", "extract_item", "write")
+# 요약 미들웨어가 요약 글 앞에 붙이는 글 (summarization.py _build_new_messages). brief가 뗀다
+SUMMARY_LEAD = "Here is a summary of the conversation to date:\n\n"
 
 
 def _failure(state: MarviaState, tool: str, error: Exception) -> dict:
@@ -397,8 +399,14 @@ def build_main_graph(
                 # [왜] 요약 LLM이 실패하면 다른 LLM 실패와 같이 부분 답으로 간다 (설계 6.4)
                 return {"stopped": "llm_failed", **_failure(state, "summary", error)}
             if short:
+                # [왜] 라이브러리는 요약을 태그 없는 사용자 말 자리(HumanMessage)에 넣는다. 요약은 도구 결과
+                #      (공식 출처 제목, 저장한 기억)를 읽고 쓴 글이라 데이터 태그 안에 다시 싼다 (설계 12절)
+                removal, said, *kept = short["messages"]
+                # [주의] 글만 바꾼다. 메시지 종류와 라이브러리 표시(additional_kwargs)는 그대로 둔다
+                body = render("conversation_summary", summary=str(said.content).removeprefix(SUMMARY_LEAD))
+                said = said.model_copy(update={"content": body})
                 # [왜] 요약 한 번은 LLM 호출 한 번이다. 이번 차례 상한에 함께 센다
-                update = {"messages": short["messages"], "llm_calls": state.get("llm_calls", 0) + 1}
+                update = {"messages": [removal, said, *kept], "llm_calls": state.get("llm_calls", 0) + 1}
         text = render(
             "agent_turn",
             today=deps.today().isoformat(),
