@@ -2,12 +2,15 @@
 
 from marvia.eval.dataset import Item
 from marvia.eval.metrics import (
+    agreement,
     behaviour_accuracy,
+    bucket,
     calc_ok,
     compare_table,
     correct_citation,
     matches,
     mrr,
+    ragas_means,
     recall_at_k,
     summarize,
     unsupported,
@@ -163,3 +166,20 @@ def test_compare_table_has_one_line_per_run():
     lines = compare_table([result, result]).splitlines()
     assert len(lines) == 4  # 머리, 구분, 실행 둘
     assert lines[2].startswith("| agent (ctx) | m | 1.00 (1) | 0.00 (1) |")
+
+
+def test_agreement_buckets_the_judge_score_like_the_human_grade():
+    human = {"R1": 1.0, "R2": 0.5, "R3": 0.0, "R4": 1.0}
+    judge = {"R1": 0.9, "R2": 0.6, "R3": 0.7, "R4": None}  # R3는 0.5 칸, R4는 못 쟀다
+    assert bucket(0.8, [0.8, 0.5]) == 1.0 and bucket(0.49, [0.8, 0.5]) == 0.0
+    assert agreement(human, judge, [0.8, 0.5]) == {"value": 0.6667, "n": 3, "mean_abs_diff": 0.3}
+
+
+def test_ragas_means_leave_out_missing_and_nan_scores():
+    scores = [
+        {"faithfulness": 1.0},
+        {"faithfulness": float("nan")},
+        {"faithfulness": None},
+        {"faithfulness": 0.5},
+    ]
+    assert ragas_means(scores, ["faithfulness"]) == {"faithfulness": {"value": 0.75, "n": 2, "missing": 2}}

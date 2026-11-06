@@ -185,3 +185,31 @@ def compare_table(results: list[dict]) -> str:
         cells += [summary["errors"], summary["leaks"]]
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
     return "\n".join(lines)
+
+
+def bucket(score: float, cuts: list[float]) -> float:
+    """0~1 점수를 사람 채점과 같은 세 칸(1, 0.5, 0)으로 나눈다. cuts는 [1의 하한, 0.5의 하한]이다."""
+    return 1.0 if score >= cuts[0] else 0.5 if score >= cuts[1] else 0.0
+
+
+def agreement(human: dict[str, float], judge: dict[str, float | None], cuts: list[float]) -> dict:
+    """사람 채점과 LLM 채점(ragas faithfulness)이 같은 칸에 든 문항의 비율."""
+    # [왜] 설계 11절: LLM 채점은 사람 채점 10건과 일치율을 확인한 뒤에 쓴다
+    pairs = [(h, judge[i]) for i, h in human.items() if judge.get(i) is not None]
+    same = [float(bucket(j, cuts) == h) for h, j in pairs if j is not None]
+    diff = [abs(h - j) for h, j in pairs if j is not None]
+    return {
+        "value": round(statistics.fmean(same), 4) if same else None,
+        "n": len(same),
+        "mean_abs_diff": round(statistics.fmean(diff), 4) if diff else None,
+    }
+
+
+def ragas_means(scores: list[dict], metrics: list[str]) -> dict:
+    """ragas 점수의 지표별 평균. 못 잰 값(None, NaN)은 평균에서 빼고 따로 센다."""
+    # [왜] 강의 IV 3주 05강: evaluate()는 실패해도 NaN을 돌려주고, NaN이 섞이면 평균이 조용히 바뀐다
+    out = {}
+    for name in metrics:
+        values = [s[name] for s in scores if s.get(name) is not None and s[name] == s[name]]
+        out[name] = _mean(values) | {"missing": len(scores) - len(values)}
+    return out
