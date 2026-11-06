@@ -173,8 +173,9 @@ def run_problems(
             problems.append("그래프가 지금 단위 파일로 만든 것이 아니다 (sha 다름)")
         if not sum(r.get("graph_added", 0) for r in rows):
             problems.append("그래프 켬인데 그래프가 더한 후보가 0이다")
-    if meta.get("unipass_mode", "replay") != "replay":
-        problems.append("UNI-PASS 재생 모드가 아니다")
+    # [왜] 칸이 없는 결과도 무효다. 어떤 모드로 돌았는지 모르면 실제 API를 불렀는지 알 수 없다
+    if meta.get("unipass_mode") != "replay":
+        problems.append("UNI-PASS 재생 모드가 아니다 (meta.unipass_mode)")
     for key in ("errors", "leaks", "cap_breaches"):
         if summary.get(key):
             problems.append(f"{key} {summary[key]}")

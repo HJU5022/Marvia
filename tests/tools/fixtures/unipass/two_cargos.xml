@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. 한 B/L에 화물 두 건(상단 칸 두 개)이 온 경우를 흉내 냈다. 실제 응답으로 확인하지 않았다 -->
+<cargCsclPrgsInfoQryRtnVo><ntceInfo></ntceInfo>
+<cargCsclPrgsInfoQryVo><cargMtNo>TEST0099I0001000100</cargMtNo><csclPrgsStts>반입신고</csclPrgsStts></cargCsclPrgsInfoQryVo>
+<cargCsclPrgsInfoQryVo><cargMtNo>TEST0099I0001000200</cargMtNo><csclPrgsStts>반입신고</csclPrgsStts></cargCsclPrgsInfoQryVo>
+<tCnt>2</tCnt></cargCsclPrgsInfoQryRtnVo>

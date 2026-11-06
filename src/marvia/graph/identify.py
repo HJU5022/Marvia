@@ -17,7 +17,7 @@ from marvia.graph.state import IdentifyState
 from marvia.identify.mask import mask_text, token_for
 from marvia.identify.models import CargoFacts, CargoIdentity, ToolError
 from marvia.identify.parse import kind_of, read_numbers
-from marvia.tools.unipass_replay import lookup_cargo
+from marvia.tools.unipass import lookup_cargo
 
 
 def read(state: IdentifyState) -> dict:

@@ -18,6 +18,12 @@ URL = Settings().database_url
 SCHEMA = f"marvia_test_{uuid4().hex[:12]}"
 
 
+@pytest.fixture(autouse=True)
+def unipass_replay_only(monkeypatch):
+    """모든 시험은 UNI-PASS 재생 데이터만 쓴다. [왜] .env에 live와 키가 있어도 실제 API를 부르지 않는다"""
+    monkeypatch.setenv("MARVIA_UNIPASS_MODE", "replay")
+
+
 @pytest.fixture
 def db():
     """시험용 스키마에 표를 만들고 끝나면 스키마째 지운다. 로컬 DB가 꺼져 있으면 건너뛴다."""

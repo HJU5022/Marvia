@@ -52,3 +52,7 @@ class Settings(BaseSettings):
     neo4j_password: SecretStr = SecretStr("marvia-local")  # MARVIA_NEO4J_PASSWORD
     # [왜] 끄고 켜서 같은 커밋으로 비교한다(계획 3b Task 6). 켜고 Neo4j에 못 닿으면 검색 실패로 남는다
     graph: Literal["off", "on"] = "off"  # MARVIA_GRAPH
+
+    # UNI-PASS 조회 (계획 3b Task 7). [왜] 기본이 재생이라 키가 있어도 시험·평가는 실제 API를 부르지 않는다
+    unipass_mode: Literal["replay", "live"] = "replay"  # MARVIA_UNIPASS_MODE
+    unipass_key: SecretStr = SecretStr("")  # MARVIA_UNIPASS_KEY (crkyCn). 실제 키는 직접 넣는다

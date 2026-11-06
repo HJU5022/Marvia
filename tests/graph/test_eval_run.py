@@ -394,7 +394,9 @@ def test_run_problems_reject_runs_that_did_not_measure_what_they_claim():
         "그래프가 지금 단위 파일로 만든 것이 아니다 (sha 다름)"
     ]
     broken = [{"id": "R01", "failed": ["search_law: graph_unavailable"]}]
-    assert run_problems({"annex_units": 0}, broken, clean | {"leaks": 1}, set()) == [
+    assert run_problems(
+        {"annex_units": 0, "unipass_mode": "replay"}, broken, clean | {"leaks": 1}, set()
+    ) == [
         "DB에 별표 단위가 없다 (scripts/index_corpus.py)",
         "leaks 1",
         "검색 길이 실패한 문항: R01",
@@ -404,7 +406,7 @@ def test_run_problems_reject_runs_that_did_not_measure_what_they_claim():
 def test_run_problems_flag_runs_that_did_not_cover_the_whole_set():
     # [왜] 상한에서 끊겼거나 --ids·--limit로 일부만 돈 실행은 세지 않는다 (metrics.gate_uncovered와 같은 규칙)
     clean = {"errors": 0, "leaks": 0, "cap_breaches": 0}
-    meta = {"annex_units": 75, "graph": "off"}
+    meta = {"annex_units": 75, "graph": "off", "unipass_mode": "replay"}
     assert run_problems(meta, [], clean, set(), uncovered=[]) == []
     assert run_problems(meta, [], clean, set(), uncovered=["빠짐: R02", "빠짐: R03"]) == [
         "평가셋 문항을 다 덮지 못했다: 빠짐: R02, 빠짐: R03"
@@ -414,3 +416,13 @@ def test_run_problems_flag_runs_that_did_not_cover_the_whole_set():
 def test_graph_setting_problem_stops_a_run_whose_real_setting_differs_from_the_requested_one():
     assert graph_setting_problem("on", "on") is None
     assert graph_setting_problem("on", "off") == "--graph on인데 실제 설정(MARVIA_GRAPH)은 off다"
+
+
+def test_run_problems_treat_a_missing_or_live_unipass_mode_as_invalid():
+    # [왜] 모드 칸이 없으면 실제 API를 불렀는지 알 수 없다. 재생으로 보지 않는다 (계획 3b Task 6 검토 M-2)
+    clean = {"errors": 0, "leaks": 0, "cap_breaches": 0}
+    base = {"annex_units": 75, "graph": "off"}
+    expect = ["UNI-PASS 재생 모드가 아니다 (meta.unipass_mode)"]
+    assert run_problems(base, [], clean, set()) == expect
+    assert run_problems(base | {"unipass_mode": "live"}, [], clean, set()) == expect
+    assert run_problems(base | {"unipass_mode": "replay"}, [], clean, set()) == []

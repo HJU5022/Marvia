@@ -3,7 +3,7 @@
 실행: uv run python scripts/recheck_watch.py
 주기 실행은 바깥 도구에 맡긴다. 예(30분마다, crontab):
   */30 * * * * cd <저장소> && uv run python scripts/recheck_watch.py
-지금 조회는 재생 데이터(unipass_replay)다. 실제 UNI-PASS 조회는 계획 3b에서 같은 함수 모양으로 붙인다.
+조회는 marvia.tools.unipass다(기본 재생, MARVIA_UNIPASS_MODE=live에 키가 있을 때만 실제).
 """
 
 import sys

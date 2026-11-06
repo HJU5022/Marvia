@@ -1,0 +1,18 @@
+# UNI-PASS 화물통관진행정보 조회 설정. 코드(src/marvia/tools/unipass.py)가 읽는다 (설계 7.2, done 2.3).
+# 엔드포인트는 v1(backend/app/services/judge/customs.py, 09-23 실제 호출로 확인)과 같다.
+url: https://unipass.customs.go.kr:38010/ext/rest/cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo
+timeout_s: 15 # 한 번 부를 때 기다리는 최대 초
+retries: 2 # 시간 초과·연결 오류·5xx일 때 다시 부르는 횟수 (설계 7.2)
+backoff_s: 0.5 # 다시 부르기 전 기다림. n번째 재시도는 n배
+max_concurrency: 4 # 프로세스 전체에서 동시에 부르는 최대 수 (설계 7.2의 전역 세마포어)
+
+# 오류 글은 이 표에서만 쓴다. [왜] 예외 글에는 요청 주소(키 crkyCn, 실제 번호)가 섞일 수 있다
+messages:
+  timeout: UNI-PASS 응답이 늦어요. 잠시 뒤 다시 조회할 수 있어요
+  unavailable: UNI-PASS에 닿지 못했어요. 잠시 뒤 다시 조회할 수 있어요
+  bad_response: UNI-PASS 응답을 읽지 못했어요
+  bad_input: UNI-PASS가 조회 값을 받지 않았어요. 번호나 B/L 연도를 확인해 주세요
+  not_found: UNI-PASS에 없는 번호예요. 번호와 B/L 연도를 확인해 주세요
+  ambiguous: 이 B/L에 화물이 여럿이에요. 화물관리번호로 조회해 주세요
+  no_key: UNI-PASS 키가 없어 실제 조회를 하지 않았어요
+retryable: [timeout, unavailable] # 다시 시도하면 나아질 수 있는 오류

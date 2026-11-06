@@ -20,6 +20,7 @@ run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 �
 
 import argparse
 import json
+import os
 import shutil
 from datetime import date
 from pathlib import Path
@@ -353,6 +354,8 @@ from marvia.eval.dataset import CORPUS_UNITS  # noqa: E402
 from marvia.graph.live import agent_deps  # noqa: E402
 from marvia.rag.graphdb import connect_graph, graph_meta, units_sha256  # noqa: E402
 
+# [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
+os.environ["MARVIA_UNIPASS_MODE"] = "replay"
 # [왜] 실행 유효성(계획 3b 사전 등록)에 쓸 값: DB의 별표 단위 수, 단위 파일 sha, 그래프 메타
 ANNEX_SQL = "SELECT count(*) FROM corpus_units WHERE split_part(unit_id, '#', 2) LIKE '별표%'"
 faults = {i.id for i in items if i.fault}
@@ -400,6 +403,7 @@ for model in models:
                 "graph_meta": graph,
                 "annex_units": annex_units,
                 "units_sha256": units_sha256(CORPUS_UNITS),
+                "unipass_mode": settings.unipass_mode,
             }
             name = result_name(loop, model, args.tag)
             for item in items:

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. 필드 구성과 순서는 v1 fixture(UNI-PASS 연계가이드 v4.1과 09-27 실제 응답 1건의 필드 구성)를 따랐고 값은 모두 만든 것이다.
+     번호는 v2 규칙(TEST 접두어)으로 새로 만들었다. 이력은 실제처럼 최신이 위에 온다. -->
+<cargCsclPrgsInfoQryRtnVo>
+<ntceInfo></ntceInfo>
+<cargCsclPrgsInfoQryVo>
+<csclPrgsStts>수입신고수리</csclPrgsStts><prgsStts>반출완료</prgsStts><prgsStCd>CAGE12</prgsStCd>
+<cargMtNo>TEST0099I0001000100</cargMtNo><mblNo>TESTMBL0000001</mblNo><hblNo>TESTHBL0000001</hblNo>
+<shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><vydf>0012W</vydf>
+<etprDt>20260925</etprDt><dsprCd>KRPUS</dsprCd><dsprNm>부산항</dsprNm>
+<prnm>의류</prnm><ttwg>1200</ttwg><wghtUt>KG</wghtUt>
+</cargCsclPrgsInfoQryVo>
+<tCnt>4</tCnt>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>반출신고</cargTrcnRelaBsopTpcd><prcsDttm>20260929100000</prcsDttm><shedNm>TEST터미널 CY</shedNm></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>수입신고수리</cargTrcnRelaBsopTpcd><prcsDttm>20260928150000</prcsDttm><shedNm>TEST터미널 CY</shedNm></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>반입신고</cargTrcnRelaBsopTpcd><prcsDttm>20260926070000</prcsDttm><shedNm>TEST터미널 CY</shedNm></cargCsclPrgsInfoDtlQryVo>
+<cargCsclPrgsInfoDtlQryVo><cargTrcnRelaBsopTpcd>입항보고 수리</cargTrcnRelaBsopTpcd><prcsDttm>20260925080000</prcsDttm><shedNm></shedNm></cargCsclPrgsInfoDtlQryVo>
+</cargCsclPrgsInfoQryRtnVo>

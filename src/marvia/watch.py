@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from marvia.identify.models import CargoFacts, ToolError
-from marvia.tools.unipass_replay import lookup_cargo
+from marvia.tools.unipass import lookup_cargo
 
 ENCRYPT_INFO = b"marvia-watch-encrypt"
 HASH_INFO = b"marvia-watch-hash"
