@@ -1,6 +1,6 @@
 """평가셋 v1 시험 (done 3.1). 키와 DB 없이 돈다."""
 
-from marvia.eval.dataset import corpus_unit_ids, load_set
+from marvia.eval.dataset import SET_PATH, corpus_unit_ids, file_sha256, load_set
 from marvia.identify.models import CargoFacts
 from marvia.identify.parse import read_numbers
 from marvia.tools.deadlines import import_deadlines, kst_date
@@ -47,3 +47,10 @@ def test_expected_deadlines_are_what_the_code_computes():
         assert [(d.name, d.due) for d in got] == [(d.name, d.due) for d in item.calc.deadlines], item.id
         checked += 1
     assert checked == 3  # R12, R13, R14
+
+
+def test_set_is_frozen_by_its_sha256():
+    # [왜] 정답을 실행 결과를 보고 고치면 점수가 자를 바꿔 오른다. 고치려면 이유를 기록하고 해시를 다시 만든다
+    #      (강의 IV 3주 04강: 점수가 바뀌면 "자도 바꿨나"부터 묻는다)
+    recorded = (SET_PATH.parent / "set_v1.sha256").read_text(encoding="utf-8").split()[0]
+    assert file_sha256(SET_PATH) == recorded
