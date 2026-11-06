@@ -1,6 +1,6 @@
-# 로컬 개발·테스트용 Postgres 주문서 (설계 8절, 계획 1 Task 8).
+# 로컬 개발·테스트용 Postgres·Neo4j 주문서 (설계 8절·5.5, 계획 1 Task 8, 계획 3b Task 3).
 # 하지 않는 일: 배포. 배포 DB는 Supabase이고 여기 비밀번호는 내 컴퓨터에서만 쓰는 값이다.
-# 켜기: docker compose up -d db / 끄기: docker compose stop db
+# 켜기: docker compose up -d db neo4j / 끄기: docker compose stop db neo4j
 name: marvia-v2 # [왜] v1 compose와 이름을 나눠 컨테이너·볼륨이 섞이지 않게 한다
 services:
   db:
@@ -14,5 +14,17 @@ services:
       - "5433:5432" # 내 컴퓨터 5433번 문 → 상자 안 Postgres 5432번 문. [왜] 5432는 다른 Postgres와 겹치기 쉽다
     volumes:
       - pgdata_v2:/var/lib/postgresql/data # [왜] 상자를 지웠다 켜도 데이터가 남게 상자 밖 저장 공간에 둔다
+  neo4j:
+    # [왜] 법령 그래프(설계 5.5). 이미지는 digest로 고정한다(5.26.32-community, 11-06 Docker Hub). 태그는 움직인다
+    image: neo4j:5.26.32-community@sha256:42ef3ebfd671ebd01fdebb6dcbe80cf7b45eef2aa3d346ef4132f7ef31e67d2f
+    environment:
+      # [주의] Neo4j 5는 8자보다 짧은 비밀번호로는 뜨지 않는다(이미지 docker-entrypoint.sh, 11-06 확인)
+      NEO4J_AUTH: neo4j/marvia-local # src/marvia/config.py 기본값과 같다. 내 컴퓨터에서만 쓰는 값
+    ports:
+      - "7688:7687" # bolt. [왜] 7687은 강의 실습 Neo4j 컨테이너와 겹친다
+      - "7475:7474" # 브라우저 (http://localhost:7475)
+    volumes:
+      - neo4jdata_v2:/data
 volumes:
   pgdata_v2: {}
+  neo4jdata_v2: {}

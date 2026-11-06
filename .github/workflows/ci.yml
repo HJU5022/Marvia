@@ -1,4 +1,4 @@
-# v2 브랜치 검사 (done 3.6, 설계 11절·13절). 키 없이 돈다: 린트, 형식, 타입, 시험(평가셋 동결·지표·평가 문 포함).
+# v2 브랜치 검사 (done 3.6, 설계 11절·13절). 키 없이 돈다: 린트, 형식, 타입, 시험(평가셋 동결·지표·평가 문·그래프 포함).
 # 평가 문은 저장소에 둔 실행 결과(파생 값)를 지금 코드로 다시 채점해 rules/eval.yaml의 바닥값과 비교한다(재생 채점).
 # 실제 모델을 다시 부르지 않는다: 실제 응답은 저장소에 넣지 않으므로 응답을 재생할 수 없다 (CLAUDE.md).
 name: ci
@@ -36,8 +36,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      neo4j:
+        # neo4j:5.26.32-community (여러 구조 묶음의 해시, 11-06 Docker Hub). docker-compose.yml과 같은 이미지다
+        image: neo4j@sha256:42ef3ebfd671ebd01fdebb6dcbe80cf7b45eef2aa3d346ef4132f7ef31e67d2f
+        env:
+          NEO4J_AUTH: neo4j/marvia-local # [주의] 8자보다 짧으면 뜨지 않는다
+        ports:
+          - 7688:7687
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:7474 || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     env:
       MARVIA_DATABASE_URL: postgresql://marvia:marvia@localhost:5433/marvia
+      MARVIA_NEO4J_URL: bolt://localhost:7688
     steps:
       # [주의] 바깥 액션은 커밋 해시로 고정한다. 태그는 옮겨질 수 있다
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,3 +67,4 @@ jobs:
       - run: uv run pytest -q
         env:
           MARVIA_REQUIRE_DB: "1" # DB에 못 닿으면 DB 시험을 건너뛰지 않고 실패시킨다
+          MARVIA_REQUIRE_NEO4J: "1" # Neo4j에 못 닿으면 그래프 시험을 건너뛰지 않고 실패시킨다

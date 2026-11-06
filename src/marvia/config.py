@@ -45,3 +45,8 @@ class Settings(BaseSettings):
     # [왜] 기본값 agent: 평가셋 v1 기준 실행에서 미리 정한 기준을 넘었다 (계획 4a Task 4)
     loop: Literal["planner", "agent"] = "agent"  # MARVIA_LOOP
     permission_mode: Literal["ask", "auto"] = "ask"  # MARVIA_PERMISSION_MODE. auto여도 바깥 발송은 늘 묻는다
+
+    # 법령 그래프 (계획 3b). 기본값은 docker-compose.yml의 로컬 Neo4j(비밀번호는 내 컴퓨터에서만 쓰는 값)
+    neo4j_url: str = "bolt://localhost:7688"  # MARVIA_NEO4J_URL
+    neo4j_user: str = "neo4j"
+    neo4j_password: SecretStr = SecretStr("marvia-local")  # MARVIA_NEO4J_PASSWORD
