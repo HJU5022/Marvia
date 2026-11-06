@@ -22,7 +22,8 @@ class Draft(BaseModel):
     not_in_evidence: bool = Field(
         default=False,
         description=(
-            "사용자가 특정 조문·항·규정·시점·대상을 물었는데 근거 묶음에 그것이 없을 때만 true. "
+            "사용자가 물은 조문·항·규정·시행 시점이 근거 묶음에 없을 때만 true. "
+            "화물 번호나 화물 사실이 없는 것은 해당하지 않는다(그때는 묻거나 포워더 메시지로 안내). "
             "근거가 있거나 일반 질문이면 false"
         ),
     )
