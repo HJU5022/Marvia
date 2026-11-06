@@ -196,7 +196,12 @@ if args.command == "agree":
     rate = agreement(human, judge, cfg["judge"]["buckets"])
     missing = unscored(human, judge)
     trusted = not missing and rate["value"] is not None and rate["value"] >= cfg["judge"]["min_agreement"]
-    label = "LLM 채점, 사람 일치 확인" if trusted else cfg["judge"]["unchecked_label"]
+    # [왜] 사람 채점은 충실도에만 있다. 일치율은 충실도의 것이라 정밀도·재현율 라벨은 늘 미확인이다 (R-063)
+    unchecked = cfg["judge"]["unchecked_label"]
+    labels = {
+        m: "LLM 채점, 사람 일치 확인" if m == "faithfulness" and trusted else unchecked
+        for m in cfg["ragas"]["metrics"]
+    }
     means = ragas_means(scores, cfg["ragas"]["metrics"], calc_ids)
     print(
         json.dumps(
@@ -204,7 +209,7 @@ if args.command == "agree":
                 "agreement": rate,
                 "human_items": len(human),
                 "missing": missing,
-                "label": label,
+                "labels": labels,
                 "calc_excluded": excluded,
                 "contexts_rule": rule or "없음(옛 규칙: 계산 문항 충실도 제외)",
                 "note": "계산·화물 줄은 ragas 맥락에 없어 낮게 나옴 (faithfulness_calc 따로, 일치율 제외)"

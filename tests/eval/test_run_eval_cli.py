@@ -38,9 +38,12 @@ def test_agree_needs_every_human_item_scored_before_it_says_checked(tmp_path):
     done = agree(tmp_path, grades, [{"id": "R1", "faithfulness": 0.9}])
     out = json.loads(done.stdout)
     assert out["agreement"]["value"] == 1.0 and out["missing"] == ["R2"]
-    assert out["label"] == "LLM 채점, 사람 일치 미확인"
+    assert out["labels"]["faithfulness"] == "LLM 채점, 사람 일치 미확인"
     both = agree(tmp_path, grades, [{"id": "R1", "faithfulness": 0.9}, {"id": "R2", "faithfulness": 0.9}])
-    assert json.loads(both.stdout)["label"] == "LLM 채점, 사람 일치 확인"
+    labels = json.loads(both.stdout)["labels"]
+    assert labels["faithfulness"] == "LLM 채점, 사람 일치 확인"
+    # [왜] 사람 채점은 충실도에만 있다. 정밀도·재현율은 일치를 본 적이 없어 미확인으로 남는다 (R-063)
+    assert labels["context_precision"] == labels["context_recall"] == "LLM 채점, 사람 일치 미확인"
 
 
 def test_agree_stops_with_the_item_name_when_a_human_grade_is_blank(tmp_path):
