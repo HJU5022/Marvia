@@ -881,3 +881,43 @@ def test_a_stored_depth_outside_the_allowed_list_falls_back_to_the_default(agent
     graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("r5"))
     assert hostile not in prompts[0]
     assert f"{load_rules('agent')['memory']['default_depth']} (" in prompts[0]
+
+
+# --- 조사 서브에이전트 (계획 3d) ---
+
+RESEARCH = ("research", {"question": "수입신고 기한을 정한 조문"})
+
+
+def test_research_returns_only_its_summary_and_merges_its_evidence(agent_deps):
+    sub = (say(("search_law", {"query": "수입신고 기한"})), say(text="관세법 제241조제3항이 30일을 정해요."))
+    graph = agent_graph(agent_deps, say(RESEARCH), *sub, say(), write=lambda p: CITING)
+    out = graph.invoke({"text": "수입신고 기한의 근거를 찾아 줘"}, cfg("s1"))
+    values = graph.get_state(cfg("s1")).values
+    tool_texts = [m.content for m in values["messages"] if m.type == "tool"]
+    # [왜] 부모 기록에는 조사 결과 하나만 있다. 서브의 search_law 호출과 결과는 들어오지 않는다
+    assert len(tool_texts) == 1
+    assert tool_texts[0].startswith("조사 요약: 관세법 제241조제3항이 30일을 정해요.")
+    assert [e["unit_id"] for e in values["evidence"]] == ["L001556@20261002#제241조.3항"]
+    assert values["llm_calls"] == 2 + 2 + 2 + 1  # 부모 모델 2 + 서브 모델 2 + RAG 2 + 작성자 1
+    assert "관세법 > 제9장 통관 > 제241조" in out["answer"]
+
+
+def test_research_shares_the_llm_cap_with_the_parent(agent_deps, fake_rag):
+    endless = [say(("search_law", {"query": f"질의 {i}"})) for i in range(40)]
+    graph = agent_graph(agent_deps, say(RESEARCH), *endless)
+    out = graph.invoke({"text": "수입신고 기한의 근거를 찾아 줘"}, cfg("s2"))
+    values = graph.get_state(cfg("s2")).values
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+    assert values["llm_calls"] == cap  # 부모와 서브를 합쳐 상한 그대로다. 서브는 부모가 쓴 1회에서 이어 센다
+    assert values["stopped"] == "llm_calls"
+    assert {"tool": "research", "message": f"LLM 호출 한도({cap}회)에 닿았어요"} in values["failed_tools"]
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+
+
+def test_research_must_be_alone(agent_deps):
+    mixed = say(RESEARCH, ("search_law", {"query": "수입신고 기한"}))
+    graph = agent_graph(agent_deps, mixed, say())
+    graph.invoke({"text": "수입신고 기한의 근거를 찾아 줘"}, cfg("s3"))
+    values = graph.get_state(cfg("s3")).values
+    errors = [m for m in values["messages"] if m.type == "tool" and m.status == "error"]
+    assert len(errors) == 2 and not values.get("evidence")

@@ -39,9 +39,11 @@ from marvia.tools.rules import load_rules
 
 # [왜] 모델 호출 실패로 보는 오류: API 오류와 구조화 출력 모양 오류
 MODEL_ERRORS = (anthropic.APIError, OutputParserException)
+# 한 단계에 혼자 불러야 하는 도구: 질문(interrupt)과 조사 서브에이전트(LLM 호출 상한을 함께 쓴다)
+ALONE = ("ask_user", "research")
 ASK_ALONE = (
-    "ask_user는 다른 도구 없이 혼자 불러야 해요. "
-    "묻기 전에 할 일이 있으면 먼저 하고, 물을 때는 ask_user만 부르세요."
+    "ask_user와 research는 다른 도구 없이 혼자 불러야 해요. "
+    "그 전에 할 일이 있으면 먼저 하고, 부를 때는 그 도구 하나만 부르세요."
 )
 ONE_IN_PROGRESS = (
     "할 일 목록에는 끝나지 않은 일이 있으면 in_progress가 정확히 하나여야 해요. 목록을 고쳐 다시 부르세요."
@@ -49,26 +51,26 @@ ONE_IN_PROGRESS = (
 
 
 class Guards(AgentMiddleware[LoopState]):
-    """도메인 규칙 미들웨어: LLM 호출 상한, LLM 실패 기록, ask_user 혼자 부르기, 진행 중 할 일 하나."""
+    """도메인 규칙 미들웨어: LLM 호출 상한, LLM 실패 기록, 혼자 부를 도구, 진행 중 할 일 하나."""
 
     # [왜] 이 미들웨어가 읽고 쓰는 칸(llm_calls, stopped, failed_tools)을 루프 공책에 더한다
     state_schema = LoopState
 
-    def __init__(self, max_llm_calls: int):
+    def __init__(self, max_llm_calls: int, label: str = "agent"):
         super().__init__()
         self.max_llm_calls = max_llm_calls
+        self.label = label  # 실패 기록(failed_tools)에 남길 루프 이름. 조사 서브에이전트는 "research"
 
     @hook_config(can_jump_to=["end"])
     def before_model(self, state: LoopState, runtime: Any) -> dict[str, Any] | None:
         """모델을 부르기 전: 이번 차례 LLM 호출 수(RAG 안의 호출 포함)가 상한이면 루프를 끝낸다 (설계 6.4)."""
         if state.get("llm_calls", 0) < self.max_llm_calls:
             return None
-        failed = [{"tool": "agent", "message": f"LLM 호출 한도({self.max_llm_calls}회)에 닿았어요"}]
+        failed = [{"tool": self.label, "message": f"LLM 호출 한도({self.max_llm_calls}회)에 닿았어요"}]
         # [왜] jump_to="end": 모델을 부르지 않고 루프를 끝낸다. 메인 그래프가 stopped를 보고 부분 답으로 간다
         return {"stopped": "llm_calls", "failed_tools": failed, "jump_to": "end"}
 
-    @staticmethod
-    def _failed(error: Exception) -> ExtendedModelResponse:
+    def _failed(self, error: Exception) -> ExtendedModelResponse:
         """API 오류·모양 오류를 기록하고 루프를 끝내는 응답 (동기·비동기가 함께 쓴다)."""
         # [주의] 오류 종류 이름과 상태 코드만 남긴다. 오류 글에는 요청 내용이 섞일 수 있다
         #        (llm.structured와 같은 규칙)
@@ -77,7 +79,7 @@ class Guards(AgentMiddleware[LoopState]):
         update = {
             "llm_calls": 1,
             "stopped": "llm_failed",
-            "failed_tools": [{"tool": "agent", "message": name}],
+            "failed_tools": [{"tool": self.label, "message": name}],
         }
         # [왜] 도구 호출이 없는 빈 답을 돌려주면 루프가 끝난다. 상태 칸은 Command로 함께 쓴다
         return ExtendedModelResponse(
@@ -109,12 +111,13 @@ class Guards(AgentMiddleware[LoopState]):
 
     @hook_config(can_jump_to=["model"])
     def after_model(self, state: LoopState, runtime: Any) -> dict[str, Any] | None:
-        """모델이 ask_user를 다른 도구와 함께 불렀으면 모두 오류로 돌려주고 다시 부른다."""
+        """모델이 혼자 부를 도구(ask_user, research)를 다른 도구와 함께 불렀으면 모두 오류로 돌려준다."""
         # [왜] 다른 미들웨어가 오류 결과를 먼저 붙여도 마지막 모델 메시지를 본다
         last = next((m for m in reversed(state["messages"]) if m.type == "ai"), None)
         calls = getattr(last, "tool_calls", None) or []
-        if len(calls) > 1 and any(call["name"] == "ask_user" for call in calls):
-            # [왜] 질문(interrupt)과 다른 도구가 한 단계에 섞이면 재개할 때 다른 도구가 다시 돌 수 있다
+        if len(calls) > 1 and any(call["name"] in ALONE for call in calls):
+            # [왜] 질문(interrupt)과 다른 도구가 한 단계에 섞이면 재개할 때 다른 도구가 다시 돌 수 있다.
+            #      조사는 남은 LLM 호출을 모두 쓸 수 있어, 함께 도는 검색이 상한을 넘길 수 있다
             errors = [ToolMessage(ASK_ALONE, tool_call_id=call["id"], status="error") for call in calls]
             return {"messages": errors, "jump_to": "model"}
         return None
@@ -218,4 +221,18 @@ def build_summary(model: BaseChatModel) -> SummarizationMiddleware:
         # [왜] 기본값(4000 토큰)은 요약할 메시지의 앞쪽을 잘라 버리고, 잘린 앞부분은 요약되지 않은 채 기록에서
         #      지워진다. 앞 요약이 기록의 첫 메시지라서 두 번째 요약부터 앞 요약이 사라진다
         trim_tokens_to_summarize=None,
+    )
+
+
+def build_researcher(model: BaseChatModel, tools: list):
+    """조사 서브에이전트 (계획 3d): 법령 검색·조문 조회만 하는 두 번째 루프. 짧은 요약 글로 끝난다."""
+    cfg = load_rules("agent")
+    return create_agent(
+        model,
+        tools,
+        system_prompt=render("research"),
+        # [왜] 같은 Guards가 같은 상한을 지킨다. 부모가 넘긴 호출 수에서 이어 세므로 둘을 합쳐도 상한 안이다
+        middleware=[Guards(cfg["loop"]["max_llm_calls"], label="research")],
+        state_schema=LoopState,
+        name="research",
     )

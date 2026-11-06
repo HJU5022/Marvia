@@ -13,16 +13,18 @@ import json
 import re
 from collections.abc import Callable
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 import httpx
 import psycopg
 from langchain.tools import ToolRuntime, tool
-from langchain_core.messages import ToolMessage
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
+from marvia.graph.agent import build_researcher
 from marvia.graph.answer import cargo_lines
 from marvia.graph.identify import identify_number
 from marvia.identify.mask import LABELS, mask_text
@@ -97,11 +99,15 @@ class Choice(BaseModel):
 
 
 def make_tools(
-    rag_graph, today: Callable[[], date], provision: Callable[[str, date], list[Evidence]] | None = None
+    rag_graph,
+    today: Callable[[], date],
+    provision: Callable[[str, date], list[Evidence]] | None = None,
+    model: BaseChatModel | None = None,
 ) -> list:
     """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것).
 
     provision은 조문 이름표를 코퍼스 단위로 바꾸는 직접 조회다. 주면 get_provision 도구가 생긴다.
+    model을 주면 그 모델로 도는 조사 서브에이전트 도구 research가 생긴다 (계획 3d).
     """
     max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
     # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
@@ -337,6 +343,8 @@ def make_tools(
         """
         return _reply(runtime, f"도메인 밖 질문: {reason}", out_of_scope=True)
 
+    law_tools = [search_law] + ([get_provision] if provision else [])
+    extra = [_research_tool(model, law_tools, today)] if model is not None else []
     tools = [
         search_law,
         calc_deadlines,
@@ -348,4 +356,42 @@ def make_tools(
         save_preference,
         decline,
     ]
-    return tools + [get_provision] if provision else tools
+    return tools + law_tools[1:] + extra
+
+
+def _research_tool(model: BaseChatModel, law_tools: list, today: Callable[[], date]):
+    """조사 서브에이전트를 감싼 도구 research를 만든다 (계획 3d, 설계 6.1)."""
+    researcher = build_researcher(model, law_tools)
+    max_summary = load_rules("agent")["research"]["max_summary"]
+
+    @tool
+    def research(question: str, runtime: ToolRuntime) -> Command:
+        """Hand one law question that needs several searches (for example a chain of delegated provisions)
+        to a research helper. It searches on its own and returns only a short summary; the provisions it
+        found join the evidence. Call it alone. question: one Korean sentence without cargo tokens.
+        """
+        start = runtime.state.get("llm_calls", 0)
+        searched = runtime.state.get("searched", [])
+        turn = render("research_turn", today=today().isoformat(), question=question)
+        # [왜] 부모의 호출 수와 찾은 질의에서 이어 센다. 서브의 Guards·search_law가 부모와 같은 상한을 지킨다
+        # [주의] create_agent의 타입 표시는 입력을 messages 하나로 적지만, 실제 입력 스키마는
+        #        state_schema(LoopState)의 칸을 모두 받는다 (langchain/agents/factory.py:484). 그래서 cast
+        start_state = {"messages": [HumanMessage(turn)], "llm_calls": start, "searched": searched}
+        out = researcher.invoke(cast(Any, start_state))
+        found = out.get("evidence", [])
+        last = out["messages"][-1]
+        # [왜] 부모에게는 서브의 마지막 답(요약)만 준다. 서브가 부른 도구와 결과는 부모 기록에 들어가지 않는다
+        summary = str(last.text)[:max_summary] if last.type == "ai" else ""
+        lines = [f"조사 요약: {summary or '요약이 없어요'}"]
+        lines += [f"[{e['unit_id']}] {e['heading']}" for e in found]
+        return _reply(
+            runtime,
+            "\n".join(lines),
+            evidence=found,  # [왜] 근거는 요약 글이 아니라 공책 칸으로 합친다. 인용은 여전히 근거 묶음뿐이다
+            gaps=out.get("gaps", []),
+            searched=out.get("searched", [])[len(searched) :],
+            llm_calls=out.get("llm_calls", start) - start,
+            failed_tools=out.get("failed_tools", []),
+        )
+
+    return research

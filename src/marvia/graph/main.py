@@ -416,7 +416,8 @@ def build_main_graph(
             raise ValueError("에이전트 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다")
         # [왜] 에이전트 길은 루프가 다시 찾으므로 RAG 안 고쳐 쓰기는 줄인다 (agent.yaml loop.rag_rewrites)
         agent_rag = build_rag_graph(deps.rag, max_rewrites=cfg["loop"]["rag_rewrites"])
-        agent = build_agent(deps.model, make_tools(agent_rag, deps.today, deps.provision), permission_mode)
+        tools = make_tools(agent_rag, deps.today, deps.provision, deps.model)
+        agent = build_agent(deps.model, tools, permission_mode)
         graph.add_node("brief", brief)
         graph.add_node(
             "agent", agent
