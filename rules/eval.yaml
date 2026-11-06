@@ -1,0 +1,7 @@
+# 평가 설정값. 코드(src/marvia/eval, scripts/run_eval.py)와 시험이 읽는다 (설계 11절, done 3장).
+
+set:
+  groups: {related: 15, unrelated: 10, blocked: 5} # 갈래별 문항 수 (설계 11절)
+  human: 10 # 사람 채점 문항 수 (설계 11절)
+  # 평가셋에 쓸 수 있는 화물 번호 접두어. fixtures/unipass/의 가공 번호와 없는 번호(NOPE)뿐이다 (CLAUDE.md)
+  number_prefixes: [DEMO, MOCK, TEST, NOPE]
