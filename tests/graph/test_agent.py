@@ -16,6 +16,7 @@ from marvia.graph.agent import ONE_IN_PROGRESS
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
 from marvia.graph.tools import search_calls, worst_search_calls
+from marvia.llm import LLMFailed
 from marvia.prompts import render
 from marvia.tools.rules import load_rules
 
@@ -1292,6 +1293,34 @@ def test_an_approved_action_is_shown_under_the_answer_and_given_to_the_writer(
     else:
         assert "이번 차례에 한 일" not in out["answer"]  # 거절하면 도구가 돌지 않아 한 일이 없다
         assert block.strip() == ""
+
+
+def _write_fails(prompt: str) -> Draft:
+    raise LLMFailed("RateLimitError")
+
+
+@pytest.mark.parametrize(
+    ("write", "body"),
+    [(keep([]), "시험 답이에요."), (_write_fails, "끝까지 확인하지 못했어요")],
+    ids=["respond", "finish"],
+)
+def test_history_keeps_the_answer_without_the_outside_data_blocks(agent_deps, write, body):
+    inputs = Inputs()
+    look = say(("official_lookup", {"law_name": "식품위생법"}))
+    deps = {"web": law_site([]), "watch": FakeWatch(NEWS).deps(), "write": write}
+    graph = agent_graph(agent_deps, look, say(), say(), **deps)
+    config = {"configurable": {"thread_id": f"h-{body}"}, "callbacks": [inputs]}
+    out = graph.invoke({"text": "DEMO0001 식품위생법은 언제부터 시행됐어요?"}, config)
+    # 화면 답에는 그대로 있다
+    assert out["answer"].startswith(SHOWN) and "공식 출처(색인 밖)" in out["answer"]
+    kept = graph.get_state(config).values["messages"][-1]
+    assert kept.type == "ai" and body in kept.content
+    # [왜] 화물 줄·감시 변화([BL1]: ...)와 공식 제목은 바깥 데이터다. 기록에는 태그 밖으로 두지 않는다
+    assert "공식 출처(색인 밖)" not in kept.content and "[BL1]:" not in kept.content
+    graph.invoke({"text": "고마워요"}, config)
+    # 다음 차례 모델은 둘을 앞 차례의 데이터 태그(<watch_news>, <official_source>) 안에서 한 번씩만 읽는다
+    assert inputs.calls[-1].count("[BL1]: 반입신고 → 수입신고수리") == 1
+    assert inputs.calls[-1].count("식품위생법 (시행 2026-01-01)") == 1
 
 
 # --- 새 길 전체에서 번호 가림 (계획 3d, R-010·R-022의 LLM 입력 쪽) ---

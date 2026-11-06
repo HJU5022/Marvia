@@ -148,44 +148,46 @@ def _remember(state: MarviaState, text: str) -> dict:
     """에이전트 길이면 이번 차례 답(가린 글)을 대화 기록 끝에 더한다. 다음 차례 모델이 앞의 답을 읽는다."""
     # [왜] 기록은 에이전트 길에만 있다(brief가 차례의 첫 메시지를 넣는다). 계획자 길은 메시지를 쓰지 않는다
     # [주의] 화면에 보낼 글(실제 번호)이 아니라 가린 글을 넣는다. 기록은 다음 차례 LLM에 간다
+    # [주의] 부르는 쪽은 바깥 데이터 묶음(화물 줄, 감시 변화, 공식 출처)을 뺀 글을 넘긴다. 그 값은
+    #        그 차례의 brief 메시지(<cargo_lines>·<watch_news>)와 official_lookup 결과(<official_source>)에
+    #        태그 안으로 이미 있다. "이번 차례에 한 일"은 남긴다. 코드가 쓴 글과 토큰·검사한 값뿐이고,
+    #        모르면 다음 차례 모델이 같은 일을 또 하거나 한 일과 반대로 말한다
     return {"messages": [AIMessage(text)]} if state.get("messages") else {}
 
 
 def respond(state: MarviaState) -> dict:
     """검증을 통과한 초안으로 답을 만들고, 화면에 보내기 직전에 실제 번호로 되돌린다."""
-    body = final_answer(
-        state.get("draft", {}),
-        state.get("cargos", []),
-        state.get("evidence", []),
-        state.get("assumptions", []),
-        state.get("official", []),
-        state.get("actions", []),
-    )
+    draft, evidence = state.get("draft", {}), state.get("evidence", [])
+    assumptions, actions = state.get("assumptions", []), state.get("actions", [])
+    cargos, official = state.get("cargos", []), state.get("official", [])
+    body = final_answer(draft, cargos, evidence, assumptions, official, actions)
     text = with_news(state.get("watch_news", []), body)
+    kept = final_answer(draft, [], evidence, assumptions, (), actions)  # 기록용: 바깥 데이터 묶음을 뺀 답
     # [왜] 답이 나왔으면 진행 중이던 할 일은 끝난 것이다. 화면에 진행 중 표시가 남지 않게 한다
     todos = [
         todo | {"status": "completed"} if todo["status"] == "in_progress" else todo
         for todo in state.get("todos", [])
     ]
-    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, text)}
+    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, kept)}
 
 
 def finish(state: MarviaState) -> dict:
     """부분 답을 낸다 (설계 6.4). 검증을 넘지 못한 초안은 쓰지 않는다."""
     todos = _pending_todos(state)
-    body = partial_answer(
-        state.get("cargos", []),
+    # 화면 답과 기록용 답이 함께 쓰는 칸: 계산, 근거, 빠진 근거, 실패한 도구, 가정
+    shared = (
         state.get("calc", {}),
         state.get("evidence", []),
         state.get("gaps", []),
         state.get("failed_tools", []),
         state.get("assumptions", []),
-        state.get("official", []),
-        # [왜] 승인한 감시를 넣은 뒤 한도에 걸려도 한 일은 보인다
-        state.get("actions", []),
     )
+    # [왜] 승인한 감시를 넣은 뒤 한도에 걸려도 한 일은 보인다
+    actions = state.get("actions", [])
+    body = partial_answer(state.get("cargos", []), *shared, state.get("official", []), actions)
     text = with_news(state.get("watch_news", []), body)
-    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, text)}
+    kept = partial_answer([], *shared, (), actions)  # 기록용: 바깥 데이터 묶음을 뺀 부분 답
+    return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, kept)}
 
 
 def _pending_todos(state: MarviaState) -> list[dict]:
@@ -200,7 +202,8 @@ def decline(state: MarviaState) -> dict:
     """도메인 밖 질문: 코드가 쓴 정중한 거절과 할 수 있는 일을 답으로 낸다 (설계 1절)."""
     text = with_news(state.get("watch_news", []), decline_answer())
     answer = unmask(text, state.get("mask_map", {}))
-    return {"answer": answer, "todos": _pending_todos(state), **_remember(state, text)}
+    # [왜] 기록에는 감시 변화를 뺀 거절 글만 둔다 (_remember)
+    return {"answer": answer, "todos": _pending_todos(state), **_remember(state, decline_answer())}
 
 
 def _after_agent(state: MarviaState) -> str:
