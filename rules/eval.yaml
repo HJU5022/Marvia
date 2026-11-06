@@ -21,3 +21,16 @@ estimate:
 
 ragas:
   contexts: 8 # ragas에 넘기는 근거 글 수(점수 높은 순). [왜] context precision은 근거마다 LLM을 한 번 부른다
+  metrics: [faithfulness, context_precision, context_recall]
+
+# LLM 채점 (ragas, 설계 11절). 채점 모델은 답을 쓴 모델과 다르다
+judge:
+  model: claude-sonnet-5-5
+  # ragas faithfulness를 사람 채점 칸(1, 0.5, 0)으로 나누는 하한. [0.8 이상 → 1, 0.5 이상 → 0.5, 그 밖 0]
+  buckets: [0.8, 0.5]
+  # 사람 채점 10건과 이 비율 이상 같은 칸이면 LLM 채점을 머리 숫자로 쓴다. [왜] v1 대조가 5건 중 4건 일치였다
+  min_agreement: 0.8
+  unchecked_label: LLM 채점, 사람 일치 미확인 # 일치율을 보기 전 ragas 숫자에 붙이는 말
+  # ragas 한 번 부를 때의 어림 토큰 수 (scripts/ragas_score.py --dry-run). [추정] 근거 8개를 이은 판정 프롬프트 기준
+  call_tokens: {input: 2500, output: 300}
+  max_cost_usd: 1.5 # ragas 실행 한 번의 상한(달러)

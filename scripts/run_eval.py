@@ -3,6 +3,8 @@
 실행: uv run python scripts/run_eval.py run --out <저장소 밖 폴더> --commit <커밋> [--loops planner,agent]
           [--models claude-haiku-5-5] [--ids R01,R12] [--limit 3] [--max-cost 1.0] [--dry-run]
       uv run python scripts/run_eval.py report <결과.json> ...   (키 없음: 요약 표를 마크다운으로)
+      uv run python scripts/run_eval.py sheet <결과.json> <결과.raw.json> --out <채점지.md>   (사람 채점 10건)
+      uv run python scripts/run_eval.py agree eval/human_v1.yaml <ragas 점수.json>   (사람·LLM 채점 일치율)
 run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 키도 DB도 쓰지 않는다.
 키 두 개(MARVIA_ANTHROPIC_API_KEY, MARVIA_VOYAGE_API_KEY), 로컬 DB, 색인이 필요하다.
 묻는 질문에는 권장안(시간 초과)으로, 승인 요청에는 거절로 답한다. 대화 기록은 메모리에만 둔다.
@@ -16,8 +18,10 @@ import json
 from datetime import date
 from pathlib import Path
 
+import yaml
+
 from marvia.eval.dataset import SET_PATH, file_sha256, load_set
-from marvia.eval.metrics import compare_table, summarize
+from marvia.eval.metrics import agreement, compare_table, ragas_means, summarize
 from marvia.eval.run import (
     estimate,
     evaluate_item,
@@ -45,7 +49,54 @@ run.add_argument("--tag", default="", help="결과 파일 이름 뒤에 붙일 �
 report = sub.add_parser("report", help="결과 파일들을 지금 코드로 다시 채점해 표로 (키 없음)")
 report.add_argument("files", nargs="+")
 report.add_argument("--common", action="store_true", help="모든 파일에 있는 문항만으로 비교한다")
+sheet = sub.add_parser("sheet", help="사람 채점지 (키 없음). 답 글이 들어 있어 저장소 밖에 쓴다")
+sheet.add_argument("result")
+sheet.add_argument("raw")
+sheet.add_argument("--out", required=True)
+agree = sub.add_parser("agree", help="사람 채점과 ragas faithfulness의 일치율 (키 없음)")
+agree.add_argument("human", help="eval/human_v1.yaml")
+agree.add_argument("scores", help="scripts/ragas_score.py가 쓴 점수 파일")
 args = parser.parse_args()
+
+if args.command == "sheet":
+    result = json.loads(Path(args.result).read_text(encoding="utf-8"))
+    raws = {r["id"]: r for r in json.loads(Path(args.raw).read_text(encoding="utf-8"))}
+    rows = {r["id"]: r for r in result["rows"]}
+    picked = [i for i in load_set().items if i.human]
+    meta = result["meta"]
+    lines = [
+        f"# 사람 채점지: {meta['loop']}-{meta['model']} (커밋 {meta['commit']})",
+        "",
+        "칸마다 1(그렇다), 0.5(일부), 0(아니다)을 적는다.",
+        "- faithful: 답의 모든 주장이 인용한 조문이나 계산·화물 줄에 있다",
+        "- correct: 답이 정답 글과 같은 내용이다",
+        "",
+    ]
+    for item in picked:
+        raw, row = raws.get(item.id, {}), rows.get(item.id, {})
+        lines += [f"## {item.id} {item.question}", "", "답:", "", raw.get("answer", "(답 없음)"), ""]
+        lines += [f"인용: {', '.join(row.get('cited', [])) or '없음'}", "", f"정답 글: {item.reference}", ""]
+    lines += ["## 채점 (eval/human_v1.yaml에 옮긴다)", "", "```yaml", f"run: {Path(args.result).stem}"]
+    lines += (
+        ["grader:", "graded_on:", "grades:"]
+        + [f"  {i.id}: {{faithful: , correct: }}" for i in picked]
+        + ["```"]
+    )
+    Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"{len(picked)}문항 채점지: {args.out}")
+    raise SystemExit(0)
+
+if args.command == "agree":
+    cfg = load_rules("eval")
+    grades = yaml.safe_load(Path(args.human).read_text(encoding="utf-8"))["grades"]
+    scores = json.loads(Path(args.scores).read_text(encoding="utf-8"))["scores"]
+    judge = {s["id"]: s.get("faithfulness") for s in scores}
+    rate = agreement({i: g["faithful"] for i, g in grades.items()}, judge, cfg["judge"]["buckets"])
+    trusted = rate["value"] is not None and rate["value"] >= cfg["judge"]["min_agreement"]
+    label = "LLM 채점, 사람 일치 확인" if trusted else cfg["judge"]["unchecked_label"]
+    means = ragas_means(scores, cfg["ragas"]["metrics"])
+    print(json.dumps({"agreement": rate, "label": label, "ragas": means}, ensure_ascii=False))
+    raise SystemExit(0)
 
 if args.command == "report":
     results = [json.loads(Path(f).read_text(encoding="utf-8")) for f in args.files]
