@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from db_required import db_unreachable, neo4j_unreachable
+from db_required import db_unreachable, graph_test_settings, neo4j_unreachable
 from neo4j.exceptions import DriverError, Neo4jError
 from psycopg.conninfo import make_conninfo
 
@@ -67,9 +67,9 @@ def graph_db():
     """시험용 Neo4j 드라이버와 이 실행만 쓰는 문서 id. 끝나면 그 노드만 지운다. 꺼져 있으면 건너뛴다."""
     # [왜] Neo4j 커뮤니티판은 사용자 DB가 하나라 Postgres처럼 스키마를 나눌 수 없다. 문서 id로 나눈다.
     #      로컬 그래프(name "main")의 노드는 건드리지 않는다
-    # [왜] 문서 id는 저장소의 가공값 접두어 TEST로 시작한다. 실제 문서 id는 L·A로 시작하므로, 개발용 Neo4j에
-    #      시험을 돌려도 아래 지우기가 실제 문서를 건드리지 못한다
-    driver = connect_graph(Settings())
+    # [왜] 문서 id는 저장소의 가공값 접두어 TEST로 시작한다. 실제 문서 id는 L·A로 시작한다. 거기에 더해 시험은
+    #      개발 Neo4j가 아니라 시험용 Neo4j(neo4j-test)에만 붙는다. 같은 서버면 graph_test_settings가 실패한다
+    driver = connect_graph(graph_test_settings())
     try:
         driver.verify_connectivity()
     except (DriverError, Neo4jError, OSError):

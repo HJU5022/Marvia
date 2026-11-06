@@ -42,7 +42,7 @@ jobs:
         env:
           NEO4J_AUTH: neo4j/marvia-local # [주의] 8자보다 짧으면 뜨지 않는다
         ports:
-          - 7688:7687
+          - 7689:7687 # 시험용 포트 (docker-compose.yml의 neo4j-test와 같다)
         options: >-
           --health-cmd "wget -q --spider http://localhost:7474 || exit 1"
           --health-interval 5s
@@ -50,7 +50,7 @@ jobs:
           --health-retries 30
     env:
       MARVIA_DATABASE_URL: postgresql://marvia:marvia@localhost:5433/marvia
-      MARVIA_NEO4J_URL: bolt://localhost:7688
+      MARVIA_NEO4J_TEST_URL: bolt://localhost:7689 # 그래프 시험은 이 서비스에만 붙는다
     steps:
       # [주의] 바깥 액션은 커밋 해시로 고정한다. 태그는 옮겨질 수 있다
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
