@@ -141,10 +141,11 @@ def test_floors_write_refuses_a_looser_floor_without_a_ruling_and_leaves_the_rul
             text=True,
         )
     finally:
-        # [왜] 거절이 깨지면 스크립트가 진짜 규칙 파일을 덮어쓴다. 단언이 실패해도 되돌려 둔다
+        # [왜] 거절이 깨지면 진짜 규칙 파일을 덮어쓴다. 읽어 둔 뒤 되돌려, 단언이 실패해도 파일은 온전하다
+        after = rules.read_text(encoding="utf-8")
         rules.write_text(before, encoding="utf-8")
     assert done.returncode != 0 and "--ruling" in done.stderr and "correct_citation" in done.stderr
-    assert rules.read_text(encoding="utf-8") == before
+    assert after == before
 
 
 def test_a_ruling_with_a_line_break_is_refused():

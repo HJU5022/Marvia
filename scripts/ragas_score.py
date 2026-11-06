@@ -59,6 +59,11 @@ def not_scored(raw: list[dict], references: dict[str, str], todo: list[dict]) ->
     return [(i, behaviour.get(i, "raw에 없음")) for i, text in references.items() if text and i not in done]
 
 
+def meta_not_scored(skipped: list[tuple[str, str]]) -> list[dict]:
+    """점수 파일 meta에 남길 채점하지 않은 문항 (id와 행동)."""
+    return [{"id": i, "behaviour": why} for i, why in skipped]
+
+
 def contexts_for(sample: dict) -> dict[str, list[str]]:
     """지표마다 넘길 글. 충실도는 인용한 조문+계산·화물 줄, 정밀도·재현율은 RAG 순위."""
     return {
@@ -220,6 +225,7 @@ def main() -> None:
         **provenance(judge, args.commit),
         "contexts": cfg["ragas"]["contexts"],
         "contexts_rule": cfg["ragas"]["contexts_rule"],
+        "not_scored": meta_not_scored(skipped),
         "tokens": used,
         "cost_usd": round(cost, 4),
         "stopped": stopped,

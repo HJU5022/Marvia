@@ -313,3 +313,25 @@ def test_an_error_row_whose_number_never_reached_an_llm_input_does_not_leak(agen
         agent_deps(model=model()), item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES
     )
     assert row["error"] == "RuntimeError" and row["leak"] is False
+
+
+def test_error_row_reads_the_checkpoints_mask_map_for_numbers_masked_after_the_question(
+    agent_deps, monkeypatch
+):
+    # [왜] 질문에서 읽은 번호가 아니라 그래프 노드가 가린 번호도 새는 번호로 센다. 질문 번호 경로는 막아 둔다
+    class Boom(ToolModel):
+        def _generate(self, *args, **kwargs):
+            raise RuntimeError("죽음")
+
+    seen_real = []
+
+    def start(self, serialized, messages, **kwargs):
+        self.calls += 1
+        self.inputs.append(str(messages) + " DEMO0001")  # 실제 번호가 LLM 입력에 간 것을 흉내 낸다
+        seen_real.append(True)
+
+    monkeypatch.setattr(LlmWatch, "on_chat_model_start", start)
+    monkeypatch.setattr("marvia.eval.run.mask_text", lambda text: (text, {}))  # 질문 번호 경로를 끈다
+    deps = agent_deps(model=Boom(messages=iter([])))
+    row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
+    assert seen_real and row["leak"] is True

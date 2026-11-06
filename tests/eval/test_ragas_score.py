@@ -121,3 +121,11 @@ def test_reference_items_that_were_not_scored_are_listed_with_the_reason():
         ("R3", "error"),
         ("R4", "raw에 없음"),
     ]
+
+
+def test_the_score_file_meta_records_the_items_it_did_not_score():
+    # [왜] 채점하지 않은 정답 글 문항은 점수 파일에도 남아야 한다 (R3 판정의 "결과에도 적는다")
+    assert ragas_score.meta_not_scored([("R2", "decline"), ("R4", "raw에 없음")]) == [
+        {"id": "R2", "behaviour": "decline"},
+        {"id": "R4", "behaviour": "raw에 없음"},
+    ]

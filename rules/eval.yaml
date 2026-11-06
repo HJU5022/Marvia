@@ -20,7 +20,7 @@ estimate:
   output: 4500
 
 ragas:
-  contexts: 8 # ragas에 넘기는 근거 글 수(점수 높은 순). [왜] context precision은 근거마다 LLM을 한 번 부른다
+  contexts: 8 # ragas에 넘기는 근거 글 수(RAG 재순위 `retrieved` 순서의 앞 8개). [왜] context precision은 근거마다 LLM을 한 번 부른다
   metrics: [faithfulness, context_precision, context_recall]
   contexts_rule: cited+calc # 점수 파일 meta에 남기는 맥락 규칙 이름: 충실도는 인용 조문+계산·화물 줄, 정밀도·재현율은 검색 순위 앞쪽, 계산 문항도 셈 (계획 4a 문서 ragas 절)
 
