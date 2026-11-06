@@ -20,12 +20,14 @@ from marvia.eval.run import (
     inside_repo,
     observe,
     preflight,
+    ragas_contexts,
     result_name,
     save_result,
     stop_reason,
 )
 from marvia.graph.schemas import Draft
-from marvia.rag.schemas import Rewrite
+from marvia.rag.models import Evidence
+from marvia.rag.schemas import Grade, Rewrite
 from marvia.tools.rules import load_rules
 
 TODAY = load_set().as_of
@@ -255,3 +257,46 @@ def test_row_records_how_many_cargos_were_found_and_their_stage_names_but_no_num
     assert row["cargo_count"] == 2 and row["stages"] == ["반입신고"]
     assert "DEMO0001" not in str(row["stages"])
     assert observe({}, [], LlmWatch(), "agent", [])["cargo_count"] == 0
+
+
+def unit(n: int, score: float = 0.5):
+    return Evidence(
+        unit_id=f"L001556@20261002#제{n}조",
+        law_name="관세법",
+        heading=f"관세법 > 제{n}조",
+        effective=TODAY,
+        source_url="https://www.law.go.kr/test",
+        text=f"제{n}조 본문",
+        score=score,
+    )
+
+
+def test_ranked_texts_keep_the_first_attempts_units_that_a_rewrite_replaced(agent_deps, fake_rag):
+    # [왜] RAG는 시도마다 근거를 갈아 끼운다. 첫 시도의 상위 근거도 정밀도·재현율 맥락이다 (I-2)
+    calls = []
+
+    def search(query, as_of):
+        calls.append(query)
+        return [unit(1), unit(2), unit(3)] if len(calls) == 1 else [unit(4)]
+
+    verdicts = iter([False, True])
+    rag = replace(
+        fake_rag(),
+        search=search,
+        # 재순위 점수: 2번 > 3번 > 1번 (검색이 준 순서와 다르다)
+        rerank=lambda query, texts: [0.1, 0.9, 0.5] if len(texts) == 3 else [0.8],
+        grade=lambda prompt: Grade(sufficient=next(verdicts), reason="시험", missing="x"),
+    )
+    deps = agent_deps(model=model(("search_law", {"query": "q"})), rag=rag, write=lambda prompt: CITING)
+    row, raw = evaluate_item(deps, item("DEMO0001 q"), "agent", TODAY, PRICES)
+    assert row["retrieved"] == [unit(n).unit_id for n in (2, 3, 1, 4)]
+    assert [e for e in row["evidence"]] == [unit(4).unit_id]  # 최종 근거는 둘째 시도의 것뿐이다
+    assert raw["ranked_texts"] == ["제2조 본문", "제3조 본문", "제1조 본문", "제4조 본문"]
+    assert "제2조 본문" not in str(row)  # 줄(커밋되는 것)에는 글이 없다
+
+
+def test_ragas_contexts_follow_retrieved_order_and_cut_at_top():
+    seen = {unit(n).unit_id: f"제{n}조 본문" for n in (1, 2, 3, 4)}
+    row = {"retrieved": [unit(n).unit_id for n in (3, 1, 4, 2)], "cited": []}
+    got = ragas_contexts({"evidence": []}, row, 2, seen)
+    assert got["ranked_texts"] == ["제3조 본문", "제1조 본문"]

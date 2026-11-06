@@ -56,7 +56,9 @@ class LlmWatch(BaseCallbackHandler):
         self.inputs.append(str(messages))
 
 
-def eval_deps(deps: AgentDeps, item: Item, today: date, log: list[dict]) -> AgentDeps:
+def eval_deps(
+    deps: AgentDeps, item: Item, today: date, log: list[dict], seen: dict[str, str] | None = None
+) -> AgentDeps:
     """평가 실행용 AgentDeps. 감시 목록은 DB 없는 가짜로 묶고, 날짜를 고정한다."""
     # [왜] 감시 도구가 묶여야 watch_cargo를 막는 궤적 검사(rules/eval.yaml never)가 실제로 걸린다
     rag = deps.rag
@@ -77,7 +79,12 @@ def eval_deps(deps: AgentDeps, item: Item, today: date, log: list[dict]) -> Agen
     def search(query: str, as_of: date) -> list[Evidence]:
         if item.fault == "search":
             raise httpx.ConnectError("평가 실행이 검색을 일부러 끊었다")
-        return rag.search(query, as_of)
+        found = rag.search(query, as_of)
+        if seen is not None:
+            # [왜] RAG는 시도마다 근거를 갈아 끼운다. 본 글을 그때그때 잡아 둔다 (raw에만, 줄에는 안 넣는다)
+            for e in found:
+                seen.setdefault(e.unit_id, e.text)
+        return found
 
     def provision(label: str, as_of: date) -> list[Evidence]:
         if item.fault == "search":
@@ -175,10 +182,10 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
     }
 
 
-def ragas_contexts(values: dict, row: dict, top: int) -> dict:
+def ragas_contexts(values: dict, row: dict, top: int, seen: dict[str, str]) -> dict:
     """ragas에 넘길 글 셋. 충실도는 인용한 조문과 작성자가 본 계산·화물 줄, 정밀도·재현율은 RAG 순위."""
     # [왜] 점수 높은 순 앞 8개(옛 contexts)는 인용한 조문도 RAG 순위도 아니라 어긋났다 (R-056)
-    texts = {e["unit_id"]: e["text"] for e in values.get("evidence", [])}
+    texts = seen | {e["unit_id"]: e["text"] for e in values.get("evidence", [])}
     calc = values.get("calc") or {}
     # [주의] 작성자 프롬프트가 받는 가린 글과 같다 (graph/main.py write). 실제 번호는 없다
     calc_lines = cargo_lines(values.get("cargos", [])) + (
@@ -196,8 +203,9 @@ def evaluate_item(
 ) -> tuple[dict, dict]:
     """문항 하나를 새 대화로 돌려 (줄, raw)를 돌려준다. 예외가 나도 줄을 남긴다."""
     log: list[dict] = []
+    seen: dict[str, str] = {}
     graph = build_main_graph(
-        eval_deps(deps, item, today, log),
+        eval_deps(deps, item, today, log, seen),
         InMemorySaver(),
         loop=loop,
         store=InMemoryStore(),
@@ -222,7 +230,7 @@ def evaluate_item(
             "question": values.get("masked_text", ""),
             "draft": draft.get("answer", ""),
             "answer": values.get("answer", ""),
-            **ragas_contexts(values, row, top),
+            **ragas_contexts(values, row, top, seen),
         }
     except (
         Exception
