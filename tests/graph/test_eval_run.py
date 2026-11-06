@@ -346,3 +346,15 @@ def test_observe_keeps_citations_of_a_not_found_row():
     values = {"answer": f"{NOT_FOUND_LEAD}\n\n근거", "draft": {"citations": ["U1"]}}
     row = observe(values, [], LlmWatch(), "agent", [])
     assert row["behaviour"] == "not_found" and row["cited"] == ["U1"]
+
+
+def test_behaviour_base_is_the_v1_classification_without_the_not_found_rule():
+    lead = f"{NOT_FOUND_LEAD}\n\n근거"
+    cited = {"answer": lead, "draft": {"citations": ["U1"]}}
+    bare = {"answer": lead, "draft": {"citations": []}}
+    for values, new, base in ((cited, "not_found", "answer"), (bare, "not_found", "unsupported")):
+        row = observe(values, [], LlmWatch(), "agent", [])
+        assert (row["behaviour"], row["behaviour_base"]) == (new, base)
+    plain = observe({"answer": "x", "draft": {"citations": ["U1"]}}, [], LlmWatch(), "agent", [])
+    assert plain["behaviour_base"] == plain["behaviour"] == "answer"
+    assert behaviour(cited, [], not_found=False) == "answer"

@@ -94,3 +94,40 @@ def test_agree_keeps_calc_items_in_a_file_scored_with_cited_and_calc_contexts(tm
     # [왜] 출력의 모든 ragas 칸에 라벨이 있어야 한다. 옛 규칙 파일의 faithfulness_calc도 미확인이다
     assert set(old["labels"]) == set(old["ragas"]) and "faithfulness_calc" in old["labels"]
     assert old["labels"]["faithfulness_calc"] == load_rules("eval")["judge"]["unchecked_label"]
+
+
+def test_report_scores_with_the_chosen_set_and_warns_when_the_result_came_from_another_file():
+    result = "eval/results/agent-claude-haiku-5-5.json"
+    run = lambda *extra: subprocess.run(  # noqa: E731
+        [sys.executable, "scripts/run_eval.py", "report", *extra, result],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    v1, v2 = run("--set", "v1"), run("--set", "v2")
+    assert v1.returncode == 0 and "[주의]" not in v1.stdout and "지어낸 없음" in v1.stdout
+    # [왜] 저장 결과의 set_sha256은 v1 파일의 것이다. v2로 채점하면 다른 파일이라고 알린다
+    assert v2.returncode == 0 and "[주의]" in v2.stdout
+
+
+def test_run_dry_run_accepts_an_unfrozen_v2_set(tmp_path):
+    done = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_eval.py",
+            "run",
+            "--set",
+            "v2",
+            "--out",
+            str(tmp_path),
+            "--commit",
+            "t",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0 and "합계" in done.stdout

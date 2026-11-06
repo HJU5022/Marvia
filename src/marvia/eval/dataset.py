@@ -19,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 # src/marvia/eval/dataset.py에서 세 단계 올라가면 저장소 루트다
 ROOT = Path(__file__).resolve().parents[3]
 SET_PATH = ROOT / "eval" / "set_v1.yaml"
+SET_V2_PATH = ROOT / "eval" / "set_v2.yaml"  # v1에서 채점 기준만 고친 판 (동결 전)
+SETS = {"v1": SET_PATH, "v2": SET_V2_PATH}  # run_eval.py --set 이름
 CORPUS_UNITS = ROOT / "corpus" / "units"
 
 # 실행 결과의 행동 이름. 코드가 답 모양으로 정한다 (run.behaviour)
@@ -64,6 +66,14 @@ class Domain(BaseModel):
     article: str | None = None  # 답에 나와야 할 조문 (예: "관세법 제241조")
 
 
+class Identify(BaseModel):
+    """식별 기대값 (v2). 붙여 쓴 번호를 몇 건으로 읽었고 어느 단계를 찾아야 하나."""
+
+    model_config = ConfigDict(extra="forbid")
+    cargos: int  # 읽어야 할 화물 수
+    stages: list[str]  # 찾아야 할 단계 이름. 순서는 상관없다
+
+
 class Item(BaseModel):
     """평가 문항 하나."""
 
@@ -82,6 +92,9 @@ class Item(BaseModel):
     fault: Literal["search"] | None = None  # 막힘 행동 문항: 이 실행에서 일부러 끊을 바깥 기능
     human: bool = False  # 사람 채점 10건 (설계 11절)
     domain: Domain | None = None  # 범용 도구 비교 문항 (done 3.8)
+    # [왜] v2만의 칸. v1과 달라진 문항에만 쓰고 이유를 적는다 (고정 칸 시험이 이 칸만 제외한다)
+    identify: Identify | None = None
+    v2_change: str = ""
 
 
 class EvalSet(BaseModel):

@@ -1,8 +1,10 @@
-"""평가셋 v1을 길(planner·agent) × 모델로 돌려 문항별 파생 값과 요약을 남긴다 (done 3.2·3.7). run은 돈이 든다.
+"""평가셋(--set v1|v2)을 길(planner·agent) × 모델로 돌려 문항별 파생 값과 요약을 남긴다 (done 3.2·3.7).
+run은 돈이 든다.
 
 실행: uv run python scripts/run_eval.py run --out <저장소 밖 폴더> --commit <커밋> [--loops planner,agent]
-          [--models claude-haiku-5-5] [--ids R01,R12] [--limit 3] [--max-cost 1.0] [--dry-run]
-      uv run python scripts/run_eval.py report <결과.json> ...   (키 없음: 요약 표를 마크다운으로)
+          [--set v1|v2] [--models claude-haiku-5-5]
+          [--ids R01,R12] [--limit 3] [--max-cost 1.0] [--dry-run]
+      uv run python scripts/run_eval.py report [--set v1|v2] <결과.json> ...   (키 없음: 요약 표)
       uv run python scripts/run_eval.py sheet <결과.json> <결과.raw.json> --out <채점지.md>   (사람 채점 10건)
       uv run python scripts/run_eval.py agree eval/human_v1.yaml <ragas 점수.json>   (사람·LLM 채점 일치율)
       uv run python scripts/run_eval.py floors eval/results/<결과.json> --write   (CI 문 바닥값)
@@ -24,7 +26,7 @@ from pathlib import Path
 
 import yaml
 
-from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
+from marvia.eval.dataset import ROOT, SETS, file_sha256, load_set
 from marvia.eval.metrics import (
     agreement,
     cargo_count_lines,
@@ -37,6 +39,7 @@ from marvia.eval.metrics import (
     ragas_means,
     summarize,
     unscored,
+    with_base_behaviour,
 )
 from marvia.eval.run import (
     estimate,
@@ -61,9 +64,17 @@ run.add_argument("--ids", default="", help="이 문항만 (쉼표로)")
 run.add_argument("--limit", type=int, default=0, help="앞에서 이만큼만")
 run.add_argument("--max-cost", type=float, default=load_rules("eval")["run"]["max_cost_usd"])
 run.add_argument("--dry-run", action="store_true", help="어림 비용만 찍고 끝낸다")
+# [왜] 기본은 v1이다. v2는 동결한 뒤에 기본으로 바꾼다. meta의 set·set_sha256이 어느 판인지 남긴다
+run.add_argument("--set", choices=list(SETS), default="v1", help="평가셋 판 (eval/set_<판>.yaml)")
 run.add_argument("--tag", default="", help="결과 파일 이름 뒤에 붙일 말 (예: ctx는 맥락 문장 색인)")
 report = sub.add_parser("report", help="결과 파일들을 지금 코드로 다시 채점해 표로 (키 없음)")
 report.add_argument("files", nargs="+")
+report.add_argument(
+    "--set",
+    choices=list(SETS),
+    default="v1",
+    help="이 판의 정답으로 다시 채점한다 (v1이면 behaviour_base로 센다)",
+)
 report.add_argument("--common", action="store_true", help="모든 파일에 있는 문항만으로 비교한다")
 sheet = sub.add_parser("sheet", help="사람 채점지 (키 없음). 답 글이 들어 있어 저장소 밖에 쓴다")
 sheet.add_argument("result")
@@ -222,15 +233,18 @@ if args.command == "agree":
 
 if args.command == "report":
     results = [json.loads(Path(f).read_text(encoding="utf-8")) for f in args.files]
-    by_id = {i.id: i for i in load_set().items}
+    set_path = SETS[args.set]
+    by_id = {i.id: i for i in load_set(set_path).items}
     common = set.intersection(*({r["id"] for r in result["rows"]} for result in results))
     for result in results:
-        if result["meta"]["set_sha256"] != file_sha256(SET_PATH):
+        if result["meta"]["set_sha256"] != file_sha256(set_path):
             print(
                 f"[주의] {result['meta']['loop']}-{result['meta']['model']}: 평가셋이 바뀐 뒤의 결과가 아니다"
             )
         # [왜] 저장한 요약 대신 지금 지표 코드로 다시 센다. 지표를 더하면 지난 실행도 새 지표로 보인다
         rows = [r for r in result["rows"] if not args.common or r["id"] in common]
+        # [왜] v1 정답에는 찾지 못함이 없다. v2 실행 줄도 찾지 못함 규칙 없는 분류로 세야 v1 점수와 같다
+        rows = with_base_behaviour(rows) if args.set == "v1" else rows
         result["summary"] = summarize(rows, by_id, result["meta"]["k"])
     print(compare_table(results))
     print()
@@ -239,7 +253,8 @@ if args.command == "report":
     print("\n".join(cargo_count_lines(results, ["R09", "R10"])))
     raise SystemExit(0)
 
-data = load_set()
+set_path = SETS[args.set]
+data = load_set(set_path)
 items = [i for i in data.items if not args.ids or i.id in args.ids.split(",")]
 items = items[: args.limit] if args.limit else items
 loops, models = args.loops.split(","), args.models.split(",")
@@ -286,7 +301,7 @@ for model in models:
             meta = {
                 "tag": args.tag,
                 "set": data.version,
-                "set_sha256": file_sha256(SET_PATH),
+                "set_sha256": file_sha256(set_path),
                 "commit": args.commit,
                 "loop": loop,
                 "model": model,

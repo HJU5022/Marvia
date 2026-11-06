@@ -122,8 +122,11 @@ def drive(graph, item: Item, thread: str, callbacks: list) -> tuple[dict, list[d
     return graph.get_state({"configurable": {"thread_id": thread}}).values, pauses
 
 
-def behaviour(values: dict, pauses: list[dict]) -> str:
-    """답 모양으로 행동을 정한다 (dataset.Behaviour). 앞의 조건이 먼저다."""
+def behaviour(values: dict, pauses: list[dict], *, not_found: bool = True) -> str:
+    """답 모양으로 행동을 정한다 (dataset.Behaviour). 앞의 조건이 먼저다.
+
+    not_found=False면 찾지 못함 규칙 없이 정한다. v1 기준의 행동(behaviour_base)이다.
+    """
     answer = values.get("answer", "")
     draft = values.get("draft") or {}
     if any(p.get("kind") == "choice" for p in pauses):
@@ -132,7 +135,7 @@ def behaviour(values: dict, pauses: list[dict]) -> str:
         return "decline"
     if PARTIAL_LEAD in answer:
         return "partial"
-    if NOT_FOUND_LEAD in answer:
+    if not_found and NOT_FOUND_LEAD in answer:
         return "not_found"
     if draft.get("forwarder_message"):
         return "guide"
@@ -164,6 +167,8 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
     numbers = [n for n in values.get("mask_map", {}).values() if n]
     return {
         "behaviour": kind,
+        # [왜] v1 채점으로도 같은 줄을 세려고 찾지 못함 규칙 없는 분류를 함께 남긴다
+        "behaviour_base": behaviour(values, pauses, not_found=False),
         # [왜] 인용은 검증을 지난 답에만 있다. 부분 답의 "찾은 근거"는 인용이 아니다
         "cited": list(draft.get("citations", [])) if kind in ("answer", "guide", "not_found") else [],
         "evidence": [e["unit_id"] for e in values.get("evidence", [])],  # 점수 높은 순 (merge_evidence)
@@ -239,6 +244,7 @@ def evaluate_item(
     ) as error:  # [왜] 한 문항이 실패해도 돈을 낸 나머지 결과를 잃지 않는다 (compare_loops와 같다)
         row |= {
             "behaviour": "error",
+            "behaviour_base": "error",
             "cited": [],
             "evidence": [],
             "retrieved": [],

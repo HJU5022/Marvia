@@ -50,6 +50,12 @@ def behaviour_ok(row: dict, item: Item) -> bool:
     """행동이 맞는가. 답을 냈고 정답 계산이 있으면 계산도 같아야 맞다."""
     if row["behaviour"] not in item.behaviour:
         return False
+    # [왜] 붙여 쓴 번호는 몇 건으로 읽었고 어느 단계를 찾았는지까지 맞아야 맞다 (칸 없는 옛 줄은 틀림)
+    want = item.identify
+    if want and (
+        row.get("cargo_count") != want.cargos or sorted(row.get("stages", [])) != sorted(want.stages)
+    ):
+        return False
     return row["behaviour"] != "answer" or calc_ok(row, item) is not False
 
 
@@ -86,6 +92,19 @@ def unsupported(rows: list[dict], items: dict[str, Item]) -> dict:
     """근거 없이 답한 비율: 답해야 하는 문항(맞는 행동에 answer) 가운데 근거·계산·화물 없이 답한 비율."""
     picked = [r for r in rows if "answer" in items[r["id"]].behaviour]
     return _mean([float(r["behaviour"] == "unsupported") for r in picked])
+
+
+def false_not_found(rows: list[dict], items: dict[str, Item]) -> dict:
+    """지어낸 없음: 맞는 행동에 not_found가 없는 문항에서 "근거에 없다"고 답한 줄의 비율 (count는 줄 수)."""
+    # [왜] 없음을 남발하면 근거 없는 답 비율에서 빠져 점수가 오른다. 그 길을 따로 센다
+    picked = [r for r in rows if "not_found" not in items[r["id"]].behaviour]
+    hits = [float(r["behaviour"] == "not_found") for r in picked]
+    return _mean(hits) | {"count": int(sum(hits))}
+
+
+def with_base_behaviour(rows: list[dict]) -> list[dict]:
+    """줄의 behaviour를 behaviour_base로 바꾼 사본. v2 실행을 v1 기준으로 다시 셀 때 쓴다 (옛 줄은 그대로)."""
+    return [r | {"behaviour": r["behaviour_base"]} if "behaviour_base" in r else r for r in rows]
 
 
 def unsupported_all(rows: list[dict]) -> dict:
@@ -147,6 +166,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "unrelated_accuracy": behaviour_accuracy(rows, items, "unrelated"),
         "unsupported": unsupported(rows, items),
         "unsupported_all": unsupported_all(rows),
+        "false_not_found": false_not_found(rows, items),
         "calc_accuracy": calc_accuracy(rows, items),
         f"recall_at_{k}": recall_at_k(rows, items, k),
         "mrr": mrr(rows, items),
@@ -184,6 +204,7 @@ TABLE = [
     ("blocked_accuracy", "막힘 행동"),
     ("unsupported", "근거 없는 답"),
     ("unsupported_all", "근거 없는 답(전 문항)"),
+    ("false_not_found", "지어낸 없음"),
     ("calc_accuracy", "계산"),
     ("recall", "R@k"),
     ("mrr", "MRR"),

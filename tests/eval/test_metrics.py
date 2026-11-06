@@ -8,11 +8,13 @@ from marvia.eval.dataset import Domain, Item
 from marvia.eval.metrics import (
     agreement,
     behaviour_accuracy,
+    behaviour_ok,
     bucket,
     calc_ok,
     compare_table,
     correct_citation,
     domain_table,
+    false_not_found,
     false_sufficient,
     free_answer_score,
     human_faithful,
@@ -28,6 +30,7 @@ from marvia.eval.metrics import (
     unscored,
     unsupported,
     unsupported_all,
+    with_base_behaviour,
     wrong_evidence,
 )
 
@@ -431,3 +434,42 @@ def test_every_corpus_heading_counts_for_its_own_law_and_article():
                 if not free_answer_score(unit["heading"], Domain(article=article))["article"]:
                     misses.append((unit["unit_id"], unit["heading"]))
     assert misses == []
+
+
+def test_identify_expectation_needs_the_same_cargo_count_and_stages():
+    want = item("I1", identify={"cargos": 2, "stages": ["반입신고", "수입신고"]})
+    ok = row("I1", cargo_count=2, stages=["수입신고", "반입신고"])  # 순서는 상관없다
+    assert behaviour_ok(ok, want)
+    assert not behaviour_ok(ok | {"cargo_count": 1}, want)
+    assert not behaviour_ok(ok | {"stages": ["반입신고", "반입신고"]}, want)
+    assert not behaviour_ok(row("I1"), want)  # 칸이 없는 옛 줄은 맞다고 보지 않는다
+    assert behaviour_ok(row("S1"), ITEMS["S1"])  # identify가 없으면 행동만 본다
+
+
+def test_not_found_lead_on_an_item_that_should_be_answered_is_wrong():
+    # [왜] "없음"을 남발해 점수가 오르는 길을 막는다
+    assert not behaviour_ok(row("S1", behaviour="not_found"), ITEMS["S1"])
+    honest = item("H1", group="unrelated", behaviour=["not_found", "partial"])
+    assert behaviour_ok(row("H1", behaviour="not_found"), honest)
+    assert not behaviour_ok(row("H1", behaviour="unsupported"), honest)
+
+
+def test_false_not_found_counts_not_found_rows_on_items_that_do_not_expect_it():
+    items = ITEMS | {"H1": item("H1", group="unrelated", behaviour=["not_found", "partial"])}
+    rows = [row("S1", behaviour="not_found"), row("R1"), row("H1", behaviour="not_found")]
+    assert false_not_found(rows, items) == {"value": 0.5, "n": 2, "count": 1}  # S1, R1 중 S1
+    assert false_not_found([row("H1", behaviour="not_found")], items) == {"value": None, "n": 0, "count": 0}
+    summary = summarize([row("S1", behaviour="not_found")], items, 8)
+    assert summary["false_not_found"]["count"] == 1 and "지어낸 없음" in compare_table(
+        [{"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summary}]
+    )
+
+
+def test_base_behaviour_scores_a_v2_row_the_way_v1_would():
+    v1_item = item("U1x", group="unrelated", behaviour=["unsupported", "partial"])
+    rows = [row("U1x", behaviour="not_found", behaviour_base="unsupported")]
+    assert behaviour_accuracy(rows, {"U1x": v1_item}) == {"value": 0.0, "n": 1}
+    assert behaviour_accuracy(with_base_behaviour(rows), {"U1x": v1_item}) == {"value": 1.0, "n": 1}
+    old = row("S1")  # behaviour_base가 없는 v1 줄은 그대로다
+    assert with_base_behaviour([old]) == [old]
+    assert rows[0]["behaviour"] == "not_found"  # 원본은 바꾸지 않는다

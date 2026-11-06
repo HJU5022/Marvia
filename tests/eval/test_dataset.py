@@ -1,6 +1,6 @@
 """평가셋 v1 시험 (done 3.1). 키와 DB 없이 돈다."""
 
-from marvia.eval.dataset import SET_PATH, corpus_unit_ids, file_sha256, load_set
+from marvia.eval.dataset import SET_PATH, SET_V2_PATH, corpus_unit_ids, file_sha256, load_set
 from marvia.identify.models import CargoFacts
 from marvia.identify.parse import read_numbers
 from marvia.tools.deadlines import import_deadlines, kst_date
@@ -54,3 +54,50 @@ def test_set_is_frozen_by_its_sha256():
     #      (강의 IV 3주 04강: 점수가 바뀌면 "자도 바꿨나"부터 묻는다)
     recorded = (SET_PATH.parent / "set_v1.sha256").read_text(encoding="utf-8").split()[0]
     assert file_sha256(SET_PATH) == recorded
+
+
+CHANGED = {"U05", "U06", "U07", "U08", "U09", "U10", "R09", "R10"}  # v2에서 채점 기준을 고친 문항
+V2_ONLY = {"behaviour", "identify", "v2_change"}  # v1과 달라도 되는 칸
+
+
+def test_v2_changes_only_the_scoring_standard_of_the_named_items():
+    v1, v2 = load_set(SET_PATH), load_set(SET_V2_PATH)
+    assert v2.version == "v2" and v2.as_of == v1.as_of
+    assert [i.id for i in v2.items] == [i.id for i in v1.items]
+    for old, new in zip(v1.items, v2.items, strict=True):
+        # [왜] 질문·정답 근거·계산·궤적 같은 고정 칸은 그대로여야 v1과 v2 점수를 견줄 수 있다
+        assert old.model_dump(exclude=V2_ONLY) == new.model_dump(exclude=V2_ONLY), old.id
+        if old.id not in CHANGED:
+            assert old.model_dump() == new.model_dump(), old.id
+        else:
+            assert new.v2_change.strip(), old.id  # 고친 이유를 적는다
+    assert {i.id for i in v2.items if i.v2_change} == CHANGED
+    assert not any(i.v2_change or i.identify for i in v1.items)
+
+
+def test_v2_honest_not_found_replaces_unsupported_and_keeps_the_rest():
+    by_id = {i.id: i for i in load_set(SET_V2_PATH).items}
+    assert by_id["U05"].behaviour == ["not_found", "partial", "guide"]
+    assert by_id["U06"].behaviour == ["not_found", "partial", "guide"]
+    for id in ("U07", "U09", "U10"):
+        assert by_id[id].behaviour == ["not_found", "partial"], id
+    assert by_id["U08"].behaviour == ["not_found", "partial"]
+    assert by_id["U08"].also_ok == ["L001556@20261002#제241조"]
+    assert not any("unsupported" in i.behaviour for i in by_id.values() if i.id in CHANGED)
+
+
+def test_v2_identify_gold_comes_from_the_replay_fixtures():
+    by_id = {i.id: i for i in load_set(SET_V2_PATH).items}
+    for id, want_cargos in (("R09", 2), ("R10", 1)):
+        item = by_id[id]
+        numbers = [n.value for _, read in read_numbers(item.question) for n in read.numbers]
+        stages = sorted(lookup_cargo(n).stage for n in numbers)
+        assert item.identify.cargos == want_cargos == len(numbers)
+        assert sorted(item.identify.stages) == stages, id
+    assert sum(bool(i.identify) for i in by_id.values()) == 2
+
+
+def test_v1_file_hash_is_untouched_by_v2():
+    recorded = (SET_PATH.parent / "set_v1.sha256").read_text(encoding="utf-8").split()[0]
+    assert file_sha256(SET_PATH) == recorded
+    assert file_sha256(SET_V2_PATH) != recorded
