@@ -7,7 +7,8 @@
        0.4.1로 고정하면 돈다(11-06 실측). 우리 의존성에 넣지 않으려고 marvia를 import하지 않고 YAML만 읽는다.
 실행 (Docker, 저장소 루트에서):
   uv run --no-project --with ragas==0.4.3 --with langchain-community==0.4.1 --with anthropic==2.3.0 \
-    --with pyyaml python scripts/ragas_score.py <run_eval의 .raw.json> --out <점수.json> [--dry-run]
+    --with pyyaml python scripts/ragas_score.py <run_eval의 .raw.json> --out <점수.json> \\
+    --commit <실행 커밋> [--dry-run]
 키는 환경 변수 MARVIA_ANTHROPIC_API_KEY로만 받는다(.env를 읽지 않는다).
 채점 모델은 rules/eval.yaml judge.model이고 답을 쓴 모델과 다르다
 (v1 평가 결정: 채점 모델은 서비스 모델과 달라야 한다).
@@ -98,10 +99,18 @@ async def score(sample: dict, metrics: dict) -> dict:
     return out
 
 
+def provenance(judge: dict, commit: str | None) -> dict:
+    """점수 파일 meta에 둘 표시: 사람 일치 미확인 말, 원래 실행의 커밋. 답 글은 넣지 않는다."""
+    # [왜] 점수만 보는 사람에게 사람 일치가 확인되지 않았다는 것과 어느 실행의 점수인지가 보여야 한다
+    # [주의] 원본(.raw.json)은 줄 목록이라 meta가 없다. 커밋은 --commit으로 받고, 없으면 미상으로 남긴다
+    return {"label": judge["unchecked_label"], "commit": commit or "미상"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ragas 채점")
     parser.add_argument("raw", help="scripts/run_eval.py run이 쓴 .raw.json")
     parser.add_argument("--out", required=True, help="점수 파일. 저장소 밖에 쓴 뒤 점수만 옮긴다")
+    parser.add_argument("--commit", help="원래 실행(run_eval run)의 커밋")
     parser.add_argument("--dry-run", action="store_true", help="어림 비용만 찍는다")
     args = parser.parse_args()
     cfg, prices = load("rules/eval.yaml"), load("rules/pricing.yaml")
@@ -168,6 +177,7 @@ def main() -> None:
         "ragas": ragas.__version__,
         "anthropic": anthropic.__version__,
         "raw": Path(args.raw).name,
+        **provenance(judge, args.commit),
         "contexts": cfg["ragas"]["contexts"],
         "tokens": used,
         "cost_usd": round(cost, 4),

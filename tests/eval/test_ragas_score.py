@@ -52,3 +52,12 @@ def test_dry_run_fails_when_the_estimate_is_over_the_cap(tmp_path):
         text=True,
     )
     assert done.returncode != 0 and "상한" in done.stderr
+
+
+def test_provenance_carries_the_unchecked_label_and_the_run_commit_but_no_answer_text():
+    judge = {"unchecked_label": "LLM 채점, 사람 일치 미확인"}
+    assert ragas_score.provenance(judge, "ae1891c") == {
+        "label": "LLM 채점, 사람 일치 미확인",
+        "commit": "ae1891c",
+    }
+    assert ragas_score.provenance(judge, None)["commit"] == "미상"
