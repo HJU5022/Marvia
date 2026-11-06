@@ -117,8 +117,12 @@ def main() -> None:
     print(
         f"채점 {len(todo)}문항, 호출 약 {calls}번, 어림 ${calls * each:.3f} (상한 ${judge['max_cost_usd']})"
     )
-    if args.dry_run or calls * each > judge["max_cost_usd"]:
-        raise SystemExit(0 if args.dry_run else "어림 비용이 상한을 넘는다. 문항을 줄여 다시 돌린다")
+    if calls * each > judge["max_cost_usd"]:
+        raise SystemExit(
+            "어림 비용이 상한을 넘는다. 문항을 줄여 다시 돌린다"
+        )  # [왜] 어림 실행도 같은 이유로 실패해 돈 쓰기 전에 보인다
+    if args.dry_run:
+        raise SystemExit(0)
 
     import anthropic
     import httpx2
