@@ -16,6 +16,8 @@ FORWARDER_LEAD = (
     "번호가 있어야 화물을 찾을 수 있어요. 포워더에게 B/L 번호나 화물관리번호를 물을 때 이렇게 보내 보세요."
 )
 DONE_TITLE = "이번 차례에 한 일"  # 최종 답과 부분 답이 같은 제목을 쓴다
+# 부분 답의 첫 줄. [왜] 평가 실행(eval/run.py)이 이 글로 부분 답을 알아본다. 바꾸면 그쪽도 함께 바뀐다
+PARTIAL_LEAD = "끝까지 확인하지 못했어요. 지금까지 확인한 것만 적어요."
 
 
 def cargo_lines(cargos: list[dict]) -> list[str]:
@@ -104,7 +106,7 @@ def partial_answer(
         calc_lines.append(f"재수입 검사: {reimport['verdict']}{basis}")
     parts = [
         _header(cargos),
-        "끝까지 확인하지 못했어요. 지금까지 확인한 것만 적어요.",
+        PARTIAL_LEAD,
         _bullets(DONE_TITLE, list(actions)),
         _bullets("계산한 것", calc_lines),
         _bullets("찾은 근거", [f"{e['heading']} [{e['unit_id']}]" for e in evidence]),

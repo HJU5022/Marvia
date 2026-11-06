@@ -5,3 +5,19 @@ set:
   human: 10 # 사람 채점 문항 수 (설계 11절)
   # 평가셋에 쓸 수 있는 화물 번호 접두어. fixtures/unipass/의 가공 번호와 없는 번호(NOPE)뿐이다 (CLAUDE.md)
   number_prefixes: [DEMO, MOCK, TEST, NOPE]
+
+
+retrieval_k: 8 # 검색 R@k의 k. [왜] RAG 한 번이 리랭커 상위 8개를 남긴다 (rules/rag.yaml rerank_top_n)
+
+run:
+  # 실행 한 번(scripts/run_eval.py run)의 유료 호출 상한(달러). 다음 문항 전에 쓴 돈이 이 값을 넘으면 멈춘다
+  max_cost_usd: 1.0
+
+# 돈이 드는 실행 전에 보이는 어림 비용의 문항당 토큰 수.
+# [왜] 계획 3d 손 시험(11-06, 에이전트 길 세 차례): 입력 189,722 / 출력 13,501 토큰 → 차례당 약 63,000 / 4,500
+estimate:
+  input: 63000
+  output: 4500
+
+ragas:
+  contexts: 8 # ragas에 넘기는 근거 글 수(점수 높은 순). [왜] context precision은 근거마다 LLM을 한 번 부른다
