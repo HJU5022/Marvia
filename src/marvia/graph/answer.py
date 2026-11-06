@@ -15,6 +15,7 @@ from marvia.tools.rules import load_rules
 FORWARDER_LEAD = (
     "번호가 있어야 화물을 찾을 수 있어요. 포워더에게 B/L 번호나 화물관리번호를 물을 때 이렇게 보내 보세요."
 )
+DONE_TITLE = "이번 차례에 한 일"  # 최종 답과 부분 답이 같은 제목을 쓴다
 
 
 def cargo_lines(cargos: list[dict]) -> list[str]:
@@ -56,6 +57,7 @@ def final_answer(
     evidence: list[dict],
     assumptions: Sequence[str] = (),
     official: Sequence[dict] = (),
+    actions: Sequence[str] = (),
 ) -> str:
     """검증을 통과한 초안으로 최종 답을 만든다 (가린 토큰 그대로). 권장안으로 진행한 가정도 보여 준다."""
     # [주의] 검증을 통과한 초안만 넣는다. 그래서 인용은 모두 근거 묶음에 있다
@@ -68,6 +70,8 @@ def final_answer(
     parts = [
         _header(cargos),
         draft["answer"],
+        # [왜] 승인 뒤 실제로 한 일은 코드가 쓴다. 작성자 글이 틀려도 한 일은 바르게 보인다
+        _bullets(DONE_TITLE, list(actions)),
         # [왜] 사용자가 답하지 않아 권장안으로 진행했으면 그 사실을 숨기지 않는다
         _bullets("가정", list(assumptions)),
         _bullets("다음에 할 수 있는 일", draft["next_options"]),
@@ -87,6 +91,7 @@ def partial_answer(
     failed_tools: list[dict],
     assumptions: Sequence[str] = (),
     official: Sequence[dict] = (),
+    actions: Sequence[str] = (),
 ) -> str:
     """한도에 걸리거나 검증을 두 번 넘지 못했을 때의 부분 답 (설계 6.4, 결정 4의 ③). 초안은 쓰지 않는다."""
     calc_lines = [
@@ -100,6 +105,7 @@ def partial_answer(
     parts = [
         _header(cargos),
         "끝까지 확인하지 못했어요. 지금까지 확인한 것만 적어요.",
+        _bullets(DONE_TITLE, list(actions)),
         _bullets("계산한 것", calc_lines),
         _bullets("찾은 근거", [f"{e['heading']} [{e['unit_id']}]" for e in evidence]),
         _official(official),

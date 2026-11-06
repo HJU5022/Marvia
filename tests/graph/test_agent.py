@@ -1182,6 +1182,37 @@ def test_watch_cargo_refuses_an_unread_number_token(agent_deps):
     assert "감시할 수 없는 번호" in text
 
 
+DONE = [
+    # (도구 호출, 화면 답의 줄, 작성자가 받는 줄)
+    (("watch_cargo", {"token": "[BL1]"}), "DEMO0001 감시 목록에 넣음", "[BL1] 감시 목록에 넣음"),
+    (("save_preference", {"depth": "자세히"}), "설명 깊이 '자세히' 저장", "설명 깊이 '자세히' 저장"),
+]
+
+
+@pytest.mark.parametrize("approve", [True, False])
+@pytest.mark.parametrize(("call", "shown", "written"), DONE)
+def test_an_approved_action_is_shown_under_the_answer_and_given_to_the_writer(
+    agent_deps, call, shown, written, approve
+):
+    # [왜] 승인한 일을 작성자가 모르면 "지켜볼 수 없어요"처럼 실제로 한 일과 반대로 답한다 (11-06 손 시험)
+    prompts: list[str] = []
+    graph = agent_graph(
+        agent_deps, say(call), say(), store=InMemoryStore(), watch=FakeWatch().deps(), write=keep(prompts)
+    )
+    config = cfg(f"done-{call[0]}-{approve}")
+    graph.invoke({"text": "DEMO0001 계속 지켜봐 주고 앞으로 자세히 설명해 줘"}, config)
+    decision = {"type": "approve"} if approve else {"type": "reject", "message": "하지 마"}
+    out = graph.invoke(Command(resume={"decisions": [decision]}), config)
+    block = prompts[-1].split("<done_actions>")[1].split("</done_actions>")[0]
+    if approve:
+        # 코드가 작성자 답 바로 아래에 쓴다
+        assert f"시험 답이에요.\n\n이번 차례에 한 일:\n- {shown}" in out["answer"]
+        assert block.strip() == written  # 작성자는 토큰 글만 받는다
+    else:
+        assert "이번 차례에 한 일" not in out["answer"]  # 거절하면 도구가 돌지 않아 한 일이 없다
+        assert block.strip() == ""
+
+
 # --- 새 길 전체에서 번호 가림 (계획 3d, R-010·R-022의 LLM 입력 쪽) ---
 
 

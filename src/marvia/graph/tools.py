@@ -308,7 +308,8 @@ def make_tools(
             return _reply(runtime, "장기 기억 저장소가 연결되지 않았어요.")
         # [왜] 사용자마다 칸을 나눈다. 첫 칸을 사용자로 두어야 남의 기억을 읽지 않는다 (설계 8절)
         runtime.store.put(("users", user_of(runtime.config), "items"), name, {"name": name, "facts": item})
-        return _reply(runtime, f"품목 카드 '{name}'을 저장했어요.")
+        # [왜] 한 일(actions)은 성공했을 때만 남긴다. 거절하면 이 도구는 돌지 않는다
+        return _reply(runtime, f"품목 카드 '{name}'을 저장했어요.", actions=[f"품목 카드 '{name}' 저장"])
 
     @tool
     def recall_memory(runtime: ToolRuntime) -> str:
@@ -344,7 +345,7 @@ def make_tools(
         if runtime.store is None:
             return _reply(runtime, "장기 기억 저장소가 연결되지 않았어요.")
         runtime.store.put(("users", user_of(runtime.config), "prefs"), "depth", {"depth": depth})
-        return _reply(runtime, f"앞으로 답을 '{depth}' 깊이로 쓸게요.")
+        return _reply(runtime, f"앞으로 답을 '{depth}' 깊이로 쓸게요.", actions=[f"설명 깊이 '{depth}' 저장"])
 
     # [왜] return_direct: 이 도구를 부르면 모델을 다시 부르지 않고 루프를 끝낸다. 거절 글은 코드가 쓴다
     @tool(return_direct=True)
@@ -491,6 +492,11 @@ def _watch_tool(watch: WatchDeps):
                 f"감시 목록 저장 실패: {name}",
                 failed_tools=[{"tool": "watch_cargo", "message": name}],
             )
-        return _reply(runtime, f"{token}을 감시 목록에 넣었어요. 단계가 바뀌면 다음 대화 처음에 알려 드려요.")
+        # [주의] 한 일에도 토큰만 쓴다. 화면에 보낼 때 respond·finish가 실제 번호로 되돌린다
+        return _reply(
+            runtime,
+            f"{token}을 감시 목록에 넣었어요. 단계가 바뀌면 다음 대화 처음에 알려 드려요.",
+            actions=[f"{token} 감시 목록에 넣음"],
+        )
 
     return watch_cargo

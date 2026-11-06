@@ -99,6 +99,7 @@ def start(state: MarviaState) -> dict:
         "clarifications": [],
         "official": [],
         "watch_news": [],
+        "actions": [],
     }
 
 
@@ -153,6 +154,7 @@ def respond(state: MarviaState) -> dict:
         state.get("evidence", []),
         state.get("assumptions", []),
         state.get("official", []),
+        state.get("actions", []),
     )
     text = with_news(state.get("watch_news", []), body)
     # [왜] 답이 나왔으면 진행 중이던 할 일은 끝난 것이다. 화면에 진행 중 표시가 남지 않게 한다
@@ -174,6 +176,8 @@ def finish(state: MarviaState) -> dict:
         state.get("failed_tools", []),
         state.get("assumptions", []),
         state.get("official", []),
+        # [왜] 승인한 감시를 넣은 뒤 한도에 걸려도 한 일은 보인다
+        state.get("actions", []),
     )
     text = with_news(state.get("watch_news", []), body)
     return {"answer": unmask(text, state.get("mask_map", {})), "todos": todos, **_remember(state, text)}
@@ -341,6 +345,8 @@ def build_main_graph(
             evidence=evidence_block(state.get("evidence", [])),
             gaps="\n".join(state.get("gaps", [])),
             clarifications="\n".join(state.get("clarifications", [])),
+            # [왜] 도구 결과는 messages에만 있어 작성자가 못 본다. 한 일을 모르면 한 일과 반대로 답한다
+            actions="\n".join(state.get("actions", [])),
             violations="\n".join(state.get("verification", [])),
         )
         try:

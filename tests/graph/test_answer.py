@@ -62,3 +62,9 @@ def test_cargo_line_date_is_korean_date():
     assert cargo_lines([{"token": "[BL1]", "facts": facts, "error": None}]) == [
         "[BL1]: 반입신고 (부산) 2026-10-27"
     ]
+
+
+def test_partial_answer_shows_done_actions_right_after_the_lead_line():
+    # [왜] 승인한 감시를 넣은 뒤 한도에 걸려도 한 일은 보인다
+    text = partial_answer([], {}, [], [], [], actions=["[BL1] 감시 목록에 넣음"])
+    assert "지금까지 확인한 것만 적어요.\n\n이번 차례에 한 일:\n- [BL1] 감시 목록에 넣음" in text

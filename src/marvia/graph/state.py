@@ -59,6 +59,8 @@ class MarviaState(IdentifyState, total=False):
     # 색인 밖 공식 출처 {"name", "effective", "url", "trust"} (계획 3d). 근거 묶음이 아니라 인용할 수 없다
     official: list[dict]
     watch_news: list[str]  # 감시 중인 화물의 새 변화 (토큰 글, 계획 3d). 이번 차례 답 맨 앞에 보인다
+    # 이번 차례에 승인을 받고 실제로 한 일 (토큰 글). 코드가 답 아래에 쓰고 작성자에게 데이터로 준다
+    actions: list[str]
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
@@ -119,6 +121,7 @@ class LoopState(AgentState):
     out_of_scope: NotRequired[Annotated[bool, operator.or_]]
     clarifications: NotRequired[Annotated[list[str], operator.add]]
     official: NotRequired[Annotated[list[dict], operator.add]]
+    actions: NotRequired[Annotated[list[str], operator.add]]  # 승인한 도구가 병렬로 돌아도 모두 남는다
 
 
 # RAG 서브그래프의 공책 (설계 5.4). 메인 그래프와 칸을 나눠 쓰고, 계획 3에서 메인 그래프가 evidence를 받는다
