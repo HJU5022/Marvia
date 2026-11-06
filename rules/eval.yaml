@@ -56,9 +56,19 @@ gate:
       min: 0.8
     mrr:
       min: 0.33
+    trajectory:
+      min: 0.93
     recall_at_8:
       min: 0.41
     wrong_evidence:
       max: 0.42
     unsupported:
       max: 0.07
+
+# 에이전트 길 도구 호출 궤적 검사 (done 3.4). 문항별 조건은 eval/set_v1.yaml의 trajectory
+trajectory:
+  # 어느 문항에서도 부르면 안 되는 도구. [왜] 평가셋에 저장·감시를 부탁하는 문항이 없다
+  never: [save_item_card, save_preference, watch_cargo]
+  # 문항에 상한이 없을 때의 도구 호출 수 상한(할 일 갱신 write_todos 포함). [추정] 시작값이다:
+  # 한 차례 검색 상한 3(rules/agent.yaml max_searches)에 화물 조회·계산·조문 조회·할 일 갱신을 더해 넉넉히 둔다
+  max_calls: 12

@@ -16,6 +16,8 @@ from marvia.eval.metrics import (
     ragas_means,
     recall_at_k,
     summarize,
+    trajectory_pass,
+    trajectory_violations,
     unscored,
     unsupported,
     wrong_evidence,
@@ -198,3 +200,42 @@ def test_human_faithful_names_the_items_with_a_blank_or_odd_grade():
 def test_unscored_lists_human_items_without_a_judge_score():
     judge = {"R1": 0.9, "R2": None, "R3": float("nan")}
     assert unscored({"R1": 1.0, "R2": 1.0, "R3": 0.0, "R4": 1.0}, judge) == ["R2", "R3", "R4"]
+
+
+def test_trajectory_checks_must_any_of_must_not_order_and_cap():
+    spec = Item.model_validate(
+        {
+            "id": "T",
+            "group": "related",
+            "kind": "시험",
+            "question": "q",
+            "behaviour": ["answer"],
+            "trajectory": {
+                "must": ["calc_deadlines", "get_provision|search_law"],
+                "must_not": ["ask_user"],
+                "order": [["calc_deadlines", "get_provision"]],
+                "max_calls": 3,
+            },
+        }
+    ).trajectory
+    never = ["watch_cargo"]
+    assert trajectory_violations(["calc_deadlines", "get_provision"], spec, never, 12) == []
+    assert trajectory_violations(
+        ["get_provision", "calc_deadlines", "ask_user", "watch_cargo"], spec, never, 12
+    ) == [
+        "부르면 안 됨: ask_user",
+        "부르면 안 됨: watch_cargo",
+        "순서: calc_deadlines 다음에 get_provision",
+        "호출 4번 > 상한 3",
+    ]
+    assert trajectory_violations(["search_law"], spec, never, 12) == ["불러야 함: calc_deadlines"]
+
+
+def test_trajectory_pass_counts_only_agent_rows_without_errors():
+    rows = [
+        row("U1", loop="agent", tools=["decline"]),
+        row("R1", loop="agent", tools=["watch_cargo"]),  # 저장소 밖 일을 했다
+        row("R2", loop="agent", tools=[], error="APIError"),  # 오류 줄은 빼고 센다
+        row("S1", loop="planner", tools=[]),
+    ]
+    assert trajectory_pass(rows, ITEMS, ["watch_cargo"], 12) == {"value": 0.5, "n": 2}

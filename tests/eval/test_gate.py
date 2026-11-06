@@ -25,10 +25,16 @@ def test_gate_flags_metrics_below_the_floor_and_metrics_not_measured():
 def test_floors_leave_one_item_of_room():
     metric = {"value": 0.8, "n": 10}
     summary = {key: metric for key in ["correct_citation", "behaviour_accuracy", "blocked_accuracy"]}
-    summary |= {"calc_accuracy": {"value": None, "n": 0}, "mrr": metric, "recall_at_8": metric}
+    summary |= {
+        "calc_accuracy": {"value": None, "n": 0},
+        "mrr": metric,
+        "recall_at_8": metric,
+        "trajectory": metric,
+    }
     summary |= {"wrong_evidence": {"value": 0.1, "n": 20}, "unsupported": {"value": 0.0, "n": 16}}
     out = floors(summary, 8)
     assert out["correct_citation"] == {"min": 0.7} and out["recall_at_8"] == {"min": 0.7}
+    assert out["trajectory"] == {"min": 0.7}
     assert out["wrong_evidence"] == {"max": 0.15} and out["unsupported"] == {"max": 0.07}
     assert "calc_accuracy" not in out and out["errors"] == {"max": 0} and out["leaks"] == {"max": 0}
     assert out["cap_breaches"] == {"max": 0}
@@ -43,7 +49,7 @@ def test_gate_reports_required_keys_missing_from_the_floors():
 
 
 _KEYS = ["correct_citation", "behaviour_accuracy", "blocked_accuracy", "calc_accuracy", "mrr", "recall_at_8"]
-_KEYS += ["wrong_evidence", "unsupported"]
+_KEYS += ["wrong_evidence", "unsupported", "trajectory"]
 
 
 def test_committed_run_still_meets_its_floors():

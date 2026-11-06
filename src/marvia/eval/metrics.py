@@ -13,7 +13,7 @@ import statistics
 from collections import Counter
 from collections.abc import Iterable
 
-from marvia.eval.dataset import Item
+from marvia.eval.dataset import Item, Trajectory
 from marvia.tools.rules import load_rules
 
 
@@ -117,6 +117,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
     limits = load_rules("agent")
     # [왜] 그래프가 센 호출(llm_calls)은 루프 상한과 작성자 상한을 합친 값을 넘을 수 없다 (설계 6.4)
     cap = limits["loop"]["max_llm_calls"] + limits["answer"]["max_write_attempts"]
+    path = load_rules("eval")["trajectory"]
     return {
         "n": len(rows),
         "errors": sum(bool(r.get("error")) for r in rows),
@@ -131,6 +132,8 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "calc_accuracy": calc_accuracy(rows, items),
         f"recall_at_{k}": recall_at_k(rows, items, k),
         "mrr": mrr(rows, items),
+        # [왜] 계획자 길은 도구를 부르지 않는다. 에이전트 길 줄이 없으면 None이다
+        "trajectory": trajectory_pass(rows, items, path["never"], path["max_calls"]),
         "llm_calls_median": statistics.median(calls) if calls else None,
         "llm_calls_max": max(calls) if calls else None,
         # [왜] 두 길을 같은 통계로 잰다(R-040). 근거 있는 답 비율 = 내용 있는 답을 낸 줄(answer, unsupported)
@@ -161,6 +164,7 @@ TABLE = [
     ("calc_accuracy", "계산"),
     ("recall", "R@k"),
     ("mrr", "MRR"),
+    ("trajectory", "궤적"),
 ]
 
 
@@ -231,7 +235,7 @@ def unscored(human: dict[str, float], judge: dict[str, float | None]) -> list[st
 
 
 # CI 문이 보는 지표. 높을수록 좋은 것은 바닥값(min), 낮을수록 좋은 것은 천장값(max)을 둔다
-HIGHER = ["correct_citation", "behaviour_accuracy", "blocked_accuracy", "calc_accuracy", "mrr"]
+HIGHER = ["correct_citation", "behaviour_accuracy", "blocked_accuracy", "calc_accuracy", "mrr", "trajectory"]
 LOWER = ["wrong_evidence", "unsupported"]
 
 
@@ -278,3 +282,29 @@ REQUIRED_BOUNDS = {"errors": 0, "leaks": 0, "cap_breaches": 0}
 def gate_missing(bounds: dict) -> list[str]:
     """바닥값 묶음에서 빠졌거나 천장이 0이 아닌 필수 칸을 돌려준다. 빈 묶음이면 필수 칸이 모두 나온다."""
     return [key for key, cap in REQUIRED_BOUNDS.items() if bounds.get(key) != {"max": cap}]
+
+
+def trajectory_violations(tools: list[str], spec: Trajectory, never: list[str], max_calls: int) -> list[str]:
+    """에이전트 길의 도구 호출 순서가 문항 조건을 어긴 곳을 한 줄씩 돌려준다 (done 3.4). 빈 목록이면 통과.
+
+    입력: tools=부른 도구 이름(부른 순서), spec=문항 조건, never=모든 문항에서 부르면 안 되는 도구,
+          max_calls=문항에 상한이 없을 때의 도구 호출 수 상한.
+    """
+    out = [f"불러야 함: {need}" for need in spec.must if not set(need.split("|")) & set(tools)]
+    out += [f"부르면 안 됨: {name}" for name in spec.must_not + never if name in tools]
+    for first, then in spec.order:
+        if first in tools and then in tools and tools.index(then) < tools.index(first):
+            out.append(f"순서: {first} 다음에 {then}")
+    cap = spec.max_calls or max_calls
+    if len(tools) > cap:
+        out.append(f"호출 {len(tools)}번 > 상한 {cap}")
+    return out
+
+
+def trajectory_pass(rows: list[dict], items: dict[str, Item], never: list[str], max_calls: int) -> dict:
+    """궤적 통과율: 에이전트 길에서 오류 없이 끝난 문항 가운데 도구 호출 조건을 모두 지킨 비율."""
+    picked = [r for r in rows if r.get("loop") == "agent" and not r.get("error")]
+    flags = [
+        not trajectory_violations(r["tools"], items[r["id"]].trajectory, never, max_calls) for r in picked
+    ]
+    return _mean([float(f) for f in flags])
