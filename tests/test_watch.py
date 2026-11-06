@@ -111,12 +111,13 @@ def test_row_with_another_key_is_skipped(db, keys):
 
 def test_forget_user_deletes_only_that_users_watches_and_events(db, keys):
     add_watch(db, keys, "u1", "DEMO0001", "반입신고")
-    add_watch(db, keys, "u2", "DEMO0002", "반입신고")
+    add_watch(db, keys, "u2", "DEMO0001", "반입신고")  # 같은 번호라도 사용자마다 따로 한 줄이다
     recheck(db, keys, cleared)  # 두 사용자 모두 변화가 기록된다
+    assert db.execute("SELECT count(*) FROM watches").fetchone()[0] == 2
     assert forget_user(db, "u1") == 1  # 지운 감시 수
     assert take_news(db, keys, "u1") == []
     assert db.execute("SELECT count(*) FROM watch_events").fetchone()[0] == 1  # u1의 기록은 함께 사라졌다
-    assert [n["number"] for n in take_news(db, keys, "u2")] == ["DEMO0002"]  # u2는 그대로
+    assert [n["number"] for n in take_news(db, keys, "u2")] == ["DEMO0001"]  # u2는 그대로
     assert forget_user(db, "nobody") == 0
 
 
