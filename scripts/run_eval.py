@@ -21,7 +21,7 @@ from pathlib import Path
 import yaml
 
 from marvia.eval.dataset import SET_PATH, file_sha256, load_set
-from marvia.eval.metrics import agreement, compare_table, ragas_means, summarize
+from marvia.eval.metrics import agreement, compare_table, human_faithful, ragas_means, summarize, unscored
 from marvia.eval.run import (
     estimate,
     evaluate_item,
@@ -93,11 +93,27 @@ if args.command == "agree":
     grades = yaml.safe_load(Path(args.human).read_text(encoding="utf-8"))["grades"]
     scores = json.loads(Path(args.scores).read_text(encoding="utf-8"))["scores"]
     judge = {s["id"]: s.get("faithfulness") for s in scores}
-    rate = agreement({i: g["faithful"] for i, g in grades.items()}, judge, cfg["judge"]["buckets"])
-    trusted = rate["value"] is not None and rate["value"] >= cfg["judge"]["min_agreement"]
+    try:
+        human = human_faithful(grades)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
+    rate = agreement(human, judge, cfg["judge"]["buckets"])
+    missing = unscored(human, judge)
+    trusted = not missing and rate["value"] is not None and rate["value"] >= cfg["judge"]["min_agreement"]
     label = "LLM 채점, 사람 일치 확인" if trusted else cfg["judge"]["unchecked_label"]
     means = ragas_means(scores, cfg["ragas"]["metrics"])
-    print(json.dumps({"agreement": rate, "label": label, "ragas": means}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "agreement": rate,
+                "human_items": len(human),
+                "missing": missing,
+                "label": label,
+                "ragas": means,
+            },
+            ensure_ascii=False,
+        )
+    )
     raise SystemExit(0)
 
 if args.command == "report":

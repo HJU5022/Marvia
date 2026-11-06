@@ -1,5 +1,7 @@
 """평가 지표 시험 (done 3.2). 실행 결과 줄을 손으로 만들어 키 없이 돈다."""
 
+import pytest
+
 from marvia.eval.dataset import Item
 from marvia.eval.metrics import (
     agreement,
@@ -8,11 +10,13 @@ from marvia.eval.metrics import (
     calc_ok,
     compare_table,
     correct_citation,
+    human_faithful,
     matches,
     mrr,
     ragas_means,
     recall_at_k,
     summarize,
+    unscored,
     unsupported,
     wrong_evidence,
 )
@@ -183,3 +187,14 @@ def test_ragas_means_leave_out_missing_and_nan_scores():
         {"faithfulness": 0.5},
     ]
     assert ragas_means(scores, ["faithfulness"]) == {"faithfulness": {"value": 0.75, "n": 2, "missing": 2}}
+
+
+def test_human_faithful_names_the_items_with_a_blank_or_odd_grade():
+    assert human_faithful({"R1": {"faithful": 1}, "R2": {"faithful": 0.5}}) == {"R1": 1.0, "R2": 0.5}
+    with pytest.raises(ValueError, match="R2.*R3"):
+        human_faithful({"R1": {"faithful": 1}, "R2": {"faithful": None}, "R3": {"faithful": 0.7}})
+
+
+def test_unscored_lists_human_items_without_a_judge_score():
+    judge = {"R1": 0.9, "R2": None, "R3": float("nan")}
+    assert unscored({"R1": 1.0, "R2": 1.0, "R3": 0.0, "R4": 1.0}, judge) == ["R2", "R3", "R4"]

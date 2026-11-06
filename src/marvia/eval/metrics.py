@@ -213,3 +213,17 @@ def ragas_means(scores: list[dict], metrics: list[str]) -> dict:
         values = [s[name] for s in scores if s.get(name) is not None and s[name] == s[name]]
         out[name] = _mean(values) | {"missing": len(scores) - len(values)}
     return out
+
+
+def human_faithful(grades: dict) -> dict[str, float]:
+    """사람 채점 파일의 faithful 칸. 비었거나 1, 0.5, 0이 아닌 문항이 있으면 이름을 대고 멈춘다."""
+    bad = sorted(i for i, g in grades.items() if g.get("faithful") not in (0, 0.5, 1))
+    if bad:
+        raise ValueError(f"사람 채점 faithful이 비었거나 1, 0.5, 0이 아니다: {', '.join(bad)}")
+    return {i: float(g["faithful"]) for i, g in grades.items()}
+
+
+def unscored(human: dict[str, float], judge: dict[str, float | None]) -> list[str]:
+    """사람 채점은 있는데 LLM 채점 값이 없는(못 쟀거나 NaN) 문항."""
+    # [왜] 일부만 견준 일치율로 '사람 일치 확인'을 달면 안 된다: 사람 채점 문항을 모두 견줄 때만 확인으로 친다
+    return sorted(i for i in human if judge.get(i) is None or judge[i] != judge[i])
