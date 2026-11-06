@@ -215,6 +215,19 @@ def test_eval_run_binds_a_watch_stub_so_the_never_check_can_fire(agent_deps):
     assert deps.watch.news("u") == []
 
 
+def test_error_row_still_reports_a_real_number_that_reached_an_llm_input(agent_deps, monkeypatch):
+    # [왜] 실행이 중간에 죽어도 그 전에 LLM 입력에 실제 번호가 갔으면 새는 번호로 센다 (R-063)
+    def dying(graph, it, thread, callbacks):
+        callbacks[0].inputs.append("질문 DEMO0001 언제까지")
+        raise RuntimeError("죽음")
+
+    monkeypatch.setattr("marvia.eval.run.drive", dying)
+    row, _ = evaluate_item(
+        agent_deps(model=model()), item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES
+    )
+    assert row["error"] == "RuntimeError" and row["leak"] is True
+
+
 def test_eval_run_has_no_outside_lookup(agent_deps):
     # [왜] 색인 밖 문항은 "바깥 조회 없음"을 전제한다. 평가 결과가 바깥 사이트에 기대면 안 된다
     from dataclasses import replace

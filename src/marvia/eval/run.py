@@ -28,6 +28,7 @@ from marvia.eval.dataset import Item
 from marvia.graph.answer import PARTIAL_LEAD, cargo_lines
 from marvia.graph.main import AgentDeps, build_main_graph
 from marvia.graph.resume import approval_reply
+from marvia.identify.mask import mask_text
 from marvia.rag.models import Evidence
 from marvia.tools.rules import load_rules
 from marvia.watch import WatchDeps
@@ -237,7 +238,11 @@ def evaluate_item(
             "tools": [],
             "plan": [],
         }
-        row |= {"llm_calls": None, "failed": [], "leak": False, "error": type(error).__name__}
+        # [왜] 죽은 실행도 그때까지 LLM 입력에 실제 번호가 갔는지 본다.
+        #      공책 칸이 없으니 질문에서 번호를 읽는다
+        asked = [n for n in mask_text(item.question)[1].values() if n]
+        leak = any(n in text for n in asked for text in watch.inputs)
+        row |= {"llm_calls": None, "failed": [], "leak": leak, "error": type(error).__name__}
     # [왜] 실패한 문항도 그때까지 쓴 토큰은 센다. 돈은 이미 나갔다
     spent = usage.usage_metadata if usage is not None else {}
     tokens = {m: {"in": t["input_tokens"], "out": t["output_tokens"]} for m, t in spent.items()}

@@ -49,6 +49,8 @@ def row(id: str, **fields) -> dict:
         "retrieved": [],
         "calc": {},
         "seconds": 1.0,
+        "leak": False,
+        "llm_calls": None,
     }
     return base | fields
 
@@ -360,3 +362,18 @@ def test_article_after_a_quoted_law_name_counts():
     for text in ["「관세법」 제241조에 따라", "『관세법』제241조", '"관세법" 제241조', "'관세법' 제241조"]:
         assert free_answer_score(text, domain)["article"], text
     assert not free_answer_score("「관세법 시행령」 제241조에 따라", domain)["article"]
+
+
+def test_summarize_refuses_a_row_missing_a_required_field_instead_of_counting_zero():
+    # [왜] 칸이 빠진 줄을 0(새는 번호 없음, 호출 없음)으로 세면 문이 조용히 통과한다 (R-063)
+    for field in ("leak", "llm_calls"):
+        bad = row("R1")
+        del bad[field]
+        with pytest.raises(ValueError, match=f"R1.*{field}"):
+            summarize([bad], ITEMS, 8)
+
+
+def test_cap_breaches_uses_the_larger_of_the_graph_count_and_the_real_count():
+    # [왜] 오류 줄은 llm_calls가 None이지만 real_llm_calls는 이미 상한을 넘었을 수 있다
+    over = row("R1", llm_calls=None, real_llm_calls=23)
+    assert summarize([over, row("S1", llm_calls=3, real_llm_calls=3)], ITEMS, 8)["cap_breaches"] == 1

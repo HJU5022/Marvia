@@ -120,6 +120,11 @@ def calc_accuracy(rows: list[dict], items: dict[str, Item]) -> dict:
 
 def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
     """실행 한 번(길 하나 × 모델 하나)의 요약. 저장소에 남기는 숫자다."""
+    for r in rows:
+        # [왜] 칸이 빠진 줄을 0으로 세면 새는 번호·호출 상한 검사가 조용히 통과한다
+        absent = [f for f in ("leak", "llm_calls") if f not in r]
+        if absent:
+            raise ValueError(f"줄 {r.get('id')}에 필수 칸이 없다: {', '.join(absent)}")
     calls = [r["real_llm_calls"] for r in rows if r.get("real_llm_calls") is not None]
     costs = [r["cost_usd"] for r in rows if r.get("cost_usd") is not None]
     limits = load_rules("agent")
@@ -160,7 +165,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
                 if r["behaviour"] in ("answer", "unsupported")
             ]
         ),
-        "cap_breaches": sum((r.get("llm_calls") or 0) > cap for r in rows),
+        "cap_breaches": sum(max(r.get("real_llm_calls") or 0, r["llm_calls"] or 0) > cap for r in rows),
         "cost_per_item_mean": round(statistics.fmean(costs), 5) if costs else None,
         "cost_per_item_max": max(costs) if costs else None,
         "cost_usd": round(sum(r.get("cost_usd") or 0 for r in rows), 4),
