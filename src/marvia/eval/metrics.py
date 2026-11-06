@@ -82,23 +82,23 @@ def unsupported(rows: list[dict], items: dict[str, Item]) -> dict:
 
 
 def recall_at_k(rows: list[dict], items: dict[str, Item], k: int) -> dict:
-    """검색 R@k: 근거 묶음(점수 높은 순) 앞 k개가 정답 근거를 몇 개 덮는지의 문항 평균."""
+    """검색 R@k: RAG 순위(row.retrieved) 앞 k개가 정답 근거를 몇 개 덮는지의 문항 평균."""
     values = []
     for r in rows:
         gold = items[r["id"]].gold
         if gold:
-            top = r["evidence"][:k]
+            top = r["retrieved"][:k]
             values.append(sum(any(matches(u, [g]) for u in top) for g in gold) / len(gold))
     return _mean(values)
 
 
 def mrr(rows: list[dict], items: dict[str, Item]) -> dict:
-    """검색 MRR: 근거 묶음에서 처음 나온 정답 근거 순위의 역수(없으면 0)의 문항 평균."""
+    """검색 MRR: RAG 순위에서 처음 나온 정답 근거 순위의 역수(없으면 0)의 문항 평균."""
     values = []
     for r in rows:
         gold = items[r["id"]].gold
         if gold:
-            rank = next((i for i, u in enumerate(r["evidence"], 1) if matches(u, gold)), None)
+            rank = next((i for i, u in enumerate(r["retrieved"], 1) if matches(u, gold)), None)
             values.append(1 / rank if rank else 0.0)
     return _mean(values)
 

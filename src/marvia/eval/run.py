@@ -139,7 +139,7 @@ def cost_usd(tokens: dict, prices: dict) -> float | None:
     )
 
 
-def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str) -> dict:
+def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: list[dict]) -> dict:
     """끝난 실행의 공책 칸에서 채점에 쓸 파생 값만 뽑는다."""
     draft = values.get("draft") or {}
     kind = behaviour(values, pauses)
@@ -151,6 +151,8 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str) -> dic
         # [왜] 인용은 검증을 지난 답에만 있다. 부분 답의 "찾은 근거"는 인용이 아니다
         "cited": list(draft.get("citations", [])) if kind in ("answer", "guide") else [],
         "evidence": [e["unit_id"] for e in values.get("evidence", [])],  # 점수 높은 순 (merge_evidence)
+        # [왜] R@k·MRR은 RAG 순위로 잰다. 묶음은 get_provision 근거(점수 1.0)가 앞선다
+        "retrieved": list(dict.fromkeys(u for e in log if e["step"] == "grade" for u in e["units"])),
         "calc": {
             "deadlines": [{"name": d["name"], "due": d["due"]} for d in calc.get("deadlines", [])],
             "reimport": (calc.get("reimport") or {}).get("verdict"),
@@ -183,7 +185,7 @@ def evaluate_item(
     try:
         with get_usage_metadata_callback() as usage:
             values, pauses = drive(graph, item, f"eval-{loop}-{item.id}", [watch])
-        row |= observe(values, pauses, watch, loop)
+        row |= observe(values, pauses, watch, loop, log)
         row["error"] = None
         draft = values.get("draft") or {}
         top = load_rules("eval")["ragas"]["contexts"]
@@ -199,7 +201,15 @@ def evaluate_item(
     except (
         Exception
     ) as error:  # [왜] 한 문항이 실패해도 돈을 낸 나머지 결과를 잃지 않는다 (compare_loops와 같다)
-        row |= {"behaviour": "error", "cited": [], "evidence": [], "calc": {}, "tools": [], "plan": []}
+        row |= {
+            "behaviour": "error",
+            "cited": [],
+            "evidence": [],
+            "retrieved": [],
+            "calc": {},
+            "tools": [],
+            "plan": [],
+        }
         row |= {"llm_calls": None, "failed": [], "leak": False, "error": type(error).__name__}
     # [왜] 실패한 문항도 그때까지 쓴 토큰은 센다. 돈은 이미 나갔다
     spent = usage.usage_metadata if usage is not None else {}

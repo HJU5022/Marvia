@@ -152,3 +152,16 @@ def test_existing_result_files_are_found_before_spending(tmp_path):
     (tmp_path / "agent-m.raw.json").write_text("[]")
     found = existing_results(tmp_path, ["planner", "agent"], ["m"], "")
     assert [f.name for f in found] == ["agent-m.raw.json"]
+
+
+def test_retrieved_is_the_rag_order_and_leaves_out_get_provision(agent_deps):
+    # [왜] get_provision 근거는 evidence에는 들지만 검색 순위(retrieved)에는 들지 않는다
+    deps = agent_deps(
+        model=model(("get_provision", {"label": "관세법 제241조제3항"})), write=lambda prompt: CITING
+    )
+    row, _ = evaluate_item(deps, item("검사는 어디서 받나요?"), "agent", TODAY, PRICES)
+    assert row["tools"] == ["get_provision"]
+    assert row["evidence"] == ["L001556@20261002#제241조.3항"] and row["retrieved"] == []
+    deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
+    row, _ = evaluate_item(deps, item("언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
+    assert row["retrieved"] == ["L001556@20261002#제241조.3항"]

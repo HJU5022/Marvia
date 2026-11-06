@@ -24,7 +24,15 @@ def item(id: str, **fields) -> Item:
 
 
 def row(id: str, **fields) -> dict:
-    base = {"id": id, "behaviour": "answer", "cited": [], "evidence": [], "calc": {}, "seconds": 1.0}
+    base = {
+        "id": id,
+        "behaviour": "answer",
+        "cited": [],
+        "evidence": [],
+        "retrieved": [],
+        "calc": {},
+        "seconds": 1.0,
+    }
     return base | fields
 
 
@@ -75,13 +83,20 @@ def test_unsupported_rate_counts_only_items_that_should_be_answered():
     assert unsupported(rows, ITEMS) == {"value": 0.5, "n": 2}
 
 
-def test_recall_and_mrr_follow_the_evidence_order():
+def test_recall_and_mrr_follow_the_rag_rank():
     rows = [
-        row("R1", evidence=[A + "제100조", A + "제241조.3항"]),  # 2위
-        row("R2", evidence=[A + "제100조"] * 9 + [A + "제9조.1항.1호"]),  # 10위: R@8 밖
+        row("R1", retrieved=[A + "제100조", A + "제241조.3항"]),  # 2위
+        row("R2", retrieved=[A + "제100조"] * 9 + [A + "제9조.1항.1호"]),  # 10위: R@8 밖
     ]
     assert recall_at_k(rows, ITEMS, 8) == {"value": 0.5, "n": 2}
     assert mrr(rows, ITEMS) == {"value": round((1 / 2 + 1 / 10) / 2, 4), "n": 2}
+
+
+def test_evidence_bundle_does_not_lift_retrieval_scores():
+    # [왜] get_provision 근거는 점수 1.0이라 묶음 맨 앞에 선다. 검색 순위가 아니다
+    rows = [row("R1", evidence=[A + "제241조.3항"], retrieved=[A + "제100조"])]
+    assert recall_at_k(rows, ITEMS, 8) == {"value": 0.0, "n": 1}
+    assert mrr(rows, ITEMS) == {"value": 0.0, "n": 1}
 
 
 def test_metric_without_items_is_none_not_zero():
