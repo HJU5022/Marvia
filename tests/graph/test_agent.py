@@ -1147,3 +1147,23 @@ def test_a_db_error_in_the_news_step_does_not_stop_the_turn(agent_deps):
     graph = agent_graph(agent_deps, say(), watch=WatchDeps(add=lambda *row: None, news=broken))
     out = graph.invoke({"text": "안녕하세요"}, cfg("w3"))
     assert out["answer"] and not out["answer"].startswith("감시 중인 화물 변화")
+
+
+def test_a_db_error_in_watch_cargo_is_recorded_and_the_turn_ends(agent_deps):
+    import psycopg
+
+    from marvia.watch import WatchDeps
+
+    def broken(*row):
+        raise psycopg.OperationalError("db down")
+
+    ask = say(("watch_cargo", {"token": "[BL1]"}))
+    graph = agent_graph(
+        agent_deps, ask, say(), permission_mode="auto", watch=WatchDeps(add=broken, news=lambda user: [])
+    )
+    graph.invoke({"text": "DEMO0001 계속 지켜봐 줘"}, cfg("w4"))
+    out = graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("w4"))
+    assert out["answer"]
+    assert graph.get_state(cfg("w4")).values["failed_tools"] == [
+        {"tool": "watch_cargo", "message": "OperationalError"}
+    ]

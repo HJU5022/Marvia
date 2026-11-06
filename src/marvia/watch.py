@@ -25,12 +25,17 @@ class WatchDeps:
 
 def add_watch(conn: psycopg.Connection, user: str, number: str, stage: str) -> None:
     """화물 하나를 사용자의 감시 목록에 넣는다. 이미 있으면 그대로 둔다."""
-    conn.execute(
-        "INSERT INTO watches (user_id, number, stage) VALUES (%s, %s, %s) "
-        "ON CONFLICT (user_id, number) DO NOTHING",
-        (user, number, stage),
-    )
-    conn.commit()
+    try:
+        conn.execute(
+            "INSERT INTO watches (user_id, number, stage) VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_id, number) DO NOTHING",
+            (user, number, stage),
+        )
+        conn.commit()
+    except psycopg.Error:
+        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌린 뒤 다시 던진다
+        conn.rollback()
+        raise
 
 
 def recheck(conn: psycopg.Connection, lookup: Callable[[str], CargoFacts | ToolError] = lookup_cargo) -> int:

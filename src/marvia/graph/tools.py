@@ -477,7 +477,17 @@ def _watch_tool(watch: WatchDeps):
             return _reply(runtime, f"{token}: 모르는 토큰이에요")
         cargo = next((c for c in runtime.state.get("cargos", []) if c["token"] == token and c["facts"]), None)
         # [주의] 실제 번호는 서버의 감시 표에만 들어간다. 모델에게 주는 글과 인자는 토큰뿐이다 (설계 12절)
-        watch.add(user_of(runtime.config), number, cargo["facts"]["stage"] if cargo else "")
+        try:
+            watch.add(user_of(runtime.config), number, cargo["facts"]["stage"] if cargo else "")
+        except psycopg.Error as error:
+            # [왜] DB 오류는 도구 실패로 남기고 차례는 이어 간다(get_provision과 같다).
+            #      오류 글 대신 종류 이름만 쓴다
+            name = error_name(error)
+            return _reply(
+                runtime,
+                f"감시 목록 저장 실패: {name}",
+                failed_tools=[{"tool": "watch_cargo", "message": name}],
+            )
         return _reply(runtime, f"{token}을 감시 목록에 넣었어요. 단계가 바뀌면 다음 대화 처음에 알려 드려요.")
 
     return watch_cargo
