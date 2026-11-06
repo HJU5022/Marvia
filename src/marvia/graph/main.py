@@ -393,14 +393,18 @@ def build_main_graph(
         """에이전트 길: 기록이 길면 앞부분을 요약하고, 이번 차례 질문(가린 글)과 화물 줄을 메시지로 더한다."""
         update: dict = {"messages": []}
         if summary is not None:
+            short = None
             try:
                 # [왜] 루프(서브그래프) 안에서 요약하면 부모 공책의 기록은 줄지 않는다(11-06 실측).
                 #      부모 노드에서 요약 미들웨어의 before_model 훅을 직접 부른다. 돌려주는 값은
                 #      [기록 모두 지우기, 요약 메시지, 남길 최근 메시지]이고 add_messages가 그대로 적용한다
                 short = summary.before_model(AgentState(messages=state.get("messages", [])), runtime)
             except MODEL_ERRORS as error:
-                # [왜] 요약 LLM이 실패하면 다른 LLM 실패와 같이 부분 답으로 간다 (설계 6.4)
-                return {"stopped": "llm_failed", **_failure(state, "summary", error)}
+                # [왜] 요약 LLM이 실패하면 다른 LLM 실패와 같이 부분 답으로 간다 (설계 6.4).
+                #      그래도 아래에서 이번 차례 메시지를 기록에 더한다. 질문과 이 차례에 보인 감시 변화
+                #      (<watch_news>)를 다음 차례 모델이 알아야 한다. 변화는 답에 보인 뒤 본 것으로 표시돼
+                #      다시 나오지 않고, 기록에 남기는 답(_remember)에는 감시 줄이 없다
+                update = {"messages": [], "stopped": "llm_failed", **_failure(state, "summary", error)}
             if short:
                 # [왜] 라이브러리는 요약을 태그 없는 사용자 말 자리(HumanMessage)에 넣는다. 요약은 도구 결과
                 #      (공식 출처 제목, 저장한 기억)를 읽고 쓴 글이라 데이터 태그 안에 다시 싼다 (설계 12절)

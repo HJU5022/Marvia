@@ -815,6 +815,38 @@ def test_summary_failure_ends_in_a_partial_answer(agent_deps, monkeypatch):
     assert values["failed_tools"] == [{"tool": "summary", "message": "APIConnectionError"}]
 
 
+class SummaryFailsOnce(ToolModel):
+    """첫 요약 호출(입력에 <conversation>이 있는 호출)에서만 API 오류를 내는 가짜 모델."""
+
+    failed: bool = False
+
+    def _generate(self, messages, *args, **kwargs):
+        if not self.failed and "<conversation>" in str(messages[-1].content):
+            self.failed = True
+            raise anthropic.APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.test"))
+        return super()._generate(messages, *args, **kwargs)
+
+
+def test_a_turn_whose_summary_failed_keeps_its_question_and_shown_watch_change(agent_deps, monkeypatch):
+    _short_memory(monkeypatch)
+    # [왜] 셋째 차례 요약이 둘째 차례 메시지를 남기게 최근 두 개를 둔다. 루프 모델 입력에서 바로 보인다
+    monkeypatch.setitem(load_rules("agent")["memory"], "summary_keep_messages", 2)
+    inputs, watch = Inputs(), FakeWatch()
+    loop = SummaryFailsOnce(messages=iter([say(), AIMessage("요약"), say()]))
+    graph = build_main_graph(agent_deps(model=loop, watch=watch.deps()), InMemorySaver(), loop="agent")
+    config = {"configurable": {"thread_id": "m8"}, "callbacks": [inputs]}
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
+    watch.left = [{"id": 1, **NEWS[0]}]
+    out = graph.invoke({"text": "하나 더 물어볼게요"}, config)  # 이 차례의 요약 호출이 실패한다
+    assert out["answer"].startswith(SHOWN) and "끝까지 확인하지 못했어요" in out["answer"]
+    assert watch.acked == [("local", [1])]  # 보였으니 본 것으로 표시했다
+    graph.invoke({"text": "고마워요"}, config)
+    loop_input = inputs.calls[-1]
+    # [왜] 보이고 표시한 변화는 다시 나오지 않는다. 다음 차례 모델은 기록의 데이터 태그에서만 그 변화를 안다
+    assert "하나 더 물어볼게요" in loop_input
+    assert "<watch_news>\n[BL1]: 반입신고 → 수입신고수리\n</watch_news>" in loop_input
+
+
 def test_an_earlier_summary_reaches_the_next_summary(agent_deps, monkeypatch):
     _short_memory(monkeypatch)
     inputs = Inputs()
