@@ -1,4 +1,5 @@
 """실제 LLM·DB·Voyage로 AgentDeps를 만든다 (계획 3a Task 8). 키와 DB가 필요하다.
+대화 기록(checkpointer)과 장기 기억(Store)도 Postgres에 둔다 (계획 3d, 설계 8절).
 
 하지 않는 일: 그래프 흐름(graph/main.py). 테스트는 이 파일 대신 가짜 AgentDeps를 쓴다(conftest.py).
 LLM 실패는 llm.structured가 LLMFailed로 바꿔 던지고, 그래프가 잡아 부분 답으로 간다.
@@ -6,8 +7,13 @@ LLM 실패는 llm.structured가 LLMFailed로 바꿔 던지고, 그래프가 잡�
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 import httpx
 import psycopg
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.store.postgres import PostgresStore
 
 from marvia.config import Settings
 from marvia.graph.main import AgentDeps
@@ -32,3 +38,14 @@ def agent_deps(settings: Settings, conn: psycopg.Connection) -> AgentDeps:
         # [왜] follow_redirects=False: 넘겨 주는 주소를 따라가면 허용 목록 밖으로 갈 수 있다 (official_lookup)
         web=httpx.Client(timeout=load_rules("agent")["official"]["timeout_s"], follow_redirects=False),
     )
+
+
+@contextmanager
+def live_memory(url: str) -> Iterator[tuple[PostgresSaver, PostgresStore]]:
+    """대화 기록(checkpointer)과 장기 기억(Store)을 Postgres에 둔다. 표가 없으면 만든다."""
+    # [왜] from_conn_string은 연결을 열고 닫는 with 블록이다. 블록을 나가면 연결이 닫힌다
+    with PostgresSaver.from_conn_string(url) as saver, PostgresStore.from_conn_string(url) as store:
+        # [왜] setup은 표가 없을 때만 만들고 있으면 그대로 둔다. 처음 쓰기 전에 꼭 불러야 한다
+        saver.setup()
+        store.setup()
+        yield saver, store
