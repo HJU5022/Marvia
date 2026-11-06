@@ -352,7 +352,10 @@ from marvia.config import Settings  # noqa: E402
 from marvia.db import connect  # noqa: E402
 from marvia.eval.dataset import CORPUS_UNITS  # noqa: E402
 from marvia.graph.live import agent_deps  # noqa: E402
+from marvia.rag.edges import build_edges  # noqa: E402
 from marvia.rag.graphdb import connect_graph, graph_meta, units_sha256  # noqa: E402
+from marvia.rag.index import read_units  # noqa: E402
+from marvia.rag.items import items_sha256  # noqa: E402
 
 # [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
 os.environ["MARVIA_UNIPASS_MODE"] = "replay"
@@ -383,6 +386,10 @@ for model in models:
         annex_units = conn.execute(ANNEX_SQL).fetchone()[0]
         docs = sorted({p.name.split(".")[0] for p in CORPUS_UNITS.glob("*.jsonl")})
         graph = {}
+        # [왜] 그래프가 지금 코드로 만든 간선 수와 같은지 대조한다. 켠 설정에서만 센다
+        refers_expected = (
+            len(build_edges(read_units(CORPUS_UNITS)).refers) if settings.graph == "on" else None
+        )
         if settings.graph == "on":
             driver = connect_graph(settings)
             try:
@@ -406,6 +413,8 @@ for model in models:
                 "graph_meta": graph,
                 "annex_units": annex_units,
                 "units_sha256": units_sha256(CORPUS_UNITS),
+                "items_sha256": items_sha256(),
+                "refers_expected": refers_expected,
                 "unipass_mode": settings.unipass_mode,
                 "rag_via": settings.rag_via,
             }

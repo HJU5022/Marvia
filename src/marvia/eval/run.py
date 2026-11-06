@@ -180,8 +180,18 @@ def run_problems(
         graph = meta.get("graph_meta") or {}
         if not graph.get("sha"):
             problems.append("그래프 메타(sha)가 없다 (scripts/build_graph.py)")
-        elif graph["sha"] != meta.get("units_sha256"):
-            problems.append("그래프가 지금 단위 파일로 만든 것이 아니다 (sha 다름)")
+        else:
+            if graph["sha"] != meta.get("units_sha256"):
+                problems.append("그래프가 지금 단위 파일로 만든 것이 아니다 (sha 다름)")
+            # [왜] 단위 파일이 같아도 품목 파일이나 간선을 만드는 코드가 바뀌면 그래프는 지금 결과가 아니다.
+            #      메타에 이 값이 없는 옛 적재도 지금 결과로 볼 수 없다 (계획 3b 최종 검토 I-2)
+            if graph.get("items_sha") != meta.get("items_sha256"):
+                problems.append("그래프가 지금 품목 파일로 만든 것이 아니다 (items.yaml sha 다름)")
+            if graph.get("refers") != meta.get("refers_expected"):
+                problems.append(
+                    f"그래프 참조 간선 수가 지금 코드 결과와 다르다 "
+                    f"(그래프 {graph.get('refers')}, 코드 {meta.get('refers_expected')})"
+                )
         if not sum(r.get("graph_added", 0) for r in rows):
             problems.append("그래프 켬인데 그래프가 더한 후보가 0이다")
     # [왜] 칸이 없는 결과도 무효다. 어떤 모드로 돌았는지 모르면 실제 API를 불렀는지 알 수 없다

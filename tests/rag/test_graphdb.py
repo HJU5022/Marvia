@@ -40,7 +40,9 @@ def _load(driver, doc: str):
     units = _units(doc)
     edges = build_edges(units)
     edges.delegates = []  # [왜] 위임 간선은 실제 문서 id 사이라 시험 그래프에 넣지 않는다
-    load_graph(driver, units, edges, name=doc, sha="abc", built_at="2026-11-06T00:00:00+00:00")
+    load_graph(
+        driver, units, edges, name=doc, sha="abc", items_sha="i1", built_at="2026-11-06T00:00:00+00:00"
+    )
     return units, edges
 
 
@@ -50,6 +52,7 @@ def test_loading_twice_keeps_the_same_counts_and_meta(graph_db):
     _load(driver, doc)
     assert graph_meta(driver, doc, [doc]) == {
         "sha": "abc",
+        "items_sha": "i1",
         "built_at": "2026-11-06T00:00:00+00:00",
         "units": len(units),
         "refers": len(edges.refers),
@@ -90,13 +93,14 @@ def test_reloading_replaces_edges_with_the_current_result(graph_db):
     units = _units(doc)
     edges = build_edges(units)
     edges.delegates = [(doc, doc)]  # [왜] 시험 문서 하나뿐이라 자기 위임으로 DELEGATES_TO 교체를 본다
-    load_graph(driver, units, edges, name=doc, sha="x", built_at="2026-11-06T00:00:00+00:00")
+    load_graph(driver, units, edges, name=doc, sha="x", items_sha="", built_at="2026-11-06T00:00:00+00:00")
     assert len(edges.refers) > 1
     kept = edges.refers[:1]
     edges.refers, edges.delegates = kept, []
-    load_graph(driver, units, edges, name=doc, sha="y", built_at="2026-11-06T00:00:00+00:00")
+    load_graph(driver, units, edges, name=doc, sha="y", items_sha="", built_at="2026-11-06T00:00:00+00:00")
     assert graph_meta(driver, doc, [doc]) == {
         "sha": "y",
+        "items_sha": "",
         "built_at": "2026-11-06T00:00:00+00:00",
         "units": len(units),
         "refers": 1,
@@ -114,7 +118,9 @@ def test_item_requirements_add_their_grounding_units(graph_db):
     req = Requirement(
         name=f"{doc} 정밀검사", grounded_in=[grounding], needs=[f"{doc} 성적서"], by=[f"{doc} 식약처"]
     )
-    load_item_graph(driver, ItemGraph(reviewed="시험", items=[Item(name=f"{doc} 건고추", requires=[req])]))
+    load_item_graph(
+        driver, ItemGraph(reviewed="시험", items=[Item(name=f"{doc} 건고추", requires=[req])]), owner=doc
+    )
     assert neighbors(driver, [], [f"{doc} 건고추"]) == [f"{doc}@20261002#별표10.4호.다목"]
     assert neighbors(driver, [], ["없는 품목"]) == []
     found = driver.execute_query(
@@ -123,3 +129,52 @@ def test_item_requirements_add_their_grounding_units(graph_db):
         {"r": f"{doc} 정밀검사"},
     ).records
     assert [(r["d"], r["a"]) for r in found] == [(f"{doc} 성적서", f"{doc} 식약처")]
+
+
+def _item(doc: str, name: str, reqs: dict[str, str]) -> Item:
+    """요건 이름 → 근거 단위 키. 이름은 모두 doc으로 시작해 시험 끝에 지워진다."""
+    return Item(
+        name=f"{doc} {name}",
+        requires=[
+            Requirement(
+                name=f"{doc} {req}", grounded_in=[Grounding(unit_id=f"{doc}@20261002#{key}", quote="x")]
+            )
+            for req, key in reqs.items()
+        ],
+    )
+
+
+def test_reloading_the_item_graph_leaves_only_the_new_edges(graph_db):
+    driver, doc = graph_db
+    _load(driver, doc)
+    first = ItemGraph(
+        reviewed="시험",
+        items=[
+            _item(doc, "건고추", {"수입신고": "제30조.1항", "정밀검사": "제32조"}),
+            _item(doc, "매트", {"수입신고": "별표10.4호.다목"}),
+        ],
+    )
+    load_item_graph(driver, first, owner=doc)
+    # [왜] 요건 이름이 같아도(수입신고) 품목마다 근거가 다르다. 한 노드를 나눠 쓰면 근거가 품목 사이로 번진다
+    both = {f"{doc}@20261002#제30조.1항", f"{doc}@20261002#제32조"}
+    assert set(neighbors(driver, [], [f"{doc} 건고추"])) == both
+    assert neighbors(driver, [], [f"{doc} 매트"]) == [f"{doc}@20261002#별표10.4호.다목"]
+    # 품목 파일이 바뀐 뒤 다시 적재: 건고추는 정밀검사를 잃고, 매트는 파일에서 빠진다
+    second = ItemGraph(reviewed="시험", items=[_item(doc, "건고추", {"수입신고": "제30조.1항"})])
+    load_item_graph(driver, second, owner=doc)
+    assert neighbors(driver, [], [f"{doc} 건고추"]) == [f"{doc}@20261002#제30조.1항"]
+    assert neighbors(driver, [], [f"{doc} 매트"]) == []
+    left = driver.execute_query(
+        "MATCH (q:Requirement) WHERE q.name STARTS WITH $doc RETURN count(q) AS n", {"doc": doc}
+    ).records[0]["n"]
+    assert left == 1
+
+
+def test_item_graph_reload_only_touches_nodes_of_its_own_owner(graph_db):
+    driver, doc = graph_db
+    _load(driver, doc)
+    other = ItemGraph(reviewed="시험", items=[_item(doc, "다른 품목", {"수입신고": "제32조"})])
+    load_item_graph(driver, other, owner=f"{doc}-other")
+    load_item_graph(driver, ItemGraph(reviewed="시험", items=[]), owner=doc)
+    # [왜] 소유자가 다른 노드는 지워지지 않는다. 시험(TEST 소유자)이 실제 그래프(main)를 못 건드리는 이유다
+    assert neighbors(driver, [], [f"{doc} 다른 품목"]) == [f"{doc}@20261002#제32조"]

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -55,6 +56,11 @@ class ItemGraph(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reviewed: str
     items: list[Item]
+
+
+def items_sha256(path: Path = ITEMS_PATH) -> str:
+    """items.yaml 파일의 sha256. 그래프 메타에 남겨 그래프가 어느 품목 파일로 만들어졌는지 본다."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def load_items(path: Path = ITEMS_PATH) -> ItemGraph:

@@ -14,7 +14,7 @@ from marvia.eval.dataset import CORPUS_UNITS
 from marvia.rag.edges import build_edges
 from marvia.rag.graphdb import connect_graph, graph_meta, load_graph, load_item_graph, units_sha256
 from marvia.rag.index import read_units
-from marvia.rag.items import load_items
+from marvia.rag.items import items_sha256, load_items
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--sample", type=int, default=0, help="넣지 않고 무작위 간선 n개를 찍는다")
@@ -32,7 +32,15 @@ if args.sample:
     raise SystemExit(0)
 driver = connect_graph(Settings())
 built_at = datetime.now(UTC).isoformat(timespec="seconds")
-load_graph(driver, units, edges, name="main", sha=units_sha256(CORPUS_UNITS), built_at=built_at)
-load_item_graph(driver, load_items())
+load_graph(
+    driver,
+    units,
+    edges,
+    name="main",
+    sha=units_sha256(CORPUS_UNITS),
+    items_sha=items_sha256(),
+    built_at=built_at,
+)
+load_item_graph(driver, load_items(), owner="main")
 print(graph_meta(driver, "main", sorted({u.doc_id for u in units})))
 driver.close()

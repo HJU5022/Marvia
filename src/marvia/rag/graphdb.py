@@ -51,12 +51,16 @@ MERGE (a)-[:REFERS_TO]->(b)
 #      (다른 문서의 노드는 건드리지 않는다)
 CLEAR_REFERS: LiteralString = "MATCH (a:Unit)-[r:REFERS_TO]->() WHERE a.doc_id IN $docs DELETE r"
 CLEAR_DELEGATES: LiteralString = "MATCH (a:Law)-[r:DELEGATES_TO]->() WHERE a.doc_id IN $docs DELETE r"
-META: LiteralString = "MERGE (g:Graph {name: $name}) SET g.units_sha256 = $sha, g.built_at = $built_at"
+META: LiteralString = """
+MERGE (g:Graph {name: $name})
+SET g.units_sha256 = $sha, g.items_sha256 = $items_sha, g.built_at = $built_at
+"""
 READ_META: LiteralString = """
 MATCH (g:Graph {name: $name})
 OPTIONAL MATCH (u:Unit) WHERE u.doc_id IN $docs
 OPTIONAL MATCH (u)-[r:REFERS_TO]->()
-RETURN g.units_sha256 AS sha, g.built_at AS built_at, count(DISTINCT u) AS units, count(r) AS refers
+RETURN g.units_sha256 AS sha, g.items_sha256 AS items_sha, g.built_at AS built_at,
+       count(DISTINCT u) AS units, count(r) AS refers
 """
 
 
@@ -78,7 +82,7 @@ def _batches(rows: list, size: int):
 
 
 def load_graph(
-    driver: Driver, units: list[Unit], edges: Edges, *, name: str, sha: str, built_at: str
+    driver: Driver, units: list[Unit], edges: Edges, *, name: str, sha: str, items_sha: str, built_at: str
 ) -> None:
     """단위·법령 노드는 MERGE로, 간선은 지금 결과로 바꿔 넣는다. 두 번 넣어도 같다. 메타에 sha를 남긴다."""
     size = load_rules("graph")["load"]["batch"]
@@ -103,7 +107,7 @@ def load_graph(
 
     with driver.session() as session:
         session.execute_write(replace_edges)
-    driver.execute_query(META, {"name": name, "sha": sha, "built_at": built_at})
+    driver.execute_query(META, {"name": name, "sha": sha, "items_sha": items_sha, "built_at": built_at})
 
 
 def graph_meta(driver: Driver, name: str, docs: list[str]) -> dict:
@@ -120,10 +124,18 @@ def units_sha256(folder: Path) -> str:
 
 # --- 검색 때 이웃 찾기 (Task 4), 품목 요건 (Task 5) ---
 
+# [왜] 품목 그래프 노드는 소유자(owner) 속성을 갖는다. 실제 그래프는 "main", 시험은 TEST 문서 id다.
+#      다시 적재할 때 자기 소유자의 노드만 지워서 시험이 실제 노드를 건드리지 못한다. 소유자 칸이 없는 옛
+#      노드는 "main"의 것으로 본다. Requirement는 품목+이름이 열쇠다(품목이 달라도 같은 이름이면 근거가
+#      섞이지 않게)
+CLEAR_ITEMS: LiteralString = """
+MATCH (n) WHERE (n:Item OR n:Requirement OR n:Document OR n:Agency) AND coalesce(n.owner, 'main') = $owner
+DETACH DELETE n
+"""
 ITEMS: LiteralString = """
 UNWIND $rows AS r
-MERGE (i:Item {name: r.item})
-MERGE (q:Requirement {name: r.requirement})
+MERGE (i:Item {name: r.item, owner: $owner})
+MERGE (q:Requirement {item: r.item, name: r.requirement, owner: $owner})
 MERGE (i)-[:REQUIRES]->(q)
 WITH q, r
 UNWIND r.units AS uid
@@ -132,16 +144,16 @@ MERGE (q)-[:GROUNDED_IN]->(u)
 """
 NEEDS: LiteralString = """
 UNWIND $rows AS r
-MATCH (q:Requirement {name: r.requirement})
+MATCH (q:Requirement {item: r.item, name: r.requirement, owner: $owner})
 UNWIND r.needs AS name
-MERGE (d:Document {name: name})
+MERGE (d:Document {name: name, owner: $owner})
 MERGE (q)-[:NEEDS]->(d)
 """
 BY: LiteralString = """
 UNWIND $rows AS r
-MATCH (q:Requirement {name: r.requirement})
+MATCH (q:Requirement {item: r.item, name: r.requirement, owner: $owner})
 UNWIND r.by AS name
-MERGE (a:Agency {name: name})
+MERGE (a:Agency {name: name, owner: $owner})
 MERGE (q)-[:BY]->(a)
 """
 # [왜] 방향 없이 1단계: 시드가 가리키는 단위(제30조.1항 → 별표 9)와 시드를 가리키는 단위(별표 9 → 제30조).
@@ -157,8 +169,12 @@ RETURN u.unit_id AS unit_id
 """
 
 
-def load_item_graph(driver: Driver, graph: ItemGraph) -> None:
-    """품목·요건·서류·기관 노드와 REQUIRES·GROUNDED_IN·NEEDS·BY 간선을 넣는다. 단위 노드가 먼저다."""
+def load_item_graph(driver: Driver, graph: ItemGraph, *, owner: str) -> None:
+    """품목·요건·서류·기관 노드와 REQUIRES·GROUNDED_IN·NEEDS·BY 간선을 지금 파일 그대로 바꿔 넣는다.
+
+    단위 노드가 먼저다. 한 트랜잭션에서 이 소유자의 옛 품목 그래프를 지우고 만든다.
+    [주의] owner에 기본값이 없다. 빠뜨린 호출(시험)이 실제 그래프("main")를 지우는 일을 막는다.
+    """
     rows = [
         {
             "item": item.name,
@@ -170,8 +186,14 @@ def load_item_graph(driver: Driver, graph: ItemGraph) -> None:
         for item in graph.items
         for req in item.requires
     ]
-    for statement in (ITEMS, NEEDS, BY):
-        driver.execute_query(statement, {"rows": rows})
+
+    def replace_items(tx) -> None:
+        tx.run(CLEAR_ITEMS, owner=owner).consume()
+        for statement in (ITEMS, NEEDS, BY):
+            tx.run(statement, rows=rows, owner=owner).consume()
+
+    with driver.session() as session:
+        session.execute_write(replace_items)
 
 
 def neighbors(driver: Driver, seeds: list[str], items: list[str] | None = None) -> list[str]:

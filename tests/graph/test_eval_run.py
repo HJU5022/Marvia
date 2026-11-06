@@ -387,12 +387,30 @@ def test_run_problems_reject_runs_that_did_not_measure_what_they_claim():
     ]
     off = {"annex_units": 75, "graph": "off", "unipass_mode": "replay"}
     assert run_problems(off, rows, clean, {"B02"}) == []
-    on = off | {"graph": "on", "graph_meta": {"sha": "a"}, "units_sha256": "a"}
+    on = off | {
+        "graph": "on",
+        "graph_meta": {"sha": "a", "items_sha": "i", "refers": 5},
+        "units_sha256": "a",
+        "items_sha256": "i",
+        "refers_expected": 5,
+    }
     assert run_problems(on, rows, clean, {"B02"}) == ["그래프 켬인데 그래프가 더한 후보가 0이다"]
+    graph_on = [rows[0] | {"graph_added": 3}]
     stale = on | {"units_sha256": "b"}
-    assert run_problems(stale, [rows[0] | {"graph_added": 3}], clean, set()) == [
+    assert run_problems(stale, graph_on, clean, set()) == [
         "그래프가 지금 단위 파일로 만든 것이 아니다 (sha 다름)"
     ]
+    # [왜] 단위 파일이 같아도 품목 파일이나 간선을 만드는 코드가 바뀌면 그래프는 지금 결과가 아니다
+    assert run_problems(on | {"items_sha256": "j"}, graph_on, clean, set()) == [
+        "그래프가 지금 품목 파일로 만든 것이 아니다 (items.yaml sha 다름)"
+    ]
+    assert run_problems(on | {"refers_expected": 6}, graph_on, clean, set()) == [
+        "그래프 참조 간선 수가 지금 코드 결과와 다르다 (그래프 5, 코드 6)"
+    ]
+    old_graph = on | {
+        "graph_meta": {"sha": "a"}
+    }  # 품목 sha·간선 수를 안 남긴 옛 적재도 지금 결과로 볼 수 없다
+    assert len(run_problems(old_graph, graph_on, clean, set())) == 2
     broken = [{"id": "R01", "failed": ["search_law: graph_unavailable"]}]
     assert run_problems(
         {"annex_units": 0, "unipass_mode": "replay"}, broken, clean | {"leaks": 1}, set()
