@@ -1180,3 +1180,33 @@ def test_watch_cargo_refuses_an_unread_number_token(agent_deps):
     assert watch.added == []
     text = [m.content for m in graph.get_state(cfg("w5")).values["messages"] if m.type == "tool"][0]
     assert "감시할 수 없는 번호" in text
+
+
+# --- 새 길 전체에서 번호 가림 (계획 3d, R-010·R-022의 LLM 입력 쪽) ---
+
+
+def test_no_real_number_reaches_any_llm_call_across_the_new_paths(agent_deps, monkeypatch):
+    _short_memory(monkeypatch)
+    inputs = Inputs()
+    watch = FakeWatch()
+    turn1 = (
+        say(RESEARCH),
+        say(("search_law", {"query": "수입신고 기한"})),  # 조사 서브에이전트
+        say(text="관세법 제241조제3항이 30일을 정해요."),  # 조사 서브에이전트의 요약
+        say(("official_lookup", {"law_name": "식품위생법"})),
+        say(("watch_cargo", {"token": "[BL2]"})),
+        say(),
+    )
+    turn2 = (AIMessage("요약: [BL1]과 [BL2]를 물었고 [BL2]를 감시해요"), say())
+    deps = {"store": InMemoryStore(), "watch": watch.deps(), "web": law_site([]), "write": keep([])}
+    graph = agent_graph(agent_deps, *turn1, *turn2, **deps)
+    config = {"configurable": {"thread_id": "leak"}, "callbacks": [inputs]}
+    graph.invoke({"text": "DEMO0001DEMO0002 기한 근거 찾고 둘째는 지켜봐 줘"}, config)
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), config)
+    watch.left = [{"number": "DEMO0002", "old_stage": "수입신고", "new_stage": "수입신고수리"}]
+    out = graph.invoke({"text": "고마워요"}, config)
+    assert watch.added == [("local", "DEMO0002", "수입신고")]
+    assert out["answer"].startswith("감시 중인 화물 변화:\n- DEMO0002: 수입신고 → 수입신고수리")
+    # [왜] 첫 차례 부모 4 + 조사 서브에이전트 2, 둘째 차례 요약 1 + 부모 1. 어느 입력에도 실제 번호가 없다
+    assert len(inputs.calls) == 8
+    assert not any(number in call for call in inputs.calls for number in ("DEMO0001", "DEMO0002"))
