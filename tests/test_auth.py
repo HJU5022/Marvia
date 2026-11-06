@@ -1,6 +1,7 @@
 """화면 서버 로그인 확인 시험 (계획 4b Task 4, C4). 시험 안에서 만든 ES256 키로 돌고 네트워크를 안 쓴다."""
 
 import io
+import json
 import time
 import urllib.request
 
@@ -84,8 +85,9 @@ def test_a_missing_or_other_scheme_header_is_401(header):
 def test_dev_login_takes_only_its_fixed_token():
     verify = dev_verifier(Settings(_env_file=None, auth="dev", dev_token="local-dev-token"))
     assert user_from_header("Bearer local-dev-token", verify) == DEV_USER
-    with pytest.raises(AuthError):
+    with pytest.raises(AuthError) as refused:
         user_from_header("Bearer local-dev-token-x", verify)
+    assert refused.value.status == 401
 
 
 @pytest.mark.parametrize(
@@ -190,3 +192,25 @@ def test_the_server_refuses_to_start_with_a_plain_http_supabase_url(monkeypatch)
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(RuntimeError, match="https"):
         check_startup(Settings(_env_file=None, supabase_url="http://demo.supabase.test", owner_ids="owner-1"))
+
+
+def test_a_signed_token_without_sub_is_401():
+    with pytest.raises(AuthError) as refused:
+        user_from_header(f"Bearer {token(sub=None)}", VERIFY)
+    assert refused.value.status == 401
+
+
+def test_every_name_in_the_comma_separated_owner_list_gets_in():
+    # [왜] SETTINGS의 소유자 목록은 "owner-1, owner-2"(쉼표 뒤 공백)다
+    assert user_from_header(f"Bearer {token(sub='owner-2')}", VERIFY) == "owner-2"
+
+
+def test_the_key_list_path_asks_the_supabase_url_and_picks_the_key_by_kid(monkeypatch):
+    jwk = jwt.algorithms.ECAlgorithm.to_jwk(KEY.public_key(), as_dict=True) | {"kid": "k1", "use": "sig"}
+    asked = over_the_wire(monkeypatch, json.dumps({"keys": [jwk]}).encode())
+    verify = supabase_verifier(SETTINGS)
+    assert user_from_header(f"Bearer {token(headers={'kid': 'k1'})}", verify) == "owner-1"
+    assert asked[0][0] == f"{BASE}/auth/v1/.well-known/jwks.json"
+    with pytest.raises(AuthError) as refused:
+        user_from_header(f"Bearer {token(headers={'kid': 'unknown'})}", verify)
+    assert refused.value.status == 401
