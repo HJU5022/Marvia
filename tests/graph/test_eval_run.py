@@ -3,16 +3,18 @@
 from dataclasses import replace
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from marvia.eval.dataset import Item, load_set
 from marvia.eval.run import (
+    LlmWatch,
     articles,
     behaviour,
     cost_usd,
     estimate,
     evaluate_item,
     existing_results,
+    observe,
     preflight,
     result_name,
     stop_reason,
@@ -55,6 +57,7 @@ def test_agent_row_keeps_citations_evidence_tools_and_rag_log(agent_deps):
     deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
     row, raw = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
     assert row["behaviour"] == "answer" and row["error"] is None
+    assert row["real_llm_calls"] >= 1
     assert row["cited"] == ["L001556@20261002#제241조.3항"]
     assert row["evidence"] == ["L001556@20261002#제241조.3항"]
     assert row["tools"] == ["search_law"]
@@ -165,3 +168,13 @@ def test_retrieved_is_the_rag_order_and_leaves_out_get_provision(agent_deps):
     deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
     row, _ = evaluate_item(deps, item("언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
     assert row["retrieved"] == ["L001556@20261002#제241조.3항"]
+
+
+def test_leak_flag_turns_true_when_an_llm_input_holds_a_real_number():
+    # [왜] "leaks 0"은 합격 기준이다. 표시가 켜질 수 있다는 것을 양성 대조로 본다
+    watch = LlmWatch()
+    watch.on_chat_model_start({}, [[HumanMessage("DEMO0001 어디예요?")]])
+    values = {"mask_map": {"[BL1]": "DEMO0001"}}
+    assert observe(values, [], watch, "agent", [])["leak"] is True
+    assert observe({"mask_map": {"[BL1]": "DEMO0002"}}, [], watch, "agent", [])["leak"] is False
+    assert watch.calls == 1
