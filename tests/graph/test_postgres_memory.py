@@ -2,6 +2,10 @@
 대화 기록에 실제 번호가 평문으로 남는 칸도 본다 (R-034). 로컬 DB가 꺼져 있으면 건너뛴다.
 """
 
+import os
+import subprocess
+import sys
+
 import psycopg
 from cryptography.fernet import Fernet
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -83,3 +87,46 @@ def test_checkpoints_keep_real_numbers_only_in_the_plain_text_and_answer_channel
             "WHERE c.value::text LIKE '%DEMO0001%'"
         )
         assert {row[0] for row in conn.execute(plain).fetchall()} <= {"text", "answer"}
+
+
+# 엄격 직렬화 모드에서 그래프를 컴파일하고, 그 그래프가 쓰는 직렬화기에 평문·암호문 값을 읽혀 본다
+STRICT_CHECK = """
+import sys
+from typing import TypedDict
+
+from langgraph._internal import _serde
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.graph import START, StateGraph
+
+from marvia.graph.live import live_memory
+
+class State(TypedDict):
+    text: str
+
+assert _serde.STRICT_MSGPACK_ENABLED  # 환경 변수가 이 프로세스에 걸렸다
+graph = StateGraph(State)
+graph.add_node("n", lambda state: {})
+graph.add_edge(START, "n")
+with live_memory(sys.argv[1], sys.argv[2]) as (saver, _store):
+    serde = graph.compile(checkpointer=saver).checkpointer.serde
+    value = {"text": "DEMO0001"}
+    assert serde.loads_typed(serde.dumps_typed(value)) == value
+    try:
+        serde.loads_typed(JsonPlusSerializer().dumps_typed(value))
+    except ValueError:
+        print("refused")
+    else:
+        print("read")
+"""
+
+
+def test_strict_msgpack_mode_still_refuses_a_plain_checkpoint_value(test_url):
+    # [왜] LANGGRAPH_STRICT_MSGPACK=true면 컴파일이 저장기를 복제하며 직렬화기를 라이브러리 기본 클래스로
+    #      다시 만든다(checkpoint/base with_allowlist). 평문 거절이 조용히 사라지면 안 된다 (R-038)
+    # [주의] 이 값은 라이브러리가 불러올 때 읽는다. 같은 프로세스에서 값만 바꾸면 고치지 않아도 통과한다
+    key = Fernet.generate_key().decode()  # [왜] 시험 안에서 만든 키. 저장소의 키를 쓰지 않는다
+    env = {**os.environ, "LANGGRAPH_STRICT_MSGPACK": "true"}
+    command = [sys.executable, "-c", STRICT_CHECK, test_url, key]
+    run = subprocess.run(command, env=env, capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stderr[-2000:]
+    assert run.stdout.strip() == "refused"

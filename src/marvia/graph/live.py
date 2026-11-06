@@ -10,13 +10,14 @@ LLM 실패는 llm.structured가 LLMFailed로 바꿔 던지고, 그래프가 잡�
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from typing import Any
 
 import httpx
 import psycopg
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
 from langgraph.store.postgres import PostgresStore
@@ -101,6 +102,24 @@ def checkpoint_serde(secret: str) -> EncryptedSerializer:
     return EncryptedOnly(AesGcm(derive_key(secret, CHECKPOINT_INFO)))
 
 
+class EncryptedSaver(PostgresSaver):
+    """EncryptedOnly를 쓰는 대화 기록 저장기. 엄격 직렬화 모드에서 복제돼도 평문 거절이 남는다."""
+
+    def with_allowlist(self, extra_allowlist: Collection[tuple[str, ...]]) -> BaseCheckpointSaver[str]:
+        # [왜] LANGGRAPH_STRICT_MSGPACK=true면 graph.compile이 이 함수로 저장기를 복제하고, 라이브러리가
+        #      직렬화기를 기본 EncryptedSerializer로 다시 만든다(checkpoint/base _with_msgpack_allowlist).
+        #      그대로 두면 평문 거절이 조용히 사라진다. 복제본의 직렬화기를 다시 EncryptedOnly로 싼다
+        clone = super().with_allowlist(extra_allowlist)
+        serde = clone.serde
+        if isinstance(serde, EncryptedOnly):
+            return clone
+        if not isinstance(serde, EncryptedSerializer):
+            # [주의] 라이브러리가 바뀌어 암호 직렬화기가 아니게 되면 평문을 읽는 쪽으로 가지 않고 멈춘다
+            raise TypeError("대화 기록 직렬화기가 암호화 직렬화기가 아닙니다")
+        clone.serde = EncryptedOnly(serde.cipher, serde.serde)
+        return clone
+
+
 @contextmanager
 def live_memory(url: str, secret: str) -> Iterator[tuple[PostgresSaver, PostgresStore]]:
     """대화 기록(checkpointer)은 암호화해서, 장기 기억(Store)은 그대로 Postgres에 둔다. 표가 없으면 만든다."""
@@ -122,7 +141,7 @@ def live_memory(url: str, secret: str) -> Iterator[tuple[PostgresSaver, Postgres
         ) as conn,
         PostgresStore.from_conn_string(url) as store,
     ):
-        saver = PostgresSaver(conn, serde=serde)
+        saver = EncryptedSaver(conn, serde=serde)
         # [왜] setup은 표가 없을 때만 만들고 있으면 그대로 둔다. 처음 쓰기 전에 꼭 불러야 한다
         saver.setup()
         store.setup()
