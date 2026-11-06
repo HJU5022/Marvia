@@ -61,6 +61,24 @@
    "value": 0.3974,
    "n": 12
   },
+  "trajectory": {
+   "value": null,
+   "n": 0
+  },
+  "stray_articles": {
+   "value": 0.3913,
+   "n": 46
+  },
+  "top_article_share": {
+   "value": 0.5208,
+   "n": 24,
+   "over": 8,
+   "skipped": 6
+  },
+  "false_sufficient": {
+   "value": 0.3077,
+   "n": 13
+  },
   "llm_calls_median": 6.0,
   "llm_calls_max": 20,
   "evidence_backed": {
