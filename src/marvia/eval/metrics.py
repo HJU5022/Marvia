@@ -631,18 +631,26 @@ def metric_names(k: int) -> dict[str, str]:
     return {(f"recall_at_{k}" if key == "recall" else key): name for key, name in TABLE}
 
 
-def spread_groups(results: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
-    """결과 파일들을 (길, 모델, 커밋)별로 묶는다. 같은 묶음에 평가셋 파일이 다른 결과가 섞이면 거절한다."""
+def spread_groups(results: list[dict]) -> dict[tuple[str, str, str, str], list[dict]]:
+    """결과 파일들을 (길, 모델, 커밋, 그래프 설정)별로 묶는다. 평가셋 파일이 다른 결과가 섞이거나
+    meta.problems가 비지 않은 무효 실행이 있으면 거절한다."""
     # [왜] 같은 설정이어도 커밋이 다르면 다른 코드의 결과다. 한 평균으로 섞지 않고 따로 센다
-    groups: dict[tuple[str, str, str], list[dict]] = {}
+    # [왜] 설정 A(그래프 off)와 B(on)는 같은 커밋에서 돈다. 설정을 열쇠에 넣어야 따로 센다.
+    #      옛 결과 파일에는 meta.graph가 없어 "off"로 묶는다(옛 묶음은 그대로다)
+    groups: dict[tuple[str, str, str, str], list[dict]] = {}
+    invalid = [r["meta"].get("tag") or "(태그 없음)" for r in results if r["meta"].get("problems")]
+    if invalid:
+        raise ValueError(f"무효 실행은 평균에 넣지 않는다 (meta.problems): {', '.join(invalid)}")
     for result in results:
         meta = result["meta"]
-        groups.setdefault((meta["loop"], meta["model"], meta.get("commit", "?")), []).append(result)
-    for (loop, model, commit), group in groups.items():
+        key = (meta["loop"], meta["model"], meta.get("commit", "?"), meta.get("graph", "off"))
+        groups.setdefault(key, []).append(result)
+    for (loop, model, commit, graph), group in groups.items():
         shas = sorted({r["meta"]["set_sha256"][:12] for r in group})
         if len(shas) > 1:
             raise ValueError(
-                f"{loop}-{model}-{commit}: 평가셋 파일이 다르다 ({', '.join(shas)}). 같은 판끼리만 묶는다"
+                f"{loop}-{model}-{commit}-그래프 {graph}: 평가셋 파일이 다르다 ({', '.join(shas)}). "
+                "같은 판끼리만 묶는다"
             )
     return groups
 
@@ -652,7 +660,8 @@ def spread_table(group: list[dict], set_label: str, stats: dict) -> str:
     meta = group[0]["meta"]
     names = metric_names(meta["k"])
     lines = [
-        f"### {meta['loop']} {meta['model']} (커밋 {meta.get('commit', '?')}, {set_label})",
+        f"### {meta['loop']} {meta['model']} "
+        f"(커밋 {meta.get('commit', '?')}, 그래프 {meta.get('graph', 'off')}, {set_label})",
         "",
         "평균 낸 실행: " + ", ".join(r["meta"].get("tag") or "(태그 없음)" for r in group),
         "",

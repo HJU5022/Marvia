@@ -34,6 +34,7 @@ from marvia.eval.metrics import (
     domain_table,
     floors,
     gate_block,
+    gate_uncovered,
     human_faithful,
     rag_table,
     ragas_means,
@@ -49,6 +50,7 @@ from marvia.eval.run import (
     estimate,
     evaluate_item,
     existing_results,
+    graph_setting_problem,
     inside_repo,
     preflight,
     result_name,
@@ -71,6 +73,12 @@ run.add_argument("--max-cost", type=float, default=load_rules("eval")["run"]["ma
 run.add_argument("--dry-run", action="store_true", help="어림 비용만 찍고 끝낸다")
 # [왜] v2를 동결(f09fe11)해서 기본이 v2다. meta의 set·set_sha256이 어느 판인지 남긴다
 run.add_argument("--set", choices=list(SETS), default="v2", help="평가셋 판 (eval/set_<판>.yaml)")
+run.add_argument(
+    "--graph",
+    choices=["off", "on"],
+    required=True,
+    help="이 실행이 재려는 그래프 설정. 실제 설정(MARVIA_GRAPH)과 다르면 돈을 쓰기 전에 멈춘다",
+)
 run.add_argument("--tag", default="", help="결과 파일 이름 뒤에 붙일 말 (예: ctx는 맥락 문장 색인)")
 report = sub.add_parser("report", help="결과 파일들을 지금 코드로 다시 채점해 표로 (키 없음)")
 report.add_argument("files", nargs="+")
@@ -341,12 +349,12 @@ import psycopg  # noqa: E402
 
 from marvia.config import Settings  # noqa: E402
 from marvia.db import connect  # noqa: E402
+from marvia.eval.dataset import CORPUS_UNITS  # noqa: E402
 from marvia.graph.live import agent_deps  # noqa: E402
 from marvia.rag.graphdb import connect_graph, graph_meta, units_sha256  # noqa: E402
 
 # [왜] 실행 유효성(계획 3b 사전 등록)에 쓸 값: DB의 별표 단위 수, 단위 파일 sha, 그래프 메타
 ANNEX_SQL = "SELECT count(*) FROM corpus_units WHERE split_part(unit_id, '#', 2) LIKE '별표%'"
-UNITS_DIR = ROOT / "corpus" / "units"
 faults = {i.id for i in items if i.fault}
 
 out = Path(args.out)
@@ -354,6 +362,10 @@ out.mkdir(parents=True, exist_ok=True)
 by_id = {i.id: i for i in data.items}
 k = load_rules("eval")["retrieval_k"]
 spent = 0.0
+# [왜] 인자와 실제 설정이 다르면 돈을 쓰기 전에 멈춘다. 모델 이름은 설정의 graph와 상관없다
+mismatch = graph_setting_problem(args.graph, Settings().graph)
+if mismatch:
+    raise SystemExit(f"[멈춤] {mismatch}")
 for model in models:
     settings = Settings(chat_model=model)
     with (
@@ -363,8 +375,14 @@ for model in models:
     ):
         deps = agent_deps(settings, conn, watch_conn)
         annex_units = conn.execute(ANNEX_SQL).fetchone()[0]
-        docs = sorted({p.name.split(".")[0] for p in UNITS_DIR.glob("*.jsonl")})
-        graph = graph_meta(connect_graph(settings), "main", docs) if settings.graph == "on" else {}
+        docs = sorted({p.name.split(".")[0] for p in CORPUS_UNITS.glob("*.jsonl")})
+        graph = {}
+        if settings.graph == "on":
+            driver = connect_graph(settings)
+            try:
+                graph = graph_meta(driver, "main", docs)
+            finally:
+                driver.close()
         for loop in loops:
             rows, raws, halt = [], [], None
             meta = {
@@ -381,7 +399,7 @@ for model in models:
                 "graph": settings.graph,
                 "graph_meta": graph,
                 "annex_units": annex_units,
-                "units_sha256": units_sha256(UNITS_DIR),
+                "units_sha256": units_sha256(CORPUS_UNITS),
             }
             name = result_name(loop, model, args.tag)
             for item in items:
@@ -409,7 +427,7 @@ for model in models:
                     print(f"[멈춤] {item.id}: {halt}")
                     break
             summary = summarize(rows, by_id, k)
-            meta["problems"] = run_problems(meta, rows, summary, faults)
+            meta["problems"] = run_problems(meta, rows, summary, faults, gate_uncovered(rows, by_id))
             save_result(out, name, meta, summary, rows, raws)  # 문항이 하나도 없어도 빈 파일을 남긴다
             print(json.dumps(summary, ensure_ascii=False))
             for problem in meta["problems"]:

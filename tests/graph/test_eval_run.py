@@ -17,6 +17,7 @@ from marvia.eval.run import (
     eval_deps,
     evaluate_item,
     existing_results,
+    graph_setting_problem,
     inside_repo,
     observe,
     preflight,
@@ -398,3 +399,18 @@ def test_run_problems_reject_runs_that_did_not_measure_what_they_claim():
         "leaks 1",
         "검색 길이 실패한 문항: R01",
     ]
+
+
+def test_run_problems_flag_runs_that_did_not_cover_the_whole_set():
+    # [왜] 상한에서 끊겼거나 --ids·--limit로 일부만 돈 실행은 세지 않는다 (metrics.gate_uncovered와 같은 규칙)
+    clean = {"errors": 0, "leaks": 0, "cap_breaches": 0}
+    meta = {"annex_units": 75, "graph": "off"}
+    assert run_problems(meta, [], clean, set(), uncovered=[]) == []
+    assert run_problems(meta, [], clean, set(), uncovered=["빠짐: R02", "빠짐: R03"]) == [
+        "평가셋 문항을 다 덮지 못했다: 빠짐: R02, 빠짐: R03"
+    ]
+
+
+def test_graph_setting_problem_stops_a_run_whose_real_setting_differs_from_the_requested_one():
+    assert graph_setting_problem("on", "on") is None
+    assert graph_setting_problem("on", "off") == "--graph on인데 실제 설정(MARVIA_GRAPH)은 off다"

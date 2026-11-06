@@ -150,9 +150,19 @@ def behaviour(values: dict, pauses: list[dict], *, not_found: bool = True) -> st
     return "unsupported"
 
 
-def run_problems(meta: dict, rows: list[dict], summary: dict, faults: set[str]) -> list[str]:
+def graph_setting_problem(wanted: str, actual: str) -> str | None:
+    """실행 인자(--graph)와 실제 설정(Settings.graph)이 다르면 멈출 까닭. 같으면 None."""
+    # [왜] MARVIA_GRAPH가 Docker 안까지 안 넘어가면 "켬" 실행이 꺼진 채 돌고 그래프 규칙은 건너뛰어진다
+    return None if wanted == actual else f"--graph {wanted}인데 실제 설정(MARVIA_GRAPH)은 {actual}다"
+
+
+def run_problems(
+    meta: dict, rows: list[dict], summary: dict, faults: set[str], uncovered: list[str] | None = None
+) -> list[str]:
     """세기 전에 보는 실행 유효성 (계획 3b 사전 등록). 문제가 있으면 그 실행은 세지 않고 다시 돈다."""
     problems = []
+    if uncovered:  # [왜] 상한에서 끊기거나 일부 문항만 돈 실행은 세지 않는다 (metrics.gate_uncovered)
+        problems.append(f"평가셋 문항을 다 덮지 못했다: {', '.join(uncovered)}")
     if not meta.get("annex_units"):
         problems.append("DB에 별표 단위가 없다 (scripts/index_corpus.py)")
     if meta.get("graph") == "on":

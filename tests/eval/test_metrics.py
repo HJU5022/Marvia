@@ -508,14 +508,26 @@ def test_spread_gives_mean_min_max_and_denominators_for_each_shared_metric():
     assert "only_here" not in out and "behaviours" not in out  # 모든 실행에 있고 숫자인 지표만
 
 
-def test_spread_groups_by_loop_model_and_commit_and_refuses_mixed_set_files():
+def test_spread_groups_by_loop_model_commit_and_graph_and_refuses_mixed_set_files():
     a = [_result("v2r1", "aa"), _result("v2r2", "aa"), _result("x", "aa", loop="planner")]
     groups = spread_groups(a)
-    assert sorted(groups) == [("agent", "m", "c1"), ("planner", "m", "c1")]
-    assert len(groups[("agent", "m", "c1")]) == 2
+    # [왜] 옛 결과 파일에는 meta.graph가 없다. "off"로 묶어 지금 묶음이 바뀌지 않는다
+    assert sorted(groups) == [("agent", "m", "c1", "off"), ("planner", "m", "c1", "off")]
+    assert len(groups[("agent", "m", "c1", "off")]) == 2
     # [왜] 같은 길·모델·평가셋이어도 커밋이 다르면 다른 코드의 결과라 따로 센다
     apart = spread_groups([_result("v2r1", "aa"), _result("v2r2", "aa", commit="c2")])
-    assert sorted(apart) == [("agent", "m", "c1"), ("agent", "m", "c2")]
+    assert sorted(apart) == [("agent", "m", "c1", "off"), ("agent", "m", "c2", "off")]
+    # [왜] 설정 A(off)와 B(on)는 같은 커밋에서 돈다. 한 평균으로 섞으면 비교가 사라진다 (계획 3b)
+    off, on = _result("3bA-t1", "aa"), _result("3bB-t1", "aa")
+    on["meta"]["graph"] = "on"
+    split = spread_groups([off, on])
+    assert sorted(split) == [("agent", "m", "c1", "off"), ("agent", "m", "c1", "on")]
+    assert "그래프 on" in spread_table([on], "aa", {})
+    assert "그래프 off" in spread_table([off], "aa", {})
+    bad = _result("3bA-t2", "aa")
+    bad["meta"]["problems"] = ["leaks 1"]
+    with pytest.raises(ValueError, match="무효 실행"):
+        spread_groups([off, bad])
     with pytest.raises(ValueError, match="평가셋 파일이 다르다"):
         spread_groups([_result("v2r1", "aa"), _result("v2r2", "bb")])
 

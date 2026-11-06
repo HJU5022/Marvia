@@ -1,6 +1,7 @@
 """scripts/run_eval.py 명령의 경계 시험. 키·DB 없이 돈다."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -123,6 +124,8 @@ def test_run_dry_run_accepts_an_unfrozen_v2_set(tmp_path):
             str(tmp_path),
             "--commit",
             "t",
+            "--graph",
+            "off",
             "--dry-run",
         ],
         cwd=ROOT,
@@ -205,3 +208,20 @@ def test_spread_set_v1_scores_v2_runs_on_behaviour_base_and_refuses_runs_without
     assert refused.returncode != 0 and "behaviour_base" in refused.stderr
     v1_file = ROOT / "eval/results/agent-claude-haiku-5-5.json"
     assert _cli("spread", v1_file).returncode != 0  # 기본 v2로는 v1 파일을 채점하지 않는다
+
+
+def test_run_requires_graph_and_stops_before_any_spend_when_it_differs_from_the_real_setting(tmp_path):
+    base = ["run", "--out", tmp_path / "o", "--commit", "t"]
+    missing = _cli(*base)
+    assert missing.returncode == 2 and "--graph" in missing.stderr
+    # [왜] MARVIA_GRAPH가 Docker 안까지 안 넘어가면 "켬" 실행이 꺼진 채 돈다. 돈 쓰기 전에 멈춘다
+    env = {**os.environ, "MARVIA_GRAPH": "off"}
+    done = subprocess.run(
+        [sys.executable, "scripts/run_eval.py", *map(str, base), "--graph", "on"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert done.returncode == 1 and "[멈춤] --graph on인데 실제 설정(MARVIA_GRAPH)은 off다" in done.stderr
