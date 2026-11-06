@@ -60,3 +60,15 @@ def test_watch_writes_on_its_own_connection():
     deps.watch.add("u1", "DEMO0001", "반입신고")
     assert any("INSERT INTO watches" in sql for sql in own.sql)
     assert shared.sql == []
+
+
+@pytest.mark.parametrize(
+    ("secret", "on"),
+    [("", False), ("short-typed-secret", False), (Fernet.generate_key().decode(), True)],
+    ids=["empty", "malformed", "valid"],
+)
+def test_watch_is_off_without_a_valid_data_key(secret, on):
+    # [왜] 키가 없거나 Fernet 키 모양이 아니면 실제 번호를 감시 표에 넣지 않는다(fail-closed).
+    #      차례를 멈추지 않고 감시 도구와 새 소식만 뺀다
+    settings = Settings(_env_file=None, anthropic_api_key="sk-test-not-real", data_key=secret)
+    assert (agent_deps(settings, None, Recorder()).watch is not None) is on
