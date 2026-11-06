@@ -854,14 +854,14 @@ def test_preference_is_saved_only_after_approval_and_reaches_the_writer(agent_de
     graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("r2"))
     assert store.get(("users", "local", "prefs"), "depth").value == {"depth": "자세히"}
     graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("r2"))
-    assert "Answer depth the user chose: 자세히" in prompts[-1]  # 다음 차례 작성자가 설정을 받는다
+    assert "Answer depth: 자세히" in prompts[-1]  # 다음 차례 작성자가 설정을 받는다
 
 
 def test_writer_gets_the_default_depth_without_a_saved_preference(agent_deps):
     prompts = []
     graph = agent_graph(agent_deps, say(), store=InMemoryStore(), write=keep(prompts))
     graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("r3"))
-    assert f"Answer depth the user chose: {load_rules('agent')['memory']['default_depth']}" in prompts[0]
+    assert f"Answer depth: {load_rules('agent')['memory']['default_depth']}" in prompts[0]
 
 
 def test_free_text_preference_is_not_saved(agent_deps):
