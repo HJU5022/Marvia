@@ -1,10 +1,18 @@
 """트레이스(콜백·Langfuse)로 나가는 값에서 화물 번호를 가린다 (설계 12절, done 3.9 문: R-010·R-022·R-039).
 
-하지 않는 일: 트레이서 연결. Langfuse 키가 없어 연결은 미뤘다. scrub은 Langfuse 클라이언트의 mask= 훅 모양
-(값 하나를 받아 가린 값을 돌려준다)이라 연결할 때 그대로 끼운다.
+하지 않는 일: 트레이서 연결. Langfuse 키가 없어 연결은 미뤘다.
+[주의] 연결할 때 scrub만 mask=에 끼워서는 모자라다. Langfuse는 mask(data=...)로
+       input·output·metadata만 부르고, 오류 길(on_chain_error·on_tool_error)의
+       status_message(str(error))는 mask에 넘기지 않는다.
+       애매한 번호를 묻는 끼어들기(identify의 ask)는 실제 번호 조각을 질문에 넣으므로 GraphInterrupt의
+       str()에 실제 번호가 든다. 연결하는 쪽이 오류 길도 가려야 하고(예: 핸들러를 감싸 가린 예외를 넘김),
+       그 문 시험은 내보낸 span 속성(status_message 포함)을 보고 ask 끼어들기를 시나리오에 넣어야 한다.
 [왜] 상태 없이 글 모양으로 찾는다. 콜백에는 그 대화의 가림 표가 오지 않고, 번호는 노드 입력·출력,
      도구 결과, Send 묶음, 도구 안에서 부른 서브그래프, 답 어디에든 들 수 있다.
 [주의] 번호처럼 생긴 다른 글(8자 이상 영문·숫자 덩어리)도 함께 가린다. 트레이스에서는 덜 가리는 것보다 낫다.
+       가려지는 예: UUID 실행·스레드 id, 도구 호출 id(t1-lookup_cargo는 [가림]_cargo), 모델 이름
+       (claude-sonnet-4-5-20250929), ISO 시각(2026-10-02T12:34:56은 [가림]:34:56), HS 10자리 부호.
+       트레이스에서 이런 값이 [가림]으로 보이면 이 규칙 때문이다.
 """
 
 from __future__ import annotations

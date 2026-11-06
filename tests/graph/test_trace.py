@@ -114,7 +114,8 @@ def test_scrub_walks_send_packets_models_and_unknown_objects():
     message = AIMessage("", tool_calls=[{"name": "watch_cargo", "args": {"token": "DEMO0002"}, "id": "c1"}])
     cleaned = json.dumps(scrub([packet, message, ValueError("DEMO0003 조회 실패")]), ensure_ascii=False)
     assert "DEMO" not in cleaned and cleaned.count(MASK) == 4
-    # 날짜·짧은 글·unit_id는 그대로 둔다 (L001556은 7자, 20261002는 날짜라 번호 후보가 아니다)
+    # YYYYMMDD·YYYY-MM-DD 날짜, 짧은 글, unit_id는 그대로 둔다
+    # (L001556은 7자, 20261002는 날짜라 번호 후보가 아니다)
     assert scrub({"unit_id": "L001556@20261002#제241조.3항", "n": 3}) == {
         "unit_id": "L001556@20261002#제241조.3항",
         "n": 3,
