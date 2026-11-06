@@ -318,3 +318,40 @@ def test_the_login_check_runs_off_the_event_loop():
     client = TestClient(build_app(Stub(), checking, web_origin="http://web.test"))
     run(client, body("t13", "질문"))
     assert on_loop == [False]
+
+
+def test_only_the_last_message_is_read_and_it_must_be_user_text(agent_deps):
+    _, client = served(agent_deps)
+    head = {"Authorization": "Bearer tok-a"}
+    user = {"id": "m1", "role": "user", "content": "질문이에요"}
+    for messages in (
+        [user, {"id": "m2", "role": "assistant", "content": "답이에요"}],  # 앞의 user 글로 물러서지 않는다
+        [user, {"id": "m3", "role": "user", "content": [{"type": "text", "text": "x"}]}],
+    ):
+        response = client.post("/agui", json=body("t14") | {"messages": messages}, headers=head)
+        assert response.status_code == 422
+
+
+@pytest.mark.parametrize("selected", ["0", 99, -1, True, 1.5, None], ids=str)
+def test_a_choice_outside_the_cards_options_is_422_and_the_card_stays(agent_deps, selected):
+    ask = say("ask_user", {"question": "어느 항이에요?", "options": TWO}, 1)
+    graph, client = served(agent_deps, ask, AIMessage(""))
+    card = run(client, body("t15", "장치기간이 궁금해요"))[-1]["outcome"]["interrupts"][0]
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"selected": selected}}]
+    response = client.post(
+        "/agui", json=body("t15", resume=resume), headers={"Authorization": "Bearer tok-a"}
+    )
+    assert response.status_code == 422
+    assert graph.get_state(
+        {"configurable": {"thread_id": "user-a/t15"}}
+    ).interrupts  # 카드는 그대로 열려 있다
+
+
+def test_a_cancelled_card_resumes_without_its_payload_on_the_recommended_path(agent_deps):
+    ask = say("ask_user", {"question": "어느 항이에요?", "options": TWO}, 1)
+    graph, client = served(agent_deps, ask, AIMessage(""))
+    card = run(client, body("t16", "장치기간이 궁금해요"))[-1]["outcome"]["interrupts"][0]
+    resume = [{"interruptId": card["id"], "status": "cancelled", "payload": {"selected": 1}}]
+    assert run(client, body("t16", resume=resume))[-1]["outcome"] == {"type": "success"}
+    said = "".join(graph.get_state({"configurable": {"thread_id": "user-a/t16"}}).values["clarifications"])
+    assert "부산" in said and "인천" not in said

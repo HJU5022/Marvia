@@ -171,7 +171,8 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
         if not state.interrupts or body.resume[0].interrupt_id != state.interrupts[0].id:
             raise Refused(409, "답할 질문이 없거나 이미 지난 카드예요")
         value, raw = state.interrupts[0].value, body.resume[0].payload
-        raw = raw if isinstance(raw, dict) else {}
+        # [왜] 취소한 카드는 payload를 읽지 않는다. 선택지는 권장안으로, 승인은 모두 거절로 간다
+        raw = raw if isinstance(raw, dict) and body.resume[0].status == "resolved" else {}
         if "action_requests" in value:
             names = [request["name"] for request in value["action_requests"]]
             # [왜] 모양을 본 뒤(approval_reply) 고친 인자·거절 글의 실제 번호를 이 대화의 토큰으로 다시 가린다
@@ -180,12 +181,22 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
             #   번호가 아직 없다(그 번호로 고치면 거절된다). 올릴 때: get_state(config, subgraphs=True)로
             #   끼어든 서브그래프의 표를 읽는다
             return Command(resume=remask_reply(reply, state.values.get("mask_map", {})))
-        choice = {key: raw[key] for key in CHOICE_KEYS if key in raw}
+        # [왜] 빈 dict로 재개하면 langgraph가 다시 멈춘다. 취소는 시간 초과와 같은 {"timeout": True}로 보낸다
+        choice = {key: raw[key] for key in CHOICE_KEYS if key in raw} or {"timeout": True}
+        # [왜] 번호는 요청이 아니라 멈춘 카드의 선택지 수로 확인한다. -1과 True도 막는다
+        picked = choice.get("selected")
+        if "selected" in choice and not (
+            isinstance(picked, int) and not isinstance(picked, bool) and 0 <= picked < len(value["options"])
+        ):
+            raise Refused(422, "고른 선택지가 카드에 없어요")
         if len(str(choice.get("custom", ""))) > max_text:
             raise Refused(422, "글이 너무 길어요")
         return Command(resume=choice)
-    texts = [m.content for m in body.messages if m.role == "user" and isinstance(m.content, str)]
-    text = texts[-1].strip() if texts else ""
+    # [왜] 마지막 메시지 하나만 본다. user가 아니거나 글이 아니면 앞 메시지로 물러서지 않고 거절한다
+    last = body.messages[-1] if body.messages else None
+    if last is not None and not (last.role == "user" and isinstance(last.content, str)):
+        raise Refused(422, "마지막 메시지는 사용자 글이어야 해요")
+    text = last.content.strip() if last is not None and isinstance(last.content, str) else ""
     if not text or len(text) > max_text:
         raise Refused(422, f"질문은 1~{max_text}자로 보내 주세요")
     return {"text": text}
