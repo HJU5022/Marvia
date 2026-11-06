@@ -45,6 +45,11 @@ UNWIND $rows AS r
 MATCH (a:Unit {unit_id: r[0]}), (b:Unit {unit_id: r[1]})
 MERGE (a)-[:REFERS_TO]->(b)
 """
+# [왜] 다시 적재할 때 옛 간선이 남으면 그래프가 코드 결과와 어긋나고 메타 sha가 실제 간선과 맞지 않는다.
+#      이 적재에 든 문서의 단위에서 나가는 간선과 그 법령 노드에서 나가는 위임만 지운다
+#      (다른 문서의 노드는 건드리지 않는다)
+CLEAR_REFERS: LiteralString = "MATCH (a:Unit)-[r:REFERS_TO]->() WHERE a.doc_id IN $docs DELETE r"
+CLEAR_DELEGATES: LiteralString = "MATCH (a:Law)-[r:DELEGATES_TO]->() WHERE a.doc_id IN $docs DELETE r"
 META: LiteralString = "MERGE (g:Graph {name: $name}) SET g.units_sha256 = $sha, g.built_at = $built_at"
 READ_META: LiteralString = """
 MATCH (g:Graph {name: $name})
@@ -74,7 +79,7 @@ def _batches(rows: list, size: int):
 def load_graph(
     driver: Driver, units: list[Unit], edges: Edges, *, name: str, sha: str, built_at: str
 ) -> None:
-    """단위·법령 노드와 간선을 넣는다. MERGE라 두 번 넣어도 수가 같다. 메타 노드에 단위 파일 sha를 남긴다."""
+    """단위·법령 노드는 MERGE로, 간선은 지금 결과로 바꿔 넣는다. 두 번 넣어도 같다. 메타에 sha를 남긴다."""
     size = load_rules("graph")["load"]["batch"]
     for statement in CONSTRAINTS:
         driver.execute_query(statement)
@@ -83,9 +88,20 @@ def load_graph(
     rows = [{"unit_id": u.unit_id, "doc_id": u.doc_id} for u in units]
     for chunk in _batches(rows, size):
         driver.execute_query(UNITS, {"rows": chunk})
-    driver.execute_query(DELEGATES, {"rows": [list(pair) for pair in edges.delegates]})
-    for chunk in _batches([list(pair) for pair in edges.refers], size):
-        driver.execute_query(REFERS, {"rows": chunk})
+    docs = sorted(laws)
+    delegates = [list(pair) for pair in edges.delegates]
+    refers = [list(pair) for pair in edges.refers]
+
+    def replace_edges(tx) -> None:
+        # [왜] 한 트랜잭션이라 중간에 실패하면 옛 간선이 그대로 남는다(반쯤 지워진 그래프가 없다)
+        tx.run(CLEAR_REFERS, docs=docs).consume()
+        tx.run(CLEAR_DELEGATES, docs=docs).consume()
+        tx.run(DELEGATES, rows=delegates).consume()
+        for chunk in _batches(refers, size):
+            tx.run(REFERS, rows=chunk).consume()
+
+    with driver.session() as session:
+        session.execute_write(replace_edges)
     driver.execute_query(META, {"name": name, "sha": sha, "built_at": built_at})
 
 

@@ -82,3 +82,25 @@ def test_unreachable_neo4j_is_a_search_failure_not_an_empty_result():
     with pytest.raises(SearchFailed, match="graph_unavailable"):
         neighbors(driver, ["LTEST@20261002#제1조"])
     driver.close()
+
+
+def test_reloading_replaces_edges_with_the_current_result(graph_db):
+    driver, doc = graph_db
+    units = _units(doc)
+    edges = build_edges(units)
+    edges.delegates = [(doc, doc)]  # [왜] 시험 문서 하나뿐이라 자기 위임으로 DELEGATES_TO 교체를 본다
+    load_graph(driver, units, edges, name=doc, sha="x", built_at="2026-11-06T00:00:00+00:00")
+    assert len(edges.refers) > 1
+    kept = edges.refers[:1]
+    edges.refers, edges.delegates = kept, []
+    load_graph(driver, units, edges, name=doc, sha="y", built_at="2026-11-06T00:00:00+00:00")
+    assert graph_meta(driver, doc, [doc]) == {
+        "sha": "y",
+        "built_at": "2026-11-06T00:00:00+00:00",
+        "units": len(units),
+        "refers": 1,
+    }
+    delegates = driver.execute_query(
+        "MATCH (:Law {doc_id: $doc})-[r:DELEGATES_TO]->() RETURN count(r) AS n", {"doc": doc}
+    ).records[0]["n"]
+    assert delegates == 0

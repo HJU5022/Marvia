@@ -3,7 +3,8 @@
 하지 않는 일: Neo4j 적재(graphdb.py), 품목 간선(items.py), LLM 호출. 순수 함수라 서버 없이 시험한다.
 [왜] 조문 참조는 글에 "제241조제1항", "법 제30조", "「관세법」 제226조", "별표 9"처럼 정해진 꼴로 나온다.
      정규식으로 뽑고, 약칭(법·영·규칙)은 문서마다 정한 표(rules/graph.yaml)로 푼다.
-[주의] 단위 글에는 조 머리말과 윗 항·호 글이 붙어 있다(lawpage.py). 그래서 윗 글의 참조가 그 아래 잎 단위
+[주의] 코퍼스는 문서당 한 판(시행일 하나)이라고 본다. 같은 조(별표)에 판이 둘이면 두 판 모두에 간선이 걸린다.
+       단위 글에는 조 머리말과 윗 항·호 글이 붙어 있다(lawpage.py). 그래서 윗 글의 참조가 그 아래 잎 단위
        모두에 붙는다. 같은 조(별표) 안을 가리키는 참조는 버린다(자기 참조 0).
 """
 
@@ -12,22 +13,25 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from functools import cache
 
+from marvia.rag.annex import SYLLABLES
 from marvia.rag.models import Unit
 from marvia.tools.rules import load_rules
 
-SYLLABLES = "가나다라마바사아자차카타파하"
 # 「법령명」 제N조 / 법·영·규칙 제N조 / 제N조. 뒤에 제N항, 제N호가 이어질 수 있다
-ARTICLE_REF = re.compile(
-    r"(?:「(?P<quoted>[^」]+)」\s*|(?<![가-힣])(?P<abbr>법|영|규칙)\s+)?"
-    r"제(?P<article>\d+)조(?:의(?P<sub>\d+))?(?:\s*제(?P<para>\d+)항)?(?:\s*제(?P<item>\d+)호)?"
-)
+ARTICLE_TAIL = r"제(?P<article>\d+)조(?:의(?P<sub>\d+))?(?:\s*제(?P<para>\d+)항)?(?:\s*제(?P<item>\d+)호)?"
 # 별표 N(의 M) 제N호 X목
 ANNEX_REF = re.compile(
     rf"(?:「(?P<quoted>[^」]+)」\s*)?별표\s*(?P<num>\d+(?:의\s*\d+)?)(?:\s*제(?P<ho>\d+)호)?(?:(?P<mok>[{SYLLABLES}])목)?"
 )
-# [왜] 이 낱말로 끝나는 말 뒤의 "제N조"는 코퍼스 밖 법령(예: 대외무역법 시행령 제26조)이거나 "같은 법"이다
-QUALIFIED = ("법", "령", "규칙", "고시", "규정", "같은")
+
+
+@cache
+def _article_ref() -> re.Pattern[str]:
+    """약칭 낱말은 rules/graph.yaml에서 읽어 정규식을 한 번만 만든다."""
+    abbr = "|".join(re.escape(a) for a in load_rules("graph")["refs"]["abbr"])
+    return re.compile(rf"(?:「(?P<quoted>[^」]+)」\s*|(?<![가-힣])(?P<abbr>{abbr})\s+)?{ARTICLE_TAIL}")
 
 
 @dataclass
@@ -59,35 +63,47 @@ def references(
     text: str, doc_id: str, laws: dict[str, str], alias: dict[str, str]
 ) -> tuple[list[tuple[str, str]], Counter[str]]:
     """글 하나의 참조를 (doc_id, 키) 목록으로 푼다. 풀지 못한 참조는 까닭별로 센다."""
+    refs = load_rules("graph")["refs"]
+    qualified = tuple(refs["qualified"])
+    gap_ok = re.compile(r"\s*(?:" + "|".join(re.escape(c) for c in refs["connectors"]) + r")\s*")
     names = sorted(laws, key=len, reverse=True)  # [왜] "관세법 시행령"이 "관세법"보다 먼저 맞아야 한다
     found: list[tuple[str, str]] = []
     dropped: Counter[str] = Counter()
-    for pattern, make_key in ((ARTICLE_REF, _article_key), (ANNEX_REF, _annex_key)):
+    for pattern, make_key in ((_article_ref(), _article_key), (ANNEX_REF, _annex_key)):
+        # [왜] 「관세법」 제246조 및 제265조처럼 법령 이름 뒤에 나열한 조문은 앞 참조의 법령을 따른다.
+        #      (target, 버린 까닭) 중 하나만 차 있다. 법령 이름 없이 시작한 나열은 None이라 그 문서 안이다
+        prev: tuple[str | None, str | None] | None = None
+        prev_end = 0
         for m in pattern.finditer(text):
             before = text[: m.start()].rstrip()
             abbr = m.groupdict().get("abbr")
+            named: tuple[str | None, str | None]  # (target, 버린 까닭)
+            explicit = True
             if m["quoted"]:
                 target = laws.get(m["quoted"])
-                if target is None:
-                    dropped["outside_corpus"] += 1
-                    continue
+                named = (target, None if target else "outside_corpus")
             elif abbr:
-                if before.endswith("같은"):
-                    dropped["same_as"] += 1
-                    continue
-                name = alias.get(abbr)
-                target = laws.get(name) if name else None
-                if target is None:
-                    dropped["outside_corpus" if name else "unknown_abbr"] += 1
-                    continue
+                if before.endswith(refs["same_as"]):
+                    named = (None, "same_as")
+                else:
+                    name = alias.get(abbr)
+                    target = laws.get(name) if name else None
+                    named = (target, None if target else ("outside_corpus" if name else "unknown_abbr"))
+            elif prev and gap_ok.fullmatch(text[prev_end : m.start()]):
+                named = prev
             elif plain := next((n for n in names if before.endswith(n)), None):
-                target = laws[plain]  # 「」 없이 쓴 코퍼스 법령 이름 (고시의 "관세법 제241조")
-            elif before.endswith(QUALIFIED):
-                dropped["qualified"] += 1
-                continue
+                named = (laws[plain], None)  # 「」 없이 쓴 코퍼스 법령 이름 (고시의 "관세법 제241조")
+            elif before.endswith(qualified):
+                named = (None, "qualified")
             else:
-                target = doc_id  # [왜] 법령 이름 없는 "제N조", "별표 N"은 그 문서 안이다
-            found.append((target, make_key(m)))
+                # [왜] 법령 이름 없는 "제N조", "별표 N"은 그 문서 안이다
+                named = (doc_id, None)
+                explicit = False
+            prev, prev_end = (named if explicit else None), m.end()
+            if reason := named[1]:
+                dropped[reason] += 1
+            elif named[0]:
+                found.append((named[0], make_key(m)))
     return found, dropped
 
 

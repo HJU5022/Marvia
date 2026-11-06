@@ -12,6 +12,7 @@ from datetime import date
 
 import psycopg
 
+from marvia.rag.annex import SYLLABLES
 from marvia.rag.models import Evidence
 from marvia.tools.rules import load_rules
 
@@ -20,7 +21,6 @@ LABEL = re.compile(r"^(?P<law>.+?)\s+제(?P<article>\d+조(?:의\d+)?)(?P<rest>(
 PART = re.compile(r"제(\d+(?:의\d+)?)([항호])")
 
 # 법령 이름 + 별표 N(의 M) + 제N호 X목 1) 가) (1). 예: 시행규칙 별표 9 제2호가목7)
-SYLLABLES = "가나다라마바사아자차카타파하"
 ANNEX = re.compile(r"^(?P<law>.+?)\s+별표\s*(?P<num>\d+(?:\s*의\s*\d+)?)(?P<rest>.*)$")
 ANNEX_REST = re.compile(
     rf"^(?:제(?P<ho>\d+(?:의\d+)?)호)?(?:(?P<mok>[{SYLLABLES}])목)?(?P<subs>(?:\d+\)|[{SYLLABLES}]\)|\(\d+\))*)$"

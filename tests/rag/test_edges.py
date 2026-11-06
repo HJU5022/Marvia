@@ -32,7 +32,7 @@ def test_references_read_abbreviations_quoted_and_plain_law_names():
         ("L001556", "제241조.1항"),
         ("L002421", "제246조"),
         ("L001556", "제226조"),
-        ("L002421", "제5조"),
+        ("L001556", "제5조"),  # 법령 이름 뒤에 나열한 조문은 그 법령을 따른다
     ]
     assert not dropped
 
@@ -43,6 +43,24 @@ def test_references_drop_same_as_and_laws_outside_the_corpus():
     found, dropped = references(text, "L012500", LAWS, alias)
     assert found == []
     assert dropped == Counter({"same_as": 1, "outside_corpus": 2, "qualified": 1})
+
+
+def test_articles_listed_after_a_named_law_follow_that_law():
+    # A36744(관리대상화물 고시) 글: 둘째 조는 고시 자기 제265조가 아니라 관세법 제265조다
+    text = "「관세법」 제246조 및 제265조, 제270조와 제271조"
+    found, dropped = references(text, "A36744", LAWS, {})
+    assert found == [("L001556", f"제{n}조") for n in (246, 265, 270, 271)]
+    assert not dropped
+    plain, _ = references("제1조 및 제2조", "A36744", LAWS, {})
+    assert plain == [("A36744", "제1조"), ("A36744", "제2조")]  # 법령 이름이 없던 나열은 그 문서 안이다
+
+
+def test_articles_listed_after_a_law_outside_the_corpus_are_dropped_with_it():
+    found, dropped = references("「대외무역법」 제5조 및 제6조, 제7조", "A36744", LAWS, {})
+    assert found == []
+    assert dropped == Counter({"outside_corpus": 3})
+    found, dropped = references("식품위생법 제37조 및 제38조", "L012500", LAWS, {})
+    assert found == [] and dropped == Counter({"qualified": 2})
 
 
 def test_edges_spread_to_sub_units_and_never_point_into_their_own_article():
@@ -71,3 +89,16 @@ def test_real_corpus_links_the_inspection_article_to_annex_9_without_self_edges(
     assert ("L012500@20260930#제32조", "L012500@20260930#별표10.4호.다목") in pairs
     root = lambda u: (u.split("@")[0], u.split("#")[1].split(".")[0])  # noqa: E731
     assert not [(a, b) for a, b in pairs if root(a) == root(b)]
+
+
+def test_real_corpus_edge_and_dropped_counts_are_pinned():
+    # [왜] 참조 읽기를 고치면 이 수가 바뀐다. 바뀌면 이유를 보고 값을 고친다
+    edges = build_edges(read_units(CORPUS_UNITS))
+    assert (len(edges.part_of), len(edges.delegates), len(edges.refers)) == (7412, 7, 18099)
+    assert dict(edges.dropped) == {
+        "self": 7425,
+        "outside_corpus": 675,
+        "missing_target": 355,
+        "same_as": 35,
+        "qualified": 120,
+    }
