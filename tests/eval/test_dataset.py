@@ -97,6 +97,12 @@ def test_v2_identify_gold_comes_from_the_replay_fixtures():
     assert sum(bool(i.identify) for i in by_id.values()) == 2
 
 
+def test_set_v2_is_frozen_by_its_sha256():
+    # [왜] v2는 독립 대조(eval/gold_check_v2.md) 뒤 동결했다. 고치면 이유를 남기고 해시를 다시 만든다
+    recorded = (SET_V2_PATH.parent / "set_v2.sha256").read_text(encoding="utf-8").split()[0]
+    assert file_sha256(SET_V2_PATH) == recorded
+
+
 def test_v1_file_hash_is_untouched_by_v2():
     recorded = (SET_PATH.parent / "set_v1.sha256").read_text(encoding="utf-8").split()[0]
     assert file_sha256(SET_PATH) == recorded

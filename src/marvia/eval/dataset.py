@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # src/marvia/eval/dataset.py에서 세 단계 올라가면 저장소 루트다
 ROOT = Path(__file__).resolve().parents[3]
 SET_PATH = ROOT / "eval" / "set_v1.yaml"
-SET_V2_PATH = ROOT / "eval" / "set_v2.yaml"  # v1에서 채점 기준만 고친 판 (동결 전)
+SET_V2_PATH = ROOT / "eval" / "set_v2.yaml"  # v1에서 채점 기준만 고친 판 (동결: eval/set_v2.sha256)
 SETS = {"v1": SET_PATH, "v2": SET_V2_PATH}  # run_eval.py --set 이름
 CORPUS_UNITS = ROOT / "corpus" / "units"
 
