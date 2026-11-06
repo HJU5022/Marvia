@@ -1,17 +1,19 @@
 """질문이나 화물 단서 하나로 에이전트 전체를 돌려 답과 LLM 사용량을 본다 (계획 3a·3c Task 8). 돈이 든다.
 
-키 두 개(MARVIA_ANTHROPIC_API_KEY, MARVIA_VOYAGE_API_KEY), 로컬 DB, 색인(계획 2 Task 10)이 필요하다.
+키 세 개(MARVIA_ANTHROPIC_API_KEY, MARVIA_VOYAGE_API_KEY, 저장 데이터 암호화 MARVIA_DATA_KEY), 로컬 DB,
+색인(계획 2 Task 10)이 필요하다.
 실행: uv run python scripts/try_agent.py "DEMO0001 언제까지 수입신고 해야 해요?"
       MARVIA_LOOP=agent uv run python scripts/try_agent.py "..."   (도구 루프 길, 계획 3c)
       MARVIA_LOOP=agent uv run python scripts/try_agent.py --thread t1 "그 화물 납부 기한은?"
         (같은 --thread로 다시 돌리면 앞 차례 기록과 가림 표를 이어 쓴다, 계획 3d)
       MARVIA_LOOP=agent uv run python scripts/try_agent.py --image bl.png "이 화물 지금 어디야?"
         (사진은 이 컴퓨터에서 OCR로 읽고 번호 덩어리만 질문 앞에 붙인다. Docker 안에서 돌린다)
-대화 기록과 장기 기억은 로컬 Postgres에 남는다(live_memory).
+대화 기록(암호화)과 장기 기억은 로컬 Postgres에 남는다(live_memory).
 하지 않는 일: 비용 계산(scripts/compare_loops.py).
 """
 
 import argparse
+import sys
 
 from langchain_core.callbacks import get_usage_metadata_callback
 from langgraph.types import Command
@@ -23,6 +25,7 @@ from marvia.graph.main import build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.identify.mask import unmask
 from marvia.identify.ocr import photo_clues, read_image
+from marvia.watch import watch_keys
 
 parser = argparse.ArgumentParser(description="에이전트를 한 차례 돌린다")
 parser.add_argument("question", nargs="*", help="질문 (없으면 대표 화물 질문)")
@@ -37,11 +40,18 @@ if args.image:
     text = f"{photo_clues(read_image(args.image))} {text}"
 
 settings = Settings()
+try:
+    watch_keys(settings.data_key.get_secret_value())
+except ValueError:
+    # [왜] 이 키가 대화 기록과 감시 표의 실제 번호를 암호화한다. 없거나 틀리면 DB에 닿기 전에 멈춘다
+    # [주의] 키 값은 출력하지 않는다
+    print("MARVIA_DATA_KEY가 없거나 올바른 키가 아닙니다. .env를 확인한 뒤 다시 실행하세요.")
+    sys.exit(1)
 config = {"configurable": {"thread_id": args.thread, "user_id": args.user}}
 # [왜] get_usage_metadata_callback: 이 블록 안의 LLM 호출(RAG 서브그래프 안 포함)의 토큰 수를 모델별로 더한다
 with (
     connect(settings.database_url) as conn,
-    live_memory(settings.database_url) as (saver, store),
+    live_memory(settings.database_url, settings.data_key.get_secret_value()) as (saver, store),
     get_usage_metadata_callback() as usage,
 ):
     graph = build_main_graph(

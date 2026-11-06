@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     # [왜] SecretStr은 print나 로그에 '**********'로만 보인다. 실제 값은 .get_secret_value()로만 꺼낸다
     anthropic_api_key: SecretStr = SecretStr("")  # MARVIA_ANTHROPIC_API_KEY
     voyage_api_key: SecretStr = SecretStr("")  # MARVIA_VOYAGE_API_KEY
-    # [왜] 이 키가 저장 데이터(감시 표의 실제 화물 번호)를 암호화한다. 비어 있으면 감시 기능을 끈다
+    # [왜] 이 키가 저장 데이터(감시 표의 실제 화물 번호, 대화 기록)를 암호화한다.
+    #      비어 있으면 감시 기능을 끄고, 대화 기록을 여는 live_memory는 멈춘다
     data_key: SecretStr = SecretStr("")  # MARVIA_DATA_KEY
 
     # 모델 (설계 2절 결정 14). [왜] 이름을 설정에 두면 평가 때 환경 변수만 바꿔 다른 모델과 비교할 수 있다
