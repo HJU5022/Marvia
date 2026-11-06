@@ -18,7 +18,7 @@ from pathlib import Path
 
 from marvia.eval.dataset import SET_PATH, file_sha256, load_set
 from marvia.eval.metrics import compare_table, summarize
-from marvia.eval.run import estimate, evaluate_item, preflight, stop_reason
+from marvia.eval.run import estimate, evaluate_item, existing_results, preflight, result_name, stop_reason
 from marvia.tools.rules import load_rules
 
 parser = argparse.ArgumentParser(description="평가셋 실행과 요약")
@@ -63,6 +63,9 @@ for line in plan:
     print(f"어림 비용 {line['loop']} {line['model']} {line['items']}문항: ${line['usd']}")
 print(f"합계 약 ${sum(line['usd'] or 0 for line in plan):.3f} (실행 상한 ${args.max_cost})")
 problems = preflight(len(items), loops, models, prices, args.max_cost)
+problems += [
+    f"결과 파일이 이미 있다: {path}" for path in existing_results(Path(args.out), loops, models, args.tag)
+]
 for problem in problems:
     print(f"[멈춤] {problem}")
 if problems:
@@ -127,7 +130,7 @@ for model in models:
                 "price": prices.get(model),
             }
             result = {"meta": meta, "summary": summarize(rows, by_id, k), "rows": rows}
-            name = f"{loop}-{model}" + (f"-{args.tag}" if args.tag else "")
+            name = result_name(loop, model, args.tag)
             (out / f"{name}.json").write_text(
                 json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8"
             )

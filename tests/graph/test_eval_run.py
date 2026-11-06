@@ -6,7 +6,17 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
 from marvia.eval.dataset import Item, load_set
-from marvia.eval.run import articles, behaviour, cost_usd, estimate, evaluate_item, preflight, stop_reason
+from marvia.eval.run import (
+    articles,
+    behaviour,
+    cost_usd,
+    estimate,
+    evaluate_item,
+    existing_results,
+    preflight,
+    result_name,
+    stop_reason,
+)
 from marvia.graph.schemas import Draft
 from marvia.rag.schemas import Rewrite
 from marvia.tools.rules import load_rules
@@ -132,3 +142,13 @@ def test_stop_reason_fires_on_unpriced_or_unmetered_rows():
     assert stop_reason(ok | {"cost_usd": None}) is not None
     assert stop_reason(ok | {"tokens": {}}) is not None
     assert stop_reason({"cost_usd": 0.0, "real_llm_calls": 0, "tokens": {}}) is None  # 호출이 없던 줄
+
+
+def test_existing_result_files_are_found_before_spending(tmp_path):
+    assert (
+        result_name("agent", "m", "ctx") == "agent-m-ctx" and result_name("planner", "m", "") == "planner-m"
+    )
+    assert existing_results(tmp_path, ["agent"], ["m"], "") == []
+    (tmp_path / "agent-m.raw.json").write_text("[]")
+    found = existing_results(tmp_path, ["planner", "agent"], ["m"], "")
+    assert [f.name for f in found] == ["agent-m.raw.json"]

@@ -14,6 +14,7 @@ import re
 import time
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
 
 import httpx
 import psycopg
@@ -252,3 +253,16 @@ def stop_reason(row: dict) -> str | None:
     if row["real_llm_calls"] and not row["tokens"]:
         return "LLM 호출은 있는데 토큰 사용량이 없다"
     return None
+
+
+def result_name(loop: str, model: str, tag: str) -> str:
+    """결과 파일의 이름 줄기. 파일은 <줄기>.json과 <줄기>.raw.json이다."""
+    return f"{loop}-{model}" + (f"-{tag}" if tag else "")
+
+
+def existing_results(out: Path, loops: list[str], models: list[str], tag: str) -> list[Path]:
+    """쓸 결과 파일 가운데 이미 있는 것. [왜] 덮어쓰면 돈을 낸 원본을 잃는다 (v1 f073f5e)"""
+    names = [result_name(loop, model, tag) for model in models for loop in loops]
+    return [
+        out / f"{n}{ext}" for n in names for ext in (".json", ".raw.json") if (out / f"{n}{ext}").exists()
+    ]
