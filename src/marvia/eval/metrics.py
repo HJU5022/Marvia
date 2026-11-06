@@ -269,3 +269,12 @@ def gate_violations(summary: dict, bounds: dict) -> list[str]:
         elif "max" in bound and value > bound["max"]:
             out.append(f"{key}: {value} > 천장 {bound['max']}")
     return out
+
+
+# 바닥값 묶음에 늘 있어야 하는 칸. 이 중 하나라도 빠지면 평가 문이 그 지표를 안 본 채 통과한다
+REQUIRED_BOUNDS = {"errors": 0, "leaks": 0, "cap_breaches": 0}
+
+
+def gate_missing(bounds: dict) -> list[str]:
+    """바닥값 묶음에서 빠졌거나 천장이 0이 아닌 필수 칸을 돌려준다. 빈 묶음이면 필수 칸이 모두 나온다."""
+    return [key for key, cap in REQUIRED_BOUNDS.items() if bounds.get(key) != {"max": cap}]

@@ -3,7 +3,7 @@
 import json
 
 from marvia.eval.dataset import ROOT, SET_PATH, file_sha256, load_set
-from marvia.eval.metrics import floors, gate_violations, summarize
+from marvia.eval.metrics import floors, gate_missing, gate_violations, summarize
 from marvia.tools.rules import load_rules
 
 
@@ -36,11 +36,22 @@ def test_floors_leave_one_item_of_room():
     assert low["mrr"] == {"min": 0.0} and low["unsupported"] == {"max": 1.0}  # 0~1 밖으로 나가지 않는다
 
 
+def test_gate_reports_required_keys_missing_from_the_floors():
+    assert gate_missing({}) == ["errors", "leaks", "cap_breaches"]
+    assert gate_missing({"errors": {"max": 0}, "leaks": {"max": 1}, "cap_breaches": {"max": 0}}) == ["leaks"]
+    assert gate_missing(floors({k: {"value": 0.5, "n": 4} for k in _KEYS}, 8)) == []
+
+
+_KEYS = ["correct_citation", "behaviour_accuracy", "blocked_accuracy", "calc_accuracy", "mrr", "recall_at_8"]
+_KEYS += ["wrong_evidence", "unsupported"]
+
+
 def test_committed_run_still_meets_its_floors():
     gate = load_rules("eval")["gate"]
     result = json.loads((ROOT / gate["file"]).read_text(encoding="utf-8"))
     # [왜] 평가셋이 바뀐 뒤의 저장 결과는 지금 정답으로 채점할 수 없다. 다시 돌려 결과를 바꾼다
     assert result["meta"]["set_sha256"] == file_sha256(SET_PATH)
+    assert gate_missing(gate["floors"]) == []  # [왜] 빈 바닥값이면 아래 비교가 아무것도 보지 않고 통과한다
     items = {item.id: item for item in load_set().items}
     summary = summarize(result["rows"], items, result["meta"]["k"])
     assert gate_violations(summary, gate["floors"]) == []
