@@ -9,7 +9,15 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from marvia.auth import DEV_USER, AuthError, check_startup, dev_verifier, supabase_verifier, user_from_header
+from marvia.auth import (
+    DEV_USER,
+    TRACING_VARS,
+    AuthError,
+    check_startup,
+    dev_verifier,
+    supabase_verifier,
+    user_from_header,
+)
 from marvia.config import Settings
 
 BASE = "https://demo.supabase.test"
@@ -132,6 +140,28 @@ def test_the_server_refuses_to_start_with_langsmith_tracing_on(monkeypatch, name
         check_startup(ok)
     monkeypatch.setenv(name, "false")
     check_startup(ok)  # 꺼 두면 뜬다
+
+
+@pytest.mark.parametrize(
+    "name", ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_TRACING_ENVIRONMENT"]
+)
+def test_the_server_refuses_to_start_with_a_raw_langfuse_env_var(monkeypatch, name):
+    # [왜] SDK가 이 이름을 직접 읽어 가림 연결(MARVIA_LANGFUSE_*) 밖에서 켜질 수 있다 (계획 6b)
+    for var in ("K_SERVICE", *TRACING_VARS):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv(name, "x")
+    ok = Settings(
+        _env_file=None,
+        supabase_url=BASE,
+        owner_ids="owner-1",
+        langfuse_public_key="pk-x",
+        langfuse_secret_key="sk-x",
+        langfuse_host="https://x.test",
+    )
+    with pytest.raises(RuntimeError, match=name):
+        check_startup(ok)
+    monkeypatch.delenv(name)
+    check_startup(ok)  # MARVIA_LANGFUSE_*만 있으면 뜬다
 
 
 def over_the_wire(monkeypatch, reply):

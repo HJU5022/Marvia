@@ -4,7 +4,8 @@
 - supabase(기본): Supabase Auth가 발급한 JWT를 공개키(JWKS, ES256)로 확인한다. aud·iss·exp·sub가 없으면
   거절하고, sub가 소유자 목록(MARVIA_OWNER_IDS)에 없으면 403이다. 우리 쪽에 JWT 비밀값을 두지 않는다.
 - dev: 이 컴퓨터에서 화면을 돌려 볼 때만 쓰는 고정 토큰(MARVIA_DEV_TOKEN). 사용자는 DEV_USER 하나다.
-시작 검사(check_startup)는 트레이싱 환경 변수(R-069)와 로그인 설정(https, 소유자, 개발 로그인)을 본다.
+시작 검사(check_startup)는 트레이싱 환경 변수(R-069, 계획 6b의 LANGFUSE_*)와
+로그인 설정(https, 소유자, 개발 로그인)을 본다.
 하지 않는 일: 로그인 화면·가입(Supabase가 한다), 토큰 발급. 가입 막기는 Supabase 설정에서 한다(배포 절차서).
 """
 
@@ -54,6 +55,11 @@ def check_startup(settings: Settings) -> None:
             raise RuntimeError(
                 f"{name}=true라 트레이스가 켜집니다. 가림(scrub) 없이 밖으로 나가므로 시작하지 않습니다"
             )
+    # [왜] Langfuse SDK는 인자로 받지 않은 키·주소·설정을 LANGFUSE_* 환경 변수에서 읽는다. 가림을 거치는
+    #      연결은 MARVIA_LANGFUSE_*(trace.tracer_callbacks)뿐이라, 접두어 없는 이름이 있으면 뜨지 않는다
+    raw = sorted(name for name in os.environ if name.startswith("LANGFUSE_"))
+    if raw:
+        raise RuntimeError(f"{raw[0]} 환경 변수가 있습니다. Langfuse는 MARVIA_LANGFUSE_*로만 켭니다")
     if settings.auth == "dev":
         # [왜] K_SERVICE는 Cloud Run이 넣는 환경 변수다. 개발 로그인이 운영에 켜진 채 배포되는 일을 막는다
         if os.environ.get("K_SERVICE"):

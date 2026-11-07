@@ -1,5 +1,6 @@
 """모든 시험이 함께 쓰는 준비물: 로컬 DB의 시험용 스키마(db, test_url). 처음엔 tests/rag에만 있었다."""
 
+import os
 from uuid import uuid4
 
 import psycopg
@@ -22,6 +23,13 @@ SCHEMA = f"marvia_test_{uuid4().hex[:12]}"
 def unipass_replay_only(monkeypatch):
     """모든 시험은 UNI-PASS 재생 데이터만 쓴다. [왜] .env에 live와 키가 있어도 실제 API를 부르지 않는다"""
     monkeypatch.setenv("MARVIA_UNIPASS_MODE", "replay")
+
+
+@pytest.fixture(autouse=True)
+def no_raw_langfuse_env(monkeypatch):
+    """셸에 걸린 LANGFUSE_* 환경 변수를 지운다. [왜] 서버 시작 검사가 그 이름을 거절한다 (계획 6b)"""
+    for name in [name for name in os.environ if name.startswith("LANGFUSE_")]:
+        monkeypatch.delenv(name)
 
 
 @pytest.fixture
