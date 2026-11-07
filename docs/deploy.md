@@ -84,11 +84,26 @@ gcloud iam service-accounts add-iam-policy-binding "marvia-deploy@${PROJECT_ID}.
 gcloud iam workload-identity-pools providers describe "marvia" --project="${PROJECT_ID}" --location="global" --workload-identity-pool="github" --format="value(name)"
 ```
 
-서비스 계정에는 배포에 필요한 역할만 준다: Cloud Run 관리(`roles/run.admin`), 서비스 계정 사용(`roles/iam.serviceAccountUser`), Artifact Registry 쓰기(`roles/artifactregistry.writer`), 비밀 읽기(`roles/secretmanager.secretAccessor`, Cloud Run 실행 계정에도). 역할 이름은 GCP IAM 문서로 다시 확인한다 [추정].
+배포 계정에는 배포에 필요한 역할만 준다: Cloud Run 관리(`roles/run.admin`), Artifact Registry 쓰기(`roles/artifactregistry.writer`). 역할 이름은 GCP IAM 문서로 다시 확인한다 [추정].
+
+Cloud Run 작업과 서비스는 기본 계정이 아니라 실행 전용 계정 `marvia-run`으로 돌린다. 비밀은 이 계정만 읽고, 배포 계정은 이 계정으로 실행하도록 맡기는 권한만 갖는다:
+
+```bash
+gcloud iam service-accounts create "marvia-run" --project "${PROJECT_ID}"
+RUN_SA="marvia-run@${PROJECT_ID}.iam.gserviceaccount.com"
+for name in marvia-database-url marvia-data-key marvia-anthropic-key marvia-voyage-key marvia-owner-ids; do
+  gcloud secrets add-iam-policy-binding "$name" --project "$PROJECT_ID" \
+    --member="serviceAccount:${RUN_SA}" --role="roles/secretmanager.secretAccessor"
+done
+gcloud iam service-accounts add-iam-policy-binding "$RUN_SA" --project "$PROJECT_ID" \
+  --member="serviceAccount:marvia-deploy@${PROJECT_ID}.iam.gserviceaccount.com" --role="roles/iam.serviceAccountUser"
+```
+
+`roles/iam.serviceAccountUser`은 프로젝트 전체가 아니라 `marvia-run`에만 준다.
 
 ## 직접 할 일 3: GitHub 저장소 변수와 배포
 
-저장소 Settings → Variables(비밀이 아닌 값): `GCP_PROJECT`, `GCP_REGION=asia-northeast3`, `GCP_WIF_PROVIDER`(위 마지막 명령의 값), `GCP_DEPLOY_SA=marvia-deploy@<프로젝트>.iam.gserviceaccount.com`, `MARVIA_SUPABASE_URL`, `MARVIA_WEB_ORIGIN`(Vercel 주소), 마지막에 `MARVIA_DEPLOY_ENABLED=true`.
+저장소 Settings → Variables(비밀이 아닌 값): `GCP_PROJECT`, `GCP_REGION=asia-northeast3`, `GCP_WIF_PROVIDER`(위 마지막 명령의 값), `GCP_DEPLOY_SA=marvia-deploy@<프로젝트>.iam.gserviceaccount.com`, `GCP_RUN_SA=marvia-run@<프로젝트>.iam.gserviceaccount.com`, `MARVIA_SUPABASE_URL`, `MARVIA_WEB_ORIGIN`(Vercel 주소), 마지막에 `MARVIA_DEPLOY_ENABLED=true`.
 
 Actions 탭에서 `deploy` 워크플로를 손으로 돌린다(`workflow_dispatch`만 있다. push로는 돌지 않는다). 순서: amd64 이미지 빌드·올리기 → `marvia-prepare` 작업으로 표 준비 → `marvia-api` 배포(요청 시간 제한 300초, 로그인은 Supabase 토큰, `--max-instances 1`).
 
