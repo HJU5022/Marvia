@@ -12,6 +12,7 @@ dependencies = [
     "kiwipiepy>=0.24.1",
     "langchain>=1.4.7",
     "langchain-anthropic>=1.7.7",
+    "langfuse==5.0.4",
     "langgraph>=1.2.18",
     "langgraph-checkpoint-postgres>=3.2.0",
     "mcp>=2.3.0",
