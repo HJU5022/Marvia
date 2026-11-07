@@ -14,6 +14,7 @@ from marvia.watch import (
     add_watch,
     derive_key,
     forget_user,
+    list_watched,
     number_hash,
     recheck,
     remove_watch,
@@ -155,6 +156,16 @@ def test_remove_watch_deletes_one_cargo_and_its_events_for_that_user_only(db, ke
     assert [n["number"] for n in take_news(db, keys, "u1")] == ["DEMO0002"]  # 지운 화물의 변화도 사라졌다
     assert [n["number"] for n in take_news(db, keys, "u2")] == ["DEMO0001"]
     assert remove_watch(db, keys, "u1", "DEMO0001") == 0  # 이미 지웠다
+
+
+def test_list_watched_gives_that_users_numbers_in_order(db, keys):
+    # [왜] 컨테이너 번호로 아는 화물을 찾을 때 감시 목록도 본다 (계획 6a). 남의 감시는 보이지 않는다
+    add_watch(db, keys, "u1", "DEMO0002", "수입신고")
+    add_watch(db, keys, "u1", "DEMO0003", "수입신고수리")
+    add_watch(db, keys, "u2", "DEMO0001", "반입신고")
+    add_watch(db, make_keys(), "u1", "DEMO0001", "반입신고")  # 다른 키로 넣은 줄은 풀지 못해 건너뛴다
+    assert list_watched(db, keys, "u1") == ["DEMO0002", "DEMO0003"]
+    assert list_watched(db, keys, "nobody") == []
 
 
 def test_watch_keys_repr_hides_hash_key():

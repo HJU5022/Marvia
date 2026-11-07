@@ -68,6 +68,8 @@ class WatchDeps:
     ack: Callable[[str, list[int]], None]  # (사용자, 변화 id들) → 답에 보인 변화를 본 것으로 표시
     # (사용자, 실제 번호) → 그 화물을 감시 목록에서 지우고 지운 수. 없으면 unwatch_cargo 도구도 없다 (R-033)
     remove: Callable[[str, str], int] | None = None
+    # 사용자 → 감시 목록의 실제 번호들. 컨테이너 번호로 아는 화물을 찾을 때 쓴다 (계획 6a)
+    numbers: Callable[[str], list[str]] | None = None
 
 
 def add_watch(conn: psycopg.Connection, keys: WatchKeys, user: str, number: str, stage: str) -> None:
@@ -157,6 +159,26 @@ def ack_news(conn: psycopg.Connection, user: str, ids: list[int]) -> None:
         raise
 
 
+def list_watched(conn: psycopg.Connection, keys: WatchKeys, user: str) -> list[str]:
+    """사용자의 감시 목록에 든 실제 번호를 넣은 순서대로 돌려준다."""
+    try:
+        rows = conn.execute(
+            "SELECT number_enc FROM watches WHERE user_id = %s ORDER BY id", (user,)
+        ).fetchall()
+        conn.commit()  # 읽기 트랜잭션을 닫는다
+    except psycopg.Error:
+        # [왜] 실패한 트랜잭션이 남으면 같은 연결의 다음 질의가 모두 죽는다. 되돌린 뒤 다시 던진다
+        conn.rollback()
+        raise
+    numbers = []
+    for (enc,) in rows:
+        try:
+            numbers.append(keys.fernet.decrypt(enc.encode()).decode())
+        except InvalidToken:
+            continue  # [왜] 키를 바꾼 뒤 남은 줄은 번호를 알 수 없다 (take_news와 같다)
+    return numbers
+
+
 def remove_watch(conn: psycopg.Connection, keys: WatchKeys, user: str, number: str) -> int:
     """사용자의 감시 목록에서 화물 하나를 지운다. 그 변화 기록도 함께 지워진다. 지운 줄 수를 돌려준다."""
     try:
@@ -196,4 +218,5 @@ def live_watch(conn: psycopg.Connection, keys: WatchKeys) -> WatchDeps:
         news=lambda user: take_news(conn, keys, user),
         ack=lambda user, ids: ack_news(conn, user, ids),
         remove=lambda user, number: remove_watch(conn, keys, user, number),
+        numbers=lambda user: list_watched(conn, keys, user),
     )
