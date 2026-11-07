@@ -1487,3 +1487,26 @@ def test_unwatching_a_cargo_waits_for_approval_and_removes_it_server_side(agent_
     assert removed == [("local", "DEMO0001")]
     assert "DEMO0001 감시 목록에서 뺌" in out["answer"]  # 화면 답에는 되돌린 번호, 공책에는 토큰
     assert "DEMO0001" not in all_text(graph.get_state(cfg("uw1")).values)
+
+
+@pytest.mark.parametrize(
+    ("token", "calls"), [("[BL1]", 1), ("[BL9]", 0)], ids=["not-watched", "unknown-token"]
+)
+def test_unwatching_a_cargo_that_is_not_on_the_list_does_nothing_and_says_so(agent_deps, token, calls):
+    from marvia.watch import WatchDeps
+
+    removed: list[tuple[str, str]] = []
+    watch = WatchDeps(
+        add=lambda *row: None,
+        news=lambda user: [],
+        ack=lambda user, ids: None,
+        remove=lambda user, number: removed.append((user, number)) or 0,  # 지운 줄이 없다
+    )
+    graph = agent_graph(agent_deps, say(("unwatch_cargo", {"token": token})), say(), watch=watch)
+    graph.invoke({"text": "DEMO0001 그만 지켜봐 줘"}, cfg("uw2"))
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("uw2"))
+    values = graph.get_state(cfg("uw2")).values
+    assert len(removed) == calls  # 모르는 토큰은 감시 표를 부르지 않는다
+    assert values["actions"] == []  # 한 일이 없다
+    said = all_text(values)
+    assert ("감시 목록에 없어요" in said) is bool(calls) and ("모르는 토큰" in said) is not bool(calls)

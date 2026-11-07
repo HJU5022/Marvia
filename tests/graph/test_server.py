@@ -24,7 +24,7 @@ from marvia.graph.main import build_main_graph
 from marvia.server import build_app, forget_account
 from marvia.watch import WatchDeps, add_watch, watch_keys
 
-TOKENS = {"tok-a": "user-a", "tok-b": "user-b"}
+TOKENS = {"tok-a": "user-a", "tok-b": "user-b", "tok-ab": "user-ab"}
 TWO = [{"label": "부산", "description": "부산항 기준"}, {"label": "인천", "description": "인천항 기준"}]
 SNAPSHOT_KEYS = {"plan", "reading", "cargos", "evidence"}
 
@@ -467,19 +467,26 @@ def test_account_deletion_forgets_watches_memory_and_only_that_users_threads(age
     add_watch(db, watch_keys(secret), "user-a", "DEMO0001", "반입신고")
     add_watch(db, watch_keys(secret), "user-b", "DEMO0002", "반입신고")
     with live_memory(url, secret) as (saver, store), psycopg.connect(url, autocommit=True) as conn:
-        deps = agent_deps(model=ToolModel(messages=iter([AIMessage(""), AIMessage("")])))
+        deps = agent_deps(model=ToolModel(messages=iter([AIMessage(""), AIMessage(""), AIMessage("")])))
         graph = build_main_graph(deps, saver, loop="agent", store=store)
         forget = lambda user: forget_account(conn, store, user, url)  # noqa: E731
         client = TestClient(build_app(graph, verify, web_origin="http://web.test", forget=forget))
         run(client, body("t1", "DEMO0001 언제까지?"), token="tok-a")
         run(client, body("t1", "DEMO0002 언제까지?"), token="tok-b")
+        run(
+            client, body("t1", "DEMO0003 언제까지?"), token="tok-ab"
+        )  # [왜] "user-a" 앞머리가 겹치는 다른 사용자
+        mine = "SELECT count(*) FROM {} WHERE thread_id LIKE 'user-a/%'"
+        assert conn.execute(mine.format("checkpoint_blobs")).fetchone()[0] > 0  # 지우기 전에는 있었다
         store.put(("users", "user-a", "items"), "고추", {"name": "고추"})
         store.put(("users", "user-a", "prefs"), "depth", {"depth": "짧게"})
         store.put(("users", "user-b", "items"), "쌀", {"name": "쌀"})
         assert client.delete("/account").status_code == 401
         assert client.delete("/account", headers={"Authorization": "Bearer tok-a"}).status_code == 204
         threads = {row[0] for row in conn.execute("SELECT DISTINCT thread_id FROM checkpoints")}
-        assert threads == {"user-b/t1"}
+        assert threads == {"user-b/t1", "user-ab/t1"}  # "user-a/"로 시작하는 것만 지웠다
+        for table in ("checkpoint_blobs", "checkpoint_writes"):
+            assert conn.execute(mine.format(table)).fetchone()[0] == 0
         assert store.search(("users", "user-a")) == []
         assert [item.key for item in store.search(("users", "user-b", "items"))] == ["쌀"]
     assert db.execute("SELECT user_id FROM watches").fetchall() == [("user-b",)]
