@@ -20,7 +20,7 @@
 |---|---|---|---|
 | D1 | 숫자의 출처 | README의 평가·시험 숫자마다 잰 커밋(또는 결과 파일)이 같은 줄이나 바로 아래 표에 있다 | 눈으로 대조, 결과 파일 `eval/results/*.json`의 `meta.commit` |
 | D2 | 주인 목소리 | README와 바꾼 설계 줄에 과정 낱말(만든 이를 가리키는 Claude, 에이전트가 정함, 정운에게, the user, 리뷰어, 리드)이 0개. 모델 이름(Claude Haiku 5.5)과 비교한 도구 이름(Claude Code, Codex CLI)은 제품·비교 대상이라 허용 | `grep -nE '정운|리뷰어|리드 |the user|에이전트가 (정|작성|검토)' README.md` |
-| D3 | em dash | 바꾼 파일에 U+2014 0개 | `grep -c $'—' README.md docs/specs/2026-10-28-marvia-v2-design.md` |
+| D3 | em dash | 바꾼 파일에 U+2014 0개 | `python3 -c "import sys; print(sum(open(f).read().count(chr(0x2014)) for f in sys.argv[1:]))" README.md docs/specs/2026-10-28-marvia-v2-design.md` |
 | D4 | 링크 | README의 상대 링크가 모두 있는 파일을 가리킨다 | 링크 목록을 뽑아 `test -e` |
 | D5 | 실행 명령 | README의 실행 명령(시험)이 적힌 대로 돈다 | `uv run pytest -q` |
 | D6 | 재지 않은 칸 | 계획 3b 측정 값 칸에 추정 숫자가 없다 | 눈으로 대조 |
