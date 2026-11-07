@@ -649,6 +649,32 @@ def test_account_deletion_is_409_while_a_turn_of_that_user_runs():
     assert forgotten == ["user-b"]
 
 
+def test_a_turn_that_starts_while_the_account_is_being_deleted_is_409():
+    # [왜] 409 확인 뒤 지우는 동안 시작한 차례는 지운 대화 기록·기억을 다시 쓸 수 있다 (계획 6c)
+    entered, gate, codes = threading.Event(), threading.Event(), []
+
+    def slow_forget(user: str) -> None:
+        entered.set()
+        gate.wait(10)  # [왜] 지우기를 붙잡아 둔 채 같은 사용자의 새 차례와 두 번째 삭제를 보낸다
+
+    client = TestClient(build_app(Stub(), verify, web_origin="http://x.test", forget=slow_forget))
+    mine, other = {"Authorization": "Bearer tok-a"}, {"Authorization": "Bearer tok-b"}
+    worker = threading.Thread(
+        target=lambda: codes.append(client.delete("/account", headers=mine).status_code)
+    )
+    worker.start()
+    assert entered.wait(10)
+    during = client.post("/agui", json=body("t24", "질문"), headers=mine)
+    again = client.delete("/account", headers=mine)
+    someone = client.post("/agui", json=body("t24", "질문"), headers=other)
+    gate.set()
+    worker.join(10)
+    assert during.status_code == 409 and during.json()["error"] == "계정을 지우는 중이에요"
+    assert again.status_code == 409 and someone.status_code == 200  # 다른 사용자는 막지 않는다
+    assert codes == [204]
+    assert client.post("/agui", json=body("t24", "질문"), headers=mine).status_code == 200  # 끝나면 푼다
+
+
 def test_running_is_only_touched_while_the_guard_is_held(monkeypatch):
     # [왜] 잠금 밖의 변경은 시간이 맞아야만 드러나서(GIL) 아래의 스레드 시험은 못 잡는다. 여기서는 running의
     #      추가·삭제·순회가 일어날 때마다 잠금이 잡혀 있는지를 직접 본다 (한 번에 한 요청씩이라 결정적이다)

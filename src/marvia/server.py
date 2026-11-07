@@ -270,6 +270,7 @@ def build_app(
     # [왜] 이 앱이 부르는 그래프는 user_id 없이 사용자 데이터에 닿으면 멈춘다 (tools.user_of, R-048)
     graph = graph.with_config(configurable={"surface": SERVER_SURFACE}, callbacks=list(callbacks))
     running: set[str] = set()
+    deleting: set[str] = set()  # 계정을 지우는 중인 사용자. 그동안 그 사용자의 새 차례와 삭제를 409로 막는다
     guard = threading.Lock()
     cfg = load_rules("server")["request"]
 
@@ -293,6 +294,9 @@ def build_app(
             return JSONResponse({"error": "대화 id 모양이 틀렸어요"}, status_code=422)
         key = f"{user}/{body.thread_id}"
         with guard:
+            # [왜] 지우는 동안 시작한 차례는 지운 대화 기록·기억을 다시 쓴다. 삭제가 끝날 때까지 막는다
+            if user in deleting:
+                return JSONResponse({"error": "계정을 지우는 중이에요"}, status_code=409)
             if key in running:
                 return JSONResponse({"error": "이 대화는 아직 답하는 중이에요"}, status_code=409)
             running.add(key)
@@ -318,9 +322,16 @@ def build_app(
         except AuthError as error:
             return JSONResponse({"error": str(error)}, status_code=error.status)
         with guard:  # [왜] /agui와 같은 잠금. 그 사용자의 차례가 도는 중이면 지워도 기록이 다시 생긴다
+            if user in deleting:
+                return JSONResponse({"error": "계정을 지우는 중이에요"}, status_code=409)
             if any(key.startswith(f"{user}/") for key in running):
                 return JSONResponse({"error": "답하는 중인 대화가 있어요"}, status_code=409)
-        await anyio.to_thread.run_sync(forget, user)
+            deleting.add(user)
+        try:
+            await anyio.to_thread.run_sync(forget, user)
+        finally:
+            with guard:  # [왜] 지우기가 실패해도(500) 그 사용자를 영영 막지 않는다
+                deleting.discard(user)
         return Response(status_code=204)
 
     async def health(request: Request) -> Response:
@@ -350,8 +361,8 @@ def forget_account(conn: psycopg.Connection, store: BaseStore, user: str, url: s
     [주의] 하나의 트랜잭션이 아니다. 감시(forget_user), 장기 기억(Store의 자기 연결), 대화 기록(아래 한
            트랜잭션)이 차례로 따로 커밋된다. 중간에 죽으면 500이고, 셋 다 다시 불러도 안전해서(없으면 0줄)
            같은 요청을 다시 보내면 마저 지워진다. 지우는 동안 그 사용자의 차례가 돌고 있으면 그 차례가 대화
-           기록을 다시 쓸 수 있어, DELETE /account는 그 사용자의 차례가 도는 중이면 409로 거절한다.
-           (거절한 뒤에 시작한 차례까지는 막지 않는다.)
+           기록을 다시 쓸 수 있어, DELETE /account는 그 사용자의 차례가 도는 중이면 409로 거절하고,
+           지우는 동안 들어온 그 사용자의 /agui도 409로 거절한다(build_app의 deleting).
     [왜] conn은 감시 전용 공유 연결이다. 그 위에 트랜잭션을 열면 다른 사용자의 감시 문장이 섞인다(R-041).
          대화 기록 삭제는 url로 짧게 연 자기 연결에서 한다.
     """
