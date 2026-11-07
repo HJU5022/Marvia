@@ -257,7 +257,8 @@ def make_tools(
     def lookup_cargo(tokens: list[str], runtime: ToolRuntime) -> Command:
         """Look up the customs status of cargo tokens such as [BL1] (for example a number the user gave in
         an answer). A container token such as [CNTR1] is matched only against cargo already known in this
-        conversation or on the user's watch list. Returns one line per cargo.
+        conversation or on the user's watch list; if none matches, the line asks for a B/L or cargo number.
+        Returns one line per cargo.
         """
         mask_map = dict(runtime.state.get("mask_map", {}))
         known = [token for token in tokens if token in mask_map]
