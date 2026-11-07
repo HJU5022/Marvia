@@ -16,6 +16,21 @@ const EDITABLE: Record<string, { field: string; label: string; choices?: string[
   save_item_card: { field: "name", label: "품목 이름" },
 };
 
+// 도구 이름의 한글 표시 (src/marvia/graph/tools.py 설명 기준). 모르는 도구는 이름 그대로
+const TOOL_LABEL: Record<string, string> = {
+  save_preference: "설명 깊이 저장",
+  save_item_card: "품목 카드 저장",
+  watch_cargo: "화물 감시 추가",
+  unwatch_cargo: "화물 감시 해제",
+};
+
+// 고치기 칸의 처음 값: 고르는 칸은 화면에 보이는 첫 항목과 같게 맞춘다 (빈 값을 보내지 않는다)
+function initial(name: string, args: Record<string, unknown>): string {
+  const spec = EDITABLE[name];
+  const value = String(args[spec?.field] ?? "");
+  return spec?.choices && !spec.choices.includes(value) ? spec.choices[0] : value;
+}
+
 export function ApprovalCardView({
   card,
   onReply,
@@ -24,7 +39,7 @@ export function ApprovalCardView({
   onReply: (reply: { decisions: Decision[] }) => void;
 }) {
   const [kinds, setKinds] = useState(card.actions.map(() => "approve"));
-  const [values, setValues] = useState(card.actions.map((a) => String(a.args[EDITABLE[a.name]?.field] ?? "")));
+  const [values, setValues] = useState(card.actions.map((a) => initial(a.name, a.args)));
   const [reasons, setReasons] = useState(card.actions.map(() => ""));
   const box = useRef<HTMLElement>(null);
   useEffect(() => box.current?.focus(), []); // 새 카드로 초점을 옮긴다
@@ -49,7 +64,7 @@ export function ApprovalCardView({
         const edit = EDITABLE[action.name] && action.allowed.includes("edit") ? EDITABLE[action.name] : null;
         return (
           <fieldset key={i}>
-            <legend>{action.name}</legend>
+            <legend>{TOOL_LABEL[action.name] ?? action.name}</legend>
             <p className="text">{action.description}</p>
             <label>
               <input type="radio" name={`d${i}`} checked={kinds[i] === "approve"} onChange={() => setKinds(set(kinds, i, "approve"))} />

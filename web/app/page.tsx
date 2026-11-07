@@ -35,6 +35,8 @@ export default function Home() {
   }, []);
 
   const onEvent = useCallback((event: AgUiEvent) => {
+    // [왜] 카드는 이어받은 차례의 첫 이벤트가 올 때 치운다. 연결이 실패하면 카드가 남아 다시 할 수 있다
+    if (event.type === "RUN_STARTED") setCard(null);
     if (event.type === "STATE_SNAPSHOT") setView(event.snapshot);
     if (event.type === "TEXT_MESSAGE_CONTENT") {
       // 같은 messageId의 조각은 한 줄에 이어 붙인다
@@ -66,7 +68,6 @@ export default function Home() {
         setError("다시 로그인해 주세요");
         return;
       }
-      setCard(null);
       running.current?.abort();
       const controller = new AbortController();
       running.current = controller;
@@ -80,6 +81,7 @@ export default function Home() {
             ? failure.message
             : "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요",
         );
+        if (failure instanceof HttpError) setCard(null); // 서버가 거절한 카드는 이미 지난 것이다
         if (failure instanceof HttpError && failure.status === 401) signOut().then(() => setToken(null));
       } finally {
         sending.current = false;
@@ -113,7 +115,9 @@ export default function Home() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              signIn(devToken).then(() => currentToken().then(setToken));
+              signIn(devToken)
+                .then(() => currentToken().then(setToken))
+                .catch((failure: Error) => setError(failure.message));
             }}
           >
             <label htmlFor="dev-token">개발 로그인 토큰</label>
@@ -123,7 +127,7 @@ export default function Home() {
             </div>
           </form>
         ) : (
-          <button type="button" onClick={() => signIn()}>
+          <button type="button" onClick={() => signIn().catch((failure: Error) => setError(failure.message))}>
             구글로 로그인
           </button>
         )}

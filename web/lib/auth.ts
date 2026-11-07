@@ -36,9 +36,14 @@ export async function signIn(devToken?: string): Promise<void> {
       if (devToken) sessionStorage.setItem(DEV_KEY, devToken);
       return;
     }
-    await supabase().auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+    const { error } = await supabase().auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) throw error;
   } catch {
-    // 저장하지 못하거나 설정이 비면 currentToken이 null이라 로그인 쪽에 머문다
+    // [왜] 설정이 비었거나 저장소가 막히면 버튼이 말없이 멈춘다. 정해 둔 글로 알린다 (오류 본문은 보이지 않는다)
+    throw new Error("로그인을 시작하지 못했어요. 로그인 설정을 확인해 주세요");
   }
 }
 
