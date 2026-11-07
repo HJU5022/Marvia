@@ -355,6 +355,47 @@ def test_a_choice_outside_the_cards_options_is_422_and_the_card_stays(agent_deps
     ).interrupts  # 카드는 그대로 열려 있다
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [{"custom": 123}, {"custom": ["a"]}, {"custom": "가" * 2001}, {"timeout": "yes"}, {"timeout": 1}],
+    ids=str,
+)
+def test_a_choice_answer_must_be_text_within_the_cap_and_timeout_a_bool(agent_deps, payload):
+    # [왜] custom이 글이 아니면 뒤에서 TypeError로 차례가 죽고, 상한은 글자 수로만 확인되던 곳이 있었다
+    ask = say("ask_user", {"question": "어느 항이에요?", "options": TWO}, 1)
+    graph, client = served(agent_deps, ask, AIMessage(""))
+    card = run(client, body("t17", "장치기간이 궁금해요"))[-1]["outcome"]["interrupts"][0]
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": payload}]
+    response = client.post(
+        "/agui", json=body("t17", resume=resume), headers={"Authorization": "Bearer tok-a"}
+    )
+    assert response.status_code == 422
+    assert graph.get_state({"configurable": {"thread_id": "user-a/t17"}}).interrupts
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        {"type": "reject", "message": "가" * 2001},
+        {"type": "edit", "edited_action": {"name": "watch_cargo", "args": {"token": "가" * 2001}}},
+    ],
+    ids=["reject", "edit"],
+)
+def test_approval_text_is_capped_like_a_question_and_the_card_stays(agent_deps, decision):
+    watch = WatchDeps(add=lambda *row: None, news=lambda user: [], ack=lambda user, ids: None)
+    steps = (say("watch_cargo", {"token": "[BL1]"}, 1), AIMessage(""))
+    deps = agent_deps(model=ToolModel(messages=iter(steps)), watch=watch)
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
+    client = TestClient(build_app(graph, verify, web_origin="http://web.test", forget=print))
+    card = run(client, body("t18", "DEMO0001 계속 지켜봐 줘"))[-1]["outcome"]["interrupts"][0]
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"decisions": [decision]}}]
+    response = client.post(
+        "/agui", json=body("t18", resume=resume), headers={"Authorization": "Bearer tok-a"}
+    )
+    assert response.status_code == 422
+    assert graph.get_state({"configurable": {"thread_id": "user-a/t18"}}).interrupts
+
+
 def test_a_cancelled_card_resumes_without_its_payload_on_the_recommended_path(agent_deps):
     ask = say("ask_user", {"question": "어느 항이에요?", "options": TWO}, 1)
     graph, client = served(agent_deps, ask, AIMessage(""))

@@ -161,6 +161,17 @@ def turn_events(
     yield from tail
 
 
+def _longest_text(value: Any) -> int:
+    """값 안(키 포함)의 가장 긴 글의 글자 수."""
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, dict):
+        return max((max(_longest_text(k), _longest_text(v)) for k, v in value.items()), default=0)
+    if isinstance(value, list):
+        return max((_longest_text(item) for item in value), default=0)
+    return 0
+
+
 def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
     """그래프에 넣을 값: 새 질문이면 {"text": 마지막 사용자 글}, 재개면 Command(resume=정리한 값).
 
@@ -179,6 +190,8 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
             names = [request["name"] for request in value["action_requests"]]
             # [왜] 모양을 본 뒤(approval_reply) 고친 인자·거절 글의 실제 번호를 이 대화의 토큰으로 다시 가린다
             reply = approval_reply(raw, len(names), names)
+            if _longest_text(reply) > max_text:
+                raise Refused(422, "글이 너무 길어요")
             # shortcut: 부모 상태의 mask_map은 이번 차례 시작 때 값이라 같은 차례에 ask_user로 들어온
             #   번호가 아직 없다(그 번호로 고치면 거절된다). 올릴 때: get_state(config, subgraphs=True)로
             #   끼어든 서브그래프의 표를 읽는다
@@ -191,7 +204,13 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
             isinstance(picked, int) and not isinstance(picked, bool) and 0 <= picked < len(value["options"])
         ):
             raise Refused(422, "고른 선택지가 카드에 없어요")
-        if len(str(choice.get("custom", ""))) > max_text:
+        # [왜] 직접 쓴 답은 글이어야 하고(아니면 뒤의 번호 읽기가 TypeError로 죽는다) timeout은 참거짓이다.
+        #      custom의 실제 번호는 여기서 가리지 않는다: ask_user는 모델에 주기 전에 가리고, 번호를 묻는
+        #      ask 노드는 사용자가 적은 실제 번호를 그대로 읽어야 한다. 재개 값은 암호화되어 저장된다
+        custom = choice.get("custom", "")
+        if not isinstance(custom, str) or not isinstance(choice.get("timeout", False), bool):
+            raise Refused(422, "답 모양이 틀렸어요")
+        if len(custom) > max_text:
             raise Refused(422, "글이 너무 길어요")
         return Command(resume=choice)
     # [왜] 마지막 메시지 하나만 본다. user가 아니거나 글이 아니면 앞 메시지로 물러서지 않고 거절한다
