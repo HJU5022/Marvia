@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -444,3 +445,19 @@ def test_run_problems_treat_a_missing_or_live_unipass_mode_as_invalid():
     assert run_problems(base, [], clean, set()) == expect
     assert run_problems(base | {"unipass_mode": "live"}, [], clean, set()) == expect
     assert run_problems(base | {"unipass_mode": "replay"}, [], clean, set()) == []
+
+
+def test_evaluate_item_runs_the_graph_with_the_tracer_callbacks(agent_deps):
+    # [왜] 평가도 서버·CLI와 같은 트레이서 콜백(trace.tracer_callbacks)을 받는다 (계획 6b)
+    class Seen(BaseCallbackHandler):
+        def __init__(self):
+            self.chains = 0
+
+        def on_chain_start(self, serialized, inputs, **kwargs):
+            self.chains += 1
+
+    seen = Seen()
+    evaluate_item(
+        agent_deps(), item("DEMO0001 언제까지 수입신고 해요?"), "planner", TODAY, PRICES, callbacks=[seen]
+    )
+    assert seen.chains > 0

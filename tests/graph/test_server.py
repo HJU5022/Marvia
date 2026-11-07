@@ -5,6 +5,7 @@ import json
 import logging
 import threading
 from types import SimpleNamespace
+from uuid import uuid4
 
 import psycopg
 import pytest
@@ -12,11 +13,14 @@ from cryptography.fernet import Fernet
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
+from langfuse import get_client
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg.conninfo import make_conninfo
 from starlette.testclient import TestClient
 
+from marvia import langfuse_trace
 from marvia.auth import TRACING_VARS, AuthError
 from marvia.config import Settings
 from marvia.graph.live import live_memory
@@ -468,11 +472,13 @@ def test_main_listens_on_loopback_unless_marvia_host_says_otherwise(
     monkeypatch.setattr(server.psycopg, "connect", fake)
     monkeypatch.setattr(server, "agent_deps", lambda *a: None)
     monkeypatch.setattr(server, "build_main_graph", lambda *a, **k: None)
-    monkeypatch.setattr(server, "build_app", lambda *a, **k: None)
+    monkeypatch.setattr(server, "tracer_callbacks", lambda settings: ["tracer"])
+    monkeypatch.setattr(server, "build_app", lambda *a, **k: seen.update(callbacks=k["callbacks"]))
     monkeypatch.setattr(server.uvicorn, "run", lambda app, **kwargs: seen.update(kwargs))
     monkeypatch.setenv("PORT", "9999")
     server.main()
-    assert seen == {"host": expected, "port": 9999}
+    # [왜] 서버도 CLI·평가와 같은 트레이서 콜백(trace.tracer_callbacks)을 앱에 넘긴다 (계획 6b)
+    assert seen == {"host": expected, "port": 9999, "callbacks": ["tracer"]}
 
 
 def test_a_failed_run_sends_the_fixed_error_text_and_the_next_request_is_served():
@@ -701,3 +707,19 @@ def test_deleting_an_account_while_turns_start_and_finish_never_gives_500():
     [w.start() for w in workers]
     [w.join(60) for w in workers]
     assert codes and set(codes) <= {200, 204, 409}, sorted(set(codes))
+
+
+def test_a_traced_turn_exports_spans_without_numbers_and_still_answers_with_them(agent_deps):
+    # [왜] 서버 길도 가린 콜백을 지난다 (계획 6b). 메모리 내보내기라 키·서버·네트워크가 없다
+    exporter, key = InMemorySpanExporter(), f"pk-test-{uuid4().hex}"
+    tracer = langfuse_trace.build(key, "sk-test", "http://127.0.0.1:9", exporter)
+    deps = agent_deps(model=ToolModel(messages=iter([AIMessage("")])))
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
+    app = build_app(graph, verify, web_origin="http://web.test", forget=print, callbacks=[tracer])
+    events = run(TestClient(app), body("t30", "DEMO0001 언제까지?"))
+    client = get_client(public_key=key)
+    client.flush()
+    client.shutdown()
+    spans = exporter.get_finished_spans()
+    assert spans and all("DEMO0001" not in span.to_json() for span in spans)
+    assert any("DEMO0001" in event.get("delta", "") for event in events)  # 화면 답에는 실제 번호

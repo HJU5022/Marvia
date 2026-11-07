@@ -9,6 +9,7 @@
       MARVIA_LOOP=agent uv run python scripts/try_agent.py --image bl.png "이 화물 지금 어디야?"
         (사진은 이 컴퓨터에서 OCR로 읽고 번호 덩어리만 질문 앞에 붙인다. Docker 안에서 돌린다)
 대화 기록(암호화)과 장기 기억은 로컬 Postgres에 남는다(live_memory).
+MARVIA_LANGFUSE_* 셋이 있으면 번호를 가린 트레이스를 Langfuse로 보낸다(trace.tracer_callbacks, 계획 6b).
 하지 않는 일: 비용 계산(scripts/compare_loops.py).
 """
 
@@ -26,6 +27,7 @@ from marvia.graph.main import build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.identify.mask import unmask
 from marvia.identify.ocr import photo_clues, read_image
+from marvia.trace import tracer_callbacks
 from marvia.watch import watch_keys
 
 parser = argparse.ArgumentParser(description="에이전트를 한 차례 돌린다")
@@ -48,7 +50,10 @@ except ValueError:
     # [주의] 키 값은 출력하지 않는다
     print("MARVIA_DATA_KEY가 없거나 올바른 키가 아닙니다. .env를 확인한 뒤 다시 실행하세요.")
     sys.exit(1)
-config = {"configurable": {"thread_id": args.thread, "user_id": args.user}}
+config = {
+    "configurable": {"thread_id": args.thread, "user_id": args.user},
+    "callbacks": tracer_callbacks(settings),
+}
 # [왜] get_usage_metadata_callback: 이 블록 안의 LLM 호출(RAG 서브그래프 안 포함)의 토큰 수를 모델별로 더한다
 with (
     connect(settings.database_url),  # [왜] 표가 없으면 만든다(마이그레이션). 읽기는 아래 풀로 한다

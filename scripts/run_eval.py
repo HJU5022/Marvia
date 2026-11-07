@@ -356,6 +356,7 @@ from marvia.rag.edges import build_edges  # noqa: E402
 from marvia.rag.graphdb import connect_graph, graph_meta, units_sha256  # noqa: E402
 from marvia.rag.index import read_units  # noqa: E402
 from marvia.rag.items import items_sha256  # noqa: E402
+from marvia.trace import tracer_callbacks  # noqa: E402
 
 # [왜] 평가는 늘 UNI-PASS 재생 데이터로 돈다. .env가 live여도 실제 API를 부르지 않는다 (계획 3b Task 7)
 os.environ["MARVIA_UNIPASS_MODE"] = "replay"
@@ -377,6 +378,7 @@ if mismatch:
     raise SystemExit(f"[멈춤] {mismatch}")
 for model in models:
     settings = Settings(chat_model=model)
+    tracing = tracer_callbacks(settings)  # [왜] 서버·CLI와 같은 트레이서. 키가 없으면 빈 목록(꺼짐)
     with (
         connect(settings.database_url) as conn,
         read_pool(settings.database_url) as pool,  # [왜] 검색·조문 조회는 풀에서 빌린다 (R-066)
@@ -419,13 +421,14 @@ for model in models:
                 "refers_expected": refers_expected,
                 "unipass_mode": settings.unipass_mode,
                 "rag_via": settings.rag_via,
+                "tracing": "on" if tracing else "off",
             }
             name = result_name(loop, model, args.tag)
             for item in items:
                 if spent >= args.max_cost:
                     print(f"상한 ${args.max_cost}에 닿아 {item.id}부터 돌리지 않았다")
                     break
-                row, raw = evaluate_item(deps, item, loop, data.as_of, prices)
+                row, raw = evaluate_item(deps, item, loop, data.as_of, prices, callbacks=tracing)
                 row["model"] = model
                 rows.append(row)
                 raws.append(raw)

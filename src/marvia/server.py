@@ -20,7 +20,7 @@ import queue
 import re
 import threading
 import traceback
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from typing import Any
 
 import anyio
@@ -41,6 +41,7 @@ from ag_ui.core import (
 )
 from ag_ui.core import Interrupt as CardInterrupt
 from ag_ui.encoder import EventEncoder
+from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from psycopg import sql
@@ -62,6 +63,7 @@ from marvia.graph.resume import approval_reply, remask_reply
 from marvia.graph.state import merge_cargos, merge_evidence
 from marvia.graph.tools import SERVER_SURFACE
 from marvia.tools.rules import load_rules
+from marvia.trace import tracer_callbacks
 from marvia.view import interrupt_card, screen_view
 from marvia.watch import forget_user
 
@@ -253,10 +255,20 @@ async def _sse(
         stop.set()
 
 
-def build_app(graph, verify: Verify, *, web_origin: str, forget: Callable[[str], None]) -> Starlette:
-    """화면 서버 앱. graph는 컴파일한 메인 그래프, verify는 auth의 토큰 확인 함수, forget은 계정 삭제."""
+def build_app(
+    graph,
+    verify: Verify,
+    *,
+    web_origin: str,
+    forget: Callable[[str], None],
+    callbacks: Sequence[BaseCallbackHandler] = (),
+) -> Starlette:
+    """화면 서버 앱. graph는 컴파일한 메인 그래프, verify는 auth의 토큰 확인 함수, forget은 계정 삭제.
+
+    callbacks는 트레이서(trace.tracer_callbacks)다. 꺼져 있으면 빈 목록이다.
+    """
     # [왜] 이 앱이 부르는 그래프는 user_id 없이 사용자 데이터에 닿으면 멈춘다 (tools.user_of, R-048)
-    graph = graph.with_config(configurable={"surface": SERVER_SURFACE})
+    graph = graph.with_config(configurable={"surface": SERVER_SURFACE}, callbacks=list(callbacks))
     running: set[str] = set()
     guard = threading.Lock()
     cfg = load_rules("server")["request"]
@@ -380,6 +392,7 @@ def main() -> None:
             verify,
             web_origin=settings.web_origin,
             forget=lambda user: forget_account(watch_conn, store, user, url),
+            callbacks=tracer_callbacks(settings),
         )
         # [주의] 기본은 127.0.0.1이다. 컨테이너 안에서만 MARVIA_HOST=0.0.0.0을 주고
         #        compose가 바깥 쪽을 127.0.0.1로 연다

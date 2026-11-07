@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -278,9 +279,19 @@ def ragas_contexts(values: dict, row: dict, top: int, seen: dict[str, str]) -> d
 
 
 def evaluate_item(
-    deps: AgentDeps, item: Item, loop: str, today: date, prices: dict, *, permission_mode: str = "ask"
+    deps: AgentDeps,
+    item: Item,
+    loop: str,
+    today: date,
+    prices: dict,
+    *,
+    permission_mode: str = "ask",
+    callbacks: Sequence[BaseCallbackHandler] = (),
 ) -> tuple[dict, dict]:
-    """문항 하나를 새 대화로 돌려 (줄, raw)를 돌려준다. 예외가 나도 줄을 남긴다."""
+    """문항 하나를 새 대화로 돌려 (줄, raw)를 돌려준다. 예외가 나도 줄을 남긴다.
+
+    callbacks는 트레이서(trace.tracer_callbacks)다. 비어 있으면 트레이스를 남기지 않는다.
+    """
     log: list[dict] = []
     seen: dict[str, str] = {}
     graph = build_main_graph(
@@ -297,7 +308,7 @@ def evaluate_item(
     usage = None
     try:
         with get_usage_metadata_callback() as usage:
-            values, pauses = drive(graph, item, f"eval-{loop}-{item.id}", [watch])
+            values, pauses = drive(graph, item, f"eval-{loop}-{item.id}", [watch, *callbacks])
         row |= observe(values, pauses, watch, loop, log)
         row["error"] = None
         draft = values.get("draft") or {}
