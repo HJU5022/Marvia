@@ -33,7 +33,8 @@ unipass.lookup_cargo: 컨테이너 번호면 어느 모드에서도 HTTP 없이 
 |---|---|---|
 | 컨테이너 번호는 ISO 6346 모양(영문 3 + U·J·Z + 숫자 7)에 확인 숫자가 맞을 때만 자기 종류 `container`, 토큰 `[CNTR1]`이다 | 지금은 `DEMU1234560`이 `[BL1]`로 가려져 B/L로 조회되고 "없음"을 받는다 [실측 11-07]. 확인 숫자는 모양만 같은 무작위 11자의 약 9/10을 거른다 [추정]. 이름표 `CNTR`은 v1과 같다 | 확인 숫자까지 맞는 11자 B/L은 컨테이너로 읽혀 조회되지 않는다(다음 줄) |
 | 컨테이너 번호는 어느 모드에서도 UNI-PASS에 보내지 않는다. `unipass.lookup_cargo` 첫 줄에서 HTTP 없이 정한 글(`container_unknown`)을 돌려준다 | 화물통관진행정보는 화물관리번호·마스터 B/L·하우스 B/L로만 찾는다 [문서 11-07 data.go.kr 15126268]. 컨테이너 번호로 화물을 찾는 서비스는 공식 문서로 확인하지 못했다. 제3자 README는 컨테이너내역(API020)이 화물관리번호로 컨테이너를 찾는 방향이라 적었다 [문서 11-07, 공식 아님]. 감시 재조회(`recheck`)도 이 함수를 지나므로 함께 막힌다 | 연계가이드에 컨테이너로 찾는 서비스가 있으면 실제 경로가 빠진다(직접 할 일 1). 확인 숫자까지 맞는 11자 B/L은 "B/L을 알려 주세요"를 받는다 [추정: 드묾] |
-| 아는 화물 = 이 대화에서 조회한 화물 사실(`cargos`)과 그 사용자의 감시 목록(번호를 다시 조회해 사실을 얻는다). 하나면 그 화물, 여럿이면 선택지, 없으면 정한 글 | UNI-PASS로 찾을 수 없으니 이미 아는 화물에서만 찾는다. v1도 로그인 사용자의 화물 표에서 찾았다 | 컨테이너 질문 한 번에 감시 화물 수만큼 차례로 다시 조회한다(실제 모드에서는 UNI-PASS 호출) [추정: 감시 목록은 짧다]. 상한은 두지 않았다 |
+| 아는 화물 = 이 대화에서 조회한 화물 사실(`cargos`)과 그 사용자의 감시 목록(번호를 다시 조회해 사실을 얻는다). 하나면 그 화물, 여럿이면 선택지, 없으면 정한 글 | UNI-PASS로 찾을 수 없으니 이미 아는 화물에서만 찾는다. v1도 로그인 사용자의 화물 표에서 찾았다 | 재생 모드에서는 컨테이너 질문 한 번에 감시 화물 수만큼 차례로 다시 조회한다 [추정: 감시 목록은 짧다]. 상한은 두지 않았다. 실제 모드는 아래 11-07 정정 줄 |
+| 11-07 정정(첫 구현 커밋 전): 실제 모드(`MARVIA_UNIPASS_MODE=live`)에서는 컨테이너를 찾을 때 감시 목록을 읽지 않고 다시 조회하지 않는다. `unipass.facts_carry_containers()`가 재생 모드일 때만 참이다 | 실제 응답(`parse_progress`)은 `containers`를 채우지 않으므로(아래 줄) 실제 모드에서 감시 화물을 다시 조회해도 맞출 수 없다. 상한 없는 재조회와 겹치면 컨테이너 질문 하나가 감시 화물 수만큼 실제 UNI-PASS를 부르고도 늘 `container_unknown`으로 끝난다. 컨테이너 맞추기는 실제 응답 칸을 확인하기 전까지 재생 데이터에서만 된다 | 연계가이드에서 `cntrNo`를 확인하면 이 함수와 `parse_progress`를 함께 바꿔야 한다(직접 할 일 1) |
 | 찾는 곳은 조회 서브그래프의 `collect`(갈래 조회가 끝난 뒤)다. 갈래(`Send`)에는 컨테이너 번호를 보내지 않는다 | 이 서브그래프를 식별(두 루프 공통), 선택지 뒤 `lookup`, 에이전트 도구 `lookup_cargo` 세 길이 함께 쓴다. 갈래가 끝난 뒤라 같은 글에 함께 적은 B/L의 사실도 쓴다 | 없음 |
 | 하나를 찾으면 화물 줄의 토큰은 컨테이너 토큰이고(`[CNTR1]: 반입신고 (부산) 2026-10-27`) 사실은 그 화물의 것이다 | 사용자가 준 단서로 답한다. 화면 화물 카드도 컨테이너 번호로 보인다. `calc_deadlines`는 사실만 본다 | 그 화물을 감시하려면 B/L·화물관리번호 토큰이 있어야 한다(`watch_cargo`는 `[CNTR]`을 받지 않는다) |
 | 여럿이면 식별 길은 선택지(권장안 "n건 모두 조회", 그다음 한 건씩), 도구 길은 정한 글(`container_many`)이다. 선택지 글에는 토큰만 쓴다 | 하나를 짐작하면 다른 화물의 단계를 말한다. 권장안이 "모두"라 답이 없어도 짐작하지 않는다. 화면에는 `view.interrupt_card`가 실제 번호로 되돌려 보인다 | 후보가 많으면 카드가 길어진다 |
@@ -69,7 +70,7 @@ set -o pipefail
 uv run pytest -q 2>&1 | tail -2 && uv run ruff check . && uv run ruff format --check . && uv run pyright | tail -1
 ```
 
-- 코드 블록 검증: v2 HEAD(`9d547f6`)를 내보낸 깨끗한 사본에 이 문서의 diff를 커밋 순서대로 넣고, 커밋마다 Docker(`ghcr.io/astral-sh/uv@sha256:e5b65587…`, compose의 Postgres, 시험용 Neo4j)에서 `MARVIA_REQUIRE_DB=1`, `MARVIA_REQUIRE_NEO4J=1`로 시험 전체를 돌렸다: 749 → 776 통과(건너뜀 0), 마지막 상태의 `ruff check`·`ruff format --check`·`pyright` 오류 0 [실측 11-07]. 줄 길이만 고친 커밋 상태는 ruff만 다시 돌렸다. 각 커밋의 "먼저 실패" 시험은 그 커밋의 코드를 빼고 돌려 아래 Expected FAIL 줄을 얻었다. 아래 Expected의 수는 749에서 커밋마다 더한 시험 수다.
+- 코드 블록 검증: v2 HEAD(`9d547f6`)를 내보낸 깨끗한 사본에 이 문서의 diff를 커밋 순서대로 넣고, 커밋마다 Docker(`ghcr.io/astral-sh/uv@sha256:e5b65587…`, compose의 Postgres, 시험용 Neo4j)에서 `MARVIA_REQUIRE_DB=1`, `MARVIA_REQUIRE_NEO4J=1`로 시험 전체를 돌렸다: 749 → 776 통과(건너뜀 0). 11-07 정정(C10)의 시험과 코드 몇 줄은 이 검증 뒤에 더해서 사본에서 돌리지 않았다. 구현 커밋 4a의 확인에서 처음 돈다, 마지막 상태의 `ruff check`·`ruff format --check`·`pyright` 오류 0 [실측 11-07]. 줄 길이만 고친 커밋 상태는 ruff만 다시 돌렸다. 각 커밋의 "먼저 실패" 시험은 그 커밋의 코드를 빼고 돌려 아래 Expected FAIL 줄을 얻었다. 아래 Expected의 수는 749에서 커밋마다 더한 시험 수다.
 
 ---
 ## 사전 등록: 검사 C1~C9 (구현 전에 고정)
@@ -87,6 +88,7 @@ uv run pytest -q 2>&1 | tail -2 && uv run ruff check . && uv run ruff format --c
 | C7 | 도구 길 | `ask_user` 직접 입력으로 들어온 `[CNTR1]`을 `lookup_cargo` 도구가 user `u1`의 감시 목록에서 찾아 `[CNTR1]: 반입신고 (부산) 2026-10-27` 한 줄을 돌려준다 | `tests/graph/test_agent.py::test_lookup_cargo_tool_matches_a_container_token_without_showing_numbers` | 컨테이너를 B/L로 조회한다 [실측 11-07, 범위 조사] |
 | C8 | 오타 질문 | `DEMU1234565` → 조회 0번에 정한 질문(`[BL1]은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요.`로 시작). 선택 0 → B/L로 조회(재생 not_found), 선택 1 → 조회 없음, 직접 적은 `DEMU1234560` → 컨테이너 길 | `tests/graph/test_identify.py::test_a_container_shaped_number_with_a_wrong_check_digit_is_asked_before_any_lookup`, `tests/graph/test_main.py::test_a_mistyped_container_is_asked_then_read_as_the_user_says` | 묻지 않고 B/L로 조회 [실측 11-07: `KeyError: '__interrupt__'`] |
 | C9 | 회귀·크기 | 시험 수가 749에서 줄지 않고(마지막 776), 건너뜀 0. `set_v2` sha 시험 통과(평가셋 그대로). 커밋마다 코드 파일 15개 이하 | 명령 A, `git show --stat` | 749 통과 [실측 11-07] |
+| C10 (11-07 추가, 첫 구현 커밋 전) | 실제 모드의 컨테이너 | `MARVIA_UNIPASS_MODE=live`에서 감시 목록(DEMO0002·DEMO0003)이 있어도 `TESU0000013` 질문이 감시 목록을 읽지 않고(읽기 0번) 조회 0번에 `container_unknown`. C1~C9는 그대로 두고 더한 검사이며, 이 시험으로 마지막 시험 수는 777이다 | `tests/graph/test_identify.py::test_live_mode_reads_no_watch_list_for_a_container` | 컨테이너를 B/L로 실제 조회한다 [범위 조사 11-07] |
 
 ## 비용
 
@@ -104,10 +106,10 @@ uv run pytest -q 2>&1 | tail -2 && uv run ruff check . && uv run ruff format --c
 | T2 재생 fixture | C1 일부 | 0.5시간 | 11-08 | 761 통과 |
 | T3 감시 목록 읽기 | C6 바탕 | 0.5시간 | 11-08 | 762 통과 |
 | **CP1 (11-08 낮 2시)** | T1~T3 끝났나. 아니면 자를 순서 1을 바로 자른다 | | | |
-| T4a 아는 화물에서 찾기 | C3·C5·C6·C7 | 3시간 | 11-08 | 769 통과 |
-| T4b 여럿이면 선택지 | C5·C6 | 1시간 | 11-09 | 773 통과 |
+| T4a 아는 화물에서 찾기 | C3·C5·C6·C7 | 3시간 | 11-08 | 770 통과 (C10 포함) |
+| T4b 여럿이면 선택지 | C5·C6 | 1시간 | 11-09 | 774 통과 |
 | **CP2 (11-09 낮 12시)** | T4 끝났나. 아니면 자를 순서 2·3을 자른다 | | | |
-| T5 오타 질문 | C8 | 1시간 | 11-09 | 776 통과 |
+| T5 오타 질문 | C8 | 1시간 | 11-09 | 777 통과 |
 | T6 문서 | 설계 4.1·4.2·15절 | 0.5시간 | 11-09 | |
 | 합 | | 약 9시간 | | |
 
@@ -1247,7 +1249,51 @@ Expected: 7 failed, 1 passed(1a의 감시 시험). 식별 시험은 `build_ident
  retryable: [timeout, unavailable] # 다시 시도하면 나아질 수 있는 오류
 ```
 
-- [ ] **Step 3: 확인**: 명령 A. Expected: `769 passed`, 오류 0.
+- [ ] **Step 2b (11-07 정정, C10): 실제 모드에서는 감시 목록을 읽지 않는다.** 위 시험 끝에 아래 시험을 더하고 먼저 실패를 본 뒤(Expected FAIL: `assert asked == [] and seen == []`, 정정 전 코드는 감시 목록을 읽고 둘을 조회한다), 아래 코드를 넣는다. 시험의 가짜 조회는 실제 함수를 부르지 않는다(실제 모드라 HTTP가 열릴 수 있다). 시험 파일에 `RunnableConfig` import가 없으면 `from langchain_core.runnables import RunnableConfig`를 더한다.
+
+```python
+def test_live_mode_reads_no_watch_list_for_a_container(monkeypatch):
+    # [왜] 실제 응답에는 컨테이너 칸이 없다. 감시 화물을 다시 조회해도 맞출 수 없다 (계획 6a 정정)
+    from marvia.graph import identify
+    from marvia.identify.models import ToolError
+    from marvia.tools.rules import load_rules
+
+    monkeypatch.setenv("MARVIA_UNIPASS_MODE", "live")
+    seen: list[str] = []
+    asked: list[RunnableConfig] = []
+
+    def lookup(number: str) -> ToolError:
+        seen.append(number)  # [주의] 실제 함수를 부르지 않는다
+        return ToolError(code="not_found", message="", retryable=False)
+
+    def watched(config: RunnableConfig) -> list[str]:
+        asked.append(config)
+        return ["DEMO0002", "DEMO0003"]
+
+    monkeypatch.setattr(identify, "lookup_cargo", lookup)
+    out = build_identify_graph(watched).invoke({"text": "TESU0000013 어디야?"})
+    assert out["cargos"][0]["error"]["message"] == load_rules("unipass")["messages"]["container_unknown"]
+    assert asked == [] and seen == []
+```
+
+`src/marvia/tools/unipass.py`에 더한다:
+
+```python
+def facts_carry_containers() -> bool:
+    """화물 사실에 컨테이너 번호가 실릴 수 있는가. 지금은 재생 모드만 그렇다 (계획 6a 정정)."""
+    # shortcut: 실제 응답(parse_progress)은 컨테이너 칸을 읽지 않는다. 연계가이드에서 API001의 cntrNo를 확인하면 바꾼다
+    return Settings().unipass_mode != "live"
+```
+
+`src/marvia/graph/identify.py`의 `collect`에서 `known = known_cargo(cargos, watched(config) if watched else [])`를 바꾸고, import를 `from marvia.tools.unipass import facts_carry_containers, lookup_cargo`로 한다:
+
+```python
+            # [왜] 실제 모드의 사실에는 컨테이너가 없다. 감시 화물을 다시 조회해도 맞출 수 없으니 읽지 않는다
+            watch_numbers = watched(config) if watched and facts_carry_containers() else []
+            known = known_cargo(cargos, watch_numbers)
+```
+
+- [ ] **Step 3: 확인**: 명령 A. Expected: `770 passed`, 오류 0 (정정 시험 하나 포함).
 
 - [ ] **Step 4: 커밋**
 
@@ -1396,7 +1442,7 @@ Expected: 3 failed(`TypeError: 'NoneType' object is not subscriptable`, `KeyErro
      error: ToolError | None = None  # 조회에 실패하면 채운다
 ```
 
-- [ ] **Step 3: 확인**: 명령 A. Expected: `773 passed`, 오류 0.
+- [ ] **Step 3: 확인**: 명령 A. Expected: `774 passed`, 오류 0.
 
 - [ ] **Step 4: 커밋**
 
@@ -1559,7 +1605,7 @@ Expected: FAIL. `tests/identify/test_parse.py` 모음 오류 `ImportError: canno
  
 ```
 
-- [ ] **Step 3: 확인**: 명령 A. Expected: `776 passed`, 오류 0.
+- [ ] **Step 3: 확인**: 명령 A. Expected: `777 passed`, 오류 0.
 
 - [ ] **Step 4: 커밋**
 
@@ -1635,7 +1681,7 @@ git commit -m "docs: 설계에 계획 6a 반영(컨테이너 번호 식별, 아�
 - 컨테이너 하나에 아는 화물이 여럿이면 선택지 카드가 뜨고(권장안 "모두"), 아무 데도 없으면 B/L·화물관리번호를 묻는 정한 글이 화물 줄에 나온다.
 - 컨테이너 번호는 어느 모드에서도 UNI-PASS로 가지 않는다.
 - 확인 숫자가 틀린 컨테이너 모양 번호는 조회 전에 한 번 묻는다.
-- 계획자·에이전트 두 루프와 에이전트 도구가 같은 결과를 낸다. 시험 776개가 키 없이 돈다.
+- 계획자·에이전트 두 루프와 에이전트 도구가 같은 결과를 낸다. 시험 777개가 키 없이 돈다.
 
 ## 설계와 대조
 
@@ -1661,7 +1707,8 @@ git commit -m "docs: 설계에 계획 6a 반영(컨테이너 번호 식별, 아�
 - 실제 API001 응답에 컨테이너 번호 칸이 오는지 [미확인]. 그래서 실제 모드에서는 화물 사실에 컨테이너가 없고 컨테이너 질문은 늘 정한 글이다.
 - 컨테이너 번호로 화물을 찾는 UNI-PASS 서비스가 있는지 [미확인]. 공식 페이지는 화물관리번호·MBL·HBL만 적었고 연계가이드는 로그인 뒤 내려받는다.
 - ISO 모양에 확인 숫자까지 맞는 실제 B/L이 얼마나 있는지 [추정: 드묾]. 있으면 그 B/L은 조회되지 않고 정한 글을 받는다.
-- 감시 목록이 길 때 컨테이너 질문 한 번의 조회 수 [추정: 감시 화물 수만큼, 차례로].
+- 감시 목록이 길 때 컨테이너 질문 한 번의 조회 수 [추정: 재생 모드에서 감시 화물 수만큼, 차례로]. 실제 모드는 0번이다(C10).
+- 컨테이너 맞추기는 실제 응답 칸(`cntrNo`)을 확인하기 전까지 재생 데이터에서만 된다. 실제 모드에서는 컨테이너 질문이 늘 정한 글이다.
 - 확인 숫자가 틀린 띄어 쓴 꼴(`DEMU 123456 5`)은 전처럼 가리지 않고 LLM에 간다 [실측 11-07: `ABCU 1234567` 시험과 같은 갈래].
 - 소유자 부호가 다른 컨테이너 둘을 붙여 쓴 꼴(`DEMU1234560TESU0000013`, 22자)은 전처럼 반으로 나누는 선택지를 거친 뒤 컨테이너 길로 간다 [추정, 시험 없음].
 - 같은 글에 애매한 덩어리와 오타 질문, 또는 여럿인 컨테이너가 함께 있으면 한 번에 하나만 묻는다(계획 1부터의 한계).
