@@ -98,7 +98,11 @@ def _walk(value: Any, active: set[int]) -> Any:
 
 
 def _safe_host(host: str) -> bool:
-    """https이거나, 포트가 있어도 loopback(localhost·127.0.0.1·[::1])의 http이면 참."""
+    """https이거나, 포트가 있어도 loopback(localhost·127.0.0.1·[::1])의 http이면 참. 역슬래시·공백은 거짓."""
+    # [왜] urlsplit은 http://evil.test\@localhost를 localhost로 읽지만 urllib3·requests는 evil.test로 보낸다.
+    #      주소를 읽는 쪽마다 달리 읽는 글자는 받지 않는다
+    if "\\" in host or any(ch.isspace() for ch in host):
+        return False
     url = urlsplit(host)
     return url.scheme == "https" or (
         url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")
@@ -129,6 +133,7 @@ def tracer_callbacks(settings: Settings) -> list:
     # [주의] 메시지에 키나 주소 값을 넣지 않는다
     if all(keys) and not _safe_host(keys[2]):
         raise ValueError(
-            "MARVIA_LANGFUSE_HOST는 https:// 주소여야 합니다(localhost·127.0.0.1·[::1]만 http 허용)"
+            "MARVIA_LANGFUSE_HOST는 역슬래시·공백 없는 https:// 주소여야 합니다"
+            "(localhost·127.0.0.1·[::1]만 http 허용)"
         )
     return [_handler(*keys)] if all(keys) else []

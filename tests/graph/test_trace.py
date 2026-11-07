@@ -414,7 +414,16 @@ def test_https_or_loopback_http_host_is_accepted(monkeypatch, host):
 
 
 @pytest.mark.parametrize(
-    "host", ["http://langfuse.example.com", "http://localhost.evil.test", "ftp://x.test"]
+    "host",
+    [
+        "http://langfuse.example.com",
+        "http://localhost.evil.test",
+        "ftp://x.test",
+        # [왜] urlsplit은 역슬래시 앞을 사용자 칸으로 읽어 localhost를 보지만 urllib3은 evil.test로 보낸다
+        "http://evil.test\\@localhost",
+        "https://x.test\\@localhost",
+        "http://evil.test\t@localhost",  # [왜] 탭은 urlsplit이 지우고 requests는 %09로 남겨 읽는 값이 갈린다
+    ],
 )
 def test_a_remote_plain_http_host_is_refused_without_naming_the_keys(monkeypatch, host):
     monkeypatch.setattr(langfuse_trace, "build", lambda *keys: pytest.fail("building must not start"))
