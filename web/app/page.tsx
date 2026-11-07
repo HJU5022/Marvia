@@ -3,7 +3,8 @@
 // 상태는 서버가 보낸 STATE_SNAPSHOT(허용 목록)과 답 글뿐이다. 서버에 state를 보내지 않는다.
 import { useCallback, useEffect, useState } from "react";
 
-import { type AgUiEvent, newId, runTurn } from "@/lib/agui";
+import { EvidencePanel, PlanList, ReadingList } from "@/components/Panels";
+import { type AgUiEvent, EMPTY_VIEW, newId, runTurn, type View } from "@/lib/agui";
 import { AUTH_MODE, currentToken, signIn, signOut } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -14,6 +15,7 @@ export default function Home() {
   const [devToken, setDevToken] = useState("");
   const [threadId] = useState(newId);
   const [lines, setLines] = useState<Line[]>([]);
+  const [view, setView] = useState<View>(EMPTY_VIEW);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -23,6 +25,7 @@ export default function Home() {
   }, []);
 
   const onEvent = useCallback((event: AgUiEvent) => {
+    if (event.type === "STATE_SNAPSHOT") setView(event.snapshot);
     if (event.type === "TEXT_MESSAGE_CONTENT") setLines((old) => [...old, { role: "assistant", text: event.delta }]);
     if (event.type === "RUN_ERROR") setError(event.message);
   }, []);
@@ -100,6 +103,9 @@ export default function Home() {
         </p>
         {error ? <p role="alert">{error}</p> : null}
       </section>
+      <PlanList plan={view.plan} />
+      <ReadingList reading={view.reading} />
+      <EvidencePanel evidence={view.evidence} />
       <form
         className="ask"
         onSubmit={(e) => {
