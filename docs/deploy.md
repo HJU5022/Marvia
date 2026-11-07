@@ -64,7 +64,14 @@ done
 printf %s "$VALUE" | gcloud secrets versions add marvia-data-key --data-file=- --project "$PROJECT_ID"   # 키마다 한 번씩
 ```
 
-`marvia-data-key`의 값은 Fernet 키여야 한다(아니면 서버가 뜨지 않는다). 만들기: `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. 이 비밀을 지우거나 새 값으로 바꾸면 이미 저장된 감시 목록과 대화 기록을 읽을 수 없게 된다. 키를 돌리는 절차는 아직 없다. 실제 데이터를 넣기 전에 값을 정해 두고 따로 안전하게 보관한다.
+`marvia-data-key`의 값은 Fernet 키여야 한다(아니면 서버가 뜨지 않는다). 만들어서 화면에 찍지 않고 바로 넣는다(위 반복문이 빈 비밀을 이미 만들었으므로 버전만 더한다):
+
+```bash
+uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode(), end='')" \
+  | gcloud secrets versions add marvia-data-key --data-file=- --project "$PROJECT_ID"
+```
+
+로컬 `.env`의 `MARVIA_DATA_KEY`도 같은 식으로 만들되 로컬에서만 쓰고 배포 비밀과 같은 값을 쓰지 않는다. 이 비밀을 지우거나 새 값으로 바꾸면 이미 저장된 감시 목록과 대화 기록을 읽을 수 없게 된다. 키를 돌리는 절차는 아직 없다. 실제 데이터를 넣기 전에 값을 정해 두고 따로 안전하게 보관한다.
 
 WIF는 google-github-actions/auth v3.0.0 README의 "Workload Identity Federation through a Service Account" 순서를 따른다 [문서 11-07]:
 
@@ -111,7 +118,7 @@ Actions 탭에서 `deploy` 워크플로를 손으로 돌린다(`workflow_dispatc
 
 서버가 듣는 주소는 이미지의 `MARVIA_HOST=0.0.0.0`이 정한다. 배포 명령의 환경 변수에는 넣지 않는다.
 
-화물 조회는 재생 모드(`MARVIA_UNIPASS_MODE`의 기본값 `replay`)로 배포된다. 실제 B/L이나 화물 번호를 넣으면 "재생 데이터에 없는 번호입니다"로 답한다. 실제 조회로 바꾸려면 UNI-PASS 키로 응답 모양을 먼저 확인한 뒤, 비밀 `marvia-unipass-key`를 만들고 배포 명령의 환경 변수에 `MARVIA_UNIPASS_MODE=live`를, 비밀 목록에 `MARVIA_UNIPASS_KEY=marvia-unipass-key:latest`를 더한다.
+화물 조회는 재생 모드(`MARVIA_UNIPASS_MODE`의 기본값 `replay`)로 배포된다. 실제 B/L이나 화물 번호를 넣으면 "재생 데이터에 없는 번호입니다"로 답한다. 실제 조회로 바꾸려면 UNI-PASS 키로 응답 모양을 먼저 확인한 뒤, 비밀 `marvia-unipass-key`를 만들고 배포 명령의 환경 변수에 `MARVIA_UNIPASS_MODE=live`를, 비밀 목록에 `MARVIA_UNIPASS_KEY=marvia-unipass-key:latest`를 더한다. 실행 계정이 새 비밀을 읽을 수 있게 `gcloud secrets add-iam-policy-binding marvia-unipass-key --project "$PROJECT_ID" --member="serviceAccount:marvia-run@${PROJECT_ID}.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"`도 한다(이 권한이 없으면 새 버전 배포가 비밀을 못 읽어 실패한다).
 
 배포 뒤 확인: `curl https://<cloud-run 주소>/health` → `{"ok":true}`, 토큰 없는 `POST /agui` → 401.
 
