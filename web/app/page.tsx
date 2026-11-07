@@ -3,8 +3,10 @@
 // 상태는 서버가 보낸 STATE_SNAPSHOT(허용 목록)과 답 글뿐이다. 서버에 state를 보내지 않는다.
 import { useCallback, useEffect, useState } from "react";
 
+import { ApprovalCardView } from "@/components/ApprovalCardView";
+import { ChoiceCardView } from "@/components/ChoiceCardView";
 import { EvidencePanel, PlanList, ReadingList } from "@/components/Panels";
-import { type AgUiEvent, EMPTY_VIEW, newId, runTurn, type View } from "@/lib/agui";
+import { type AgUiEvent, type Card, EMPTY_VIEW, newId, runTurn, type View } from "@/lib/agui";
 import { AUTH_MODE, currentToken, signIn, signOut } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -16,6 +18,7 @@ export default function Home() {
   const [threadId] = useState(newId);
   const [lines, setLines] = useState<Line[]>([]);
   const [view, setView] = useState<View>(EMPTY_VIEW);
+  const [card, setCard] = useState<Card | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +31,10 @@ export default function Home() {
     if (event.type === "STATE_SNAPSHOT") setView(event.snapshot);
     if (event.type === "TEXT_MESSAGE_CONTENT") setLines((old) => [...old, { role: "assistant", text: event.delta }]);
     if (event.type === "RUN_ERROR") setError(event.message);
+    if (event.type === "RUN_FINISHED" && event.outcome?.type === "interrupt") {
+      const pending = event.outcome.interrupts[0];
+      setCard({ ...pending.metadata, id: pending.id });
+    }
   }, []);
 
   const turn = useCallback(
@@ -35,6 +42,7 @@ export default function Home() {
       if (!token) return;
       setBusy(true);
       setError("");
+      setCard(null);
       try {
         await runTurn(API_URL, token, { threadId, ...input }, onEvent);
       } catch (failure) {
@@ -53,6 +61,13 @@ export default function Home() {
     setDraft("");
     turn({ text });
   }
+
+  const reply = useCallback(
+    (payload: unknown) => {
+      if (card) turn({ resume: { interruptId: card.id, payload } });
+    },
+    [card, turn],
+  );
 
   if (!token) {
     return (
@@ -103,6 +118,8 @@ export default function Home() {
         </p>
         {error ? <p role="alert">{error}</p> : null}
       </section>
+      {card?.kind === "choice" ? <ChoiceCardView key={card.id} card={card} onReply={reply} /> : null}
+      {card?.kind === "approval" ? <ApprovalCardView key={card.id} card={card} onReply={reply} /> : null}
       <PlanList plan={view.plan} />
       <ReadingList reading={view.reading} />
       <EvidencePanel evidence={view.evidence} />
