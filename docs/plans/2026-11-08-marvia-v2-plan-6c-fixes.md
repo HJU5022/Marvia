@@ -1710,8 +1710,8 @@ git commit -m "docs: 설계에 계획 6c 반영(계정 삭제 중 409, 409 안�
 ## 직접 할 일
 
 1. 배포한 화면에서(Supabase 로그인) 계정 삭제를 한 번 해 본다: 확인 묶음에 초점이 가는지, 지운 뒤 로그인 화면이 뜨고 다시 들어오면 대화가 비어 있는지. 시험은 개발 로그인과 가짜 API로만 보았다.
-3. 명령 C(Global Constraints)를 저장소 뿌리에서 한 번 돌린다(버리는 이름 `marvia-6c`, 끝나면 만든 이미지를 지운다). 기대: 첫 줄 `pwuser`, 흐름 일곱 통과, 스크린샷 셋. 실행 확인을 받지 못해 이 저장소에서는 T6 뒤로 돌리지 못했다.
-2. 계획 6b의 직접 할 일 2(실제 Langfuse로 한 번 보내 보기)를 할 때, trace metadata(thread id)가 JSON으로 읽히고 스트리밍 응답의 첫 글자 시각(completion start time)이 시각으로 보이는지 함께 본다.
+2. 명령 C(Global Constraints)를 저장소 뿌리에서 한 번 돌린다(버리는 이름 `marvia-6c`, 끝나면 만든 이미지를 지운다). 기대: 첫 줄 `pwuser`, 흐름 일곱 통과, 스크린샷 셋. 실행 확인을 받지 못해 이 저장소에서는 T6 뒤로 돌리지 못했다.
+3. 계획 6b의 직접 할 일 2(실제 Langfuse로 한 번 보내 보기)를 할 때, trace metadata(thread id)가 JSON으로 읽히고 스트리밍 응답의 첫 글자 시각(completion start time)이 시각으로 보이는지 함께 본다.
 
 ## 확인하지 못한 것
 
