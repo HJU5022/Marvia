@@ -57,12 +57,21 @@ export default function Home() {
       sending.current = true;
       setBusy(true);
       setError("");
+      // [왜] 토큰은 차례마다 새로 받는다. Supabase는 만료 직전이면 갱신한 토큰을 주므로 1시간 뒤에도 로그인이 이어진다
+      const fresh = await currentToken();
+      if (!fresh) {
+        sending.current = false;
+        setBusy(false);
+        setToken(null);
+        setError("다시 로그인해 주세요");
+        return;
+      }
       setCard(null);
       running.current?.abort();
       const controller = new AbortController();
       running.current = controller;
       try {
-        await runTurn(API_URL, token, { threadId, ...input }, onEvent, controller.signal);
+        await runTurn(API_URL, fresh, { threadId, ...input }, onEvent, controller.signal);
       } catch (failure) {
         if (controller.signal.aborted) return; // 멈춘 차례는 아무것도 보이지 않는다
         // [왜] fetch가 연결 실패로 던지는 TypeError는 영어 글이다. 정해 둔 한글로 바꾼다

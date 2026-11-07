@@ -1,7 +1,7 @@
 "use client";
 // 승인 카드 (설계 6.3 승인 통로): 할 일마다 승인·거절·고치기. 고치기는 도구별 칸만 연다.
 // [왜] 자유 JSON 편집을 열면 모르는 인자가 그대로 도구에 간다. 서버가 고친 값을 다시 가리고 도구가 같은 검사를 한다
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { ApprovalCard } from "@/lib/agui";
 
@@ -26,6 +26,8 @@ export function ApprovalCardView({
   const [kinds, setKinds] = useState(card.actions.map(() => "approve"));
   const [values, setValues] = useState(card.actions.map((a) => String(a.args[EDITABLE[a.name]?.field] ?? "")));
   const [reasons, setReasons] = useState(card.actions.map(() => ""));
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => box.current?.focus(), []); // 새 카드로 초점을 옮긴다
   const set = (list: string[], i: number, value: string) => list.map((old, j) => (j === i ? value : old));
 
   function send() {
@@ -41,7 +43,7 @@ export function ApprovalCardView({
   }
 
   return (
-    <section aria-labelledby="approval-title" className="card">
+    <section ref={box} tabIndex={-1} aria-labelledby="approval-title" className="card">
       <h2 id="approval-title">승인이 필요해요</h2>
       {card.actions.map((action, i) => {
         const edit = EDITABLE[action.name] && action.allowed.includes("edit") ? EDITABLE[action.name] : null;

@@ -107,6 +107,12 @@ h3 {
   margin-bottom: 8px;
 }
 
+/* 카드로 옮긴 초점이 보이게 한다 */
+.card:focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
 button {
   font: inherit;
   padding: 8px 14px;
