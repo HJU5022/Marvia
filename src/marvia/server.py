@@ -326,7 +326,9 @@ def build_app(
             if user in deleting:
                 return JSONResponse({"error": "계정을 지우는 중이에요"}, status_code=409)
             if any(key.startswith(f"{user}/") for key in running):
-                return JSONResponse({"error": "답하는 중인 대화가 있어요"}, status_code=409)
+                return JSONResponse(
+                    {"error": "답하는 중인 대화가 있어요. 끝난 뒤 다시 눌러 주세요"}, status_code=409
+                )
             deleting.add(user)
         try:
             await anyio.to_thread.run_sync(forget, user)

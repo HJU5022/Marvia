@@ -165,8 +165,10 @@ export function parseBlock(block: string): AgUiEvent[] {
   return events;
 }
 
-// 계정 삭제. 204면 지워진 것이고, 그 밖의 거절은 상태 코드를 담아 던진다 (답하는 중이면 409)
+// 계정 삭제. 204면 지워진 것이고, 그 밖의 거절은 상태 코드를 담아 던진다 (답하는 중·지우는 중이면 409)
 export async function deleteAccount(apiUrl: string, token: string): Promise<void> {
   const response = await fetch(`${apiUrl}/account`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
-  if (response.status !== 204) throw new HttpError(response.status);
+  if (response.status === 204) return;
+  const reason = response.status === 409 ? await response.json().catch(() => ({})) : {};
+  throw new HttpError(response.status, reason);
 }

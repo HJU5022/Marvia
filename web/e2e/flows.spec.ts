@@ -103,3 +103,29 @@ test("409에는 서버가 보낸 까닭을 보이고, 지난 카드일 때만 �
   await expect(told).toHaveText("답할 질문이 없거나 이미 지난 카드예요");
   await expect(card).toBeHidden();
 });
+
+test("계정 삭제는 확인에 초점을 옮기고, 지운 뒤 다시 들어오면 대화가 비어 있다", async ({ page }) => {
+  await ask(page, "앞으로 자세히 설명해 줘");
+  await expect(page.getByRole("heading", { name: "승인이 필요해요" })).toBeVisible();
+  await page.getByRole("button", { name: "계정 삭제" }).click();
+  await expect(page.getByRole("group", { name: "계정 삭제 확인" })).toBeFocused();
+  await accessible(page);
+  await page.getByRole("button", { name: "지우기" }).click();
+  await expect(page.locator('p[role="alert"]')).toHaveText("계정을 지웠어요. 대화 기록과 저장한 값이 모두 지워졌어요");
+  await page.getByLabel("개발 로그인 토큰").fill(TOKEN);
+  await page.getByRole("button", { name: "들어가기" }).click();
+  await expect(page.getByRole("heading", { name: "대화" })).toBeVisible();
+  await expect(page.locator(".chat li")).toHaveCount(0); // 지운 계정의 대화가 남지 않는다
+  await expect(page.locator(".card")).toHaveCount(0);
+});
+
+test("계정 삭제가 401이면 로그아웃한다", async ({ page }) => {
+  // [왜] 토큰이 만료되면 서버가 401을 준다. 가짜 API의 개발 토큰은 만료되지 않아 응답을 흉내 낸다
+  await page.route("**/account", (route) =>
+    route.fulfill({ status: 401, headers: { "access-control-allow-origin": new URL(page.url()).origin } }),
+  );
+  await page.getByRole("button", { name: "계정 삭제" }).click();
+  await page.getByRole("button", { name: "지우기" }).click();
+  await expect(page.getByLabel("개발 로그인 토큰")).toBeVisible();
+  await expect(page.locator('p[role="alert"]')).toHaveText("다시 로그인해 주세요");
+});

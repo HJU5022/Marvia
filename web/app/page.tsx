@@ -27,6 +27,12 @@ export default function Home() {
 
   const running = useRef<AbortController | null>(null);
   const sending = useRef(false); // [왜] busy는 상태라 빠른 두 번 입력 사이에 아직 안 바뀐다
+  const confirmBox = useRef<HTMLDivElement>(null);
+
+  // 계정 삭제 확인이 뜨면 초점을 옮긴다. 누른 버튼이 사라져 초점이 문서 처음으로 가지 않게 한다
+  useEffect(() => {
+    if (confirmingDelete) confirmBox.current?.focus();
+  }, [confirmingDelete]);
 
   // 화면을 떠나면 진행 중인 차례를 멈춘다
   useEffect(() => () => running.current?.abort(), []);
@@ -110,16 +116,17 @@ export default function Home() {
       await deleteAccount(API_URL, fresh);
       running.current?.abort();
       await signOut();
+      // [왜] 지운 계정의 대화·카드·패널이 다음 로그인 화면에 남지 않게 화면 상태도 비운다
+      setLines([]);
+      setView(EMPTY_VIEW);
+      setCard(null);
       setToken(null);
       setError("계정을 지웠어요. 대화 기록과 저장한 값이 모두 지워졌어요");
     } catch (failure) {
-      setError(
-        failure instanceof HttpError && failure.status === 409
-          ? "답하는 중인 대화가 있어요. 끝난 뒤 다시 눌러 주세요"
-          : failure instanceof HttpError
-            ? failure.message
-            : "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요",
-      );
+      // [왜] 409(답하는 중, 지우는 중)는 서버가 정한 글을 그대로 보인다
+      setError(failure instanceof HttpError ? failure.message : "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요");
+      // [왜] 차례 보내기와 같다. 토큰이 만료됐거나 틀리면 로그인 화면으로 간다
+      if (failure instanceof HttpError && failure.status === 401) signOut().then(() => setToken(null));
     }
   }
 
@@ -194,7 +201,7 @@ export default function Home() {
       <section aria-labelledby="account-title" className="panel">
         <h2 id="account-title">계정</h2>
         {confirmingDelete ? (
-          <div role="group" aria-label="계정 삭제 확인">
+          <div ref={confirmBox} tabIndex={-1} role="group" aria-label="계정 삭제 확인">
             <p>계정을 지우면 대화 기록, 저장한 값, 감시 목록이 모두 지워지고 되돌릴 수 없어요. 지울까요?</p>
             <div className="row">
               <button type="button" onClick={removeAccount}>
