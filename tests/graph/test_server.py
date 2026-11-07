@@ -675,6 +675,32 @@ def test_a_turn_that_starts_while_the_account_is_being_deleted_is_409():
     assert client.post("/agui", json=body("t24", "질문"), headers=mine).status_code == 200  # 끝나면 푼다
 
 
+def test_only_a_409_for_a_card_that_is_gone_carries_the_stale_card_code():
+    # [왜] 화면은 이 code를 볼 때만 카드를 치운다. 앞 차례가 아직 도는 409에 카드를 치우면
+    #      아직 답할 수 있는 카드가 사라진다 (계획 6c)
+    entered, gate = threading.Event(), threading.Event()
+
+    class Slow(Stub):
+        def stream(self, *args, **kwargs):
+            entered.set()
+            gate.wait(10)
+            return iter([])
+
+    client = TestClient(build_app(Slow(), verify, web_origin="http://x.test", forget=print))
+    head = {"Authorization": "Bearer tok-a"}
+    resume = [{"interruptId": "x", "status": "resolved", "payload": {}}]
+    gone = client.post("/agui", json=body("t25", resume=resume), headers=head)
+    worker = threading.Thread(target=lambda: run(client, body("t25", "질문")))
+    worker.start()
+    assert entered.wait(10)
+    busy = client.post("/agui", json=body("t25", resume=resume), headers=head)
+    gate.set()
+    worker.join(10)
+    assert gone.status_code == busy.status_code == 409
+    assert gone.json() == {"error": "답할 질문이 없거나 이미 지난 카드예요", "code": "stale_card"}
+    assert busy.json() == {"error": "이 대화는 아직 답하는 중이에요"}
+
+
 def test_running_is_only_touched_while_the_guard_is_held(monkeypatch):
     # [왜] 잠금 밖의 변경은 시간이 맞아야만 드러나서(GIL) 아래의 스레드 시험은 못 잡는다. 여기서는 running의
     #      추가·삭제·순회가 일어날 때마다 잠금이 잡혀 있는지를 직접 본다 (한 번에 한 요청씩이라 결정적이다)

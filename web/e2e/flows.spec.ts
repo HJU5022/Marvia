@@ -77,3 +77,29 @@ test("승인 카드에서 거절하면 하지 않는다", async ({ page }) => {
   await expect(answers(page)).toContainText("확인한 내용을 정리했어요");
   await expect(answers(page)).not.toContainText("이번 차례에 한 일");
 });
+
+test("409에는 서버가 보낸 까닭을 보이고, 지난 카드일 때만 카드를 치운다", async ({ page }) => {
+  await ask(page, "장치기간이 궁금해요");
+  const card = page.getByRole("heading", { name: "어느 항구 기준으로 볼까요?" });
+  await expect(card).toBeVisible();
+  // [왜] 앞 차례가 아직 잠금을 쥔 틈과 지난 카드는 가짜 API로 만들 수 없다. 서버가 보내는 409 본문을 흉내 낸다
+  const refuse = (reason: object) =>
+    page.route("**/agui", (route) =>
+      route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": new URL(page.url()).origin },
+        body: JSON.stringify(reason),
+      }),
+    );
+  await refuse({ error: "이 대화는 아직 답하는 중이에요" });
+  await page.getByRole("button", { name: /인천/ }).click();
+  const told = page.locator('p[role="alert"]'); // [왜] Next의 경로 안내(role=alert)와 겹치지 않게 화면 글만 본다
+  await expect(told).toHaveText("이 대화는 아직 답하는 중이에요");
+  await expect(card).toBeVisible();
+  await page.unroute("**/agui");
+  await refuse({ error: "답할 질문이 없거나 이미 지난 카드예요", code: "stale_card" });
+  await page.getByRole("button", { name: /인천/ }).click();
+  await expect(told).toHaveText("답할 질문이 없거나 이미 지난 카드예요");
+  await expect(card).toBeHidden();
+});

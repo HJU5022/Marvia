@@ -80,11 +80,11 @@ CHOICE_KEYS = ("selected", "custom", "timeout")  # 선택지 재개 값에서 �
 
 
 class Refused(Exception):
-    """그래프를 부르기 전에 요청을 거절한다. status에 상태 코드를 둔다."""
+    """그래프를 부르기 전에 요청을 거절한다. status에 상태 코드, code에 화면이 갈래를 나눌 까닭을 둔다."""
 
-    def __init__(self, status: int, message: str) -> None:
+    def __init__(self, status: int, message: str, code: str | None = None) -> None:
         super().__init__(message)
-        self.status = status
+        self.status, self.code = status, code
 
 
 def _merge(live: dict, update: dict, inside: bool) -> bool:
@@ -184,7 +184,8 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
     if body.resume:
         state = graph.get_state(config)
         if not state.interrupts or body.resume[0].interrupt_id != state.interrupts[0].id:
-            raise Refused(409, "답할 질문이 없거나 이미 지난 카드예요")
+            # [왜] 화면은 이 code일 때만 카드를 치운다. 다른 409(답하는 중, 계정 삭제 중)의 카드는 살아 있다
+            raise Refused(409, "답할 질문이 없거나 이미 지난 카드예요", code="stale_card")
         value, raw = state.interrupts[0].value, body.resume[0].payload
         # [왜] 취소한 카드는 payload를 읽지 않는다. 선택지는 권장안으로, 승인은 모두 거절로 간다
         raw = raw if isinstance(raw, dict) and body.resume[0].status == "resolved" else {}
@@ -305,7 +306,7 @@ def build_app(
             payload = await anyio.to_thread.run_sync(turn_input, graph, body, config)
         except Refused as error:
             release(key)
-            return JSONResponse({"error": str(error)}, status_code=error.status)
+            return JSONResponse({"error": str(error), "code": error.code}, status_code=error.status)
         except BaseException:
             release(key)
             raise

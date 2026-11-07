@@ -62,18 +62,26 @@ export function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-// 서버가 거절한 상태 코드. 화면이 코드별로 안내하고 응답 본문은 보이지 않는다
+// 서버가 거절한 상태 코드. 화면이 코드별로 정해 둔 글로 안내한다.
+// [왜] 409만 까닭이 셋(답하는 중, 지난 카드, 계정 삭제 중)이라 서버가 정한 글(error)과 까닭(code)을 받아 보인다
 export class HttpError extends Error {
-  constructor(readonly status: number) {
+  readonly code: string | null;
+  constructor(
+    readonly status: number,
+    reason: { error?: unknown; code?: unknown } = {},
+  ) {
     super(
-      status === 401
-        ? "다시 로그인해 주세요"
-        : status === 409
-          ? "앞 차례가 아직 끝나지 않았거나 지난 카드예요"
-          : status === 413 || status === 422
-            ? "질문이 너무 길거나 모양이 틀렸어요"
-            : `서버가 요청을 받지 않았어요 (${status})`,
+      status === 409 && typeof reason.error === "string"
+        ? reason.error
+        : status === 401
+          ? "다시 로그인해 주세요"
+          : status === 409
+            ? "앞 차례가 아직 끝나지 않았거나 지난 카드예요"
+            : status === 413 || status === 422
+              ? "질문이 너무 길거나 모양이 틀렸어요"
+              : `서버가 요청을 받지 않았어요 (${status})`,
     );
+    this.code = typeof reason.code === "string" ? reason.code : null;
   }
 }
 
@@ -107,7 +115,9 @@ export async function runTurn(
     signal,
   });
   if (!response.ok || !response.body) {
-    throw new HttpError(response.status);
+    // [주의] 본문이 JSON이 아니어도(프록시 오류 쪽) 정해 둔 글로 떨어진다
+    const reason = response.status === 409 ? await response.json().catch(() => ({})) : {};
+    throw new HttpError(response.status, reason);
   }
   // SSE: "data: {json}" 줄들이 빈 줄로 나뉜다. 조각이 이벤트 중간에서 끊길 수 있어 버퍼에 모은다
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();

@@ -82,8 +82,9 @@ export default function Home() {
             ? failure.message
             : "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요",
         );
-        // [왜] 409만 지난 카드이거나 앞 차례가 안 끝난 경우다. 422는 서버가 카드를 그대로 열어 두므로 다시 보낼 수 있다
-        if (failure instanceof HttpError && failure.status === 409) setCard(null);
+        // [왜] 카드는 서버가 지난 카드라고 할 때(stale_card)만 치운다. 답하는 중·계정 삭제 중(409)과
+        //      422는 카드가 아직 살아 있어 다시 보낼 수 있다
+        if (failure instanceof HttpError && failure.code === "stale_card") setCard(null);
         if (failure instanceof HttpError && failure.status === 401) signOut().then(() => setToken(null));
       } finally {
         sending.current = false;
