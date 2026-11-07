@@ -16,7 +16,7 @@ type Line = { role: "user" | "assistant"; text: string; id?: string };
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
   const [devToken, setDevToken] = useState("");
-  const [threadId] = useState(newId);
+  const [threadId, setThreadId] = useState(newId);
   const [lines, setLines] = useState<Line[]>([]);
   const [view, setView] = useState<View>(EMPTY_VIEW);
   const [card, setCard] = useState<Card | null>(null);
@@ -120,6 +120,9 @@ export default function Home() {
       setLines([]);
       setView(EMPTY_VIEW);
       setCard(null);
+      setDraft("");
+      setBusy(false);
+      setThreadId(newId()); // 지운 대화 id로 다음 차례를 보내지 않는다
       setToken(null);
       setError("계정을 지웠어요. 대화 기록과 저장한 값이 모두 지워졌어요");
     } catch (failure) {

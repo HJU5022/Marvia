@@ -105,6 +105,10 @@ test("409에는 서버가 보낸 까닭을 보이고, 지난 카드일 때만 �
 });
 
 test("계정 삭제는 확인에 초점을 옮기고, 지운 뒤 다시 들어오면 대화가 비어 있다", async ({ page }) => {
+  const threads: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/agui")) threads.push(JSON.parse(request.postData() ?? "{}").threadId);
+  });
   await ask(page, "앞으로 자세히 설명해 줘");
   await expect(page.getByRole("heading", { name: "승인이 필요해요" })).toBeVisible();
   await page.getByRole("button", { name: "계정 삭제" }).click();
@@ -117,6 +121,10 @@ test("계정 삭제는 확인에 초점을 옮기고, 지운 뒤 다시 들어�
   await expect(page.getByRole("heading", { name: "대화" })).toBeVisible();
   await expect(page.locator(".chat li")).toHaveCount(0); // 지운 계정의 대화가 남지 않는다
   await expect(page.locator(".card")).toHaveCount(0);
+  await ask(page, "DEMO0001 언제까지 수입신고 해야 해요?");
+  await expect(page.locator(".chat li")).not.toHaveCount(0);
+  expect(threads.length).toBeGreaterThan(1);
+  expect(threads.at(-1)).not.toBe(threads[0]); // 지운 대화 id를 다시 쓰지 않는다
 });
 
 test("계정 삭제가 401이면 로그아웃한다", async ({ page }) => {
