@@ -1,7 +1,10 @@
 """트레이스 가림 문 시험 (R-010·R-022·R-039, done 3.9, 계획 6b). 기록 콜백·메모리 내보내기로 키 없이 본다."""
 
 import json
+import os
 import socket
+import subprocess
+import sys
 from uuid import uuid4
 
 import pytest
@@ -21,11 +24,12 @@ from langgraph.types import Command, Send
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode, get_tracer
 
-from marvia import langfuse_trace
+from marvia import langfuse_trace, trace
+from marvia.config import Settings
 from marvia.graph import tools
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
-from marvia.trace import MASK, scrub
+from marvia.trace import MASK, scrub, tracer_callbacks
 from marvia.watch import WatchDeps
 
 NUMBERS = ("DEMO0001", "DEMO0002", "DEMO0003", "DEMO0004")
@@ -347,3 +351,49 @@ def test_a_failing_mask_exports_nothing_or_masks_the_value_whole(monkeypatch):
             spans = exported(exporter, key)
         # [왜] ②가 죽으면 SDK가 묶음을 통째로 버리고, ①이 죽으면 값을 통째로 가린 글로 바꾼다
         assert spans == [] if expected == "nothing" else spans and "DEMO0001" not in "".join(spans), name
+
+
+OFF = """
+import socket, sys, threading
+calls = []
+socket.socket.connect = lambda self, address: calls.append(address)
+from marvia.config import Settings
+from marvia.trace import tracer_callbacks
+before = threading.active_count()
+callbacks = tracer_callbacks(Settings(_env_file=None))
+print(callbacks, "langfuse" in sys.modules, threading.active_count() - before, calls)
+"""
+
+
+def test_without_keys_tracing_is_off_with_no_sdk_thread_or_socket():
+    # [왜] 이미 langfuse를 불러온 이 시험 프로세스가 아니라 새 프로세스에서 본다
+    env = {name: value for name, value in os.environ.items() if not name.startswith("MARVIA_LANGFUSE_")}
+    done = subprocess.run([sys.executable, "-c", OFF], capture_output=True, text=True, check=True, env=env)
+    assert done.stdout.split() == ["[]", "False", "0", "[]"]  # 콜백 없음, SDK 안 부름, 스레드 0, 연결 0
+
+
+@pytest.mark.parametrize(
+    "given",
+    [{"langfuse_public_key": "pk-x", "langfuse_secret_key": "sk-x"}, {"langfuse_host": "https://x.test"}],
+)
+def test_tracing_stays_off_unless_all_three_settings_are_given(monkeypatch, given):
+    for name in ("MARVIA_LANGFUSE_PUBLIC_KEY", "MARVIA_LANGFUSE_SECRET_KEY", "MARVIA_LANGFUSE_HOST"):
+        monkeypatch.delenv(name, raising=False)  # [왜] 셸에 걸린 값이 빈 칸을 채우지 않게 한다
+    assert tracer_callbacks(Settings(_env_file=None, **given)) == []
+
+
+def test_all_three_settings_give_one_shared_tracer_and_keys_stay_hidden(monkeypatch):
+    built = []
+    monkeypatch.setattr(langfuse_trace, "build", lambda *keys: built.append(keys) or object())
+    trace._handler.cache_clear()
+    settings = Settings(
+        _env_file=None,
+        langfuse_public_key="pk-x",
+        langfuse_secret_key="sk-secret",
+        langfuse_host="https://x.test",
+    )
+    first, second = tracer_callbacks(settings), tracer_callbacks(settings)
+    trace._handler.cache_clear()
+    assert len(first) == 1 and first[0] is second[0]  # [왜] 멈춘 차례와 재개한 차례가 한 트레이스로 이어진다
+    assert built == [("pk-x", "sk-secret", "https://x.test")]
+    assert "sk-secret" not in repr(settings) and "pk-x" not in repr(settings)

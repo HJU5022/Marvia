@@ -1,12 +1,11 @@
-"""트레이스(콜백·Langfuse)로 나가는 값에서 화물 번호를 가린다 (설계 12절, done 3.9 문: R-010·R-022·R-039).
+"""트레이스로 나가는 값에서 화물 번호를 가리고, 트레이서를 켤지 정한다 (설계 12절, done 3.9, 계획 6b).
 
-하지 않는 일: 트레이서 연결. Langfuse 키가 없어 연결은 미뤘다.
-[주의] 연결할 때 scrub만 mask=에 끼워서는 모자라다. Langfuse는 mask(data=...)로
-       input·output·metadata만 부르고, 오류 길(on_chain_error·on_tool_error)의
-       status_message(str(error))는 mask에 넘기지 않는다.
-       애매한 번호를 묻는 끼어들기(identify의 ask)는 실제 번호 조각을 질문에 넣으므로 GraphInterrupt의
-       str()에 실제 번호가 든다. 연결하는 쪽이 오류 길도 가려야 하고(예: 핸들러를 감싸 가린 예외를 넘김),
-       그 문 시험은 내보낸 span 속성(status_message 포함)을 보고 ask 끼어들기를 시나리오에 넣어야 한다.
+scrub: 콜백 값을 걸어 다니며 번호 덩어리를 가린다. Langfuse의 mask=로 쓴다(langfuse_trace의 ①).
+tracer_callbacks: 그래프 실행 설정에 넣을 콜백. 서버·CLI·평가가 모두 이 함수로만 트레이서를 붙인다.
+하지 않는 일: Langfuse SDK 다루기(langfuse_trace.py). 키가 없으면 이 모듈은 langfuse를 import하지 않는다.
+[주의] scrub만으로는 모자라다. Langfuse는 mask=에 input·output·metadata만 넘기고, 오류 글(status_message,
+       span 상태 설명)은 넘기지 않는다. 애매한 번호를 묻는 끼어들기(identify의 ask)는 실제 번호 조각을
+       질문에 넣는다. 그래서 langfuse_trace가 ②·③으로 오류 길을 따로 가린다.
 [왜] 상태 없이 글 모양으로 찾는다. 콜백에는 그 대화의 가림 표가 오지 않고, 번호는 노드 입력·출력,
      도구 결과, Send 묶음, 도구 안에서 부른 서브그래프, 답 어디에든 들 수 있다.
 [주의] 번호처럼 생긴 다른 글(8자 이상 영문·숫자 덩어리)도 함께 가린다. 트레이스에서는 덜 가리는 것보다 낫다.
@@ -18,11 +17,13 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 from typing import Any
 
 from langgraph.types import Send
 from pydantic import BaseModel
 
+from marvia.config import Settings
 from marvia.identify.parse import find_spans
 
 MASK = "[가림]"
@@ -93,3 +94,24 @@ def _walk(value: Any, active: set[int]) -> Any:
         return {field.name: _walk(getattr(value, field.name), active) for field in dataclasses.fields(value)}
     # [주의] 모르는 객체(날짜, 예외, 도구 실행 정보 등)는 글로 바꿔 가린다. 원래 객체를 그대로 내보내지 않는다
     return _text_of(value)
+
+
+@functools.cache
+def _handler(public_key: str, secret_key: str, host: str) -> Any:
+    """프로세스가 함께 쓰는 가린 Langfuse 콜백 하나."""
+    from marvia.langfuse_trace import build  # [왜] 여기서만 SDK를 불러온다. 꺼져 있으면 스레드·소켓이 없다
+
+    return build(public_key, secret_key, host)
+
+
+def tracer_callbacks(settings: Settings) -> list:
+    """그래프 실행 설정의 callbacks에 넣을 목록. MARVIA_LANGFUSE_* 셋 중 하나라도 비면 []다(기본은 꺼짐).
+
+    [왜] 콜백 하나를 함께 쓴다. 끼어들기로 멈춘 차례와 재개한 차례가 한 트레이스로 이어진다.
+    """
+    keys = (
+        settings.langfuse_public_key.get_secret_value(),
+        settings.langfuse_secret_key.get_secret_value(),
+        settings.langfuse_host,
+    )
+    return [_handler(*keys)] if all(keys) else []
