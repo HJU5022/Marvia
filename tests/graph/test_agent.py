@@ -1089,8 +1089,14 @@ def test_both_loops_find_a_container_among_the_users_watched_cargo_alike(agent_d
 
 @pytest.mark.parametrize("loop", ["planner", "agent"])
 def test_both_loops_find_a_container_in_cargo_from_earlier_turns_of_the_conversation(agent_deps, loop):
-    inputs = Inputs()
-    graph = build_main_graph(agent_deps(model=model(*[say()] * 8)), InMemorySaver(), loop=loop)
+    inputs, prompts = Inputs(), []
+    # [왜] 계획자 길의 작성은 모델이 아니라 deps의 함수라 Inputs에 잡히지 않는다.
+    #      작성자가 받은 글을 따로 모은다
+    deps = agent_deps(
+        model=model(*[say()] * 8),
+        write=lambda prompt: prompts.append(prompt) or PLAIN_DRAFT,
+    )
+    graph = build_main_graph(deps, InMemorySaver(), loop=loop)
     config = {"configurable": {"thread_id": f"cv-{loop}", "user_id": "u1"}, "callbacks": [inputs]}
     graph.invoke({"text": "DEMO0001 어디야?"}, config)
     graph.invoke({"text": "통관은 보통 며칠 걸려요?"}, config)  # 번호 없는 차례는 cargos를 비운다
@@ -1098,7 +1104,10 @@ def test_both_loops_find_a_container_in_cargo_from_earlier_turns_of_the_conversa
     assert "DEMU1234560: 반입신고 (부산) 2026-10-27" in out["answer"]
     cargo = graph.get_state(config).values["cargos"][0]
     assert (cargo["token"], cargo["bl_no"]) == ("[CNTR1]", "DEMO0001")
-    assert not any("DEMU1234560" in call or "DEMO0001" in call for call in inputs.calls)
+    # [왜] 비어 있으면 아래 검사는 무엇도 보지 못한다. 길마다 모델에 간 글이 실제로 있어야 한다
+    seen = [str(p) for p in prompts] if loop == "planner" else inputs.calls
+    assert seen
+    assert not any("DEMU1234560" in call or "DEMO0001" in call for call in seen)
 
 
 @pytest.mark.parametrize("loop", ["planner", "agent"])
