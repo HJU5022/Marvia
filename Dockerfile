@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Marvia API 이미지 (설계 13절: 멀티스테이지, non-root, 계획 4b Task 8).
 # 단계: build(uv로 .venv) → base(실행에 필요한 것만, uid 10001) → e2e(가짜 API, 화면 시험용) / runtime(운영, 마지막 단계)
 # [주의] 이미지는 digest로 고정한다. 태그는 옮겨질 수 있다. 맥(arm64)에서도 --platform linux/amd64로 한 번 빌드해 본다(Cloud Run)

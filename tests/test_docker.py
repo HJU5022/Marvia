@@ -44,6 +44,14 @@ def test_every_image_is_pinned_by_digest():
                 if len(parts) >= 4 and parts[2].upper() == "AS":
                     stages.add(parts[3])
     assert refs and all(PINNED.search(ref) for ref in refs), refs
+    # [왜] "# syntax=" 줄은 빌드마다 틀 이미지를 내려받는다. 태그면 같은 커밋이 다른 날 다르게 빌드된다
+    syntax = [
+        line
+        for path in DOCKERFILES
+        for line in path.read_text().splitlines()
+        if line.strip().lower().startswith("# syntax")
+    ]
+    assert all(PINNED.search(line) for line in syntax), syntax
     # [왜] build와 image가 함께 있으면 image는 만든 이미지의 이름(:local)이다. 그 밖의 이미지는 고정한다
     images = [
         s["image"] for s in COMPOSE["services"].values() if "image" in s and not s["image"].endswith(":local")
