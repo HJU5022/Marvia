@@ -283,7 +283,10 @@ def choose(state: IdentifyState) -> dict:
     # [왜] 고른 화물을 메인 그래프의 lookup이 조회한다. 컨테이너는 조회할 번호에서 뺀다(두면 후보가 또 나온다)
     container = mask_map[many["token"]]
     numbers = [number for number in state.get("numbers", []) if number != container]
-    return {"question": question, "mask_map": mask_map, "numbers": numbers}
+    # [왜] 카드가 떠 있는 동안 화물 카드에 이 컨테이너의 "여럿이에요, B/L을 알려 주세요" 줄을 보이지 않는다.
+    #      카드와 어긋난다. 고른 뒤의 조회가 cargos를 새로 채운다
+    cargos = [cargo for cargo in state.get("cargos", []) if cargo is not many]
+    return {"question": question, "mask_map": mask_map, "numbers": numbers, "cargos": cargos}
 
 
 def _after_read(state: IdentifyState) -> str:

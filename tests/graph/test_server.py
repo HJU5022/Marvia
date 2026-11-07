@@ -712,6 +712,19 @@ def test_only_a_409_for_a_card_that_is_gone_carries_the_stale_card_code():
     assert busy.json() == {"error": "이 대화는 아직 답하는 중이에요"}
 
 
+def test_the_screen_under_a_container_card_shows_no_container_many_line(agent_deps):
+    # [왜] 카드는 "어느 화물을 볼까요?"인데 화물 카드가 "B/L 번호를 알려 주세요"를 보이면 서로 어긋난다
+    watched = lambda user: ["DEMO0002", "DEMO0003"]  # noqa: E731
+    watch = WatchDeps(
+        add=lambda *row: None, news=lambda user: [], ack=lambda user, ids: None, numbers=watched
+    )
+    _, client = served(agent_deps, AIMessage(""), watch=watch)
+    events = run(client, body("t26", "DEMO0001 TESU0000013 어디야?"))
+    assert events[-1]["outcome"]["type"] == "interrupt"
+    last = [e["snapshot"] for e in events if e["type"] == "STATE_SNAPSHOT"][-1]
+    assert [(c["number"], c["error"]) for c in last["cargos"]] == [("DEMO0001", None)]
+
+
 def test_running_is_only_touched_while_the_guard_is_held(monkeypatch):
     # [왜] 잠금 밖의 변경은 시간이 맞아야만 드러나서(GIL) 아래의 스레드 시험은 못 잡는다. 여기서는 running의
     #      추가·삭제·순회가 일어날 때마다 잠금이 잡혀 있는지를 직접 본다 (한 번에 한 요청씩이라 결정적이다)

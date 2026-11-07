@@ -1,6 +1,6 @@
 from langchain_core.runnables import RunnableConfig
 
-from marvia.graph.identify import build_identify_graph
+from marvia.graph.identify import build_identify_graph, build_lookup_graph
 from marvia.tools.rules import load_rules
 
 
@@ -104,10 +104,9 @@ def test_a_bl_in_the_same_message_carries_the_container(monkeypatch):
 
 def test_a_container_on_two_watched_cargos_is_left_as_candidates(monkeypatch):
     # [왜] 한 컨테이너에 여러 화물(LCL)이 실릴 수 있다. 하나를 골라 답하지 않는다
+    # [왜] 후보 줄은 조회 서브그래프가 만든다. 식별은 선택지를 띄울 때 그 줄을 화물 칸에서 뺀다 (계획 6c)
     seen = spy(monkeypatch)
-    out = build_identify_graph(lambda config: ["DEMO0002", "DEMO0003"]).invoke(
-        {"text": "TESU0000013 어디야?"}
-    )
+    out = build_lookup_graph(lambda config: ["DEMO0002", "DEMO0003"]).invoke({"numbers": ["TESU0000013"]})
     cargo = out["cargos"][0]
     assert (cargo["token"], cargo["confidence"], cargo["candidates"]) == (
         "[CNTR1]",
