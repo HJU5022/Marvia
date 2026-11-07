@@ -243,24 +243,36 @@ def test_a_spaced_container_with_a_wrong_check_digit_is_asked_before_any_lookup(
     assert seen == []
 
 
-def test_question_and_choice_texts_come_from_the_rules():
-    # [왜] 화면에 보이는 정한 글은 rules/identify.yaml에 둔다 (계획 6c). 글을 바꿀 때 이 파일만 고친다
-    texts = load_rules("identify")["questions"]
+def test_question_and_choice_texts_come_from_the_rules(monkeypatch):
+    # [왜] 화면에 보이는 정한 글은 rules/identify.yaml에 둔다 (계획 6c). 규칙의 글을 바꾸면 화면 글이
+    #      따라가야 한다. 파일 값과 비교만 하면 코드에 박은 글도 통과한다
+    import copy
+
+    from marvia.graph import identify
+
+    texts = copy.deepcopy(load_rules("identify"))
+    asks = texts["questions"]
+    for group in asks.values():
+        for key, value in group.items():
+            group[key] = "바뀜-" + value
+    real = load_rules
+    monkeypatch.setattr(identify, "load_rules", lambda name: texts if name == "identify" else real(name))
     ambiguous = run("MOCK12345678TEST87654321")["question"]
-    assert ambiguous["question"] == texts["ambiguous"]["question"].format(raw="MOCK12345678TEST87654321")
-    assert ambiguous["options"][0]["description"] == texts["ambiguous"]["option"].format(count=2)
+    assert ambiguous["question"] == asks["ambiguous"]["question"].format(raw="MOCK12345678TEST87654321")
+    assert ambiguous["options"][0]["description"] == asks["ambiguous"]["option"].format(count=2)
     typo = run("DEMU1234565 어디야?")["question"]
-    assert typo["question"] == texts["typo"]["question"].format(tokens="[BL1]")
+    assert typo["question"] == asks["typo"]["question"].format(tokens="[BL1]")
     assert typo["options"] == [
-        {"label": "[BL1]", "description": texts["typo"]["as_bl"]},
-        {"label": texts["typo"]["skip_label"], "description": texts["typo"]["skip"]},
+        {"label": "[BL1]", "description": asks["typo"]["as_bl"]},
+        {"label": asks["typo"]["skip_label"], "description": asks["typo"]["skip"]},
     ]
     many = build_identify_graph(lambda config: ["DEMO0002", "DEMO0003"]).invoke(
         {"text": "TESU0000013 어디야?"}
     )
-    assert many["question"]["question"] == texts["container"]["question"].format(token="[CNTR1]")
+    assert many["question"]["question"] == asks["container"]["question"].format(token="[CNTR1]")
     assert [o["description"] for o in many["question"]["options"]] == [
-        texts["container"]["all"].format(count=2),
-        texts["container"]["one"],
-        texts["container"]["one"],
+        asks["container"]["all"].format(count=2),
+        asks["container"]["one"],
+        asks["container"]["one"],
     ]
+    assert all(o["description"].startswith("바뀜-") for o in many["question"]["options"])

@@ -20,7 +20,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from psycopg.conninfo import make_conninfo
 from starlette.testclient import TestClient
 
-from marvia import langfuse_trace
+from marvia import langfuse_trace, server
 from marvia.auth import TRACING_VARS, AuthError
 from marvia.config import Settings
 from marvia.graph.live import live_memory
@@ -186,15 +186,21 @@ def test_bad_requests_are_refused_before_the_graph_runs(agent_deps, payload, sta
     assert response.status_code == status
 
 
-def test_the_thread_id_length_limit_comes_from_the_rules():
-    # [왜] 상한은 rules/server.yaml에 둔다 (계획 6c). 정규식에 숫자로 적지 않는다
+def test_the_thread_id_length_limit_comes_from_the_rules(monkeypatch):
+    # [왜] 상한은 rules/server.yaml에 둔다 (계획 6c). 규칙 값을 10으로 바꾸면 동작이 따라가야 한다.
+    #      규칙 파일 값과 비교만 하면 코드에 박은 숫자도 통과한다
+    import copy
+
     from marvia.tools.rules import load_rules
 
-    limit = load_rules("server")["request"]["max_thread_id"]
+    changed = copy.deepcopy(load_rules("server"))
+    changed["request"]["max_thread_id"] = 10
+    real = load_rules
+    monkeypatch.setattr(server, "load_rules", lambda name: changed if name == "server" else real(name))
     client = TestClient(build_app(Stub(), verify, web_origin="http://x.test", forget=print))
     head = {"Authorization": "Bearer tok-a"}
-    assert client.post("/agui", json=body("a" * (limit + 1), "질문"), headers=head).status_code == 422
-    assert client.post("/agui", json=body("a" * limit, "질문"), headers=head).status_code == 200
+    assert client.post("/agui", json=body("a" * 11, "질문"), headers=head).status_code == 422
+    assert client.post("/agui", json=body("a" * 10, "질문"), headers=head).status_code == 200
 
 
 def test_a_second_run_on_a_busy_thread_is_409(agent_deps, fake_rag):
