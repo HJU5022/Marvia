@@ -5294,14 +5294,14 @@ git commit -m "docs: 설계에 계획 4b 반영(저장 안 하는 칸, 읽기 �
 | # | 판정 | 근거 |
 |---|---|---|
 | C1 R-035 DB 스캔 | 통과 | `tests/graph/test_postgres_memory.py::test_no_checkpoint_row_holds_a_real_number`. 끼어들기·재개(고친 인자 `DEMO0002`) 뒤 `text`·`answer`가 없고 세 표에 `DEMO0001`·`DEMO0002`가 0줄 |
-| C2 R-066 | 통과 | `tests/rag/test_read_pool.py` 두 시험. 보정에서 autocommit을 빼면 `assert 1 == 0`으로 실패함을 보였다. 독립 재실행(ckpt/4b-t2)에서 R-066 충족 |
-| C3 트레이스 가림 | 통과 | `tests/graph/test_trace.py`. 가리기 전 값에는 `DEMO0001~0004`가 모두 있고 가린 값에는 0개. 보정에서 길마다 지났는지와 `on_tool_error`를 시험에 넣었다. 독립 재실행(ckpt/4b-t3) 654 통과 |
-| C4 인증 | 통과 | `tests/test_auth.py`, `tests/graph/test_server.py`, `tests/graph/test_agent.py::test_the_server_graph_refuses_to_run_without_a_user_id`. 독립 재실행(ckpt/4b-t4)에서 R-048·R-069·R-070·R-072 충족 |
+| C2 R-066 | 통과 | `tests/rag/test_read_pool.py` 두 시험. 보정에서 autocommit을 빼면 `assert 1 == 0`으로 실패함을 보였다. 태그 ckpt/4b-t2에서 다시 돌려 R-066 충족 |
+| C3 트레이스 가림 | 통과 | `tests/graph/test_trace.py`. 가리기 전 값에는 `DEMO0001~0004`가 모두 있고 가린 값에는 0개. 보정에서 길마다 지났는지와 `on_tool_error`를 시험에 넣었다. 태그 ckpt/4b-t3에서 다시 돌려 654 통과 |
+| C4 인증 | 통과 | `tests/test_auth.py`, `tests/graph/test_server.py`, `tests/graph/test_agent.py::test_the_server_graph_refuses_to_run_without_a_user_id`. 태그 ckpt/4b-t4에서 다시 돌려 R-048·R-069·R-070·R-072 충족 |
 | C5 재개 다시 가림 | 통과 | `tests/graph/test_resume.py`와 `test_server.py`의 승인 카드 시험. 다시 가리기를 끄면 모델 입력에 `DEMO0001`이 나오는 대조가 같은 시험 안에 있다. 키·숫자 값의 번호는 보정에서 닫았다 |
 | C6 이벤트 순서 | 통과 | `tests/graph/test_server.py`. 끝 이벤트는 정확히 하나이고 카드를 만들다 죽어도 인코딩에 실패해도 `RUN_ERROR` 하나로 끝난다 |
 | C7 화면 입력 무시 | 통과 | `test_state_and_forwarded_props_from_the_browser_are_ignored`와 R-072 시험(설정은 서버 값으로만 짓고, 실제 실행에서 `user_of`가 본 설정도 확인) |
-| C8 이미지 | 통과 | uid 10001, `/app`에 허용 목록의 것만, 규칙·지시문 불러오기 성공, arm64 1.07GB, amd64 빌드 성공(71초)과 크기 1.18GB(상한 1.2GB, 여유 작음), 시작 거절 두 가지, 모든 바깥 이미지 `@sha256:` 고정, 포트 모두 `127.0.0.1:`. 독립 재실행(ckpt/4b-t8)에서 별도 이미지 빌드로도 확인 |
-| C9 Playwright | 통과 | 흐름 4 통과(`workers: 1`, `retries: 0`), axe serious·critical 0, 브라우저의 Anthropic·Voyage 요청 0, e2e 망은 internal, 스크린샷 3장(가짜 모델). `playwright-core` 판 검사는 `6e064fd`에서 더했다. 독립 재실행(ckpt/4b-t10)에서도 4 통과 |
+| C8 이미지 | 통과 | uid 10001, `/app`에 허용 목록의 것만, 규칙·지시문 불러오기 성공, arm64 1.07GB, amd64 빌드 성공(71초)과 크기 1.18GB(상한 1.2GB, 여유 작음), 시작 거절 두 가지, 모든 바깥 이미지 `@sha256:` 고정, 포트 모두 `127.0.0.1:`. 태그 ckpt/4b-t8에서 다시 돌려 별도 이미지 빌드로도 확인 |
+| C9 Playwright | 통과 | 흐름 4 통과(`workers: 1`, `retries: 0`), axe serious·critical 0, 브라우저의 Anthropic·Voyage 요청 0, e2e 망은 internal, 스크린샷 3장(가짜 모델). `playwright-core` 판 검사는 `6e064fd`에서 더했다. 태그 ckpt/4b-t10에서 다시 돌려도 4 통과 |
 | C10 배포 준비 | 통과 | 워크플로는 `workflow_dispatch`만이고 actionlint 오류 0, `PORT`는 단위 시험으로, 키·로그인 설정이 없으면 시작 거절. `docs/deploy.md`의 "로컬 확인" 줄은 실제로 돌린 것만 적었다 |
 | C11 R-067 | 통과 | `git show --name-only`로 센 커밋당 코드 파일 최대 10개. 서버 연결 일은 부르는 곳별 커밋(2a 풀, 2b 연결, 2c 자르기, 5a, 5b, 6a, 6b) |
 | C12 호스트 청결 | 통과 | `~/Library/Caches/ms-playwright`의 목록이 시작 때와 같다(`b`, `chromium_headless_shell-1228`, `chromium-1228`, `ffmpeg-1011`). 호스트에서 `npm`·`npx`·`playwright install`을 돌리지 않았고 호스트에 `web/node_modules`·`.next`가 없다 |
