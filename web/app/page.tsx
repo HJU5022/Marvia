@@ -65,7 +65,12 @@ export default function Home() {
         await runTurn(API_URL, token, { threadId, ...input }, onEvent, controller.signal);
       } catch (failure) {
         if (controller.signal.aborted) return; // 멈춘 차례는 아무것도 보이지 않는다
-        setError(failure instanceof Error ? failure.message : "요청이 실패했어요");
+        // [왜] fetch가 연결 실패로 던지는 TypeError는 영어 글이다. 정해 둔 한글로 바꾼다
+        setError(
+          failure instanceof Error && !(failure instanceof TypeError)
+            ? failure.message
+            : "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요",
+        );
         if (failure instanceof HttpError && failure.status === 401) signOut().then(() => setToken(null));
       } finally {
         sending.current = false;
