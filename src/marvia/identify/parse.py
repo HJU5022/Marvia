@@ -114,11 +114,13 @@ def find_spans(text: str) -> list[Span]:
         for m in _SPACED_CONTAINER.finditer(text)
         if " " in m.group() and is_container(normalize(m.group()))
     ]
-    taken = list(spans)
-    for m in _SPAN.finditer(text):
+    # [왜] 찾은 컨테이너 번호 자리를 같은 길이의 빈칸으로 지우고 나머지를 훑는다. 조각은 다시 잡히지 않고,
+    #      하이픈으로 붙은 옆 번호(HASL0001-DEMU 123456 0)는 그대로 잡힌다
+    rest = text
+    for s in spans:
+        rest = rest[: s.start] + " " * (s.end - s.start) + rest[s.end :]
+    for m in _SPAN.finditer(rest):
         raw = m.group()
-        if any(s.start < m.end() and m.start() < s.end for s in taken):
-            continue  # 띄어 쓴 컨테이너 번호의 조각이다
         if any(ch.isdigit() for ch in raw) and not _NOT_NUMBER.fullmatch(normalize(raw)):
             spans.append(Span(m.start(), m.end(), raw))
     return sorted(spans, key=lambda s: s.start)

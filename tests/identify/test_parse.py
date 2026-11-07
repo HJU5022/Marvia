@@ -66,3 +66,9 @@ def test_a_spaced_container_is_one_number_only_when_its_check_digit_holds():
     assert values("컨테이너 DEMU 123456 0, TESU 0000013") == [["DEMU1234560"], ["TESU0000013"]]
     assert values("DEMU 123456-0 도착") == [["DEMU1234560"]]  # 조각 123456-0이 따로 잡히지 않는다
     assert values("ABCU 1234567 같은 글") == []  # 확인 숫자가 틀리면 번호로 보지 않는다(전과 같다)
+
+
+def test_a_number_hyphen_joined_to_a_spaced_container_is_still_read():
+    # [왜] 컨테이너 조각과 겹친다고 옆에 하이픈으로 붙은 번호까지 버리면 가리지 않은 채 LLM에 간다
+    assert values("HASL0001-DEMU 123456 0 어디?") == [["HASL0001"], ["DEMU1234560"]]
+    assert values("DEMU 123456 0-HASL0001 어디?") == [["DEMU1234560"], ["HASL0001"]]
