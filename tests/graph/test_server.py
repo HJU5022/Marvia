@@ -615,7 +615,43 @@ def test_account_deletion_is_409_while_a_turn_of_that_user_runs():
     assert forgotten == ["user-b"]
 
 
+def test_running_is_only_touched_while_the_guard_is_held(monkeypatch):
+    # [왜] 잠금 밖의 변경은 시간이 맞아야만 드러나서(GIL) 아래의 스레드 시험은 못 잡는다. 여기서는 running의
+    #      추가·삭제·순회가 일어날 때마다 잠금이 잡혀 있는지를 직접 본다 (한 번에 한 요청씩이라 결정적이다)
+    from types import SimpleNamespace
+
+    from marvia import server
+
+    lock, ops = threading.Lock(), []
+
+    class Watched(set):
+        def add(self, item):
+            ops.append(("add", lock.locked()))
+            super().add(item)
+
+        def discard(self, item):
+            ops.append(("discard", lock.locked()))
+            super().discard(item)
+
+        def __iter__(self):
+            ops.append(("iter", lock.locked()))
+            return super().__iter__()
+
+    # 모듈 안의 set과 threading.Lock만 바꾼다 (나머지 threading은 그대로)
+    monkeypatch.setattr(server, "set", Watched, raising=False)
+    monkeypatch.setattr(server, "threading", SimpleNamespace(**{**vars(threading), "Lock": lambda: lock}))
+    client = TestClient(build_app(Stub(), verify, web_origin="http://x.test", forget=print))
+    head = {"Authorization": "Bearer tok-a"}
+    assert client.post("/agui", json=body("g1", "질문"), headers=head).status_code == 200
+    assert client.delete("/account", headers=head).status_code == 204
+    # [왜] 바꿔 둔 set·Lock을 앱이 실제로 썼는지 먼저 본다 (이름이 달라져 헛돌면 여기서 실패한다)
+    assert {name for name, _ in ops} == {"add", "discard", "iter"}
+    assert [name for name, held in ops if not held] == []
+
+
 def test_deleting_an_account_while_turns_start_and_finish_never_gives_500():
+    # [주의] 스레드를 겹쳐 돌리는 연기 시험이다. 잠금 밖 변경은 시간이 맞아야만 드러나서 이 시험만으로는
+    #        못 잡는다(위 결정적 시험이 잡는다)
     # [왜] running 집합을 잠금 밖에서 바꾸면 DELETE /account의 순회가 "Set changed size"로 500이 될 수 있다
     forgotten: list[str] = []
     app = build_app(Stub(), verify, web_origin="http://x.test", forget=forgotten.append)
