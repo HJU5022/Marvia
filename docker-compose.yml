@@ -1,17 +1,21 @@
-# 로컬 개발·테스트용 Postgres·Neo4j 주문서 (설계 8절·5.5, 계획 1 Task 8, 계획 3b Task 3).
+# 로컬 개발·테스트용 Postgres·Neo4j와 API·화면 주문서 (설계 8절·5.5·13절, 계획 1 Task 8, 계획 3b Task 3, 계획 4b Task 8·9).
 # 하지 않는 일: 배포. 배포 DB는 Supabase이고 여기 비밀번호는 내 컴퓨터에서만 쓰는 값이다.
 # 켜기: docker compose up -d db neo4j neo4j-test / 끄기: docker compose stop db neo4j neo4j-test
+# 앱(profile app): docker compose --profile app up -d --build  (prepare가 표를 만든 뒤 api가 뜬다)
 name: marvia-v2 # [왜] v1 compose와 이름을 나눠 컨테이너·볼륨이 섞이지 않게 한다
 services:
   db:
     # [왜] pgvector가 미리 깔린 Postgres 16. 계획 2의 RAG 벡터 검색을 같은 DB에서 쓴다
-    image: pgvector/pgvector:pg16
+    # pgvector/pgvector:pg16 (여러 구조 묶음의 해시, CI와 같다). 태그는 옮겨질 수 있다
+    image: pgvector/pgvector@sha256:0dd3149a06e4579a0d70d8fef9945636cd514005e7237deb27f9b67886f8dc4f
     environment: # DB를 처음 만들 때 쓰는 계정·DB 이름 (src/marvia/config.py 기본 주소와 같다)
       POSTGRES_USER: marvia
       POSTGRES_PASSWORD: marvia
       POSTGRES_DB: marvia
     ports:
-      - "5433:5432" # 내 컴퓨터 5433번 문 → 상자 안 Postgres 5432번 문. [왜] 5432는 다른 Postgres와 겹치기 쉽다
+      # 내 컴퓨터 5433번 문 → 상자 안 Postgres 5432번 문. [왜] 5432는 다른 Postgres와 겹치기 쉽다
+      # [왜] 127.0.0.1: 이 컴퓨터에서만 연다. 같은 망의 다른 기기가 기본 비밀번호로 붙지 못한다
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata_v2:/var/lib/postgresql/data # [왜] 상자를 지웠다 켜도 데이터가 남게 상자 밖 저장 공간에 둔다
   neo4j:
@@ -36,6 +40,41 @@ services:
       - "127.0.0.1:7689:7687" # bolt만. 브라우저 문은 열지 않는다
     tmpfs:
       - /data
+  prepare:
+    # 표 만들기를 한 번 돌고 끝난다 (python -m marvia.prepare_db). [왜] 운영 서버 시작과 떼어 둔다
+    profiles: [app]
+    image: marvia-api:local
+    build: { context: ., target: runtime }
+    command: ["python", "-m", "marvia.prepare_db"]
+    environment:
+      MARVIA_DATABASE_URL: postgresql://marvia:marvia@db:5432/marvia
+      MARVIA_DATA_KEY: ${MARVIA_DATA_KEY:-}
+    depends_on: [db]
+  api:
+    # 화면 서버 (python -m marvia.server). 키는 셸 환경 변수에서 받는다. 비어 있으면 뜨지 않는다(fail-closed)
+    profiles: [app]
+    image: marvia-api:local
+    build: { context: ., target: runtime }
+    environment:
+      MARVIA_DATABASE_URL: postgresql://marvia:marvia@db:5432/marvia
+      MARVIA_NEO4J_URL: bolt://neo4j:7687
+      MARVIA_DATA_KEY: ${MARVIA_DATA_KEY:-}
+      MARVIA_ANTHROPIC_API_KEY: ${MARVIA_ANTHROPIC_API_KEY:-}
+      MARVIA_VOYAGE_API_KEY: ${MARVIA_VOYAGE_API_KEY:-}
+      MARVIA_AUTH: dev # [주의] 이 컴퓨터용. 배포는 supabase (docs/deploy.md)
+      MARVIA_DEV_TOKEN: ${MARVIA_DEV_TOKEN:-}
+      MARVIA_WEB_ORIGIN: http://localhost:3000
+      MARVIA_HOST: 0.0.0.0 # 컨테이너 안에서만. 바깥으로 여는 포트는 아래에서 127.0.0.1로 묶는다
+    ports:
+      - "127.0.0.1:8080:8080" # [왜] 8000은 다른 서비스가 쓴다
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+      neo4j: { condition: service_started }
+  web:
+    profiles: [app]
+    build: { context: ./web, args: { NEXT_PUBLIC_API_URL: "http://localhost:8080", NEXT_PUBLIC_AUTH: dev } }
+    ports:
+      - "127.0.0.1:3000:3000"
 volumes:
   pgdata_v2: {}
   neo4jdata_v2: {}

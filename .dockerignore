@@ -1,0 +1,12 @@
+# 빌드 맥락 허용 목록 (계획 4b Task 8). 모두 막고 이미지에 필요한 것만 연다.
+# [왜] 저장소 루트에 .env(키), .local(실제 응답 저장본), .venv 같은 로컬 폴더가 있다. COPY 층에 남으면 지울 수 없다
+*
+!pyproject.toml
+!uv.lock
+!src
+!rules
+!prompts
+!migrations
+!fixtures/unipass
+!corpus/graph
+**/__pycache__
