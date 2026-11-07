@@ -469,7 +469,7 @@ def test_account_deletion_forgets_watches_memory_and_only_that_users_threads(age
     with live_memory(url, secret) as (saver, store), psycopg.connect(url, autocommit=True) as conn:
         deps = agent_deps(model=ToolModel(messages=iter([AIMessage(""), AIMessage("")])))
         graph = build_main_graph(deps, saver, loop="agent", store=store)
-        forget = lambda user: forget_account(conn, store, user)  # noqa: E731
+        forget = lambda user: forget_account(conn, store, user, url)  # noqa: E731
         client = TestClient(build_app(graph, verify, web_origin="http://web.test", forget=forget))
         run(client, body("t1", "DEMO0001 언제까지?"), token="tok-a")
         run(client, body("t1", "DEMO0002 언제까지?"), token="tok-b")
@@ -510,3 +510,55 @@ def test_a_cancelled_approval_card_rejects_every_action_even_with_an_approve_pay
     resume = [{"interruptId": card["id"], "status": "cancelled", "payload": approve}]
     assert run(client, body("t22", resume=resume))[-1]["outcome"] == {"type": "success"}
     assert added == []  # 취소한 카드의 승인 payload는 읽지 않았다
+
+
+class NoTransactionOnWatchConn:
+    """감시 연결 대역: 트랜잭션을 열거나 대화 기록 표를 건드리면 실패한다 (R-041)."""
+
+    def __init__(self, real):
+        self.real = real
+
+    def transaction(self, *args, **kwargs):
+        raise AssertionError("감시 연결 위에 트랜잭션을 열었다")
+
+    def execute(self, query, *args, **kwargs):
+        assert "checkpoint" not in str(query), "감시 연결로 대화 기록을 지웠다"
+        return self.real.execute(query, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.real, name)
+
+
+def test_account_deletion_never_opens_a_transaction_on_the_watch_connection(agent_deps, db):
+    schema = db.execute("SELECT current_schema()").fetchone()[0]
+    db.commit()
+    url = make_conninfo(Settings().database_url, options=f"-c search_path={schema},public")
+    secret = Fernet.generate_key().decode()
+    with live_memory(url, secret) as (saver, store), psycopg.connect(url, autocommit=True) as conn:
+        deps = agent_deps(model=ToolModel(messages=iter([AIMessage("")])))
+        graph = build_main_graph(deps, saver, loop="agent", store=store)
+        client = TestClient(build_app(graph, verify, web_origin="http://x.test", forget=print))
+        run(client, body("t1", "DEMO0001 언제까지?"), token="tok-a")
+        forget_account(NoTransactionOnWatchConn(conn), store, "user-a", url)
+        assert not conn.execute("SELECT 1 FROM checkpoints WHERE thread_id LIKE 'user-a/%'").fetchall()
+
+
+def test_account_deletion_is_409_while_a_turn_of_that_user_runs():
+    entered, gate, forgotten = threading.Event(), threading.Event(), []
+
+    class Slow(Stub):
+        def stream(self, *args, **kwargs):
+            entered.set()
+            gate.wait(10)
+            return iter([])
+
+    client = TestClient(build_app(Slow(), verify, web_origin="http://x.test", forget=forgotten.append))
+    worker = threading.Thread(target=lambda: run(client, body("t23", "질문")))
+    worker.start()
+    assert entered.wait(10)
+    mine = client.delete("/account", headers={"Authorization": "Bearer tok-a"})
+    other = client.delete("/account", headers={"Authorization": "Bearer tok-b"})
+    gate.set()
+    worker.join(10)
+    assert mine.status_code == 409 and other.status_code == 204
+    assert forgotten == ["user-b"]
