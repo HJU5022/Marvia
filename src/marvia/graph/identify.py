@@ -31,6 +31,7 @@ Watched = Callable[[RunnableConfig], list[str]]
 def read(state: IdentifyState) -> dict:
     """번호를 읽고 가린다. 애매한 덩어리나 확인 숫자가 틀린 컨테이너 모양 번호가 있으면 선택지를 만든다."""
     text = state.get("text", "")
+    asks = load_rules("identify")["questions"]  # 질문·선택지 글
     # [왜] 같은 대화(thread)의 앞 차례 표를 이어 쓴다. 차례가 바뀌어도 같은 번호는 같은 토큰이고,
     #      모델이 기록에서 본 [BL1]을 이번 차례에도 조회할 수 있다 (계획 3d)
     masked, mask_map = mask_text(text, state.get("mask_map"))
@@ -43,10 +44,13 @@ def read(state: IdentifyState) -> dict:
             #        오타 번호는 아래에서 이 질문에 밀리지 않게 따로 모은다
             question = {
                 "kind": "choice",
-                "question": f"'{read_result.raw}'를 어떻게 읽을까요?",
+                "question": asks["ambiguous"]["question"].format(raw=read_result.raw),
                 # 선택지마다 화면에 보일 이름과 설명
                 "options": [
-                    {"label": " + ".join(alt), "description": f"{len(alt)}건으로 조회"}
+                    {
+                        "label": " + ".join(alt),
+                        "description": asks["ambiguous"]["option"].format(count=len(alt)),
+                    }
                     for alt in read_result.alternatives
                 ],
                 "recommended": 0,  # [왜] 권장안을 맨 앞에 둔다 (Codex·DeepSeek 방식, 설계 결정 4)
@@ -63,12 +67,13 @@ def read(state: IdentifyState) -> dict:
         #      (계획 6a). 오타가 여럿이어도 질문은 하나이고, 화면 글에는 토큰만 쓴다
         tokens = [token_for(mask_map, n.value, n.kind) for n in typos]
         joined = " + ".join(tokens)
+        typo = asks["typo"]
         question = {
             "kind": "choice",
-            "question": f"{joined}은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요. 번호를 확인해 주세요",
+            "question": typo["question"].format(tokens=joined),
             "options": [
-                {"label": joined, "description": "B/L 번호로 조회"},
-                {"label": "조회하지 않음", "description": "고친 번호를 직접 적어 주세요"},
+                {"label": joined, "description": typo["as_bl"]},
+                {"label": typo["skip_label"], "description": typo["skip"]},
             ],
             "recommended": 0,
             "alternatives": [[n.value for n in typos], []],
@@ -266,11 +271,12 @@ def choose(state: IdentifyState) -> dict:
     mask_map = dict(state.get("mask_map", {}))
     # [왜] 선택지 글에는 토큰만 쓴다. 화면에 보낼 때 view.interrupt_card가 실제 번호로 되돌린다
     tokens = [token_for(mask_map, number, kind_of(number)) for number in many["candidates"]]
+    asks = load_rules("identify")["questions"]["container"]
     question = {
         "kind": "choice",
-        "question": f"컨테이너 {many['token']}에 실린 화물이 여럿이에요. 어느 화물을 볼까요?",
-        "options": [{"label": " + ".join(tokens), "description": f"{len(tokens)}건 모두 조회"}]
-        + [{"label": token, "description": "이 화물만 조회"} for token in tokens],
+        "question": asks["question"].format(token=many["token"]),
+        "options": [{"label": " + ".join(tokens), "description": asks["all"].format(count=len(tokens))}]
+        + [{"label": token, "description": asks["one"]} for token in tokens],
         "recommended": 0,  # [왜] 하나를 짐작하지 않고 모두 보이는 안을 권장한다
         "alternatives": [many["candidates"]] + [[number] for number in many["candidates"]],
     }

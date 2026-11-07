@@ -1,6 +1,7 @@
 from langchain_core.runnables import RunnableConfig
 
 from marvia.graph.identify import build_identify_graph
+from marvia.tools.rules import load_rules
 
 
 def run(text: str) -> dict:
@@ -232,3 +233,26 @@ def test_a_spaced_container_with_a_wrong_check_digit_is_asked_before_any_lookup(
     assert "DEMU" not in shown and "123456" not in shown
     assert out["masked_text"] == "[BL1] 어디야?" and out["numbers"] == []
     assert seen == []
+
+
+def test_question_and_choice_texts_come_from_the_rules():
+    # [왜] 화면에 보이는 정한 글은 rules/identify.yaml에 둔다 (계획 6c). 글을 바꿀 때 이 파일만 고친다
+    texts = load_rules("identify")["questions"]
+    ambiguous = run("MOCK12345678TEST87654321")["question"]
+    assert ambiguous["question"] == texts["ambiguous"]["question"].format(raw="MOCK12345678TEST87654321")
+    assert ambiguous["options"][0]["description"] == texts["ambiguous"]["option"].format(count=2)
+    typo = run("DEMU1234565 어디야?")["question"]
+    assert typo["question"] == texts["typo"]["question"].format(tokens="[BL1]")
+    assert typo["options"] == [
+        {"label": "[BL1]", "description": texts["typo"]["as_bl"]},
+        {"label": texts["typo"]["skip_label"], "description": texts["typo"]["skip"]},
+    ]
+    many = build_identify_graph(lambda config: ["DEMO0002", "DEMO0003"]).invoke(
+        {"text": "TESU0000013 어디야?"}
+    )
+    assert many["question"]["question"] == texts["container"]["question"].format(token="[CNTR1]")
+    assert [o["description"] for o in many["question"]["options"]] == [
+        texts["container"]["all"].format(count=2),
+        texts["container"]["one"],
+        texts["container"]["one"],
+    ]

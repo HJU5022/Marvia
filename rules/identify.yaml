@@ -1,0 +1,15 @@
+# 번호를 읽다가 묻는 질문과 선택지 글 (설계 4.1·6.3). src/marvia/graph/identify.py가 읽는다.
+# {…} 칸은 코드가 채운다. 실제 번호가 드는 칸은 ambiguous의 raw뿐이다(주인의 화면에만 가고 모델에는 가지 않는다)
+questions:
+  ambiguous: # 붙여 쓴 번호를 어떻게 끊을지 모를 때 (계획 1)
+    question: "'{raw}'를 어떻게 읽을까요?"
+    option: "{count}건으로 조회" # 끊는 안마다 붙는 설명
+  typo: # 컨테이너 번호 모양인데 확인 숫자가 틀릴 때 (계획 6a). tokens는 가린 토큰([BL1] + [BL2])
+    question: "{tokens}은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요. 번호를 확인해 주세요"
+    as_bl: B/L 번호로 조회 # 권장안(같은 모양의 B/L일 수 있다)
+    skip_label: 조회하지 않음
+    skip: 고친 번호를 직접 적어 주세요
+  container: # 아는 화물 여럿이 한 컨테이너에 실렸을 때 (계획 6a). token은 컨테이너 토큰([CNTR1])
+    question: "컨테이너 {token}에 실린 화물이 여럿이에요. 어느 화물을 볼까요?"
+    all: "{count}건 모두 조회" # 권장안
+    one: 이 화물만 조회
