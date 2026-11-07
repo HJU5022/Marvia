@@ -18,7 +18,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
 from marvia.graph.state import IdentifyState
-from marvia.identify.mask import mask_text, token_for
+from marvia.identify.mask import READ_LABELS, mask_text, token_for
 from marvia.identify.models import CargoFacts, CargoIdentity, ToolError
 from marvia.identify.parse import ReadNumber, container_typo, kind_of, read_numbers
 from marvia.tools.rules import load_rules
@@ -209,10 +209,16 @@ def build_lookup_graph(watched: Watched | None = None):
         containers = {i: n for i, n in enumerate(numbers) if kind_of(n) == "container"}
         if containers:
             # [왜] 갈래 조회가 끝난 뒤에 찾는다. 같은 글에 함께 적은 B/L의 사실도 쓸 수 있다.
-            #      state의 cargos는 아직 이번 결과로 바뀌기 전 값(지난 차례·대화의 화물)이다
+            #      state의 cargos는 아직 이번 결과로 바뀌기 전 값(바로 지난 차례의 화물)이다
             cargos = list(found.values()) + state.get("cargos", [])
             # [왜] 실제 모드의 사실에는 컨테이너가 없다. 감시 화물을 다시 조회해도 맞출 수 없으니 읽지 않는다
-            watch_numbers = watched(config) if watched and facts_carry_containers() else []
+            if facts_carry_containers():
+                # [왜] 숫자 없는 차례가 cargos를 비운다. 이 대화의 B/L·화물관리번호도 다시 조회해 맞춘다
+                prefixes = tuple(f"[{label}" for label in READ_LABELS)
+                talked = [n for t, n in state.get("mask_map", {}).items() if t.startswith(prefixes)]
+                watch_numbers = talked + (watched(config) if watched else [])
+            else:
+                watch_numbers = []
             known = known_cargo(cargos, watch_numbers)
             mask_map = dict(state.get("mask_map", {}))
             for i, number in containers.items():

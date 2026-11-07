@@ -201,3 +201,23 @@ def test_a_typo_next_to_an_ambiguous_chunk_is_never_dropped():
         assert out["numbers"] == ["DEMU1234565"], (
             text
         )  # 다른 질문이 이기면 오타 번호는 권장안(B/L 조회)을 따른다
+
+
+def test_live_mode_looks_up_no_earlier_cargo_for_a_container(monkeypatch):
+    # [왜] 실제 모드는 이 대화의 화물도 다시 조회하지 않는다. 사실에 컨테이너가 없어 맞출 수 없다
+    from marvia.graph import identify
+    from marvia.identify.models import ToolError
+
+    monkeypatch.setenv("MARVIA_UNIPASS_MODE", "live")
+    seen: list[str] = []
+
+    def lookup(number: str) -> ToolError:
+        seen.append(number)  # [주의] 실제 함수를 부르지 않는다
+        return ToolError(code="not_found", message="", retryable=False)
+
+    monkeypatch.setattr(identify, "lookup_cargo", lookup)
+    out = build_identify_graph(lambda config: []).invoke(
+        {"text": "TESU0000013 어디야?", "mask_map": {"[BL1]": "DEMO0001"}}
+    )
+    assert out["cargos"][0]["error"]["code"] == "container_unknown"
+    assert seen == []
