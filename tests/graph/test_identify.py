@@ -221,3 +221,14 @@ def test_live_mode_looks_up_no_earlier_cargo_for_a_container(monkeypatch):
     )
     assert out["cargos"][0]["error"]["code"] == "container_unknown"
     assert seen == []
+
+
+def test_a_spaced_container_with_a_wrong_check_digit_is_asked_before_any_lookup(monkeypatch):
+    seen = spy(monkeypatch)
+    out = run("DEMU 123456 1 어디야?")
+    question = out["question"]
+    assert question["question"].startswith("[BL1]은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요")
+    shown = str(question["question"]) + str(question["options"])
+    assert "DEMU" not in shown and "123456" not in shown
+    assert out["masked_text"] == "[BL1] 어디야?" and out["numbers"] == []
+    assert seen == []

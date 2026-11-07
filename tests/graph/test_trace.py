@@ -160,3 +160,8 @@ def test_scrub_hides_a_spaced_container_number():
 def test_scrub_hides_a_number_hyphen_joined_to_a_spaced_container():
     assert scrub("HASL0001-DEMU 123456 0 어디?") == f"{MASK}-{MASK} 어디?"
     assert scrub("DEMU 123456 0-HASL0001 어디?") == f"{MASK}-{MASK} 어디?"
+
+
+def test_scrub_hides_every_container_shaped_spaced_form():
+    for form in ("DEMU 123456 1", "DEMU 123456 (0)", "DEMU 123 456 0", "DEMU\t1234560", "DEMU  123456  0"):
+        assert scrub(f"{form} 도착") == f"{MASK} 도착", form

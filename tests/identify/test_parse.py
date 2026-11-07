@@ -65,7 +65,10 @@ def test_two_containers_of_one_owner_glued_together_split():
 def test_a_spaced_container_is_one_number_only_when_its_check_digit_holds():
     assert values("컨테이너 DEMU 123456 0, TESU 0000013") == [["DEMU1234560"], ["TESU0000013"]]
     assert values("DEMU 123456-0 도착") == [["DEMU1234560"]]  # 조각 123456-0이 따로 잡히지 않는다
-    assert values("ABCU 1234567 같은 글") == []  # 확인 숫자가 틀리면 번호로 보지 않는다(전과 같다)
+    # [왜] 확인 숫자가 틀려도 한 덩어리다. 붙여 쓴 꼴(DEMU1234565)처럼 B/L로 읽혀 식별 단계가 오타를 묻는다
+    assert [(n.value, n.kind) for r in read_numbers("ABCU 1234567 같은 글") for n in r[1].numbers] == [
+        ("ABCU1234567", "bl")
+    ]
 
 
 def test_a_number_hyphen_joined_to_a_spaced_container_is_still_read():
@@ -78,3 +81,23 @@ def test_container_typo_is_the_container_shape_with_a_wrong_check_digit():
     assert container_typo("DEMU1234565")
     assert not container_typo("DEMU1234560")  # 맞는 컨테이너 번호
     assert not container_typo("MOCK1234567")  # 넷째 글자가 U·J·Z가 아니면 컨테이너 모양이 아니다
+
+
+def test_every_container_shaped_spaced_form_is_one_chunk():
+    forms = {
+        "DEMU 123456 (0)": ("DEMU1234560", "container"),  # 컨테이너 문에 적는 꼴
+        "demu 123456 [0]": ("DEMU1234560", "container"),
+        "DEMU 123 456 0": ("DEMU1234560", "container"),
+        "DEMU  123456  0": ("DEMU1234560", "container"),
+        "DEMU\t1234560": ("DEMU1234560", "container"),
+        "DEMU\u00a0123456\u00a00": ("DEMU1234560", "container"),
+        "DEMU 123456 1": ("DEMU1234561", "bl"),
+        "DEMU 1234561": ("DEMU1234561", "bl"),
+    }
+    for form, want in forms.items():
+        found = [(n.value, n.kind) for _, r in read_numbers(f"앞 {form} 뒤") for n in r.numbers]
+        assert found == [want], form
+
+
+def test_a_wrong_spaced_digit_count_is_not_a_container():
+    assert values("DEMU 12345 0 도착") == []  # 일련번호가 모자라면 이 모양이 아니다

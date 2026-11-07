@@ -19,9 +19,17 @@ _CONTAINER = re.compile(r"[A-Z]{3}[UJZ][0-9]{7}")
 # ISO 6346 글자 값: A=10부터 차례로 매기되 11의 배수(11, 22, 33)는 건너뛴다 (A=10, B=12, ..., Z=38)
 # [왜] 표준이 정한 계산이라 rules/*.yaml에 두지 않는다 (_CARGO_NO, B/L 길이와 같다)
 _LETTER_VALUE = dict(zip(string.ascii_uppercase, (v for v in range(10, 39) if v % 11), strict=True))
-# 띄어 쓴 컨테이너 번호 (DEMU 123456 0, DEMU 1234560). [왜] 서류·컨테이너 문에 이렇게 적는다. 나뉜 조각은
-#      8자보다 짧아 _SPAN이 못 찾고, 못 찾으면 가리지 않은 채 LLM에 간다
-_SPACED_CONTAINER = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{3}[UJZujz][ -]?[0-9]{6}[ -]?[0-9](?![A-Za-z0-9])")
+# 띄어 쓴 컨테이너 번호 (DEMU 123456 0, DEMU 123 456 0, DEMU 123456 (0))
+# [왜] 서류·컨테이너 문에 이렇게 적는다. 나뉜 조각은 8자보다 짧아 _SPAN이 못 찾고,
+#      못 찾으면 가리지 않은 채 LLM에 간다
+# 틈은 모든 빈칸(\s: 여러 칸·탭·NBSP)이나 하이픈, 마지막 숫자는 ()·[]로 감쌀 수 있다. 숫자는 모두 7개
+_GAP = r"[\s-]*"
+_SPACED_CONTAINER = re.compile(
+    r"(?<![A-Za-z0-9])[A-Za-z]{3}[UJZujz]"
+    + _GAP
+    + (r"[0-9]" + _GAP) * 6
+    + r"[(\[]?[0-9][)\]]?(?![A-Za-z0-9])"
+)
 # 번호처럼 보여도 번호가 아닌 것: 날짜(YYYYMMDD), 휴대폰 번호
 _NOT_NUMBER = re.compile(r"20\d{6}|01[016789]\d{7,8}")
 # B/L 한 건의 길이 범위 (v1 patterns.py와 같은 8~20자)
@@ -50,8 +58,9 @@ class Span:
 
 
 def normalize(raw: str) -> str:
-    """하이픈·빈칸을 빼고 대문자로 바꾼다."""
-    return raw.replace("-", "").replace(" ", "").upper()
+    """하이픈·빈칸(탭·NBSP 포함)·괄호를 빼고 대문자로 바꾼다."""
+    # [왜] 이 글자들은 띄어 쓴 컨테이너 번호에만 들어 있다. _SPAN 덩어리는 영문·숫자·하이픈뿐이다
+    return re.sub(r"[\s()\[\]-]", "", raw).upper()
 
 
 def check_digit(code: str) -> int:
@@ -112,12 +121,13 @@ def read_token(raw: str) -> TokenRead:
 
 def find_spans(text: str) -> list[Span]:
     """글에서 번호 후보 덩어리의 위치를 찾는다. 숫자가 없거나 날짜·전화번호면 뺀다.
-    띄어 쓴 컨테이너 번호는 확인 숫자가 맞을 때만 한 덩어리로 본다."""
-    # [왜] 확인 숫자로 거른다. "영문 4자 숫자 7자리"처럼 띄어 쓴 다른 글을 번호로 잡지 않는다
+    컨테이너 번호 모양으로 띄어 쓴 글은 확인 숫자와 상관없이 한 덩어리로 본다."""
+    # [왜] 확인 숫자가 틀려도 한 덩어리다. 붙여 쓴 꼴(DEMU1234565)처럼 B/L로 읽혀 식별 단계가 오타를 묻는다.
+    #      틈이나 괄호가 없는 붙여 쓴 꼴은 아래 _SPAN이 잡는다
     spans = [
         Span(m.start(), m.end(), m.group())
         for m in _SPACED_CONTAINER.finditer(text)
-        if " " in m.group() and is_container(normalize(m.group()))
+        if not m.group().isalnum()
     ]
     # [왜] 찾은 컨테이너 번호 자리를 같은 길이의 빈칸으로 지우고 나머지를 훑는다. 조각은 다시 잡히지 않고,
     #      하이픈으로 붙은 옆 번호(HASL0001-DEMU 123456 0)는 그대로 잡힌다

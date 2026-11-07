@@ -55,3 +55,14 @@ def test_a_container_gets_its_own_token_and_is_not_a_lookup_label():
 def test_a_spaced_container_is_masked_whole():
     masked, mask_map = mask_text("DEMU 123456 0 어디쯤?")
     assert (masked, mask_map) == ("[CNTR1] 어디쯤?", {"[CNTR1]": "DEMU1234560"})
+
+
+def test_every_container_shaped_spaced_form_is_masked_whole():
+    for form, value in (
+        ("DEMU 123456 (0)", "DEMU1234560"),
+        ("DEMU 123 456 0", "DEMU1234560"),
+        ("DEMU\t1234561", "DEMU1234561"),
+    ):
+        masked, mask_map = mask_text(f"{form} 어디쯤?")
+        assert masked.endswith(" 어디쯤?") and "DEMU" not in masked and "123" not in masked, form
+        assert list(mask_map.values()) == [value], form
