@@ -71,8 +71,8 @@ LOG = logging.getLogger(__name__)
 ERROR_TEXT = "이번 차례를 끝내지 못했어요. 다시 물어봐 주세요."
 
 # [왜] 화면이 정하는 thread id는 이름 공간 안의 이름일 뿐이다.
-#      서버가 "사용자/이름"으로 묶어 남의 대화에 닿지 못한다
-THREAD_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+#      서버가 "사용자/이름"으로 묶어 남의 대화에 닿지 못한다. 길이 상한은 rules/server.yaml(max_thread_id)
+THREAD_ID = re.compile(r"[A-Za-z0-9_-]+")
 # [왜] 프록시·압축이 이벤트를 모았다가 한꺼번에 보내면 "진행 중인 할 일"이 답과 함께 뜬다
 SSE_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 LIVE_KEYS = ("todos", "plan", "cargos", "evidence", "mask_map")  # 화면 보기를 바꾸는 공책 칸
@@ -291,7 +291,7 @@ def build_app(
             return JSONResponse({"error": str(error)}, status_code=error.status)
         except ValidationError:
             return JSONResponse({"error": "요청 모양이 틀렸어요"}, status_code=422)
-        if not THREAD_ID.fullmatch(body.thread_id):
+        if not THREAD_ID.fullmatch(body.thread_id) or len(body.thread_id) > cfg["max_thread_id"]:
             return JSONResponse({"error": "대화 id 모양이 틀렸어요"}, status_code=422)
         key = f"{user}/{body.thread_id}"
         with guard:

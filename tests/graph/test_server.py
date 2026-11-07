@@ -186,6 +186,17 @@ def test_bad_requests_are_refused_before_the_graph_runs(agent_deps, payload, sta
     assert response.status_code == status
 
 
+def test_the_thread_id_length_limit_comes_from_the_rules():
+    # [왜] 상한은 rules/server.yaml에 둔다 (계획 6c). 정규식에 숫자로 적지 않는다
+    from marvia.tools.rules import load_rules
+
+    limit = load_rules("server")["request"]["max_thread_id"]
+    client = TestClient(build_app(Stub(), verify, web_origin="http://x.test", forget=print))
+    head = {"Authorization": "Bearer tok-a"}
+    assert client.post("/agui", json=body("a" * (limit + 1), "질문"), headers=head).status_code == 422
+    assert client.post("/agui", json=body("a" * limit, "질문"), headers=head).status_code == 200
+
+
 def test_a_second_run_on_a_busy_thread_is_409(agent_deps, fake_rag):
     entered, gate = threading.Event(), threading.Event()
     rag = fake_rag()

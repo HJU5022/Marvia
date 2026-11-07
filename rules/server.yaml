@@ -14,6 +14,7 @@ auth:
 
 request:
   max_text: 2000 # 사용자 글 한 번의 글자 수 상한. 넘으면 422
+  max_thread_id: 64 # 화면이 정하는 대화 id(영문·숫자·_·-)의 글자 수 상한. 넘으면 422
   max_body_bytes: 65536 # 요청 본문 바이트 상한. 넘으면 413
 
 question:
