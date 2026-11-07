@@ -48,6 +48,6 @@ jobs:
       - name: API 배포
         run: |
           gcloud run deploy marvia-api --image "$IMAGE" --region "${{ vars.GCP_REGION }}" \
-            --allow-unauthenticated --port 8080 --timeout 300 --max-instances 1 \
+            --allow-unauthenticated --port 8080 --memory 1Gi --timeout 300 --max-instances 1 \
             --set-env-vars "MARVIA_AUTH=supabase,MARVIA_SUPABASE_URL=${{ vars.MARVIA_SUPABASE_URL }},MARVIA_WEB_ORIGIN=${{ vars.MARVIA_WEB_ORIGIN }},MARVIA_GRAPH=off" \
             --set-secrets "MARVIA_DATABASE_URL=marvia-database-url:latest,MARVIA_DATA_KEY=marvia-data-key:latest,MARVIA_ANTHROPIC_API_KEY=marvia-anthropic-key:latest,MARVIA_VOYAGE_API_KEY=marvia-voyage-key:latest,MARVIA_OWNER_IDS=marvia-owner-ids:latest"

@@ -14,6 +14,8 @@ API는 Cloud Run(서울, `asia-northeast3`), 화면은 Vercel, DB는 Supabase, �
 | amd64 이미지 크기 | `docker image inspect` (리드 측정) | 1.18GB (상한 1.2GB, 여유 작음) |
 | arm64 이미지 크기 | `docker images` | 1.07GB |
 | 실행 사용자 | `docker run --rm <이미지> id -u` | `10001` |
+| 형태소 분석기 메모리 (1GB) | `docker run --rm --platform linux/amd64 --memory 1g --memory-swap 1g <이미지> python -c "from marvia.rag.keywords import keywords; print(keywords('수입 신고 시 관세율은 어떻게 정해지나요?')[:5])"` | 종료 코드 0, `['수입', '신고', '관세', '어떻', '정하']` (Cloud Run 배포 명령의 `--memory 1Gi`가 이 값) |
+| 형태소 분석기 메모리 (512MB) | 위와 같고 `--memory 512m --memory-swap 512m` | 종료 코드 137 (메모리 초과로 죽음). Cloud Run 기본값 512MiB로는 첫 법령 검색에서 인스턴스가 죽는다는 뜻 |
 | 이미지 안 규칙·지시문 | `docker run --rm <이미지> python -c "from marvia.tools.rules import load_rules; from marvia.prompts import render; load_rules('agent'); print(len(render('agent')) > 0)"` | `True` |
 | 이미지에 없는 것 | `docker run --rm <이미지> ls -a /app` | `.venv corpus fixtures migrations prompts pyproject.toml rules src uv.lock`만 있다. `.env`·`.local`·`scripts`·`tests`·`e2e` 없음 |
 | 서버가 듣는 주소 | `docker run --rm <이미지> sh -c 'echo $MARVIA_HOST'` | `0.0.0.0` (서버 기본은 127.0.0.1이고 이미지가 컨테이너 안에서만 연다) |
@@ -93,6 +95,8 @@ Actions 탭에서 `deploy` 워크플로를 손으로 돌린다(`workflow_dispatc
 서버가 듣는 주소는 이미지의 `MARVIA_HOST=0.0.0.0`이 정한다. 배포 명령의 환경 변수에는 넣지 않는다.
 
 배포 뒤 확인: `curl https://<cloud-run 주소>/health` → `{"ok":true}`, 토큰 없는 `POST /agui` → 401.
+
+배포 뒤 직접 할 한 가지: 화면에서 법령 질문을 한 번 한다(유료 호출 1회). 형태소 분석기는 첫 검색에서 처음 올라와 메모리를 가장 많이 쓰므로, 답이 오면 `--memory 1Gi`가 충분하다는 확인이다. `/health`와 401 확인은 검색을 거치지 않아 이것을 잡지 못한다.
 
 ## 직접 할 일 4: Vercel (화면)
 
