@@ -174,13 +174,15 @@ class LookupTask(TypedDict):
 
 
 def assign(state: IdentifyState) -> dict:
-    """조회할 번호마다 토큰을 먼저 정한다."""
+    """조회할 번호의 중복을 빼고, 번호마다 토큰을 먼저 정한다."""
+    # [왜] 같은 번호를 두 번 적거나 고른 후보가 같은 글의 B/L이면 번호가 겹친다. 처음 순서대로 한 번만 둔다
+    numbers = list(dict.fromkeys(state.get("numbers", [])))
     # [왜] 갈래마다 토큰을 만들면 같은 이름표([BL2])가 두 번호에 붙을 수 있다. 나누기 전에 한 곳에서 정한다
     # [왜] 공책의 dict를 직접 고치지 않고 복사해서 고친다. 노드는 바꾼 값을 돌려주는 방식으로만 공책을 바꾼다
     mask_map = dict(state.get("mask_map", {}))
-    for number in state.get("numbers", []):
+    for number in numbers:
         token_for(mask_map, number, kind_of(number))
-    return {"mask_map": mask_map}
+    return {"mask_map": mask_map, "numbers": numbers}
 
 
 def one(state: LookupTask) -> dict:

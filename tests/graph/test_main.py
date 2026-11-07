@@ -168,6 +168,24 @@ def test_after_an_ambiguous_card_a_number_from_the_last_turn_is_looked_up_afresh
     assert seen.count("DEMO0001") == 2  # 차례마다 한 번
 
 
+def test_a_number_typed_twice_is_looked_up_and_shown_once(agent_deps, monkeypatch):
+    seen = looked_up(monkeypatch)
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    out = graph.invoke({"text": "DEMO0001 그리고 DEMO0001 어디야?"}, cfg("dd1"))
+    assert out["answer"].count("DEMO0001: 반입신고 (부산)") == 1 and "건으로 읽었어요" not in out["answer"]
+    assert seen == ["DEMO0001"]
+
+
+def test_choosing_all_cargo_on_a_container_with_its_bl_in_the_message_reads_each_cargo_once(agent_deps):
+    # [왜] 같은 글의 B/L이 컨테이너 후보이기도 하다. "모두"를 고르면 그 B/L이 두 번 든다
+    graph = build_main_graph(agent_deps(watch=watching("DEMO0003")), InMemorySaver())
+    config = {"configurable": {"thread_id": "dd2", "user_id": "u1"}}
+    graph.invoke({"text": "DEMO0002 TESU0000013 어디야?"}, config)
+    out = graph.invoke(Command(resume={"selected": 0}), config)  # [BL1] + [BL2] 모두
+    assert "2건으로 읽었어요." in out["answer"]
+    assert out["answer"].count("DEMO0002: 수입신고 (부산)") == 1
+
+
 def test_no_number_guides_user(agent_deps):
     asked = Draft(
         answer="화물을 찾으려면 번호가 필요해요.",
