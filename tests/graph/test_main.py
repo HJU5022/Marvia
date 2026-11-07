@@ -118,6 +118,56 @@ def test_two_mistyped_containers_asked_once_and_both_looked_up_as_bl(agent_deps)
     assert "DEMU1234565:" in out["answer"] and "TESU0000012:" in out["answer"]
 
 
+def looked_up(monkeypatch) -> list[str]:
+    """식별·조회 서브그래프가 조회 함수(lookup_cargo)에 넘긴 번호를 모은다."""
+    from marvia.graph import identify
+
+    seen: list[str] = []
+    real = identify.lookup_cargo
+    monkeypatch.setattr(identify, "lookup_cargo", lambda number: seen.append(number) or real(number))
+    return seen
+
+
+def watching(*numbers: str):
+    """감시 목록 번호만 주는 가짜 감시."""
+    from marvia.watch import WatchDeps
+
+    return WatchDeps(
+        add=lambda *row: None,
+        news=lambda user: [],
+        ack=lambda user, ids: None,
+        numbers=lambda user: list(numbers),
+    )
+
+
+def test_after_a_container_card_a_bl_already_looked_up_this_turn_is_not_looked_up_again(
+    agent_deps, monkeypatch
+):
+    # [왜] 같은 글의 B/L은 식별이 이미 조회했다. ask 뒤 조회가 또 부르면 UNI-PASS 호출이 두 배다 (계획 6c)
+    seen = looked_up(monkeypatch)
+    graph = build_main_graph(agent_deps(watch=watching("DEMO0003")), InMemorySaver())
+    config = {"configurable": {"thread_id": "cc1", "user_id": "u1"}}
+    out = graph.invoke({"text": "DEMO0002 TESU0000013 어디야?"}, config)
+    assert [o["label"] for o in out["__interrupt__"][0].value["options"]] == [
+        "[BL1] + [BL2]",
+        "[BL1]",
+        "[BL2]",
+    ]
+    out = graph.invoke(Command(resume={"selected": 2}), config)  # [BL2] = DEMO0003
+    assert "DEMO0002: 수입신고 (부산)" in out["answer"] and "DEMO0003: 수입신고수리 (부산)" in out["answer"]
+    assert seen.count("DEMO0002") == 1
+
+
+def test_after_an_ambiguous_card_a_number_from_the_last_turn_is_looked_up_afresh(agent_deps, monkeypatch):
+    # [왜] 애매한 덩어리를 물은 차례는 조회 전에 멈춘다. 지난 차례 화물의 사실을 이번 차례 것으로 쓰지 않는다
+    seen = looked_up(monkeypatch)
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    graph.invoke({"text": "DEMO0001 어디야?"}, cfg("cc2"))
+    graph.invoke({"text": "DEMO0001 MOCK12345678TEST87654321 어디야?"}, cfg("cc2"))
+    graph.invoke(Command(resume={"selected": 0}), cfg("cc2"))
+    assert seen.count("DEMO0001") == 2  # 차례마다 한 번
+
+
 def test_no_number_guides_user(agent_deps):
     asked = Draft(
         answer="화물을 찾으려면 번호가 필요해요.",

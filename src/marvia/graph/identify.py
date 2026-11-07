@@ -77,8 +77,11 @@ def read(state: IdentifyState) -> dict:
         # [주의] 애매한 덩어리의 질문이 이기면 오타 번호는 권장안(B/L 조회)을 따른다.
         #        번호가 말없이 빠지지 않게 한다
         numbers += [n.value for n in typos]
+    # [왜] 물으면 조회하지 않고 끝난다. 지난 차례 화물을 비운다. 남기면 ask 뒤 조회(reuse)가
+    #      그 사실을 이번 차례에 얻은 것으로 다시 쓴다
+    cleared = {"cargos": []} if question else {}
     # [왜] 바꾼 칸만 돌려준다. LangGraph가 공책의 그 칸들만 덮어쓰고 나머지 칸(text 등)은 그대로 둔다
-    return {"masked_text": masked, "mask_map": mask_map, "numbers": numbers, "question": question}
+    return {"masked_text": masked, "mask_map": mask_map, "numbers": numbers, "question": question, **cleared}
 
 
 def identify_number(number: str, mask_map: dict[str, str]) -> dict:
@@ -180,17 +183,6 @@ def assign(state: IdentifyState) -> dict:
     return {"mask_map": mask_map}
 
 
-def fan_out(state: IdentifyState) -> list[Send] | str:
-    """번호마다 갈래(Send) 하나를 보낸다. 컨테이너 번호는 collect가 찾는다. 보낼 것이 없으면 바로 collect."""
-    mask_map = state.get("mask_map", {})
-    sends = [
-        Send("one", {"idx": i, "number": n, "mask_map": mask_map})
-        for i, n in enumerate(state.get("numbers", []))
-        if kind_of(n) != "container"
-    ]
-    return sends or "collect"
-
-
 def one(state: LookupTask) -> dict:
     """갈래 하나: 번호 하나를 조회해 순서 번호와 함께 돌려준다. 실패도 결과다(identify_number)."""
     # [왜] 표 복사본을 넘긴다. 토큰은 assign이 넣어 두어 identify_number가 표를 바꿀 일이 없다
@@ -198,14 +190,39 @@ def one(state: LookupTask) -> dict:
     return {"found": [{"idx": state["idx"], "cargo": cargo}]}
 
 
-def build_lookup_graph(watched: Watched | None = None):
+def build_lookup_graph(watched: Watched | None = None, reuse: bool = False):
     """조회 서브그래프: 번호마다 Send로 나눠 함께 조회하고 처음 순서대로 모은다 (설계 4.3).
-    watched가 있으면 컨테이너 번호를 감시 목록의 화물에서도 찾는다 (계획 6a)."""
+    watched가 있으면 컨테이너 번호를 감시 목록의 화물에서도 찾는다 (계획 6a).
+    reuse가 참이면 공책 cargos에 이미 사실이 있는 번호는 다시 조회하지 않는다(메인 그래프의 ask 뒤 조회)."""
+
+    def reused(state: IdentifyState) -> dict[str, dict]:
+        """다시 조회하지 않을 번호 → 그 화물 결과. reuse가 거짓이면 비어 있다."""
+        if not reuse:
+            return {}
+        mask_map = state.get("mask_map", {})
+        # [왜] 도구 lookup_cargo의 have와 같은 규칙이다: 사실이 있는 화물만 다시 쓰고 실패한 조회는 다시 한다
+        return {
+            mask_map[cargo["token"]]: cargo
+            for cargo in state.get("cargos", [])
+            if cargo.get("facts") and cargo["kind"] != "container" and cargo["token"] in mask_map
+        }
+
+    def fan_out(state: IdentifyState) -> list[Send] | str:
+        """번호마다 갈래(Send) 하나를 보낸다. 컨테이너와 이미 사실이 있는 번호는 보내지 않는다."""
+        mask_map, done = state.get("mask_map", {}), reused(state)
+        sends = [
+            Send("one", {"idx": i, "number": n, "mask_map": mask_map})
+            for i, n in enumerate(state.get("numbers", []))
+            if kind_of(n) != "container" and n not in done
+        ]
+        return sends or "collect"
 
     def collect(state: LookupState, config: RunnableConfig) -> dict:
         """갈래 결과를 처음 번호 순서대로 화물 칸에 둔다. 컨테이너 번호는 아는 화물 사실에서 찾는다."""
         found = {f["idx"]: f["cargo"] for f in state.get("found", [])}
         numbers = state.get("numbers", [])
+        done = reused(state)
+        found |= {i: done[n] for i, n in enumerate(numbers) if n in done}
         containers = {i: n for i, n in enumerate(numbers) if kind_of(n) == "container"}
         if containers:
             # [왜] 갈래 조회가 끝난 뒤에 찾는다. 같은 글에 함께 적은 B/L의 사실도 쓸 수 있다.

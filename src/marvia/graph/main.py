@@ -474,7 +474,9 @@ def build_main_graph(
     graph.add_node("identify", build_identify_graph(watched(deps.watch)))
     graph.add_node("ask", ask)
     # 식별 서브그래프와 같은 조회 서브그래프를 다시 쓴다
-    graph.add_node("lookup", build_lookup_graph(watched(deps.watch)))
+    # [왜] reuse: ask 앞의 cargos는 이번 차례 식별이 조회한 결과다(물으면 read가 비운다). 그 번호는 다시
+    #      조회하지 않는다 (같은 글의 B/L을 컨테이너 선택지 뒤에 또 조회하지 않게)
+    graph.add_node("lookup", build_lookup_graph(watched(deps.watch), reuse=True))
     graph.add_node("write", write)
     graph.add_node("verify", check)
     graph.add_node("respond", shown(respond))
