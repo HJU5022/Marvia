@@ -481,3 +481,16 @@ def test_account_deletion_forgets_watches_memory_and_only_that_users_threads(age
         assert store.search(("users", "user-a")) == []
         assert [item.key for item in store.search(("users", "user-b", "items"))] == ["쌀"]
     assert db.execute("SELECT user_id FROM watches").fetchall() == [("user-b",)]
+
+
+def test_an_event_the_encoder_cannot_serialize_still_ends_with_one_run_error():
+    class Unserializable(Stub):
+        def stream(self, *args, **kwargs):
+            # [왜] 화물 칸에 JSON으로 바꿀 수 없는 값이 섞인 갱신
+            return iter([((), {"read": {"todos": [{"content": object(), "status": "pending"}]}})])
+
+    client = TestClient(build_app(Unserializable(), verify, web_origin="http://x.test", forget=print))
+    events = run(client, body("t21", "질문"))
+    assert kinds(events) == ["RUN_STARTED", "RUN_ERROR"]
+    assert events[-1]["message"] == "이번 차례를 끝내지 못했어요. 다시 물어봐 주세요."
+    assert kinds(run(client, body("t21", "질문"))) == ["RUN_STARTED", "RUN_ERROR"]  # 잠금도 풀렸다

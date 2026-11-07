@@ -66,6 +66,7 @@ from marvia.view import interrupt_card, screen_view
 from marvia.watch import forget_user
 
 LOG = logging.getLogger(__name__)
+ERROR_TEXT = "이번 차례를 끝내지 못했어요. 다시 물어봐 주세요."
 
 # [왜] 화면이 정하는 thread id는 이름 공간 안의 이름일 뿐이다.
 #      서버가 "사용자/이름"으로 묶어 남의 대화에 닿지 못한다
@@ -155,9 +156,7 @@ def turn_events(
             else "?"
         )
         LOG.error("차례 실패 %s at %s", type(error).__name__, where)
-        yield RunErrorEvent(
-            message="이번 차례를 끝내지 못했어요. 다시 물어봐 주세요.", code=type(error).__name__
-        )
+        yield RunErrorEvent(message=ERROR_TEXT, code=type(error).__name__)
         return
     yield from tail
 
@@ -218,6 +217,11 @@ async def _sse(
         try:
             for event in events:
                 lines.put(encoder.encode(event))
+        except Exception as error:
+            # [왜] 글로 바꿀 수 없는 값이 섞여도 끝 이벤트는 하나여야 한다. 그래프는 멈추고 고정 글만 보낸다
+            stop.set()
+            LOG.error("이벤트 인코딩 실패 %s", type(error).__name__)
+            lines.put(encoder.encode(RunErrorEvent(message=ERROR_TEXT, code=type(error).__name__)))
         finally:
             done()  # [왜] thread 잠금은 그래프가 실제로 멈춘 뒤에 푼다(연결이 끊긴 때가 아니다)
             lines.put(None)
