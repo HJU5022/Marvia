@@ -160,7 +160,9 @@ class Guards(AgentMiddleware[LoopState]):
 def describe_approval(tool_call: ToolCall, state: Any, runtime: Any) -> str:
     """승인 카드 글: 할 일과 인자, 저장이면 저장될 품목 사실 (설계 8절: 승인된 사실만 저장)."""
     args = json.dumps(tool_call["args"], ensure_ascii=False)
-    text = f"{tool_call['name']} 실행을 승인할까요?\n인자: {args}"
+    # [왜] 승인하는 사람에게는 영어 도구 이름보다 한국어 이름이 읽힌다. 모르는 도구는 이름 그대로 보인다
+    label = load_rules("agent")["approval"].get("labels", {}).get(tool_call["name"], tool_call["name"])
+    text = f"{label} 실행을 승인할까요?\n인자: {args}"
     if tool_call["name"] == "save_item_card":
         if not state.get("item"):
             # [왜] 품목 사실이 없으면 도구가 저장하지 않고 돌아온다. 승인해도 저장되지 않는 것을 카드에 보인다

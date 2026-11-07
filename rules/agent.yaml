@@ -54,6 +54,12 @@ approval:
   ask: [] # 권한 모드가 ask일 때만 묻는 도구용. 지금은 없다
   # 장기 기억과 감시 목록에 쓰는 도구는 auto에서도 늘 묻는다 (설계 8절·12절: 남는 일은 승인 뒤에만)
   always_ask: [save_item_card, save_preference, watch_cargo, unwatch_cargo]
+  # 승인 카드 글에 쓰는 도구 한국어 이름 (화면 카드의 이름과 같다). 없는 도구는 영어 이름 그대로 보인다
+  labels:
+    save_preference: 설명 깊이 저장
+    save_item_card: 품목 카드 저장
+    watch_cargo: 화물 감시 추가
+    unwatch_cargo: 화물 감시 해제
 
 # 장기 기억 저장 기준 (설계 8절). 품목 카드 이름은 짧은 품목 이름만 받는다
 memory:

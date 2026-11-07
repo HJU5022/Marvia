@@ -1510,3 +1510,21 @@ def test_unwatching_a_cargo_that_is_not_on_the_list_does_nothing_and_says_so(age
     assert values["actions"] == []  # 한 일이 없다
     said = all_text(values)
     assert ("감시 목록에 없어요" in said) is bool(calls) and ("모르는 토큰" in said) is not bool(calls)
+
+
+@pytest.mark.parametrize(
+    ("name", "label"),
+    [
+        ("save_preference", "설명 깊이 저장"),
+        ("save_item_card", "품목 카드 저장"),
+        ("watch_cargo", "화물 감시 추가"),
+        ("unwatch_cargo", "화물 감시 해제"),
+        ("some_new_tool", "some_new_tool"),  # 모르는 도구는 이름 그대로
+    ],
+)
+def test_describe_approval_uses_the_korean_tool_label(name, label):
+    from marvia.graph.agent import describe_approval
+
+    call = {"name": name, "args": {"token": "[BL1]"}, "id": "x"}
+    first = describe_approval(call, {"item": CHILI}, None).splitlines()[0]
+    assert first == f"{label} 실행을 승인할까요?"
