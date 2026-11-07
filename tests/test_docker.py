@@ -35,19 +35,62 @@ def test_every_image_is_pinned_by_digest():
     refs: list[str] = []
     for path in DOCKERFILES:
         for line in path.read_text().splitlines():
-            if line.startswith("FROM "):
+            if line[:5].upper() == "FROM ":  # [왜] 소문자 from도 같은 줄이다
                 parts = line.split()
                 if parts[1] not in stages:  # [왜] "FROM base AS e2e"의 base는 앞 단계 이름이다
                     refs.append(parts[1])
                 if len(parts) >= 4 and parts[2].upper() == "AS":
                     stages.add(parts[3])
     assert refs and all(PINNED.search(ref) for ref in refs), refs
-    images = [service["image"] for service in COMPOSE["services"].values() if "build" not in service]
+    # [왜] build와 image가 함께 있으면 image는 만든 이미지의 이름(:local)이다. 그 밖의 이미지는 고정한다
+    images = [
+        s["image"] for s in COMPOSE["services"].values() if "image" in s and not s["image"].endswith(":local")
+    ]
     assert images and all(PINNED.search(image) for image in images), images
 
 
 def test_published_ports_open_on_this_computer_only():
     # [왜] 포트만 적으면 모든 주소에 열려 같은 망의 다른 기기가 기본 비밀번호로 DB·그래프에 붙는다
-    for name, service in COMPOSE["services"].items():
-        for port in service.get("ports", []):
-            assert port.startswith("127.0.0.1:"), (name, port)
+    ports = [(name, port) for name, s in COMPOSE["services"].items() for port in s.get("ports", [])]
+    assert ports  # [왜] 공개 포트가 하나도 없으면 아래 검사가 아무것도 보지 않는다
+    for name, port in ports:
+        assert port.startswith("127.0.0.1:"), (name, port)
+
+
+def test_prepare_db_twice_makes_the_tables_the_server_needs_and_the_second_run_changes_nothing(
+    db, monkeypatch, tmp_path
+):
+    # [왜] 표 준비는 여러 번 돌려도 같아야 하고 서버가 쓰는 표가 모두 있어야 한다. 시험용 스키마에서만 돈다
+    from cryptography.fernet import Fernet
+    from psycopg.conninfo import make_conninfo
+
+    from marvia import prepare_db
+    from marvia.config import Settings
+
+    schema = db.execute("SELECT current_schema()").fetchone()[0]
+    db.commit()
+    monkeypatch.chdir(tmp_path)  # [왜] 저장소의 .env를 읽지 않게 빈 폴더에서 돈다
+    monkeypatch.setenv(
+        "MARVIA_DATABASE_URL",
+        make_conninfo(Settings(_env_file=None).database_url, options=f"-c search_path={schema},public"),
+    )
+    monkeypatch.setenv("MARVIA_DATA_KEY", Fernet.generate_key().decode())
+
+    def snapshot() -> tuple:
+        tables = db.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = %s ORDER BY 1", (schema,)
+        ).fetchall()
+        versions = [
+            db.execute(f"SELECT count(*) FROM {t}").fetchone()
+            for t in ("checkpoint_migrations", "store_migrations")
+        ]
+        db.commit()
+        return tables, versions
+
+    prepare_db.main()
+    first = snapshot()
+    names = {row[0] for row in first[0]}
+    assert {"checkpoints", "checkpoint_blobs", "checkpoint_writes", "store", "watches"} <= names
+    assert all(count[0] > 0 for count in first[1])
+    prepare_db.main()
+    assert snapshot() == first
