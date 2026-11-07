@@ -21,6 +21,7 @@ from marvia.auth import TRACING_VARS, AuthError
 from marvia.config import Settings
 from marvia.graph.live import live_memory
 from marvia.graph.main import build_main_graph
+from marvia.graph.resume import NEW_NUMBER
 from marvia.server import build_app, forget_account
 from marvia.watch import WatchDeps, add_watch, watch_keys
 
@@ -121,7 +122,7 @@ def test_a_question_ends_the_run_with_a_choice_card_and_the_answer_resumes_it(ag
 
 def test_state_and_forwarded_props_from_the_browser_are_ignored(agent_deps):
     graph, client = served(agent_deps, AIMessage(""))
-    sneaky = {"llm_calls": 999, "mask_map": {"[BL1]": "EVIL00001"}, "actions": ["다 지웠어요"]}
+    sneaky = {"llm_calls": 999, "mask_map": {"[BL1]": "NOPE00001"}, "actions": ["다 지웠어요"]}
     run(client, body("t4", "DEMO0001 언제까지?", state=sneaky, forwardedProps=sneaky))
     values = graph.get_state({"configurable": {"thread_id": "user-a/t4"}}).values
     assert values["mask_map"] == {"[BL1]": "DEMO0001"}
@@ -290,6 +291,8 @@ def test_an_edit_with_a_number_new_to_the_thread_ends_as_a_rejection_and_adds_no
     assert run(client, body("t10", resume=resume))[-1]["outcome"] == {"type": "success"}
     assert added == []
     assert not any("DEMO0009" in text for text in inputs.seen)  # 모델은 화면에서 온 새 번호를 받지 않았다
+    # [왜] 새 번호 갈래를 지워도 [BL2]로 가려져 위 검사는 통과한다. 거절 글이 모델에 닿았는지로 갈래를 본다
+    assert any(NEW_NUMBER["message"] in text for text in inputs.seen)
 
 
 class Stub:

@@ -133,6 +133,7 @@ def test_the_model_never_sees_a_number_typed_on_the_approval_card(agent_deps, de
 
 @pytest.mark.parametrize("args", [{"DEMO0001": "x"}, {"note": 123456789012}], ids=["key", "int-value"])
 def test_a_number_in_a_key_or_a_non_text_value_is_refused(args):
+    # [왜] 정수 값에는 글자 접두어를 붙일 수 없어 숫자만 있는 가공 값을 쓴다
     # [왜] 고친 인자는 json.dumps 알림으로 모델에 간다. 키와 숫자 값도 글이 된다
     assert remask_reply({"decisions": [_edit(args)]}, MAP) == {"decisions": [NEW_NUMBER]}
 
@@ -158,6 +159,7 @@ def test_decisions_are_rebuilt_from_fixed_keys_only():
     ("args", "needle"),
     [
         ({"name": "건고추", "DEMO0001": "x"}, "DEMO0001"),
+        # 정수 값에는 글자 접두어를 붙일 수 없어 숫자만 있는 가공 값을 쓴다
         ({"name": "건고추", "note": 123456789012}, "123456789012"),
     ],
     ids=["key", "int-value"],
