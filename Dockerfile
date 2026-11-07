@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Marvia API 이미지 (설계 13절: 멀티스테이지, non-root, 계획 4b Task 8).
-# 단계: build(uv로 .venv) → base(실행에 필요한 것만, uid 10001) → runtime(운영, 마지막 단계)
+# 단계: build(uv로 .venv) → base(실행에 필요한 것만, uid 10001) → e2e(가짜 API, 화면 시험용) / runtime(운영, 마지막 단계)
 # [주의] 이미지는 digest로 고정한다. 태그는 옮겨질 수 있다. 맥(arm64)에서도 --platform linux/amd64로 한 번 빌드해 본다(Cloud Run)
 FROM ghcr.io/astral-sh/uv:0.9.30@sha256:538e0b39736e7feae937a65983e49d2ab75e1559d35041f9878b7b7e51de91e4 AS uv
 
@@ -34,6 +34,10 @@ EXPOSE 8080
 # [왜] slim 이미지에는 curl이 없다. 파이썬 표준 라이브러리로 /health를 본다
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
   CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=2)"]
+
+FROM base AS e2e
+COPY e2e/fake_api.py /app/e2e/fake_api.py
+CMD ["python", "/app/e2e/fake_api.py"]
 
 FROM base AS runtime
 CMD ["python", "-m", "marvia.server"]

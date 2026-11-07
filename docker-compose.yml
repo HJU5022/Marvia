@@ -2,6 +2,7 @@
 # 하지 않는 일: 배포. 배포 DB는 Supabase이고 여기 비밀번호는 내 컴퓨터에서만 쓰는 값이다.
 # 켜기: docker compose up -d db neo4j neo4j-test / 끄기: docker compose stop db neo4j neo4j-test
 # 앱(profile app): docker compose --profile app up -d --build  (prepare가 표를 만든 뒤 api가 뜬다)
+# 화면 시험(profile e2e): docker compose --profile e2e run --rm --build playwright  (바깥으로 나가지 못하는 망)
 name: marvia-v2 # [왜] v1 compose와 이름을 나눠 컨테이너·볼륨이 섞이지 않게 한다
 services:
   db:
@@ -81,6 +82,35 @@ services:
     build: { context: ./web, args: { NEXT_PUBLIC_API_URL: "http://localhost:8080", NEXT_PUBLIC_AUTH: dev } }
     ports:
       - "127.0.0.1:3000:3000"
+  api-e2e:
+    # 화면 시험용 가짜 API (e2e/fake_api.py). 실제 모델·DB를 쓰지 않는다
+    profiles: [e2e]
+    build: { context: ., target: e2e }
+    environment:
+      MARVIA_AUTH: dev
+      MARVIA_DEV_TOKEN: e2e-token # 시험용 값. 운영에 쓰지 않는다
+      MARVIA_WEB_ORIGIN: http://web-e2e:3000
+    networks: [e2e]
+  web-e2e:
+    profiles: [e2e]
+    build: { context: ./web, args: { NEXT_PUBLIC_API_URL: "http://api-e2e:8080", NEXT_PUBLIC_AUTH: dev } }
+    networks: [e2e]
+  playwright:
+    profiles: [e2e]
+    build: { context: ./web, dockerfile: e2e.Dockerfile }
+    environment:
+      E2E_BASE_URL: http://web-e2e:3000
+      E2E_DEV_TOKEN: e2e-token
+    volumes:
+      - ./web/e2e/screenshots:/work/e2e/screenshots # 스크린샷을 저장소에 남긴다
+    depends_on:
+      api-e2e: { condition: service_healthy }
+      web-e2e: { condition: service_started }
+    networks: [e2e]
+networks:
+  e2e:
+    # [왜] 바깥으로 나가지 못하는 망. 시험 중 모델·임베딩 API 호출은 0건일 수밖에 없다
+    internal: true
 volumes:
   pgdata_v2: {}
   neo4jdata_v2: {}

@@ -9,4 +9,5 @@
 !migrations
 !fixtures/unipass
 !corpus/graph
+!e2e/fake_api.py
 **/__pycache__

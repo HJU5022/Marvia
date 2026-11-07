@@ -1,12 +1,13 @@
-"""이미지·compose 경계 시험 (계획 4b Task 8, C8). 도커 없이 파일만 읽는다."""
+"""이미지·compose 경계 시험 (계획 4b Task 8·9, C8·C9). 도커 없이 파일만 읽는다."""
 
+import json
 import re
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCKERFILES = [ROOT / "Dockerfile", ROOT / "web" / "Dockerfile"]
+DOCKERFILES = [ROOT / "Dockerfile", ROOT / "web" / "Dockerfile", ROOT / "web" / "e2e.Dockerfile"]
 COMPOSE = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
 PINNED = re.compile(r"@sha256:[0-9a-f]{64}$")
 
@@ -26,6 +27,7 @@ def test_the_build_context_is_an_allow_list_without_secrets_or_real_data():
         "migrations",
         "fixtures/unipass",
         "corpus/graph",
+        "e2e/fake_api.py",
     }
 
 
@@ -55,6 +57,34 @@ def test_published_ports_open_on_this_computer_only():
     assert ports  # [왜] 공개 포트가 하나도 없으면 아래 검사가 아무것도 보지 않는다
     for name, port in ports:
         assert port.startswith("127.0.0.1:"), (name, port)
+
+
+def test_the_e2e_network_cannot_reach_outside_and_the_runtime_image_has_no_fake_api():
+    assert COMPOSE["networks"]["e2e"]["internal"] is True
+    for name in ("api-e2e", "web-e2e", "playwright"):
+        assert COMPOSE["services"][name]["networks"] == ["e2e"], name
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    runtime = dockerfile.split("FROM base AS runtime")[1]
+    assert "fake_api" not in runtime  # 가짜 API는 e2e 단계에만 복사한다
+    assert dockerfile.rstrip().endswith('CMD ["python", "-m", "marvia.server"]')  # 기본(마지막) 단계가 운영
+
+
+def test_the_playwright_image_matches_the_test_package_version():
+    # [왜] 이미지 태그와 @playwright/test 버전이 다르면 브라우저 실행 파일을 찾지 못한다
+    package = json.loads((ROOT / "web" / "package.json").read_text())
+    version = package["devDependencies"]["@playwright/test"]
+    image = next(
+        line.split()[1]
+        for line in (ROOT / "web" / "e2e.Dockerfile").read_text().splitlines()
+        if line.startswith("FROM ")
+    )
+    assert image.startswith(f"mcr.microsoft.com/playwright:v{version}-noble@sha256:")
+    # [왜] @axe-core/playwright는 playwright-core를 아무 버전이나 받는다. 같은 버전으로 묶지 않으면
+    #      npm이 최신판을 따로 깔아 타입이 둘로 갈린다(11-07 실측: 1.65.0과 1.64.1, next build 실패)
+    assert package["devDependencies"]["playwright-core"] == version
+    # [왜] 정확한 버전만 쓴다(save-exact). ^·~가 붙으면 잠금 파일 밖에서 버전이 바뀔 수 있다
+    versions = {**package["dependencies"], **package["devDependencies"]}
+    assert all(re.fullmatch(r"\d+\.\d+\.\d+", v) for v in versions.values()), versions
 
 
 def test_prepare_db_twice_makes_the_tables_the_server_needs_and_the_second_run_changes_nothing(
