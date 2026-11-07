@@ -11,7 +11,7 @@ API는 Cloud Run(서울, `asia-northeast3`), 화면은 Vercel, DB는 Supabase, �
 | 확인 | 명령 | 결과 |
 |---|---|---|
 | amd64 이미지 빌드 | `docker buildx build --platform linux/amd64 --target runtime --load .` | 성공, 71초 |
-| amd64 이미지 크기 | `docker image inspect` | 1.18GB (상한 1.2GB, 여유 작음) |
+| amd64 이미지 크기 | `docker image ls`의 DISK USAGE(받은 층과 푼 층의 합. `docker run`으로 한 번 띄워 층을 푼 뒤 읽는다) | 1.18GB (상한 1.2GB, 여유 작음). 11-08 계획 6b(langfuse 5.0.4) 뒤 1,198,946,428바이트, 남은 여유 약 1.05MB |
 | arm64 이미지 크기 | `docker images` | 1.07GB |
 | 실행 사용자 | `docker run --rm <이미지> id -u` | `10001` |
 | 형태소 분석기 메모리 (1GB) | `docker run --rm --platform linux/amd64 --memory 1g --memory-swap 1g <이미지> python -c "from marvia.rag.keywords import keywords; print(keywords('수입 신고 시 관세율은 어떻게 정해지나요?')[:5])"` | 종료 코드 0, `['수입', '신고', '관세', '어떻', '정하']` (Cloud Run 배포 명령의 `--memory 1Gi`가 이 값) |
