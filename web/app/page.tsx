@@ -1,7 +1,7 @@
 "use client";
 // Marvia 화면 한 쪽 (설계 10절): 채팅, 계획 진행, 이렇게 읽었어요, 선택지·승인 카드, 답과 근거, 화물 카드.
 // 상태는 서버가 보낸 STATE_SNAPSHOT(허용 목록)과 답 글뿐이다. 서버에 state를 보내지 않는다.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApprovalCardView } from "@/components/ApprovalCardView";
 import { ChoiceCardView } from "@/components/ChoiceCardView";
@@ -23,6 +23,11 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const running = useRef<AbortController | null>(null);
+
+  // 화면을 떠나면 진행 중인 차례를 멈춘다
+  useEffect(() => () => running.current?.abort(), []);
+
   useEffect(() => {
     currentToken().then(setToken);
   }, []);
@@ -43,12 +48,16 @@ export default function Home() {
       setBusy(true);
       setError("");
       setCard(null);
+      running.current?.abort();
+      const controller = new AbortController();
+      running.current = controller;
       try {
-        await runTurn(API_URL, token, { threadId, ...input }, onEvent);
+        await runTurn(API_URL, token, { threadId, ...input }, onEvent, controller.signal);
       } catch (failure) {
+        if (controller.signal.aborted) return; // 멈춘 차례는 아무것도 보이지 않는다
         setError(failure instanceof Error ? failure.message : "요청이 실패했어요");
       } finally {
-        setBusy(false);
+        if (running.current === controller) setBusy(false);
       }
     },
     [token, threadId, onEvent],
@@ -99,7 +108,10 @@ export default function Home() {
     <main>
       <header className="row">
         <h1>Marvia</h1>
-        <button type="button" className="secondary" onClick={() => signOut().then(() => setToken(null))}>
+        <button type="button" className="secondary" onClick={() => {
+            running.current?.abort();
+            signOut().then(() => setToken(null));
+          }}>
           로그아웃
         </button>
       </header>

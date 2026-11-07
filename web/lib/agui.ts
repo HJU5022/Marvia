@@ -68,6 +68,7 @@ export async function runTurn(
   token: string,
   input: TurnInput,
   onEvent: (event: AgUiEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   // [주의] state·forwardedProps는 빈 값으로 보낸다. 서버도 읽지 않는다(계획 4b C7)
   const body = {
@@ -86,6 +87,7 @@ export async function runTurn(
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream", authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
+    signal,
   });
   if (!response.ok || !response.body) {
     throw new Error(`서버가 요청을 받지 않았어요 (${response.status})`);
@@ -93,18 +95,45 @@ export async function runTurn(
   // SSE: "data: {json}" 줄들이 빈 줄로 나뉜다. 조각이 이벤트 중간에서 끊길 수 있어 버퍼에 모은다
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += value;
-    let end = buffer.indexOf("\n\n");
-    while (end >= 0) {
-      const chunk = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      for (const line of chunk.split("\n")) {
-        if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)) as AgUiEvent);
+  let finished = false;
+  const handle = (block: string) => {
+    for (const event of parseBlock(block)) {
+      if (event.type === "RUN_FINISHED" || event.type === "RUN_ERROR") finished = true;
+      onEvent(event);
+    }
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      // [왜] 프록시가 \r\n을 쓸 수 있다. 줄바꿈을 \n으로 맞춘 뒤 자른다
+      buffer = (buffer + value).replace(/\r\n/g, "\n");
+      let end = buffer.indexOf("\n\n");
+      while (end >= 0) {
+        const block = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        handle(block);
+        end = buffer.indexOf("\n\n");
       }
-      end = buffer.indexOf("\n\n");
+    }
+    if (buffer.trim()) handle(buffer);
+    // [왜] 끝 이벤트 없이 끊기면 답이 없는 채로 조용히 끝난 것처럼 보인다
+    if (!finished) throw new Error("연결이 중간에 끊겼어요");
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+}
+
+// 이벤트 한 덩어리("data:" 줄들)를 읽는다. 깨진 줄은 서버 글을 보이지 않고 정해 둔 글로 던진다
+export function parseBlock(block: string): AgUiEvent[] {
+  const events: AgUiEvent[] = [];
+  for (const line of block.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    try {
+      events.push(JSON.parse(line.slice(5).trimStart()) as AgUiEvent);
+    } catch {
+      throw new Error("서버가 보낸 이벤트를 읽지 못했어요");
     }
   }
+  return events;
 }
