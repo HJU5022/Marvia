@@ -60,3 +60,9 @@ def test_two_containers_of_one_owner_glued_together_split():
         ("DEMU1234560", "container"),
         ("DEMU2345676", "container"),
     ]
+
+
+def test_a_spaced_container_is_one_number_only_when_its_check_digit_holds():
+    assert values("컨테이너 DEMU 123456 0, TESU 0000013") == [["DEMU1234560"], ["TESU0000013"]]
+    assert values("DEMU 123456-0 도착") == [["DEMU1234560"]]  # 조각 123456-0이 따로 잡히지 않는다
+    assert values("ABCU 1234567 같은 글") == []  # 확인 숫자가 틀리면 번호로 보지 않는다(전과 같다)

@@ -151,3 +151,7 @@ def test_distinct_number_keys_keep_both_values():
 def test_scrub_hides_container_numbers_whole():
     # [왜] 컨테이너 번호(11자)도 8자 이상 영문·숫자 덩어리라 같은 규칙에 걸린다 (계획 6a에서 확인)
     assert scrub("컨테이너 DEMU1234560, DEMU-123456-0") == f"컨테이너 {MASK}, {MASK}"
+
+
+def test_scrub_hides_a_spaced_container_number():
+    assert scrub("DEMU 123456 0 도착") == f"{MASK} 도착"

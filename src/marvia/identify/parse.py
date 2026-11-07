@@ -19,6 +19,9 @@ _CONTAINER = re.compile(r"[A-Z]{3}[UJZ][0-9]{7}")
 # ISO 6346 글자 값: A=10부터 차례로 매기되 11의 배수(11, 22, 33)는 건너뛴다 (A=10, B=12, ..., Z=38)
 # [왜] 표준이 정한 계산이라 rules/*.yaml에 두지 않는다 (_CARGO_NO, B/L 길이와 같다)
 _LETTER_VALUE = dict(zip(string.ascii_uppercase, (v for v in range(10, 39) if v % 11), strict=True))
+# 띄어 쓴 컨테이너 번호 (DEMU 123456 0, DEMU 1234560). [왜] 서류·컨테이너 문에 이렇게 적는다. 나뉜 조각은
+#      8자보다 짧아 _SPAN이 못 찾고, 못 찾으면 가리지 않은 채 LLM에 간다
+_SPACED_CONTAINER = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{3}[UJZujz][ -]?[0-9]{6}[ -]?[0-9](?![A-Za-z0-9])")
 # 번호처럼 보여도 번호가 아닌 것: 날짜(YYYYMMDD), 휴대폰 번호
 _NOT_NUMBER = re.compile(r"20\d{6}|01[016789]\d{7,8}")
 # B/L 한 건의 길이 범위 (v1 patterns.py와 같은 8~20자)
@@ -47,8 +50,8 @@ class Span:
 
 
 def normalize(raw: str) -> str:
-    """하이픈을 빼고 대문자로 바꾼다."""
-    return raw.replace("-", "").upper()
+    """하이픈·빈칸을 빼고 대문자로 바꾼다."""
+    return raw.replace("-", "").replace(" ", "").upper()
 
 
 def check_digit(code: str) -> int:
@@ -103,13 +106,22 @@ def read_token(raw: str) -> TokenRead:
 
 
 def find_spans(text: str) -> list[Span]:
-    """글에서 번호 후보 덩어리의 위치를 찾는다. 숫자가 없거나 날짜·전화번호면 뺀다."""
-    spans = []
+    """글에서 번호 후보 덩어리의 위치를 찾는다. 숫자가 없거나 날짜·전화번호면 뺀다.
+    띄어 쓴 컨테이너 번호는 확인 숫자가 맞을 때만 한 덩어리로 본다."""
+    # [왜] 확인 숫자로 거른다. "영문 4자 숫자 7자리"처럼 띄어 쓴 다른 글을 번호로 잡지 않는다
+    spans = [
+        Span(m.start(), m.end(), m.group())
+        for m in _SPACED_CONTAINER.finditer(text)
+        if " " in m.group() and is_container(normalize(m.group()))
+    ]
+    taken = list(spans)
     for m in _SPAN.finditer(text):
         raw = m.group()
+        if any(s.start < m.end() and m.start() < s.end for s in taken):
+            continue  # 띄어 쓴 컨테이너 번호의 조각이다
         if any(ch.isdigit() for ch in raw) and not _NOT_NUMBER.fullmatch(normalize(raw)):
             spans.append(Span(m.start(), m.end(), raw))
-    return spans
+    return sorted(spans, key=lambda s: s.start)
 
 
 def read_numbers(text: str) -> list[tuple[Span, TokenRead]]:
