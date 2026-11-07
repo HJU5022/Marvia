@@ -51,6 +51,7 @@ class CargoIdentity(BaseModel):
     vessel: str | None = None
     source: Literal["text", "photo", "message"] = "text"  # 어떤 단서에서 번호를 얻었나
     confidence: Literal["confirmed", "candidate", "unknown"]  # 확정 / 후보 / 확인 못 함
-    candidates: list[str] = Field(default_factory=list)  # 확정 못 했을 때의 후보 (2차)
+    # 확정 못 했을 때의 후보 실제 번호. 지금은 컨테이너에 실린 아는 화물이 여럿일 때만 채운다 (계획 6a)
+    candidates: list[str] = Field(default_factory=list)
     facts: CargoFacts | None = None  # 조회에 성공하면 채운다
     error: ToolError | None = None  # 조회에 실패하면 채운다

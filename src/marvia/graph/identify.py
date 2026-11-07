@@ -1,7 +1,7 @@
 """식별 서브그래프: 단서 글 → 번호 읽기·가림 → 조회 → 화물별 결과 (설계 4절).
 
 하지 않는 일: 사용자에게 직접 묻기. 애매하면 question에 담아 끝내고, 묻는 일은 메인 그래프만 한다 (설계 6.3).
-순서도: START → read → (애매하면 END, 아니면 lookup) → END
+순서도: START → read → (애매하면 END, 아니면 lookup) → choose → END
 조회(lookup)는 따로 컴파일한 서브그래프다: assign → 번호마다 Send("one") → collect (설계 4.3, 계획 3d)
 컨테이너 번호는 UNI-PASS로 조회하지 않고 collect가 아는 화물(이 대화, 감시 목록)에서 찾는다 (계획 6a)
 """
@@ -207,6 +207,28 @@ def build_lookup_graph(watched: Watched | None = None):
     return graph.compile()
 
 
+def choose(state: IdentifyState) -> dict:
+    """컨테이너에 실린 아는 화물이 여럿이면 어느 화물을 볼지 묻는 선택지를 만든다 (설계 4.1 ②, 6.3)."""
+    many = next((c for c in state.get("cargos", []) if c.get("candidates")), None)
+    if many is None:
+        return {}
+    mask_map = dict(state.get("mask_map", {}))
+    # [왜] 선택지 글에는 토큰만 쓴다. 화면에 보낼 때 view.interrupt_card가 실제 번호로 되돌린다
+    tokens = [token_for(mask_map, number, kind_of(number)) for number in many["candidates"]]
+    question = {
+        "kind": "choice",
+        "question": f"컨테이너 {many['token']}에 실린 화물이 여럿이에요. 어느 화물을 볼까요?",
+        "options": [{"label": " + ".join(tokens), "description": f"{len(tokens)}건 모두 조회"}]
+        + [{"label": token, "description": "이 화물만 조회"} for token in tokens],
+        "recommended": 0,  # [왜] 하나를 짐작하지 않고 모두 보이는 안을 권장한다
+        "alternatives": [many["candidates"]] + [[number] for number in many["candidates"]],
+    }
+    # [왜] 고른 화물을 메인 그래프의 lookup이 조회한다. 컨테이너는 조회할 번호에서 뺀다(두면 후보가 또 나온다)
+    container = mask_map[many["token"]]
+    numbers = [number for number in state.get("numbers", []) if number != container]
+    return {"question": question, "mask_map": mask_map, "numbers": numbers}
+
+
 def _after_read(state: IdentifyState) -> str:
     """갈림길: 물을 것이 있으면 끝내고, 없으면 조회로 간다."""
     return END if state.get("question") else "lookup"
@@ -220,6 +242,8 @@ def build_identify_graph(watched: Watched | None = None):
     graph.add_edge(START, "read")  # 화살표: 시작하면 read
     # 갈림길: read가 끝나면 _after_read가 고른 곳으로 간다. 셋째 인자는 갈 수 있는 곳 목록(그림 그리기용)
     graph.add_conditional_edges("read", _after_read, ["lookup", END])
-    graph.add_edge("lookup", END)
+    graph.add_node("choose", choose)
+    graph.add_edge("lookup", "choose")
+    graph.add_edge("choose", END)
     # [왜] compile은 순서도가 올바른지(끊긴 화살표 등) 검사하고 .invoke()로 돌릴 수 있는 객체를 만든다
     return graph.compile()

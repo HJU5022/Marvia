@@ -1087,6 +1087,21 @@ def test_both_loops_find_a_container_among_the_users_watched_cargo_alike(agent_d
     assert (cargo["token"], cargo["kind"], cargo["bl_no"]) == ("[CNTR1]", "container", "DEMO0001")
 
 
+@pytest.mark.parametrize("loop", ["planner", "agent"])
+def test_both_loops_ask_which_cargo_when_a_container_carries_several(agent_deps, loop):
+    watch = watching(lambda user: ["DEMO0002", "DEMO0003"])
+    graph = build_main_graph(agent_deps(model=model(say()), watch=watch), InMemorySaver(), loop=loop)
+    out = graph.invoke({"text": "TESU0000013 어디야?"}, cfg(f"cm-{loop}"))
+    card = out["__interrupt__"][0].value
+    assert card["kind"] == "choice" and [o["label"] for o in card["options"]] == [
+        "[BL1] + [BL2]",
+        "[BL1]",
+        "[BL2]",
+    ]
+    out = graph.invoke(Command(resume={"selected": 1}), cfg(f"cm-{loop}"))
+    assert "DEMO0002: 수입신고 (부산)" in out["answer"] and "DEMO0003" not in out["answer"]
+
+
 def test_lookup_cargo_tool_matches_a_container_token_without_showing_numbers(agent_deps):
     inputs = Inputs()
     watch = watching(lambda user: ["DEMO0001"] if user == "u1" else [])

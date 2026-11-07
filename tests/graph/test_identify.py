@@ -152,3 +152,22 @@ def test_live_mode_reads_no_watch_list_for_a_container(monkeypatch):
     out = build_identify_graph(watched).invoke({"text": "TESU0000013 어디야?"})
     assert out["cargos"][0]["error"]["message"] == load_rules("unipass")["messages"]["container_unknown"]
     assert asked == [] and seen == []
+
+
+def test_several_watched_cargos_on_one_container_give_a_choice_with_all_first():
+    out = build_identify_graph(lambda config: ["DEMO0002", "DEMO0003"]).invoke(
+        {"text": "TESU0000013 어디야?"}
+    )
+    question = out["question"]
+    assert [o["label"] for o in question["options"]] == ["[BL1] + [BL2]", "[BL1]", "[BL2]"]
+    assert question["recommended"] == 0
+    assert question["alternatives"] == [["DEMO0002", "DEMO0003"], ["DEMO0002"], ["DEMO0003"]]
+    # [왜] 화면에 보낼 칸(질문, 선택지)에는 토큰만 있다. 실제 번호는 alternatives에만 있다
+    shown = str({key: question[key] for key in ("question", "options")})
+    assert "TESU0000013" not in shown and "DEMO0002" not in shown
+    assert out["numbers"] == []  # 고른 화물만 다시 조회한다
+
+
+def test_a_single_match_asks_nothing():
+    out = build_identify_graph(lambda config: ["DEMO0001"]).invoke({"text": "DEMU1234560 어디야?"})
+    assert out["question"] is None and out["numbers"] == ["DEMU1234560"]
