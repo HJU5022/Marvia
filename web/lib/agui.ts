@@ -32,6 +32,8 @@ export type ChoiceCard = {
 };
 export type ApprovalAction = {
   name: string;
+  label: string; // 한국어 이름 (서버 규칙 approval.labels)
+  choices: string[] | null; // 고치기에서 고를 값 (서버 규칙). 글로 쓰는 칸은 null
   args: Record<string, unknown>;
   description: string;
   allowed: string[];

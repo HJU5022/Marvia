@@ -86,11 +86,16 @@ def interrupt_card(value: dict, mask_map: dict[str, str]) -> dict:
     if "action_requests" in value:
         # [왜] review_configs는 도구 이름마다 하나다(요청 순서가 아니다). 모르는 도구는 승인·거절만 연다
         allowed = {c["action_name"]: c["allowed_decisions"] for c in value.get("review_configs", [])}
+        labels = load_rules("agent")["approval"]["labels"]
+        # [왜] 고르는 칸의 값 목록은 규칙이 정한다. 화면이 따로 들고 있지 않게 카드에 싣는다
+        choices = {"save_preference": load_rules("agent")["memory"]["depths"]}
         return {
             "kind": "approval",
             "actions": [
                 {
                     "name": request["name"],
+                    "label": labels.get(request["name"], request["name"]),
+                    "choices": choices.get(request["name"]),
                     "args": _unmask_all(request["args"], mask_map),
                     "description": unmask(request.get("description", ""), mask_map),
                     "allowed": allowed.get(request["name"], ["approve", "reject"]),

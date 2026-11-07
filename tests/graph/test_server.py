@@ -240,6 +240,23 @@ def test_the_view_links_only_to_the_official_site_over_https(evidence):
     assert [e["source_url"] for e in screen_view(values)["evidence"]] == [urls[0], None, None, None]
 
 
+def test_an_approval_card_carries_the_korean_label_and_the_choices_from_the_rules():
+    # [왜] 화면이 규칙 목록을 따로 들고 있으면 규칙이 바뀔 때 어긋난다. 카드가 한국어 이름과 고를 값을 싣는다
+    from marvia.tools.rules import load_rules
+    from marvia.view import interrupt_card
+
+    def request(name):
+        return {"name": name, "args": {}, "description": ""}
+
+    value = {"action_requests": [request("save_preference"), request("watch_cargo"), request("new_tool")]}
+    prefs, watch, unknown = interrupt_card(value, {})["actions"]
+    rules = load_rules("agent")
+    depths = rules["memory"]["depths"]
+    assert (prefs["label"], prefs["choices"]) == (rules["approval"]["labels"]["save_preference"], depths)
+    assert (watch["label"], watch["choices"]) == ("화물 감시 추가", None)
+    assert (unknown["label"], unknown["choices"]) == ("new_tool", None)  # 이름이 없는 도구는 영어 이름 그대로
+
+
 def test_an_approval_card_shows_real_numbers_but_the_model_gets_tokens_back(agent_deps):
     inputs, added = Inputs(), []
     watch = WatchDeps(add=lambda *row: added.append(row), news=lambda user: [], ack=lambda user, ids: None)

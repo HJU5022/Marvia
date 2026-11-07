@@ -3,32 +3,23 @@
 // [왜] 자유 JSON 편집을 열면 모르는 인자가 그대로 도구에 간다. 서버가 고친 값을 다시 가리고 도구가 같은 검사를 한다
 import { useEffect, useRef, useState } from "react";
 
-import type { ApprovalCard } from "@/lib/agui";
+import type { ApprovalAction, ApprovalCard } from "@/lib/agui";
 
 type Decision =
   | { type: "approve" }
   | { type: "reject"; message: string }
   | { type: "edit"; edited_action: { name: string; args: Record<string, unknown> } };
 
-// 고칠 수 있는 도구와 칸. 모르는 도구는 승인·거절만 보인다
-const EDITABLE: Record<string, { field: string; label: string; choices?: string[] }> = {
-  save_preference: { field: "depth", label: "설명 깊이", choices: ["짧게", "보통", "자세히"] },
+// 고칠 수 있는 도구와 칸. 모르는 도구는 승인·거절만 보인다. 고르는 값 목록과 도구 이름은 서버가 카드에 싣는다
+const EDITABLE: Record<string, { field: string; label: string }> = {
+  save_preference: { field: "depth", label: "설명 깊이" },
   save_item_card: { field: "name", label: "품목 이름" },
 };
 
-// 도구 이름의 한글 표시 (src/marvia/graph/tools.py 설명 기준). 모르는 도구는 이름 그대로
-const TOOL_LABEL: Record<string, string> = {
-  save_preference: "설명 깊이 저장",
-  save_item_card: "품목 카드 저장",
-  watch_cargo: "화물 감시 추가",
-  unwatch_cargo: "화물 감시 해제",
-};
-
 // 고치기 칸의 처음 값: 고르는 칸은 화면에 보이는 첫 항목과 같게 맞춘다 (빈 값을 보내지 않는다)
-function initial(name: string, args: Record<string, unknown>): string {
-  const spec = EDITABLE[name];
-  const value = String(args[spec?.field] ?? "");
-  return spec?.choices && !spec.choices.includes(value) ? spec.choices[0] : value;
+function initial(action: ApprovalAction): string {
+  const value = String(action.args[EDITABLE[action.name]?.field] ?? "");
+  return action.choices && !action.choices.includes(value) ? action.choices[0] : value;
 }
 
 export function ApprovalCardView({
@@ -39,7 +30,7 @@ export function ApprovalCardView({
   onReply: (reply: { decisions: Decision[] }) => void;
 }) {
   const [kinds, setKinds] = useState(card.actions.map(() => "approve"));
-  const [values, setValues] = useState(card.actions.map((a) => initial(a.name, a.args)));
+  const [values, setValues] = useState(card.actions.map(initial));
   const [reasons, setReasons] = useState(card.actions.map(() => ""));
   const box = useRef<HTMLElement>(null);
   useEffect(() => box.current?.focus(), []); // 새 카드로 초점을 옮긴다
@@ -64,7 +55,7 @@ export function ApprovalCardView({
         const edit = EDITABLE[action.name] && action.allowed.includes("edit") ? EDITABLE[action.name] : null;
         return (
           <fieldset key={i}>
-            <legend>{TOOL_LABEL[action.name] ?? action.name}</legend>
+            <legend>{action.label}</legend>
             <p className="text">{action.description}</p>
             <label>
               <input type="radio" name={`d${i}`} checked={kinds[i] === "approve"} onChange={() => setKinds(set(kinds, i, "approve"))} />
@@ -89,9 +80,9 @@ export function ApprovalCardView({
             {edit && kinds[i] === "edit" ? (
               <label className="block">
                 {edit.label}
-                {edit.choices ? (
+                {action.choices ? (
                   <select value={values[i]} onChange={(e) => setValues(set(values, i, e.target.value))}>
-                    {edit.choices.map((choice) => (
+                    {action.choices.map((choice) => (
                       <option key={choice}>{choice}</option>
                     ))}
                   </select>
