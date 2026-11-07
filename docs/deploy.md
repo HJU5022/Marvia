@@ -19,20 +19,23 @@ API는 Cloud Run(서울, `asia-northeast3`), 화면은 Vercel, DB는 Supabase, �
 | 서버가 듣는 주소 | `docker run --rm <이미지> sh -c 'echo $MARVIA_HOST'` | `0.0.0.0` (서버 기본은 127.0.0.1이고 이미지가 컨테이너 안에서만 연다) |
 | 로그인 설정 없음 | `docker run --rm -e MARVIA_AUTH=supabase <이미지>` | `RuntimeError: MARVIA_SUPABASE_URL이 없어 로그인을 확인할 수 없습니다` |
 | Cloud Run에서 개발 로그인 | `docker run --rm -e K_SERVICE=x -e MARVIA_AUTH=dev -e MARVIA_DEV_TOKEN=t <이미지>` | `RuntimeError: Cloud Run에서는 개발 로그인(MARVIA_AUTH=dev)으로 시작하지 않습니다` |
-| 키 없음 | `MARVIA_REQUIRE_DB=1 uv run pytest -q tests/graph/test_server.py -k without_model` | 1 passed (시작 거절) |
+| 키 없음 | `uv run pytest -q tests/graph/test_server.py::test_the_server_refuses_to_start_without_model_and_data_keys` | passed (키가 없으면 `RuntimeError: MARVIA_ANTHROPIC_API_KEY ...`로 시작을 거절) |
 | compose 앱(표 준비, API) | 버리는 프로젝트 `marvia-4bcheck`, 포트를 옮기고 버리는 키로 `docker compose -p marvia-4bcheck --profile app up -d --build db neo4j prepare api` | db healthy 뒤 prepare가 `표 준비 끝`, api healthy, 호스트에서 `/health`가 `{"ok":true}`, 토큰 없는 `POST /agui` 401. 끝나고 `down -v`. 개발 compose 프로젝트에는 `up`을 하지 않았다 |
-| 표 준비 두 번 | `MARVIA_REQUIRE_DB=1 uv run pytest -q tests/test_docker.py` | 통과 (시험용 스키마에서 두 번 돌려도 표와 이력이 같다) |
+| 표 준비 두 번 | 버리는 프로젝트 `marvia-4bcheck`에서 `docker compose -p marvia-4bcheck --profile app run --rm prepare`를 한 번 더, 그리고 `MARVIA_REQUIRE_DB=1 uv run pytest -q tests/test_docker.py` | 두 번째도 `표 준비 끝`. 시험(prepare를 두 번 부르는 시험 포함 7개 중)이 통과해 표와 이력이 같다 |
 | 화면 주요 흐름 4개 | `docker compose -p marvia-4be2e --profile e2e run --rm --build playwright` | 4 passed (6.5초), 접근성(axe) serious·critical 0, 브라우저의 바깥 요청 0. 가짜 모델 화면 |
 | 배포 워크플로 문법 | `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -no-color` | 오류 0 (종료 코드 0) |
 | `PORT`로 듣기 (단위 시험) | `uv run pytest -q tests/graph/test_server.py -k main_listens` | passed. `PORT=9999`로 `main()`을 부르면 `uvicorn.run`이 포트 9999를 받는다 (uvicorn은 가짜로 바꾼 시험이라 서버는 뜨지 않는다) |
 | `PORT`로 듣기 (컨테이너) | | 돌리지 않음. Cloud Run이 `PORT=8080`을 넣고 배포 명령도 `--port 8080`이다 |
-| Cloud Run job과 service 배포 | | 돌리지 않음 (계정 없음) |
+| Cloud Run job과 service 배포 | | 돌리지 않음 (계정 없음). job의 `--command python --args=-m,marvia.prepare_db` 모양도 돌리지 않음 (compose는 이미지 CMD 대신 `command:`로 같은 모듈을 불렀다) |
 
 계정이 필요한 명령(gcloud, Vercel, Supabase)은 돌리지 않았다. 아래 gcloud 명령의 모양은 참조 문서(`run deploy`, `run jobs deploy`, `run jobs execute`, `artifacts repositories create`, `secrets create`, `secrets versions add`)와 google-github-actions/auth v3.0.0 README로 확인했다 [문서 11-07]. `services enable`과 IAM 역할 이름은 확인하지 않았다 [추정].
 
 ## 직접 할 일 1: Supabase (DB, 로그인)
 
 1. 프로젝트를 만들고(지역은 서울에 가까운 곳), Authentication에서 Google 제공자를 켠다. 내 계정으로 한 번 로그인한 뒤 새 가입을 막는다(Authentication 설정의 가입 허용 끔). 내 사용자 id(UUID)를 적어 둔다. 이것이 `MARVIA_OWNER_IDS`다.
+    - 로그인 확인은 비대칭 서명 키(ES256, 공개키 목록 `<프로젝트 주소>/auth/v1/.well-known/jwks.json`)만 받는다. 프로젝트의 JWT 서명 키를 비대칭(ES256)으로 쓰게 맞춰 둔다. 예전 HS256 비밀값 방식인 프로젝트는 모든 로그인이 401이 된다.
+    - 내 사용자 id(토큰의 `sub`)를 `MARVIA_OWNER_IDS`에 넣는다. 목록 밖 사용자는 403이다.
+    - 가입은 꺼 둔다(Authentication 설정의 가입 허용 끔).
 2. DB 주소는 공유 풀러의 **세션 모드(5432)** 주소를 쓴다. [왜] 무료판 직접 연결은 IPv6뿐이고, 트랜잭션 모드(6543)는 prepared statement를 받지 않는다(계획 4b 사전 부검 3번, Supabase 연결 문서).
 3. 표와 코퍼스를 옮긴다. 코퍼스는 다시 임베딩하지 않고 로컬 표를 그대로 옮긴다(Voyage 비용 없음):
 
