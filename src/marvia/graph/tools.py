@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from marvia.graph.agent import build_researcher
 from marvia.graph.answer import cargo_lines
-from marvia.graph.identify import build_lookup_graph
+from marvia.graph.identify import Watched, build_lookup_graph
 from marvia.identify.mask import LABELS, READ_LABELS, mask_text
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
@@ -68,6 +68,23 @@ def user_of(config: RunnableConfig) -> str:
     if configurable.get("surface") == SERVER_SURFACE:
         raise MissingUser("화면 서버 길에는 user_id가 있어야 합니다")
     return "local"
+
+
+def watched(watch: WatchDeps | None) -> Watched | None:
+    """컨테이너 찾기용 감시 목록 읽기: 실행 설정 → 그 사용자의 감시 번호 (계획 6a). 읽을 수 없으면 None."""
+    if watch is None or watch.numbers is None:
+        return None
+    numbers = watch.numbers
+
+    def read(config: RunnableConfig) -> list[str]:
+        user = user_of(config)  # [주의] 서버 길에서 user_id가 없으면 MissingUser로 멈춘다 (R-048)
+        try:
+            return numbers(user)
+        except psycopg.Error:
+            # [왜] 감시 목록은 덤이다. DB 오류면 이 대화의 화물에서만 찾는다 (news 노드와 같다)
+            return []
+
+    return read
 
 
 def _reply(runtime: ToolRuntime, text: str, **update) -> Command:
@@ -136,7 +153,8 @@ def make_tools(
     # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
     worst_search = worst_search_calls(load_rules("agent")["loop"]["rag_rewrites"])
     max_searches = load_rules("agent")["loop"]["max_searches"]
-    lookup_graph = build_lookup_graph()  # [왜] 식별과 같은 조회 서브그래프: 번호마다 Send 갈래로 조회한다
+    # [왜] 식별과 같은 조회 서브그래프: 번호마다 Send 갈래로 조회하고 컨테이너는 아는 화물에서 찾는다
+    lookup_graph = build_lookup_graph(watched(watch))
 
     @tool
     def search_law(query: str, runtime: ToolRuntime) -> Command:
@@ -238,7 +256,8 @@ def make_tools(
     @tool
     def lookup_cargo(tokens: list[str], runtime: ToolRuntime) -> Command:
         """Look up the customs status of cargo tokens such as [BL1] (for example a number the user gave in
-        an answer). Returns one line per cargo.
+        an answer). A container token such as [CNTR1] is matched only against cargo already known in this
+        conversation or on the user's watch list. Returns one line per cargo.
         """
         mask_map = dict(runtime.state.get("mask_map", {}))
         known = [token for token in tokens if token in mask_map]
@@ -247,7 +266,13 @@ def make_tools(
         need = [token for token in known if token not in have]
         # [주의] 실제 번호는 여기서만 꺼낸다. 결과 줄(cargo_lines)은 토큰으로 쓴다
         numbers = [mask_map[token] for token in need]
-        fresh = lookup_graph.invoke({"numbers": numbers, "mask_map": mask_map})["cargos"] if need else []
+        # [왜] 이 대화의 화물(cargos)도 넘긴다. 컨테이너 토큰은 그 사실에서 찾는다 (계획 6a)
+        known_cargos = runtime.state.get("cargos", [])
+        fresh = (
+            lookup_graph.invoke({"numbers": numbers, "mask_map": mask_map, "cargos": known_cargos})["cargos"]
+            if need
+            else []
+        )
         found = have | {cargo["token"]: cargo for cargo in fresh}
         cargos = [found[token] for token in known]
         lines = cargo_lines(cargos) + [

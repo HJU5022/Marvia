@@ -1062,6 +1062,47 @@ def test_lookup_cargo_looks_up_new_tokens_in_parallel(agent_deps, slow_lookup):
     assert "DEMO0001" not in all_text(values)
 
 
+# --- 컨테이너 번호 (계획 6a) ---
+
+
+def watching(numbers_of):
+    """감시 목록 번호만 주는 가짜 감시. numbers_of: 사용자 → 그 사용자의 감시 번호들."""
+    from marvia.watch import WatchDeps
+
+    return WatchDeps(
+        add=lambda *row: None, news=lambda user: [], ack=lambda user, ids: None, numbers=numbers_of
+    )
+
+
+@pytest.mark.parametrize("loop", ["planner", "agent"])
+def test_both_loops_find_a_container_among_the_users_watched_cargo_alike(agent_deps, loop):
+    users: list[str] = []
+    watch = watching(lambda user: users.append(user) or ["DEMO0001"])
+    graph = build_main_graph(agent_deps(model=model(say()), watch=watch), InMemorySaver(), loop=loop)
+    config = {"configurable": {"thread_id": f"cn-{loop}", "user_id": "u1"}}
+    out = graph.invoke({"text": "컨테이너 DEMU1234560 어디쯤이에요?"}, config)
+    assert "DEMU1234560: 반입신고 (부산) 2026-10-27" in out["answer"]  # 코드가 쓴 화물 줄
+    assert users == ["u1"]  # 그 사용자의 감시 목록만 봤다
+    cargo = graph.get_state(config).values["cargos"][0]
+    assert (cargo["token"], cargo["kind"], cargo["bl_no"]) == ("[CNTR1]", "container", "DEMO0001")
+
+
+def test_lookup_cargo_tool_matches_a_container_token_without_showing_numbers(agent_deps):
+    inputs = Inputs()
+    watch = watching(lambda user: ["DEMO0001"] if user == "u1" else [])
+    ask = say(("ask_user", {"question": "컨테이너 번호를 알려 주세요", "options": TWO}))
+    look = say(("lookup_cargo", {"tokens": ["[CNTR1]"]}))
+    graph = agent_graph(agent_deps, ask, look, say(), watch=watch)
+    config = {"configurable": {"thread_id": "cn-tool", "user_id": "u1"}, "callbacks": [inputs]}
+    graph.invoke({"text": "제 화물 어디쯤이에요?"}, config)
+    # [왜] 직접 쓴 답의 번호는 가리기만 한다. 그래서 컨테이너 토큰을 도구가 처음 찾는다
+    out = graph.invoke(Command(resume={"custom": "DEMU1234560"}), config)
+    tool_text = [m.content for m in graph.get_state(config).values["messages"] if m.type == "tool"][-1]
+    assert tool_text == "[CNTR1]: 반입신고 (부산) 2026-10-27"
+    assert "DEMU1234560: 반입신고" in out["answer"]
+    assert not any("DEMU1234560" in call or "DEMO0001" in call for call in inputs.calls)
+
+
 # --- 색인 밖 공식 출처 조회 (계획 3d) ---
 
 # 국가법령정보센터 법령 정보 페이지에서 fetch.law_info·title이 읽는 부분만 흉내 낸 가짜 페이지

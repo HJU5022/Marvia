@@ -44,6 +44,7 @@ from marvia.graph.tools import (
     make_tools,
     search_calls,
     user_of,
+    watched,
     worst_search_calls,
 )
 from marvia.graph.verify import verify
@@ -469,9 +470,11 @@ def build_main_graph(
     graph = StateGraph(MarviaState)
     graph.add_node("start", start)
     # [왜] 컴파일한 서브그래프도 노드 하나처럼 넣을 수 있다. 공책 칸 이름이 같아서 그대로 주고받는다
-    graph.add_node("identify", build_identify_graph())
+    # [왜] 두 길(계획자·에이전트)이 같은 식별을 쓴다. 컨테이너 번호는 감시 목록에서도 찾는다 (계획 6a)
+    graph.add_node("identify", build_identify_graph(watched(deps.watch)))
     graph.add_node("ask", ask)
-    graph.add_node("lookup", build_lookup_graph())  # 식별 서브그래프와 같은 조회 서브그래프를 다시 쓴다
+    # 식별 서브그래프와 같은 조회 서브그래프를 다시 쓴다
+    graph.add_node("lookup", build_lookup_graph(watched(deps.watch)))
     graph.add_node("write", write)
     graph.add_node("verify", check)
     graph.add_node("respond", shown(respond))

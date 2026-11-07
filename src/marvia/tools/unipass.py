@@ -149,6 +149,13 @@ def fetch_cargo(
     return result
 
 
+def facts_carry_containers() -> bool:
+    """화물 사실에 컨테이너 번호가 실릴 수 있는가. 지금은 재생 모드만 그렇다 (계획 6a 정정)."""
+    # shortcut: 실제 응답(parse_progress)은 컨테이너 칸을 읽지 않는다.
+    #           연계가이드에서 API001의 cntrNo를 확인하면 바꾼다
+    return Settings().unipass_mode != "live"
+
+
 def lookup_cargo(number: str) -> CargoFacts | ToolError:
     """번호 하나를 조회한다. 기본은 재생 데이터, MARVIA_UNIPASS_MODE=live에 키가 있을 때만 실제 API.
     컨테이너 번호는 어느 모드에서도 조회하지 않고 정한 글(container_unknown)을 돌려준다."""

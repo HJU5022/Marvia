@@ -3,13 +3,16 @@
 하지 않는 일: 사용자에게 직접 묻기. 애매하면 question에 담아 끝내고, 묻는 일은 메인 그래프만 한다 (설계 6.3).
 순서도: START → read → (애매하면 END, 아니면 lookup) → END
 조회(lookup)는 따로 컴파일한 서브그래프다: assign → 번호마다 Send("one") → collect (설계 4.3, 계획 3d)
+컨테이너 번호는 UNI-PASS로 조회하지 않고 collect가 아는 화물(이 대화, 감시 목록)에서 찾는다 (계획 6a)
 """
 
 from __future__ import annotations
 
 import operator
+from collections.abc import Callable
 from typing import Annotated, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
@@ -17,7 +20,11 @@ from marvia.graph.state import IdentifyState
 from marvia.identify.mask import mask_text, token_for
 from marvia.identify.models import CargoFacts, CargoIdentity, ToolError
 from marvia.identify.parse import kind_of, read_numbers
-from marvia.tools.unipass import lookup_cargo
+from marvia.tools.rules import load_rules
+from marvia.tools.unipass import facts_carry_containers, lookup_cargo
+
+# 실행 설정 → 그 사용자의 감시 목록 번호 (graph/tools.py의 watched가 만든다). 컨테이너를 찾을 때만 부른다
+Watched = Callable[[RunnableConfig], list[str]]
 
 
 def read(state: IdentifyState) -> dict:
@@ -74,6 +81,54 @@ def identify_number(number: str, mask_map: dict[str, str]) -> dict:
     return identity.model_dump(mode="json")
 
 
+def known_cargo(cargos: list[dict], watched: list[str]) -> list[dict]:
+    """컨테이너 번호를 맞춰 볼 화물 사실: 이미 조회한 화물(cargos)과 감시 목록 번호(다시 조회)."""
+    known = [cargo["facts"] for cargo in cargos if cargo.get("facts")]
+    have = {facts["number"] for facts in known}
+    for number in watched:
+        if number in have:
+            continue
+        try:
+            result = lookup_cargo(number)
+        except (OSError, ValueError):
+            continue  # [왜] 감시 화물 하나의 조회 오류로 찾기 전체를 멈추지 않는다 (identify_number와 같다)
+        if isinstance(result, CargoFacts):
+            known.append(result.model_dump(mode="json"))
+            have.add(number)
+    return known
+
+
+def container_identity(container: str, mask_map: dict[str, str], known: list[dict]) -> dict:
+    """컨테이너 번호를 아는 화물 사실에서 찾는다. 하나면 그 화물, 여럿이면 후보, 없으면 정한 글로 남긴다."""
+    found = {facts["number"]: facts for facts in known if container in facts.get("containers", [])}
+    token = token_for(mask_map, container, "container")
+    if len(found) == 1:
+        facts = next(iter(found.values()))
+        number = facts["number"]
+        # [왜] 토큰은 사용자가 준 단서(컨테이너)의 것이다. 답의 화물 줄도 그 번호로 보인다
+        identity = CargoIdentity(
+            token=token,
+            kind="container",
+            cargo_no=number if kind_of(number) == "cargo_no" else None,
+            bl_no=number if kind_of(number) == "bl" else None,
+            mrn=facts.get("mrn"),
+            vessel=facts.get("vessel_name"),
+            confidence="confirmed",
+            facts=CargoFacts.model_validate(facts),
+        )
+    else:
+        # [주의] 후보 중 하나를 골라 답하지 않는다. 틀리면 다른 화물의 단계를 말한다
+        code = "container_many" if found else "container_unknown"
+        identity = CargoIdentity(
+            token=token,
+            kind="container",
+            confidence="candidate" if found else "unknown",
+            candidates=sorted(found),
+            error=ToolError(code=code, message=load_rules("unipass")["messages"][code], retryable=False),
+        )
+    return identity.model_dump(mode="json")
+
+
 class LookupState(IdentifyState, total=False):
     """조회 서브그래프의 공책: 식별 칸에 갈래 결과 칸을 더한다. found는 서브그래프 밖으로 내보내지 않는다."""
 
@@ -100,12 +155,14 @@ def assign(state: IdentifyState) -> dict:
 
 
 def fan_out(state: IdentifyState) -> list[Send] | str:
-    """번호마다 갈래(Send) 하나를 보낸다. 번호가 없으면 바로 모으기로 간다."""
-    numbers = state.get("numbers", [])
-    if not numbers:
-        return "collect"
+    """번호마다 갈래(Send) 하나를 보낸다. 컨테이너 번호는 collect가 찾는다. 보낼 것이 없으면 바로 collect."""
     mask_map = state.get("mask_map", {})
-    return [Send("one", {"idx": i, "number": n, "mask_map": mask_map}) for i, n in enumerate(numbers)]
+    sends = [
+        Send("one", {"idx": i, "number": n, "mask_map": mask_map})
+        for i, n in enumerate(state.get("numbers", []))
+        if kind_of(n) != "container"
+    ]
+    return sends or "collect"
 
 
 def one(state: LookupTask) -> dict:
@@ -115,14 +172,28 @@ def one(state: LookupTask) -> dict:
     return {"found": [{"idx": state["idx"], "cargo": cargo}]}
 
 
-def collect(state: LookupState) -> dict:
-    """갈래 결과를 처음 번호 순서대로 화물 칸에 둔다."""
-    # [왜] 갈래가 끝나는 순서는 정해져 있지 않다. 순서 번호로 정렬한다 (강의 13강)
-    return {"cargos": [found["cargo"] for found in sorted(state.get("found", []), key=lambda f: f["idx"])]}
+def build_lookup_graph(watched: Watched | None = None):
+    """조회 서브그래프: 번호마다 Send로 나눠 함께 조회하고 처음 순서대로 모은다 (설계 4.3).
+    watched가 있으면 컨테이너 번호를 감시 목록의 화물에서도 찾는다 (계획 6a)."""
 
+    def collect(state: LookupState, config: RunnableConfig) -> dict:
+        """갈래 결과를 처음 번호 순서대로 화물 칸에 둔다. 컨테이너 번호는 아는 화물 사실에서 찾는다."""
+        found = {f["idx"]: f["cargo"] for f in state.get("found", [])}
+        numbers = state.get("numbers", [])
+        containers = {i: n for i, n in enumerate(numbers) if kind_of(n) == "container"}
+        if containers:
+            # [왜] 갈래 조회가 끝난 뒤에 찾는다. 같은 글에 함께 적은 B/L의 사실도 쓸 수 있다.
+            #      state의 cargos는 아직 이번 결과로 바뀌기 전 값(지난 차례·대화의 화물)이다
+            cargos = list(found.values()) + state.get("cargos", [])
+            # [왜] 실제 모드의 사실에는 컨테이너가 없다. 감시 화물을 다시 조회해도 맞출 수 없으니 읽지 않는다
+            watch_numbers = watched(config) if watched and facts_carry_containers() else []
+            known = known_cargo(cargos, watch_numbers)
+            mask_map = dict(state.get("mask_map", {}))
+            for i, number in containers.items():
+                found[i] = container_identity(number, mask_map, known)
+        # [왜] 갈래가 끝나는 순서는 정해져 있지 않다. 순서 번호로 정렬한다 (강의 13강)
+        return {"cargos": [found[i] for i in sorted(found)]}
 
-def build_lookup_graph():
-    """조회 서브그래프: 번호마다 Send로 나눠 함께 조회하고 처음 순서대로 모은다 (설계 4.3)."""
     # [왜] 들고 나는 모양은 식별 공책으로 둔다. 갈래 결과 칸(found)은 부모에 돌려주지 않는다
     graph = StateGraph(LookupState, input_schema=IdentifyState, output_schema=IdentifyState)
     graph.add_node("assign", assign)
@@ -141,11 +212,11 @@ def _after_read(state: IdentifyState) -> str:
     return END if state.get("question") else "lookup"
 
 
-def build_identify_graph():
-    """식별 순서도를 조립해 실행 기계로 만든다."""
+def build_identify_graph(watched: Watched | None = None):
+    """식별 순서도를 조립해 실행 기계로 만든다. watched는 조회 서브그래프에 넘긴다 (계획 6a)."""
     graph = StateGraph(IdentifyState)  # 공책 모양을 알려 준다
     graph.add_node("read", read)  # 작업자 등록
-    graph.add_node("lookup", build_lookup_graph())  # [왜] 컴파일한 그래프도 노드 하나로 넣는다
+    graph.add_node("lookup", build_lookup_graph(watched))  # [왜] 컴파일한 그래프도 노드 하나로 넣는다
     graph.add_edge(START, "read")  # 화살표: 시작하면 read
     # 갈림길: read가 끝나면 _after_read가 고른 곳으로 간다. 셋째 인자는 갈 수 있는 곳 목록(그림 그리기용)
     graph.add_conditional_edges("read", _after_read, ["lookup", END])
