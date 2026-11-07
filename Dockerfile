@@ -6,7 +6,8 @@ FROM ghcr.io/astral-sh/uv:0.9.30@sha256:538e0b39736e7feae937a65983e49d2ab75e1559
 
 FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS build
 COPY --from=uv /uv /bin/uv
-# [왜] 바이트코드를 미리 만들어 실행 사용자가 /app에 쓰지 않아도 되게 한다. 이미지의 파이썬만 쓴다(내려받지 않음)
+# [왜] 바이트코드는 .venv의 패키지만 미리 만든다(UV_COMPILE_BYTECODE). 편집 모드의 /app/src는 시작할 때 메모리에서
+#      컴파일한다. /app은 읽기 전용(주인 root)이라 쓰지 못해도 동작한다. 이미지의 파이썬만 쓴다(내려받지 않음)
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0 UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./

@@ -18,6 +18,11 @@ services:
       - "127.0.0.1:5433:5432"
     volumes:
       - pgdata_v2:/var/lib/postgresql/data # [왜] 상자를 지웠다 켜도 데이터가 남게 상자 밖 저장 공간에 둔다
+    healthcheck:
+      # [왜] 시작만 하고 아직 연결을 받지 못하는 때가 있다. prepare가 준비된 뒤에 시작하게 한다
+      test: ["CMD-SHELL", "pg_isready -U marvia -d marvia"]
+      interval: 2s
+      retries: 30
   neo4j:
     # [왜] 법령 그래프(설계 5.5). 이미지는 digest로 고정한다(5.26.32-community, 11-06 Docker Hub). 태그는 움직인다
     image: neo4j:5.26.32-community@sha256:42ef3ebfd671ebd01fdebb6dcbe80cf7b45eef2aa3d346ef4132f7ef31e67d2f
@@ -49,9 +54,10 @@ services:
     environment:
       MARVIA_DATABASE_URL: postgresql://marvia:marvia@db:5432/marvia
       MARVIA_DATA_KEY: ${MARVIA_DATA_KEY:-}
-    depends_on: [db]
+    depends_on:
+      db: { condition: service_healthy }
   api:
-    # 화면 서버 (python -m marvia.server). 키는 셸 환경 변수에서 받는다. 비어 있으면 뜨지 않는다(fail-closed)
+    # 화면 서버 (python -m marvia.server). 키는 compose가 셸 환경 변수에서, 없으면 루트 .env에서 채운다(MARVIA_* 이름만 쓴다). 비어 있으면 뜨지 않는다(fail-closed)
     profiles: [app]
     image: marvia-api:local
     build: { context: ., target: runtime }
