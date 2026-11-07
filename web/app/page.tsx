@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApprovalCardView } from "@/components/ApprovalCardView";
+import { CargoCards } from "@/components/CargoCards";
 import { ChoiceCardView } from "@/components/ChoiceCardView";
 import { EvidencePanel, PlanList, ReadingList } from "@/components/Panels";
 import { type AgUiEvent, type Card, EMPTY_VIEW, HttpError, newId, runTurn, type View } from "@/lib/agui";
@@ -146,6 +147,7 @@ export default function Home() {
       {card?.kind === "approval" ? <ApprovalCardView key={card.id} card={card} onReply={reply} /> : null}
       <PlanList plan={view.plan} />
       <ReadingList reading={view.reading} />
+      <CargoCards cargos={view.cargos} />
       <EvidencePanel evidence={view.evidence} />
       <form
         className="ask"
