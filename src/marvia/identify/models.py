@@ -22,6 +22,9 @@ class CargoFacts(BaseModel):
     vessel_name: str | None = None
     port: str | None = None
     mrn: str | None = None  # 적하목록 관리번호 11자리. 배를 특정하는 데 쓴다
+    # 이 화물을 실은 컨테이너 번호들. 컨테이너 번호로 아는 화물을 찾는 데만 쓴다 (계획 6a).
+    # [주의] LLM에 넘기지 않는다. 실제 응답(parse_progress)에서는 아직 채우지 않는다(그 칸을 확인하지 못했다)
+    containers: list[str] = Field(default_factory=list)
     # [왜] 근거 카드에 "어디서, 언제 가져온 값인지"를 항상 보여 주기 위해 출처와 조회 시각을 붙인다
     source: str = "unipass_replay"
     fetched_at: datetime

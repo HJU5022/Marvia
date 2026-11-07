@@ -1,1 +1,1 @@
-{"stage": "수입신고수리", "stage_at": "2026-11-02T10:00:00+09:00", "vessel_name": "TEST VESSEL ONE", "port": "부산", "mrn": "26DEMO0001I"}
+{"stage": "수입신고수리", "stage_at": "2026-11-02T10:00:00+09:00", "vessel_name": "TEST VESSEL ONE", "port": "부산", "mrn": "26DEMO0001I", "containers": ["TESU0000013"]}
