@@ -572,3 +572,27 @@ def test_account_deletion_is_409_while_a_turn_of_that_user_runs():
     worker.join(10)
     assert mine.status_code == 409 and other.status_code == 204
     assert forgotten == ["user-b"]
+
+
+def test_deleting_an_account_while_turns_start_and_finish_never_gives_500():
+    # [왜] running 집합을 잠금 밖에서 바꾸면 DELETE /account의 순회가 "Set changed size"로 500이 될 수 있다
+    forgotten: list[str] = []
+    app = build_app(Stub(), verify, web_origin="http://x.test", forget=forgotten.append)
+    client = TestClient(app, raise_server_exceptions=False)
+    head = {"Authorization": "Bearer tok-a"}
+    codes: list[int] = []
+
+    def turns(n: int) -> None:
+        for i in range(60):
+            codes.append(client.post("/agui", json=body(f"h{n}-{i}", "질문"), headers=head).status_code)
+
+    def deletes() -> None:
+        for _ in range(120):
+            codes.append(client.delete("/account", headers=head).status_code)
+
+    workers = [threading.Thread(target=turns, args=(n,)) for n in range(4)] + [
+        threading.Thread(target=deletes)
+    ]
+    [w.start() for w in workers]
+    [w.join(60) for w in workers]
+    assert codes and set(codes) <= {200, 204, 409}, sorted(set(codes))

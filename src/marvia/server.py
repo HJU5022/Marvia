@@ -242,6 +242,11 @@ def build_app(graph, verify: Verify, *, web_origin: str, forget: Callable[[str],
     guard = threading.Lock()
     cfg = load_rules("server")["request"]
 
+    def release(key: str) -> None:
+        # [왜] running의 추가·삭제·순회는 늘 같은 잠금 안에서 한다(DELETE /account의 순회와 겹치지 않게)
+        with guard:
+            running.discard(key)
+
     async def run(request: Request) -> Response:
         try:
             # [왜] 공개키를 받아 오는 동안 열린 SSE 흐름이 멈추지 않게 이벤트 루프 밖에서 부른다
@@ -264,14 +269,14 @@ def build_app(graph, verify: Verify, *, web_origin: str, forget: Callable[[str],
         try:
             payload = await anyio.to_thread.run_sync(turn_input, graph, body, config)
         except Refused as error:
-            running.discard(key)
+            release(key)
             return JSONResponse({"error": str(error)}, status_code=error.status)
         except BaseException:
-            running.discard(key)
+            release(key)
             raise
         stop = threading.Event()
         events = turn_events(graph, payload, config, body.thread_id, body.run_id, stop)
-        stream = _sse(events, stop, lambda: running.discard(key))
+        stream = _sse(events, stop, lambda: release(key))
         return StreamingResponse(stream, media_type=EventEncoder().get_content_type(), headers=SSE_HEADERS)
 
     async def delete_account(request: Request) -> Response:
