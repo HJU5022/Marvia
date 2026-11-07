@@ -7,7 +7,7 @@ import { ApprovalCardView } from "@/components/ApprovalCardView";
 import { CargoCards } from "@/components/CargoCards";
 import { ChoiceCardView } from "@/components/ChoiceCardView";
 import { EvidencePanel, PlanList, ReadingList } from "@/components/Panels";
-import { type AgUiEvent, type Card, EMPTY_VIEW, HttpError, newId, runTurn, type View } from "@/lib/agui";
+import { type AgUiEvent, type Card, deleteAccount, EMPTY_VIEW, HttpError, newId, runTurn, type View } from "@/lib/agui";
 import { AUTH_MODE, currentToken, signIn, signOut } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -23,6 +23,7 @@ export default function Home() {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const running = useRef<AbortController | null>(null);
   const sending = useRef(false); // [왜] busy는 상태라 빠른 두 번 입력 사이에 아직 안 바뀐다
@@ -81,7 +82,8 @@ export default function Home() {
             ? failure.message
             : "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요",
         );
-        if (failure instanceof HttpError) setCard(null); // 서버가 거절한 카드는 이미 지난 것이다
+        // [왜] 409만 지난 카드이거나 앞 차례가 안 끝난 경우다. 422는 서버가 카드를 그대로 열어 두므로 다시 보낼 수 있다
+        if (failure instanceof HttpError && failure.status === 409) setCard(null);
         if (failure instanceof HttpError && failure.status === 401) signOut().then(() => setToken(null));
       } finally {
         sending.current = false;
@@ -97,6 +99,27 @@ export default function Home() {
     setLines((old) => [...old, { role: "user", text }]);
     setDraft("");
     turn({ text });
+  }
+
+  async function removeAccount() {
+    setConfirmingDelete(false);
+    const fresh = await currentToken();
+    if (!fresh) return setToken(null);
+    try {
+      await deleteAccount(API_URL, fresh);
+      running.current?.abort();
+      await signOut();
+      setToken(null);
+      setError("계정을 지웠어요. 대화 기록과 저장한 값이 모두 지워졌어요");
+    } catch (failure) {
+      setError(
+        failure instanceof HttpError && failure.status === 409
+          ? "답하는 중인 대화가 있어요. 끝난 뒤 다시 눌러 주세요"
+          : failure instanceof HttpError
+            ? failure.message
+            : "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요",
+      );
+    }
   }
 
   const reply = useCallback(
@@ -167,6 +190,26 @@ export default function Home() {
       <ReadingList reading={view.reading} />
       <CargoCards cargos={view.cargos} />
       <EvidencePanel evidence={view.evidence} />
+      <section aria-labelledby="account-title" className="panel">
+        <h2 id="account-title">계정</h2>
+        {confirmingDelete ? (
+          <div role="group" aria-label="계정 삭제 확인">
+            <p>계정을 지우면 대화 기록, 저장한 값, 감시 목록이 모두 지워지고 되돌릴 수 없어요. 지울까요?</p>
+            <div className="row">
+              <button type="button" onClick={removeAccount}>
+                지우기
+              </button>
+              <button type="button" className="secondary" onClick={() => setConfirmingDelete(false)}>
+                그만두기
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="secondary" onClick={() => setConfirmingDelete(true)}>
+            계정 삭제
+          </button>
+        )}
+      </section>
       <form
         className="ask"
         onSubmit={(e) => {

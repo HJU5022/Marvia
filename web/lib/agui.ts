@@ -67,7 +67,7 @@ export class HttpError extends Error {
       status === 401
         ? "다시 로그인해 주세요"
         : status === 409
-          ? "이미 지난 카드예요"
+          ? "앞 차례가 아직 끝나지 않았거나 지난 카드예요"
           : status === 413 || status === 422
             ? "질문이 너무 길거나 모양이 틀렸어요"
             : `서버가 요청을 받지 않았어요 (${status})`,
@@ -151,4 +151,10 @@ export function parseBlock(block: string): AgUiEvent[] {
     }
   }
   return events;
+}
+
+// 계정 삭제. 204면 지워진 것이고, 그 밖의 거절은 상태 코드를 담아 던진다 (답하는 중이면 409)
+export async function deleteAccount(apiUrl: string, token: string): Promise<void> {
+  const response = await fetch(`${apiUrl}/account`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+  if (response.status !== 204) throw new HttpError(response.status);
 }

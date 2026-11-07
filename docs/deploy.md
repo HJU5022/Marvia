@@ -117,7 +117,7 @@ Actions 탭에서 `deploy` 워크플로를 손으로 돌린다(`workflow_dispatc
 
 ## 계정 삭제
 
-세션 토큰으로 직접 부를 수도 있다:
+화면 아래의 "계정 삭제" 버튼(확인 한 번)으로 지운다. 세션 토큰으로 직접 부를 수도 있다:
 
 ```bash
 curl -X DELETE https://<cloud-run 주소>/account -H "Authorization: Bearer <세션 토큰>"
