@@ -165,3 +165,9 @@ def test_scrub_hides_a_number_hyphen_joined_to_a_spaced_container():
 def test_scrub_hides_every_container_shaped_spaced_form():
     for form in ("DEMU 123456 1", "DEMU 123456 (0)", "DEMU 123 456 0", "DEMU\t1234560", "DEMU  123456  0"):
         assert scrub(f"{form} 도착") == f"{MASK} 도착", form
+
+
+def test_scrub_hides_hyphen_only_numbers_whole_and_keeps_an_outer_bracket():
+    assert scrub("HDMU-1234567-001 도착") == f"{MASK} 도착"
+    assert scrub("MAEU-1234567-89 도착") == f"{MASK} 도착"
+    assert scrub("컨테이너(DEMU1234560)로") == f"컨테이너({MASK})로"

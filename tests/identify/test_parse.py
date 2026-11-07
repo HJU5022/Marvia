@@ -62,7 +62,7 @@ def test_two_containers_of_one_owner_glued_together_split():
     ]
 
 
-def test_a_spaced_container_is_one_number_only_when_its_check_digit_holds():
+def test_a_spaced_container_is_one_chunk_and_a_wrong_check_digit_reads_as_bl():
     assert values("컨테이너 DEMU 123456 0, TESU 0000013") == [["DEMU1234560"], ["TESU0000013"]]
     assert values("DEMU 123456-0 도착") == [["DEMU1234560"]]  # 조각 123456-0이 따로 잡히지 않는다
     # [왜] 확인 숫자가 틀려도 한 덩어리다. 붙여 쓴 꼴(DEMU1234565)처럼 B/L로 읽혀 식별 단계가 오타를 묻는다
@@ -101,3 +101,13 @@ def test_every_container_shaped_spaced_form_is_one_chunk():
 
 def test_a_wrong_spaced_digit_count_is_not_a_container():
     assert values("DEMU 12345 0 도착") == []  # 일련번호가 모자라면 이 모양이 아니다
+
+
+def test_a_hyphen_only_number_stays_whole_for_the_plain_span_pass():
+    # [왜] 띄어 쓰기·괄호가 없는 하이픈 꼴은 _SPAN이 잡는다. 컨테이너 모양으로 앞부분만 떼어 읽지 않는다
+    assert values("HDMU-1234567-001 도착") == [["HDMU1234567001"]]
+    assert values("MAEU-1234567-89 도착") == [["MAEU123456789"]]
+
+
+def test_a_bracket_is_taken_only_when_it_opens_right_before_the_last_digit():
+    assert values("컨테이너(DEMU1234560)로") == [["DEMU1234560"]]

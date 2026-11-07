@@ -66,3 +66,10 @@ def test_every_container_shaped_spaced_form_is_masked_whole():
         masked, mask_map = mask_text(f"{form} 어디쯤?")
         assert masked.endswith(" 어디쯤?") and "DEMU" not in masked and "123" not in masked, form
         assert list(mask_map.values()) == [value], form
+
+
+def test_hyphen_only_numbers_are_masked_whole_and_an_outer_bracket_stays():
+    for text in ("HDMU-1234567-001", "MAEU-1234567-89"):
+        masked, mask_map = mask_text(f"{text} 도착")
+        assert masked == "[BL1] 도착" and list(mask_map.values()) == [text.replace("-", "")], text
+    assert mask_text("컨테이너(DEMU1234560)로")[0] == "컨테이너([CNTR1])로"

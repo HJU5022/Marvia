@@ -28,7 +28,8 @@ _SPACED_CONTAINER = re.compile(
     r"(?<![A-Za-z0-9])[A-Za-z]{3}[UJZujz]"
     + _GAP
     + (r"[0-9]" + _GAP) * 6
-    + r"[(\[]?[0-9][)\]]?(?![A-Za-z0-9])"
+    # [왜] 괄호는 마지막 숫자 바로 앞에서 열릴 때만 먹는다 (컨테이너(DEMU1234560)로 의 닫는 괄호를 남긴다)
+    + r"(?:\([0-9]\)?|\[[0-9]\]?|[0-9])(?![A-Za-z0-9])"
 )
 # 번호처럼 보여도 번호가 아닌 것: 날짜(YYYYMMDD), 휴대폰 번호
 _NOT_NUMBER = re.compile(r"20\d{6}|01[016789]\d{7,8}")
@@ -127,7 +128,8 @@ def find_spans(text: str) -> list[Span]:
     spans = [
         Span(m.start(), m.end(), m.group())
         for m in _SPACED_CONTAINER.finditer(text)
-        if not m.group().isalnum()
+        # [왜] 빈칸이나 괄호가 있는 꼴만 가져온다. 하이픈뿐인 꼴(HDMU-1234567-001)은 _SPAN이 통째로 잡는다
+        if any(ch.isspace() or ch in "()[]" for ch in m.group())
     ]
     # [왜] 찾은 컨테이너 번호 자리를 같은 길이의 빈칸으로 지우고 나머지를 훑는다. 조각은 다시 잡히지 않고,
     #      하이픈으로 붙은 옆 번호(HASL0001-DEMU 123456 0)는 그대로 잡힌다
