@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import datetime
 from typing import Any
 
 from langchain_core.messages import ToolMessage
@@ -40,9 +41,22 @@ PAYLOAD = (
 )
 
 
-# [왜] SDK가 JSON으로 적는 시각(completion_start_time)은 그대로 둔다. 번호 덩어리 규칙은 날짜와 시를
-#      한 덩어리로 가려 시각이 아니게 만든다. 소수부는 isoformat이 쓰는 6자리까지만 받아 번호가 들 수 없다
+# [왜] SDK가 JSON으로 적는 시각 속성은 그대로 둔다. 번호 덩어리 규칙은 날짜와 시를 한 덩어리로 가려
+#      시각이 아니게 만든다. 이 속성 하나에만, 읽히는 시각일 때만 둔다(다른 곳의 시각 모양 글은 가린다).
+#      소수부는 isoformat이 쓰는 6자리까지만 받는다
+TIME_ATTRIBUTE = "langfuse.observation.completion_start_time"
 ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})?", re.ASCII)
+
+
+def _is_time(text: str) -> bool:
+    """SDK가 적은 JSON 시각 글인가: 글 하나이고 ISO 모양이며 fromisoformat이 읽는다."""
+    try:
+        value = json.loads(text)
+        return (
+            isinstance(value, str) and bool(ISO_TIME.fullmatch(value)) and bool(datetime.fromisoformat(value))
+        )
+    except ValueError:
+        return False
 
 
 def _number(literal: str) -> Any:
@@ -52,9 +66,9 @@ def _number(literal: str) -> Any:
 
 
 def _clean_json(value: Any) -> Any:
-    """JSON에서 읽은 값의 글을 가린다. ISO 시각 글은 그대로 둔다(수는 _number가 읽을 때 가렸다)."""
+    """JSON에서 읽은 값의 글을 가린다(수는 _number가 읽을 때 가렸다)."""
     if isinstance(value, str):
-        return value if ISO_TIME.fullmatch(value) else scrub_text(value)
+        return scrub_text(value)
     if isinstance(value, list):
         return [_clean_json(item) for item in value]
     if isinstance(value, dict):
@@ -82,9 +96,11 @@ def _clean_text(text: str) -> str:
     return text if cleaned == value else json.dumps(cleaned, ensure_ascii=False)
 
 
-def _clean(value: Any) -> Any:
-    """속성 값 하나를 가린다. 글 목록(OTel은 tuple로 둔다)은 글만 가린다."""
+def _clean(value: Any, name: str = "") -> Any:
+    """속성 값 하나를 가린다. 글 목록(OTel은 tuple로 둔다)은 글만 가린다. 시각 속성의 읽히는 시각은 둔다."""
     if isinstance(value, str):
+        if name == TIME_ATTRIBUTE and _is_time(value):
+            return value
         return _clean_text(value)
     if isinstance(value, (list, tuple)):
         return tuple(_clean_text(item) if isinstance(item, str) else item for item in value)
@@ -99,9 +115,9 @@ def scrub_spans(*, params: MaskOtelSpansParams) -> MaskOtelSpansResult:
     patches = {}
     for key, span in params.spans.items():
         changed = {
-            name: _clean(value)
+            name: _clean(value, name)
             for name, value in span.attributes.items()
-            if not name.startswith(PAYLOAD) and _clean(value) != value
+            if not name.startswith(PAYLOAD) and _clean(value, name) != value
         }
         if changed:
             patches[key] = OtelSpanPatch(set_attributes=changed)

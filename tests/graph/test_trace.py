@@ -354,7 +354,16 @@ def test_layer_two_reads_sdk_json_values_so_they_stay_json_and_times_stay_times(
     clean = langfuse_trace._clean
     assert json.loads(clean(json.dumps("gate\nDEMO0011", ensure_ascii=False))) == f"gate\n{MASK}"
     when = json.dumps("2026-11-08T12:34:56.123456+00:00")
-    assert clean(when) == when
+    assert clean(when, langfuse_trace.TIME_ATTRIBUTE) == when
+    # [왜] 시각 예외는 SDK의 시각 속성뿐이다. 다른 속성의 시각 모양 글(thread_id 등)은 번호 덩어리처럼 가린다
+    assert clean(when) != when
+    fake = json.dumps("1234-56-78T90:12:34.567890")
+    assert clean(fake, langfuse_trace.TIME_ATTRIBUTE) != fake and MASK in clean(
+        fake, langfuse_trace.TIME_ATTRIBUTE
+    )
+    assert clean(fake) != fake and "1234-56-78" not in clean(fake)
+    meta = json.dumps({"thread_id": "1234-56-78T90:12:34"})
+    assert MASK in clean(meta) and "1234-56-78" not in clean(meta)
     numbers = json.dumps({"bl": 123456789012, "n": 3, "said": "DEMO0012 어디야"})
     assert json.loads(clean(numbers)) == {"bl": MASK, "n": 3, "said": f"{MASK} 어디야"}
     assert clean("DEMO0013 조회 실패") == f"{MASK} 조회 실패"  # JSON이 아닌 글은 전처럼 가린다
