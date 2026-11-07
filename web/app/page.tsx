@@ -204,8 +204,8 @@ export default function Home() {
       <section aria-labelledby="account-title" className="panel">
         <h2 id="account-title">계정</h2>
         {confirmingDelete ? (
-          <div ref={confirmBox} tabIndex={-1} role="group" aria-label="계정 삭제 확인">
-            <p>계정을 지우면 대화 기록, 저장한 값, 감시 목록이 모두 지워지고 되돌릴 수 없어요. 지울까요?</p>
+          <div ref={confirmBox} tabIndex={-1} role="group" aria-label="계정 삭제 확인" aria-describedby="delete-warning">
+            <p id="delete-warning">계정을 지우면 대화 기록, 저장한 값, 감시 목록이 모두 지워지고 되돌릴 수 없어요. 지울까요?</p>
             <div className="row">
               <button type="button" onClick={removeAccount}>
                 지우기

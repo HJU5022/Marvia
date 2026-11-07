@@ -68,8 +68,10 @@ export class HttpError extends Error {
   readonly code: string | null;
   constructor(
     readonly status: number,
-    reason: { error?: unknown; code?: unknown } = {},
+    body: unknown = {},
   ) {
+    // [왜] 본문이 JSON null이어도 읽다가 터지지 않게 객체일 때만 받는다
+    const reason: { error?: unknown; code?: unknown } = body && typeof body === "object" ? body : {};
     super(
       status === 409 && typeof reason.error === "string"
         ? reason.error
