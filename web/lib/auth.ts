@@ -7,13 +7,26 @@ export const AUTH_MODE: "dev" | "supabase" = "dev";
 const DEV_KEY = "marvia-dev-token";
 
 export async function currentToken(): Promise<string | null> {
-  return sessionStorage.getItem(DEV_KEY);
+  // [주의] 저장소가 막힌 브라우저(사생활 보호 등)는 접근만으로 던진다. 토큰 없음으로 본다
+  try {
+    return sessionStorage.getItem(DEV_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export async function signIn(devToken?: string): Promise<void> {
-  if (devToken) sessionStorage.setItem(DEV_KEY, devToken);
+  try {
+    if (devToken) sessionStorage.setItem(DEV_KEY, devToken);
+  } catch {
+    // 저장하지 못하면 currentToken이 null이라 로그인 쪽에 머문다
+  }
 }
 
 export async function signOut(): Promise<void> {
-  sessionStorage.removeItem(DEV_KEY);
+  try {
+    sessionStorage.removeItem(DEV_KEY);
+  } catch {
+    // 지울 것이 없다
+  }
 }

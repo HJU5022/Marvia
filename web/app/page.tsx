@@ -6,11 +6,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalCardView } from "@/components/ApprovalCardView";
 import { ChoiceCardView } from "@/components/ChoiceCardView";
 import { EvidencePanel, PlanList, ReadingList } from "@/components/Panels";
-import { type AgUiEvent, type Card, EMPTY_VIEW, newId, runTurn, type View } from "@/lib/agui";
+import { type AgUiEvent, type Card, EMPTY_VIEW, HttpError, newId, runTurn, type View } from "@/lib/agui";
 import { AUTH_MODE, currentToken, signIn, signOut } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-type Line = { role: "user" | "assistant"; text: string };
+type Line = { role: "user" | "assistant"; text: string; id?: string };
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
@@ -24,6 +24,7 @@ export default function Home() {
   const [error, setError] = useState("");
 
   const running = useRef<AbortController | null>(null);
+  const sending = useRef(false); // [왜] busy는 상태라 빠른 두 번 입력 사이에 아직 안 바뀐다
 
   // 화면을 떠나면 진행 중인 차례를 멈춘다
   useEffect(() => () => running.current?.abort(), []);
@@ -34,7 +35,14 @@ export default function Home() {
 
   const onEvent = useCallback((event: AgUiEvent) => {
     if (event.type === "STATE_SNAPSHOT") setView(event.snapshot);
-    if (event.type === "TEXT_MESSAGE_CONTENT") setLines((old) => [...old, { role: "assistant", text: event.delta }]);
+    if (event.type === "TEXT_MESSAGE_CONTENT") {
+      // 같은 messageId의 조각은 한 줄에 이어 붙인다
+      setLines((old) =>
+        old.some((l) => l.id === event.messageId)
+          ? old.map((l) => (l.id === event.messageId ? { ...l, text: l.text + event.delta } : l))
+          : [...old, { role: "assistant", text: event.delta, id: event.messageId }],
+      );
+    }
     if (event.type === "RUN_ERROR") setError(event.message);
     if (event.type === "RUN_FINISHED" && event.outcome?.type === "interrupt") {
       const pending = event.outcome.interrupts[0];
@@ -44,7 +52,8 @@ export default function Home() {
 
   const turn = useCallback(
     async (input: { text?: string; resume?: { interruptId: string; payload: unknown } }) => {
-      if (!token) return;
+      if (!token || sending.current) return;
+      sending.current = true;
       setBusy(true);
       setError("");
       setCard(null);
@@ -56,7 +65,9 @@ export default function Home() {
       } catch (failure) {
         if (controller.signal.aborted) return; // 멈춘 차례는 아무것도 보이지 않는다
         setError(failure instanceof Error ? failure.message : "요청이 실패했어요");
+        if (failure instanceof HttpError && failure.status === 401) signOut().then(() => setToken(null));
       } finally {
+        sending.current = false;
         if (running.current === controller) setBusy(false);
       }
     },
@@ -65,7 +76,7 @@ export default function Home() {
 
   function send() {
     const text = draft.trim();
-    if (!text || busy) return;
+    if (!text || busy || sending.current) return;
     setLines((old) => [...old, { role: "user", text }]);
     setDraft("");
     turn({ text });
@@ -82,6 +93,7 @@ export default function Home() {
     return (
       <main>
         <h1>Marvia</h1>
+        {error ? <p role="alert">{error}</p> : null}
         {AUTH_MODE === "dev" ? (
           <form
             onSubmit={(e) => {
@@ -117,7 +129,7 @@ export default function Home() {
       </header>
       <section aria-labelledby="chat-title" className="panel">
         <h2 id="chat-title">대화</h2>
-        <ol className="chat">
+        <ol className="chat" aria-live="polite">
           {lines.map((line, i) => (
             <li key={i} data-role={line.role}>
               <span className="who">{line.role === "user" ? "나" : "Marvia"}</span>

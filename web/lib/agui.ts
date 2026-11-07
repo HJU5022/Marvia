@@ -60,6 +60,21 @@ export function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
+// 서버가 거절한 상태 코드. 화면이 코드별로 안내하고 응답 본문은 보이지 않는다
+export class HttpError extends Error {
+  constructor(readonly status: number) {
+    super(
+      status === 401
+        ? "다시 로그인해 주세요"
+        : status === 409
+          ? "이미 지난 카드예요"
+          : status === 413 || status === 422
+            ? "질문이 너무 길거나 모양이 틀렸어요"
+            : `서버가 요청을 받지 않았어요 (${status})`,
+    );
+  }
+}
+
 type TurnInput = { threadId: string; text?: string; resume?: { interruptId: string; payload: unknown } };
 
 // 한 차례를 보내고 이벤트마다 onEvent를 부른다. 서버가 거절하면(401·409·422) 상태 코드를 담아 던진다
@@ -90,7 +105,7 @@ export async function runTurn(
     signal,
   });
   if (!response.ok || !response.body) {
-    throw new Error(`서버가 요청을 받지 않았어요 (${response.status})`);
+    throw new HttpError(response.status);
   }
   // SSE: "data: {json}" 줄들이 빈 줄로 나뉜다. 조각이 이벤트 중간에서 끊길 수 있어 버퍼에 모은다
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
