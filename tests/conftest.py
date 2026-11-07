@@ -30,6 +30,9 @@ def no_raw_langfuse_env(monkeypatch):
     """셸에 걸린 LANGFUSE_* 환경 변수를 지운다. [왜] 서버 시작 검사가 그 이름을 거절한다 (계획 6b)"""
     for name in [name for name in os.environ if name.startswith("LANGFUSE_")]:
         monkeypatch.delenv(name)
+    # [왜] langfuse_trace.build가 이 이름을 직접 적는다. 없던 값으로 되돌려야 다른 시험에 새지 않는다
+    monkeypatch.setenv("LANGFUSE_MEDIA_UPLOAD_ENABLED", "")
+    monkeypatch.delenv("LANGFUSE_MEDIA_UPLOAD_ENABLED")
 
 
 @pytest.fixture

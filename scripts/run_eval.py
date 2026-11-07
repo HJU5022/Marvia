@@ -11,6 +11,7 @@ run은 돈이 든다.
       uv run python scripts/run_eval.py domain-prompts --out <저장소 밖 폴더>   (범용 도구에게 줄 질문 글)
       uv run python scripts/run_eval.py domain <도구 폴더> ... --marvia <결과.raw.json>   (범용 도구 비교 표)
 run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 키도 DB도 쓰지 않는다.
+MARVIA_LANGFUSE_* 셋이 있으면 모든 평가 차례를 Langfuse로 보낸다(번호는 가린다, 계획 6b).
 키 두 개(MARVIA_ANTHROPIC_API_KEY, MARVIA_VOYAGE_API_KEY), 로컬 DB, 색인이 필요하다.
 묻는 질문에는 권장안(시간 초과)으로, 승인 요청에는 거절로 답한다. 대화 기록은 메모리에만 둔다.
 결과: <out>/<길>-<모델>.json(파생 값과 요약, 저장소에 올릴 수 있다),

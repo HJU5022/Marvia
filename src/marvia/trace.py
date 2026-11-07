@@ -107,7 +107,9 @@ def _handler(public_key: str, secret_key: str, host: str) -> Any:
 def tracer_callbacks(settings: Settings) -> list:
     """그래프 실행 설정의 callbacks에 넣을 목록. MARVIA_LANGFUSE_* 셋 중 하나라도 비면 []다(기본은 꺼짐).
 
-    [왜] 콜백 하나를 함께 쓴다. 끼어들기로 멈춘 차례와 재개한 차례가 한 트레이스로 이어진다.
+    [왜] 콜백 하나를 함께 쓴다. 프로세스에 클라이언트와 내보내기 스레드가 하나만 생긴다
+    (끼어들기와 재개는 두 트레이스다: langgraph 1.2.18은 루트를 on_chain_end로 닫아
+    SDK가 이음 정보를 두지 않는다).
     """
     keys = (
         settings.langfuse_public_key.get_secret_value(),

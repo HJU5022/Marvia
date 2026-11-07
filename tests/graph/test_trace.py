@@ -338,6 +338,14 @@ def test_removing_any_one_layer_leaves_its_numbers(agent_deps, monkeypatch, laye
     assert [number for number in left if number not in dump] == []
 
 
+def test_media_upload_is_off(monkeypatch):
+    # [왜] data URI 사진은 ①이 가리기 전에 SDK가 미디어로 올린다. 끄는 길은 환경 변수 하나뿐이다
+    exporter, key, handler = tracer()
+    manager = get_client(public_key=key)._resources._media_manager
+    assert manager._enabled is False
+    get_client(public_key=key).shutdown()
+
+
 def test_a_failing_mask_exports_nothing_or_masks_the_value_whole(monkeypatch):
     def boom(**_):
         raise RuntimeError("가림 실패")
@@ -394,6 +402,6 @@ def test_all_three_settings_give_one_shared_tracer_and_keys_stay_hidden(monkeypa
     )
     first, second = tracer_callbacks(settings), tracer_callbacks(settings)
     trace._handler.cache_clear()
-    assert len(first) == 1 and first[0] is second[0]  # [왜] 멈춘 차례와 재개한 차례가 한 트레이스로 이어진다
+    assert len(first) == 1 and first[0] is second[0]  # [왜] 클라이언트·스레드 하나
     assert built == [("pk-x", "sk-secret", "https://x.test")]
     assert "sk-secret" not in repr(settings) and "pk-x" not in repr(settings)

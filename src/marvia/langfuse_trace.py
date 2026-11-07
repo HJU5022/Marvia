@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from langchain_core.messages import ToolMessage
@@ -103,6 +104,11 @@ def build(
     # [왜] 키와 주소는 인자로만 넘긴다. 인자가 없으면 SDK가 LANGFUSE_* 환경 변수를 읽는다
     # [주의] SDK는 전역 OTel TracerProvider가 없으면 자기 것을 전역으로 놓는다(resource_manager.py).
     #        그 뒤 다른 라이브러리의 span도 여기로 오고, 기본 거름은 gen_ai 속성이 있으면 내보낸다
+    # [왜] 사진이나 붙여 넣은 data URI에 화물 번호가 있을 수 있다. SDK는 ①이 가리기 전의 원본 입력에서
+    #      data:...;base64, 글을 찾아 올린다(연결이 생긴다).
+    #      끄는 길은 이 환경 변수뿐이고 클라이언트를 만들 때 읽는다.
+    #      서버 시작 검사가 LANGFUSE_* 이름을 거절하는 일은 build보다 앞이라 이 설정은 걸리지 않는다
+    os.environ["LANGFUSE_MEDIA_UPLOAD_ENABLED"] = "false"
     Langfuse(
         public_key=public_key,
         secret_key=secret_key,
