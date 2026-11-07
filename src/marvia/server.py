@@ -41,7 +41,9 @@ from ag_ui.core import (
 )
 from ag_ui.core import Interrupt as CardInterrupt
 from ag_ui.encoder import EventEncoder
+from langgraph.store.base import BaseStore
 from langgraph.types import Command
+from psycopg import sql
 from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -61,6 +63,7 @@ from marvia.graph.state import merge_cargos, merge_evidence
 from marvia.graph.tools import SERVER_SURFACE
 from marvia.tools.rules import load_rules
 from marvia.view import interrupt_card, screen_view
+from marvia.watch import forget_user
 
 LOG = logging.getLogger(__name__)
 
@@ -227,8 +230,8 @@ async def _sse(
         stop.set()
 
 
-def build_app(graph, verify: Verify, *, web_origin: str) -> Starlette:
-    """화면 서버 앱. graph는 컴파일한 메인 그래프, verify는 auth의 토큰 확인 함수."""
+def build_app(graph, verify: Verify, *, web_origin: str, forget: Callable[[str], None]) -> Starlette:
+    """화면 서버 앱. graph는 컴파일한 메인 그래프, verify는 auth의 토큰 확인 함수, forget은 계정 삭제."""
     # [왜] 이 앱이 부르는 그래프는 user_id 없이 사용자 데이터에 닿으면 멈춘다 (tools.user_of, R-048)
     graph = graph.with_config(configurable={"surface": SERVER_SURFACE})
     running: set[str] = set()
@@ -267,6 +270,16 @@ def build_app(graph, verify: Verify, *, web_origin: str) -> Starlette:
         stream = _sse(events, stop, lambda: running.discard(key))
         return StreamingResponse(stream, media_type=EventEncoder().get_content_type(), headers=SSE_HEADERS)
 
+    async def delete_account(request: Request) -> Response:
+        try:
+            user = await anyio.to_thread.run_sync(
+                user_from_header, request.headers.get("authorization"), verify
+            )
+        except AuthError as error:
+            return JSONResponse({"error": str(error)}, status_code=error.status)
+        await anyio.to_thread.run_sync(forget, user)
+        return Response(status_code=204)
+
     async def health(request: Request) -> Response:
         return JSONResponse({"ok": True})
 
@@ -282,9 +295,31 @@ def build_app(graph, verify: Verify, *, web_origin: str) -> Starlette:
     ]
     routes = [
         Route("/agui", run, methods=["POST"]),
+        Route("/account", delete_account, methods=["DELETE"]),
         Route("/health", health, methods=["GET"]),
     ]
     return Starlette(routes=routes, middleware=middleware)
+
+
+def forget_account(conn: psycopg.Connection, store: BaseStore, user: str) -> None:
+    """계정 삭제 (설계 8절, R-033): 감시 목록과 변화, 장기 기억(품목 카드·설명 깊이), 대화 기록을 지운다.
+
+    [주의] 하나의 트랜잭션이 아니다. 감시(forget_user), 장기 기억(Store의 자기 연결), 대화 기록(아래 한
+           트랜잭션)이 차례로 따로 커밋된다. 중간에 죽으면 500이고, 셋 다 다시 불러도 안전해서(없으면 0줄)
+           같은 요청을 다시 보내면 마저 지워진다. 지우는 동안 그 사용자의 차례가 돌고 있으면 그 차례가 대화
+           기록을 다시 쓸 수 있다(이 서버는 그 막음을 두지 않는다).
+    """
+    forget_user(conn, user)
+    for namespace in (("users", user, "items"), ("users", user, "prefs")):
+        while found := store.search(namespace, limit=100):
+            for item in found:
+                store.delete(item.namespace, item.key)
+    prefix = f"{user}/"  # [왜] 서버는 대화를 "사용자/이름"으로 저장한다(build_app). 같은 앞머리만 지운다.
+    #                        LIKE를 쓰지 않아 사용자 id의 %·_가 글자 그대로 비교된다
+    with conn.transaction():  # [왜] 세 표를 함께 지우거나 함께 남긴다
+        for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+            query = sql.SQL("DELETE FROM {} WHERE left(thread_id, %s) = %s").format(sql.Identifier(table))
+            conn.execute(query, (len(prefix), prefix))
 
 
 def main() -> None:
@@ -299,14 +334,19 @@ def main() -> None:
     with (
         live_memory(url, settings.data_key.get_secret_value()) as (saver, store),
         read_pool(url) as pool,
-        # [왜] 감시 목록은 따로 autocommit 연결을 쓴다 (R-041)
+        # [왜] 감시 목록·계정 삭제는 따로 autocommit 연결을 쓴다 (R-041)
         psycopg.connect(url, autocommit=True) as watch_conn,
     ):
         deps = agent_deps(settings, pool, watch_conn)
         graph = build_main_graph(
             deps, saver, loop=settings.loop, store=store, permission_mode=settings.permission_mode
         )
-        app = build_app(graph, verify, web_origin=settings.web_origin)
+        app = build_app(
+            graph,
+            verify,
+            web_origin=settings.web_origin,
+            forget=lambda user: forget_account(watch_conn, store, user),
+        )
         # [주의] 기본은 127.0.0.1이다. 컨테이너 안에서만 MARVIA_HOST=0.0.0.0을 주고
         #        compose가 바깥 쪽을 127.0.0.1로 연다
         uvicorn.run(app, host=settings.host, port=int(os.environ.get("PORT", "8080")))

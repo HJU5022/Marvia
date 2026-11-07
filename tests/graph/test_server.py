@@ -6,18 +6,23 @@ import logging
 import threading
 from types import SimpleNamespace
 
+import psycopg
 import pytest
+from cryptography.fernet import Fernet
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
+from psycopg.conninfo import make_conninfo
 from starlette.testclient import TestClient
 
 from marvia.auth import AuthError
+from marvia.config import Settings
+from marvia.graph.live import live_memory
 from marvia.graph.main import build_main_graph
-from marvia.server import build_app
-from marvia.watch import WatchDeps
+from marvia.server import build_app, forget_account
+from marvia.watch import WatchDeps, add_watch, watch_keys
 
 TOKENS = {"tok-a": "user-a", "tok-b": "user-b"}
 TWO = [{"label": "부산", "description": "부산항 기준"}, {"label": "인천", "description": "인천항 기준"}]
@@ -51,7 +56,7 @@ def served(agent_deps, *messages, **changes):
     """가짜 모델로 만든 그래프와 그 그래프를 띄운 시험 클라이언트."""
     deps = agent_deps(model=ToolModel(messages=iter(messages)), **changes)
     graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
-    app = build_app(graph, verify, web_origin="http://web.test")
+    app = build_app(graph, verify, web_origin="http://web.test", forget=lambda user: None)
     return graph, TestClient(app)
 
 
@@ -242,7 +247,7 @@ def test_an_approval_card_shows_real_numbers_but_the_model_gets_tokens_back(agen
     deps = agent_deps(model=ToolModel(messages=iter(steps)), watch=watch)
     graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
     # [왜] 그래프에 기록 콜백을 붙여 모델이 받은 글을 모두 본다
-    app = build_app(graph.with_config(callbacks=[inputs]), verify, web_origin="http://web.test")
+    app = build_app(graph.with_config(callbacks=[inputs]), verify, web_origin="http://web.test", forget=print)
     client = TestClient(app)
     card = run(client, body("t3", "DEMO0001 계속 지켜봐 줘"))[-1]["outcome"]["interrupts"][0]
     assert card["reason"] == "approval" and card["metadata"]["actions"][0]["args"] == {"token": "DEMO0001"}
@@ -260,7 +265,7 @@ def test_an_edit_with_a_number_new_to_the_thread_ends_as_a_rejection_and_adds_no
     deps = agent_deps(model=ToolModel(messages=iter(steps)), watch=watch)
     graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
     client = TestClient(
-        build_app(graph.with_config(callbacks=[inputs]), verify, web_origin="http://web.test")
+        build_app(graph.with_config(callbacks=[inputs]), verify, web_origin="http://web.test", forget=print)
     )
     card = run(client, body("t10", "DEMO0001 계속 지켜봐 줘"))[-1]["outcome"]["interrupts"][0]
     edit = {"type": "edit", "edited_action": {"name": "watch_cargo", "args": {"token": "DEMO0009"}}}
@@ -291,14 +296,14 @@ class Stub:
 def test_a_failure_after_the_graph_run_still_ends_with_one_run_error():
     # [왜] 모르는 모양의 interrupt 값으로 카드 만들기가 죽어도 끝 이벤트가 정확히 하나여야 한다 (C6)
     unknown = SimpleNamespace(id="i1", value={"weird": 1})
-    client = TestClient(build_app(Stub([unknown]), verify, web_origin="http://web.test"))
+    client = TestClient(build_app(Stub([unknown]), verify, web_origin="http://web.test", forget=print))
     order = kinds(run(client, body("t11", "질문")))
     assert order == ["RUN_STARTED", "RUN_ERROR"]
 
 
 def test_the_server_log_names_the_error_class_and_place_but_never_the_message(caplog):
     client = TestClient(
-        build_app(Stub(error=RuntimeError("DEMO0001 비밀")), verify, web_origin="http://x.test")
+        build_app(Stub(error=RuntimeError("DEMO0001 비밀")), verify, web_origin="http://x.test", forget=print)
     )
     with caplog.at_level(logging.INFO):
         events = run(client, body("t12", "질문"))
@@ -318,7 +323,7 @@ def test_the_login_check_runs_off_the_event_loop():
             on_loop.append(False)
         return "user-a"
 
-    client = TestClient(build_app(Stub(), checking, web_origin="http://web.test"))
+    client = TestClient(build_app(Stub(), checking, web_origin="http://web.test", forget=print))
     run(client, body("t13", "질문"))
     assert on_loop == [False]
 
@@ -401,7 +406,7 @@ def test_main_listens_on_loopback_unless_marvia_host_says_otherwise(
 
 def test_a_failed_run_sends_the_fixed_error_text_and_the_next_request_is_served():
     client = TestClient(
-        build_app(Stub(error=RuntimeError("DEMO0001 비밀")), verify, web_origin="http://x.test")
+        build_app(Stub(error=RuntimeError("DEMO0001 비밀")), verify, web_origin="http://x.test", forget=print)
     )
     for _ in range(2):  # [왜] 둘째 요청이 200이면 실패한 차례가 잠금을 풀었다는 뜻이다
         last = run(client, body("t17", "질문"))[-1]
@@ -448,3 +453,31 @@ def test_the_real_run_carries_the_server_surface_and_the_tokens_user(agent_deps,
     evil = {"configurable": {"surface": "cli", "user_id": "evil"}}
     run(client, body("t20", "DEMO0001 언제까지?", forwardedProps=evil))
     assert seen and all(c["surface"] == tools.SERVER_SURFACE and c["user_id"] == "user-a" for c in seen)
+
+
+def test_account_deletion_forgets_watches_memory_and_only_that_users_threads(agent_deps, db):
+    # [왜] R-033: 계정을 지우면 감시 목록, 장기 기억, 그 사람의 대화 기록(체크포인트)이 남지 않는다.
+    #      남의 것은 그대로다
+    schema = db.execute("SELECT current_schema()").fetchone()[0]
+    db.commit()
+    url = make_conninfo(Settings().database_url, options=f"-c search_path={schema},public")
+    secret = Fernet.generate_key().decode()  # [왜] 시험 안에서 만든 키. 저장소의 키를 쓰지 않는다
+    add_watch(db, watch_keys(secret), "user-a", "DEMO0001", "반입신고")
+    add_watch(db, watch_keys(secret), "user-b", "DEMO0002", "반입신고")
+    with live_memory(url, secret) as (saver, store), psycopg.connect(url, autocommit=True) as conn:
+        deps = agent_deps(model=ToolModel(messages=iter([AIMessage(""), AIMessage("")])))
+        graph = build_main_graph(deps, saver, loop="agent", store=store)
+        forget = lambda user: forget_account(conn, store, user)  # noqa: E731
+        client = TestClient(build_app(graph, verify, web_origin="http://web.test", forget=forget))
+        run(client, body("t1", "DEMO0001 언제까지?"), token="tok-a")
+        run(client, body("t1", "DEMO0002 언제까지?"), token="tok-b")
+        store.put(("users", "user-a", "items"), "고추", {"name": "고추"})
+        store.put(("users", "user-a", "prefs"), "depth", {"depth": "짧게"})
+        store.put(("users", "user-b", "items"), "쌀", {"name": "쌀"})
+        assert client.delete("/account").status_code == 401
+        assert client.delete("/account", headers={"Authorization": "Bearer tok-a"}).status_code == 204
+        threads = {row[0] for row in conn.execute("SELECT DISTINCT thread_id FROM checkpoints")}
+        assert threads == {"user-b/t1"}
+        assert store.search(("users", "user-a")) == []
+        assert [item.key for item in store.search(("users", "user-b", "items"))] == ["쌀"]
+    assert db.execute("SELECT user_id FROM watches").fetchall() == [("user-b",)]
