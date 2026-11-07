@@ -132,3 +132,16 @@ def test_prepare_db_twice_makes_the_tables_the_server_needs_and_the_second_run_c
     assert all(count[0] > 0 for count in first[1])
     prepare_db.main()
     assert snapshot() == first
+
+
+def test_local_web_servers_listen_on_loopback_and_the_e2e_image_does_not_run_as_root():
+    # [왜] next dev·start는 -H가 없으면 모든 주소에서 듣는다. 같은 망의 다른 기기가 개발 화면에 붙는다
+    scripts = json.loads((ROOT / "web" / "package.json").read_text())["scripts"]
+    assert "-H 127.0.0.1" in scripts["dev"] and "-H 127.0.0.1" in scripts["start"]
+    # [왜] 시험 이미지도 root로 돌지 않는다. 공식 이미지에 있는 pwuser로 돈다
+    users = [
+        line.split()[1]
+        for line in (ROOT / "web" / "e2e.Dockerfile").read_text().splitlines()
+        if line.startswith("USER ")
+    ]
+    assert users[-1:] == ["pwuser"], users

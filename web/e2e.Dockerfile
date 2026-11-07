@@ -9,4 +9,7 @@ RUN test "$(node -p "require('playwright-core/package.json').version")" = "1.64.
 COPY playwright.config.ts ./
 COPY e2e ./e2e
 ENV NEXT_TELEMETRY_DISABLED=1
+# [왜] root로 돌지 않는다. 공식 이미지의 pwuser로 돌고, 시험 결과(test-results)를 쓸 작업 폴더만 그에게 준다
+RUN chown pwuser /work
+USER pwuser
 CMD ["npx", "playwright", "test"]
