@@ -241,6 +241,14 @@ def test_the_view_links_only_to_the_official_site_over_https(evidence):
     assert [e["source_url"] for e in screen_view(values)["evidence"]] == [urls[0], None, None, None]
 
 
+def test_the_reading_list_names_a_container_number():
+    # [왜] 이름표 → 화면 이름 표에 없는 토큰은 KeyError로 화면 보기 전체를 깨뜨린다 (계획 6a)
+    from marvia.view import screen_view
+
+    reading = screen_view({"mask_map": {"[CNTR1]": "DEMU1234560"}})["reading"]
+    assert reading == [{"token": "[CNTR1]", "number": "DEMU1234560", "kind": "컨테이너 번호"}]
+
+
 def test_an_approval_card_carries_the_korean_label_and_the_choices_from_the_rules():
     # [왜] 화면이 규칙 목록을 따로 들고 있으면 규칙이 바뀔 때 어긋난다. 카드가 한국어 이름과 고를 값을 싣는다
     from marvia.tools.rules import load_rules

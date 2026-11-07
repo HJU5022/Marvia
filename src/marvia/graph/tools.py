@@ -38,7 +38,7 @@ from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 from marvia.watch import WatchDeps
 
-# 가린 토큰 모양: [BL1], [CARGO2], [NUM3]. [왜] 이름표는 identify.mask의 것을 그대로 쓴다
+# 가린 토큰 모양: [BL1], [CARGO2], [CNTR1], [NUM3]. [왜] 이름표는 identify.mask의 것을 그대로 쓴다
 TOKEN = re.compile(r"\[(?:" + "|".join(LABELS) + r")\d+\]")
 
 
@@ -501,7 +501,8 @@ def _watch_tools(watch: WatchDeps) -> list:
         if number is None:
             return _reply(runtime, f"{token}: 모르는 토큰이에요")
         if not token.startswith(tuple(f"[{label}" for label in READ_LABELS)):
-            # [왜] 읽지 못한 덩어리([NUMn])는 조회가 될 수 없어 감시 목록에 넣으면 영원히 다시 조회만 한다
+            # [왜] 읽지 못한 덩어리([NUMn])와 컨테이너([CNTRn])는 UNI-PASS로 조회할 수 없어 감시 목록에 넣으면
+            #      영원히 다시 조회만 한다
             return _reply(runtime, f"{token}: 조회할 수 없어서 감시할 수 없는 번호예요")
         cargo = next((c for c in runtime.state.get("cargos", []) if c["token"] == token and c["facts"]), None)
         # [주의] 실제 번호는 서버의 감시 표에만 들어간다. 모델에게 주는 글과 인자는 토큰뿐이다 (설계 12절)

@@ -146,3 +146,8 @@ def test_distinct_number_keys_keep_both_values():
     cleaned = scrub({"DEMO0001": "a", "DEMO0002": "b"})
     assert sorted(cleaned.values()) == ["a", "b"] and len(cleaned) == 2
     assert all("DEMO" not in key for key in cleaned)
+
+
+def test_scrub_hides_container_numbers_whole():
+    # [왜] 컨테이너 번호(11자)도 8자 이상 영문·숫자 덩어리라 같은 규칙에 걸린다 (계획 6a에서 확인)
+    assert scrub("컨테이너 DEMU1234560, DEMU-123456-0") == f"컨테이너 {MASK}, {MASK}"

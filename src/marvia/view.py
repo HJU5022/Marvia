@@ -16,7 +16,7 @@ from marvia.identify.mask import unmask
 from marvia.tools.rules import load_rules
 
 # 토큰 이름표 → 화면에 보일 이름 ("이렇게 읽었어요")
-KIND_NAMES = {"BL": "B/L", "CARGO": "화물관리번호", "NUM": "읽지 못한 덩어리"}
+KIND_NAMES = {"BL": "B/L", "CARGO": "화물관리번호", "CNTR": "컨테이너 번호", "NUM": "읽지 못한 덩어리"}
 
 
 def _unmask_all(value: Any, mask_map: dict[str, str]) -> Any:

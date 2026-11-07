@@ -1,4 +1,4 @@
-from marvia.identify.mask import mask_text, token_for, unmask
+from marvia.identify.mask import LABELS, READ_LABELS, mask_text, token_for, unmask
 
 
 def test_split_numbers_get_two_tokens():
@@ -43,3 +43,10 @@ def test_cargo_token_pattern_matches_every_label():
 
     for kind in _LABEL:
         assert TOKEN.fullmatch(token_for({}, "X", kind))
+
+
+def test_a_container_gets_its_own_token_and_is_not_a_lookup_label():
+    masked, mask_map = mask_text("컨테이너 DEMU1234560 어디쯤이에요")
+    assert (masked, mask_map) == ("컨테이너 [CNTR1] 어디쯤이에요", {"[CNTR1]": "DEMU1234560"})
+    # [왜] READ_LABELS는 UNI-PASS로 바로 조회할 수 있는 번호의 이름표다. 감시 목록이 이것으로 거른다
+    assert "CNTR" in LABELS and "CNTR" not in READ_LABELS

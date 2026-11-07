@@ -1326,6 +1326,18 @@ def test_watch_cargo_refuses_an_unread_number_token(agent_deps):
     assert "감시할 수 없는 번호" in text
 
 
+def test_watch_cargo_refuses_a_container_token(agent_deps):
+    # [왜] 컨테이너 번호는 UNI-PASS로 다시 조회할 수 없다. 감시는 B/L·화물관리번호로만 한다 (계획 6a)
+    watch = FakeWatch()
+    ask = say(("watch_cargo", {"token": "[CNTR1]"}))
+    graph = agent_graph(agent_deps, ask, say(), permission_mode="auto", watch=watch.deps())
+    graph.invoke({"text": "DEMU1234560 지켜봐 줘"}, cfg("w5c"))
+    graph.invoke(Command(resume={"decisions": [{"type": "approve"}]}), cfg("w5c"))
+    assert watch.added == []
+    text = [m.content for m in graph.get_state(cfg("w5c")).values["messages"] if m.type == "tool"][0]
+    assert "감시할 수 없는 번호" in text
+
+
 DONE = [
     # (도구 호출, 화면 답의 줄, 작성자가 받는 줄)
     (("watch_cargo", {"token": "[BL1]"}), "DEMO0001 감시 목록에 넣음", "[BL1] 감시 목록에 넣음"),

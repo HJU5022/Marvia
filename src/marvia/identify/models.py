@@ -39,7 +39,7 @@ class CargoIdentity(BaseModel):
     """식별 서브그래프의 결과 한 건. LLM은 token만 본다."""
 
     token: str  # LLM이 보는 가린 이름 (예: [BL1])
-    kind: Kind  # cargo_no(화물관리번호) 또는 bl
+    kind: Kind  # cargo_no(화물관리번호), bl, container(컨테이너 번호)
     cargo_no: str | None = None
     bl_no: str | None = None
     # [왜] UNI-PASS는 B/L 조회에 연도가 필요하다. 지난해 B/L을 올해로 찾으면 "없음"이 나온다

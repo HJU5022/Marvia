@@ -145,3 +145,16 @@ def test_any_httpx_error_becomes_a_fixed_error_without_the_key():
     raised, _ = _fetch(httpx.DecodingError(f"https://x/?crkyCn={KEY}&cargMtNo={CARGO_NO}"))
     assert isinstance(raised, ToolError) and raised.code == "bad_response"
     assert KEY not in repr(raised) and KEY not in raised.message
+
+
+def test_a_container_number_is_never_sent_to_unipass(monkeypatch):
+    # [왜] 화물통관진행정보는 화물관리번호·B/L로만 찾는다. 컨테이너 번호를 B/L 칸에 넣지 않는다 (계획 6a)
+    monkeypatch.setenv("MARVIA_UNIPASS_MODE", "live")
+    monkeypatch.setenv("MARVIA_UNIPASS_KEY", KEY)
+    real = unipass.Settings
+    monkeypatch.setattr(unipass, "Settings", lambda: real(_env_file=None))  # [왜] .env를 읽지 않는다
+    monkeypatch.setattr(unipass.httpx, "Client", lambda *a, **k: pytest.fail("컨테이너 번호로 HTTP를 열었다"))
+    error = lookup_cargo("DEMU1234560")
+    assert error == ToolError(
+        code="container_unknown", message=unipass.CFG["messages"]["container_unknown"], retryable=False
+    )

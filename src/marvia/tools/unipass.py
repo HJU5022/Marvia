@@ -150,7 +150,12 @@ def fetch_cargo(
 
 
 def lookup_cargo(number: str) -> CargoFacts | ToolError:
-    """번호 하나를 조회한다. 기본은 재생 데이터, MARVIA_UNIPASS_MODE=live에 키가 있을 때만 실제 API."""
+    """번호 하나를 조회한다. 기본은 재생 데이터, MARVIA_UNIPASS_MODE=live에 키가 있을 때만 실제 API.
+    컨테이너 번호는 어느 모드에서도 조회하지 않고 정한 글(container_unknown)을 돌려준다."""
+    if kind_of(number) == "container":
+        # [주의] 이 서비스는 화물관리번호·마스터 B/L·하우스 B/L로만 찾는다(data.go.kr 15126268).
+        #        컨테이너 번호를 B/L 칸에 넣어 보내지 않는다. 컨테이너는 이미 아는 화물에서 찾는다 (계획 6a)
+        return _error("container_unknown")
     settings = Settings()
     if settings.unipass_mode != "live":
         return unipass_replay.lookup_cargo(number)

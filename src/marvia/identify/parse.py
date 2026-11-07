@@ -4,15 +4,21 @@
 from __future__ import annotations
 
 import re
+import string
 from dataclasses import dataclass, field
 from typing import Literal
 
-Kind = Literal["cargo_no", "bl"]
+Kind = Literal["cargo_no", "bl", "container"]
 
 # 영문·숫자로 시작하고 끝나며 하이픈을 품을 수 있는 8자 이상 덩어리를 번호 후보로 본다
 _SPAN = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{6,}[A-Za-z0-9]")
 # 화물관리번호 19자리 = MRN 11 + MSN 4 + HSN 4 (v1 customs.py:13). 뒤 8자리는 숫자로 본다
 _CARGO_NO = re.compile(r"[0-9A-Z]{11}[0-9]{8}")
+# 컨테이너 번호 (ISO 6346) = 소유자 부호 영문 3 + 장비 구분 U·J·Z + 일련번호 6 + 확인 숫자 1
+_CONTAINER = re.compile(r"[A-Z]{3}[UJZ][0-9]{7}")
+# ISO 6346 글자 값: A=10부터 차례로 매기되 11의 배수(11, 22, 33)는 건너뛴다 (A=10, B=12, ..., Z=38)
+# [왜] 표준이 정한 계산이라 rules/*.yaml에 두지 않는다 (_CARGO_NO, B/L 길이와 같다)
+_LETTER_VALUE = dict(zip(string.ascii_uppercase, (v for v in range(10, 39) if v % 11), strict=True))
 # 번호처럼 보여도 번호가 아닌 것: 날짜(YYYYMMDD), 휴대폰 번호
 _NOT_NUMBER = re.compile(r"20\d{6}|01[016789]\d{7,8}")
 # B/L 한 건의 길이 범위 (v1 patterns.py와 같은 8~20자)
@@ -45,9 +51,24 @@ def normalize(raw: str) -> str:
     return raw.replace("-", "").upper()
 
 
+def check_digit(code: str) -> int:
+    """ISO 6346 확인 숫자: 앞 10자의 값에 자리마다 1, 2, 4, ... 512를 곱한 합을 11로 나눈 나머지(10이면 0)."""
+    total = sum((_LETTER_VALUE[ch] if ch.isalpha() else int(ch)) * 2**i for i, ch in enumerate(code[:10]))
+    return total % 11 % 10
+
+
+def is_container(value: str) -> bool:
+    """컨테이너 번호 모양이고 확인 숫자가 맞는가."""
+    return bool(_CONTAINER.fullmatch(value)) and check_digit(value) == int(value[-1])
+
+
 def kind_of(value: str) -> Kind:
-    """19자리 화물관리번호 형식이면 cargo_no, 아니면 bl."""
-    return "cargo_no" if _CARGO_NO.fullmatch(value) else "bl"
+    """19자리 화물관리번호 형식이면 cargo_no, 확인 숫자가 맞는 컨테이너 번호면 container, 아니면 bl."""
+    if _CARGO_NO.fullmatch(value):
+        return "cargo_no"
+    # [왜] 확인 숫자가 틀리면 컨테이너로 보지 않는다(오타일 수도, 같은 모양 B/L일 수도 있다).
+    #      식별 단계가 한 번 묻는다
+    return "container" if is_container(value) else "bl"
 
 
 def _prefix_split(token: str) -> list[str] | None:
@@ -64,7 +85,7 @@ def _prefix_split(token: str) -> list[str] | None:
 
 
 def read_token(raw: str) -> TokenRead:
-    """덩어리 하나를 읽는다. 순서: 화물관리번호 → 접두어 반복 나누기 → 한 건 → 애매함."""
+    """덩어리 하나를 읽는다. 순서: 화물관리번호 → 접두어 반복 나누기 → 한 건(컨테이너 또는 B/L) → 애매함."""
     token = normalize(raw)
     if _CARGO_NO.fullmatch(token):
         return TokenRead(raw, [ReadNumber(token, "cargo_no")])
@@ -72,7 +93,7 @@ def read_token(raw: str) -> TokenRead:
     if parts:
         return TokenRead(raw, [ReadNumber(p, kind_of(p)) for p in parts])
     if _MIN_LEN <= len(token) <= _MAX_LEN:
-        return TokenRead(raw, [ReadNumber(token, "bl")])
+        return TokenRead(raw, [ReadNumber(token, kind_of(token))])
     # 너무 길고 나눌 근거가 없다: 반으로 나누는 안을 권장안으로, 통째로 읽는 안을 둘째로 둔다
     alternatives = [[token]]
     half = len(token) // 2

@@ -1,15 +1,16 @@
-"""LLM에 넘기기 전에 화물 번호를 [BL1]·[CARGO1]·[NUM1] 토큰으로 가린다.
+"""LLM에 넘기기 전에 화물 번호를 [BL1]·[CARGO1]·[CNTR1]·[NUM1] 토큰으로 가린다.
 실제 값은 mask_map에만 두고, 화면에 보낼 때 unmask로 되돌린다 (설계 4.2, 12)."""
 
 from __future__ import annotations
 
 from marvia.identify.parse import Kind, normalize, read_numbers
 
-_LABEL: dict[str, str] = {"bl": "BL", "cargo_no": "CARGO", "unread": "NUM"}
+_LABEL: dict[str, str] = {"bl": "BL", "cargo_no": "CARGO", "container": "CNTR", "unread": "NUM"}
 # [왜] 토큰 이름표 목록. 토큰 모양을 정규식으로 찾는 쪽(graph/tools.py)이 같은 목록을 쓴다
 LABELS = tuple(_LABEL.values())
-# [왜] 읽은 번호(B/L·화물관리번호)의 이름표. 읽지 못한 덩어리(NUM)는 조회할 수 없어 뺀다
-READ_LABELS = tuple(label for kind, label in _LABEL.items() if kind != "unread")
+# [왜] UNI-PASS로 바로 조회할 수 있는 번호(B/L·화물관리번호)의 이름표. 읽지 못한 덩어리(NUM)와
+#      컨테이너(CNTR)는 뺀다. UNI-PASS 화물통관진행정보는 컨테이너 번호로 찾지 못한다 (계획 6a)
+READ_LABELS = (_LABEL["bl"], _LABEL["cargo_no"])
 
 
 def token_for(mask_map: dict[str, str], value: str, kind: Kind | str) -> str:

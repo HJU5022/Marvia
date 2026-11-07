@@ -15,4 +15,5 @@ messages:
   not_found: UNI-PASS에 없는 번호예요. 번호와 B/L 연도를 확인해 주세요
   ambiguous: 이 B/L에 화물이 여럿이에요. 화물관리번호로 조회해 주세요
   no_key: UNI-PASS 키가 없어 실제 조회를 하지 않았어요
+  container_unknown: UNI-PASS는 컨테이너 번호로 화물을 찾지 못해요. B/L 번호나 화물관리번호를 알려 주세요
 retryable: [timeout, unavailable] # 다시 시도하면 나아질 수 있는 오류
