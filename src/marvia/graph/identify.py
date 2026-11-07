@@ -1,6 +1,7 @@
 """식별 서브그래프: 단서 글 → 번호 읽기·가림 → 조회 → 화물별 결과 (설계 4절).
 
-하지 않는 일: 사용자에게 직접 묻기. 애매하면 question에 담아 끝내고, 묻는 일은 메인 그래프만 한다 (설계 6.3).
+하지 않는 일: 사용자에게 직접 묻기. 애매하거나 컨테이너 모양 오타면 question에 담아 끝내고,
+묻는 일은 메인 그래프만 한다 (설계 6.3).
 순서도: START → read → (애매하면 END, 아니면 lookup) → choose → END
 조회(lookup)는 따로 컴파일한 서브그래프다: assign → 번호마다 Send("one") → collect (설계 4.3, 계획 3d)
 컨테이너 번호는 UNI-PASS로 조회하지 않고 collect가 아는 화물(이 대화, 감시 목록)에서 찾는다 (계획 6a)
@@ -19,7 +20,7 @@ from langgraph.types import Send
 from marvia.graph.state import IdentifyState
 from marvia.identify.mask import mask_text, token_for
 from marvia.identify.models import CargoFacts, CargoIdentity, ToolError
-from marvia.identify.parse import container_typo, kind_of, read_numbers
+from marvia.identify.parse import ReadNumber, container_typo, kind_of, read_numbers
 from marvia.tools.rules import load_rules
 from marvia.tools.unipass import facts_carry_containers, lookup_cargo
 
@@ -35,9 +36,11 @@ def read(state: IdentifyState) -> dict:
     masked, mask_map = mask_text(text, state.get("mask_map"))
     numbers: list[str] = []
     question = None
+    typos: list[ReadNumber] = []
     for _, read_result in read_numbers(text):
         if read_result.ambiguous:
-            # [주의] 계획 1은 애매한 덩어리를 한 번에 하나만 묻는다. 여럿이면 마지막 것만 남는다
+            # [주의] 질문은 한 번에 하나다. 애매한 덩어리가 여럿이면 마지막 것만 남는다 (계획 1).
+            #        오타 번호는 아래에서 이 질문에 밀리지 않게 따로 모은다
             question = {
                 "kind": "choice",
                 "question": f"'{read_result.raw}'를 어떻게 읽을까요?",
@@ -51,23 +54,29 @@ def read(state: IdentifyState) -> dict:
             }
         else:
             for number in read_result.numbers:
-                if not container_typo(number.value):
+                if container_typo(number.value):
+                    typos.append(number)
+                else:
                     numbers.append(number.value)
-                    continue
-                # [왜] 오타면 조회하기 전에 묻는다. 같은 모양의 B/L일 수도 있어 B/L 조회를 권장안으로 둔다
-                #      (계획 6a). 화면 글에는 토큰만 쓴다
-                token = token_for(mask_map, number.value, number.kind)
-                question = {
-                    "kind": "choice",
-                    "question": f"{token}은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요. "
-                    "번호를 확인해 주세요",
-                    "options": [
-                        {"label": token, "description": "B/L 번호로 조회"},
-                        {"label": "조회하지 않음", "description": "고친 번호를 직접 적어 주세요"},
-                    ],
-                    "recommended": 0,
-                    "alternatives": [[number.value], []],
-                }
+    if typos and question is None:
+        # [왜] 오타면 조회하기 전에 묻는다. 같은 모양의 B/L일 수도 있어 B/L 조회를 권장안으로 둔다
+        #      (계획 6a). 오타가 여럿이어도 질문은 하나이고, 화면 글에는 토큰만 쓴다
+        tokens = [token_for(mask_map, n.value, n.kind) for n in typos]
+        joined = " + ".join(tokens)
+        question = {
+            "kind": "choice",
+            "question": f"{joined}은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요. 번호를 확인해 주세요",
+            "options": [
+                {"label": joined, "description": "B/L 번호로 조회"},
+                {"label": "조회하지 않음", "description": "고친 번호를 직접 적어 주세요"},
+            ],
+            "recommended": 0,
+            "alternatives": [[n.value for n in typos], []],
+        }
+    else:
+        # [주의] 애매한 덩어리의 질문이 이기면 오타 번호는 권장안(B/L 조회)을 따른다.
+        #        번호가 말없이 빠지지 않게 한다
+        numbers += [n.value for n in typos]
     # [왜] 바꾼 칸만 돌려준다. LangGraph가 공책의 그 칸들만 덮어쓰고 나머지 칸(text 등)은 그대로 둔다
     return {"masked_text": masked, "mask_map": mask_map, "numbers": numbers, "question": question}
 

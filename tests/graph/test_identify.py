@@ -181,3 +181,23 @@ def test_a_container_shaped_number_with_a_wrong_check_digit_is_asked_before_any_
     assert question["alternatives"] == [["DEMU1234565"], []]
     assert out["masked_text"] == "[BL1] 어디야?" and out["numbers"] == []
     assert seen == []
+
+
+def test_two_typos_are_asked_in_one_question(monkeypatch):
+    seen = spy(monkeypatch)
+    out = run("DEMU1234565, TESU0000012 어디야?")
+    question = out["question"]
+    assert question["alternatives"] == [["DEMU1234565", "TESU0000012"], []]
+    assert question["question"].startswith("[BL1] + [BL2]은 컨테이너 번호 모양인데")
+    shown = str(question["question"]) + str(question["options"])
+    assert "DEMU1234565" not in shown and "TESU0000012" not in shown
+    assert out["numbers"] == [] and seen == []
+
+
+def test_a_typo_next_to_an_ambiguous_chunk_is_never_dropped():
+    for text in ("MOCK12345678TEST87654321 DEMU1234565", "DEMU1234565 MOCK12345678TEST87654321"):
+        out = run(text)
+        assert out["question"]["alternatives"][0] == ["MOCK12345678", "TEST87654321"], text
+        assert out["numbers"] == ["DEMU1234565"], (
+            text
+        )  # 다른 질문이 이기면 오타 번호는 권장안(B/L 조회)을 따른다

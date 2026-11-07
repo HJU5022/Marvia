@@ -107,6 +107,17 @@ def test_a_mistyped_container_is_asked_then_read_as_the_user_says(agent_deps):
     assert "DEMU1234560: 조회하지 못했어요 (UNI-PASS는 컨테이너 번호로 화물을 찾지 못해요." in out["answer"]
 
 
+def test_two_mistyped_containers_asked_once_and_both_looked_up_as_bl(agent_deps):
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    out = graph.invoke({"text": "DEMU1234565, TESU0000012 어디야?"}, cfg("ty4"))
+    assert [o["label"] for o in out["__interrupt__"][0].value["options"]] == [
+        "[BL1] + [BL2]",
+        "조회하지 않음",
+    ]
+    out = graph.invoke(Command(resume={"selected": 0}), cfg("ty4"))
+    assert "DEMU1234565:" in out["answer"] and "TESU0000012:" in out["answer"]
+
+
 def test_no_number_guides_user(agent_deps):
     asked = Draft(
         answer="화물을 찾으려면 번호가 필요해요.",
