@@ -104,6 +104,8 @@ def fake_deps() -> AgentDeps:
         # [주의] 작성자 지시문 자체에 "[BL1]" 예가 있다. 화물 줄("[BL1]: 단계")이 있을 때만 토큰을 쓴다
         cargo = "[BL1]:" in prompt
         lead = "[BL1]의 수입신고 기한과 근거를 아래에 정리했어요." if cargo else "확인한 내용을 정리했어요."
+        # [왜] 선택지 흐름이 고른 값(인천)이 서버를 지나 작성자까지 닿았는지 e2e가 본다
+        lead += " 인천 기준이에요." if "인천" in prompt else ""
         cited = [UNIT.unit_id] if UNIT.unit_id in prompt else []
         return Draft(
             answer=lead, citations=cited, next_options=["관세사에게 신고 대행 묻기"], forwarder_message=""

@@ -45,7 +45,8 @@ test("질문하면 계획이 답보다 먼저 보이고, 답·근거·화물 카
   await expect(page.getByText("시행일 2026-10-02")).toBeVisible();
   await expect(page.getByRole("link", { name: /원문 보기/ })).toHaveAttribute("href", /^https:\/\/www\.law\.go\.kr\//);
   await accessible(page);
-  await page.screenshot({ path: "e2e/screenshots/answer.png", fullPage: true });
+  // [왜] 조회 시각은 서버 시계라 매번 다르다. 가려서 그림이 같게 나오게 한다
+  await page.screenshot({ path: "e2e/screenshots/answer.png", fullPage: true, mask: [page.locator(".cargo .meta")] });
 });
 
 test("선택지 카드에서 고르면 이어서 답한다", async ({ page }) => {
@@ -55,7 +56,7 @@ test("선택지 카드에서 고르면 이어서 답한다", async ({ page }) =>
   await accessible(page);
   await page.screenshot({ path: "e2e/screenshots/choice.png", fullPage: true });
   await page.getByRole("button", { name: /인천/ }).click();
-  await expect(answers(page)).toContainText("확인한 내용을 정리했어요");
+  await expect(answers(page)).toContainText("확인한 내용을 정리했어요. 인천 기준이에요.");
 });
 
 test("승인 카드에서 고친 값으로 저장한다", async ({ page }) => {

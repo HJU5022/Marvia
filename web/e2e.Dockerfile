@@ -5,6 +5,7 @@ WORKDIR /work
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 RUN test "$(node -p "require('@playwright/test/package.json').version")" = "1.64.1"
+RUN test "$(node -p "require('playwright-core/package.json').version")" = "1.64.1"
 COPY playwright.config.ts ./
 COPY e2e ./e2e
 ENV NEXT_TELEMETRY_DISABLED=1

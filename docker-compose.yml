@@ -94,6 +94,11 @@ services:
   web-e2e:
     profiles: [e2e]
     build: { context: ./web, args: { NEXT_PUBLIC_API_URL: "http://api-e2e:8080", NEXT_PUBLIC_AUTH: dev } }
+    healthcheck:
+      # [왜] 뜨는 중에 첫 접속이 실패하지 않게 한다(재시도 0). 이미지에 curl이 없어 node로 본다
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      retries: 30
     networks: [e2e]
   playwright:
     profiles: [e2e]
@@ -105,7 +110,7 @@ services:
       - ./web/e2e/screenshots:/work/e2e/screenshots # 스크린샷을 저장소에 남긴다
     depends_on:
       api-e2e: { condition: service_healthy }
-      web-e2e: { condition: service_started }
+      web-e2e: { condition: service_healthy }
     networks: [e2e]
 networks:
   e2e:
