@@ -2,7 +2,7 @@
 
 > 진행 방법: 태스크를 T0부터 차례로 하고, 단계마다 체크박스(`- [ ]`)로 표시한다. 커밋 하나는 동작 하나다. 키 셋이 모두 있을 때만 트레이서가 켜지므로, 키가 없는 시험·평가·서버는 커밋마다 지금과 똑같이 돈다.
 
-**Goal:** 노드·도구·LLM 호출을 Langfuse 트레이스로 남길 수 있게 연결한다. 기본은 꺼짐이고 `MARVIA_LANGFUSE_PUBLIC_KEY`·`MARVIA_LANGFUSE_SECRET_KEY`·`MARVIA_LANGFUSE_HOST`가 모두 있을 때만 켜진다. 내보내는 span의 모든 칸(이름, 속성, 사건, 상태, 자원)에서 화물 번호를 가린다. 서버·CLI·평가가 같은 콜백 하나를 쓴다 (done 3.9, 설계 11절·12절).
+**Goal:** 노드·도구·LLM 호출을 Langfuse 트레이스로 남길 수 있게 연결한다. 기본은 꺼짐이고 `MARVIA_LANGFUSE_PUBLIC_KEY`·`MARVIA_LANGFUSE_SECRET_KEY`·`MARVIA_LANGFUSE_HOST`가 모두 있을 때만 켜진다. 내보내는 span의 속성(입력·출력·메타데이터와 그 밖의 속성)과 상태 설명에서 화물 번호를 가린다. 이름·사건·자원은 어느 겹도 고치지 않는다: 이름은 코드가 정하고, SDK span에는 사건이 없고, 자원은 SDK 기본값과 운영자의 `OTEL_*` 환경 변수에서 온다. 문 시험은 이 칸들까지 읽어 번호가 없음을 본다(11-08 정정). 서버·CLI·평가가 같은 콜백 하나를 쓴다 (done 3.9, 설계 11절·12절).
 
 **Architecture:** 켜고 끄기는 `trace.tracer_callbacks` 한 곳에서 정하고, SDK를 다루는 일은 새 모듈 `langfuse_trace.py`에만 둔다. 키가 없으면 `langfuse`를 import하지도 않는다. 가림은 네 겹이고 겹마다 맡는 칸이 다르다.
 
@@ -44,15 +44,15 @@ CLI scripts/try_agent.py → 실행 설정 callbacks
 | 서버 시작 검사(`auth.check_startup`)가 접두어 없는 `LANGFUSE_` 이름의 환경 변수를 모두 거절한다 | 11-07 결정. LangSmith 추적 변수(R-069)와 같은 자리다. 환경 변수만으로 가림 밖의 연결이 생기거나 SDK 설정(환경 이름, 표본 비율, 끄기)이 바뀌지 않게 한다. 시험은 셸에 걸린 `LANGFUSE_*`를 지우는 autouse 준비물로 돈다 | 습관대로 `LANGFUSE_*`를 넣은 사람은 거절 글을 본다. CLI·평가는 이 검사를 하지 않는다(키는 인자로만 넘긴다) |
 | 가림은 네 겹이고 겹마다 맡는 칸이 다르다. ⓪ `should_export_span=is_langfuse_span`: Langfuse SDK가 만든 span만 내보낸다. ① `mask=scrub`: input·output·metadata. ② `mask_otel_spans=scrub_spans`: 그 밖의 span 속성의 글과 글 목록. ③ `ScrubbedHandler`: `on_chain_error`·`on_tool_error`·`on_llm_error`·`on_retriever_error`에 가린 사본 예외를 넘기고, 오류 도구 결과(`ToolMessage(status="error")`)의 글을 가린다 | 11-07 결정의 세 겹(①②③)에 ⓪을 더했다(다음 줄). SDK는 `mask`를 input·output·metadata에만 부른다. `status_message`는 ②만 닿고, OTel span 상태 설명(`status.description`)과 사건(event)은 두 hook 어느 쪽도 고치지 못한다. SDK는 ERROR 단계일 때만 상태 설명을 쓴다(`langfuse/_client/span.py`의 `_set_otel_span_status_if_error`) [문서 SDK 소스] | SDK가 새 속성을 만들면 ②가 가린다(①의 칸 이름 밑이면 ①). 문 시험이 span 전체를 읽으므로 시나리오가 지나는 길에서 번호가 실리면 잡는다 |
 | ⓪을 더한다 (범위 조사 밖, 11-08 검증 중 발견) | 키를 준 `Langfuse(...)`는 전역 OTel TracerProvider가 없으면 자기 것을 전역으로 놓는다(`resource_manager.py`의 `_init_tracer_provider`) [실측 11-08: 만들기 전 `ProxyTracerProvider`, 뒤 `TracerProvider`. 범위 조사의 "전역은 그대로"는 import 뒤만 본 값이었다]. 그 뒤 mcp 2.x 서버의 `tools/call` span은 `gen_ai.tool.name` 속성 때문에 SDK 기본 거름(`is_default_export_span`)을 지난다. 이 span은 ①·③을 거치지 않고, 예외가 나면 예외 사건(`record_exception`)과 상태 설명에 `str(e)`를 싣는다(`mcp/server/_otel.py`) [문서 소스]. RAG 기본 길이 `rag_via=mcp`다. 검증 사본에서 트레이서를 켠 채 tests/rag를 돌리면 MCP 서버 span 13개(`tools/call search_regulations`)가 기본 거름으로 내보내지고, ⓪을 주면 0개다 [실측 11-08] | Langfuse 화면에 MCP 서버 span이 없다. 같은 검색은 콜백의 도구 span이 남긴다 |
-| ②는 ①의 칸(`langfuse.observation.input`·`output`·`metadata.*`, `langfuse.trace.metadata.*`)을 건너뛴다 | SDK는 input·output을 `json.dumps`(ASCII 이스케이프)로 적는다. JSON 글을 다시 가리면 이스케이프가 번호 후보로 잡혀 JSON이 깨진다 [실측 11-07: `"관세법 제241조의 기한"`을 담은 JSON에서 `\uc81c241`이 `[가림]`이 되어 `JSONDecodeError`]. ①이 JSON으로 바꾸기 전에 같은 규칙으로 가린다 | ①을 거치지 않고 그 칸에 값을 쓰는 SDK 길이 생기면 ②가 잡지 못한다. ① 빼기 시험이 그 칸에서 번호를 찾으므로 ①이 빠지는 것은 잡는다 |
-| ③은 끼어들기(`GraphBubbleUp`)를 가리지 않고 그대로 넘긴다 | SDK는 끼어들기를 오류 단계로 보지 않아(DEFAULT) 상태 설명을 쓰지 않는다. 질문 글(식별 끼어들기는 실제 번호 조각을 싣는다)이 드는 `status_message` 속성은 ②가 가린다. 원래 예외를 넘기므로 SDK의 재개 트레이스 잇기도 그대로다 | ②가 빠지면 식별 끼어들기의 번호가 나간다. ② 빼기 시험이 이것을 본다 |
+| ②는 ①의 칸(`langfuse.observation.input`·`output`·`metadata.*`)을 건너뛴다. 11-08 정정(8048a6f): `langfuse.trace.metadata.*`는 SDK가 `mask` 없이 쓰므로 건너뛰지 않고 ②가 가린다 | SDK는 input·output을 `json.dumps`(ASCII 이스케이프)로 적는다. JSON 글을 다시 가리면 이스케이프가 번호 후보로 잡혀 JSON이 깨진다 [실측 11-07: `"관세법 제241조의 기한"`을 담은 JSON에서 `\uc81c241`이 `[가림]`이 되어 `JSONDecodeError`]. ①이 JSON으로 바꾸기 전에 같은 규칙으로 가린다 | ①을 거치지 않고 그 칸에 값을 쓰는 SDK 길이 생기면 ②가 잡지 못한다. ① 빼기 시험이 그 칸에서 번호를 찾으므로 ①이 빠지는 것은 잡는다 |
+| ③은 끼어들기(`GraphBubbleUp`)를 가리지 않고 그대로 넘긴다 | SDK는 끼어들기를 오류 단계로 보지 않아(DEFAULT) 상태 설명을 쓰지 않는다. 질문 글(식별 끼어들기는 실제 번호 조각을 싣는다)이 드는 `status_message` 속성은 ②가 가린다. 원래 예외를 넘긴다. 11-08 정정: 처음에는 "SDK의 재개 트레이스 잇기도 그대로다"라고 적었으나, LangGraph 1.2.18은 끼어들기로 멈춘 실행을 `on_chain_end`로 끝내므로 SDK가 잇기 정보를 남기지 않고 끼어들기와 재개는 트레이스 둘이 된다 [실측 11-08] | ②가 빠지면 식별 끼어들기의 번호가 나간다. ② 빼기 시험이 이것을 본다 |
 | 문 시험은 내보낸 span마다 OTel `ReadableSpan.to_json()`(이름, 문맥, 부모, 시각, 상태, 속성, 사건, 연결, 자원)과 계측 범위를 글로 바꿔 번호를 찾는다. 정한 칸 목록을 보지 않는다 | 11-07 결정: span 객체 전체를 읽는다 | 시나리오가 지나지 않는 길(승인 카드 편집 재개, 긴 대화 요약, 계획자 루프, 실제 MCP 검색)은 이 시험이 보지 않는다. 같은 콜백과 같은 네 겹을 지난다 [추정] |
 | 시험은 `span_exporter=InMemorySpanExporter()`로 받고, 공개키를 시험마다 새로 만든다 | exporter만 바뀌고 ⓪~②는 그대로 돈다(⓪은 span 처리기, ①은 속성을 만들 때, ②는 SDK가 exporter를 감싼 `LangfuseTransformingSpanExporter`) [실측 11-07 범위 조사와 문 시험]. SDK는 공개키마다 클라이언트를 하나만 둔다 | 실제 OTLP HTTP 내보내기(인증, 압축, 묶음 크기, 재시도)는 보지 않는다(직접 할 일 2) |
-| 콜백 하나를 프로세스가 함께 쓴다(`functools.cache`) | SDK 콜백은 끼어들어 멈춘 실행의 트레이스를 기억했다가 재개(`Command(resume=...)`)를 같은 트레이스로 잇는다(`_pending_resume_trace_contexts`, 1024개까지) [문서 SDK 소스]. 콜백 상태는 run_id별 표라 동시에 도는 차례를 받는다 [추정] | 동시 차례가 많을 때 span 부모가 섞이는지는 보지 않았다 |
+| 콜백 하나를 프로세스가 함께 쓴다(`functools.cache`) | 프로세스마다 클라이언트 하나와 내보내기 스레드 하나만 둔다. 콜백 상태는 run_id별 표라 동시에 도는 차례를 받는다 [실측 11-08: 서버 차례 6개를 동시에 돌려 트레이스 6개, 섞임 없음]. 11-08 정정: 처음에는 "끼어들어 멈춘 실행과 재개를 같은 트레이스로 잇는다"를 이유로 적었으나 사실이 아니었다(위 ③ 줄) | 끼어들기와 재개가 트레이스 둘이고, thread id를 가려 둘을 이을 검색 열쇠가 없다 |
 | 서버는 `build_app`의 그래프 기본 설정(`with_config(callbacks=...)`)에 콜백을 둔다. 차례마다 만드는 실행 설정에는 넣지 않는다 | 차례 실행 설정은 R-072 시험이 그대로 비교한다. 기본 설정의 콜백은 실행 설정과 합쳐진다 [실측: 기존 `Inputs` 콜백 시험이 같은 방식] | 없음 |
 | 평가도 같은 함수를 쓰고 결과 `meta.tracing`에 `on`·`off`를 적는다 | 11-07 결정: 가리는 곳을 하나로 둔다 | 키를 `.env`에 둔 채 유료 평가를 돌리면 평가 트레이스가 Langfuse에 쌓인다(사용량) |
 | UUID 모양 값(사용자 id, run id)과 8자 이상 영문·숫자 덩어리는 모두 `[가림]`이다 | `trace.scrub` 규칙 그대로다. 트레이스에서는 덜 가리는 것보다 낫다 | Langfuse에서 사용자나 thread id로 트레이스를 찾을 수 없다. session·user 칸은 쓰지 않는다 |
-| langfuse를 기본 의존성에 둔다 | 11-07 결정: amd64 runtime 이미지가 1.2GB 상한 아래면 그대로 둔다. 네 커밋을 모두 넣은 사본의 이미지가 1,198,942,988바이트로 상한 아래다 [실측 11-08]. Task 1 Step 5에서 다시 잰다 | 남은 여유가 약 1.06MB라 다음 의존성 하나로 넘는다. 넘으면 11-07 결정대로 langfuse를 선택 extra로 옮기고 이미지는 그 extra 없이 만든다(Task 1 Step 6) |
+| langfuse를 기본 의존성에 둔다 | 11-07 결정: amd64 runtime 이미지가 1.2GB 상한 아래면 그대로 둔다. 네 커밋을 모두 넣은 사본의 이미지가 1,198,942,988바이트로 상한 아래다 [실측 11-08]. Task 1 Step 5에서 다시 잰다 | 남은 여유가 약 1.05MB(T1에서 잰 1,198,946,428바이트)라 다음 의존성 하나로 넘는다. 넘으면 11-07 결정대로 langfuse를 선택 extra로 옮기고 이미지는 그 extra 없이 만든다(Task 1 Step 6) |
 | compose와 배포(Cloud Run) 설정에는 키 칸을 더하지 않는다 | 기본은 꺼짐이고, 실제 서버로 보내 보는 일은 직접 할 일이다 | compose로 띄운 앱은 트레이스를 켤 수 없다. 켜 보려면 셸에서 서버나 CLI를 돌린다 |
 | 의존성은 첫 사용자(`langfuse_trace.py`)와 같은 커밋에 넣는다. 범위 조사가 제안한 의존성만의 커밋은 두지 않는다 | 의존성만 있는 커밋에는 시험할 동작이 없다 | 없음 |
 | 프롬프트 등록과 평가 점수 붙이기(설계 11절에 적힌 것)는 하지 않는다 | 키가 없고 시간 상한이 하루다 | Langfuse에서 프롬프트 판과 점수를 볼 수 없다. 설계 15절로 옮긴다 |
@@ -1233,7 +1233,7 @@ git commit -m "docs: 설계에 계획 6b 반영(Langfuse 트레이스 연결, �
 ## 끝나면 되는 것
 
 - 키가 없으면 지금과 똑같다: 콜백 없음, `langfuse` import 없음, 스레드·소켓 0. 시험·평가·서버가 그대로 돈다.
-- `MARVIA_LANGFUSE_PUBLIC_KEY`·`MARVIA_LANGFUSE_SECRET_KEY`·`MARVIA_LANGFUSE_HOST`를 모두 넣으면 서버·CLI·평가가 같은 콜백 하나로 노드·도구·LLM 호출을 Langfuse로 보낸다. 끼어들기와 재개는 한 트레이스로 이어진다.
+- `MARVIA_LANGFUSE_PUBLIC_KEY`·`MARVIA_LANGFUSE_SECRET_KEY`·`MARVIA_LANGFUSE_HOST`를 모두 넣으면 서버·CLI·평가가 같은 콜백 하나로 노드·도구·LLM 호출을 Langfuse로 보낸다. 끼어들기와 재개는 트레이스 둘이다(LangGraph 1.2.18).
 - 내보내는 span의 어느 칸에도 화물 번호가 없다. 번호 덩어리는 `[가림]`이다. 네 겹 중 하나라도 빼면 문 시험이 실패한다.
 - 접두어 없는 `LANGFUSE_*` 환경 변수가 있으면 서버가 뜨지 않는다.
 - amd64 이미지가 1.2GB 상한 아래다. 시험 809개가 키 없이 돈다.
@@ -1262,7 +1262,7 @@ MARVIA_LANGFUSE_SECRET_KEY=
 MARVIA_LANGFUSE_HOST=
 ```
 
-2. 실제 Langfuse로 한 번 보내 본다(모델 호출 한두 차례 비용): hajeongun.dev 계정으로 Langfuse 프로젝트를 만들고 키 셋을 `.env`에 넣은 뒤 `uv run python scripts/try_agent.py "DEMO0001 MOCK12345678TEST87654321 언제까지 수입신고 해야 해요?"`를 돌린다(선택지에서 권장안). Langfuse 화면에서 (a) 트레이스 하나에 노드·도구·모델 span이 보이는지, (b) 식별 끼어들기와 재개가 한 트레이스인지, (c) `DEMO0001`·`MOCK12345678`로 검색해 0건인지, (d) input·output이 JSON으로 읽히고 번호 자리가 `[가림]`인지 본다. 끝나면 키를 다시 비운다.
+2. 실제 Langfuse로 한 번 보내 본다(모델 호출 한두 차례 비용): hajeongun.dev 계정으로 Langfuse 프로젝트를 만들고 키 셋을 `.env`에 넣은 뒤 `uv run python scripts/try_agent.py "DEMO0001 MOCK12345678TEST87654321 언제까지 수입신고 해야 해요?"`를 돌린다(선택지에서 권장안). Langfuse 화면에서 (a) 트레이스 하나에 노드·도구·모델 span이 보이는지, (b) 식별 끼어들기와 재개가 트레이스 둘로 나오는지(한 트레이스로 잇지 않는다), (c) `DEMO0001`·`MOCK12345678`로 검색해 0건인지, (d) input·output이 JSON으로 읽히고 번호 자리가 `[가림]`인지 본다. 끝나면 키를 다시 비운다.
 3. 배포에서 켤 때: Secret Manager에 키 둘을 비밀로 만들고, 배포 명령의 환경 변수에 `MARVIA_LANGFUSE_HOST`, 비밀 목록에 두 키를 더하고, 실행 계정에 읽기 권한을 준다(`docs/deploy.md`의 UNI-PASS 키와 같은 절차). compose `api`에도 세 칸을 더한다.
 4. Langfuse 프로젝트의 지역(EU·US)과 데이터 보존 기간을 정한다. 가린 값만 가지만 질문 글(번호를 뺀 나머지)은 그대로 간다.
 
@@ -1270,9 +1270,9 @@ MARVIA_LANGFUSE_HOST=
 
 - 실제 Langfuse 서버로의 내보내기(OTLP HTTP, 인증, 압축, 묶음 크기)와 화면에 `[가림]`이 어떻게 보이는지 [미확인, 키 없음]. 직접 할 일 2.
 - 비동기 길(`ainvoke`·`astream`)의 콜백. 서버는 작업 스레드에서 동기 `graph.stream`을 돈다.
-- 동시에 도는 여러 차례가 콜백 하나를 함께 쓸 때 span 부모가 섞이지 않는지 [추정: run_id별 표].
+- 동시에 도는 차례가 아주 많을 때 span 부모가 섞이지 않는지. 6개 동시 차례로는 섞이지 않았다 [실측 11-08].
 - 문 시험이 지나지 않는 길: 승인 카드 편집 재개, 긴 대화 요약 미들웨어, 계획자 루프(`MARVIA_LOOP=planner`), 실제 MCP 검색. 같은 콜백과 같은 네 겹을 지난다 [추정]. ⓪이 MCP span을 막는 것은 같은 꼴의 span(문 시험 (5))과 tests/rag 실행(기본 거름 13개, ⓪ 0개)으로 보았다. 실제 서버 차례의 MCP 검색 길로는 보지 않았다.
-- 이미지 여유가 약 1.06MB다. 다음 의존성 하나로 상한을 넘는다.
+- 이미지 여유가 약 1.05MB다. 다음 의존성 하나로 상한을 넘는다.
 - SDK가 자기 오류를 `langfuse_logger.exception`으로 로그에 남길 때의 글(Langfuse로는 가지 않고 서버 로그에 남는다). 이 길로 번호가 나가는지는 보지 않았다.
 - 셋 중 일부만 넣은 설정은 아무 말 없이 꺼진다. 시작 거절이나 경고는 없다.
 - Langfuse 무료 한도와 평가 트레이스의 양.
@@ -1289,6 +1289,9 @@ MARVIA_LANGFUSE_HOST=
 | T2 키 셋이 모두 있을 때만 켬 | ddce4a6 | 804 |
 | T3 접두어 없는 `LANGFUSE_*`면 서버가 뜨지 않음 | 3c1d9e7 | 807 |
 | T4 서버·CLI·평가가 같은 콜백 | 52963f2 | 809 |
+| T5 문서 | b9925ea | 809 |
+| 마무리 고침: SDK 미디어 올리기를 끔(가림 전에 base64 글을 올림), 끼어들기·재개가 트레이스 둘이라는 사실로 주석을 고침 | d5bdae4 | 810 |
+| 마무리 고침 2: 문 시험에 `data:` 값을 넣어 미디어 큐가 비는지 봄, Langfuse 주소는 https(로컬은 http 허용)만, 시작 검사가 미디어 끄기 값(`false`)만 받음 | c3b112a | 818 |
 
 | # | 판정 | 근거 |
 |---|---|---|
@@ -1297,10 +1300,25 @@ MARVIA_LANGFUSE_HOST=
 | C3 | 통과 | 겹을 하나씩 빼면 그 겹이 맡은 번호가 남는다(⓪ DEMO0008, ① 입력·출력, ② 끼어들기 질문과 thread_id, ③ 상태 설명) |
 | C4 | 통과 | 명령 B: `langfuse` import는 `src/marvia/langfuse_trace.py` 하나, `tracer_callbacks(` 호출은 서버·CLI·평가. 서버 한 차례, 선택지 재개, 승인 재개, 오류 길이 같은 콜백을 지난다. R-072 시험은 그대로 통과 |
 | C5 | 통과 | amd64 runtime 이미지 1,198,946,428바이트(상한 1,200,000,000), 이미지 안 `import langfuse, marvia.langfuse_trace` 성공 [실측 11-08, T1 커밋 상태]. T2~T4는 의존성을 더하지 않았다 |
-| C6 | 통과 | 794 → 809, 건너뜀 0, `set_v2` sha 시험 통과, 커밋당 코드 파일 최대 6개(52963f2) |
+| C6 | 통과 | 794 → 818(마무리 고침 포함), 건너뜀 0, `set_v2` sha 시험 통과, 커밋당 코드 파일 최대 6개(52963f2) |
 
 남은 한계:
 - 실제 Langfuse 서버로 보내기와 화면 표시는 보지 않았다(키 없음, 직접 할 일).
 - 문 시험은 OTel `to_json`을 읽는다. 실제로 보내는 OTLP 꼴은 보지 않았다.
 - 시나리오 밖 길(긴 대화 요약, 계획자 루프, 실제 MCP 검색)은 같은 콜백을 지나지만 시험하지 않았다.
 - 이미지 여유가 약 1.05MB라 다음 의존성 하나로 상한을 넘는다. 그때는 langfuse를 선택 extra로 옮기거나 상한을 바꾸는 결정을 따로 적는다.
+- 모델 이름(`claude-haiku-5-5`)도 번호 모양이라 `[가림]`으로 나간다. Langfuse에서 모델별 비용 계산과 모델 구분을 할 수 없다.
+- ② 겹은 Langfuse 내보내기 안에만 있다. 나중에 다른 OTel 내보내기를 더하면 그쪽에는 `status_message`가 가리지 않은 채 간다.
+- 끼어들기와 재개는 트레이스 둘이고, thread id를 가려 둘을 잇는 열쇠가 없다.
+- `.env`에 키 셋을 넣어 두면 평가를 같은 프로세스에서 부르는 시험도 실제 클라이언트를 만든다(내보내는 것은 없다) [실측 11-08].
+
+### 마무리 고침 (11-08, 전체 검토 뒤)
+
+| 찾은 것 | 처리 |
+|---|---|
+| "끼어들기와 재개가 한 트레이스로 이어진다"는 설명이 사실이 아니었다(LangGraph 1.2.18은 멈춘 실행을 `on_chain_end`로 끝내 SDK가 잇기 정보를 남기지 않는다) [실측 11-08] | d5bdae4 주석, 이 문서의 결정 줄·직접 할 일 2(b)·남은 한계, 설계 11절을 고침. 트레이스를 잇는 일은 이 계획에서 하지 않는다 |
+| SDK가 가림보다 먼저 `data:...;base64,` 글을 미디어로 올린다(연결 3번) [실측 11-08] | d5bdae4: 클라이언트를 만들기 직전 미디어 올리기를 끈다. 시험이 꺼짐을 본다 |
+| 평가 실행 설명에 "키가 있으면 평가 차례가 Langfuse로 간다"가 없었다 | d5bdae4 `scripts/run_eval.py` 설명 줄 |
+| 미디어 끄기를 시험이 스위치로만 봤다 | c3b112a: 문 시나리오의 `data:text/plain;base64,` 값(풀면 DEMO0010)이 미디어 큐에 들어가지 않음을 본다. 끄는 줄을 빼면 큐에 `b'DEMO0010'`이 든다 [실측 11-08] |
+| Langfuse 주소가 http여도 키를 보냈다 | c3b112a: https만, 로컬(localhost·127.0.0.1·::1)은 http 허용, 그 밖은 값 없는 거절 글 |
+| 시작 검사가 우리가 넣은 미디어 끄기 값까지 거절할 수 있었다 | c3b112a: `LANGFUSE_MEDIA_UPLOAD_ENABLED=false`만 받는다 |
