@@ -361,6 +361,16 @@ def test_layer_two_reads_sdk_json_values_so_they_stay_json_and_times_stay_times(
     assert clean("123456789012") == json.dumps(MASK, ensure_ascii=False)
 
 
+def test_layer_two_lets_no_number_through_a_long_fraction_or_a_repeated_key():
+    # [왜] 시각 예외의 소수부가 길면 번호가 들 수 있고, 같은 키가 두 번이면 읽은 값에서 앞 값이 사라져
+    #      "같다"로 보여 원본 글이 그대로 나간다 (계획 6c 리뷰)
+    clean = langfuse_trace._clean
+    long_fraction = json.dumps("2026-10-02T12:34:56.123456789012")
+    assert "123456789012" not in clean(long_fraction)
+    repeated = clean('{"a": "DEMO0001", "a": "x"}')
+    assert "DEMO0001" not in repeated
+
+
 def test_media_upload_is_off(monkeypatch):
     # [왜] data URI 사진은 ①이 가리기 전에 SDK가 미디어로 올린다. 끄는 길은 환경 변수 하나뿐이다
     exporter, key, handler = tracer()

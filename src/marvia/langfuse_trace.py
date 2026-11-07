@@ -41,8 +41,8 @@ PAYLOAD = (
 
 
 # [왜] SDK가 JSON으로 적는 시각(completion_start_time)은 그대로 둔다. 번호 덩어리 규칙은 날짜와 시를
-#      한 덩어리로 가려 시각이 아니게 만든다. 이 꼴에는 숫자와 정한 기호뿐이라 번호가 들 수 없다
-ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?", re.ASCII)
+#      한 덩어리로 가려 시각이 아니게 만든다. 소수부는 isoformat이 쓰는 6자리까지만 받아 번호가 들 수 없다
+ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})?", re.ASCII)
 
 
 def _number(literal: str) -> Any:
@@ -63,11 +63,18 @@ def _clean_json(value: Any) -> Any:
     return value
 
 
+def _no_repeated_key(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    # [왜] 같은 키가 두 번이면 읽은 값에서 앞 값이 사라져 "바뀐 것 없음"으로 보인다. 글로 가리게 넘긴다
+    if len({key for key, _ in pairs}) != len(pairs):
+        raise ValueError("repeated key")
+    return dict(pairs)
+
+
 def _clean_text(text: str) -> str:
     """글 하나를 가린다. SDK가 JSON으로 적은 값(trace metadata, 시각)은 읽어서 가린 뒤 다시 적는다."""
     # [왜] JSON 글을 그대로 가리면 \n 같은 이스케이프 뒤 덩어리가 \[가림]이 되어 JSON이 깨진다 (계획 6c)
     try:
-        value = json.loads(text)
+        value = json.loads(text, object_pairs_hook=_no_repeated_key)
     except ValueError:
         return scrub_text(text)  # JSON이 아닌 글(status_message 등)
     cleaned = _clean_json(json.loads(text, parse_int=_number, parse_float=_number))
