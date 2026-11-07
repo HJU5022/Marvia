@@ -57,7 +57,13 @@ def check_startup(settings: Settings) -> None:
             )
     # [왜] Langfuse SDK는 인자로 받지 않은 키·주소·설정을 LANGFUSE_* 환경 변수에서 읽는다. 가림을 거치는
     #      연결은 MARVIA_LANGFUSE_*(trace.tracer_callbacks)뿐이라, 접두어 없는 이름이 있으면 뜨지 않는다
-    raw = sorted(name for name in os.environ if name.startswith("LANGFUSE_"))
+    #      예외 하나: langfuse_trace.build가 적는 LANGFUSE_MEDIA_UPLOAD_ENABLED=false는 우리 설정이다
+    raw = sorted(
+        name
+        for name in os.environ
+        if name.startswith("LANGFUSE_")
+        and not (name == "LANGFUSE_MEDIA_UPLOAD_ENABLED" and os.environ[name] == "false")
+    )
     if raw:
         raise RuntimeError(f"{raw[0]} 환경 변수가 있습니다. Langfuse는 MARVIA_LANGFUSE_*로만 켭니다")
     if settings.auth == "dev":

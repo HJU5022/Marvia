@@ -6,6 +6,9 @@
 ② mask_otel_spans=scrub_spans: 내보내기 직전 span 속성 중 ①이 맡지 않는 글(status_message 등)을 가린다.
 ③ ScrubbedHandler: 오류를 가린 사본으로 넘긴다. span 상태 설명(status.description)은 ①·②가 닿지 않는다.
 하나라도 빼면 tests/graph/test_trace.py의 문 시험이 실패한다(test_removing_any_one_layer_leaves_its_numbers).
+[주의] 네 겹은 span 이름, 사건(event), 자원(resource)을 바꾸지 않는다. 이름은 코드가 정한 글만 쓴다
+(run_name을 사용자 글로 만들지 않는다). SDK span에는 사건이 없고,
+자원은 SDK 기본값과 운영자의 OTEL_* 환경 변수가 정한다.
 하지 않는 일: 켜고 끄기와 키 읽기(trace.tracer_callbacks). 이 모듈은 키가 셋 다 있을 때만 불러온다.
 """
 

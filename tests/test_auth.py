@@ -142,6 +142,22 @@ def test_the_server_refuses_to_start_with_langsmith_tracing_on(monkeypatch, name
     check_startup(ok)  # 꺼 두면 뜬다
 
 
+def test_the_in_process_media_off_setting_does_not_stop_a_later_start_check(monkeypatch):
+    # [왜] langfuse_trace.build가 이 이름을 false로 적는다. 그 값만 우리 설정으로 보고 통과시킨다
+    for var in ("K_SERVICE", *TRACING_VARS):
+        monkeypatch.delenv(var, raising=False)
+    ok = Settings(_env_file=None, supabase_url=BASE, owner_ids="owner-1")
+    monkeypatch.setenv("LANGFUSE_MEDIA_UPLOAD_ENABLED", "false")
+    check_startup(ok)
+    monkeypatch.setenv("LANGFUSE_MEDIA_UPLOAD_ENABLED", "true")
+    with pytest.raises(RuntimeError, match="LANGFUSE_MEDIA_UPLOAD_ENABLED"):
+        check_startup(ok)
+    monkeypatch.setenv("LANGFUSE_MEDIA_UPLOAD_ENABLED", "false")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "x")
+    with pytest.raises(RuntimeError, match="LANGFUSE_PUBLIC_KEY"):
+        check_startup(ok)
+
+
 @pytest.mark.parametrize(
     "name", ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_TRACING_ENVIRONMENT"]
 )

@@ -292,6 +292,9 @@ def gate_run(agent_deps, monkeypatch, callbacks: list) -> str:
     call = {"name": "refuse", "args": {"token": "[BL1]"}, "id": "t7", "type": "tool_call"}
     refuse.invoke(call, {"callbacks": callbacks})
 
+    # 6) 값 전체가 data URI인 입력(DEMO0010을 base64로 적은 글): SDK는 이를 미디어로 올리려 한다 (R-084)
+    RunnableLambda(lambda text: "ok").invoke("data:text/plain;base64,REVNTzAwMTA=", {"callbacks": callbacks})
+
     # 5) 다른 라이브러리의 OTel span(MCP 서버 꼴): 트레이서가 놓은 전역 TracerProvider로 들어온다
     with get_tracer("mcp-python-sdk").start_as_current_span(
         "tools/call search_law", attributes={"gen_ai.tool.name": "search_law"}
@@ -305,8 +308,15 @@ def test_every_exported_span_field_is_free_of_numbers(agent_deps, monkeypatch):
     calls: list = []
     monkeypatch.setattr(socket.socket, "connect", lambda self, address: calls.append(address))
     exporter, key, handler = tracer()
+    jobs: list = []  # [왜] data URI(DEMO0010의 base64)가 미디어 줄에 들어가면 안 된다 (R-084)
+    queue = get_client(public_key=key)._resources._media_upload_queue
+    put = queue.put
+    monkeypatch.setattr(
+        queue, "put", lambda *a, **kw: (jobs.extend([kw["item"]] if "item" in kw else []), put(*a, **kw))
+    )
     answer = gate_run(agent_deps, monkeypatch, [handler])
     spans = exported(exporter, key)
+    assert jobs == []
     dump = "".join(spans)
     with monkeypatch.context() as bare:  # [왜] 가림을 모두 빼면 실패하는 시험인지 같은 길로 먼저 본다
         strip(bare, *LAYERS)
@@ -388,6 +398,32 @@ def test_tracing_stays_off_unless_all_three_settings_are_given(monkeypatch, give
     for name in ("MARVIA_LANGFUSE_PUBLIC_KEY", "MARVIA_LANGFUSE_SECRET_KEY", "MARVIA_LANGFUSE_HOST"):
         monkeypatch.delenv(name, raising=False)  # [왜] 셸에 걸린 값이 빈 칸을 채우지 않게 한다
     assert tracer_callbacks(Settings(_env_file=None, **given)) == []
+
+
+@pytest.mark.parametrize(
+    "host", ["https://x.test", "http://localhost", "http://127.0.0.1:3000", "http://[::1]:3000"]
+)
+def test_https_or_loopback_http_host_is_accepted(monkeypatch, host):
+    monkeypatch.setattr(langfuse_trace, "build", lambda *keys: object())
+    trace._handler.cache_clear()
+    settings = Settings(
+        _env_file=None, langfuse_public_key="pk-x", langfuse_secret_key="sk-x", langfuse_host=host
+    )
+    assert len(tracer_callbacks(settings)) == 1
+    trace._handler.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "host", ["http://langfuse.example.com", "http://localhost.evil.test", "ftp://x.test"]
+)
+def test_a_remote_plain_http_host_is_refused_without_naming_the_keys(monkeypatch, host):
+    monkeypatch.setattr(langfuse_trace, "build", lambda *keys: pytest.fail("building must not start"))
+    settings = Settings(
+        _env_file=None, langfuse_public_key="pk-secret", langfuse_secret_key="sk-secret", langfuse_host=host
+    )
+    with pytest.raises(ValueError) as error:
+        tracer_callbacks(settings)
+    assert "pk-secret" not in str(error.value) and "sk-secret" not in str(error.value)
 
 
 def test_all_three_settings_give_one_shared_tracer_and_keys_stay_hidden(monkeypatch):

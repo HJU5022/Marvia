@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 from typing import Any
+from urllib.parse import urlsplit
 
 from langgraph.types import Send
 from pydantic import BaseModel
@@ -96,6 +97,14 @@ def _walk(value: Any, active: set[int]) -> Any:
     return _text_of(value)
 
 
+def _safe_host(host: str) -> bool:
+    """https이거나, 포트가 있어도 loopback(localhost·127.0.0.1·[::1])의 http이면 참."""
+    url = urlsplit(host)
+    return url.scheme == "https" or (
+        url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")
+    )
+
+
 @functools.cache
 def _handler(public_key: str, secret_key: str, host: str) -> Any:
     """프로세스가 함께 쓰는 가린 Langfuse 콜백 하나."""
@@ -116,4 +125,10 @@ def tracer_callbacks(settings: Settings) -> list:
         settings.langfuse_secret_key.get_secret_value(),
         settings.langfuse_host,
     )
+    # [왜] 가린 트레이스도 평문 http로 바깥 서버에 보내지 않는다. loopback 자체 서버만 http (R-085)
+    # [주의] 메시지에 키나 주소 값을 넣지 않는다
+    if all(keys) and not _safe_host(keys[2]):
+        raise ValueError(
+            "MARVIA_LANGFUSE_HOST는 https:// 주소여야 합니다(localhost·127.0.0.1·[::1]만 http 허용)"
+        )
     return [_handler(*keys)] if all(keys) else []
