@@ -348,6 +348,19 @@ def test_removing_any_one_layer_leaves_its_numbers(agent_deps, monkeypatch, laye
     assert [number for number in left if number not in dump] == []
 
 
+def test_layer_two_reads_sdk_json_values_so_they_stay_json_and_times_stay_times():
+    # [왜] SDK는 trace metadata 값과 시각을 JSON 글로 적는다. 글 그대로 가리면 \n 뒤 덩어리가 \[가림]이 되어
+    #      JSON이 깨지고, 시각은 [가림]:34:56이 된다 (계획 6c). 읽어서 가리되 번호는 남기지 않는다
+    clean = langfuse_trace._clean
+    assert json.loads(clean(json.dumps("gate\nDEMO0011", ensure_ascii=False))) == f"gate\n{MASK}"
+    when = json.dumps("2026-11-08T12:34:56.123456+00:00")
+    assert clean(when) == when
+    numbers = json.dumps({"bl": 123456789012, "n": 3, "said": "DEMO0012 어디야"})
+    assert json.loads(clean(numbers)) == {"bl": MASK, "n": 3, "said": f"{MASK} 어디야"}
+    assert clean("DEMO0013 조회 실패") == f"{MASK} 조회 실패"  # JSON이 아닌 글은 전처럼 가린다
+    assert clean("123456789012") == json.dumps(MASK, ensure_ascii=False)
+
+
 def test_media_upload_is_off(monkeypatch):
     # [왜] data URI 사진은 ①이 가리기 전에 SDK가 미디어로 올린다. 끄는 길은 환경 변수 하나뿐이다
     exporter, key, handler = tracer()

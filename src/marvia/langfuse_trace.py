@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from typing import Any
 
 from langchain_core.messages import ToolMessage
@@ -25,12 +27,12 @@ from langfuse.types import MaskOtelSpansParams, MaskOtelSpansResult, OtelSpanPat
 from langgraph.errors import GraphBubbleUp
 from opentelemetry.sdk.trace.export import SpanExporter
 
-from marvia.trace import scrub, scrub_text
+from marvia.trace import MASK, scrub, scrub_text
 
 # [왜] ①이 JSON으로 바꾸기 전에 가린 칸이다. ②가 JSON 글을 다시 가리면 \u 이스케이프가 깨진다
 #      (11-07 실측: "제241조"를 적은 \uc81c241이 번호 후보로 가려져 JSON을 읽을 수 없게 된다)
 #      trace.metadata는 여기 없다: SDK가 propagate_attributes로 적어 ①을 거치지 않고, thread_id처럼
-#      사용자가 정한 글이 든다. ②가 가려도 JSON이 유효함을 11-08에 쟀다
+#      사용자가 정한 글이 든다. ②는 JSON 값을 읽어서 가리고 다시 적는다(_clean)
 PAYLOAD = (
     "langfuse.observation.input",
     "langfuse.observation.output",
@@ -38,12 +40,47 @@ PAYLOAD = (
 )
 
 
+# [왜] SDK가 JSON으로 적는 시각(completion_start_time)은 그대로 둔다. 번호 덩어리 규칙은 날짜와 시를
+#      한 덩어리로 가려 시각이 아니게 만든다. 이 꼴에는 숫자와 정한 기호뿐이라 번호가 들 수 없다
+ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?", re.ASCII)
+
+
+def _number(literal: str) -> Any:
+    """JSON 수 글자 하나를 읽는다. 번호처럼 생긴 수(12자리 B/L 등)는 MASK 글로 바꾼다."""
+    # [왜] 읽기 전 글자로 본다. 읽은 뒤의 수는 글자 모양이 바뀔 수 있다(0.0000000123 → 1.23e-08)
+    return MASK if scrub_text(literal) != literal else json.loads(literal)
+
+
+def _clean_json(value: Any) -> Any:
+    """JSON에서 읽은 값의 글을 가린다. ISO 시각 글은 그대로 둔다(수는 _number가 읽을 때 가렸다)."""
+    if isinstance(value, str):
+        return value if ISO_TIME.fullmatch(value) else scrub_text(value)
+    if isinstance(value, list):
+        return [_clean_json(item) for item in value]
+    if isinstance(value, dict):
+        # [주의] 가린 뒤 겹치는 키는 뒤 값만 남는다(트레이스 값을 잃을 뿐 번호는 나가지 않는다)
+        return {scrub_text(key): _clean_json(item) for key, item in value.items()}
+    return value
+
+
+def _clean_text(text: str) -> str:
+    """글 하나를 가린다. SDK가 JSON으로 적은 값(trace metadata, 시각)은 읽어서 가린 뒤 다시 적는다."""
+    # [왜] JSON 글을 그대로 가리면 \n 같은 이스케이프 뒤 덩어리가 \[가림]이 되어 JSON이 깨진다 (계획 6c)
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return scrub_text(text)  # JSON이 아닌 글(status_message 등)
+    cleaned = _clean_json(json.loads(text, parse_int=_number, parse_float=_number))
+    # [왜] 가릴 것이 없으면 SDK가 적은 글을 그대로 둔다(띄어쓰기 모양도 바꾸지 않는다)
+    return text if cleaned == value else json.dumps(cleaned, ensure_ascii=False)
+
+
 def _clean(value: Any) -> Any:
     """속성 값 하나를 가린다. 글 목록(OTel은 tuple로 둔다)은 글만 가린다."""
     if isinstance(value, str):
-        return scrub_text(value)
+        return _clean_text(value)
     if isinstance(value, (list, tuple)):
-        return tuple(scrub_text(item) if isinstance(item, str) else item for item in value)
+        return tuple(_clean_text(item) if isinstance(item, str) else item for item in value)
     return value
 
 
