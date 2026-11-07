@@ -9,7 +9,7 @@ ag-ui-langgraph 어댑터를 쓰지 않고 ag-ui-protocol의 이벤트 타입·�
      → RUN_FINISHED(outcome success 또는 interrupt + 카드) | RUN_ERROR
 잠금(running)은 이 프로세스 안에서만 지킨다. 배포는 인스턴스 하나로 돌린다(여럿이면 thread 키에
 pg_try_advisory_lock을 거는 것으로 올린다).
-하지 않는 일: 화면 그리기(web/), 가림 판단(identify), 모델 호출, 표 만들기(python -m marvia.migrate).
+하지 않는 일: 화면 그리기(web/), 가림 판단(identify), 모델 호출, 표 만들기(python -m marvia.prepare_db).
 """
 
 from __future__ import annotations

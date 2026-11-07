@@ -11,7 +11,7 @@ API는 Cloud Run(서울, `asia-northeast3`), 화면은 Vercel, DB는 Supabase, �
 | 확인 | 명령 | 결과 |
 |---|---|---|
 | amd64 이미지 빌드 | `docker buildx build --platform linux/amd64 --target runtime --load .` | 성공, 71초 |
-| amd64 이미지 크기 | `docker image inspect` (리드 측정) | 1.18GB (상한 1.2GB, 여유 작음) |
+| amd64 이미지 크기 | `docker image inspect` | 1.18GB (상한 1.2GB, 여유 작음) |
 | arm64 이미지 크기 | `docker images` | 1.07GB |
 | 실행 사용자 | `docker run --rm <이미지> id -u` | `10001` |
 | 형태소 분석기 메모리 (1GB) | `docker run --rm --platform linux/amd64 --memory 1g --memory-swap 1g <이미지> python -c "from marvia.rag.keywords import keywords; print(keywords('수입 신고 시 관세율은 어떻게 정해지나요?')[:5])"` | 종료 코드 0, `['수입', '신고', '관세', '어떻', '정하']` (Cloud Run 배포 명령의 `--memory 1Gi`가 이 값) |
@@ -64,6 +64,8 @@ done
 printf %s "$VALUE" | gcloud secrets versions add marvia-data-key --data-file=- --project "$PROJECT_ID"   # 키마다 한 번씩
 ```
 
+`marvia-data-key`의 값은 Fernet 키여야 한다(아니면 서버가 뜨지 않는다). 만들기: `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. 이 비밀을 지우거나 새 값으로 바꾸면 이미 저장된 감시 목록과 대화 기록을 읽을 수 없게 된다. 키를 돌리는 절차는 아직 없다. 실제 데이터를 넣기 전에 값을 정해 두고 따로 안전하게 보관한다.
+
 WIF는 google-github-actions/auth v3.0.0 README의 "Workload Identity Federation through a Service Account" 순서를 따른다 [문서 11-07]:
 
 ```bash
@@ -94,6 +96,8 @@ Actions 탭에서 `deploy` 워크플로를 손으로 돌린다(`workflow_dispatc
 
 서버가 듣는 주소는 이미지의 `MARVIA_HOST=0.0.0.0`이 정한다. 배포 명령의 환경 변수에는 넣지 않는다.
 
+화물 조회는 재생 모드(`MARVIA_UNIPASS_MODE`의 기본값 `replay`)로 배포된다. 실제 B/L이나 화물 번호를 넣으면 "재생 데이터에 없는 번호입니다"로 답한다. 실제 조회로 바꾸려면 UNI-PASS 키로 응답 모양을 먼저 확인한 뒤, 비밀 `marvia-unipass-key`를 만들고 배포 명령의 환경 변수에 `MARVIA_UNIPASS_MODE=live`를, 비밀 목록에 `MARVIA_UNIPASS_KEY=marvia-unipass-key:latest`를 더한다.
+
 배포 뒤 확인: `curl https://<cloud-run 주소>/health` → `{"ok":true}`, 토큰 없는 `POST /agui` → 401.
 
 배포 뒤 직접 할 한 가지: 화면에서 법령 질문을 한 번 한다(유료 호출 1회). 형태소 분석기는 첫 검색에서 처음 올라와 메모리를 가장 많이 쓰므로, 답이 오면 `--memory 1Gi`가 충분하다는 확인이다. `/health`와 401 확인은 검색을 거치지 않아 이것을 잡지 못한다.
@@ -110,3 +114,13 @@ Actions 탭에서 `deploy` 워크플로를 손으로 돌린다(`workflow_dispatc
 
 - 규정 검색 MCP HTTP(`scripts/serve_mcp.py`)는 배포에서 열지 않는다. 에이전트는 같은 프로세스 안의 메모리 통로로 부른다(설계 9절, 14절 "MCP 공개 → 내부 도구로만"). 연다면 배포 주소의 Host 검사를 먼저 본다.
 - 바깥 메시지 발송 도구는 만들지 않았다(설계 6.3에서 2차, 보낼 통로가 없음).
+
+## 계정 삭제
+
+세션 토큰으로 직접 부를 수도 있다:
+
+```bash
+curl -X DELETE https://<cloud-run 주소>/account -H "Authorization: Bearer <세션 토큰>"
+```
+
+204면 그 사용자의 대화 기록과 저장한 값, 감시 목록이 지워진 것이다. 답하는 중인 대화가 있으면 409이니 끝난 뒤 다시 부른다.
