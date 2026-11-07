@@ -193,7 +193,8 @@ SAID = ("DEMO0001", "DEMO0002", "DEMO0003", "DEMO0004")  # 질문·직접 입력
 FAILED = ("DEMO0005", "DEMO0006", "DEMO0007")  # 도구 예외·모델 오류·도구 오류 결과: span 상태 설명
 ASKED = ("MOCK12345678", "TEST87654321")  # 애매한 덩어리: 식별 끼어들기의 질문 글(status_message)
 OTHER = ("DEMO0008",)  # 다른 라이브러리 span의 예외 사건과 상태 설명
-GATE = SAID + FAILED + ASKED + OTHER
+THREAD = ("DEMO0009",)  # 사용자가 정한 thread_id: 트레이스 metadata로 나가며 ①을 거치지 않는다(②만 가린다)
+GATE = SAID + FAILED + ASKED + OTHER + THREAD
 # 가림 네 겹: ⓪ should_export_span, ① mask, ② mask_otel_spans, ③ 오류를 가리는 콜백(errors)
 LAYERS = ("should_export_span", "mask", "mask_otel_spans", "errors")
 
@@ -228,7 +229,7 @@ def exported(exporter, key) -> list[str]:
     """내보낸 span마다 SDK가 span 전체를 적는 글(to_json: 이름·속성·사건·상태·연결·자원)과 계측 범위."""
     client = get_client(public_key=key)
     client.flush()
-    client.shutdown()  # [왜] 키를 받은 클라이언트가 띄운 일꾼 스레드를 멈춘다
+    client.shutdown()  # [주의] 스레드·처리기는 빌드마다 2개씩 남는다(11-08 실측). 정리가 아니다
     # [왜] to_json은 한글을 \u로 적는다. 다시 읽어 한글 그대로 적어야 [가림]이 보인다
     return [
         json.dumps(json.loads(span.to_json()), ensure_ascii=False) + repr(span.instrumentation_scope)
@@ -255,7 +256,7 @@ def gate_run(agent_deps, monkeypatch, callbacks: list) -> str:
     )
     deps = agent_deps(model=ToolModel(messages=iter(script)), watch=watch, write=lambda prompt: citing)
     graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
-    config = {"configurable": {"thread_id": "gate"}, "callbacks": callbacks}
+    config = {"configurable": {"thread_id": "gate-DEMO0009"}, "callbacks": callbacks}
     out = graph.invoke({"text": "DEMO0001 DEMO0002 MOCK12345678TEST87654321 언제까지 신고해요?"}, config)
     assert "MOCK12345678" in out["__interrupt__"][0].value["question"]  # 식별 끼어들기는 실제 번호를 싣는다
     out = graph.invoke(Command(resume={"selected": 0}), config)
@@ -318,7 +319,12 @@ def test_every_exported_span_field_is_free_of_numbers(agent_deps, monkeypatch):
 
 @pytest.mark.parametrize(
     "layer, left",
-    [("should_export_span", OTHER), ("mask", SAID + ASKED), ("mask_otel_spans", ASKED), ("errors", FAILED)],
+    [
+        ("should_export_span", OTHER),
+        ("mask", SAID + ASKED),
+        ("mask_otel_spans", ASKED + THREAD),
+        ("errors", FAILED),
+    ],
 )
 def test_removing_any_one_layer_leaves_its_numbers(agent_deps, monkeypatch, layer, left):
     strip(monkeypatch, layer)

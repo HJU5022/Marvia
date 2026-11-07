@@ -25,11 +25,12 @@ from marvia.trace import scrub, scrub_text
 
 # [왜] ①이 JSON으로 바꾸기 전에 가린 칸이다. ②가 JSON 글을 다시 가리면 \u 이스케이프가 깨진다
 #      (11-07 실측: "제241조"를 적은 \uc81c241이 번호 후보로 가려져 JSON을 읽을 수 없게 된다)
+#      trace.metadata는 여기 없다: SDK가 propagate_attributes로 적어 ①을 거치지 않고, thread_id처럼
+#      사용자가 정한 글이 든다. ②가 가려도 JSON이 유효함을 11-08에 쟀다
 PAYLOAD = (
     "langfuse.observation.input",
     "langfuse.observation.output",
     "langfuse.observation.metadata",
-    "langfuse.trace.metadata",
 )
 
 
