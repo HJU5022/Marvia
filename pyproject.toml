@@ -36,6 +36,7 @@ packages = ["src/marvia"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+faulthandler_timeout = 300  # 시험이 멈추면 5분 뒤 스택을 찍는다
 
 [tool.ruff]
 line-length = 110
