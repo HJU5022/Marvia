@@ -171,3 +171,13 @@ def test_several_watched_cargos_on_one_container_give_a_choice_with_all_first():
 def test_a_single_match_asks_nothing():
     out = build_identify_graph(lambda config: ["DEMO0001"]).invoke({"text": "DEMU1234560 어디야?"})
     assert out["question"] is None and out["numbers"] == ["DEMU1234560"]
+
+
+def test_a_container_shaped_number_with_a_wrong_check_digit_is_asked_before_any_lookup(monkeypatch):
+    seen = spy(monkeypatch)
+    out = run("DEMU1234565 어디야?")
+    question = out["question"]
+    assert question["question"].startswith("[BL1]은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요")
+    assert question["alternatives"] == [["DEMU1234565"], []]
+    assert out["masked_text"] == "[BL1] 어디야?" and out["numbers"] == []
+    assert seen == []

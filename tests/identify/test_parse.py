@@ -1,4 +1,4 @@
-from marvia.identify.parse import check_digit, is_container, read_numbers, read_token
+from marvia.identify.parse import check_digit, container_typo, is_container, read_numbers, read_token
 
 
 def values(text: str) -> list[list[str]]:
@@ -72,3 +72,9 @@ def test_a_number_hyphen_joined_to_a_spaced_container_is_still_read():
     # [왜] 컨테이너 조각과 겹친다고 옆에 하이픈으로 붙은 번호까지 버리면 가리지 않은 채 LLM에 간다
     assert values("HASL0001-DEMU 123456 0 어디?") == [["HASL0001"], ["DEMU1234560"]]
     assert values("DEMU 123456 0-HASL0001 어디?") == [["DEMU1234560"], ["HASL0001"]]
+
+
+def test_container_typo_is_the_container_shape_with_a_wrong_check_digit():
+    assert container_typo("DEMU1234565")
+    assert not container_typo("DEMU1234560")  # 맞는 컨테이너 번호
+    assert not container_typo("MOCK1234567")  # 넷째 글자가 U·J·Z가 아니면 컨테이너 모양이 아니다

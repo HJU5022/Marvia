@@ -91,6 +91,22 @@ def test_custom_reply(agent_deps):
     assert "TEST87654321" not in out["answer"]
 
 
+def test_a_mistyped_container_is_asked_then_read_as_the_user_says(agent_deps):
+    graph = build_main_graph(agent_deps(), InMemorySaver())
+    out = graph.invoke({"text": "DEMU1234565 어디야?"}, cfg("ty1"))
+    assert [o["label"] for o in out["__interrupt__"][0].value["options"]] == ["[BL1]", "조회하지 않음"]
+    out = graph.invoke(Command(resume={"selected": 0}), cfg("ty1"))
+    assert (
+        "DEMU1234565: 조회하지 못했어요 (재생 데이터에 없는 번호입니다, not_found)" in out["answer"]
+    )  # B/L로
+    graph.invoke({"text": "DEMU1234565 어디야?"}, cfg("ty2"))
+    out = graph.invoke(Command(resume={"selected": 1}), cfg("ty2"))
+    assert "DEMU1234565:" not in out["answer"]  # 조회하지 않았다
+    graph.invoke({"text": "DEMU1234565 어디야?"}, cfg("ty3"))
+    out = graph.invoke(Command(resume={"custom": "DEMU1234560"}), cfg("ty3"))  # 고친 번호를 직접 적었다
+    assert "DEMU1234560: 조회하지 못했어요 (UNI-PASS는 컨테이너 번호로 화물을 찾지 못해요." in out["answer"]
+
+
 def test_no_number_guides_user(agent_deps):
     asked = Draft(
         answer="화물을 찾으려면 번호가 필요해요.",

@@ -65,6 +65,11 @@ def is_container(value: str) -> bool:
     return bool(_CONTAINER.fullmatch(value)) and check_digit(value) == int(value[-1])
 
 
+def container_typo(value: str) -> bool:
+    """컨테이너 번호 모양인데 확인 숫자가 틀렸나 (오타이거나 같은 모양의 B/L)."""
+    return bool(_CONTAINER.fullmatch(value)) and not is_container(value)
+
+
 def kind_of(value: str) -> Kind:
     """19자리 화물관리번호 형식이면 cargo_no, 확인 숫자가 맞는 컨테이너 번호면 container, 아니면 bl."""
     if _CARGO_NO.fullmatch(value):

@@ -19,7 +19,7 @@ from langgraph.types import Send
 from marvia.graph.state import IdentifyState
 from marvia.identify.mask import mask_text, token_for
 from marvia.identify.models import CargoFacts, CargoIdentity, ToolError
-from marvia.identify.parse import kind_of, read_numbers
+from marvia.identify.parse import container_typo, kind_of, read_numbers
 from marvia.tools.rules import load_rules
 from marvia.tools.unipass import facts_carry_containers, lookup_cargo
 
@@ -28,7 +28,7 @@ Watched = Callable[[RunnableConfig], list[str]]
 
 
 def read(state: IdentifyState) -> dict:
-    """번호를 읽고 가린다. 애매한 덩어리가 있으면 선택지 질문을 만든다."""
+    """번호를 읽고 가린다. 애매한 덩어리나 확인 숫자가 틀린 컨테이너 모양 번호가 있으면 선택지를 만든다."""
     text = state.get("text", "")
     # [왜] 같은 대화(thread)의 앞 차례 표를 이어 쓴다. 차례가 바뀌어도 같은 번호는 같은 토큰이고,
     #      모델이 기록에서 본 [BL1]을 이번 차례에도 조회할 수 있다 (계획 3d)
@@ -50,7 +50,24 @@ def read(state: IdentifyState) -> dict:
                 "alternatives": read_result.alternatives,  # 고른 번호로 실제 번호를 꺼내는 데 쓴다
             }
         else:
-            numbers += [n.value for n in read_result.numbers]
+            for number in read_result.numbers:
+                if not container_typo(number.value):
+                    numbers.append(number.value)
+                    continue
+                # [왜] 오타면 조회하기 전에 묻는다. 같은 모양의 B/L일 수도 있어 B/L 조회를 권장안으로 둔다
+                #      (계획 6a). 화면 글에는 토큰만 쓴다
+                token = token_for(mask_map, number.value, number.kind)
+                question = {
+                    "kind": "choice",
+                    "question": f"{token}은 컨테이너 번호 모양인데 확인 숫자가 맞지 않아요. "
+                    "번호를 확인해 주세요",
+                    "options": [
+                        {"label": token, "description": "B/L 번호로 조회"},
+                        {"label": "조회하지 않음", "description": "고친 번호를 직접 적어 주세요"},
+                    ],
+                    "recommended": 0,
+                    "alternatives": [[number.value], []],
+                }
     # [왜] 바꾼 칸만 돌려준다. LangGraph가 공책의 그 칸들만 덮어쓰고 나머지 칸(text 등)은 그대로 둔다
     return {"masked_text": masked, "mask_map": mask_map, "numbers": numbers, "question": question}
 
