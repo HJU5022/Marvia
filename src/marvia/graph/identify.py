@@ -233,11 +233,13 @@ def build_lookup_graph(watched: Watched | None = None, reuse: bool = False):
         containers = {i: n for i, n in enumerate(numbers) if kind_of(n) == "container"}
         if containers:
             # [왜] 갈래 조회가 끝난 뒤에 찾는다. 같은 글에 함께 적은 B/L의 사실도 쓸 수 있다.
-            #      state의 cargos는 아직 이번 결과로 바뀌기 전 값(바로 지난 차례의 화물)이다
+            #      state의 cargos는 아직 이번 결과로 바뀌기 전 값이다(식별 안에서는 지난 차례의 화물,
+            #      ask 뒤 메인 조회에서는 이번 차례의 화물이고 read가 물었다면 비어 있다)
             cargos = list(found.values()) + state.get("cargos", [])
             # [왜] 실제 모드의 사실에는 컨테이너가 없다. 감시 화물을 다시 조회해도 맞출 수 없으니 읽지 않는다
             if facts_carry_containers():
-                # [왜] 숫자 없는 차례가 cargos를 비운다. 이 대화의 B/L·화물관리번호도 다시 조회해 맞춘다
+                # [왜] 숫자 없는 차례와 read가 물은 차례는 cargos를 비운다.
+                #      이 대화의 B/L·화물관리번호도 다시 조회해 맞춘다
                 prefixes = tuple(f"[{label}" for label in READ_LABELS)
                 talked = [n for t, n in state.get("mask_map", {}).items() if t.startswith(prefixes)]
                 watch_numbers = talked + (watched(config) if watched else [])

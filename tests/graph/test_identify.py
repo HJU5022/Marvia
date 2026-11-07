@@ -117,6 +117,15 @@ def test_a_container_on_two_watched_cargos_is_left_as_candidates(monkeypatch):
     assert seen == ["DEMO0002", "DEMO0003"]  # 감시 목록 화물만 다시 조회했다
 
 
+def test_the_same_number_on_two_plain_turns_is_looked_up_twice(monkeypatch):
+    # [왜] 식별 서브그래프의 조회는 reuse=False다. 지난 사실을 다시 쓰면 통관 상태가 낡은 채 답한다 (계획 6c)
+    seen = spy(monkeypatch)
+    graph = build_identify_graph()
+    first = graph.invoke({"text": "DEMO0001 어디야?"})
+    graph.invoke({"text": "DEMO0001 지금은?", "cargos": first["cargos"], "mask_map": first["mask_map"]})
+    assert seen.count("DEMO0001") == 2
+
+
 def test_an_unknown_container_gets_the_fixed_line_without_any_lookup(monkeypatch):
     from marvia.tools.rules import load_rules
 
