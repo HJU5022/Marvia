@@ -320,10 +320,10 @@ def forget_account(conn: psycopg.Connection, store: BaseStore, user: str, url: s
          대화 기록 삭제는 url로 짧게 연 자기 연결에서 한다.
     """
     forget_user(conn, user)
-    for namespace in (("users", user, "items"), ("users", user, "prefs")):
-        while found := store.search(namespace, limit=100):
-            for item in found:
-                store.delete(item.namespace, item.key)
+    # [왜] 사용자 이름 공간 전체를 지운다. 나중에 이름 공간이 늘어도 계정 삭제가 조용히 남기지 않는다
+    while found := store.search(("users", user), limit=100):
+        for item in found:
+            store.delete(item.namespace, item.key)
     prefix = f"{user}/"  # [왜] 서버는 대화를 "사용자/이름"으로 저장한다(build_app). 같은 앞머리만 지운다.
     #                        LIKE를 쓰지 않아 사용자 id의 %·_가 글자 그대로 비교된다
     with psycopg.connect(url) as own, own.transaction():  # [왜] 세 표를 함께 지우거나 함께 남긴다

@@ -480,6 +480,8 @@ def test_account_deletion_forgets_watches_memory_and_only_that_users_threads(age
         assert conn.execute(mine.format("checkpoint_blobs")).fetchone()[0] > 0  # 지우기 전에는 있었다
         store.put(("users", "user-a", "items"), "고추", {"name": "고추"})
         store.put(("users", "user-a", "prefs"), "depth", {"depth": "짧게"})
+        store.put(("users", "user-a", "later"), "x", {"n": 1})  # [왜] 나중에 생긴 이름 공간도 지워야 한다
+        store.put(("users", "user-ab", "items"), "밀", {"name": "밀"})
         store.put(("users", "user-b", "items"), "쌀", {"name": "쌀"})
         assert client.delete("/account").status_code == 401
         assert client.delete("/account", headers={"Authorization": "Bearer tok-a"}).status_code == 204
@@ -488,6 +490,7 @@ def test_account_deletion_forgets_watches_memory_and_only_that_users_threads(age
         for table in ("checkpoint_blobs", "checkpoint_writes"):
             assert conn.execute(mine.format(table)).fetchone()[0] == 0
         assert store.search(("users", "user-a")) == []
+        assert [item.key for item in store.search(("users", "user-ab", "items"))] == ["밀"]
         assert [item.key for item in store.search(("users", "user-b", "items"))] == ["쌀"]
     assert db.execute("SELECT user_id FROM watches").fetchall() == [("user-b",)]
 

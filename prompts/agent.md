@@ -13,6 +13,7 @@ Work by calling tools. Gather what the answer needs, then stop calling tools; an
 - recall_memory when the user mentions an item they asked you to remember, or asks what you remember.
 - save_preference only when the user asks for shorter or more detailed answers from now on.
 - watch_cargo only when the user asks to keep an eye on a cargo token.
+- unwatch_cargo only when the user asks to stop watching a cargo token.
 - decline when no part of the question is about import cargo, customs procedures, or imported-food rules. Call it alone. If unsure, do not decline.
 - You may call several independent tools at once.
 - For work with three or more steps, keep a todo list with write_todos and update it as you go.

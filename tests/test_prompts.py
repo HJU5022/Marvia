@@ -42,3 +42,13 @@ def test_agent_prompt_and_tool_say_annex_labels_are_found():
     tools = {t.name: t for t in make_tools(None, date.today, provision=lambda label, as_of: [])}
     assert "Annex labels" in tools["get_provision"].description
     assert "not found" not in tools["get_provision"].description
+
+
+def test_agent_prompt_has_a_rule_line_for_every_tool_that_always_asks():
+    # [왜] 승인 뒤에만 도는 도구(watch_cargo, unwatch_cargo 등)는 언제 쓰는지 한 줄이 있어야 한다
+    from marvia.tools.rules import load_rules
+
+    text = (Path(__file__).resolve().parents[1] / "prompts" / "agent.md").read_text(encoding="utf-8")
+    rows = [row for row in text.splitlines() if row.startswith("- ")]
+    for name in load_rules("agent")["approval"]["always_ask"]:
+        assert any(row.startswith(f"- {name} ") for row in rows), name
