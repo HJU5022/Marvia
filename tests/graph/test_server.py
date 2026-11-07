@@ -17,7 +17,7 @@ from langgraph.store.memory import InMemoryStore
 from psycopg.conninfo import make_conninfo
 from starlette.testclient import TestClient
 
-from marvia.auth import AuthError
+from marvia.auth import TRACING_VARS, AuthError
 from marvia.config import Settings
 from marvia.graph.live import live_memory
 from marvia.graph.main import build_main_graph
@@ -389,6 +389,8 @@ def test_main_listens_on_loopback_unless_marvia_host_says_otherwise(
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("MARVIA_HOST", raising=False)
+    for name in TRACING_VARS:  # [왜] 셸에 켜진 트레이싱 변수가 시작 검사에 걸리지 않게 한다
+        monkeypatch.delenv(name, raising=False)
     if host_env:
         monkeypatch.setenv("MARVIA_HOST", host_env)
     seen = {}
@@ -494,3 +496,17 @@ def test_an_event_the_encoder_cannot_serialize_still_ends_with_one_run_error():
     assert kinds(events) == ["RUN_STARTED", "RUN_ERROR"]
     assert events[-1]["message"] == "이번 차례를 끝내지 못했어요. 다시 물어봐 주세요."
     assert kinds(run(client, body("t21", "질문"))) == ["RUN_STARTED", "RUN_ERROR"]  # 잠금도 풀렸다
+
+
+def test_a_cancelled_approval_card_rejects_every_action_even_with_an_approve_payload(agent_deps):
+    added = []
+    watch = WatchDeps(add=lambda *row: added.append(row), news=lambda user: [], ack=lambda user, ids: None)
+    steps = (say("watch_cargo", {"token": "[BL1]"}, 1), AIMessage(""))
+    deps = agent_deps(model=ToolModel(messages=iter(steps)), watch=watch)
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
+    client = TestClient(build_app(graph, verify, web_origin="http://web.test", forget=print))
+    card = run(client, body("t22", "DEMO0001 계속 지켜봐 줘"))[-1]["outcome"]["interrupts"][0]
+    approve = {"decisions": [{"type": "approve"}]}
+    resume = [{"interruptId": card["id"], "status": "cancelled", "payload": approve}]
+    assert run(client, body("t22", resume=resume))[-1]["outcome"] == {"type": "success"}
+    assert added == []  # 취소한 카드의 승인 payload는 읽지 않았다
