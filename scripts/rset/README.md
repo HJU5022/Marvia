@@ -18,7 +18,7 @@
 | 파일 | 무엇 |
 |---|---|
 | `sample.json`, `b2_sample.json` | `sample` 단계가 뽑은 표본(정답 단위 포함) |
-| `for_writer.json`, `b2_for_writer.json` | 질문을 쓰는 쪽에 준 것: 문항 번호와 본문뿐이다. 정답 단위 이름과 검색 결과는 주지 않았다 |
+| `for_writer.json`, `b2_for_writer.json` | 질문을 쓰는 쪽에 준 것: 문항 열쇠, 법령 이름, 머리글, 본문. 단위 id와 검색 결과는 주지 않았다 |
 | `questions.json`, `b2_questions.json` | 받은 질문. `write` 단계가 표본과 합친다 |
 
 정답 독립 확인에서 나온 고침(정답 좁힘, also_ok, 질문 고침)은 `apply_fixes.py`와 `apply_fixes_b2.py`에 목록으로 적혀 있다.
