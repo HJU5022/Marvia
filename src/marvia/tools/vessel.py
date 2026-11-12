@@ -105,11 +105,16 @@ def trusted_eta(
     """
     # [왜] 배 신호의 ETA는 그 배가 적어 둔 목적지의 도착 시각이다. 목적지가 다른 항구거나 양륙항을 모르면
     #      이 화물의 도착 시각으로 쓰지 않는다 (v1 평가 문항 B09: 다른 항구 ETA를 부산 예정과 견줬다)
+    rules = load_rules("verdict")
     ais_ok = position is not None and bool(port_code) and other_port(position, port_code) is None
+    if ais_ok and position is not None and rules["ais_eta_requires_port_match"]:
+        # [왜] 목적지가 비었거나 깨졌으면 "다른 항구가 아님"일 뿐 이 항만이라는 근거는 없다.
+        #      목적지 코드가 양륙항 코드와 같을 때만 그 ETA를 이 화물의 도착 시각으로 쓴다
+        ais_ok = (position.dest_code or "").strip().upper() == (port_code or "").strip().upper()
     if ais_ok and now is not None and position is not None and position.ais_eta is not None:
         # [왜] 지난 시각의 배 신호 ETA는 고치지 않은 옛 입력이다. 그것으로 여유 일수를 세면 아직 먼 배가
         #      순항이 된다. 해수부의 실제 입항은 지난 시각이 맞으므로 이 검사는 배 신호 ETA에만 건다
-        slack = timedelta(minutes=load_rules("verdict")["clock_skew_minutes"])
+        slack = timedelta(minutes=rules["clock_skew_minutes"])
         ais_ok = as_utc(position.ais_eta) >= as_utc(now) - slack
     values = {
         "mof_actual": schedule.actual_arrival if schedule else None,
@@ -118,7 +123,7 @@ def trusted_eta(
         # [왜] 포워더가 알려 준 날은 날짜뿐이다. 한국 날짜의 0시로 본다
         "forwarder_eta": datetime.combine(forwarder_eta, time.min, tzinfo=KST) if forwarder_eta else None,
     }
-    for name in load_rules("verdict")["eta_priority"]:
+    for name in rules["eta_priority"]:
         value = values[name]
         if value is not None:
             return as_utc(value), name

@@ -14,7 +14,7 @@ from marvia.eval.verdict_set import (
 from marvia.tools.rules import load_rules
 
 SET = load_verdict_set()
-LAYERS = {"ported": 20, "port": 5, "conflict": 10, "failure": 6, "nodata": 4, "stage": 4, "edge": 30}
+LAYERS = {"ported": 20, "port": 5, "conflict": 14, "failure": 6, "nodata": 4, "stage": 4, "edge": 30}
 
 
 def test_set_is_frozen_and_has_every_layer():
@@ -100,7 +100,7 @@ def test_edge_layer_has_cases_around_every_threshold():
 
 def test_summary_counts_every_item_once():
     done = summarize(SET)
-    assert done["items"] == {"n": 79, "passed": 79} and done["matches"] == {"n": 12, "passed": 12}
+    assert done["items"] == {"n": 83, "passed": 83} and done["matches"] == {"n": 12, "passed": 12}
     assert {name: row["n"] for name, row in done["layers"].items()} == LAYERS
 
 
@@ -119,3 +119,18 @@ def test_free_text_from_the_ship_signal_never_reaches_a_verdict():
     assert seen >= 60
     injected = next(item for item in SET.items if item.id == "V-F03")
     assert "무시" in (injected.position or {})["dest"] and "무시" not in run_item(injected).model_dump_json()
+
+
+def test_a_ship_eta_counts_only_when_the_destination_is_this_port():
+    # [왜] 목적지가 깨졌거나 비었는데 배 신호 ETA만 있으면 그 ETA로 순항과 여유 일수가 나왔다.
+    #      그 ETA가 이 항만 도착 시각이라고 말해 주는 것이 없다 (11-13 덧붙임 2)
+    by_id = {item.id: item for item in SET.items}
+    for name in ("V-C11", "V-C12"):  # 목적지 깨짐 + 배 신호 ETA만 (판매 예정일 앞 / 뒤)
+        want = by_id[name].expect
+        assert (want.grade, want.schedule, want.eta_source, want.margin_days) == (None, None, None, None)
+        assert want.confidence == "unknown" and want.notes == ["no_eta"] and want.dest_value == "broken"
+    other = by_id["V-C13"].expect  # 목적지가 다른 항구: 경계는 그대로 내고 여유 일수는 세지 않는다
+    assert (other.grade, other.eta_source, other.margin_days) == ("alert", None, None)
+    same = by_id["V-C14"].expect  # 목적지가 양륙항: 지금까지처럼 센다
+    assert (same.grade, same.eta_source, same.margin_days) == ("fine", "ais_eta", 4)
+    assert not [name for name in ("V-C11", "V-C12", "V-C13", "V-C14") if mismatches(by_id[name])]

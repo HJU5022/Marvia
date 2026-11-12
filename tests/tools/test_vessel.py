@@ -44,8 +44,13 @@ def test_ship_eta_for_another_port_or_an_unknown_port_is_not_this_cargo_eta():
     # [왜] 목적지가 오사카면 그 ETA는 오사카 도착 시각이다 (v1 평가 문항 B09)
     assert trusted_eta(position("JPOSA"), schedule(), "KRPUS") == (None, None)
     assert trusted_eta(position("KRPUS"), schedule(), None) == (None, None)  # 양륙항을 모른다
-    # 목적지 글이 깨졌거나 비었으면 다른 항구라고 말할 근거가 없다. 그 ETA는 쓴다
-    assert trusted_eta(position(None), schedule(), "KRPUS") == (AIS, "ais_eta")
+    # [왜] 목적지 글이 깨졌거나 비었으면 그 ETA가 이 항만 도착 시각이라고 말해 주는 것이 없다.
+    #      자료가 모자랄수록 등급이 좋아지면 안 된다. 목적지가 양륙항과 맞을 때만 믿을 출처로 친다
+    assert trusted_eta(position(None), schedule(), "KRPUS") == (None, None)
+    assert trusted_eta(position("QZ QZ"), schedule(), "KRPUS") == (None, None)
+    assert trusted_eta(position(" krpus "), schedule(), "KRPUS") == (AIS, "ais_eta")  # 대소문자·공백만 다름
+    # 해수부 일정이 함께 있으면 그것을 쓴다
+    assert trusted_eta(position(None), schedule(PLANNED), "KRPUS") == (PLANNED, "mof_planned")
 
 
 def test_forwarder_date_is_the_last_resort_and_is_read_as_a_korean_day():

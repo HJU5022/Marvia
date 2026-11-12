@@ -67,6 +67,10 @@ signal_ids: [customs_hold, anchor_wait, dest_changed, position_stale, eta_confli
 #   mof_actual: 해수부 관제정보의 실제 입항 / mof_planned: 해수부 입항 신고의 입항 예정(최종 신고 제외)
 #   ais_eta: 배 신호의 ETA(목적지가 이 화물의 양륙항일 때만) / forwarder_eta: 사용자가 알려 준 포워더 입항 예정일
 eta_priority: [mof_actual, mof_planned, ais_eta, forwarder_eta]
+# 배 신호의 ETA는 배 신호의 목적지 코드가 이 화물의 양륙항 코드와 같을 때만 출처로 친다 (11-13 덧붙임 2).
+# [왜] 목적지가 비었거나 깨졌으면 그 ETA가 이 항만 도착 시각이라고 말해 주는 것이 없다. 그 값으로 순항과
+#      여유 일수를 내면 자료가 모자랄수록 등급이 좋아진다. false면 "다른 항구가 아니면 믿는다"는 옛 규칙이다
+ais_eta_requires_port_match: true
 
 # 바깥에서 온 시각을 지금과 견줄 때의 허용 오차(분). 코드(tools/vessel.py, tools/signals.py)가 읽는다.
 # 이보다 더 지난 배 신호 ETA는 믿을 ETA의 출처로 치지 않고, 이보다 더 앞선 마지막 수신 시각은 "모름"이다.

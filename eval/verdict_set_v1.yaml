@@ -778,6 +778,86 @@ items:
     eta_source: mof_planned
     margin_days: 4
     notes: []
+- id: V-C11
+  layer: conflict
+  why: 목적지 글이 깨졌고 해수부 일정이 없다. 배 신호 ETA가 판매 예정일 앞이어도 이 항만 도착 시각이라는 근거가 없어 순항이라고 하지 않는다 (11-13 덧붙임 2)
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: XX QZQZZZZZ, dest_code: null, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 31.9, lng: 127.3, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 33.0, lng: 128.0, sog: 12.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: null
+    confidence: unknown
+    schedule: null
+    eta_source: null
+    margin_days: null
+    notes: [no_eta]
+    dest_value: broken
+- id: V-C12
+  layer: conflict
+  why: V-C11과 같고 배 신호 ETA가 판매 예정일 뒤다. 믿지 않는 ETA로 긴급도 내지 않는다. 등급을 내지 않는다
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-23'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: XX QZQZZZZZ, dest_code: null, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 31.9, lng: 127.3, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 33.0, lng: 128.0, sog: 12.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: null
+    confidence: unknown
+    schedule: null
+    eta_source: null
+    margin_days: null
+    notes: [no_eta]
+    dest_value: broken
+- id: V-C13
+  layer: conflict
+  why: 목적지가 다른 항구(JPOSA)이고 해수부 일정이 없다. 목적지 바뀜으로 경계이고 그 ETA로 여유 일수를 세지 않는다
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: OSAKA, dest_code: JPOSA, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 31.9, lng: 127.3, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 33.0, lng: 128.0, sog: 12.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: alert
+    confidence: partial
+    schedule: null
+    eta_source: null
+    margin_days: null
+    notes: [no_eta]
+    dest_value: JPOSA
+- id: V-C14
+  layer: conflict
+  why: 목적지가 이 화물의 양륙항이고 해수부 일정이 없다. 배 신호 ETA를 믿고 여유 일수를 센다(지금까지와 같다)
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 31.9, lng: 127.3, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 33.0, lng: 128.0, sog: 12.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: fine
+    confidence: partial
+    schedule: on_time
+    eta_source: ais_eta
+    margin_days: 4
+    notes: []
+    dest_value: KRPUS
 - id: V-X01
   layer: failure
   why: 배 위치도 해수부 일정도 받지 못했다. 도착 시각을 알 출처가 없어 등급과 일정을 내지 않는다(순항이라고 하지 않는다)
