@@ -586,7 +586,8 @@ def halt_reason(rows: list[dict], cli_failure_rows: int) -> str | None:
     failed = sum(str(r.get("error") or "").startswith(CLI_FAILURE) for r in rows)
     if failed >= cli_failure_rows:
         # [왜] 사용량 한도나 로그인 문제는 다음 문항에서도 되풀이된다. 일부 호출만 실패한 문항도 센다
-        return f"claude -p 실패가 난 문항이 {failed}개다 (--ids로 남은 문항을 이어서 돌린다)"
+        # [주의] 문항을 다 덮지 못한 실행은 무효다(run_problems). 판정에 쓸 실행은 처음부터 다시 돌린다
+        return f"claude -p 실패가 난 문항이 {failed}개다 (무효. 판정에 쓸 실행은 처음부터 다시 돌린다)"
     return stop_reason(rows[-1])
 
 

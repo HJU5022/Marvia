@@ -686,7 +686,9 @@ def test_the_run_stops_at_the_first_item_with_a_cli_failure_even_when_other_call
     limit = load_rules("eval")["run"]["cli_failure_rows"]
     assert limit == 1
     # [왜] 사용량 한도나 로그인 문제는 다음 문항에서도 되풀이된다. 남은 문항을 오류로 채우지 않고 멈춘다
-    assert "claude -p" in halt_reason([row], limit)
+    reason = halt_reason([row], limit)
+    # [주의] 멈춘 실행은 문항을 다 덮지 못해 무효다. 이어 돌린 파일도 판정에 못 쓰니 다시 돌리라고 알린다
+    assert "claude -p" in reason and "처음부터 다시" in reason and "--ids" not in reason
     clean = row | {"error": None}
     assert halt_reason([clean], limit) is None
     assert halt_reason([clean, row], 2) is None and halt_reason([row, clean, row], 2) is not None
