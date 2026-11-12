@@ -47,7 +47,8 @@ class Settings(BaseSettings):
 
     # 에이전트 (계획 3c). [왜] 고정 계획자(planner)를 기준선·대피로로 남기고, 같은 평가셋으로 둘을 비교한다
     # [왜] 기본값 agent: 평가셋 v1 기준 실행에서 미리 정한 기준을 넘었다 (계획 4a Task 4)
-    loop: Literal["planner", "agent"] = "agent"  # MARVIA_LOOP
+    # [왜] supervisor(계획 7b)는 스위치 뒤의 셋째 길이다. 에이전트 길을 이길 때만 기본값을 바꾼다
+    loop: Literal["planner", "agent", "supervisor"] = "agent"  # MARVIA_LOOP
     permission_mode: Literal["ask", "auto"] = "ask"  # MARVIA_PERMISSION_MODE. auto여도 바깥 발송은 늘 묻는다
 
     # 법령 그래프 (계획 3b). 기본값은 docker-compose.yml의 로컬 Neo4j(비밀번호는 내 컴퓨터에서만 쓰는 값)

@@ -7,6 +7,8 @@
 에이전트 길(loop="agent", 계획 3c): identify 다음 brief → agent(도구 루프, graph/agent.py)
         → 멈춤: finish / 도메인 밖: decline / 그 밖: write → verify → respond | finish
         (작성·검증은 계획자 길과 같다)
+수퍼바이저 길(loop="supervisor", 계획 7b): identify 다음 brief → supervisor(graph/supervisor.py)
+        → 에이전트 길과 같은 갈림길(finish / decline / write)
         에이전트 길의 대화 기록(messages)은 차례를 넘어 이어지고, 답(가린 글)이 기록 끝에 붙는다 (계획 3d).
         기록이 길면 brief가 앞부분을 요약하고, 요약 LLM이 실패하면 brief 다음에 finish
 하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다).
@@ -37,6 +39,7 @@ from marvia.graph.identify import build_identify_graph, build_lookup_graph
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
 from marvia.graph.state import MarviaState, merge_evidence
+from marvia.graph.supervisor import build_supervisor
 from marvia.graph.tools import (
     cargo_deadlines,
     error_name,
@@ -125,6 +128,9 @@ def ask(state: MarviaState) -> dict:
 
 # 실패하면 이번 차례를 부분 답으로 끝내는 LLM 노드
 LLM_NODES = ("plan", "extract_item", "write")
+LOOPS = ("planner", "agent", "supervisor")  # MARVIA_LOOP가 받는 이름
+# 도구 루프로 도는 길. 대화 기록, 감시 변화, 넉넉한 단계 상한을 함께 쓴다
+LOOP_PATHS = ("agent", "supervisor")
 # 요약 미들웨어가 요약 글 앞에 붙이는 글 (summarization.py _build_new_messages). brief가 뗀다
 SUMMARY_LEAD = "Here is a summary of the conversation to date:\n\n"
 
@@ -227,11 +233,14 @@ def build_main_graph(
 ):
     """메인 순서도를 조립한다. checkpointer가 있어야 interrupt로 멈췄다가 이어 갈 수 있다.
 
-    loop: "planner"(계획 3a의 고정 계획자) 또는 "agent"(계획 3c의 도구 루프).
+    loop: "planner"(계획 3a의 고정 계획자), "agent"(계획 3c의 도구 루프), "supervisor"(계획 7b).
     store: 장기 기억 저장소(LangGraph Store).
     permission_mode: "ask"면 저장 같은 부작용 앞에서 승인을 받고,
     "auto"면 always_ask 도구만 묻는다 (설계 6.3).
     """
+    if loop not in LOOPS:
+        # [왜] 모르는 이름이 조용히 계획자 길로 떨어지면 다른 길을 돌린 줄 모른다
+        raise ValueError(f"loop는 {', '.join(LOOPS)} 가운데 하나여야 합니다: {loop!r}")
     cfg = load_rules("agent")
     rag_graph = build_rag_graph(deps.rag)  # [왜] 한 번만 만들고 search_law가 부를 때마다 다시 쓴다
 
@@ -484,31 +493,36 @@ def build_main_graph(
     graph.add_edge(START, "start")
     graph.add_edge("start", "identify")
     # [왜] 식별 뒤 첫 일: 계획자 길은 plan, 에이전트 길은 news(감시 변화) → brief
-    first = "news" if loop == "agent" else "plan"
+    first = "news" if loop in LOOP_PATHS else "plan"
     graph.add_conditional_edges(
         "identify", lambda state: "ask" if state.get("question") else first, ["ask", first]
     )
     graph.add_edge("ask", "lookup")
     graph.add_edge("lookup", first)
-    if loop == "agent":
+    if loop in LOOP_PATHS:
         if deps.model is None:
-            raise ValueError("에이전트 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다")
+            raise ValueError(
+                "에이전트 길과 수퍼바이저 길에는 AgentDeps.model(도구 호출 모델)이 있어야 합니다"
+            )
         # [왜] 에이전트 길은 루프가 다시 찾으므로 RAG 안 고쳐 쓰기는 줄인다 (agent.yaml loop.rag_rewrites)
         agent_rag = build_rag_graph(deps.rag, max_rewrites=cfg["loop"]["rag_rewrites"])
-        tools = make_tools(agent_rag, deps.today, deps.provision, deps.model, deps.web, deps.watch)
-        agent = build_agent(deps.model, tools, permission_mode)
         graph.add_node("news", news)
         graph.add_node("brief", brief)
         graph.add_edge("news", "brief")
-        graph.add_node(
-            "agent", agent
-        )  # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다
         graph.add_node("decline", shown(decline))
+        if loop == "agent":
+            tools = make_tools(agent_rag, deps.today, deps.provision, deps.model, deps.web, deps.watch)
+            # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다
+            graph.add_node("agent", build_agent(deps.model, tools, permission_mode))
+        else:
+            # [왜] 수퍼바이저 길에는 조사 도구(research)가 없다. model을 넘기지 않으면 만들지 않는다
+            tools = make_tools(agent_rag, deps.today, deps.provision, None, deps.web, deps.watch)
+            graph.add_node("supervisor", build_supervisor(deps.model, tools))
         # [왜] 요약 LLM이 실패해 멈췄으면 루프를 돌리지 않고 부분 답으로 간다
         graph.add_conditional_edges(
-            "brief", lambda state: "finish" if state.get("stopped") else "agent", ["agent", "finish"]
+            "brief", lambda state: "finish" if state.get("stopped") else loop, [loop, "finish"]
         )
-        graph.add_conditional_edges("agent", _after_agent, ["write", "decline", "finish"])
+        graph.add_conditional_edges(loop, _after_agent, ["write", "decline", "finish"])
         graph.add_edge("decline", END)
     else:
         graph.add_node("plan", plan)
@@ -527,6 +541,6 @@ def build_main_graph(
     graph.add_edge("finish", END)
     # [왜] with_config로 그래프에 recursion_limit을 붙여 둔다. invoke 때 config를 넘기면 그 값이 이긴다.
     #      max_concurrency는 한 단계에 함께 도는 작업(Send 갈래, 병렬 도구) 수를 서브그래프까지 막는다
-    limit = cfg["loop"]["agent_recursion_limit" if loop == "agent" else "recursion_limit"]
+    limit = cfg["loop"]["agent_recursion_limit" if loop in LOOP_PATHS else "recursion_limit"]
     compiled = graph.compile(checkpointer=checkpointer, store=store)
     return compiled.with_config(recursion_limit=limit, max_concurrency=cfg["loop"]["max_concurrency"])

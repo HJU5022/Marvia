@@ -101,7 +101,7 @@ with (
 
 print(out["answer"])
 print()
-if settings.loop == "agent":
+if settings.loop in ("agent", "supervisor"):
     print("할 일:", " / ".join(f"{t['content']}({t['status']})" for t in values.get("todos", [])) or "없음")
     messages = values.get("messages", [])
     # [왜] 기록은 차례를 넘어 이어진다. 이번 차례 질문(마지막 사람 메시지) 뒤의 호출만 센다

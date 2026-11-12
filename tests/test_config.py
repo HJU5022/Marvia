@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from marvia.config import Settings
 
 LOCAL_DB = "postgresql://marvia:marvia@localhost:5433/marvia"
@@ -42,3 +45,12 @@ def test_loop_defaults_to_the_agent(monkeypatch):
     #      고정 계획자는 MARVIA_LOOP=planner로 남는다
     monkeypatch.delenv("MARVIA_LOOP", raising=False)
     assert Settings(_env_file=None).loop == "agent"
+
+
+def test_loop_takes_supervisor_and_refuses_an_unknown_name(monkeypatch):
+    # [왜] 수퍼바이저 길은 스위치 뒤에 둔다. 기본값은 위 시험대로 agent다 (계획 7b)
+    monkeypatch.setenv("MARVIA_LOOP", "supervisor")
+    assert Settings(_env_file=None).loop == "supervisor"
+    monkeypatch.setenv("MARVIA_LOOP", "superviser")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
