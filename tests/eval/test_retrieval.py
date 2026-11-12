@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from marvia.eval.dataset import ROOT, SET_PATH, SET_V2_PATH, file_sha256
-from marvia.eval.metrics import mrr, recall_at_k
+from marvia.eval.metrics import matches, mrr, recall_at_k
 from marvia.eval.retrieval import (
     article_group,
     capped,
@@ -250,22 +250,70 @@ SET_FILES = {"v2": "set_v2.yaml"} | {
 }
 
 
+PATH_SETS = ("v2", "rset_v1")  # 직접 길과 MCP 길을 한 번씩 더 잰 묶음 (기본 설정)
+
+
+def stored(name: str) -> dict:
+    return json.loads((ROOT / "eval" / "results" / f"retrieval-{name}.json").read_text(encoding="utf-8"))
+
+
 def test_the_stored_retrieval_results_cover_every_set_and_setting_at_one_commit():
     metas = [json.loads(path.read_text(encoding="utf-8"))["meta"] for path in STORED]
-    # 묶음 여섯 × 설정 넷(기본, 벡터만, 키워드만, 리랭커 끔)
-    settings = {(m["set"], m["leg"], m["rerank"]) for m in metas}
-    wanted = {
-        (s, leg, rr)
-        for s in SET_FILES
-        for leg, rr in (("rrf", "on"), ("vector", "on"), ("keyword", "on"), ("rrf", "off"))
-    }
-    assert settings == wanted and len(metas) == 24
+    # 공식 묶음: 묶음 여섯 × 설정 넷(기본, 벡터만, 키워드만, 리랭커 끔). 길 대조: 묶음 둘 × 길 둘
+    official = [m for m in metas if not m["tag"].endswith(("-direct", "-mcp"))]
+    paths = [m for m in metas if m["tag"].endswith(("-direct", "-mcp"))]
+    legs = (("rrf", "on"), ("vector", "on"), ("keyword", "on"), ("rrf", "off"))
+    wanted = {(s, leg, rr) for s in SET_FILES for leg, rr in legs}
+    assert {(m["set"], m["leg"], m["rerank"]) for m in official} == wanted and len(official) == 24
+    assert sorted(m["tag"] for m in paths) == sorted(
+        f"{s}-{via}" for s in PATH_SETS for via in ("direct", "mcp")
+    )
+    assert all(m["rag_via"] == "direct" for m in official)  # 공식 값은 직접 길로 잰다 (평가 실행과 같다)
     assert len({m["commit"] for m in metas}) == 1  # 한 커밋에서 잰 값끼리만 견준다
     for meta in metas:
         # [왜] 색인이 단위 파일과 다르거나 문제가 적힌 측정은 공식 값으로 두지 않는다
         assert meta["problems"] == [] and meta["index_units"] == meta["file_units"]
         # 잰 문항 파일이 지금 저장소의 파일과 같다(문항이나 정답이 바뀌면 다시 잰다)
         assert meta["set_sha256"] == file_sha256(ROOT / "eval" / SET_FILES[meta["set"]])
+
+
+def gold_ranks(row: dict, k: int) -> list[int | None]:
+    """정답마다 상위 k 안의 순위(없으면 None). also_ok가 있으면 그 가운데 하나를 찾아도 정답이다."""
+    return [
+        next((n for n, u in enumerate(row["retrieved"][:k], 1) if matches(u, alt)), None)
+        for alt in targets(row, strict=False)
+    ]
+
+
+@pytest.mark.parametrize("name", PATH_SETS)
+def test_the_default_mcp_path_finds_the_gold_units_at_the_same_ranks_as_the_direct_path(name):
+    # [왜] 평가는 직접 길로 돈다(그래프 후보를 리랭커 앞에서 세려고). 제품의 기본 길은 MCP다.
+    #      두 길이 같은 검색 함수를 타는지를 같은 커밋·같은 색인에서 한 번씩 재어 둔 결과로 확인한다
+    direct, mcp = stored(f"{name}-direct"), stored(f"{name}-mcp")
+    assert (direct["meta"]["rag_via"], mcp["meta"]["rag_via"]) == ("direct", "mcp")
+    k = direct["meta"]["k"]
+    assert [r["id"] for r in direct["rows"]] == [r["id"] for r in mcp["rows"]]
+    for one, other in zip(direct["rows"], mcp["rows"], strict=True):
+        assert gold_ranks(one, k) == gold_ranks(other, k), one["id"]
+    for layer, summary in direct["summary"].items():
+        for key in ("unit_r_at_k", "unit_mrr", "strict_r_at_k", "strict_mrr"):
+            assert summary[key] == mcp["summary"][layer][key], (layer, key)
+    # [주의] 상위 k의 순서까지 같다고 보지 않는다. 리랭커 점수와 질의 임베딩이 호출마다 조금 흔들려
+    #        정답이 아닌 이웃 단위의 자리가 바뀐다
+
+
+@pytest.mark.parametrize("name", PATH_SETS)
+def test_article_values_of_the_two_paths_are_marked_as_not_comparable(name):
+    direct, mcp = stored(f"{name}-direct"), stored(f"{name}-mcp")
+    # [왜] 조문 기준 값은 직접 길에서는 리랭커가 줄 세운 후보 전체를, MCP 길에서는 돌려받은 상위 n개만 묶는다
+    assert direct["meta"]["article_scope"] == "candidates" and mcp["meta"]["article_scope"] == "top_n"
+    assert max(len(r["retrieved"]) for r in mcp["rows"]) <= mcp["meta"]["k"]
+    assert min(len(r["retrieved"]) for r in direct["rows"]) > direct["meta"]["k"]
+    folder = ROOT / "eval" / "results"
+    said = check(
+        "--same", str(folder / f"retrieval-{name}-direct.json"), str(folder / f"retrieval-{name}-mcp.json")
+    )
+    assert "조문 기준 값은 견주지 않는다" in said.stdout
 
 
 @pytest.mark.parametrize("path", STORED, ids=lambda path: path.stem)
