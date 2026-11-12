@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     mof_base_url: str = ""  # MARVIA_MOF_BASE_URL. 해외 서버에서는 서울 릴레이 주소(relay/). 비면 직접 부른다
     mof_relay_token: SecretStr = SecretStr("")  # MARVIA_MOF_RELAY_TOKEN. 릴레이의 RELAY_TOKEN과 같은 값
 
+    # 배 위치 조회 ShipFinder (계획 8a). 기본은 재생이다
+    shipfinder_mode: Literal["replay", "live"] = "replay"  # MARVIA_SHIPFINDER_MODE
+    shipfinder_key: SecretStr = SecretStr("")  # MARVIA_SHIPFINDER_KEY
+
     # 규정 검색 MCP (계획 3b Task 8). [왜] mcp면 에이전트 RAG가 같은 MCP 서버를 메모리 통로로 부른다(설계 9절)
     rag_via: Literal["direct", "mcp"] = "mcp"  # MARVIA_RAG_VIA
     mcp_token: SecretStr = SecretStr("")  # MARVIA_MCP_TOKEN. 비면 scripts/serve_mcp.py가 뜨지 않는다

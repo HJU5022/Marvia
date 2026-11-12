@@ -1,0 +1,51 @@
+# ShipFinder(배 위치 AIS) 조회 설정. 코드(src/marvia/tools/shipfinder.py)가 읽는다 (계획 8a, 설계 7.2 vessel_position).
+# 주소, 상태 코드, 무효 표시값은 v1(태그 v1-final backend/app/clients/shipfinder.py)과 같다.
+base_url: https://api.elaneglobal.com/v1/AIS/
+timeout_s: 10 # 한 번 부를 때 기다리는 최대 초
+retries: 2 # 시간 초과·연결 오류·5xx일 때 다시 부르는 횟수 (설계 7.2)
+backoff_s: 0.5 # 다시 부르기 전 기다림. n번째 재시도는 n배
+max_hits: 10 # 검색 한 번에 받는 후보 수
+
+# 응답의 status 값 → 우리 오류 이름. 0은 정상이고, 여기 없는 값은 api_error다.
+# 38(하루 한도 소진)은 공식 표에 없고 v1이 실제로 받은 값이다.
+status_codes:
+  3: not_found
+  6: bad_key # 키 만료
+  7: bad_key # 키 잠김
+  9: bad_key
+  13: busy
+  21: no_permission
+  23: rate_limited
+  29: rate_limited
+  38: quota_exhausted
+
+# API가 "값 없음"을 나타내는 표시값. 이 값이면 None으로 읽는다(0노트나 1970년으로 읽지 않는다)
+invalid:
+  sog: -1
+  cog: -1
+  hdg: 511
+  navistat: -1
+  eta: 0
+  imo: 0
+  last_time: 0
+
+# 마지막으로 받은 위치로 대신하는 실패. 셋 다 "지금 못 받았을 뿐 배의 정보는 있다"는 뜻이다.
+# 권한 없음과 없는 배는 사실이라 옛 값으로 가리지 않는다
+cache_fallback: [rate_limited, timeout, quota_exhausted]
+cache_ttl_hours: 6 # 빈도 초과일 때는 받은 지 이 시간 이하인 값만 쓴다 (6시간 정각은 쓴다)
+cache_ignore_ttl: [timeout, quota_exhausted] # 오늘 안에 새 값을 받을 길이 없는 실패는 오래된 값도 쓴다
+
+# 오류 글은 이 표에서만 쓴다. [왜] 예외 글과 바깥 응답 글에는 요청 주소(키)나 지시문이 섞일 수 있다
+messages:
+  timeout: 배 위치 서비스 응답이 늦어요. 잠시 뒤 다시 조회할 수 있어요
+  unavailable: 배 위치 서비스에 닿지 못했어요. 잠시 뒤 다시 조회할 수 있어요
+  busy: 배 위치 서비스가 바빠요. 잠시 뒤 다시 조회할 수 있어요
+  rate_limited: 배 위치를 너무 자주 조회했어요. 잠시 뒤 다시 조회할 수 있어요
+  quota_exhausted: 오늘 조회할 수 있는 배 위치 횟수를 다 썼어요. 내일 다시 조회할 수 있어요
+  bad_response: 배 위치 서비스 응답을 읽지 못했어요
+  bad_key: 배 위치 서비스가 조회 키를 받지 않았어요
+  no_permission: 이 조회는 지금 키로 쓸 수 없어요
+  not_found: 배 위치 서비스에 없는 배예요
+  api_error: 배 위치 서비스가 조회를 받지 않았어요
+  no_key: 배 위치 서비스 키가 없어 실제 조회를 하지 않았어요
+retryable: [timeout, unavailable, busy, rate_limited] # 다시 시도하면 나아질 수 있는 오류
