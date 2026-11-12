@@ -241,3 +241,35 @@ def test_one_leg_alone_can_be_searched_for_measurement(db, make_unit, fake_embed
     )  # 기준 날짜는 그대로 건다
     with pytest.raises(ValueError):
         leg_search(db, query, fake_embed, AS_OF, "rrf")
+
+
+def provision_ids(hits) -> list[str]:
+    return [h.unit_id.split("#")[1] for h in hits if h.origin == "provision"]
+
+
+def test_a_named_paragraph_comes_first_and_the_rest_of_the_article_fills_the_cap(
+    db, make_unit, fake_embed, narrow, named_article
+):
+    labels = [
+        "제45조.1항",
+        "제45조.2항.1호",
+        "제45조.2항.2호",
+        "제45조.3항",
+        "제45조.4항.1호",
+        "제45조.4항.2호",
+    ]
+    index_units(
+        db, [make_unit(label, "본문") for label in labels] + [make_unit("제1조", "정밀검사")], fake_embed
+    )
+    named_article(max_units=4)
+    plain = provision_ids(hybrid_search(db, "시험법 제45조 내용", fake_embed, as_of=AS_OF))
+    # 항을 지목하지 않은 질의는 지금까지와 같다: 조문의 단위를 unit_id 순서로, 상한까지
+    assert plain == labels[:4]
+    # [왜] 상한에서 자르면 지목한 항이 잘려 나갔다(13단위 조문의 제4항은 10번째였다). 지목한 항을 먼저 둔다
+    fourth = provision_ids(hybrid_search(db, "시험법 제45조 제4항 가산세", fake_embed, as_of=AS_OF))
+    assert fourth == ["제45조.4항.1호", "제45조.4항.2호", "제45조.1항", "제45조.2항.1호"]
+    joined = provision_ids(hybrid_search(db, "시험법 제45조제3항", fake_embed, as_of=AS_OF))
+    assert joined == ["제45조.3항", "제45조.1항", "제45조.2항.1호", "제45조.2항.2호"]
+    # 색인에 없는 항을 지목하면 조문 단위로 돌려준다(항이 없는 질의와 같은 결과)
+    missing = provision_ids(hybrid_search(db, "시험법 제45조 제9항 내용", fake_embed, as_of=AS_OF))
+    assert missing == plain

@@ -17,7 +17,7 @@ import psycopg
 from marvia.rag.index import Embed
 from marvia.rag.keywords import keywords
 from marvia.rag.models import Evidence
-from marvia.rag.provision import ARTICLE_HINT, find_provision, named_labels
+from marvia.rag.provision import ARTICLE_HINT, find_provision, named_targets
 from marvia.tools.rules import load_rules
 
 # [왜] <=>는 코사인 거리(작을수록 가깝다). 기준 날짜보다 뒤에 시행된 단위는 뺀다
@@ -114,13 +114,22 @@ def _named_provisions(conn: psycopg.Connection, query: str, as_of: date) -> list
     # [왜] 조 번호가 없는 질의는 법령 이름 목록도 읽지 않는다. 그런 질의의 결과는 한 글자도 달라지지 않는다
     if not cfg["enabled"] or not ARTICLE_HINT.search(query):
         return []
-    labels = named_labels(query, [row[0] for row in conn.execute(LAW_NAMES_SQL)])
+    targets = named_targets(query, [row[0] for row in conn.execute(LAW_NAMES_SQL)])
     found: dict[str, Evidence] = {}
-    for label in labels:  # 질의에 나온 순서
+
+    def take(label: str) -> None:
         # [주의] 조회에도 검색과 같은 기준 날짜를 건다. 그 날짜에 시행 전인 단위는 오지 않는다
         for unit in find_provision(conn, label, as_of):
             if len(found) < cfg["max_units"]:
                 found.setdefault(unit.unit_id, unit.model_copy(update={"origin": "provision"}))
+
+    # [왜] 조문이 길면 상한에서 잘린다. 질의가 항까지 지목했으면 그 항의 단위를 먼저 두고, 남는 자리를
+    #      같은 조문의 나머지 단위로 채운다. 그 항이 색인에 없으면 조문 단위 그대로다
+    for _, paragraph in targets:  # 질의에 나온 순서
+        if paragraph:
+            take(paragraph)
+    for article in dict.fromkeys(article for article, _ in targets):
+        take(article)
     return list(found.values())
 
 

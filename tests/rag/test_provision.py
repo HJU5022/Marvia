@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from marvia.rag.index import index_units
-from marvia.rag.provision import find_provision, named_labels, parse_label
+from marvia.rag.provision import find_provision, named_labels, named_targets, parse_label
 
 
 @pytest.mark.parametrize(
@@ -93,3 +93,26 @@ LAWS = ["시험 특별법", "시험 특별법 시행규칙", "관세법", "관�
 )
 def test_named_labels_finds_law_plus_article_inside_a_query(query, labels):
     assert named_labels(query, LAWS) == labels
+
+
+@pytest.mark.parametrize(
+    ("query", "targets"),
+    [
+        # 조 뒤에 "제M항"이 있으면 그 항의 이름표를 함께 돌려준다 (띄어 쓰든 붙여 쓰든)
+        ("관세법 제241조 제4항 가산세", [("관세법 제241조", "관세법 제241조제4항")]),
+        ("관세법 제241조제3항 가산세", [("관세법 제241조", "관세법 제241조제3항")]),
+        ("관세법 시행령 제5조의2 제 1 항은?", [("관세법 시행령 제5조의2", "관세법 시행령 제5조의2제1항")]),
+        # 항이 없으면 조문만이다
+        ("관세법 제241조 내용", [("관세법 제241조", None)]),
+        # 같은 조문의 다른 항은 따로 센다. 같은 조문·항은 한 번만
+        (
+            "관세법 제241조 제3항과 관세법 제241조 제4항, 관세법 제241조 제3항",
+            [("관세법 제241조", "관세법 제241조제3항"), ("관세법 제241조", "관세법 제241조제4항")],
+        ),
+        ("관세법 수입신고 기한", []),
+    ],
+)
+def test_named_targets_reads_the_paragraph_after_the_article(query, targets):
+    assert named_targets(query, LAWS) == targets
+    # 조문 이름표만 보는 쪽은 그대로다: 항을 떼고, 같은 조문은 한 번만
+    assert named_labels(query, LAWS) == list(dict.fromkeys(article for article, _ in targets))
