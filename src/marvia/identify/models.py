@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -22,6 +22,14 @@ class CargoFacts(BaseModel):
     vessel_name: str | None = None
     port: str | None = None
     mrn: str | None = None  # 적하목록 관리번호 11자리. 배를 특정하는 데 쓴다
+    # 배 추적이 쓰는 칸 (계획 8a). 실제 응답에 없으면 None이고 다른 값으로 채우지 않는다.
+    # [주의] 모델에 주는 화물 줄(graph/answer.cargo_lines)에는 넣지 않는다
+    port_code: str | None = None  # 양륙항 코드(dsprCd, UN/LOCODE). 항만 표(rules/ports.yaml)의 열쇠
+    entry_date: date | None = None  # 세관 입항(예정)일(etprDt), 한국 날짜
+    loading_port: str | None = None  # 적재항 이름(ldprNm)
+    vessel_flag: str | None = None  # 배 국적(shipNat)
+    voyage: str | None = None  # 항차(vydf)
+    shed: str | None = None  # 가장 늦은 이력 줄의 장치장 이름(shedNm)
     # 이 화물을 실은 컨테이너 번호들. 컨테이너 번호로 아는 화물을 찾는 데만 쓴다 (계획 6a).
     # [주의] LLM에 넘기지 않는다. 실제 응답(parse_progress)에서는 아직 채우지 않는다(그 칸을 확인하지 못했다)
     containers: list[str] = Field(default_factory=list)

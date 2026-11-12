@@ -102,7 +102,7 @@ def parse_progress(text: str, number: str) -> CargoFacts | ToolError:
     # [왜] 상단 csclPrgsStts는 수입신고수리에서 멈춰 반출을 못 보인다(v1 실제 B/L). 가장 늦은 이력 줄이 지금
     #      단계다
     history = sorted(
-        (row.findtext("prcsDttm") or "", name)
+        (row.findtext("prcsDttm") or "", name, _text(row, "shedNm") or "")
         for row in root.iter("cargCsclPrgsInfoDtlQryVo")
         if (name := _text(row, "cargTrcnRelaBsopTpcd"))
     )
@@ -117,6 +117,13 @@ def parse_progress(text: str, number: str) -> CargoFacts | ToolError:
         vessel_name=_text(head, "shipNm"),
         port=_text(head, "dsprNm"),
         mrn=cargo_no[:11] if cargo_no else None,
+        # 배 추적이 쓰는 칸 (계획 8a). 칸 이름은 v1이 실제 응답으로 확인한 것이다(v1-final judge/customs.py)
+        port_code=_text(head, "dsprCd"),
+        entry_date=entry.date() if (entry := _kst(_text(head, "etprDt"))) else None,
+        loading_port=_text(head, "ldprNm"),
+        vessel_flag=_text(head, "shipNat"),
+        voyage=_text(head, "vydf"),
+        shed=(history[-1][2] or None) if history else None,
         source="unipass",
         fetched_at=datetime.now(UTC),
     )

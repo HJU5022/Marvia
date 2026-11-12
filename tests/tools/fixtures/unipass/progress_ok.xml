@@ -8,6 +8,7 @@
 <cargMtNo>TEST0099I0001000100</cargMtNo><mblNo>TESTMBL0000001</mblNo><hblNo>TESTHBL0000001</hblNo>
 <shipNm>TEST STAR</shipNm><shipNat>PA</shipNat><vydf>0012W</vydf>
 <etprDt>20260925</etprDt><dsprCd>KRPUS</dsprCd><dsprNm>부산항</dsprNm>
+<ldprCd>CNTAO</ldprCd><ldprNm>Qingdao</ldprNm><lodCntyCd>CN</lodCntyCd>
 <prnm>의류</prnm><ttwg>1200</ttwg><wghtUt>KG</wghtUt>
 </cargCsclPrgsInfoQryVo>
 <tCnt>4</tCnt>

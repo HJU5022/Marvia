@@ -1,6 +1,7 @@
 """UNI-PASS 실제 조회 클라이언트 시험 (done 2.3, 계획 3b Task 7). 키·인터넷 없이 MockTransport로 돈다."""
 
 import logging
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -158,3 +159,25 @@ def test_a_container_number_is_never_sent_to_unipass(monkeypatch):
     assert error == ToolError(
         code="container_unknown", message=unipass.CFG["messages"]["container_unknown"], retryable=False
     )
+
+
+def test_progress_reads_the_cells_that_tie_a_cargo_to_its_vessel_and_port():
+    # [왜] 배 추적(계획 8a)은 양륙항 코드로 항만 표를 읽고, 입항일과 적재항으로 서류를 맞춘다
+    facts, _ = _fetch(_xml("progress_ok.xml"))
+    assert isinstance(facts, CargoFacts)
+    assert facts.port_code == "KRPUS" and facts.entry_date == date(2026, 9, 25)
+    assert (facts.loading_port, facts.vessel_flag, facts.voyage) == ("Qingdao", "PA", "0012W")
+    assert facts.shed == "TEST터미널 CY"  # 가장 늦은 이력 줄의 장치장
+
+
+def test_missing_vessel_cells_stay_empty_not_guessed():
+    # [왜] 양륙항 코드가 없다고 부산으로 채우지 않는다. 모르는 값은 None이고 판정이 "모름"으로 다룬다
+    bare = (
+        "<cargCsclPrgsInfoQryRtnVo><cargCsclPrgsInfoQryVo><csclPrgsStts>입항보고 수리</csclPrgsStts>"
+        "<cargMtNo>TEST0099I0001000100</cargMtNo><etprDt>날짜아님</etprDt></cargCsclPrgsInfoQryVo>"
+        "<tCnt>1</tCnt></cargCsclPrgsInfoQryRtnVo>"
+    )
+    facts, _ = _fetch(httpx.Response(200, text=bare))
+    assert isinstance(facts, CargoFacts) and facts.stage == "입항보고 수리"
+    assert (facts.port_code, facts.entry_date, facts.loading_port) == (None, None, None)
+    assert (facts.vessel_flag, facts.voyage, facts.shed) == (None, None, None)
