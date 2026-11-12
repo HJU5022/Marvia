@@ -12,6 +12,13 @@ max_rows: 50 # 한 쪽에 받는 건수. API의 상한이다
 max_pages: 20 # 기간 전체를 훑을 때의 쪽 상한 (v1 실측: 부산 5일치 입항 신고가 12쪽)
 ok_codes: ["00", "0"] # 응답 머리의 resultCode가 이 값이면 정상
 key_error_codes: ["30", "31"] # 등록되지 않았거나 기한이 지난 키
+# 공공데이터포털 관문이 서비스 앞에서 돌려주는 오류 본문. 뿌리 이름이 다르고 resultCode 대신 returnReasonCode가 있다.
+# [주의] 실제 응답으로 확인하기 전이다. 뿌리 이름과 코드 번호는 공개 안내의 꼴을 따랐다
+gateway:
+  root: OpenAPI_ServiceResponse
+  code_tag: returnReasonCode
+  key_codes: ["20", "30", "31", "32"] # 접근 거부, 등록되지 않은 키, 기한 지난 키, 등록되지 않은 IP
+  quota_codes: ["22"] # 요청 수 한도 넘김
 arrival_report: 입항 # 선박운항정보 detail의 etryndNm이 이 값인 줄이 입항 신고다
 final_revision: 최종 # 이 단계의 신고 시각은 실제 입항 시각이라 "예정"으로 쓰지 않는다 (v1 실측 09-23)
 arrival_events: [입항, 접안] # 관제정보 detail의 cntrlNm이 이 값이면 입항 실적으로 센다
@@ -23,6 +30,7 @@ messages:
   bad_response: 해수부 응답을 읽지 못했어요
   bad_key: 해수부가 조회 키를 받지 않았어요
   api_error: 해수부가 조회 값을 받지 않았어요
+  quota_exhausted: 해수부 조회 한도를 넘었어요. 내일 다시 조회할 수 있어요
   too_many: 조회한 기간의 입항 신고가 너무 많아 끝까지 보지 못했어요
   no_key: 해수부 키가 없어 실제 조회를 하지 않았어요
   port_unknown: 이 항만은 해수부 조회에 쓸 값(청코드, 조회 기간)을 아직 확인하지 못했어요

@@ -215,3 +215,34 @@ def test_live_sends_the_relay_token_to_the_relay_address_only(monkeypatch):
     ) == 2  # 관제정보 한 번, 선박운항정보 한 번
     assert all(r.headers["X-Relay-Token"] == "TESTTOKEN-NOT-REAL" for r in seen)
     assert all(not r.extensions.get("follow_redirects") for r in seen)
+
+
+@pytest.mark.parametrize(
+    ("name", "code", "outside"),
+    [
+        ("gateway_key.xml", "bad_key", "SERVICE_KEY"),
+        ("gateway_quota.xml", "quota_exhausted", "LIMITED_NUMBER"),
+        ("gateway_other.xml", "api_error", "APPLICATION_ERROR"),
+    ],
+)
+def test_a_gateway_error_body_is_an_error_not_an_empty_result(name, code, outside):
+    # [왜] 관문의 오류 본문에는 resultCode가 없다. 정상 0건으로 읽으면 키가 틀려도 "입항 신고 없음"이 된다
+    found, seen = _plans(_xml(name))
+    assert found == ToolError(code=code, message=mof.CFG["messages"][code], retryable=False)
+    assert len(seen) == 1 and outside not in found.message  # 다시 부르지 않고, 바깥 글을 옮기지 않는다
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<response><header/><body><items/></body></response>",  # 결과 코드가 없다
+        "<response><header><resultCode>00</resultCode></header></response>",  # 목록 칸(items)이 없다
+        "<other><header><resultCode>00</resultCode></header><body><items/></body></other>",  # 뿌리가 다르다
+        "<html><body>점검 중</body></html>",
+    ],
+)
+def test_a_body_of_an_unexpected_shape_is_bad_response_not_zero_rows(body):
+    found, _ = _plans(httpx.Response(200, text=body))
+    assert found == ToolError(
+        code="bad_response", message=mof.CFG["messages"]["bad_response"], retryable=False
+    )

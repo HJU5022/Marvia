@@ -98,10 +98,23 @@ def _get(
             root = ElementTree.fromstring(response.text)
         except ElementTree.ParseError:
             return _error("bad_response")
+        gate = CFG["gateway"]
+        if root.tag == gate["root"]:
+            # [왜] 관문의 오류 본문에는 resultCode가 없다. 정상 0건으로 읽으면 키가 틀려도
+            #      "입항 신고 없음"이 된다.
+            #      안의 글(returnAuthMsg 등)은 바깥 글이라 옮기지 않는다. [주의] 실제 본문으로 확인하기 전이다
+            reason = (root.findtext(f".//{gate['code_tag']}") or "").strip()
+            if reason in gate["key_codes"]:
+                return _error("bad_key")
+            return _error("quota_exhausted" if reason in gate["quota_codes"] else "api_error")
         code = (root.findtext(".//resultCode") or "").strip()
-        if code and code not in CFG["ok_codes"]:
+        if root.tag != "response" or not code:
+            return _error("bad_response")  # [왜] 기대한 모양이 아니면 0건이 아니라 못 읽은 것이다
+        if code not in CFG["ok_codes"]:
             # [왜] resultMsg는 바깥에서 온 글이다. 옮기지 않고 정한 글로 바꾼다
             return _error("bad_key" if code in CFG["key_error_codes"] else "api_error")
+        if root.find(".//items") is None:
+            return _error("bad_response")  # 정상 코드인데 목록 칸이 없다
         return root
     return _error(last)
 

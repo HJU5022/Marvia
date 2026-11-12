@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. 공공데이터포털 관문이 서비스 앞에서 돌려주는 오류 본문의 모양(OpenAPI_ServiceResponse, returnReasonCode)을
+     공개 안내의 꼴대로 만든 것이다. 실제 응답으로 확인하기 전이다. -->
+<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>
