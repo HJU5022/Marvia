@@ -126,6 +126,57 @@ def test_every_callback_payload_is_free_of_numbers_after_scrub(agent_deps):
     assert MASK in scrubbed
 
 
+def hand(to: str, task: str, n: int) -> AIMessage:
+    """수퍼바이저 길(계획 7b)의 넘기기 호출."""
+    return say("handoff", {"to": to, "task": task}, n)
+
+
+def test_every_callback_payload_of_the_supervisor_path_is_free_of_numbers_after_scrub(agent_deps):
+    # 수퍼바이저 길이 지나는 새 자리: 수퍼바이저 입력 → ask_user(직접 입력 DEMO0003) → handoff 문장
+    # → 서브에이전트 노드의 입력·출력(공책 칸) → 서브에이전트 안의 도구 → 작성자 → 답
+    script = [
+        say("ask_user", {"question": "어느 화물부터 볼까요?", "options": TWO}, 1),
+        hand("cargo", "[BL3]의 통관 단계를 조회", 2),
+        say("lookup_cargo", {"tokens": ["[BL3]"]}, 3),  # 화물·기한 서브에이전트 안
+        AIMessage("[BL3]을 조회했어요."),
+        hand("law", "수입신고 기한의 근거", 4),
+        say("search_law", {"query": "수입신고 기한"}, 5),  # 법령 조사 서브에이전트 안
+        AIMessage("관세법 제241조가 30일을 정해요."),
+        AIMessage(""),  # 수퍼바이저 끝
+    ]
+    news = [{"id": 1, "number": "DEMO0004", "old_stage": "", "new_stage": "반입신고"}]
+    watch = WatchDeps(add=lambda *row: None, news=lambda user: news, ack=lambda user, ids: None)
+    citing = Draft(
+        answer="[BL1]은 반입일부터 30일 안에 신고해요.", citations=[], next_options=[], forwarder_message=""
+    )
+    prompts: list[str] = []
+    deps = agent_deps(
+        model=ToolModel(messages=iter(script)), watch=watch, write=lambda p: prompts.append(p) or citing
+    )
+    graph = build_main_graph(deps, InMemorySaver(), loop="supervisor", store=InMemoryStore())
+    record = Record()
+    config = {"configurable": {"thread_id": "trace-sup"}, "callbacks": [record]}
+    out = graph.invoke({"text": "DEMO0001 DEMO0002 언제까지 신고해요?"}, config)
+    assert "__interrupt__" in out
+    out = graph.invoke(Command(resume={"custom": "DEMO0003부터 봐 주세요"}), config)
+    assert "DEMO0001" in out["answer"]
+    seen = list(_flat(record.payloads))
+    # [왜] 새 자리를 실제로 지났는지 먼저 본다: 넘김 문장, 서브에이전트 노드 입력(가림 표), 그 안의 도구 입력
+    assert any(item == {"to": "cargo", "task": "[BL3]의 통관 단계를 조회"} for item in seen)
+    assert any(isinstance(item, dict) and item.get("task") and "mask_map" in item for item in seen)
+    assert any(item == {"tokens": ["[BL3]"]} for item in seen)
+    assert any(item == {"query": "수입신고 기한"} for item in seen)
+    raw = json.dumps(record.payloads, ensure_ascii=False, default=str)
+    assert all(number in raw for number in NUMBERS)  # 가리기 전에는 길마다 넣은 번호가 모두 있다
+    scrubbed = json.dumps(scrub(record.payloads), ensure_ascii=False)
+    assert [number for number in NUMBERS if number in scrubbed] == []
+    # [왜] 모델과 작성자가 받은 글에는 가리기 전에도 번호가 없어야 한다 (설계 12절)
+    models = [p for p in record.payloads if isinstance(p, list) and p and isinstance(p[0], list)]
+    assert len(models) == 8 and prompts
+    said = json.dumps(models, ensure_ascii=False, default=str) + "".join(prompts)
+    assert [number for number in NUMBERS if number in said] == []
+
+
 def test_scrub_walks_send_packets_models_and_unknown_objects():
     packet = Send("one", {"idx": 0, "number": "DEMO0001", "mask_map": {"[BL1]": "DEMO0001"}})
     message = AIMessage("", tool_calls=[{"name": "watch_cargo", "args": {"token": "DEMO0002"}, "id": "c1"}])
@@ -241,7 +292,10 @@ def exported(exporter, key) -> list[str]:
     ]
 
 
-def gate_run(agent_deps, monkeypatch, callbacks: list) -> str:
+LOOPS = ("agent", "supervisor")  # 가림 문은 도구 루프 두 길을 같은 번호 묶음으로 본다 (계획 7b)
+
+
+def gate_run(agent_deps, monkeypatch, callbacks: list, loop: str = "agent") -> str:
     """한 대화와 오류 두 길을 같은 콜백으로 돌리고 대화의 답을 돌려준다."""
     # 1) 번호 둘 + 애매한 덩어리 → 식별 끼어들기 → 재개 → Send 갈래 → news(감시 변화) → lookup_cargo
     #    → ask_user 끼어들기 → 직접 입력 → research(서브에이전트 안 search_law) → 답
@@ -253,13 +307,26 @@ def gate_run(agent_deps, monkeypatch, callbacks: list) -> str:
         AIMessage("관세법 제241조가 30일을 정해요."),
         AIMessage(""),
     ]
+    if loop == "supervisor":
+        # 같은 길을 수퍼바이저 길로: handoff(화물) → 그 안의 lookup_cargo → ask_user 끼어들기 → 직접 입력
+        # → handoff(법령) → 그 안의 search_law → 답
+        script = [
+            hand("cargo", "[BL1]의 통관 단계를 조회", 1),
+            say("lookup_cargo", {"tokens": ["[BL1]"]}, 2),
+            AIMessage("[BL1]을 조회했어요."),
+            say("ask_user", {"question": "어느 화물부터 볼까요?", "options": TWO}, 3),
+            hand("law", "수입신고 기한의 근거", 4),
+            say("search_law", {"query": "수입신고 기한"}, 5),
+            AIMessage("관세법 제241조가 30일을 정해요."),
+            AIMessage(""),
+        ]
     news = [{"id": 1, "number": "DEMO0004", "old_stage": "", "new_stage": "반입신고"}]
     watch = WatchDeps(add=lambda *row: None, news=lambda user: news, ack=lambda user, ids: None)
     citing = Draft(
         answer="[BL1]은 반입일부터 30일 안에 신고해요.", citations=[], next_options=[], forwarder_message=""
     )
     deps = agent_deps(model=ToolModel(messages=iter(script)), watch=watch, write=lambda prompt: citing)
-    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
+    graph = build_main_graph(deps, InMemorySaver(), loop=loop, store=InMemoryStore())
     config = {"configurable": {"thread_id": "gate-DEMO0009"}, "callbacks": callbacks}
     out = graph.invoke({"text": "DEMO0001 DEMO0002 MOCK12345678TEST87654321 언제까지 신고해요?"}, config)
     assert "MOCK12345678" in out["__interrupt__"][0].value["question"]  # 식별 끼어들기는 실제 번호를 싣는다
@@ -268,7 +335,7 @@ def gate_run(agent_deps, monkeypatch, callbacks: list) -> str:
     answer = graph.invoke(Command(resume={"custom": "DEMO0003부터 봐 주세요"}), config)["answer"]
     # 2) 모델 오류: Guards가 받아 부분 답으로 끝낸다
     broken = agent_deps(model=Scripted(messages=iter([OutputParserException("DEMO0006 모양이 틀린 답")])))
-    graph = build_main_graph(broken, InMemorySaver(), loop="agent", store=InMemoryStore())
+    graph = build_main_graph(broken, InMemorySaver(), loop=loop, store=InMemoryStore())
     graph.invoke({"text": "어디쯤이에요?"}, {"configurable": {"thread_id": "llm"}, "callbacks": callbacks})
 
     # 3) 도구 오류: 도구 안에서 난 예외는 차례를 멈춘다
@@ -276,8 +343,11 @@ def gate_run(agent_deps, monkeypatch, callbacks: list) -> str:
         raise ValueError("DEMO0005 기한 계산 실패")
 
     monkeypatch.setattr(tools, "cargo_deadlines", fail)
-    failing = agent_deps(model=ToolModel(messages=iter([say("calc_deadlines", {}, 5)])))
-    graph = build_main_graph(failing, InMemorySaver(), loop="agent", store=InMemoryStore())
+    # [왜] 수퍼바이저 길에서는 기한 계산 도구가 화물 서브에이전트 안에 있다. 넘긴 뒤 그 안에서 부른다
+    calls = [say("calc_deadlines", {}, 6)]
+    calls = [hand("cargo", "기한 계산", 5), *calls] if loop == "supervisor" else calls
+    failing = agent_deps(model=ToolModel(messages=iter(calls)))
+    graph = build_main_graph(failing, InMemorySaver(), loop=loop, store=InMemoryStore())
     with pytest.raises(ValueError, match="DEMO0005"):
         graph.invoke(
             {"text": "언제까지예요?"}, {"configurable": {"thread_id": "tool"}, "callbacks": callbacks}
@@ -304,7 +374,8 @@ def gate_run(agent_deps, monkeypatch, callbacks: list) -> str:
     return answer
 
 
-def test_every_exported_span_field_is_free_of_numbers(agent_deps, monkeypatch):
+@pytest.mark.parametrize("loop", LOOPS)
+def test_every_exported_span_field_is_free_of_numbers(agent_deps, monkeypatch, loop):
     calls: list = []
     monkeypatch.setattr(socket.socket, "connect", lambda self, address: calls.append(address))
     exporter, key, handler = tracer()
@@ -314,14 +385,14 @@ def test_every_exported_span_field_is_free_of_numbers(agent_deps, monkeypatch):
     monkeypatch.setattr(
         queue, "put", lambda *a, **kw: (jobs.extend([kw["item"]] if "item" in kw else []), put(*a, **kw))
     )
-    answer = gate_run(agent_deps, monkeypatch, [handler])
+    answer = gate_run(agent_deps, monkeypatch, [handler], loop)
     spans = exported(exporter, key)
     assert jobs == []
     dump = "".join(spans)
     with monkeypatch.context() as bare:  # [왜] 가림을 모두 빼면 실패하는 시험인지 같은 길로 먼저 본다
         strip(bare, *LAYERS)
         raw_exporter, raw_key, raw_handler = tracer()
-        raw_answer = gate_run(agent_deps, bare, [raw_handler])
+        raw_answer = gate_run(agent_deps, bare, [raw_handler], loop)
         raw = exported(raw_exporter, raw_key)
     assert [number for number in GATE if number not in "".join(raw)] == []
     assert [number for number in GATE if number in dump] == []
@@ -340,10 +411,11 @@ def test_every_exported_span_field_is_free_of_numbers(agent_deps, monkeypatch):
         ("errors", FAILED),
     ],
 )
-def test_removing_any_one_layer_leaves_its_numbers(agent_deps, monkeypatch, layer, left):
+@pytest.mark.parametrize("loop", LOOPS)
+def test_removing_any_one_layer_leaves_its_numbers(agent_deps, monkeypatch, layer, left, loop):
     strip(monkeypatch, layer)
     exporter, key, handler = tracer()
-    gate_run(agent_deps, monkeypatch, [handler])
+    gate_run(agent_deps, monkeypatch, [handler], loop)
     dump = "".join(exported(exporter, key))
     assert [number for number in left if number not in dump] == []
 
