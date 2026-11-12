@@ -561,8 +561,14 @@ def cap_stops(rows: list[dict]) -> int:
         # 에이전트 루프는 stopped 칸에, 조사 서브에이전트는 실패 기록에 남긴다 (옛 줄에는 실패 기록만 있다)
         if r.get("stopped") == "llm_calls" or any(CAP_MARK in f for f in r.get("failed", [])):
             return True
-        # [왜] 계획자 길은 표시 없이 부분 답으로 간다 (graph/main.py route). 호출 수로 본다
-        return r["behaviour"] == "partial" and (r["llm_calls"] or 0) >= cap and not r.get("stopped")
+        # [왜] 계획자 길은 표시 없이 부분 답으로 간다 (graph/main.py route). 호출 수로 어림한다.
+        # [주의] 도구 루프 길에는 쓰지 않는다: 상한만큼 부른 뒤 검증에서 막힌 줄까지 세게 된다
+        return (
+            r.get("loop") == "planner"
+            and r["behaviour"] == "partial"
+            and (r["llm_calls"] or 0) >= cap
+            and not r.get("stopped")
+        )
 
     return sum(stopped(r) for r in rows)
 

@@ -931,3 +931,15 @@ def test_the_call_ratio_is_compared_unrounded_with_the_registered_limit():
     over = compare_paths(agent, five("supervisor", llm_calls=int(1000 * limit) + 4), ITEMS, RULE)
     assert over["calls"]["ratio"] == limit  # 보이는 값은 둘째 자리까지라 같다
     assert over["calls"]["ok"] is False
+
+
+def test_a_row_that_used_every_call_and_then_failed_verification_is_not_a_cap_stop():
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+    # [왜] 도구 루프 길(에이전트, 수퍼바이저)은 상한에서 멈추면 stopped나 실패 기록에 남긴다. 호출 수만 보고
+    #      세면 상한만큼 부른 뒤 검증에서 막혀 부분 답이 된 줄까지 상한 줄로 센다. 호출이 많은 길에 불리하다
+    for loop in ("agent", "supervisor"):
+        blocked = row("R1", loop=loop, behaviour="partial", llm_calls=cap, stopped="", failed=[])
+        assert cap_stops([blocked]) == 0
+        assert cap_stops([blocked | {"stopped": "llm_calls"}]) == 1
+    # 계획자 길은 표시가 없어 호출 수로 어림한다(그대로다)
+    assert cap_stops([row("S1", loop="planner", behaviour="partial", llm_calls=cap)]) == 1
