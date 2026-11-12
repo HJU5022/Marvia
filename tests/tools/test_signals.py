@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 from marvia.identify.models import CargoFacts
+from marvia.tools.rules import load_rules
 from marvia.tools.signals import compute, eta_gap_hours
 from marvia.tools.vessel import PortSchedule, Position, TrackPoint
 
@@ -182,3 +183,14 @@ def test_a_port_without_a_reference_point_never_borrows_another_port():
     # 인천 화물의 배가 인천으로 가고 있으면 목적지는 바뀌지 않은 것이다. 부산과 견주지 않는다
     assert states(cargo(port_code="KRINC"), ship(dest_code="KRINC"), plan())["dest_changed"] == "clear"
     assert states(cargo(port_code="KRINC"), ship(dest_code="KRPUS"), plan())["dest_changed"] == "triggered"
+
+
+def test_a_last_time_in_the_future_is_unknown_not_stale():
+    # [왜] 마지막 수신 시각이 지금보다 뒤면 시계가 어긋났거나 값이 틀린 것이다. 차이의 크기만 보면
+    #      "10시간 뒤"가 "10시간 전"처럼 읽혀 위치 끊김이 켜졌다
+    slack = timedelta(minutes=load_rules("verdict")["clock_skew_minutes"])
+    ahead = ship(last_time=NOW + slack + timedelta(minutes=1))
+    assert states(cargo(), ahead, plan())["position_stale"] == "unknown"
+    assert value("position_stale", cargo(), ahead, plan()) == "수신 시각이 지금보다 뒤"
+    # 허용 오차 안의 앞선 시각은 방금 받은 것으로 본다
+    assert states(cargo(), ship(last_time=NOW + slack), plan())["position_stale"] == "clear"

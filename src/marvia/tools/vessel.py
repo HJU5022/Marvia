@@ -10,19 +10,24 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from marvia.tools.rules import load_rules
 
 KST = timezone(timedelta(hours=9))  # 판매 예정일과 세관 입항일은 한국 날짜다
+# 위도와 경도의 범위는 기준값이 아니라 좌표의 정의다. NaN과 무한대도 받지 않는다.
+# [왜] 지구 밖 좌표나 NaN으로 거리를 재면 항구 앞 정지가 "꺼짐"으로 나오고 확신이 내려가지 않는다.
+#      그런 값은 위치로 담지 않는다(조회 쪽은 bad_response, 판정은 위치 없음으로 본다)
+Latitude = Field(ge=-90, le=90, allow_inf_nan=False)
+Longitude = Field(ge=-180, le=180, allow_inf_nan=False)
 
 
 class Position(BaseModel):
     """배 한 척의 지금 위치(ShipFinder). API의 무효 표시값은 None으로 바꿔 담는다."""
 
     mmsi: int
-    lat: float
-    lng: float
+    lat: float = Latitude
+    lng: float = Longitude
     sog: float | None = None  # 속도(노트)
     navstat: int | None = None  # AIS 항해상태 코드
     dest: str | None = None  # [주의] 자유 글. 코드 밖으로 내보내지 않는다
@@ -59,8 +64,8 @@ class TrackPoint(BaseModel):
     """지난 위치 한 점. 항구 앞에 얼마나 오래 멈춰 있었는지 잴 때 쓴다."""
 
     at: datetime
-    lat: float
-    lng: float
+    lat: float = Latitude
+    lng: float = Longitude
     sog: float | None = None
 
 
@@ -92,11 +97,20 @@ def trusted_eta(
     schedule: PortSchedule | None,
     port_code: str | None,
     forwarder_eta: date | None = None,
+    now: datetime | None = None,
 ) -> tuple[datetime | None, str | None]:
-    """믿을 도착 예정 시각과 그 출처 이름. 순서는 rules/verdict.yaml eta_priority다."""
+    """믿을 도착 예정 시각과 그 출처 이름. 순서는 rules/verdict.yaml eta_priority다.
+
+    now를 주면 이미 지난 배 신호 ETA는 출처로 치지 않는다(허용 오차는 rules/verdict.yaml clock_skew_minutes).
+    """
     # [왜] 배 신호의 ETA는 그 배가 적어 둔 목적지의 도착 시각이다. 목적지가 다른 항구거나 양륙항을 모르면
     #      이 화물의 도착 시각으로 쓰지 않는다 (v1 평가 문항 B09: 다른 항구 ETA를 부산 예정과 견줬다)
     ais_ok = position is not None and bool(port_code) and other_port(position, port_code) is None
+    if ais_ok and now is not None and position is not None and position.ais_eta is not None:
+        # [왜] 지난 시각의 배 신호 ETA는 고치지 않은 옛 입력이다. 그것으로 여유 일수를 세면 아직 먼 배가
+        #      순항이 된다. 해수부의 실제 입항은 지난 시각이 맞으므로 이 검사는 배 신호 ETA에만 건다
+        slack = timedelta(minutes=load_rules("verdict")["clock_skew_minutes"])
+        ais_ok = as_utc(position.ais_eta) >= as_utc(now) - slack
     values = {
         "mof_actual": schedule.actual_arrival if schedule else None,
         "mof_planned": schedule.planned_arrival if schedule else None,

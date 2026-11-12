@@ -63,7 +63,7 @@ def judge(
     """판정 네 칸. sale_due=판매 예정일, first_eta=처음 알던 도착 예정, forwarder_eta=포워더가 알려 준 날."""
     rules = load_rules("verdict")
     signals = compute(facts, position, plan, now=now, history=history)
-    eta, source = trusted_eta(position, plan, facts.port_code if facts else None, forwarder_eta)
+    eta, source = trusted_eta(position, plan, facts.port_code if facts else None, forwarder_eta, now=now)
     # [왜] 해수부의 입항 실적과 입항 예정은 배 위치와 무관한 신고다. 위치가 없어도 그 시각으로 센다.
     #      배 신호의 ETA나 포워더가 알려 준 날뿐인데 위치가 없으면 세지 않는다(그 값을 뒷받침할 것이 없다).
     #      v1은 위치가 없으면 늘 세지 않았다. 그때는 판정 자체를 하지 않고 되물었다

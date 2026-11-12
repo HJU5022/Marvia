@@ -2,7 +2,19 @@
 
 from datetime import UTC, date, datetime, timedelta, timezone
 
-from marvia.tools.vessel import PortSchedule, Position, days_margin, is_port_code, other_port, trusted_eta
+import pytest
+from pydantic import ValidationError
+
+from marvia.tools.rules import load_rules
+from marvia.tools.vessel import (
+    PortSchedule,
+    Position,
+    TrackPoint,
+    days_margin,
+    is_port_code,
+    other_port,
+    trusted_eta,
+)
 
 KST = timezone(timedelta(hours=9))
 NOW = datetime(2026, 9, 22, 3, 0, tzinfo=UTC)
@@ -60,3 +72,27 @@ def test_port_code_shape_and_other_port():
     assert other_port(position("JPOSA"), "KRPUS") == "JPOSA"
     assert other_port(position("KRPUS"), "KRPUS") is None and other_port(position("XX QZQ"), "KRPUS") is None
     assert other_port(position("JPOSA"), None) is None and other_port(None, "KRPUS") is None
+
+
+def test_a_ship_eta_that_already_passed_is_not_a_trusted_eta():
+    # [왜] 배가 아직 멀리 있는데 배 신호 ETA가 열흘 전이면 그 값은 낡은 입력이다. 그것으로 여유 일수를 세면
+    #      순항이 나왔다. 지금보다 앞선 ETA는 믿을 출처로 치지 않는다 (허용 오차는 rules/verdict.yaml)
+    slack = timedelta(minutes=load_rules("verdict")["clock_skew_minutes"])
+    past = position(ais_eta=NOW - slack - timedelta(minutes=1))
+    assert trusted_eta(past, schedule(), "KRPUS", now=NOW) == (None, None)
+    edge = position(ais_eta=NOW - slack)  # 허용 오차와 같으면 아직 쓴다
+    assert trusted_eta(edge, schedule(), "KRPUS", now=NOW) == (NOW - slack, "ais_eta")
+    # 해수부 일정이나 포워더 날짜가 있으면 그것으로 넘어간다. 해수부의 실제 입항은 지난 시각이 맞다
+    assert trusted_eta(past, schedule(PLANNED, ACTUAL), "KRPUS", now=NOW) == (ACTUAL, "mof_actual")
+    assert trusted_eta(past, None, "KRPUS", date(2026, 9, 25), now=NOW)[1] == "forwarder_eta"
+
+
+@pytest.mark.parametrize(
+    ("lat", "lng"), [(999, 128.0), (33.0, -181), (float("nan"), 128.0), (33.0, float("inf"))]
+)
+def test_a_position_outside_the_globe_is_not_a_position(lat, lng):
+    # [왜] 위도 999나 NaN으로 거리를 재면 항구 앞 정지가 "꺼짐"으로 나오고 확신이 내려가지 않는다
+    with pytest.raises(ValidationError):
+        Position(mmsi=999000001, lat=lat, lng=lng, fetched_at=NOW)
+    with pytest.raises(ValidationError):
+        TrackPoint(at=NOW, lat=lat, lng=lng)

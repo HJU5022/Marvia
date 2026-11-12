@@ -229,6 +229,9 @@ ODD = "OUTSIDE-VALUE-7"  # 바깥에서 온 값의 표식. 오류 글에 나오�
             lambda: _odd(_body({"status": 0, "data": {"lat": 1, "lng": 2, "last_time": -1e20}})),
             "bad_response",
         ),
+        # 위도가 지구 밖, 숫자가 아님(NaN)
+        (lambda: _odd(_body({"status": 0, "data": {"lat": 999, "lng": 2}})), "bad_response"),
+        (lambda: _odd(_body('{"status": 0, "data": {"lat": NaN, "lng": 2}}')), "bad_response"),
         # 본문이 목록, 401에 HTML, 연결 오류
         (lambda: _odd(_body([1, 2])), "bad_response"),
         (lambda: _odd(_body("<html>", status=401)), "bad_response"),

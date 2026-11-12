@@ -56,7 +56,12 @@ def eta_gap_hours(ais_eta: datetime, planned: datetime) -> float:
 def _position_stale(position: Position | None, now: datetime, cuts: dict) -> Signal:
     if position is None or position.last_time is None:
         return _signal("position_stale", "unknown", "위치 없음")
-    gap = _hours(now, position.last_time)
+    ahead = as_utc(position.last_time) - as_utc(now)
+    if ahead > timedelta(minutes=load_rules("verdict")["clock_skew_minutes"]):
+        # [왜] 수신 시각이 지금보다 뒤면 시계가 어긋났거나 값이 틀린 것이다.
+        #      차이의 크기만 보면 끊김으로 읽힌다
+        return _signal("position_stale", "unknown", "수신 시각이 지금보다 뒤")
+    gap = 0.0 if ahead > timedelta(0) else _hours(now, position.last_time)
     return _signal(
         "position_stale", "triggered" if gap > cuts["position_stale_hours"] else "clear", f"{gap:.1f}시간 전"
     )
