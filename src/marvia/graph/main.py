@@ -111,6 +111,7 @@ def start(state: MarviaState) -> dict:
         # 수퍼바이저 길 칸 (계획 7b)
         "route": "",
         "task": "",
+        "searched": [],
     }
 
 

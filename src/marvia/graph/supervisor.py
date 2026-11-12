@@ -39,6 +39,11 @@ ASK_ALONE = (
 # [주의] 가림 표(mask_map)는 넘겨주기만 한다. 서브에이전트의 도구는 읽기만 하고, 쓰는 도구(ask_user)는
 #        수퍼바이저에만 있다
 HANDED = ("cargos", "evidence", "gaps", "calc", "item", "official", "actions", "failed_tools", "assumptions")
+# 상한을 함께 쓰는 칸: 이번 차례 LLM 호출 수, 이미 찾은 질의, 멈춘 이유.
+# [왜] 서브에이전트의 Guards와 search_law가 받은 값에서 이어 세므로 수퍼바이저와 서브에이전트를 합쳐도
+#      상한(rules/agent.yaml loop.max_llm_calls, max_searches)을 넘지 않는다.
+#      조사 도구(research)와 같은 방식이다
+SHARED = (*HANDED, "llm_calls", "searched", "stopped")
 
 
 def subagents() -> dict[str, dict]:
@@ -143,7 +148,7 @@ def sub_node(name: str, sub, today: Callable[[], date]):
             task=state.get("task", ""),
         )
         values: dict[str, Any] = dict(state)
-        start = {key: values[key] for key in HANDED if key in values}
+        start = {key: values[key] for key in SHARED if key in values}
         start |= {"mask_map": values.get("mask_map", {}), "messages": [HumanMessage(turn)]}
         out = sub.invoke(start)
         last = out["messages"][-1]
@@ -160,7 +165,7 @@ def sub_node(name: str, sub, today: Callable[[], date]):
         result = ToolMessage("\n".join(lines), tool_call_id=ack.tool_call_id, name="handoff", id=ack.id)
         # [왜] 부모 공책 칸은 덮어쓰기다. 서브에이전트는 받은 값에 자기 것을 합친 전체 값을 돌려주므로
         #      그대로 넣으면 된다(부모 칸에 더하기 reducer를 달면 받은 값이 두 번 더해진다, 11-12 사본 확인)
-        update: dict[str, Any] = {key: out[key] for key in HANDED if key in out}
+        update: dict[str, Any] = {key: out[key] for key in SHARED if key in out}
         return update | {"messages": [result], "route": "", "task": ""}
 
     return run

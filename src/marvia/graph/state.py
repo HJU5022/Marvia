@@ -72,6 +72,9 @@ class MarviaState(IdentifyState, total=False):
     # 아래는 수퍼바이저 길 칸 (계획 7b). handoff 도구가 쓰고 router와 서브에이전트 노드가 읽은 뒤 비운다
     route: str  # 다음에 돌 서브에이전트 이름. 비었으면 넘길 곳이 없다
     task: str  # 서브에이전트에게 넘길 일 한 문장 (가린 글)
+    # 이번 차례에 이미 찾은 질의. [왜] 부모 공책에 있어야 서브에이전트를 여러 번 불러도 검색 상한과
+    #      "같은 질의 다시 찾지 않기"가 이어진다. 에이전트 길에서는 루프 공책에만 있었다
+    searched: list[str]
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:

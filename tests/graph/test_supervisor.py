@@ -9,7 +9,7 @@ from conftest import UNIT
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
-from test_agent import CITING, TWO, Inputs, ToolModel, cfg
+from test_agent import CITING, TWO, FailsAfter, Inputs, ToolModel, cfg
 
 from marvia.graph.main import build_main_graph
 from marvia.tools.rules import load_rules
@@ -229,3 +229,81 @@ def test_a_long_result_text_is_cut_to_the_rule(agent_deps):
     graph.invoke({"text": "DEMO0001 어디쯤이에요?"}, cfg("h7"))
     result = graph.get_state(cfg("h7")).values["messages"][2]
     assert result.text == "화물·기한 결과: " + "가" * cap
+
+
+# --- 상한 공유: 수퍼바이저와 서브에이전트가 같은 호출 수와 검색 기록을 쓴다 (계획 7b Task 3) ---
+
+CAP = load_rules("agent")["loop"]["max_llm_calls"]
+PROVISION = {"label": "관세법 제241조제3항"}
+
+
+def test_supervisor_and_subagent_calls_stop_exactly_at_the_shared_cap(agent_deps):
+    # 수퍼바이저 1 + 서브에이전트 1을 끝없이 되풀이하는 대본
+    script = [m for i in range(CAP) for m in (hand("cargo", "조회", f"h{i}"), done(f"끝{i}"))]
+    inputs = Inputs()
+    graph = sup_graph(agent_deps, *script)
+    out = graph.invoke({"text": "DEMO0001 어디쯤이에요?"}, cfg("c1") | {"callbacks": [inputs]})
+    values = graph.get_state(cfg("c1")).values
+    assert len(inputs.calls) == CAP  # 실제로 모델을 부른 횟수도 상한과 같다
+    assert values["llm_calls"] == CAP and values["stopped"] == "llm_calls"
+    assert values["failed_tools"] == [{"tool": "supervisor", "message": f"LLM 호출 한도({CAP}회)에 닿았어요"}]
+    assert "끝까지 확인하지 못했어요" in out["answer"]  # 부분 답
+
+
+def test_a_subagent_that_hits_the_cap_ends_the_turn_without_another_supervisor_call(agent_deps):
+    # 수퍼바이저 1 + 화물 서브에이전트 19에서 상한.
+    # 대본이 거기서 끝나므로 수퍼바이저를 또 부르면 시험이 죽는다
+    script = [hand("cargo", "기한 계산", "h1")] + [
+        call("calc_deadlines", {}, f"k{i}") for i in range(CAP - 1)
+    ]
+    graph = sup_graph(agent_deps, *script)
+    out = graph.invoke({"text": "DEMO0001 어디쯤이에요?"}, cfg("c2"))
+    values = graph.get_state(cfg("c2")).values
+    assert values["llm_calls"] == CAP and values["stopped"] == "llm_calls"
+    assert values["failed_tools"] == [{"tool": "cargo", "message": f"LLM 호출 한도({CAP}회)에 닿았어요"}]
+    assert "끝까지 확인하지 못했어요" in out["answer"]
+
+
+@pytest.mark.parametrize("before, searched", [(10, 2), (11, 0)])
+def test_the_search_refusal_boundary_holds_inside_the_law_subagent(agent_deps, before, searched):
+    # 수퍼바이저 1 + 법령 모델 before번 뒤, 다음 법령 모델 호출이 검색 둘을 한꺼번에 부른다.
+    # 그 호출까지 1 + before + 1번. 검색 둘의 최악(4 x 2)을 더해 상한을 넘으면 둘 다 거절한다
+    # (에이전트 길과 같다)
+    two = AIMessage(
+        "",
+        tool_calls=[
+            {"name": "search_law", "args": {"query": "수입신고 기한"}, "id": "s1"},
+            {"name": "search_law", "args": {"query": "반입신고"}, "id": "s2"},
+        ],
+    )
+    law = [call("get_provision", PROVISION, f"p{i}") for i in range(before)] + [two, done("끝")]
+    graph = sup_graph(agent_deps, hand("law", "수입신고 기한 근거", "h1"), *law, done())
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg(f"c3-{before}"))
+    values = graph.get_state(cfg(f"c3-{before}")).values
+    assert len(values["searched"]) == searched
+    assert values["llm_calls"] <= CAP + load_rules("agent")["answer"]["max_write_attempts"]
+
+
+def test_the_search_cap_and_seen_queries_carry_across_subagent_runs(agent_deps):
+    limit = load_rules("agent")["loop"]["max_searches"]
+    script = []
+    for i in range(limit + 1):  # 법령 서브에이전트를 네 번 부르고 매번 새 질의 하나를 찾는다
+        script += [
+            hand("law", f"질의 {i}", f"h{i}"),
+            call("search_law", {"query": f"질의 {i}"}, f"s{i}"),
+            done(f"끝{i}"),
+        ]
+    graph = sup_graph(agent_deps, *script, done())
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("c4"))
+    values = graph.get_state(cfg("c4")).values
+    assert values["searched"] == [f"질의 {i}" for i in range(limit)]  # 넷째 검색은 거절됐다
+
+
+def test_a_model_failure_inside_a_subagent_ends_in_a_partial_answer(agent_deps):
+    model = FailsAfter(messages=iter([hand("cargo", "조회", "h1")]))
+    graph = build_main_graph(agent_deps(model=model), InMemorySaver(), loop="supervisor")
+    out = graph.invoke({"text": "DEMO0001 어디쯤이에요?"}, cfg("c5"))
+    values = graph.get_state(cfg("c5")).values
+    assert values["stopped"] == "llm_failed"
+    assert values["failed_tools"] == [{"tool": "cargo", "message": "APIConnectionError"}]
+    assert "끝까지 확인하지 못했어요" in out["answer"]
