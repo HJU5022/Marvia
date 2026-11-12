@@ -57,10 +57,10 @@ def say(name: str, args: dict, n: int = 0) -> AIMessage:
     return AIMessage("", tool_calls=[{"name": name, "args": args, "id": f"s{n}-{name}"}])
 
 
-def served(agent_deps, *messages, **changes):
+def served(agent_deps, *messages, loop: str = "agent", **changes):
     """가짜 모델로 만든 그래프와 그 그래프를 띄운 시험 클라이언트."""
     deps = agent_deps(model=ToolModel(messages=iter(messages)), **changes)
-    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore())
+    graph = build_main_graph(deps, InMemorySaver(), loop=loop, store=InMemoryStore())
     app = build_app(graph, verify, web_origin="http://web.test", forget=lambda user: None)
     return graph, TestClient(app)
 
@@ -805,3 +805,72 @@ def test_a_traced_turn_exports_spans_without_numbers_and_still_answers_with_them
     spans = exporter.get_finished_spans()
     assert spans and all("DEMO0001" not in span.to_json() for span in spans)
     assert any("DEMO0001" in event.get("delta", "") for event in events)  # 화면 답에는 실제 번호
+
+
+# --- 수퍼바이저 길 (계획 7b): 화면에 가는 이벤트는 에이전트 길과 같은 모양이어야 한다 ---
+
+
+def hand(to: str, task: str, n: int) -> AIMessage:
+    return say("handoff", {"to": to, "task": task}, n)
+
+
+def test_a_supervisor_turn_streams_todos_and_what_subagents_found_in_the_allowed_view(agent_deps):
+    todos = {"todos": [{"content": "기한 계산", "status": "in_progress"}]}
+    graph, client = served(
+        agent_deps,
+        say("write_todos", todos, 1),
+        hand("cargo", "[BL1]의 수입신고 기한 계산", 2),
+        say("calc_deadlines", {}, 3),  # 화물·기한 서브에이전트
+        AIMessage("기한을 계산했어요."),
+        hand("law", "수입신고 기한의 근거", 4),
+        say("search_law", {"query": "수입신고 기한"}, 5),  # 법령 조사 서브에이전트
+        AIMessage("관세법 제241조제3항이에요."),
+        AIMessage(""),
+        loop="supervisor",
+    )
+    events = run(client, body("v1", "DEMO0001 언제까지 수입신고 해요?"))
+    order = kinds(events)
+    assert order[0] == "RUN_STARTED" and events[-1]["outcome"] == {"type": "success"}
+    snapshots = [e["snapshot"] for e in events if e["type"] == "STATE_SNAPSHOT"]
+    assert all(set(s) == SNAPSHOT_KEYS for s in snapshots)  # 넘김 칸(route, task)과 메시지는 가지 않는다
+    with_plan = next(
+        i for i, e in enumerate(events) if e["type"] == "STATE_SNAPSHOT" and e["snapshot"]["plan"]
+    )
+    with_evidence = next(
+        i for i, e in enumerate(events) if e["type"] == "STATE_SNAPSHOT" and e["snapshot"]["evidence"]
+    )
+    # [왜] 할 일은 넘기기 전에, 서브에이전트가 찾은 근거는 답이 나오기 전에 화면에 보인다
+    assert with_plan < with_evidence < order.index("TEXT_MESSAGE_START")
+    assert [e["unit_id"] for e in snapshots[-1]["evidence"]] == ["L001556@20261002#제241조.3항"]
+    assert snapshots[-1]["cargos"][0]["number"] == "DEMO0001"
+
+
+def test_an_approval_inside_a_subagent_reaches_the_screen_as_one_card_and_runs_once(agent_deps):
+    inputs, added = Inputs(), []
+    watch = WatchDeps(add=lambda *row: added.append(row), news=lambda user: [], ack=lambda user, ids: None)
+    steps = (
+        say("ask_user", {"question": "어느 화물을 지켜볼까요?", "options": TWO}, 1),
+        hand("cargo", "[BL2]를 감시 목록에 넣기", 2),
+        say("watch_cargo", {"token": "[BL2]"}, 3),  # 화물·기한 서브에이전트 안의 승인 도구
+        AIMessage("넣었어요."),
+        AIMessage(""),
+    )
+    deps = agent_deps(model=ToolModel(messages=iter(steps)), watch=watch)
+    graph = build_main_graph(deps, InMemorySaver(), loop="supervisor", store=InMemoryStore())
+    app = build_app(graph.with_config(callbacks=[inputs]), verify, web_origin="http://web.test", forget=print)
+    client = TestClient(app)
+    card = run(client, body("v2", "DEMO0001 말고 다른 것도 지켜봐 줘"))[-1]["outcome"]["interrupts"][0]
+    assert card["reason"] == "choice"
+    # 같은 차례에 직접 적은 새 번호
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"custom": "DEMO0002요"}}]
+    card = run(client, body("v2", resume=resume))[-1]["outcome"]["interrupts"][0]
+    # [왜] 수퍼바이저의 ask_user가 끝난 뒤 가림 표가 부모 공책에 왔으므로, 서브에이전트 안에서 뜬 승인 카드도
+    #      이번 차례에 들어온 번호를 실제 번호로 보인다
+    assert card["reason"] == "approval" and card["metadata"]["actions"][0]["args"] == {"token": "DEMO0002"}
+    assert card["metadata"]["actions"][0]["label"] == "화물 감시 추가" and added == []
+    edit = {"type": "edit", "edited_action": {"name": "watch_cargo", "args": {"token": "DEMO0002"}}}
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"decisions": [edit]}}]
+    assert run(client, body("v2", resume=resume))[-1]["outcome"] == {"type": "success"}
+    # 다시 가린 [BL2]로 한 번만 돌았다. 조회한 적 없는 화물이라 단계 칸은 비어 있다
+    assert added == [("user-a", "DEMO0002", "")]
+    assert not any(n in text for text in inputs.seen for n in ("DEMO0001", "DEMO0002"))
