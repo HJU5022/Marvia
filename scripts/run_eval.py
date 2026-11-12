@@ -38,12 +38,14 @@ from marvia.eval.metrics import (
     LOWER,
     agreement,
     cargo_count_lines,
+    compare_paths,
     compare_tables,
     domain_table,
     floors,
     gate_block,
     gate_uncovered,
     human_faithful,
+    precheck,
     rag_table,
     ragas_means,
     set_view,
@@ -106,6 +108,18 @@ spread_cmd.add_argument(
     choices=list(SETS),
     default="v2",
     help="이 판으로 채점한다 (v1이면 v2 실행을 behaviour_base로 센다)",
+)
+verdict_cmd = sub.add_parser(
+    "verdict", help="에이전트 길과 수퍼바이저 길의 실행들을 사전 등록 기준으로 판정한다 (키 없음, 계획 7b)"
+)
+verdict_cmd.add_argument("--agent", nargs="+", required=True, help="에이전트 길 결과 파일들")
+verdict_cmd.add_argument("--supervisor", nargs="+", required=True, help="수퍼바이저 길 결과 파일들")
+verdict_cmd.add_argument("--set", choices=list(SETS), default="v3", help="판정에 쓰는 평가셋 판")
+verdict_cmd.add_argument(
+    "--invalid",
+    nargs="*",
+    default=[],
+    help="무효라 다시 돈 실행 파일들(meta.problems가 있어야 한다). 세지 않고 적기만 한다",
 )
 sheet = sub.add_parser("sheet", help="사람 채점지 (키 없음). 답 글이 들어 있어 저장소 밖에 쓴다")
 sheet.add_argument("result")
@@ -249,6 +263,66 @@ if args.command == "spread":
             summaries.append(summarize(rows, items, result["meta"]["k"]))
         blocks.append(spread_table(group, label, spread(summaries)) + f"\n\n실행 {len(group)}번")
     print("\n\n".join(blocks))
+    raise SystemExit(0)
+
+if args.command == "verdict":
+    set_path = SETS[args.set]
+
+    def load(files: list[str]) -> list[dict]:
+        return [json.loads(Path(f).read_text(encoding="utf-8")) for f in files]
+
+    loaded = {"agent": load(args.agent), "supervisor": load(args.supervisor)}
+    # [왜] 무효 실행(meta.problems가 있다: CLI 실패, 문항을 다 덮지 못함 등)은 판정에 넣지 않고 다시 돈다.
+    #      --invalid로 준 파일은 세지 않고 까닭만 옮겨 적는다. 무효는 meta.problems로만 정한다:
+    #      문제가 없는 실행을 --invalid로 빼려 하면 거절한다(점수를 보고 실행을 고르지 못하게)
+    excluded = []
+    for name, result in zip(args.invalid, load(args.invalid), strict=True):
+        if not result["meta"].get("problems"):
+            raise SystemExit(f"{name}: meta.problems가 비어 있다. 무효가 아닌 실행은 뺄 수 없다")
+        excluded.append({"file": Path(name).name, "problems": result["meta"]["problems"]})
+    keys = {}
+    for loop, results in loaded.items():
+        wrong = sorted({r["meta"]["loop"] for r in results} - {loop})
+        if wrong:
+            raise SystemExit(f"--{loop}에 다른 길의 결과가 있다: {', '.join(wrong)} (기대 {loop})")
+        try:
+            # [왜] spread와 같은 묶기 규칙을 쓴다: 무효 실행, LLM 길이 섞인 묶음, 다른 평가셋 파일을 거절한다
+            groups = spread_groups(results)
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
+        if len(groups) != 1:
+            raise SystemExit(f"--{loop}의 실행들이 한 설정이 아니다 (모델, 커밋, 그래프 설정, 검색 길)")
+        keys[loop] = next(iter(groups))[1:]  # (모델, 커밋, 그래프 설정, 검색 길)
+    metas = [result["meta"] for results in loaded.values() for result in results]
+    # [왜] 판정은 같은 커밋, 같은 모델과 설정, 같은 LLM 길, 같은 평가셋 파일의 실행끼리만 한다.
+    #      섞이면 차이가 길에서 온 것이 아니다
+    if keys["agent"] != keys["supervisor"]:
+        both = f"{keys['agent']} / {keys['supervisor']}"
+        raise SystemExit(f"두 길의 실행 조건이 다르다 (모델, 커밋, 그래프 설정, 검색 길): {both}")
+    if any(meta["set_sha256"] != file_sha256(set_path) for meta in metas):
+        raise SystemExit(f"평가셋 {args.set} 파일에서 돌린 결과가 아닌 것이 있다")
+    # [왜] claude -p로 잰 실행과 API로 잰 실행은 조건이 다르다. 한 판정에 섞지 않는다.
+    #      옛 결과 파일에는 meta.llm_via가 없고 그때는 API뿐이었다
+    vias = sorted({meta.get("llm_via", "api") for meta in metas})
+    if len(vias) != 1:
+        raise SystemExit(f"LLM 길이 섞였다 ({', '.join(vias)}). 같은 길로 잰 실행끼리만 판정한다")
+    try:
+        result = compare_paths(
+            [r["rows"] for r in loaded["agent"]],
+            [r["rows"] for r in loaded["supervisor"]],
+            {i.id: i for i in load_set(set_path).items},
+            load_rules("eval")["comparison"],
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
+    rule = load_rules("eval")["comparison"]["precheck"]
+    # [왜] 저장 값은 rule["set"](v2) 기준으로 잰 것이라 에이전트 길 줄을 그 판으로 세어 견준다
+    stored = {i.id: i for i in load_set(SETS[rule["set"]]).items}
+    model, commit, graph, rag_via = keys["agent"]
+    head = {"set": args.set, "commit": commit, "model": model, "graph": graph, "rag_via": rag_via}
+    head |= {"llm_via": vias[0], "invalid_runs": excluded}
+    head["precheck"] = precheck([r["rows"] for r in loaded["agent"]], stored, rule)
+    print(json.dumps(head | result, ensure_ascii=False, indent=1))
     raise SystemExit(0)
 
 if args.command == "sheet":

@@ -260,3 +260,89 @@ def test_run_on_the_cli_path_prints_no_cost_estimate(tmp_path):
         env=os.environ | {"MARVIA_LLM_VIA": "api"},
     )
     assert "어림 비용" in api.stdout
+
+
+def verdict_files(
+    tmp_path: Path,
+    loop: str,
+    commit: str,
+    set_sha: str,
+    n: int = 5,
+    llm_via: str = "cli",
+    model: str = "claude-haiku-5-5",
+    problems: list[str] | None = None,
+    tag: str = "r",
+) -> list[str]:
+    """판정 명령에 줄 결과 파일 n개. 줄은 R01 하나(답했고 인용은 없다)."""
+    row = {"id": "R01", "loop": loop, "behaviour": "answer", "cited": [], "evidence": [], "retrieved": []}
+    row |= {"calc": {}, "llm_calls": 5, "failed": [], "leak": False, "error": None}
+    meta = {"loop": loop, "commit": commit, "set": "v3", "set_sha256": set_sha, "model": model}
+    meta |= {"llm_via": llm_via, "problems": problems or []}
+    paths = []
+    for i in range(n):
+        path = tmp_path / f"{loop}-{commit}-{llm_via}-{model}-{tag}{i}.json"
+        path.write_text(json.dumps({"meta": meta | {"tag": f"{tag}{i}"}, "rows": [row]}), encoding="utf-8")
+        paths.append(str(path))
+    return paths
+
+
+def verdict(*args: str):
+    return subprocess.run(
+        [sys.executable, "scripts/run_eval.py", "verdict", *args], cwd=ROOT, capture_output=True, text=True
+    )
+
+
+def test_verdict_prints_the_registered_comparison_for_five_runs_per_path(tmp_path):
+    from marvia.eval.dataset import SET_V3_PATH, file_sha256
+
+    sha = file_sha256(SET_V3_PATH)
+    agent = verdict_files(tmp_path, "agent", "abc1234", sha)
+    supervisor = verdict_files(tmp_path, "supervisor", "abc1234", sha)
+    done = verdict("--agent", *agent, "--supervisor", *supervisor)
+    out = json.loads(done.stdout)
+    assert out["verdict"] == "구분 못 함" and out["set"] == "v3" and out["commit"] == "abc1234"
+    assert out["right_items"]["behaviour"] == {"agent": 1, "supervisor": 1}
+    # [왜] 사전 검사도 같은 명령이 낸다. 줄이 R01 하나(행동 맞음, 인용 없음)라 저장 범위 밖이다
+    assert out["llm_via"] == "cli" and out["model"] == "claude-haiku-5-5" and out["invalid_runs"] == []
+    assert out["precheck"]["behaviour_accuracy"]["mean"] == 1.0
+    assert out["precheck"]["correct_citation"] == {"mean": 0.0, "low": -0.3333, "high": 1.8333, "ok": True}
+
+
+def test_verdict_refuses_runs_of_another_commit_set_or_path(tmp_path):
+    from marvia.eval.dataset import SET_V3_PATH, file_sha256
+
+    sha = file_sha256(SET_V3_PATH)
+    agent = verdict_files(tmp_path, "agent", "abc1234", sha)
+    other_commit = verdict_files(tmp_path, "supervisor", "def5678", sha)
+    done = verdict("--agent", *agent, "--supervisor", *other_commit)
+    assert done.returncode != 0 and "실행 조건이 다르다" in done.stderr and "Traceback" not in done.stderr
+    other_set = verdict_files(tmp_path, "supervisor", "abc1234", "0" * 64)
+    done = verdict("--agent", *agent, "--supervisor", *other_set)
+    assert done.returncode != 0 and "평가셋" in done.stderr
+    done = verdict("--agent", *agent, "--supervisor", *agent)
+    assert done.returncode != 0 and "supervisor" in done.stderr
+    by_api = verdict_files(tmp_path, "supervisor", "abc1234", sha, llm_via="api")
+    done = verdict("--agent", *agent, "--supervisor", *by_api)
+    assert done.returncode != 0 and "LLM 길이 섞였다" in done.stderr
+    other_model = verdict_files(tmp_path, "supervisor", "abc1234", sha, model="claude-sonnet-5-5")
+    done = verdict("--agent", *agent, "--supervisor", *other_model)
+    assert done.returncode != 0 and "실행 조건이 다르다" in done.stderr
+
+
+def test_verdict_refuses_an_invalid_run_and_lists_the_ones_that_were_rerun(tmp_path):
+    from marvia.eval.dataset import SET_V3_PATH, file_sha256
+
+    sha = file_sha256(SET_V3_PATH)
+    agent = verdict_files(tmp_path, "agent", "abc1234", sha)
+    supervisor = verdict_files(tmp_path, "supervisor", "abc1234", sha)
+    broken = verdict_files(tmp_path, "supervisor", "abc1234", sha, n=1, problems=["errors 1"], tag="x")
+    # 무효 실행(meta.problems가 있다)을 판정에 넣으면 거절한다
+    done = verdict("--agent", *agent, "--supervisor", *supervisor[:4], *broken)
+    assert done.returncode != 0 and "무효 실행" in done.stderr
+    # 다시 돈 실행으로 판정하고, 무효였던 실행은 까닭과 함께 적는다
+    done = verdict("--agent", *agent, "--supervisor", *supervisor, "--invalid", *broken)
+    out = json.loads(done.stdout)
+    assert out["invalid_runs"] == [{"file": Path(broken[0]).name, "problems": ["errors 1"]}]
+    # [왜] 무효는 meta.problems로만 정한다. 문제가 없는 실행을 무효라고 빼려 하면 거절한다
+    done = verdict("--agent", *agent, "--supervisor", *supervisor, "--invalid", supervisor[0])
+    assert done.returncode != 0 and "무효가 아닌 실행은 뺄 수 없다" in done.stderr

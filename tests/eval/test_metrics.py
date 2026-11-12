@@ -12,6 +12,7 @@ from marvia.eval.metrics import (
     bucket,
     calc_ok,
     cap_stops,
+    compare_paths,
     compare_table,
     compare_tables,
     contract_adherence,
@@ -26,6 +27,7 @@ from marvia.eval.metrics import (
     human_faithful,
     matches,
     mrr,
+    precheck,
     ragas_means,
     recall_at_k,
     routing_accuracy,
@@ -812,3 +814,109 @@ def test_runs_measured_through_different_llm_paths_never_share_a_table():
     assert first.startswith("LLM 길: api") and "a1" in first and "old" in first and "c1" not in first
     assert "c1" in second and "a1" not in second
     assert compare_tables([api]) == compare_table([api])  # 길이 하나면 머리글 없이 표만 낸다
+
+
+# --- 두 길의 비교 판정 (계획 7b 사전 등록) ---
+
+RULE = load_rules("eval")["comparison"]
+GOOD = {
+    "R1": {"cited": [A + "제241조.3항"]},
+    "R2": {"cited": [A + "제9조.1항"], "calc": {"deadlines": [DUTY]}},
+}
+
+
+def path_rows(loop: str, wrong: tuple[str, ...] = (), uncited: tuple[str, ...] = (), **extra) -> list[dict]:
+    """다섯 문항(ITEMS)의 줄 한 벌. wrong의 문항은 행동이 틀리고, uncited의 문항은 정답을 인용하지 않는다."""
+    right = {"R1": "answer", "R2": "answer", "S1": "answer", "U1": "decline", "B1": "choice"}
+    rows = []
+    for id, behaviour in right.items():
+        fields = {} if id in uncited else GOOD.get(id, {})
+        kind = "partial" if id in wrong else behaviour
+        rows.append(row(id, loop=loop, behaviour=kind, llm_calls=6, failed=[], error=None) | fields | extra)
+    return rows
+
+
+def five(loop: str, **kwargs) -> list[list[dict]]:
+    return [path_rows(loop, **kwargs) for _ in range(RULE["runs"])]
+
+
+def test_equal_paths_are_indistinguishable_not_a_win():
+    result = compare_paths(five("agent"), five("supervisor"), ITEMS, RULE)
+    assert result["verdict"] == "구분 못 함"
+    assert result["gates"] == {"errors": 0, "leaks": 0, "ok": True}
+    assert result["lines"]["cap_stops"] == {"agent": 0, "supervisor": 0, "ok": True}
+    assert result["right_items"]["behaviour"] == {"agent": 5, "supervisor": 5}
+    assert result["right_items"]["citation"] == {"agent": 2, "supervisor": 2}
+
+
+def test_two_more_items_right_in_most_runs_with_every_line_met_is_a_win():
+    agent = five("agent", wrong=("S1", "U1"))
+    result = compare_paths(agent, five("supervisor"), ITEMS, RULE)
+    assert result["right_items"]["behaviour"] == {"agent": 3, "supervisor": 5}
+    assert result["verdict"] == "이김"
+    # [왜] 한 문항 차이는 실행 사이 흔들림과 가를 수 없어 이김으로 세지 않는다
+    one = compare_paths(five("agent", wrong=("S1",)), five("supervisor"), ITEMS, RULE)
+    assert one["verdict"] == "구분 못 함"
+
+
+def test_an_item_counts_as_right_only_when_most_runs_got_it():
+    supervisor = five("supervisor")
+    supervisor[0] = path_rows("supervisor", wrong=("S1", "U1"))
+    supervisor[1] = path_rows("supervisor", wrong=("S1", "U1"))  # 다섯 번 가운데 세 번은 맞았다
+    kept = compare_paths(five("agent"), supervisor, ITEMS, RULE)
+    assert kept["right_items"]["behaviour"]["supervisor"] == 5
+    supervisor[2] = path_rows("supervisor", wrong=("S1", "U1"))  # 두 번만 맞았다
+    result = compare_paths(five("agent"), supervisor, ITEMS, RULE)
+    assert result["right_items"]["behaviour"]["supervisor"] == 3 and result["verdict"] == "짐"
+
+
+def test_a_leak_or_an_error_in_the_supervisor_runs_is_a_loss():
+    agent = five("agent", wrong=("S1", "U1"))  # 품질로는 수퍼바이저가 이기는 판
+    for bad in ({"leak": True}, {"error": "ValueError"}):
+        supervisor = five("supervisor")
+        supervisor[4] = path_rows("supervisor", **bad)
+        result = compare_paths(agent, supervisor, ITEMS, RULE)
+        assert result["gates"]["ok"] is False and result["verdict"] == "짐", bad
+
+
+def test_too_many_rows_ending_at_the_cap_block_a_win_but_are_not_a_loss():
+    # [왜] 상한에 닿아 끝난 줄은 드문 사건이다. 폭(rules cap_stop_slack) 안이면 낮지 않다고 보고,
+    #      넘으면 이김이 아닐 뿐 짐은 아니다
+    slack = RULE["cap_stop_slack"]
+    agent = five("agent", wrong=("S1", "U1"))
+
+    def capped(rows: list[dict], count: int) -> list[dict]:
+        return [r | {"stopped": "llm_calls"} if i < count else r for i, r in enumerate(rows)]
+
+    supervisor = five("supervisor")
+    supervisor[0] = capped(supervisor[0], slack)  # 에이전트 0줄 + 폭
+    within = compare_paths(agent, supervisor, ITEMS, RULE)
+    assert within["lines"]["cap_stops"] == {"agent": 0, "supervisor": slack, "ok": True}
+    assert within["verdict"] == "이김"
+    supervisor[1] = capped(supervisor[1], 1)  # 한 줄 더
+    over = compare_paths(agent, supervisor, ITEMS, RULE)
+    assert over["lines"]["cap_stops"]["ok"] is False and over["verdict"] == "구분 못 함"
+
+
+def test_two_fewer_cited_items_is_a_loss_and_too_many_calls_blocks_a_win():
+    fewer = compare_paths(five("agent"), five("supervisor", uncited=("R1", "R2")), ITEMS, RULE)
+    assert fewer["right_items"]["citation"] == {"agent": 2, "supervisor": 0} and fewer["verdict"] == "짐"
+    costly = compare_paths(five("agent", wrong=("S1", "U1")), five("supervisor", llm_calls=10), ITEMS, RULE)
+    assert costly["calls"] == {"agent": 6, "supervisor": 10, "ratio": 1.67, "ok": False}
+    assert costly["verdict"] == "구분 못 함"  # 문항 수로는 이겼지만 호출 수 줄을 넘지 못했다
+
+
+def test_the_comparison_needs_the_registered_number_of_runs_per_path():
+    with pytest.raises(ValueError, match="5"):
+        compare_paths(five("agent")[:3], five("supervisor"), ITEMS, RULE)
+
+
+def test_precheck_tells_whether_the_agent_runs_land_in_the_stored_range():
+    # 저장 범위: 행동 0.8~0.8, 인용 0.5~1.0, 폭은 한 문항(행동 1/5, 인용 1/2)
+    rule = {"slack_items": 1, "behaviour_accuracy": {"min": 0.8, "max": 0.8}}
+    rule |= {"correct_citation": {"min": 0.5, "max": 1.0}}
+    inside = precheck(five("agent", wrong=("S1",)), ITEMS, rule)
+    assert inside["ok"] is True
+    assert inside["behaviour_accuracy"] == {"mean": 0.8, "low": 0.6, "high": 1.0, "ok": True}
+    outside = precheck(five("agent", wrong=("S1", "U1", "B1")), ITEMS, rule)
+    assert outside["behaviour_accuracy"]["mean"] == 0.4 and outside["ok"] is False

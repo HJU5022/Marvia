@@ -13,7 +13,7 @@ import math
 import re
 import statistics
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import date
 
 import yaml
@@ -750,6 +750,106 @@ def domain_table(answers: dict[str, dict[str, str]], items: dict[str, Item]) -> 
             cells.append(f"{sum(marks)}/{len(marks)}")
         lines.append("| " + " | ".join(cells + [str(len(scores))]) + " |")
     return "\n".join(lines)
+
+
+def _right_items(runs: list[list[dict]], right: Callable[[dict], bool], majority: int) -> int:
+    """여러 실행 가운데 majority번 이상 맞은 문항 수."""
+    hits: Counter[str] = Counter(r["id"] for rows in runs for r in rows if right(r))
+    return sum(count >= majority for count in hits.values())
+
+
+def compare_paths(
+    agent: list[list[dict]], supervisor: list[list[dict]], items: dict[str, Item], rule: dict
+) -> dict:
+    """에이전트 길과 수퍼바이저 길의 실행 줄들을 미리 정한 기준으로 견줘 판정한다 (계획 7b 사전 등록).
+
+    입력: agent·supervisor는 실행마다의 줄 목록(같은 평가셋, 같은 커밋), rule은 rules/eval.yaml comparison.
+    출력: gates(문: 오류, 새는 번호), lines(낮지 않음 줄: 행동, 인용, 근거 없는 답, 상한에 닿은 줄),
+          calls(호출 수 줄), right_items(여러 번 맞은 문항 수),
+          verdict("이김" | "구분 못 함" | "짐"). 이김일 때만 기본 길을 바꾼다.
+    주의: 잘못된 근거, R@k, 궤적, 라우팅은 판정에 넣지 않는다. 보고만 한다.
+    """
+    if len(agent) != rule["runs"] or len(supervisor) != rule["runs"]:
+        raise ValueError(f"길마다 실행 {rule['runs']}개가 있어야 한다: {len(agent)}개, {len(supervisor)}개")
+
+    gates = {
+        "errors": sum(bool(r.get("error")) for rows in supervisor for r in rows),
+        "leaks": sum(bool(r.get("leak")) for rows in supervisor for r in rows),
+    }
+    gates["ok"] = not gates["errors"] and not gates["leaks"]
+
+    # [왜] 상한에 닿아 끝난 줄은 요약의 cap_stops와 같은 셈법으로 센다(멈춘 이유 칸과 실패 기록).
+    #      문이 아니라 낮지 않음 줄이다: 폭을 넘으면 이김이 아닐 뿐 짐은 아니다 (11-13 고침)
+    ours, theirs = sum(cap_stops(rows) for rows in supervisor), sum(cap_stops(rows) for rows in agent)
+    lines: dict = {
+        "cap_stops": {"agent": theirs, "supervisor": ours, "ok": ours <= theirs + rule["cap_stop_slack"]}
+    }
+    for name, metric, higher in (
+        ("behaviour_accuracy", behaviour_accuracy, True),
+        ("correct_citation", correct_citation, True),
+        ("unsupported", unsupported, False),
+    ):
+        ours = [metric(rows, items) for rows in supervisor]
+        theirs = [metric(rows, items) for rows in agent]
+        # [왜] 다섯 번 평균으로 본다. 폭은 그 지표의 한 문항 몫이다(행동 1/30, 인용 1/12)
+        slack = rule["slack_items"] / theirs[0]["n"]
+        mine, base = statistics.fmean(m["value"] for m in ours), statistics.fmean(m["value"] for m in theirs)
+        ok = mine >= base - slack if higher else mine <= base + slack
+        lines[name] = {"agent": round(base, 4), "supervisor": round(mine, 4), "ok": ok}
+
+    def median(runs: list[list[dict]]) -> float:
+        return statistics.median(
+            r["llm_calls"] for rows in runs for r in rows if r.get("llm_calls") is not None
+        )
+
+    ratio = round(median(supervisor) / median(agent), 2)
+    calls = {"agent": median(agent), "supervisor": median(supervisor), "ratio": ratio}
+    calls["ok"] = ratio <= rule["max_call_ratio"]
+
+    def cited(r: dict) -> bool:
+        return any(matches(c, items[r["id"]].gold) for c in r["cited"])
+
+    def behaved(r: dict) -> bool:
+        return behaviour_ok(r, items[r["id"]])
+
+    right_items = {
+        "behaviour": {
+            "agent": _right_items(agent, behaved, rule["majority"]),
+            "supervisor": _right_items(supervisor, behaved, rule["majority"]),
+        },
+        "citation": {
+            "agent": _right_items(agent, cited, rule["majority"]),
+            "supervisor": _right_items(supervisor, cited, rule["majority"]),
+        },
+    }
+    gaps = [pair["supervisor"] - pair["agent"] for pair in right_items.values()]
+    held = gates["ok"] and all(line["ok"] for line in lines.values()) and calls["ok"]
+    if not gates["ok"] or min(gaps) <= -rule["margin_items"]:
+        verdict = "짐"
+    elif held and max(gaps) >= rule["margin_items"]:
+        verdict = "이김"
+    else:
+        verdict = "구분 못 함"
+    return {"gates": gates, "lines": lines, "calls": calls, "right_items": right_items, "verdict": verdict}
+
+
+def precheck(agent: list[list[dict]], items: dict[str, Item], rule: dict) -> dict:
+    """사전 검사: 에이전트 길 실행들의 평균이 저장된 실행의 범위(한 문항 폭만큼 넓힘) 안인가.
+
+    입력: agent는 비교에 쓴 에이전트 길 실행들의 줄, items는 저장 값을 잰 판(rule["set"])의 문항,
+          rule은 rules/eval.yaml comparison.precheck.
+    주의: 저장 값은 API로 잰 것이다. 비교 실행이 claude -p로 돌았으면 조건이 다른 두 측정을 견주는 것이다.
+          결과는 판정을 바꾸지 않는다. 벗어났으면 비교의 모든 숫자에 그 사실을 함께 적는다.
+    """
+    out: dict = {}
+    for name, metric in (("behaviour_accuracy", behaviour_accuracy), ("correct_citation", correct_citation)):
+        scored = [metric(rows, items) for rows in agent]
+        slack = rule["slack_items"] / scored[0]["n"]
+        low, high = rule[name]["min"] - slack, rule[name]["max"] + slack
+        mean = statistics.fmean(m["value"] for m in scored)
+        ok = low - 1e-9 <= mean <= high + 1e-9  # [왜] 0.9 - 1/30 같은 경계가 부동소수 오차로 빠지지 않게
+        out[name] = {"mean": round(mean, 4), "low": round(low, 4), "high": round(high, 4), "ok": ok}
+    return out | {"ok": all(line["ok"] for line in out.values())}
 
 
 SAME_QUESTIONS = {"v2", "v3"}  # 질문 글이 같아 서로의 기준으로 채점할 수 있는 평가셋 판
