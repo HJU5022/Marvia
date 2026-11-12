@@ -42,6 +42,11 @@ PREFIX = f"mcp__{SERVER}__"
 STUB = str(Path(__file__).with_name("cli_tools_stub.py"))
 # [왜] ANTHROPIC_API_KEY가 환경에 있으면 CLI가 구독 대신 그 키로 과금한다
 KEY_NAMES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+# 구조화 출력 한 번에 CLI가 내는 API 요청 수: StructuredOutput 도구 호출 1 + 확인 1 (11-12 실측).
+# 이보다 많으면 답의 모양이 틀려 CLI가 다시 시킨 것이다
+FIRST_TRY_REQUESTS = 2
+# CLI가 다시 시키고도 끝내 모양을 못 맞췄을 때의 결과 종류 (CLI 문서: structured outputs)
+SHAPE_FAILED = "error_max_structured_output_retries"
 _LOG_LOCK = threading.Lock()
 
 
@@ -151,6 +156,13 @@ class ClaudeCLIChat(BaseChatModel):
         failed = failed or (json_schema is not None and structured is None)
         found: list[tuple[str, dict]] = out.get("calls", [])
         models = out.get("models") or []
+        metadata: dict[str, Any] = {
+            "model_name": models[0] if models else self.model,
+            "model_provider": "claude-cli",
+        }
+        if json_schema is not None:
+            # [왜] 출력 계약 준수율(첫 시도에 스키마 통과)을 세려고 남긴다. 구조화 호출에만 있다
+            metadata["structured_first_try"] = (out.get("num_turns") or 0) <= FIRST_TRY_REQUESTS
         self._log(
             {
                 "kind": "tools" if tools else "schema" if json_schema else "text",
@@ -169,6 +181,9 @@ class ClaudeCLIChat(BaseChatModel):
             },
             out.get("raw", ""),
         )
+        if json_schema is not None and out.get("subtype") == SHAPE_FAILED:
+            # [왜] 모양을 못 맞춘 것은 CLI 실패가 아니라 답 모양 오류다. API 길과 같은 오류로 올린다
+            raise OutputParserException(SHAPE_FAILED)
         if failed:
             # [주의] 종류 이름과 상태 코드만 남긴다. 오류 글에는 요청 내용이 섞일 수 있다
             raise CLIFailed(f"CLI({out.get('subtype')},{out.get('api_error_status')})")
@@ -185,10 +200,7 @@ class ClaudeCLIChat(BaseChatModel):
                 "total_tokens": tokens_in + tokens_out,
                 "input_token_details": cached,  # type: ignore[typeddict-item]
             },
-            response_metadata={
-                "model_name": models[0] if models else self.model,
-                "model_provider": "claude-cli",
-            },
+            response_metadata=metadata,
         )
         return ChatResult(generations=[ChatGeneration(message=message)])
 

@@ -174,6 +174,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "trajectory": trajectory_pass(rows, items, path["never"], path["max_calls"]),
         # [왜] 오류 0만으로는 도구 길이 돌았는지 알 수 없다. 값은 비율이 아니라 문항 수다
         "gold_without_search": gold_without_search(rows, items, path["search_tools"]),
+        "contract_adherence": contract_adherence(rows),
         # 11-02 RAG 관찰 세 가지 (done 3.3). 근거 채점·고쳐 쓰기 기록(rag)과 검색 근거 순서로 센다
         "stray_articles": stray_articles(rows, items),
         "top_article_share": top_article_share(rows, seen["top"], seen["alert"]),
@@ -436,6 +437,13 @@ def trajectory_pass(rows: list[dict], items: dict[str, Item], never: list[str], 
         not trajectory_violations(r["tools"], items[r["id"]].trajectory, never, max_calls) for r in picked
     ]
     return _mean([float(f) for f in flags])
+
+
+def contract_adherence(rows: list[dict]) -> dict:
+    """출력 계약 준수율: 구조화 출력 호출(n) 가운데 첫 시도에 스키마 검증을 통과한 비율."""
+    packs = [r["contract"] for r in rows if r.get("contract")]  # 칸 없는 옛 줄은 뺀다
+    calls = sum(p["calls"] for p in packs)
+    return {"value": round(sum(p["first_try"] for p in packs) / calls, 4) if calls else None, "n": calls}
 
 
 def gold_without_search(rows: list[dict], items: dict[str, Item], search_tools: list[str]) -> dict:

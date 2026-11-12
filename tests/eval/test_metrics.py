@@ -12,6 +12,7 @@ from marvia.eval.metrics import (
     bucket,
     calc_ok,
     compare_table,
+    contract_adherence,
     correct_citation,
     domain_table,
     false_not_found,
@@ -606,3 +607,14 @@ def test_gold_items_that_never_searched_are_counted_so_a_quiet_tool_failure_show
     assert summary["gold_without_search"]["value"] == 1
     result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summary}
     assert "근거 문항 중 검색·조회 0" in compare_table([result])
+
+
+def test_contract_adherence_is_first_try_structured_calls_over_all_structured_calls():
+    rows = [
+        row("R1", contract={"calls": 6, "first_try": 6}),
+        row("R2", contract={"calls": 4, "first_try": 3}),
+        row("S1"),  # 칸이 없는 옛 줄은 세지 않는다
+    ]
+    assert contract_adherence(rows) == {"value": 0.9, "n": 10}
+    assert contract_adherence([row("S1")]) == {"value": None, "n": 0}
+    assert summarize(rows, ITEMS, 8)["contract_adherence"] == {"value": 0.9, "n": 10}

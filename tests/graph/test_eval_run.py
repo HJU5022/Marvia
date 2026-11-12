@@ -3,10 +3,12 @@
 import json
 from dataclasses import replace
 from pathlib import Path
+from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
 
 from marvia.eval.dataset import Item, load_set
 from marvia.eval.run import (
@@ -32,7 +34,7 @@ from marvia.eval.run import (
 )
 from marvia.graph.answer import NOT_FOUND_LEAD
 from marvia.graph.schemas import Draft
-from marvia.llm import CLIFailed
+from marvia.llm import CLIFailed, LLMFailed
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, Rewrite
 from marvia.tools.rules import load_rules
@@ -564,3 +566,38 @@ def test_a_real_number_in_a_search_query_never_reaches_the_raw_file():
     out = masked_queries(["DEMO0001 수입신고 기한", "MOCK0002 통관"], {"[BL1]": "DEMO0001"})
     assert out[0] == "[BL1] 수입신고 기한"
     assert "DEMO0001" not in str(out) and "MOCK0002" not in str(out)
+
+
+def failing_write(name: str):
+    def write(prompt):
+        raise LLMFailed(name)
+
+    return write
+
+
+def test_row_counts_structured_calls_and_those_that_kept_the_schema_on_the_first_try(agent_deps):
+    question = item("DEMO0001 어디예요?")
+    ok, _ = evaluate_item(agent_deps(), question, "planner", TODAY, PRICES)
+    assert ok["contract"] == {"calls": 2, "first_try": 2}  # 계획 1 + 작성 1
+    broken = agent_deps(write=failing_write("OutputParserException"))
+    shape, _ = evaluate_item(broken, question, "planner", TODAY, PRICES)
+    assert shape["contract"] == {"calls": 2, "first_try": 1}
+    # [왜] 시간 초과 같은 호출 실패는 모델이 답을 내지 못한 것이라 계약 준수의 분모에 넣지 않는다
+    timed_out = agent_deps(write=failing_write("APITimeoutError"))
+    down, _ = evaluate_item(timed_out, question, "planner", TODAY, PRICES)
+    assert down["contract"] == {"calls": 1, "first_try": 1}
+    # RAG 안의 구조화 호출(질의 분석, 근거 채점)도 센다
+    deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
+    searched, _ = evaluate_item(deps, item("수입신고 기한은요?"), "agent", TODAY, PRICES)
+    assert searched["contract"]["calls"] >= 3
+
+
+def test_a_structured_answer_the_cli_had_to_ask_for_again_is_not_a_first_try():
+    watch = LlmWatch()
+    for first_try in (True, False):
+        message = AIMessage(content="", response_metadata={"structured_first_try": first_try})
+        watch.on_llm_end(LLMResult(generations=[[ChatGeneration(message=message)]]), run_id=uuid4())
+    watch.on_llm_end(
+        LLMResult(generations=[[ChatGeneration(message=AIMessage(content="도구 호출"))]]), run_id=uuid4()
+    )
+    assert watch.reasked == 1

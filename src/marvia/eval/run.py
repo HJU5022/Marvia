@@ -31,7 +31,7 @@ from marvia.graph.answer import NOT_FOUND_LEAD, PARTIAL_LEAD, cargo_lines
 from marvia.graph.main import AgentDeps, build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.identify.mask import mask_text
-from marvia.llm import CLIFailed
+from marvia.llm import CLIFailed, LLMFailed
 from marvia.rag.models import Evidence
 from marvia.tools.rules import load_rules
 from marvia.watch import WatchDeps
@@ -53,11 +53,19 @@ class LlmWatch(BaseCallbackHandler):
         self.calls = 0
         self.inputs: list[str] = []
         self.cli_failures: list[str] = []
+        self.reasked = 0  # `claude -p`가 모양이 틀려 다시 시킨 구조화 호출 수
 
     def on_chat_model_start(self, serialized, messages, **kwargs) -> None:
         self.calls += 1
         # [왜] 실행이 끝난 뒤 가림 표의 실제 번호가 어떤 LLM 입력에라도 있었는지 본다 (설계 12절)
         self.inputs.append(str(messages))
+
+    def on_llm_end(self, response, **kwargs) -> None:
+        # [왜] cli 길은 CLI가 모양 틀린 답을 안에서 다시 시킨다. 끝내 맞아도 첫 시도 통과가 아니다
+        #      (cli_model.py가 구조화 호출에만 structured_first_try를 남긴다. API 길 답에는 이 칸이 없다)
+        message = getattr(response.generations[0][0], "message", None)
+        if message is not None and message.response_metadata.get("structured_first_try") is False:
+            self.reasked += 1
 
     def on_llm_error(self, error, **kwargs) -> None:
         # [왜] 그래프는 모델 실패를 부분 답으로 바꾼다. `claude -p` 실패(사용량 한도, 시간 초과)는 모델의
@@ -91,10 +99,38 @@ def eval_deps(
     log: list[dict],
     seen: dict[str, str] | None = None,
     queries: list[str] | None = None,
+    contract: dict[str, int] | None = None,
 ) -> AgentDeps:
     """평가 실행용 AgentDeps. 감시 목록은 DB 없는 가짜로 묶고, 날짜를 고정한다."""
+
+    def counted(ask):
+        """구조화 출력 함수(llm.structured)를 감싸 답을 낸 호출 수와 모양이 틀린 수를 센다."""
+        if contract is None or ask is None:
+            return ask
+        counts = contract  # [왜] 안쪽 함수에서 None이 아님을 타입 검사기가 알게 한다
+
+        def run(prompt: str):
+            try:
+                result = ask(prompt)
+            except LLMFailed as error:
+                # [왜] llm.structured는 실패를 오류 종류 이름으로 남긴다. 답 모양 오류만 계약 위반으로 세고,
+                #      시간 초과·API 오류·CLI 실패는 답이 없던 호출이라 분모에 넣지 않는다
+                if str(error).startswith("OutputParserException"):
+                    counts["calls"] += 1
+                    counts["shape_failed"] += 1
+                raise
+            counts["calls"] += 1
+            return result
+
+        return run
+
     # [왜] 감시 도구가 묶여야 watch_cargo를 막는 궤적 검사(rules/eval.yaml never)가 실제로 걸린다
-    rag = deps.rag
+    rag = replace(
+        deps.rag,
+        analyze=counted(deps.rag.analyze),
+        grade=counted(deps.rag.grade),
+        rewrite=counted(deps.rag.rewrite),
+    )
     real_provision = deps.provision
 
     def grade(prompt: str):
@@ -148,6 +184,9 @@ def eval_deps(
             search=watched(rag.search),
             ranked=watched(rag.ranked) if rag.ranked else None,
         ),
+        plan=counted(deps.plan),
+        item=counted(deps.item),
+        write=counted(deps.write),
         provision=provision if real_provision else None,
         today=lambda: today,
         web=None,  # [왜] 평가 결과가 바깥 사이트에 기대면 안 된다. official_lookup은 묶이지 않는다
@@ -357,8 +396,9 @@ def evaluate_item(
     seen: dict[str, str] = {}
     queries: list[str] = []
     known: dict[str, str] = {}  # 이 차례의 가림 표. raw에 쓰는 검색어를 가릴 때 쓴다
+    contract = {"calls": 0, "shape_failed": 0}
     graph = build_main_graph(
-        eval_deps(deps, item, today, log, seen, queries),
+        eval_deps(deps, item, today, log, seen, queries, contract),
         InMemorySaver(),
         loop=loop,
         store=InMemoryStore(),
@@ -424,6 +464,12 @@ def evaluate_item(
     # [주의] raw는 저장소 밖에만 쓴다. 죽은 실행도 그때까지의 검색어를 남긴다
     raw["searches"] = masked_queries(queries, known)
     row |= {
+        # 출력 계약: 구조화 출력 호출(계획, 품목 사실, 작성, 질의 분석, 근거 채점, 질의 고쳐 쓰기) 가운데
+        # 답을 낸 호출 수와, 그중 첫 시도에 스키마를 통과한 수. 도구 호출과 답 검증(verification)은 따로다
+        "contract": {
+            "calls": contract["calls"],
+            "first_try": contract["calls"] - contract["shape_failed"] - watch.reasked,
+        },
         "rag": log,
         "real_llm_calls": watch.calls,
         "tokens": tokens,

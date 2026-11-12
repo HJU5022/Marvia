@@ -172,13 +172,32 @@ def test_structured_output_goes_through_json_schema(monkeypatch):
     fake_run(monkeypatch, ok | {"structured_output": {"label": 3}})
     with pytest.raises(OutputParserException):
         cli().with_structured_output(Answer).invoke("질문")
+    # CLI가 다시 시키고도 끝내 모양을 못 맞춘 것도 모양 오류다 (CLI 실패가 아니다)
+    fake_run(monkeypatch, {"subtype": "error_max_structured_output_retries", "is_error": True})
+    with pytest.raises(OutputParserException):
+        cli().with_structured_output(Answer).invoke("질문")
+
+
+@pytest.mark.parametrize(("requests", "first_try"), [(2, True), (3, False)])
+def test_a_structured_answer_says_whether_the_cli_had_to_ask_again(monkeypatch, requests, first_try):
+    # [왜] CLI는 StructuredOutput 도구 호출 1번 + 확인 1번이 첫 시도다.
+    #      그보다 많으면 모양이 틀려 다시 시킨 것이다
+    out = {
+        "subtype": "success",
+        "is_error": False,
+        "structured_output": {"label": "x"},
+        "num_turns": requests,
+    }
+    fake_run(monkeypatch, out)
+    message = cli().bind(json_schema=Answer.model_json_schema()).invoke("질문")
+    assert message.response_metadata["structured_first_try"] is first_try
 
 
 @pytest.mark.parametrize(
     "out",
     [
         None,  # JSON이 아닌 출력
-        {"subtype": "error_max_structured_output_retries", "is_error": True},
+        {"subtype": "error_during_execution", "is_error": True},
         {"subtype": "success", "is_error": False},  # 구조화 출력 칸이 없다
     ],
 )
