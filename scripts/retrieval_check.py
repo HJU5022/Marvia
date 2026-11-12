@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 from marvia.eval.dataset import CORPUS_UNITS, ROOT, file_sha256
-from marvia.eval.retrieval import load_items, measure, summarize_layers
+from marvia.eval.retrieval import article_scope, load_items, measure, summarize_layers
 from marvia.eval.run import index_problem
 from marvia.rag.index import read_units
 from marvia.tools.rules import load_rules
@@ -45,7 +45,12 @@ parser.add_argument("--same", nargs=2, help="두 결과 파일의 문항별 상�
 args = parser.parse_args()
 
 if args.same:
-    a, b = (json.loads(Path(p).read_text(encoding="utf-8"))["rows"] for p in args.same)
+    first, second = (json.loads(Path(p).read_text(encoding="utf-8")) for p in args.same)
+    a, b = first["rows"], second["rows"]
+    # [왜] 조문 기준 값은 길에 따라 계산 범위가 다르다(직접: 후보 전체, MCP: 상위 n개). 옛 파일은 직접 길이다
+    scopes = [r.get("meta", {}).get("article_scope") or article_scope(via_mcp=False) for r in (first, second)]
+    if scopes[0] != scopes[1]:
+        print(f"[주의] 조문 기준 값은 견주지 않는다: 계산 범위가 다르다 ({scopes[0]} / {scopes[1]})")
     # [왜] 직접 길의 줄은 후보 전체의 순위를, MCP 길의 줄은 서버가 준 상위 n개만 갖는다. 상위 k끼리 견준다
     top = load_rules("eval")["retrieval_k"]
     diff = [x["id"] for x, y in zip(a, b, strict=True) if x["retrieved"][:top] != y["retrieved"][:top]]
@@ -119,6 +124,8 @@ meta = {
     "named_article": load_rules("rag")["search"]["named_article"],
     "embed_model": settings.embed_model,
     "rerank_model": settings.rerank_model,
+    # 조문 기준 값(article_*)을 계산한 범위. 범위가 다른 결과끼리는 그 값을 견주지 않는다
+    "article_scope": article_scope(via_mcp=rag.ranked is not None),
     "annex_units": annex[0] if annex else 0,
     "index_units": index_units[0] if index_units else 0,
     "file_units": len(read_units(CORPUS_UNITS)),

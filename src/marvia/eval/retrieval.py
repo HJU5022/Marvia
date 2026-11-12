@@ -197,3 +197,13 @@ def measure(
             }
         )
     return rows
+
+
+def article_scope(via_mcp: bool) -> str:
+    """조문 기준 값을 계산한 범위의 이름. 결과 meta에 남긴다.
+
+    candidates: 리랭커가 줄 세운 후보 전체를 조·항으로 묶은 뒤 앞 k개를 본다 (직접 길).
+    top_n: 서버가 돌려준 상위 n개만 묶는다 (MCP 길. 서버는 상위 n개만 준다).
+    [주의] 범위가 다른 두 결과의 조문 기준 값은 견주지 않는다. 단위 기준 값은 두 길 모두 상위 k다.
+    """
+    return "top_n" if via_mcp else "candidates"

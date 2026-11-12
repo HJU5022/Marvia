@@ -218,3 +218,27 @@ def test_same_compares_the_rankings_of_two_result_files(tmp_path):
     assert same.returncode == 0 and "같음" in same.stdout
     differs = check("--same", str(tmp_path / "a.json"), str(tmp_path / "c.json"))
     assert differs.returncode == 1 and "다름: R1" in differs.stdout
+
+
+def test_same_says_when_article_values_were_computed_over_different_ranges(tmp_path):
+    # [왜] 직접 길은 리랭커가 줄 세운 후보 전체를 조·항으로 묶고, MCP 길은 돌려받은 상위 n개만 묶는다.
+    #      단위 기준 순위가 같아도 조문 기준 값은 다를 수 있어 나란히 견주면 안 된다
+    rows = [{"id": "R1", "retrieved": ["u1"]}]
+    for name, scope in (("direct", "candidates"), ("mcp", "top_n"), ("old", None)):
+        meta = {"article_scope": scope} if scope else {}
+        (tmp_path / f"{name}.json").write_text(json.dumps({"meta": meta, "rows": rows}), encoding="utf-8")
+    mixed = check("--same", str(tmp_path / "direct.json"), str(tmp_path / "mcp.json"))
+    assert mixed.returncode == 0 and "같음" in mixed.stdout
+    assert "조문 기준 값은 견주지 않는다" in mixed.stdout and "candidates" in mixed.stdout
+    alike = check("--same", str(tmp_path / "direct.json"), str(tmp_path / "direct.json"))
+    assert "조문 기준" not in alike.stdout
+    # 옛 결과 파일(칸 없음)은 직접 길에서 후보 전체로 잰 것이다
+    assert (
+        "조문 기준" not in check("--same", str(tmp_path / "old.json"), str(tmp_path / "direct.json")).stdout
+    )
+
+
+def test_the_article_scope_names_follow_the_search_path():
+    from marvia.eval.retrieval import article_scope
+
+    assert article_scope(via_mcp=False) == "candidates" and article_scope(via_mcp=True) == "top_n"
