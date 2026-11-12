@@ -8,6 +8,7 @@ from marvia.eval.verdict_set import (
     load_verdict_set,
     match_mismatches,
     mismatches,
+    run_item,
     summarize,
 )
 from marvia.tools.rules import load_rules
@@ -101,3 +102,20 @@ def test_summary_counts_every_item_once():
     done = summarize(SET)
     assert done["items"] == {"n": 77, "passed": 77} and done["matches"] == {"n": 12, "passed": 12}
     assert {name: row["n"] for name, row in done["layers"].items()} == LAYERS
+
+
+def test_free_text_from_the_ship_signal_never_reaches_a_verdict():
+    # [왜] 배 신호의 목적지 글은 선원이 손으로 넣는 자유 글이다. v1 평가 문항 F03은 거기에 지시문을 넣었다.
+    #      판정 결과(신호 값, 이유, 등급)는 나중에 모델과 화면으로 간다. 그 어디에도 원문이 없어야 한다
+    seen = 0
+    for item in SET.items:
+        raw = (item.position or {}).get("dest")
+        if not raw:
+            continue
+        dumped = run_item(item).model_dump_json()
+        for word in {w for w in raw.replace(",", " ").replace(".", " ").split() if len(w) >= 4}:
+            assert word not in dumped, (item.id, word)
+        seen += 1
+    assert seen >= 60
+    injected = next(item for item in SET.items if item.id == "V-F03")
+    assert "무시" in (injected.position or {})["dest"] and "무시" not in run_item(injected).model_dump_json()
