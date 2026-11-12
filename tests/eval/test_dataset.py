@@ -115,7 +115,13 @@ def test_v1_file_hash_is_untouched_by_v2():
 
 
 @pytest.mark.parametrize(
-    ("name", "layers"), [("rset_v1", {"a": 20, "b": 20, "c": 20}), ("rset_a2", {"a2": 20})]
+    ("name", "layers"),
+    [
+        ("rset_v1", {"a": 20, "b": 20, "c": 20}),
+        ("rset_a2", {"a2": 20}),
+        ("rset_a3", {"a3": 20}),
+        ("rset_b2", {"b2": 20}),
+    ],
 )
 def test_retrieval_sets_are_frozen_by_their_sha256(name, layers):
     # [왜] 검색 전용 평가셋도 측정 뒤에 문항이나 정답을 고치면 앞뒤 값을 견줄 수 없다. 고치면 새 판을 만든다
