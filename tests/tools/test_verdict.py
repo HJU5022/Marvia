@@ -96,3 +96,31 @@ def test_eta_conflict_is_concern():
 
 def test_nothing_is_on_time():
     assert schedule([], 5, None, None) == "on_time"
+
+
+# 신호 기준값 (계획 8a): 신호를 켜고 끄는 숫자는 코드가 아니라 rules/verdict.yaml에 있다
+
+
+def test_signal_thresholds_live_in_the_rules_file():
+    from marvia.tools.rules import load_rules
+
+    rules = load_rules("verdict")
+    cuts = rules["signals"]
+    assert cuts["position_stale_hours"] == 6 and cuts["eta_conflict_hours"] == 12
+    assert cuts["stop_speed_kn"] == 0.5 and cuts["stop_hours"] == 24
+    assert cuts["navstat_moored"] == [1, 5] and cuts["navstat_underway"] == [0]
+    assert cuts["navstat_moored_max_kn"] == 2.0 and cuts["navstat_underway_min_kn"] == 0.3
+    # [왜] 통관 멈춤은 낱말이 아니라 단계 이름 목록으로 본다. 멈춤 목록과 아는 단계 목록이 겹치면 안 된다
+    assert "검사지정" in cuts["hold_stages"] and "수입신고수리" in cuts["known_stages"]
+    assert not set(cuts["hold_stages"]) & set(cuts["known_stages"])
+    # [왜] 믿을 ETA의 순서도 규칙이다: 해수부 실제 입항, 해수부 입항 예정, 배 신호 ETA, 포워더가 알려 준 날
+    assert rules["eta_priority"] == ["mof_actual", "mof_planned", "ais_eta", "forwarder_eta"]
+
+
+def test_every_listed_signal_has_a_grade_or_a_confidence_role():
+    from marvia.tools.rules import load_rules
+
+    rules = load_rules("verdict")
+    graded = set(rules["act_signals"]) | set(rules["alert_signals"]) | set(rules["watch_signals"])
+    # [왜] 목록에 없는 신호는 켜져도 세지 않는다(grade의 주의 글). 계산하는 신호가 빠지면 조용히 사라진다
+    assert set(rules["signal_ids"]) == graded | set(rules["input_error_signals"])
