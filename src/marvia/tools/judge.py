@@ -35,6 +35,7 @@ class Verdict(BaseModel):
     eta_source: str | None  # rules/verdict.yaml eta_priority의 이름
     margin_days: int | None
     notes: list[str]  # 확신을 낮춘 이유
+    info: list[str] = []  # 확신을 낮추지 않는 참고 사실. rules/verdict.yaml info의 이름이다
 
 
 def _port_note(facts: CargoFacts | None) -> str | None:
@@ -85,10 +86,16 @@ def judge(
         sure = "partial"
     level: Grade | None = grade(signals, margin)
     cell: Schedule | None = schedule(signals, margin, first_eta, eta)
+    # [왜] 자료가 모자랄수록 등급이 좋아지면 안 된다. 도착 시각을 알 출처가 없거나, 판매 예정일을 받았는데
+    #      여유 일수를 세지 못했으면(위치가 없고 포워더가 알려 준 날뿐일 때) "순항"과 "정시"는 근거가 없다.
+    #      그 칸을 비우고 확신은 불명이다. 켜진 신호가 올린 등급(주의·경계·긴급)과 "우려"는 그대로 낸다:
+    #      통관 보류를 가리면 안 된다. 판매 예정일을 받지 않았으면 견줄 날이 없으니 신호만으로 낸 등급을 둔다
+    uncounted = sale_due is not None and margin is None
     if eta is None:
-        # [왜] 도착 시각을 알 출처가 없으면 "순항"과 "정시"는 근거가 없다. 그 칸을 비우고 확신은 불명이다.
-        #      켜진 신호가 올린 등급(주의·경계·긴급)과 "우려"는 그대로 낸다: 통관 보류를 가리면 안 된다
         notes.append("no_eta")
+    elif uncounted:
+        notes.append("no_margin")
+    if eta is None or uncounted:
         if level == "fine":
             level, sure = None, "unknown"
         if cell == "on_time":
@@ -103,4 +110,5 @@ def judge(
         eta_source=source,
         margin_days=margin,
         notes=notes,
+        info=["no_sale_date"] if sale_due is None else [],
     )

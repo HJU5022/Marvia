@@ -89,9 +89,13 @@ def test_less_data_never_makes_the_grade_better():
     assert cells(late) == ("act", "partial", "overdue") and late.notes == ["no_position"]
     ok = judge(cargo(), None, plan(), now=NOW, sale_due=date(2026, 9, 28))
     assert cells(ok) == ("fine", "partial", "on_time") and ok.margin_days == 4
-    # 포워더가 알려 준 날뿐이고 위치가 없으면 여유 일수를 세지 않는다. 믿을 ETA는 있으니 등급은 낸다
-    told = judge(cargo(), None, None, now=NOW, sale_due=date(2026, 9, 23), forwarder_eta=date(2026, 9, 30))
-    assert (told.eta_source, told.margin_days, told.grade) == ("forwarder_eta", None, "fine")
+    # 포워더가 알려 준 날뿐이고 위치가 없으면 여유 일수를 세지 않는다. 판매 예정일과 견줄 수 없으니
+    # 그 날이 판매 예정일 뒤든 앞이든 순항이라고도 정시라고도 하지 않는다 (11-13 덧붙임)
+    for told_day in (date(2026, 9, 30), date(2026, 9, 20)):
+        told = judge(cargo(), None, None, now=NOW, sale_due=date(2026, 9, 23), forwarder_eta=told_day)
+        assert (told.eta_source, told.margin_days) == ("forwarder_eta", None)
+        assert (told.grade, told.confidence, told.schedule) == (None, "unknown", None)
+        assert told.notes == ["no_position", "no_schedule", "no_margin"]
     # 위치가 있으면 배 신호 ETA로도 센다
     seen = judge(cargo(), ship(), None, now=NOW, sale_due=date(2026, 9, 23))
     assert (seen.eta_source, seen.margin_days, seen.grade) == ("ais_eta", -1, "act")
@@ -118,3 +122,24 @@ def test_port_that_is_missing_or_unverified_lowers_confidence_and_says_why():
         assert verdict.grade == "fine"  # 모르는 것으로 등급을 올리거나 내리지 않는다
         assert name in notes  # 이유의 글은 rules/verdict.yaml에 있다
     assert judge(cargo(), ship(), plan(), now=NOW).notes == []
+
+
+def test_without_a_sale_date_the_grade_comes_from_signals_and_says_so():
+    # [왜] 판매 예정일을 주지 않은 질문은 견줄 날이 없다. 신호만으로 등급을 내고 그 사실을 참고 칸에 남긴다
+    plain = judge(cargo(), ship(), plan(), now=NOW)
+    assert cells(plain) == ("fine", "sure", "on_time") and plain.margin_days is None
+    assert plain.info == ["no_sale_date"] and plain.notes == []
+    dated = judge(cargo(), ship(), plan(), now=NOW, sale_due=date(2026, 9, 28))
+    assert dated.info == [] and dated.margin_days == 4
+    # 판매 예정일이 없고 포워더 날짜뿐이어도 신호만으로 낸 등급은 그대로다(견줄 날이 없다)
+    told = judge(cargo(), None, None, now=NOW, forwarder_eta=date(2026, 9, 30))
+    assert (told.grade, told.info) == ("fine", ["no_sale_date"])
+    rules = load_rules("verdict")
+    assert "no_margin" in rules["notes"] and "no_sale_date" in rules["info"]
+
+
+def test_a_raised_grade_survives_a_missing_margin():
+    held = judge(
+        cargo("검사지정"), None, None, now=NOW, sale_due=date(2026, 9, 23), forwarder_eta=date(2026, 9, 30)
+    )
+    assert (held.grade, held.schedule, held.margin_days) == ("act", None, None) and "no_margin" in held.notes

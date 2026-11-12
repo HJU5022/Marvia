@@ -834,7 +834,7 @@ items:
     notes: [no_schedule]
 - id: V-X04
   layer: failure
-  why: '배 위치가 없고 포워더가 알려 준 입항 예정일만 있다. 믿을 ETA는 그 날이지만 뒷받침할 위치도 해수부 신고도 없어 여유 일수는 내지 않는다. 그 날이 판매 예정일 뒤인데도 등급은 순항이다(11-13 결정의 남은 틈: 포워더 날짜뿐일 때)'
+  why: '배 위치가 없고 포워더가 알려 준 입항 예정일(9월 30일)만 있다. 그 날이 판매 예정일(28일) 뒤지만 뒷받침할 위치도 해수부 신고도 없어 여유 일수를 세지 않는다. 견주지 못했으니 순항이라고도 하지 않는다: 등급과 일정은 값 없음'
   now: '2026-09-22T12:00:00+09:00'
   sale_due: '2026-09-28'
   forwarder_eta: '2026-09-30'
@@ -845,12 +845,50 @@ items:
   v1: null
   expect:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: unknown, navstat_mismatch: unknown}
-    grade: fine
-    confidence: partial
-    schedule: on_time
+    grade: null
+    confidence: unknown
+    schedule: null
     eta_source: forwarder_eta
     margin_days: null
-    notes: [no_position, no_schedule]
+    notes: [no_position, no_schedule, no_margin]
+- id: V-X05
+  layer: failure
+  why: '같은 꼴인데 포워더가 알려 준 날(9월 20일)이 판매 예정일(28일) 앞이다. 여유가 있어 보여도 포워더 날짜만으로는 좋다고도 나쁘다고도 하지 않는다: 등급과 일정은 값 없음'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  forwarder_eta: '2026-09-20'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: null
+  schedule: null
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: unknown, navstat_mismatch: unknown}
+    grade: null
+    confidence: unknown
+    schedule: null
+    eta_source: forwarder_eta
+    margin_days: null
+    notes: [no_position, no_schedule, no_margin]
+- id: V-X06
+  layer: failure
+  why: 판매 예정일을 주지 않았다. 견줄 날이 없으니 신호만으로 등급을 내고(순항) 참고 칸에 판매 예정일 없음을 남긴다
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: null
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: '2026-09-24T12:00:00+09:00', actual_arrival: null}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: on_time
+    eta_source: mof_planned
+    margin_days: null
+    notes: []
+    info: [no_sale_date]
 - id: V-D01
   layer: nodata
   why: 배 위치가 없는데 해수부 입항 예정이 판매 예정일을 하루 넘긴다. 위치가 없어도 그 시각으로 세어 긴급이다

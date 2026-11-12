@@ -36,6 +36,7 @@ class Expect(BaseModel):
     margin_days: int | None
     notes: list[str] = []
     dest_value: str | None = None  # 목적지 바뀜 신호의 값(항구 코드나 broken·empty). 적은 문항만 본다
+    info: list[str] | None = None  # 참고 사실(판매 예정일 없음). 적은 문항만 본다
 
 
 class V1(BaseModel):
@@ -133,6 +134,8 @@ def mismatches(item: VerdictItem) -> list[str]:
         ("margin_days", got.margin_days, want.margin_days),
         ("notes", got.notes, want.notes),
     ]
+    if want.info is not None:
+        pairs.append(("info", got.info, want.info))
     if want.dest_value is not None:
         pairs.append(
             ("dest_value", next(s.value for s in got.signals if s.id == "dest_changed"), want.dest_value)
