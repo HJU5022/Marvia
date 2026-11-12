@@ -467,3 +467,53 @@ def test_a_side_effect_tool_is_out_of_reach_for_the_supervisor_and_for_the_wrong
     refused = next(m for m in values["messages"] if m.type == "tool" and m.tool_call_id == "a1")
     assert refused.status == "error" and "save_item_card is not a valid tool" in refused.text
     assert values["visits"] == [{"sub": "law", "tools": ["watch_cargo"]}]  # 불렀지만 돌지 않았다
+
+
+# --- 같은 조문을 되풀이해 찾지 않게 (R-105) ---
+
+
+def test_a_subagent_is_shown_the_provisions_already_gathered_as_ids_and_titles(agent_deps):
+    inputs = Inputs()
+    graph = sup_graph(
+        agent_deps,
+        hand("law", "수입신고 기한의 근거 조문", "h1"),
+        call("search_law", {"query": "수입신고 기한"}, "s1"),
+        done("관세법 제241조제3항이 30일을 정해요."),
+        hand("cargo", "[BL1]의 수입신고 기한을 계산", "h2"),
+        done("끝"),
+        done(),
+        write=lambda prompt: CITING,
+    )
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("y1") | {"callbacks": [inputs]})
+    first_sub, second_sub = inputs.calls[1], inputs.calls[4]
+    # 처음 도는 서브에이전트에게는 모은 근거가 없다
+    assert "<evidence_held>\n\n</evidence_held>" in first_sub
+    # [왜] 서브에이전트는 다른 서브에이전트가 이미 찾은 조문을 보지 못해 같은 조문을 다시 조회했다.
+    #      unit_id와 제목만 데이터로 보여 준다. 본문은 주지 않는다
+    assert f"<evidence_held>\n[{UNIT.unit_id}] {UNIT.heading}\n</evidence_held>" in second_sub
+    assert UNIT.text not in second_sub
+
+
+def test_the_list_of_gathered_provisions_is_cut_to_the_rule(agent_deps, monkeypatch):
+    from marvia.graph import supervisor as supervisor_module
+
+    real = supervisor_module.load_rules
+
+    def one(name: str) -> dict:
+        cfg_ = real(name)
+        return cfg_ | {"supervisor": cfg_["supervisor"] | {"max_held": 0}} if name == "agent" else cfg_
+
+    monkeypatch.setattr(supervisor_module, "load_rules", one)
+    inputs = Inputs()
+    graph = sup_graph(
+        agent_deps,
+        hand("law", "근거 조문", "h1"),
+        call("search_law", {"query": "수입신고 기한"}, "s1"),
+        done("찾았어요."),
+        hand("cargo", "기한 계산", "h2"),
+        done("끝"),
+        done(),
+        write=lambda prompt: CITING,
+    )
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("y1b") | {"callbacks": [inputs]})
+    assert UNIT.unit_id not in inputs.calls[4]

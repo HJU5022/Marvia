@@ -59,6 +59,9 @@ supervisor:
       label: 재수입·품목
       tools: [check_reimport, get_provision, save_item_card, recall_memory, save_preference]
   max_task: 300 # handoff의 일 문장 상한(글자). 넘는 뒤쪽은 자른다. [왜] 모델이 쓴 글이 서브에이전트 입력으로 간다
+  # 서브에이전트의 첫 메시지에 보여 주는 "이미 모은 근거"(unit_id와 제목) 수 상한. 근거 묶음 상한과 같다.
+  # [왜] 서브에이전트는 다른 서브에이전트가 찾은 조문을 보지 못해 같은 조문을 다시 조회했다 (11-13 실측)
+  max_held: 24
   max_result: 400 # 서브에이전트가 수퍼바이저에게 돌려주는 결과 글 상한(글자). research.max_summary와 같은 까닭
 # 색인 밖 공식 출처 조회 (계획 3d, 설계 2절 결정 8의 C층). 키 없이 법령 이름으로 국가법령정보센터 페이지를 찾는다
 official:

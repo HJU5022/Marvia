@@ -166,6 +166,11 @@ def sub_node(name: str, sub, today: Callable[[], date]):
             #      이번 차례의 가린 글을 데이터로 함께 준다.
             #      앞 차례의 대화와 다른 서브에이전트의 결과는 주지 않는다
             question=state.get("masked_text", ""),
+            # [왜] 이미 모은 근거를 unit_id와 제목으로만 보여 준다. 없으면 같은 조문을 다시 조회한다.
+            #      본문은 주지 않는다(작성자가 evidence 칸에서 읽는다)
+            held="\n".join(
+                f"[{e['unit_id']}] {e['heading']}" for e in state.get("evidence", [])[: spec["max_held"]]
+            ),
             task=state.get("task", ""),
         )
         values: dict[str, Any] = dict(state)
