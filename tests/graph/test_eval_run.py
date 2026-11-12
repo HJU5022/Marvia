@@ -3,6 +3,7 @@
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -10,6 +11,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
+from marvia.cli_model import ClaudeCLIChat
 from marvia.eval.dataset import Item, load_set
 from marvia.eval.run import (
     LlmWatch,
@@ -21,6 +23,7 @@ from marvia.eval.run import (
     evaluate_item,
     existing_results,
     graph_setting_problem,
+    halt_reason,
     inside_repo,
     llm_meta,
     masked_queries,
@@ -601,3 +604,53 @@ def test_a_structured_answer_the_cli_had_to_ask_for_again_is_not_a_first_try():
         LLMResult(generations=[[ChatGeneration(message=AIMessage(content="도구 호출"))]]), run_id=uuid4()
     )
     assert watch.reasked == 1
+
+
+class FakeCLI:
+    """`claude -p` 프로세스를 흉내 낸다: 부를 때마다 정해 둔 이벤트 묶음을 차례로 낸다."""
+
+    def __init__(self, *runs: list[dict]):
+        self.runs = iter(runs)
+
+    def __call__(self, command, **kwargs):
+        lines = [json.dumps(e, ensure_ascii=False) + "\n" for e in next(self.runs)]
+        stdin = SimpleNamespace(write=lambda text: None, close=lambda: None)
+        return SimpleNamespace(stdin=stdin, stdout=iter(lines), kill=lambda: None, wait=lambda: 0)
+
+
+CLI_INIT = {"type": "system", "subtype": "init", "mcp_servers": [{"name": "marvia", "status": "connected"}]}
+
+
+def cli_event(kind: str, **fields) -> dict:
+    return {"type": "stream_event", "event": {"type": kind, **fields}}
+
+
+def test_the_run_stops_at_the_first_item_with_a_cli_failure_even_when_other_calls_worked(
+    agent_deps, monkeypatch
+):
+    block = {"type": "tool_use", "name": "mcp__marvia__search_law", "input": {"query": "기한"}}
+    searched = [
+        CLI_INIT,
+        cli_event("message_start", message={"usage": {"input_tokens": 10}}),
+        {"type": "assistant", "message": {"model": "claude-haiku-5-5", "content": [block]}},
+        cli_event("message_delta", delta={"stop_reason": "tool_use"}, usage={"output_tokens": 5}),
+        cli_event("message_stop"),
+    ]
+    # 둘째 호출에서 사용량 한도에 걸렸다: 모델 메시지 없이 결과가 먼저 온다
+    limited = [CLI_INIT, {"type": "result", "subtype": "success", "is_error": True, "api_error_status": 429}]
+    monkeypatch.setattr("marvia.cli_model.subprocess.Popen", FakeCLI(searched, limited))
+    model = ClaudeCLIChat(model="claude-haiku-5-5", timeout=5)
+    deps = agent_deps(model=model, write=lambda prompt: CITING)
+    row, _ = evaluate_item(deps, item("수입신고 기한은요?"), "agent", TODAY, PRICES, llm_via="cli")
+    # 앞 호출은 성공해 호출 수와 검색 기록이 있다. 그래도 이 줄은 CLI 실패 줄이다
+    assert row["real_llm_calls"] >= 2 and row["tools"] == ["search_law"]
+    assert row["error"] == "CLIFailed: CLI(success,429)"
+    limit = load_rules("eval")["run"]["cli_failure_rows"]
+    assert limit == 1
+    # [왜] 사용량 한도나 로그인 문제는 다음 문항에서도 되풀이된다. 남은 문항을 오류로 채우지 않고 멈춘다
+    assert "claude -p" in halt_reason([row], limit)
+    clean = row | {"error": None}
+    assert halt_reason([clean], limit) is None
+    assert halt_reason([clean, row], 2) is None and halt_reason([row, clean, row], 2) is not None
+    # 돈이 새는 줄의 멈춤 규칙(stop_reason)도 그대로 본다
+    assert halt_reason([clean | {"tokens": {}}], limit) == stop_reason(clean | {"tokens": {}})

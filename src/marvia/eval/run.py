@@ -71,7 +71,7 @@ class LlmWatch(BaseCallbackHandler):
         # [왜] 그래프는 모델 실패를 부분 답으로 바꾼다. `claude -p` 실패(사용량 한도, 시간 초과)는 모델의
         #      행동이 아니라 측정 실패라, 줄의 error에 남겨 그 실행을 무효로 만든다 (run_problems)
         if isinstance(error, CLIFailed):
-            self.cli_failures.append(f"CLIFailed: {error}")
+            self.cli_failures.append(f"{CLI_FAILURE}: {error}")
 
 
 def rule_names(violations: list[str]) -> list[str]:
@@ -521,6 +521,21 @@ def stop_reason(row: dict) -> str | None:
     if row["real_llm_calls"] and not row["tokens"]:
         return "LLM 호출은 있는데 토큰 사용량이 없다"
     return None
+
+
+CLI_FAILURE = "CLIFailed"  # 줄의 error 칸에서 `claude -p` 실패를 알아보는 앞부분 (LlmWatch.on_llm_error)
+
+
+def halt_reason(rows: list[dict], cli_failure_rows: int) -> str | None:
+    """지금까지의 줄을 보고 실행을 멈출 까닭. 멈추지 않으면 None. 마지막 줄이 방금 돌린 문항이다.
+
+    cli_failure_rows: `claude -p` 실패가 난 문항이 이 수에 닿으면 멈춘다 (rules/eval.yaml run).
+    """
+    failed = sum(str(r.get("error") or "").startswith(CLI_FAILURE) for r in rows)
+    if failed >= cli_failure_rows:
+        # [왜] 사용량 한도나 로그인 문제는 다음 문항에서도 되풀이된다. 일부 호출만 실패한 문항도 센다
+        return f"claude -p 실패가 난 문항이 {failed}개다 (--ids로 남은 문항을 이어서 돌린다)"
+    return stop_reason(rows[-1])
 
 
 def result_name(loop: str, model: str, tag: str) -> str:

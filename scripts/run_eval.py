@@ -31,6 +31,7 @@ from pathlib import Path
 
 import yaml
 
+from marvia.config import Settings
 from marvia.eval.dataset import ROOT, SETS, file_sha256, load_set
 from marvia.eval.metrics import (
     HIGHER,
@@ -59,13 +60,13 @@ from marvia.eval.run import (
     evaluate_item,
     existing_results,
     graph_setting_problem,
+    halt_reason,
     inside_repo,
     llm_meta,
     preflight,
     result_name,
     run_problems,
     save_result,
-    stop_reason,
 )
 from marvia.tools.rules import load_rules
 
@@ -354,11 +355,18 @@ items = [i for i in data.items if not args.ids or i.id in args.ids.split(",")]
 items = items[: args.limit] if args.limit else items
 loops, models = args.loops.split(","), args.models.split(",")
 prices = load_rules("pricing")
-plan = estimate(len(items), loops, models, prices)
-for line in plan:
-    print(f"어림 비용 {line['loop']} {line['model']} {line['items']}문항: ${line['usd']}")
-print(f"합계 약 ${sum(line['usd'] or 0 for line in plan):.3f} (실행 상한 ${args.max_cost})")
-problems = preflight(len(items), loops, models, prices, args.max_cost)
+# [왜] 설정을 읽는 데는 키가 필요 없다. LLM을 부르는 길에 따라 비용을 보일지 정한다
+via_cli = Settings().llm_via == "cli"
+if via_cli:
+    # [왜] 구독의 claude -p는 청구액이 없다. 어림 비용과 쓴 돈을 찍으면 잰 값처럼 읽힌다
+    print(f"LLM 길: claude -p (구독). 비용은 재지 않는다. {len(items)}문항 × {len(loops)}길")
+    problems = []
+else:
+    plan = estimate(len(items), loops, models, prices)
+    for line in plan:
+        print(f"어림 비용 {line['loop']} {line['model']} {line['items']}문항: ${line['usd']}")
+    print(f"합계 약 ${sum(line['usd'] or 0 for line in plan):.3f} (실행 상한 ${args.max_cost})")
+    problems = preflight(len(items), loops, models, prices, args.max_cost)
 problems += [
     f"결과 파일이 이미 있다: {path}" for path in existing_results(Path(args.out), loops, models, args.tag)
 ]
@@ -374,7 +382,6 @@ if args.dry_run:
 # [왜] 키·DB가 필요한 모듈은 dry-run 뒤에 읽는다. 어림 비용은 키 없이 볼 수 있다
 import psycopg  # noqa: E402
 
-from marvia.config import Settings  # noqa: E402
 from marvia.db import connect, read_pool  # noqa: E402
 from marvia.eval.dataset import CORPUS_UNITS  # noqa: E402
 from marvia.graph.live import agent_deps  # noqa: E402
@@ -463,7 +470,8 @@ for model in models:
                 rows.append(row)
                 raws.append(raw)
                 spent += row["cost_usd"] or 0
-                halt = stop_reason(row)
+                # [왜] 돈이 새는 줄이거나 claude -p 실패가 난 문항이면 멈춘다
+                halt = halt_reason(rows, load_rules("eval")["run"]["cli_failure_rows"])
                 # [왜] 문항마다 쓴다. Ctrl-C나 오류로 멈춰도 돈을 낸 줄이 남는다
                 save_result(out, name, meta, summarize(rows, by_id, k), rows, raws)
                 print(
@@ -472,8 +480,7 @@ for model in models:
                     item.id,
                     row["behaviour"],
                     row["real_llm_calls"],
-                    row["cost_usd"],
-                    row["seconds"],
+                    *([] if via_cli else [row["cost_usd"], row["seconds"]]),
                 )
                 if halt:
                     print(f"[멈춤] {item.id}: {halt}")
@@ -485,6 +492,8 @@ for model in models:
             for problem in meta["problems"]:
                 print(f"[무효] {name}: {problem}")
             if halt:  # [왜] 이미 쓴 줄은 위에서 파일로 남겼다. 더 돌리지 않는다
-                print(f"쓴 돈 약 ${spent:.4f}")
+                if not via_cli:
+                    print(f"쓴 돈 약 ${spent:.4f}")
                 raise SystemExit(1)
-print(f"쓴 돈 약 ${spent:.4f}")
+if not via_cli:
+    print(f"쓴 돈 약 ${spent:.4f}")

@@ -225,3 +225,38 @@ def test_run_requires_graph_and_stops_before_any_spend_when_it_differs_from_the_
         env=env,
     )
     assert done.returncode == 1 and "[멈춤] --graph on인데 실제 설정(MARVIA_GRAPH)은 off다" in done.stderr
+
+
+def test_run_on_the_cli_path_prints_no_cost_estimate(tmp_path):
+    # [왜] 구독의 claude -p로 부르면 청구액이 없다. 어림 비용과 쓴 돈을 찍으면 잰 값처럼 읽힌다
+    args = [
+        "scripts/run_eval.py",
+        "run",
+        "--out",
+        str(tmp_path),
+        "--commit",
+        "t",
+        "--graph",
+        "off",
+        "--dry-run",
+    ]
+    done = subprocess.run(
+        [sys.executable, *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=os.environ | {"MARVIA_LLM_VIA": "cli"},
+    )
+    assert done.returncode == 0, done.stderr
+    assert "어림 비용" not in done.stdout and "합계" not in done.stdout and "$" not in done.stdout
+    assert "claude -p" in done.stdout
+    api = subprocess.run(
+        [sys.executable, *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=os.environ | {"MARVIA_LLM_VIA": "api"},
+    )
+    assert "어림 비용" in api.stdout
