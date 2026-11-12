@@ -27,10 +27,12 @@ ORDER BY embedding <=> %s::vector LIMIT %s
 """
 # [왜] websearch_to_tsquery는 따옴표 같은 기호가 섞여도 오류를 내지 않는다
 # [왜] ts_rank는 질문 낱말이 많이 겹칠수록 크다
+# [왜] 점수가 같으면 unit_id 순서로 둔다. 둘째 기준이 없으면 동점인 단위의 순서가 DB 안에 줄이 놓인 순서에
+#      달려, 같은 코퍼스로 DB를 새로 지을 때마다 상위 k의 구성이 달라진다 (11-13 실측)
 KEYWORD_SQL = """
 SELECT unit_id FROM corpus_units
 WHERE effective <= %s AND keywords @@ websearch_to_tsquery('simple', %s)
-ORDER BY ts_rank(keywords, websearch_to_tsquery('simple', %s)) DESC LIMIT %s
+ORDER BY ts_rank(keywords, websearch_to_tsquery('simple', %s)) DESC, unit_id LIMIT %s
 """
 # [왜] 그래프 이웃 가운데 하이브리드에 없고 기준 날짜에 시행 중인 단위만, 질의 벡터에 가까운 순서로 자른다.
 #      Postgres에 없는 unit_id는 여기서 걸러져 근거가 되지 않는다(두 저장소가 어긋나도 KeyError 없음)

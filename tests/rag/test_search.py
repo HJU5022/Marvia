@@ -273,3 +273,16 @@ def test_a_named_paragraph_comes_first_and_the_rest_of_the_article_fills_the_cap
     # 색인에 없는 항을 지목하면 조문 단위로 돌려준다(항이 없는 질의와 같은 결과)
     missing = provision_ids(hybrid_search(db, "시험법 제45조 제9항 내용", fake_embed, as_of=AS_OF))
     assert missing == plain
+
+
+def test_keyword_ties_come_out_in_the_same_order_however_the_rows_were_inserted(db, make_unit, fake_embed):
+    # [왜] 키워드 점수가 같은 단위들의 순서가 DB 안에 줄이 놓인 순서에 달려 있었다. 같은 코퍼스로 DB를 새로
+    #      지으면 20위와 21위가 동점인 문항에서 후보 구성이 달라졌다 (11-13 실측: 60문항 가운데 16문항)
+    labels = ["제7조", "제2조", "제9조", "제4조"]
+    units = [make_unit(label, "정밀검사를 면제할 수 있다") for label in labels]  # 글이 같아 점수가 같다
+    wanted = [f"LTEST@20261002#{label}" for label in sorted(labels)]
+    for order in (units, list(reversed(units))):
+        db.execute("DELETE FROM corpus_units")
+        index_units(db, order, fake_embed)
+        found = leg_search(db, "정밀검사 면제", fake_embed, AS_OF, "keyword")
+        assert [e.unit_id for e in found] == wanted
