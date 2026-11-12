@@ -15,13 +15,18 @@ from datetime import date
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import AgentMiddleware, TodoListMiddleware
+from langchain.agents.middleware import (
+    AgentMiddleware,
+    HumanInTheLoopMiddleware,
+    InterruptOnConfig,
+    TodoListMiddleware,
+)
 from langchain.tools import ToolRuntime, tool
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from marvia.graph.agent import Guards
+from marvia.graph.agent import Guards, describe_approval
 from marvia.graph.answer import cargo_lines
 from marvia.graph.state import LoopState, MarviaState
 from marvia.prompts import render
@@ -109,19 +114,35 @@ def refused_handoff(state: MarviaState) -> bool:
     return isinstance(last, ToolMessage) and last.name == "handoff" and not state.get("route")
 
 
-def build_sub(model: BaseChatModel, tools: list, name: str):
+def build_sub(model: BaseChatModel, tools: list, name: str, permission_mode: str):
     """서브에이전트 하나를 만든다: 자기 묶음의 도구만 가진 루프 (rules/agent.yaml supervisor.subagents)."""
     cfg = load_rules("agent")
+    approval = cfg["approval"]
     by_name = {tool.name: tool for tool in tools}
-    # [주의] 승인이 필요한 도구는 승인 미들웨어를 붙이기 전에는 주지 않는다 (계획 7b Task 4에서 붙인다)
-    gated = cfg["approval"]["ask"] + cfg["approval"]["always_ask"]
     # [왜] 바깥 기능이 없어 만들어지지 않은 도구(감시 목록, 공식 조회)는 건너뛴다. 에이전트 길과 같다
-    own = [by_name[n] for n in subagents()[name]["tools"] if n in by_name and n not in gated]
+    own = [by_name[n] for n in subagents()[name]["tools"] if n in by_name]
+    # [주의] 에이전트 길(build_agent)과 같은 규칙: auto가 아닌 값은 모두 묻는 쪽, always_ask는 늘 묻는다.
+    #        이 서브에이전트가 가진 도구에만 건다
+    asks = (approval["ask"] if permission_mode != "auto" else []) + approval["always_ask"]
+    gated = [tool.name for tool in own if tool.name in asks]
+    middleware: list[AgentMiddleware[Any, Any, Any]] = []
+    if gated:
+        # [왜] 승인 요청(interrupt)은 서브에이전트 안에서 나도 메인 그래프의 체크포인터까지 올라가 멈추고,
+        #      이어 가면 이 서브에이전트의 그 자리에서 한 번만 실행된다 (11-12 사본 확인)
+        decisions = InterruptOnConfig(
+            allowed_decisions=["approve", "edit", "reject"], description=describe_approval
+        )
+        middleware.append(
+            HumanInTheLoopMiddleware(
+                interrupt_on={tool: decisions for tool in gated}, interrupt_mode="batched"
+            )
+        )
+    middleware.append(Guards(cfg["loop"]["max_llm_calls"], label=name))
     return create_agent(
         model,
         own,
         system_prompt=render(f"sub_{name}"),
-        middleware=[Guards(cfg["loop"]["max_llm_calls"], label=name)],
+        middleware=middleware,
         state_schema=LoopState,
         name=name,
     )

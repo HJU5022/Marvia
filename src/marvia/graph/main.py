@@ -540,7 +540,9 @@ def build_main_graph(
             graph.add_edge("supervisor", "router")
             for name in subagents():
                 # [왜] 한 단계에 서브에이전트 하나만 돈다. 부모 공책 칸이 덮어쓰기라 둘이 함께 쓰면 멈춘다
-                graph.add_node(name, sub_node(name, build_sub(deps.model, tools, name), deps.today))
+                graph.add_node(
+                    name, sub_node(name, build_sub(deps.model, tools, name, permission_mode), deps.today)
+                )
                 graph.add_edge(name, "supervisor")
         # [왜] 요약 LLM이 실패해 멈췄으면 루프를 돌리지 않고 부분 답으로 간다
         graph.add_conditional_edges(

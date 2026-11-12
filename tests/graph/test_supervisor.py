@@ -8,8 +8,9 @@ import pytest
 from conftest import UNIT
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
-from test_agent import CITING, TWO, FailsAfter, Inputs, ToolModel, cfg
+from test_agent import CHILI, CITING, TWO, FailsAfter, FakeWatch, Inputs, ToolModel, cfg
 
 from marvia.graph.main import build_main_graph
 from marvia.tools.rules import load_rules
@@ -307,3 +308,117 @@ def test_a_model_failure_inside_a_subagent_ends_in_a_partial_answer(agent_deps):
     assert values["stopped"] == "llm_failed"
     assert values["failed_tools"] == [{"tool": "cargo", "message": "APIConnectionError"}]
     assert "끝까지 확인하지 못했어요" in out["answer"]
+
+
+# --- 승인: 부작용 도구는 서브에이전트 안에서도 승인 뒤 한 번만 돈다 (계획 7b Task 4) ---
+
+APPROVE = Command(resume={"decisions": [{"type": "approve"}]})
+REJECT = Command(resume={"decisions": [{"type": "reject"}]})
+
+
+def card_script() -> list[AIMessage]:
+    """품목 서브에이전트가 재수입 판정 뒤 품목 카드를 저장하는 대본 (모델 호출 다섯 번)."""
+    return [
+        hand("item", "건고추 재수입 검사 판정 뒤 품목 카드로 저장", "h1"),
+        call("check_reimport", {"facts": CHILI}, "r1"),
+        call("save_item_card", {"name": "건고추"}, "v1"),
+        done("저장했어요."),
+        done(),
+    ]
+
+
+@pytest.mark.parametrize("resume, saved", [(APPROVE, True), (REJECT, False)])
+def test_an_approval_inside_a_subagent_reaches_the_user_and_runs_once(agent_deps, monkeypatch, resume, saved):
+    from marvia.graph import tools
+
+    checks = []  # check_reimport가 계산 코드를 부른 횟수
+    real = tools.reimport_check
+    monkeypatch.setattr(tools, "reimport_check", lambda *a, **k: checks.append(1) or real(*a, **k))
+    inputs = Inputs()
+    store = InMemoryStore()
+    graph = sup_graph(agent_deps, *card_script(), store=store)
+    config = cfg(f"p1-{saved}") | {"callbacks": [inputs]}
+    out = graph.invoke({"text": "건고추 카드로 기억해 줘"}, config)
+    requests = out["__interrupt__"][0].value["action_requests"]
+    assert len(out["__interrupt__"]) == 1 and [r["name"] for r in requests] == ["save_item_card"]
+    assert store.get(("users", "local", "items"), "건고추") is None  # 승인 전에는 저장하지 않는다
+    out = graph.invoke(resume, config)
+    values = graph.get_state(config).values
+    assert "answer" in out and "__interrupt__" not in out
+    assert (store.get(("users", "local", "items"), "건고추") is not None) is saved
+    assert values["actions"] == (["품목 카드 '건고추' 저장"] if saved else [])
+    # [왜] 이어 갈 때 앞에서 끝난 도구와 모델 호출이 다시 돌지 않는다
+    assert len(checks) == 1 and len(inputs.calls) == 5 and values["llm_calls"] == 5 + 1  # + 작성자
+
+
+def test_an_edited_card_name_is_saved_from_inside_the_subagent(agent_deps):
+    store = InMemoryStore()
+    graph = sup_graph(agent_deps, *card_script(), store=store)
+    graph.invoke({"text": "건고추 카드로 기억해 줘"}, cfg("p2"))
+    edit = {"type": "edit", "edited_action": {"name": "save_item_card", "args": {"name": "고추"}}}
+    graph.invoke(Command(resume={"decisions": [edit]}), cfg("p2"))
+    assert store.get(("users", "local", "items"), "건고추") is None
+    assert store.get(("users", "local", "items"), "고추").value["facts"]["category"] == "농산물·임산물"
+
+
+class Watch(FakeWatch):
+    """감시 목록 가짜에 지우기를 더한다 (unwatch_cargo 도구가 생긴다)."""
+
+    def __init__(self):
+        super().__init__()
+        self.removed: list[tuple[str, str]] = []
+
+    def deps(self):
+        from dataclasses import replace
+
+        return replace(
+            super().deps(), remove=lambda user, number: self.removed.append((user, number)) or True
+        )
+
+
+SIDE_EFFECTS = {
+    # 도구 → (서브에이전트, 그 도구를 부르기 전의 대본, 인자)
+    "save_item_card": ("item", [call("check_reimport", {"facts": CHILI}, "r1")], {"name": "건고추"}),
+    "save_preference": ("item", [], {"depth": "짧게"}),
+    "watch_cargo": ("cargo", [], {"token": "[BL1]"}),
+    "unwatch_cargo": ("cargo", [], {"token": "[BL1]"}),
+}
+
+
+def done_things(store, watch) -> list:
+    """부작용이 실제로 일어난 흔적: 저장한 품목 카드와 설정, 감시 목록에 넣은 것과 뺀 것."""
+    return [
+        *store.search(("users", "local", "items")),
+        *store.search(("users", "local", "prefs")),
+        *watch.added,
+        *watch.removed,
+    ]
+
+
+@pytest.mark.parametrize("mode", ["ask", "auto"])
+@pytest.mark.parametrize("name", list(SIDE_EFFECTS))
+def test_no_side_effect_tool_runs_without_approval_on_the_supervisor_path(agent_deps, name, mode):
+    # [왜] rules/agent.yaml approval.always_ask의 도구는 어느 승인 모드에서도, 어느 서브에이전트 안에서도
+    #      승인 전에 돌면 안 된다 (설계 8절·12절). 사전 등록 비교의 "승인 없는 부작용 0"은 이 시험이 본다
+    assert sorted(SIDE_EFFECTS) == sorted(load_rules("agent")["approval"]["always_ask"])
+    sub, before, args = SIDE_EFFECTS[name]
+    store, watch = InMemoryStore(), Watch()
+    script = [hand(sub, "사용자가 부탁한 일", "h1"), *before, call(name, args, "x1"), done("했어요."), done()]
+    graph = sup_graph(agent_deps, *script, store=store, permission_mode=mode, watch=watch.deps())
+    config = cfg(f"p3-{name}-{mode}")
+    out = graph.invoke({"text": "DEMO0001 부탁해요"}, config)
+    assert [r["name"] for r in out["__interrupt__"][0].value["action_requests"]] == [name]
+    assert done_things(store, watch) == []  # 승인 전
+    graph.invoke(REJECT, config)
+    assert done_things(store, watch) == []  # 거절하면 끝까지 돌지 않는다
+    assert graph.get_state(config).values["actions"] == []
+
+
+def test_the_approval_card_of_a_subagent_shows_tokens_only(agent_deps):
+    watch = Watch()
+    script = [hand("cargo", "[BL1] 감시 등록", "h1"), call("watch_cargo", {"token": "[BL1]"}, "w1")]
+    graph = sup_graph(agent_deps, *script, done("넣었어요."), done(), watch=watch.deps())
+    out = graph.invoke({"text": "DEMO0001 계속 지켜봐 줘"}, cfg("p4"))
+    assert "DEMO0001" not in str(out["__interrupt__"][0].value)
+    graph.invoke(APPROVE, cfg("p4"))
+    assert watch.added == [("local", "DEMO0001", "반입신고")]  # 한 번만 넣었다
