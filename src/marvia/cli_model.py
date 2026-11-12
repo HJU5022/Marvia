@@ -36,12 +36,11 @@ from pydantic import BaseModel, Field, ValidationError
 
 from marvia.llm import CLIFailed
 from marvia.prompts import render
+from marvia.tools.rules import load_rules
 
 SERVER = "marvia"  # MCP 서버 이름. CLI가 도구 이름 앞에 mcp__<이름>__을 붙인다
 PREFIX = f"mcp__{SERVER}__"
 STUB = str(Path(__file__).with_name("cli_tools_stub.py"))
-# [왜] ANTHROPIC_API_KEY가 환경에 있으면 CLI가 구독 대신 그 키로 과금한다
-KEY_NAMES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 # 구조화 출력 한 번에 CLI가 내는 API 요청 수: StructuredOutput 도구 호출 1 + 확인 1 (11-12 실측).
 # 이보다 많으면 답의 모양이 틀려 CLI가 다시 시킨 것이다
 FIRST_TRY_REQUESTS = 2
@@ -222,7 +221,11 @@ class ClaudeCLIChat(BaseChatModel):
 
     @staticmethod
     def _env() -> dict[str, str]:
-        return {k: v for k, v in os.environ.items() if k not in KEY_NAMES}
+        """CLI 프로세스에 넘길 환경 변수: rules/agent.yaml llm.cli_env에 적은 이름만."""
+        # [왜] ANTHROPIC_API_KEY가 넘어가면 CLI가 구독 대신 그 키로 과금한다. Voyage 키, 데이터 키, DB 주소도
+        #      CLI와 도구 스텁 프로세스가 가질 까닭이 없다. 필요한 이름만 넘긴다
+        names = load_rules("agent")["llm"]["cli_env"]
+        return {name: os.environ[name] for name in names if name in os.environ}
 
     def _run(self, system: str, prompt: str, schema: dict | None) -> dict:
         """도구 없는 호출: 결과 JSON 하나를 받는다. 시간 초과나 깨진 출력은 실패 모양의 dict로 돌려준다."""

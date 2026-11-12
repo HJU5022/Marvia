@@ -238,3 +238,37 @@ def test_the_stub_lists_tools_with_their_schemas():
     spec = {"name": "find", "description": "찾는다.", "parameters": {"type": "object", "properties": {}}}
     listed = list_result([spec]).tools[0]
     assert (listed.name, listed.description, listed.input_schema) == ("find", "찾는다.", spec["parameters"])
+
+
+def test_the_cli_and_the_tool_stub_inherit_only_the_variables_the_cli_needs(popen, monkeypatch):
+    secrets = (
+        "MARVIA_VOYAGE_API_KEY",
+        "MARVIA_DATA_KEY",
+        "MARVIA_DATABASE_URL",
+        "MARVIA_LANGFUSE_SECRET_KEY",
+    )
+    for name in (*secrets, "ANTHROPIC_API_KEY"):
+        monkeypatch.setenv(name, "not-real")
+    seen = popen([INIT, event("message_stop")])
+    cli().bind_tools([find]).invoke("찾아줘")
+    allowed = load_rules("agent")["llm"]["cli_env"]
+    # [왜] CLI와 그 아래 도구 스텁 프로세스에 키와 DB 주소를 물려줄 까닭이 없다. 필요한 것만 넘긴다
+    assert set(seen["env"]) <= set(allowed) and not set(secrets) & set(seen["env"])
+    assert "PATH" in seen["env"] and "ANTHROPIC_API_KEY" not in allowed
+    run_seen = {}
+    monkeypatch.setattr(
+        cli_model.subprocess,
+        "run",
+        lambda command, **kwargs: run_seen.update(env=kwargs["env"]) or type("Done", (), {"stdout": "{}"})(),
+    )
+    with pytest.raises(CLIFailed):
+        cli().invoke("질문")
+    assert set(run_seen["env"]) <= set(allowed)
+
+
+def test_the_cli_log_folder_must_be_outside_the_repo(tmp_path):
+    # [왜] CLI 원본 출력에는 모델이 쓴 글이 있다. 저장소 안에 쌓이면 커밋에 섞일 수 있다
+    with pytest.raises(RuntimeError, match="MARVIA_CLI_LOG"):
+        chat_model(Settings(_env_file=None, llm_via="cli", cli_log="eval/results/cli-log"))
+    llm = chat_model(Settings(_env_file=None, llm_via="cli", cli_log=str(tmp_path)))
+    assert llm.log_dir == str(tmp_path)

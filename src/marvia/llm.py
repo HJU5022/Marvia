@@ -8,6 +8,7 @@ MARVIA_LLM_VIA=cli면 API 대신 구독의 `claude -p`를 부르는 모델(cli_m
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import cast
 
 import anthropic
@@ -34,6 +35,10 @@ def chat_model(settings: Settings) -> BaseChatModel:
         # [왜] 여기서 읽는다: cli_model이 이 파일의 CLIFailed를 읽어 서로 물린다. API 길은 이 모듈이 필요 없다
         from marvia.cli_model import ClaudeCLIChat
 
+        # [왜] CLI 원본 출력에는 모델이 쓴 글이 있다. 저장소 안에 쌓이면 커밋에 섞일 수 있다
+        repo = Path(__file__).resolve().parents[2]
+        if settings.cli_log and Path(settings.cli_log).resolve().is_relative_to(repo):
+            raise RuntimeError("MARVIA_CLI_LOG는 저장소 밖 폴더여야 합니다")
         timeout = load_rules("agent")["llm"]["cli_timeout_s"]
         return ClaudeCLIChat(model=settings.chat_model, timeout=timeout, log_dir=settings.cli_log)
     key = settings.anthropic_api_key.get_secret_value()
