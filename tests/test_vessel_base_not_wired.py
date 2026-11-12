@@ -41,6 +41,50 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         ["fixtures/unipass/*.json"],
         "6e67943f9416bd31e256b5c04c553fa746c55e5844b962967df08b1005f8385b",
     ),
+    # 아래 다섯 묶음은 11-13에 더했다. 값은 측정 커밋과 같음을 git diff로 확인한 뒤 적었다.
+    # [주의] config.py, identify/models.py, tools/unipass.py, rules/verdict.yaml은 계획 8a가 칸을 더해
+    #        측정 커밋과 다르다. 여기에 넣지 않았고, 모델이 보는 쪽은 아래 화물 줄·도구 설명 시험이 본다
+    "평가 실행기": (
+        [
+            "src/marvia/eval/dataset.py",
+            "src/marvia/eval/metrics.py",
+            "src/marvia/eval/retrieval.py",
+            "src/marvia/eval/run.py",
+            "scripts/run_eval.py",
+        ],
+        "1baf7cdf1e623fe659d2c596f6caa0d002127970c956722884d97308a28f22c2",
+    ),
+    "서버·화면·감시·추적": (
+        [
+            "src/marvia/server.py",
+            "src/marvia/view.py",
+            "src/marvia/watch.py",
+            "src/marvia/prompts.py",
+            "src/marvia/trace.py",
+            "src/marvia/langfuse_trace.py",
+            "src/marvia/db.py",
+            "src/marvia/auth.py",
+        ],
+        "9879f048f94081528de7f5296357aefcc5631a461aff80afee4b9db8e521ab2f",
+    ),
+    "화물 조회 도구": (
+        ["src/marvia/tools/unipass_replay.py", "src/marvia/tools/verdict.py", "src/marvia/tools/rules.py"],
+        "373729b83e98295c364a460a5ae7a0433448b1d6d29038787b0387cbb9b454b8",
+    ),
+    "규칙(그래프·검증·화물 조회·서버·값)": (
+        [
+            "rules/graph.yaml",
+            "rules/verify.yaml",
+            "rules/unipass.yaml",
+            "rules/server.yaml",
+            "rules/pricing.yaml",
+        ],
+        "20052036ab791cdfe060cda7855e85ed8fb8da9fed3727788f37325f2dbecf54",
+    ),
+    "의존성과 DB 틀": (
+        ["pyproject.toml", "uv.lock", "migrations/*.sql"],
+        "3f943d9cf97ada312757d5dbf95e73b36b12ee1b2bc284aac4bc3b6a2d614de8",
+    ),
 }
 # 모델이 보는 도구 이름과 설명을 한 줄씩 이어 sha256
 TOOLS_SHA = "7f9bab1a8e427c493f149681334714125e9d1edd8084d48008f7db62b3670185"
@@ -117,7 +161,5 @@ def test_nothing_in_the_graph_server_or_eval_runner_imports_the_vessel_base():
     for path in files:
         text = path.read_text(encoding="utf-8")
         for name in NEW_MODULES:
-            assert f"marvia.tools.{name}" not in text and f"tools import {name}" not in text, (
-                path.name,
-                name,
-            )
+            # [왜] `from marvia import tools` 뒤 `tools.judge`로 쓰는 꼴도 `tools.이름`에 걸린다
+            assert f"tools.{name}" not in text and f"tools import {name}" not in text, (path.name, name)
