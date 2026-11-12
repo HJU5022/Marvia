@@ -752,6 +752,9 @@ def domain_table(answers: dict[str, dict[str, str]], items: dict[str, Item]) -> 
     return "\n".join(lines)
 
 
+SAME_QUESTIONS = {"v2", "v3"}  # 질문 글이 같아 서로의 기준으로 채점할 수 있는 평가셋 판
+
+
 def set_view(meta: dict, rows: list[dict], chosen: str, chosen_sha: str) -> tuple[str, bool]:
     """결과 하나를 어느 평가셋으로 채점했는지 한 줄 글과, 옛 결과 경고를 낼지(True)를 돌려준다."""
     run_sha = meta["set_sha256"]
@@ -761,6 +764,12 @@ def set_view(meta: dict, rows: list[dict], chosen: str, chosen_sha: str) -> tupl
     #      옛 결과(경고 대상)와 다르다. 이 경우만 "v1 기준으로 본 v2 실행"이라 밝히고 경고는 끈다
     if chosen == "v1" and meta.get("set") == "v2" and any("behaviour_base" in r for r in rows):
         return f"v1 기준으로 본 v2 실행 (실행 판 v2 sha {run_sha[:12]}, 채점 v1 sha {chosen_sha[:12]})", False
+    # [왜] v2와 v3는 질문이 같고 채점 칸(정답 근거, 궤적, 기대 서브에이전트)만 다르다. 줄은 관찰한 값이라
+    #      어느 쪽 기준으로도 셀 수 있다. 두 기준 값을 나란히 볼 때 쓴다 (계획 7b)
+    ran = meta.get("set")
+    if {chosen, ran} == SAME_QUESTIONS:
+        shas = f"실행 판 {ran} sha {run_sha[:12]}, 채점 {chosen} sha {chosen_sha[:12]}"
+        return f"{chosen} 기준으로 본 {ran} 실행 ({shas})", False
     return f"{chosen} (sha {chosen_sha[:12]})로 채점, 실행은 sha {run_sha[:12]}", True
 
 

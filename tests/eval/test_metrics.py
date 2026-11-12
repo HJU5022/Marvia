@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from marvia.eval.dataset import Domain, Item, Route
+from marvia.eval.dataset import SET_V2_PATH, SET_V3_PATH, Domain, Item, Route, load_set
 from marvia.eval.metrics import (
     agreement,
     behaviour_accuracy,
@@ -611,6 +611,31 @@ def test_set_view_names_the_set_and_tells_a_v1_view_of_a_v2_run_from_a_foreign_f
     assert set_view({"set": "v2", "set_sha256": "b" * 64}, [{"id": "U05"}], "v1", "a" * 64)[1] is True
     assert set_view({"set": "v1", "set_sha256": "c" * 64}, v2_rows, "v1", "a" * 64)[1] is True
     assert set_view({"set": "v1", "set_sha256": "a" * 64}, [{"id": "R01"}], "v1", "a" * 64)[1] is False
+
+
+def test_a_run_on_v2_or_v3_can_be_read_by_the_other_standard_without_a_warning():
+    # [왜] v3는 v2와 질문이 같고 채점 칸만 다르다. 줄에는 관찰한 값(인용, 근거, 도구)만 있어
+    #      같은 줄을 두 기준으로 셀 수 있다. 다른 판(v1)과는 전처럼 경고한다 (계획 7b)
+    v3_run = {"set": "v3", "set_sha256": "c" * 64}
+    assert set_view(v3_run, [], "v2", "b" * 64) == (
+        "v2 기준으로 본 v3 실행 (실행 판 v3 sha cccccccccccc, 채점 v2 sha bbbbbbbbbbbb)",
+        False,
+    )
+    v2_run = {"set": "v2", "set_sha256": "b" * 64}
+    assert set_view(v2_run, [], "v3", "c" * 64)[0].startswith("v3 기준으로 본 v2 실행")
+    assert set_view(v2_run, [], "v3", "c" * 64)[1] is False
+    assert set_view(v3_run, [], "v1", "a" * 64)[1] is True
+    assert set_view({"set": "v1", "set_sha256": "a" * 64}, [], "v3", "c" * 64)[1] is True
+
+
+def test_the_same_row_scores_differently_by_the_v2_and_v3_gold():
+    v2 = {i.id: i for i in load_set(SET_V2_PATH).items}
+    v3 = {i.id: i for i in load_set(SET_V3_PATH).items}
+    annex = "L012500@20260930#별표9.2호.가목.7)"  # 재수입 서류검사 대상을 정한 별표 단위
+    rows = [row("R07", cited=[annex], evidence=[annex], retrieved=[annex])]
+    assert correct_citation(rows, v2)["value"] == 0.0 and correct_citation(rows, v3)["value"] == 1.0
+    assert wrong_evidence(rows, v2)["value"] == 1.0 and wrong_evidence(rows, v3)["value"] == 0.0
+    assert recall_at_k(rows, v2, 8)["value"] == 0.0 and recall_at_k(rows, v3, 8)["value"] == 0.5
 
 
 def test_floors_add_the_false_not_found_ceiling_only_for_a_v2_gate():
