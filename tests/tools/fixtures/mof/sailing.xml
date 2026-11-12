@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. 칸 이름과 묶음(item 안의 details/detail)은 v1 fixture(해수부 선박운항정보 VsslEtrynd5의 필드 구성)를 따랐고
+     값은 모두 만든 것이다. 호출부호는 QQ로 시작하고 시설 이름은 TEST로 시작한다. -->
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST1</clsgn><vsslNm>TEST CARGO A</vsslNm>
+<vsslNltyCd>PA</vsslNltyCd><vsslKndNm>풀컨테이너선</vsslKndNm>
+<etryptPurpsNm>양하</etryptPurpsNm><prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm><nxlnptPrtNm>TEST NEXT</nxlnptPrtNm>
+<details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 1선석</laidupFcltyNm><mrNum>26TEST0001I</mrNum></detail>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>출항</etryndNm><tkoffDt>2026-09-25T18:00:00+09:00</tkoffDt><laidupFcltyNm>TEST부두 1선석</laidupFcltyNm><mrNum>26TEST0001E</mrNum></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST2</clsgn><vsslNm>테스트화물2호</vsslNm>
+<vsslNltyCd>KR</vsslNltyCd><vsslKndNm>일반화물선</vsslKndNm><prvsDpmprtPrtNm>NINGBO PT</prvsDpmprtPrtNm>
+<details>
+<detail><reqstSeNm>최종</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-22T10:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 2선석</laidupFcltyNm><mrNum>26TEST0002I</mrNum></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>2</totalCount></body></response>

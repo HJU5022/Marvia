@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. 칸 이름은 v1 fixture(해수부 관제정보 CntlVssl2의 필드 구성)를 따랐고 값은 모두 만든 것이다. -->
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST2</clsgn><vsslNm>테스트화물2호</vsslNm><vsslNltyCd>KR</vsslNltyCd><aprtfEtryptDt>2026-09-22T10:00:00+09:00</aprtfEtryptDt>
+<details>
+<detail><cntrlNm>접안</cntrlNm><cntrlOpertDt>2026-09-22T10:40:00+09:00</cntrlOpertDt><fcltyNm>TEST부두 2선석</fcltyNm></detail>
+<detail><cntrlNm>입항</cntrlNm><cntrlOpertDt>2026-09-22T10:00:00+09:00</cntrlOpertDt><fcltyNm></fcltyNm></detail>
+<detail><cntrlNm>투묘</cntrlNm><cntrlOpertDt>2026-09-21T20:00:00+09:00</cntrlOpertDt><fcltyNm>TEST묘박지</fcltyNm></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>1</totalCount></body></response>
