@@ -112,6 +112,7 @@ def start(state: MarviaState) -> dict:
         "route": "",
         "task": "",
         "searched": [],
+        "visits": [],
     }
 
 

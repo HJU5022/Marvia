@@ -187,6 +187,8 @@ def sub_node(name: str, sub, today: Callable[[], date]):
         # [왜] 부모 공책 칸은 덮어쓰기다. 서브에이전트는 받은 값에 자기 것을 합친 전체 값을 돌려주므로
         #      그대로 넣으면 된다(부모 칸에 더하기 reducer를 달면 받은 값이 두 번 더해진다, 11-12 사본 확인)
         update: dict[str, Any] = {key: out[key] for key in SHARED if key in out}
-        return update | {"messages": [result], "route": "", "task": ""}
+        called = [c["name"] for m in out["messages"] for c in getattr(m, "tool_calls", None) or []]
+        visits = [*values.get("visits", []), {"sub": name, "tools": called}]
+        return update | {"messages": [result], "route": "", "task": "", "visits": visits}
 
     return run

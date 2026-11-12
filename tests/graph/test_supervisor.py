@@ -422,3 +422,28 @@ def test_the_approval_card_of_a_subagent_shows_tokens_only(agent_deps):
     assert "DEMO0001" not in str(out["__interrupt__"][0].value)
     graph.invoke(APPROVE, cfg("p4"))
     assert watch.added == [("local", "DEMO0001", "반입신고")]  # 한 번만 넣었다
+
+
+# --- 방문 기록: 어느 서브에이전트가 어떤 도구를 불렀나 (계획 7b Task 7, 평가 실행기가 읽는다) ---
+
+
+def test_each_subagent_run_is_recorded_with_the_tools_it_called(agent_deps):
+    graph = sup_graph(
+        agent_deps,
+        hand("cargo", "[BL1]의 수입신고 기한을 계산", "h1"),
+        call("calc_deadlines", {}, "c1"),
+        call("get_provision", PROVISION, "p1"),
+        done("기한은 2026-11-26이에요."),
+        hand("law", "수입신고 기한의 근거 조문", "h2"),
+        done("이미 찾은 조문이 있어요."),  # 도구 없이 끝낸 방문도 남는다
+        done(),
+        done(),  # 둘째 차례의 수퍼바이저
+    )
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("v1"))
+    # [왜] 서브에이전트 안의 도구 호출은 부모 대화 기록에 없다. 이 칸이 없으면 평가가 도구 순서를 못 본다
+    assert graph.get_state(cfg("v1")).values["visits"] == [
+        {"sub": "cargo", "tools": ["calc_deadlines", "get_provision"]},
+        {"sub": "law", "tools": []},
+    ]
+    graph.invoke({"text": "고마워요"}, cfg("v1"))
+    assert graph.get_state(cfg("v1")).values["visits"] == []  # 차례마다 비운다

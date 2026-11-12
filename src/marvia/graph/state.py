@@ -75,6 +75,10 @@ class MarviaState(IdentifyState, total=False):
     # 이번 차례에 이미 찾은 질의. [왜] 부모 공책에 있어야 서브에이전트를 여러 번 불러도 검색 상한과
     #      "같은 질의 다시 찾지 않기"가 이어진다. 에이전트 길에서는 루프 공책에만 있었다
     searched: list[str]
+    # 이번 차례에 돈 서브에이전트와 그 안에서 부른 도구 이름 [{"sub", "tools"}], 돈 순서대로.
+    # [왜] 서브에이전트 안의 메시지는 부모 기록에 들어오지 않는다.
+    #      평가가 도구 순서와 방문 순서를 여기서 읽는다
+    visits: list[dict]
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
