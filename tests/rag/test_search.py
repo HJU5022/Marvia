@@ -286,3 +286,20 @@ def test_keyword_ties_come_out_in_the_same_order_however_the_rows_were_inserted(
         index_units(db, order, fake_embed)
         found = leg_search(db, "정밀검사 면제", fake_embed, AS_OF, "keyword")
         assert [e.unit_id for e in found] == wanted
+
+
+def test_graph_candidates_at_the_same_distance_are_cut_in_the_same_order_however_inserted(
+    db, make_unit, fake_embed, narrow
+):
+    # [왜] 그래프 후보는 질의 벡터에 가까운 순서로 상한까지 자른다. 거리가 같은 단위가 상한에 걸리면 어느 것이
+    #      남는지가 DB 안에 줄이 놓인 순서에 달렸다 (키워드 다리의 동점과 같은 문제)
+    seed = make_unit("제1조", "정밀검사 면제")
+    same = [make_unit(f"제{n}조", "보세 반입") for n in range(20, 34)]  # 벡터가 모두 같다: 거리 동점 14개
+    ids = [u.unit_id for u in same]
+    picked = []
+    for order in (same, list(reversed(same))):
+        db.execute("DELETE FROM corpus_units")
+        index_units(db, [seed, *order], fake_embed)
+        hits = hybrid_search(db, "정밀검사 면제", fake_embed, as_of=AS_OF, expand=lambda s, q: ids)
+        picked.append([h.unit_id for h in hits if h.origin == "graph"])
+    assert picked[0] == picked[1] == sorted(ids)[:10]  # rules/graph.yaml expand.max_candidates

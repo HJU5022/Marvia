@@ -36,10 +36,13 @@ ORDER BY ts_rank(keywords, websearch_to_tsquery('simple', %s)) DESC, unit_id LIM
 """
 # [왜] 그래프 이웃 가운데 하이브리드에 없고 기준 날짜에 시행 중인 단위만, 질의 벡터에 가까운 순서로 자른다.
 #      Postgres에 없는 unit_id는 여기서 걸러져 근거가 되지 않는다(두 저장소가 어긋나도 KeyError 없음)
+# [왜] 거리가 같으면 unit_id 순서로 둔다. 상한에서 자를 때 동점인 단위 가운데 무엇이 남는지가 DB 안에 줄이
+#      놓인 순서에 달리지 않게 한다. [주의] 후보는 unit_id 목록으로 이미 좁혀져 있어 벡터 색인을 타는 질의가
+#      아니다. 벡터 다리(VECTOR_SQL)에는 둘째 기준을 두지 않는다(벡터 색인을 못 쓰게 될 수 있다)
 GRAPH_SQL = """
 SELECT unit_id FROM corpus_units
 WHERE unit_id = ANY(%s) AND NOT unit_id = ANY(%s) AND effective <= %s
-ORDER BY embedding <=> %s::vector LIMIT %s
+ORDER BY embedding <=> %s::vector, unit_id LIMIT %s
 """
 LAW_NAMES_SQL = "SELECT DISTINCT law_name FROM corpus_units"  # 색인에 있는 법령 이름
 ROWS_SQL = (
