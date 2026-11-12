@@ -20,7 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field
 ROOT = Path(__file__).resolve().parents[3]
 SET_PATH = ROOT / "eval" / "set_v1.yaml"
 SET_V2_PATH = ROOT / "eval" / "set_v2.yaml"  # v1에서 채점 기준만 고친 판 (동결: eval/set_v2.sha256)
-SETS = {"v1": SET_PATH, "v2": SET_V2_PATH}  # run_eval.py --set 이름
+# v2에서 기대 서브에이전트를 더하고 R07·R08의 정답 근거와 R07의 궤적 조건을 고친 판 (계획 7b)
+SET_V3_PATH = ROOT / "eval" / "set_v3.yaml"
+SETS = {"v1": SET_PATH, "v2": SET_V2_PATH, "v3": SET_V3_PATH}  # run_eval.py --set 이름
 CORPUS_UNITS = ROOT / "corpus" / "units"
 
 # 실행 결과의 행동 이름. 코드가 답 모양으로 정한다 (run.behaviour)
@@ -105,6 +107,7 @@ class Item(BaseModel):
     v2_change: str = ""
     # 수퍼바이저 길의 기대 서브에이전트 (v3부터). 없으면 라우팅 정확도에서 뺀다
     route: Route | None = None
+    v3_change: str = ""  # v3에서 채점 칸을 고친 문항에만 쓰고 이유를 적는다
 
 
 class EvalSet(BaseModel):

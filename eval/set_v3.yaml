@@ -1,0 +1,305 @@
+# Marvia 평가셋 v3 (계획 7b). v2를 복사하고 세 가지만 고쳤다: 문항마다 수퍼바이저 길의 기대 서브에이전트(route),
+# R07의 궤적 조건(research 또는 법령 조사 서브에이전트), R07·R08의 정답 근거(별표 단위)와 R07·R08·R15의 also_ok. 고친 문항에는 v3_change에 이유를 적었다.
+# 질문 글과 나머지 칸은 v2와 같다(tests/eval/test_dataset.py가 비교한다).
+# 독립 대조 기록은 eval/gold_check_v3.md, 동결 해시는 eval/set_v3.sha256이다. 이 파일을 고치면 해시 시험이 실패한다.
+# v1은 eval/set_v1.yaml, v2는 eval/set_v2.yaml 그대로다.
+version: v3
+as_of: 2026-11-06
+
+items:
+  # ---- 관련 15: 요건 3, 보류·검사 3, 재수입 2, 식별 3, 화물 + 조문 4 ----
+  - id: R01
+    group: related
+    kind: 요건
+    question: 실리콘 주방매트를 처음 수입해서 팔려고 해요. 식약처에 무엇을 신고해야 하나요?
+    behaviour: [answer]
+    gold: [L012247@20261008#제20조.1항]
+    also_ok: [L012500@20260930#제27조.1항, L012247@20261008#제5조.1항, L012247@20261008#제15조.1항, L012247@20261008#제2조.1호]
+    reference: 판매나 영업에 쓰려고 수입식품등(기구 포함)을 수입하려는 영업자는 총리령에 따라 식품의약품안전처장에게 수입신고를 해야 한다(수입식품안전관리 특별법 제20조제1항).
+    trajectory: {must: ["search_law|research|get_provision"], must_not: [decline]}
+    human: true
+    domain: {article: 수입식품안전관리 특별법 제20조}
+    route: {must: [law], may: []}
+  - id: R02
+    group: related
+    kind: 요건
+    question: 수입식품 수입신고는 물건이 도착하기 전에도 할 수 있나요?
+    behaviour: [answer]
+    gold: [L012500@20260930#제27조.1항]
+    also_ok: [L012247@20261008#제20조.1항]
+    reference: 수입신고는 통관장소를 관할하는 지방식품의약품안전청장에게 하고, 도착 예정일 5일 전부터 미리 신고할 수 있다. 미리 신고한 도착항·도착 예정일 등 주요 사항이 바뀌면 즉시 문서로 신고해야 한다(수입식품안전관리 특별법 시행규칙 제27조제1항).
+    trajectory: {must: ["search_law|research|get_provision"], must_not: [decline]}
+    human: true
+    route: {must: [law], may: []}
+  - id: R03
+    group: related
+    kind: 요건
+    question: 배가 들어오기 전에 세관에 수입신고를 할 수 있나요?
+    behaviour: [answer]
+    gold: [L001556@20261002#제244조.1항]
+    also_ok: [L001556@20261002#제244조, L002421@20260227#제249조, A36893@20251217#제6조, A36893@20251217#제7조]
+    reference: 신속한 통관이 필요하면 대통령령에 따라 물품을 실은 선박이 입항하기 전에 수입신고를 할 수 있고, 이때 물품은 우리나라에 도착한 것으로 본다(관세법 제244조제1항).
+    trajectory: {must: ["search_law|research|get_provision"], must_not: [decline]}
+    human: true
+    route: {must: [law], may: []}
+  - id: R04
+    group: related
+    kind: 보류·검사
+    question: 세관은 어떤 기준으로 수입 화물을 검사대상으로 선별하나요?
+    behaviour: [answer]
+    gold: [A36744@20231213#제3조.1항]
+    also_ok: [A36744@20231213#제3조, A36744@20231213#제5조, L001556@20261002#제246조]
+    reference: 세관장은 선박회사가 낸 적재화물목록을 심사해 관세청장이 따로 정한 기준에 따라 감시단속상 검사나 감시가 필요한 화물을 검사대상화물이나 감시대상화물로 선별한다(관리대상화물 관리에 관한 고시 제3조제1항).
+    trajectory: {must: ["search_law|research|get_provision"], must_not: [decline]}
+    human: true
+    route: {must: [law], may: []}
+  - id: R05
+    group: related
+    kind: 보류·검사
+    question: 세관 검사 때 물품을 옮기고 꺼내는 비용은 누가 내나요?
+    behaviour: [answer]
+    gold: [L001556@20261002#제173조.3항]
+    also_ok: [L001556@20261002#제173조, L001556@20261002#제246조, L002421@20260227#제187조의4, A36893@20251217#제31조.4항]
+    reference: 세관검사장에 반입되는 물품의 채취·운반 등에 드는 검사비용은 화주가 부담한다. 다만 중소기업·중견기업의 컨테이너 화물로서 검사 결과 법령 위반이 없는 경우 등은 예산 범위에서 검사비용을 지원할 수 있다(관세법 제173조제3항).
+    trajectory: {must: ["search_law|research|get_provision"], must_not: [decline]}
+    human: true
+    route: {must: [law], may: []}
+  - id: R06
+    group: related
+    kind: 보류·검사
+    question: 세관이 통관을 보류하는 건 어떤 경우인가요?
+    behaviour: [answer]
+    gold: [L001556@20261002#제237조.1항]
+    also_ok: [L001556@20261002#제237조, L002421@20260227#제244조, A36893@20251217#제26조]
+    reference: 세관장은 신고서 기재사항이나 제출서류에 보완이 필요한 경우, 법에 따른 의무를 위반하거나 국민보건을 해칠 우려가 있는 경우, 안전성 검사가 필요한 경우 등에는 통관을 보류할 수 있다(관세법 제237조제1항).
+    trajectory: {must: ["search_law|research|get_provision"], must_not: [decline]}
+    human: true
+    route: {must: [law], may: []}
+  - id: R07
+    group: related
+    kind: 재수입
+    # [왜] 계획 3d 손 시험 셋째 차례의 질문이다. 그때 검색 세 번 뒤에 조사를 불러 LLM 호출 19/20까지 갔다.
+    #      조사(research)가 이번 차례 검색보다 먼저 나오고 호출 상한을 넘지 않는지 본다
+    question: 수입식품 재수입 때 서류검사로 되는 조건을 근거와 함께 정리해 줘
+    behaviour: [answer]
+    gold: ["L012500@20260930#별표9.2호.가목.7)", "L012500@20260930#별표10.4호"]
+    also_ok: ["A87721@20250901#제7조", "L012247@20261008#제21조", "L012500@20260930#제30조.1항", "L012500@20260930#제32조", "L012500@20260930#별표10.1호", "L012500@20260930#별표10.2호", "L012500@20260930#별표10.3호", "L012500@20260930#별표9.2호.라목", "L012500@20260930#별표9.2호.다목.2).나)", "L012500@20260930#별표9.2호.다목.5)", "L012500@20260930#별표9.2호.가목.12)", "L012500@20260930#별표9.3호.가목.5)", "A87721@20250901#제25조"]
+    reference: 수입신고를 받은 지방식품의약품안전청장은 시행규칙 별표 9의 검사방법에 따라 검사하고 적합하면 수입신고확인증을 발급한다(수입식품안전관리 특별법 시행규칙 제30조제1항). 수입식품등의 구분기준은 별표 10이다(같은 시행규칙 제32조). 정밀검사를 받은 것과 동일사 동일수입식품등을 다시 수입하면 서류검사 대상이 될 수 있고, 동일사 동일수입식품등의 인정범위는 수입식품등 신고 및 검사에 관한 규정 제7조제1항이 정한다. 면제로 단정할 수 없다.
+    trajectory: {must: ["research|sub:law"], must_not: [decline], order: [[research, search_law]]}
+    human: true
+    route: {must: [law], may: [item]}
+    v3_change: 정답을 별표 단위로 옮겼다. v1·v2의 정답(시행규칙 제30조제1항, 제32조)은 별표가 코퍼스에 없던 때 별표를 가리키는 조문으로 지정한 것이고, 조건은 별표 9 제2호가목7)과 별표 10 제4호에 있다. 옛 정답 두 조문과, 재수입 판정 도구가 단서로 이름을 대는 별표 단위(서류검사가 되지 않는 사유와 재량 검사)를 also_ok에 넣었다. 궤적의 research는 수퍼바이저 길에서 법령 조사 서브에이전트(sub:law)로도 채운다
+  - id: R08
+    group: related
+    kind: 재수입
+    question: 올해 3월 10일에 정밀검사를 받아 적합 판정을 받고 그날 수입신고확인증을 받은 건고추를 다시 수입해요. 생산국, 품명, 수출업소, 포장장소가 모두 같아요. 이번에도 정밀검사를 받아야 하나요?
+    behaviour: [answer]
+    gold: ["L012500@20260930#별표9.2호.가목.7)", "L012500@20260930#별표10.4호.다목"]
+    also_ok: ["A87721@20250901#제7조.1항.1호", "L012247@20261008#제21조", "L012500@20260930#제30조.1항", "L012500@20260930#제32조", "L012500@20260930#별표10.1호", "L012500@20260930#별표10.2호", "L012500@20260930#별표10.3호", "L012500@20260930#별표9.2호.라목", "L012500@20260930#별표9.2호.다목.2).나)", "L012500@20260930#별표9.2호.다목.5)", "L012500@20260930#별표9.2호.가목.12)", "L012500@20260930#별표9.3호.가목.5)", "A87721@20250901#제25조", "L012500@20260930#별표10.4호.가목"]
+    reference: 이전 정밀검사가 적합이고 생산국·품명·수출업소·포장장소가 같으며 수입신고확인증 발급일부터 5년 안에 다시 수입하면 서류검사 요건을 충족한다. 다만 지방식품의약품안전청장이 필요하다고 인정하면 정밀검사나 무작위표본검사를 할 수 있다.
+    calc: {reimport: 서류검사 요건 충족}
+    trajectory: {must: [check_reimport], must_not: [decline, ask_user]}
+    route: {must: [item], may: [law]}
+    v3_change: 정답을 별표 단위로 옮겼다. 질문의 네 조건(생산국, 품명, 수출업소, 포장장소)과 5년은 별표 10 제4호다목에, 서류검사 대상은 별표 9 제2호가목7)에 있다. 옛 정답 두 조문, 판정 도구가 단서로 대는 별표 단위, 5년을 세는 날이 적힌 별표 10 제4호가목을 also_ok에 넣었다
+  - id: R09
+    group: related
+    kind: 식별
+    question: DEMO0001DEMO0002 이 두 건 지금 어디까지 왔어요?
+    behaviour: [answer]
+    identify: {cargos: 2, stages: [반입신고, 수입신고]}
+    v2_change: "E-7: DEMO0001 반입신고, DEMO0002 수입신고를 모두 읽어야 맞음"
+    trajectory: {must_not: [decline, ask_user]}
+    domain: {stage: 반입신고}
+    route: {must: [], may: [cargo]}
+  - id: R10
+    group: related
+    kind: 식별
+    question: MOCK12345678 화물 인천에 들어왔나요?
+    behaviour: [answer]
+    identify: {cargos: 1, stages: [입항]}
+    v2_change: "E-7: MOCK12345678 입항을 읽어야 맞음"
+    trajectory: {must_not: [decline, ask_user]}
+    domain: {stage: 입항}
+    route: {must: [], may: [cargo]}
+  - id: R11
+    group: related
+    kind: 식별
+    question: 다음 주에 칭다오에서 고추가 와요. 지금 어디쯤 왔어요?
+    behaviour: [guide, choice]
+    trajectory: {must_not: [decline, calc_deadlines]}
+    route: {must: [], may: [cargo]}
+  - id: R12
+    group: related
+    kind: 화물 + 조문
+    question: DEMO0001 언제까지 수입신고 해야 해요?
+    behaviour: [answer]
+    gold: [L001556@20261002#제241조.3항]
+    also_ok: [L001556@20261002#제8조, L001556@20261002#제241조.4항]
+    reference: 보세창고 등에 반입한 날부터 30일 이내에 수입신고를 해야 하므로 [BL1]은 2026-11-26까지 신고해야 한다(관세법 제241조제3항).
+    calc: {deadlines: [{name: 수입신고 기한, due: 2026-11-26}]}
+    trajectory: {must: [calc_deadlines], must_not: [decline, ask_user], order: [[calc_deadlines, get_provision]]}
+    human: true
+    domain: {stage: 반입신고, due: 2026-11-26, article: 관세법 제241조}
+    route: {must: [cargo], may: [law]}
+  - id: R13
+    group: related
+    kind: 화물 + 조문
+    question: DEMO0001 수입신고를 기한을 넘겨서 하면 어떻게 되나요?
+    behaviour: [answer]
+    gold: [L001556@20261002#제241조.4항, L002421@20260227#제247조.1항]
+    also_ok: [L001556@20261002#제241조.3항, L002421@20260227#제247조.2항, A36852@20260224#제34조, L002421@20260227#제248조]
+    reference: 수입신고 기한(관세법 제241조제3항, [BL1]은 2026-11-26)을 넘긴 물품이 관세청장이 정하는 가산세 대상물품이면(관세법 시행령 제248조, 보세화물관리에 관한 고시 제34조제1항 공항·항만 하선(기)장소의 보세구역에 반입된 물품 등) 과세가격의 100분의 2 범위에서 대통령령으로 정하는 금액을 가산세로 징수한다(관세법 제241조제4항). 기한이 지난 날부터 20일 안에 신고하면 과세가격의 1천분의 5, 50일 안이면 1천분의 10, 80일 안이면 1천분의 15, 그 밖에는 1천분의 20이고(관세법 시행령 제247조제1항), 500만원을 넘을 수 없다(같은 조 제2항). [BL1]이 대상물품인지는 반입한 보세구역에 달려 있다.
+    calc: {deadlines: [{name: 수입신고 기한, due: 2026-11-26}]}
+    trajectory: {must: [calc_deadlines, "search_law|get_provision|research"], must_not: [decline, ask_user]}
+    human: true
+    domain: {due: 2026-11-26, article: 관세법 제241조}
+    route: {must: [cargo, law], may: []}
+  - id: R14
+    group: related
+    kind: 화물 + 조문
+    question: DEMO0003 관세는 언제까지 내야 하나요?
+    behaviour: [answer]
+    gold: [L001556@20261002#제9조.1항.1호]
+    also_ok: [L001556@20261002#제9조, L001556@20261002#제8조]
+    reference: 납세신고 수리일부터 15일 이내에 관세를 내야 하므로 [BL1]의 관세 납부기한은 2026-11-17이다(관세법 제9조제1항제1호).
+    calc: {deadlines: [{name: 관세 납부기한, due: 2026-11-17}]}
+    trajectory: {must: [calc_deadlines], must_not: [decline, ask_user], order: [[calc_deadlines, get_provision]]}
+    human: true
+    domain: {stage: 수입신고수리, due: 2026-11-17, article: 관세법 제9조}
+    route: {must: [cargo], may: [law]}
+  - id: R15
+    group: related
+    kind: 화물 + 조문
+    question: TEST87654321 하선신고가 됐다는데 다음에는 무엇을 해야 하나요?
+    behaviour: [answer]
+    gold: [A36852@20260224#제9조.1항, L001556@20261002#제241조.3항]
+    also_ok: [A36852@20260224#제9조, L001556@20261002#제241조.1항, A36852@20260224#제5조.1항, A36852@20260224#제34조.1항.1호.라목]
+    reference: 하선한 화물은 보세구역 운영인이 반입 즉시 반입신고서를 세관장에게 전자문서로 내고(보세화물관리에 관한 고시 제9조제1항), 화주는 반입일부터 30일 이내에 수입신고를 해야 한다(관세법 제241조제3항).
+    trajectory: {must: ["search_law|research|get_provision"], must_not: [decline, ask_user]}
+    domain: {stage: 하선신고}
+    route: {must: [law], may: [cargo]}
+    v3_change: also_ok에 보세화물관리 고시 제34조제1항제1호라목(인천항 하선장소에 반입된 물품의 30일 신고)을 넣었다. 재생 화물의 항만이 인천이다. 화물이 별표 1의 보세구역에 반입되는지는 재생 데이터에 없다는 한계가 있고, 저장된 여섯 실행이 모두 이 단위를 인용했다는 것을 알고 정했다(두 길에 같이 적용된다)
+  # ---- 비관련 10: 도메인 밖 4, 코퍼스에 없는 대상 2, 있는 대상의 없는 항목 2, 기준 시점이 다른 질문 2 ----
+  # 정답 근거가 없다. 인용하면 모두 잘못된 근거로 센다
+  - id: U01
+    group: unrelated
+    kind: 도메인 밖
+    question: 오늘 서울 날씨 어때요?
+    behaviour: [decline]
+    trajectory: {must: [decline], must_not: [search_law, research, lookup_cargo], max_calls: 2}
+    route: {must: [], may: []}
+  - id: U02
+    group: unrelated
+    kind: 도메인 밖
+    question: 파이썬으로 엑셀 파일 두 개를 합치는 코드를 짜 줘.
+    behaviour: [decline]
+    trajectory: {must: [decline], must_not: [search_law, research, lookup_cargo], max_calls: 2}
+    route: {must: [], may: []}
+  - id: U03
+    group: unrelated
+    kind: 도메인 밖
+    question: 미국 주식 양도소득세는 어떻게 신고해요?
+    behaviour: [decline]
+    trajectory: {must: [decline], must_not: [search_law, research, lookup_cargo], max_calls: 2}
+    route: {must: [], may: []}
+  - id: U04
+    group: unrelated
+    kind: 도메인 밖
+    question: 우리 회사 법인세 신고 기한이 언제예요?
+    behaviour: [decline]
+    trajectory: {must: [decline], must_not: [search_law, research, lookup_cargo], max_calls: 2}
+    route: {must: [], may: []}
+  - id: U05
+    group: unrelated
+    kind: 코퍼스에 없는 대상
+    question: 건고추를 수입할 때 식물검역은 어떻게 받나요?
+    behaviour: [not_found, partial, guide]
+    v2_change: "E-4: unsupported를 not_found로 바꿈. 근거 없는 답 가운데 정직한 없음만 맞고, 지어낸 답은 틀림"
+    # [왜] 다른 법령의 요건을 세관장에게 증명한다는 관세법 제226조를 든 부분 답은 틀린 인용이 아니다
+    also_ok: [L001556@20261002#제226조]
+    trajectory: {must_not: [decline]}
+    route: {must: [law], may: []}
+  - id: U06
+    group: unrelated
+    kind: 코퍼스에 없는 대상
+    question: 블루투스 스피커를 수입하려면 전파인증을 어떻게 받아야 하나요?
+    behaviour: [not_found, partial, guide]
+    v2_change: "E-4: unsupported를 not_found로 바꿈. 근거 없는 답 가운데 정직한 없음만 맞고, 지어낸 답은 틀림"
+    # [왜] U05와 같다 (관세법 제226조)
+    also_ok: [L001556@20261002#제226조]
+    trajectory: {must_not: [decline]}
+    route: {must: [law], may: []}
+  - id: U07
+    group: unrelated
+    kind: 있는 대상의 없는 항목
+    question: 관세법 제999조에 뭐라고 되어 있어요?
+    behaviour: [not_found, partial]
+    v2_change: "E-4: unsupported를 not_found로 바꿈. 근거 없는 답 가운데 정직한 없음만 맞고, 지어낸 답은 틀림"
+    trajectory: {must_not: [decline]}
+    route: {must: [law], may: []}
+  - id: U08
+    group: unrelated
+    kind: 있는 대상의 없는 항목
+    question: 관세법 제241조 제9항 내용을 알려 주세요.
+    behaviour: [not_found, partial]
+    v2_change: "E-4: unsupported·answer를 빼고 not_found를 넣음. 부분 답이 아니면 정직한 없음만 맞음(제9항을 지어낸 답을 가를 수 없어서). 제241조 다른 항 인용은 여전히 틀린 근거가 아님"
+    # [왜] 제241조는 제6항까지다. 다른 항을 들어 "제9항은 없다"고 답하는 것은 틀리지 않았다
+    also_ok: [L001556@20261002#제241조]
+    trajectory: {must_not: [decline]}
+    route: {must: [law], may: []}
+  - id: U09
+    group: unrelated
+    kind: 기준 시점이 다른 질문
+    question: 2015년 1월에 수입한 물건이면 그때 수입신고 기한은 며칠이었어요?
+    behaviour: [not_found, partial]
+    v2_change: "E-4: unsupported를 not_found로 바꿈. 근거 없는 답 가운데 정직한 없음만 맞고, 지어낸 답은 틀림"
+    trajectory: {must_not: [decline]}
+    route: {must: [law], may: []}
+  - id: U10
+    group: unrelated
+    kind: 기준 시점이 다른 질문
+    question: 2030년부터 바뀌는 수입식품 검사 제도를 알려 주세요.
+    behaviour: [not_found, partial]
+    v2_change: "E-4: unsupported를 not_found로 바꿈. 근거 없는 답 가운데 정직한 없음만 맞고, 지어낸 답은 틀림"
+    trajectory: {must_not: [decline]}
+    route: {must: [law], may: []}
+  # ---- 막힘 행동 5: 정답이 선택지 제시 또는 부분 답 ----
+  - id: B01
+    group: blocked
+    kind: 번호를 둘로 읽을 수 있음
+    question: MOCK12345678TEST87654321 이 화물 지금 어디쯤이에요?
+    behaviour: [choice]
+    trajectory: {must_not: [decline]}
+    route: {must: [], may: [cargo]}
+  - id: B02
+    group: blocked
+    kind: 도구 고장
+    question: 세관 검사대상으로 선별되면 검사는 어디서 받나요?
+    behaviour: [partial]
+    # [왜] 이 실행에서는 법령 검색과 조문 조회를 일부러 끊는다. 지어낸 답 대신 부분 답이 나와야 한다
+    fault: search
+    trajectory: {must_not: [decline]}
+    route: {must: [law], may: []}
+  - id: B03
+    group: blocked
+    kind: 사실 부족
+    question: 예전에 수입했던 건고추를 다시 들여오면 이번엔 서류검사만 받나요?
+    behaviour: [choice, answer]
+    # [왜] 묻지 않고 답했다면 코드 판정이 "사실 부족"이어야 한다 (사실을 지어내지 않았다)
+    calc: {reimport: 사실 부족}
+    trajectory: {must: ["ask_user|check_reimport"], must_not: [decline]}
+    route: {must: [], may: [item, law]}
+  - id: B04
+    group: blocked
+    kind: 번호 없음
+    question: 제 화물 언제까지 수입신고 해야 해요? 번호는 아직 몰라요.
+    behaviour: [guide, choice]
+    trajectory: {must_not: [decline]}
+    route: {must: [], may: [cargo, law]}
+  - id: B05
+    group: blocked
+    kind: 조회 실패
+    question: NOPE0001 화물 수입신고 기한이 언제예요?
+    behaviour: [guide, choice, partial]
+    trajectory: {must_not: [decline]}
+    route: {must: [cargo], may: []}
