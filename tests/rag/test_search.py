@@ -8,7 +8,7 @@ from marvia.rag import search as search_module
 from marvia.rag.index import index_units
 from marvia.rag.mcp import build_server, mcp_ranked
 from marvia.rag.models import SearchFailed
-from marvia.rag.search import hybrid_search, rrf
+from marvia.rag.search import hybrid_search, leg_search, rrf
 
 
 def test_rrf_score_formula():
@@ -220,3 +220,24 @@ def test_direct_and_mcp_paths_both_carry_the_named_article(db, make_unit, fake_e
     got = direct("시험법 제45조 조문 알려줘", AS_OF)
     assert "LTEST@20261002#제45조" in [e.unit_id for e in got]
     assert mcp_ranked(build_server(direct))("시험법 제45조 조문 알려줘", AS_OF) == got
+
+
+def test_one_leg_alone_can_be_searched_for_measurement(db, make_unit, fake_embed, narrow):
+    units = [
+        make_unit("제1조", "보세구역 반입"),  # 가짜 벡터로는 "보세 반입"에 가장 가깝다
+        make_unit("제2조", "정밀검사를 면제할 수 있다"),  # 낱말 "정밀검사"가 있다
+    ]
+    index_units(db, units, fake_embed)
+    query = "정밀검사 보세 반입"
+    assert [e.unit_id for e in leg_search(db, query, fake_embed, AS_OF, "vector")] == ["LTEST@20261002#제1조"]
+    assert [e.unit_id for e in leg_search(db, query, fake_embed, AS_OF, "keyword")] == [
+        "LTEST@20261002#제2조"
+    ]
+    # [주의] 한 다리만 재는 길에는 조문 직접 조회와 그래프가 붙지 않는다. 그 다리의 순위 그대로다
+    named = leg_search(db, "시험법 제2조 보세 반입", fake_embed, AS_OF, "vector")
+    assert [(e.unit_id, e.origin) for e in named] == [("LTEST@20261002#제1조", "hybrid")]
+    assert (
+        leg_search(db, "정밀검사", fake_embed, date(2020, 1, 1), "keyword") == []
+    )  # 기준 날짜는 그대로 건다
+    with pytest.raises(ValueError):
+        leg_search(db, query, fake_embed, AS_OF, "rrf")

@@ -75,6 +75,39 @@ def hybrid_search(
         raise
 
 
+def leg_search(conn: psycopg.Connection, query: str, embed: Embed, as_of: date, leg: str) -> list[Evidence]:
+    """다리 하나만의 후보(leg는 "vector" 또는 "keyword"). 측정용이다 (scripts/retrieval_check.py).
+
+    [주의] 그 다리의 순위 그대로다. RRF, 그래프 확장, 조문 직접 조회는 붙지 않는다. score는 0이다.
+    """
+    cfg = load_rules("rag")["search"]
+    try:
+        if leg == "vector":
+            ids = [row[0] for row in conn.execute(VECTOR_SQL, (as_of, embed([query])[0], cfg["vector_k"]))]
+        elif leg == "keyword":
+            terms = " OR ".join(keywords(query))
+            found = conn.execute(KEYWORD_SQL, (as_of, terms, terms, cfg["keyword_k"])) if terms else []
+            ids = [row[0] for row in found]
+        else:
+            raise ValueError(f"모르는 다리: {leg}")
+        rows = {row[0]: row for row in conn.execute(ROWS_SQL, (ids,))}
+    except psycopg.Error:
+        conn.rollback()  # [왜] hybrid_search와 같다: 실패한 트랜잭션을 남기지 않는다
+        raise
+    return [
+        Evidence(
+            unit_id=u,
+            law_name=rows[u][1],
+            heading=rows[u][2],
+            effective=rows[u][3],
+            source_url=rows[u][4],
+            text=rows[u][5],
+            score=0.0,
+        )
+        for u in ids
+    ]
+
+
 def _named_provisions(conn: psycopg.Connection, query: str, as_of: date) -> list[Evidence]:
     """질의가 지목한 조문의 단위들(origin="provision"). 지목하지 않았거나 꺼져 있으면 빈 목록."""
     cfg = load_rules("rag")["search"]["named_article"]
