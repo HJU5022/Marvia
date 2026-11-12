@@ -517,3 +517,28 @@ def test_the_list_of_gathered_provisions_is_cut_to_the_rule(agent_deps, monkeypa
     )
     graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("y1b") | {"callbacks": [inputs]})
     assert UNIT.unit_id not in inputs.calls[4]
+
+
+def test_a_visit_that_finds_only_provisions_already_held_says_so_in_its_result(agent_deps):
+    graph = sup_graph(
+        agent_deps,
+        hand("law", "수입신고 기한의 근거 조문", "h1"),
+        call("search_law", {"query": "수입신고 기한"}, "s1"),
+        done("관세법 제241조제3항이 30일을 정해요."),
+        hand("law", "수입신고 기한 조문을 다시 확인", "h2"),
+        call("get_provision", {"label": "관세법 제241조제3항"}, "p1"),  # 이미 있는 조문을 다시 찾는다
+        done("같은 조문이에요."),
+        hand("cargo", "[BL1] 단계 확인", "h3"),
+        done("반입신고 단계예요."),  # 찾아보지 않은 서브에이전트
+        done(),
+        write=lambda prompt: CITING,
+    )
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("y2"))
+    results = [m.text for m in graph.get_state(cfg("y2")).values["messages"] if m.type == "tool"]
+    held = f"[{UNIT.unit_id}] {UNIT.heading}"
+    assert results[0] == f"법령 조사 결과: 관세법 제241조제3항이 30일을 정해요.\n{held}"
+    # [왜] 새로 찾은 조문만 붙이면 이미 있는 조문을 다시 찾은 방문은 "못 찾음"처럼 읽혀 또 넘기게 된다
+    note = load_rules("agent")["supervisor"]["nothing_new"]
+    assert results[1] == f"법령 조사 결과: 같은 조문이에요.\n{note}\n{held}"
+    # 찾아보지 않은 방문에는 붙이지 않는다
+    assert results[2] == "화물·기한 결과: 반입신고 단계예요."

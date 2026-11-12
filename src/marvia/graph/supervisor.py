@@ -182,9 +182,14 @@ def sub_node(name: str, sub, today: Callable[[], date]):
         had = {e["unit_id"] for e in state.get("evidence", [])}
         lines = [f"{label} 결과: {text or '결과 글이 없어요'}"]
         # [왜] 수퍼바이저에게는 새로 찾은 조문의 unit_id와 제목만 준다. 본문은 작성자가 evidence 칸에서 읽는다
-        lines += [
-            f"[{e['unit_id']}] {e['heading']}" for e in out.get("evidence", []) if e["unit_id"] not in had
-        ]
+        found = [e for e in out.get("evidence", []) if e["unit_id"] not in had]
+        lines += [f"[{e['unit_id']}] {e['heading']}" for e in found]
+        called = [c["name"] for m in out["messages"] for c in getattr(m, "tool_calls", None) or []]
+        if not found and had and set(called) & set(spec["lookup_tools"]):
+            # [왜] 찾아봤는데 새 단위가 없으면 "이미 있다"고 알린다. 줄이 없으면 못 찾은 것처럼 읽혀
+            #      수퍼바이저가 같은 일을 또 넘긴다 (11-13 실측: 같은 서브에이전트에 세 번 넘김)
+            kept = state.get("evidence", [])[: spec["max_held_in_result"]]
+            lines += [spec["nothing_new"], *(f"[{e['unit_id']}] {e['heading']}" for e in kept)]
         ack = next(m for m in reversed(values["messages"]) if m.type == "tool" and m.name == "handoff")
         # [왜] 넘김 확인 글과 같은 id로 돌려주면 add_messages가 그 글을 결과 글로 바꾼다. 수퍼바이저 기록에는
         #      "도구 호출 → 도구 결과" 짝만 남고, 서브에이전트 안의 메시지는 들어오지 않는다
@@ -192,7 +197,6 @@ def sub_node(name: str, sub, today: Callable[[], date]):
         # [왜] 부모 공책 칸은 덮어쓰기다. 서브에이전트는 받은 값에 자기 것을 합친 전체 값을 돌려주므로
         #      그대로 넣으면 된다(부모 칸에 더하기 reducer를 달면 받은 값이 두 번 더해진다, 11-12 사본 확인)
         update: dict[str, Any] = {key: out[key] for key in SHARED if key in out}
-        called = [c["name"] for m in out["messages"] for c in getattr(m, "tool_calls", None) or []]
         visits = [*values.get("visits", []), {"sub": name, "tools": called}]
         return update | {"messages": [result], "route": "", "task": "", "visits": visits}
 
