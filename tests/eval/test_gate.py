@@ -1,10 +1,12 @@
 """CI 평가 문 시험 (done 3.6). 저장소에 둔 실행 결과(파생 값)를 지금 코드로 다시 채점해 바닥값과 비교한다."""
 
 import json
+import math
 import subprocess
 import sys
 
 import pytest
+import yaml
 
 from marvia.eval.dataset import ROOT, SETS, file_sha256, load_set
 from marvia.eval.metrics import (
@@ -14,6 +16,7 @@ from marvia.eval.metrics import (
     gate_uncovered,
     gate_violations,
     summarize,
+    worst_run,
 )
 from marvia.tools.rules import load_rules
 
@@ -171,3 +174,65 @@ def test_floors_command_refuses_a_result_that_was_run_on_another_set_file():
         text=True,
     )
     assert done.returncode != 0 and "평가셋" in done.stderr + done.stdout
+
+
+def test_worst_run_takes_the_worst_value_of_each_metric_over_the_runs():
+    runs = [
+        {"mrr": {"value": 0.38, "n": 12}, "wrong_evidence": {"value": 0.20, "n": 51}, "errors": 0},
+        {"mrr": {"value": 0.28, "n": 12}, "wrong_evidence": {"value": 0.40, "n": 58}, "errors": 0},
+        {"mrr": {"value": None, "n": 0}, "wrong_evidence": {"value": 0.26, "n": 43}, "errors": 0},
+    ]
+    # 높을수록 좋은 지표는 가장 낮은 값, 낮을수록 좋은 지표는 가장 높은 값. 분모는 그 실행의 것이다.
+    # 못 잰 실행은 건너뛴다
+    worst = worst_run(runs, ["mrr"], ["wrong_evidence"])
+    assert worst["mrr"] == {"value": 0.28, "n": 12}
+    assert worst["wrong_evidence"] == {"value": 0.40, "n": 58}
+    never = worst_run([{"mrr": {"value": None, "n": 0}}], ["mrr"], [])
+    assert never["mrr"] == {"value": None, "n": 0}
+
+
+TUNED = [f"eval/results/agent-claude-haiku-5-5-t{n}.json" for n in (1, 2, 3)]
+
+
+def floors_command(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "scripts/run_eval.py", "floors", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_floors_from_several_runs_sit_one_item_below_the_worst_run_and_every_run_passes_them():
+    done = floors_command(*TUNED)
+    assert done.returncode == 0, done.stderr
+    gate = yaml.safe_load(done.stdout)["gate"]
+    # [왜] 한 실행에서 지은 바닥은 실행 사이 흔들림보다 좁아 같은 커밋의 다른 실행이 걸렸다 (R-089).
+    #      문이 채점하는 파일은 첫 파일이고, 바닥은 모든 실행 가운데 가장 나쁜 값에서 한 문항만큼 둔다
+    assert gate["file"] == TUNED[0] and "실행 3번" in done.stdout
+    items = {i.id: i for i in load_set(SETS["v2"]).items}
+    worst = {"correct_citation": 1.0, "recall_at_8": 1.0}
+    for path in TUNED:
+        result = json.loads((ROOT / path).read_text(encoding="utf-8"))
+        summary = summarize(result["rows"], items, result["meta"]["k"])
+        assert gate_violations(summary, gate["floors"]) == []
+        worst = {key: min(value, summary[key]["value"]) for key, value in worst.items()}
+    for key, value in worst.items():
+        assert gate["floors"][key]["min"] == math.floor(round((value - 1 / 12) * 100, 6)) / 100
+
+
+def test_floors_from_several_runs_refuse_mixed_runs_and_keep_the_ruling_guard():
+    mixed = floors_command(TUNED[0], "eval/results/agent-claude-haiku-5-5-v2r1.json")
+    assert mixed.returncode != 0 and "같은 설정" in mixed.stderr  # 커밋이 다른 실행은 한 문으로 묶지 않는다
+    rules = ROOT / "rules" / "eval.yaml"
+    before = rules.read_text(encoding="utf-8")
+    try:
+        # [왜] 여러 실행으로 지어도 바닥이 내려가면 판정 이유 없이는 쓰지 못한다 (R-060)
+        loose = floors_command(*TUNED, "--write")
+    finally:
+        # [왜] 거절이 깨지면 진짜 규칙 파일을 덮어쓴다. 되돌려 두어 단언이 실패해도 파일은 온전하다
+        after = rules.read_text(encoding="utf-8")
+        rules.write_text(before, encoding="utf-8")
+    assert loose.returncode != 0 and "--ruling" in loose.stderr
+    assert after == before

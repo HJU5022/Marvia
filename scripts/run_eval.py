@@ -7,7 +7,8 @@ run은 돈이 든다.
       uv run python scripts/run_eval.py report [--set v1|v2] <결과.json> ...   (키 없음: 요약 표)
       uv run python scripts/run_eval.py sheet <결과.json> <결과.raw.json> --out <채점지.md>   (사람 채점 10건)
       uv run python scripts/run_eval.py agree eval/human_v1.yaml <ragas 점수.json>   (사람·LLM 채점 일치율)
-      uv run python scripts/run_eval.py floors eval/results/<결과.json> --write   (CI 문 바닥값)
+      uv run python scripts/run_eval.py floors eval/results/<결과.json> [<다른 실행.json> ...] --write
+          (CI 문 바닥값. 문이 채점하는 파일은 첫 파일, 바닥은 실행들 가운데 가장 나쁜 값에서 한 문항만큼)
       uv run python scripts/run_eval.py domain-prompts --out <저장소 밖 폴더>   (범용 도구에게 줄 질문 글)
       uv run python scripts/run_eval.py domain <도구 폴더> ... --marvia <결과.raw.json>   (범용 도구 비교 표)
 run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 키도 DB도 쓰지 않는다.
@@ -32,6 +33,8 @@ import yaml
 
 from marvia.eval.dataset import ROOT, SETS, file_sha256, load_set
 from marvia.eval.metrics import (
+    HIGHER,
+    LOWER,
     agreement,
     cargo_count_lines,
     compare_table,
@@ -49,6 +52,7 @@ from marvia.eval.metrics import (
     summarize,
     unscored,
     with_base_behaviour,
+    worst_run,
 )
 from marvia.eval.run import (
     estimate,
@@ -112,7 +116,12 @@ agree.add_argument("scores", help="scripts/ragas_score.py가 쓴 점수 파일")
 gate = sub.add_parser(
     "floors", help="저장소에 둔 결과 파일로 CI 문의 바닥값을 rules/eval.yaml 모양으로 찍는다"
 )
-gate.add_argument("result", help="저장소 안의 결과 파일 (예: eval/results/agent-claude-haiku-5-5.json)")
+gate.add_argument(
+    "results",
+    nargs="+",
+    help="저장소 안의 결과 파일. 첫 파일이 문이 채점하는 파일이고, 여럿이면(같은 설정의 실행들) "
+    "지표마다 가장 나쁜 값에서 바닥을 짓는다",
+)
 gate.add_argument(
     "--set", choices=list(SETS), help="이 문 파일을 채점할 평가셋 판. 없으면 rules/eval.yaml gate.set"
 )
@@ -155,17 +164,29 @@ if args.command == "domain":
     raise SystemExit(0)
 
 if args.command == "floors":
-    result = json.loads(Path(args.result).read_text(encoding="utf-8"))
+    args.result = args.results[0]  # 문이 채점하는 파일. 실행 전에 정해 둔 첫 실행이다
+    runs = [json.loads(Path(f).read_text(encoding="utf-8")) for f in args.results]
+    result = runs[0]
     set_name = args.set or load_rules("eval").get("gate", {}).get("set", "v1")
     # [왜] 다른 평가셋 파일에서 돌린 결과를 이 판의 정답으로 채점하면 바닥값이 엉뚱하다
-    if result["meta"]["set_sha256"] != file_sha256(SETS[set_name]):
-        raise SystemExit(
-            f"{args.result}는 평가셋 {set_name} 파일에서 돌린 결과가 아니다 (--set으로 판을 고른다)"
-        )
-    summary = summarize(
-        result["rows"], {i.id: i for i in load_set(SETS[set_name]).items}, result["meta"]["k"]
-    )
-    new_floors = floors(summary, result["meta"]["k"], set_name)
+    for path, run_result in zip(args.results, runs, strict=True):
+        if run_result["meta"]["set_sha256"] != file_sha256(SETS[set_name]):
+            raise SystemExit(
+                f"{path}는 평가셋 {set_name} 파일에서 돌린 결과가 아니다 (--set으로 판을 고른다)"
+            )
+    try:
+        # [왜] 길·모델·커밋·그래프·검색 길·LLM 길이 같은 실행끼리만 한 문으로 묶는다. 무효 실행도 거절한다
+        if len(spread_groups(runs)) != 1:
+            raise ValueError("같은 설정(길, 모델, 커밋, 그래프, 검색 길)의 실행만 함께 넘긴다")
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
+    k = result["meta"]["k"]
+    set_items = {i.id: i for i in load_set(SETS[set_name]).items}
+    summaries = [summarize(r["rows"], set_items, k) for r in runs]
+    # [왜] 한 실행에서 지은 바닥은 실행 사이 흔들림보다 좁다 (R-089). 실행이 여럿이면 지표마다 가장 나쁜
+    #      값에서 한 문항만큼 둔다. 하나뿐이면 그 실행의 값 그대로다
+    worst = summaries[0] | worst_run(summaries, [*HIGHER, f"recall_at_{k}"], [*LOWER, "false_not_found"])
+    new_floors = floors(worst, k, set_name)
     old_gate = load_rules("eval").get("gate", {})
     try:
         block = {
@@ -180,8 +201,9 @@ if args.command == "floors":
             "gate": {"file": args.result, "set": set_name, "floors": new_floors}
         }  # 찍기만 할 때는 막지 않는다
     mark = "# CI 문 (done 3.6)"  # rules/eval.yaml에서 gate 묶음을 알아보는 표식
+    basis = "기준 실행" if len(runs) == 1 else f"실행 {len(runs)}번 가운데 지표마다 가장 나쁜 값"
     text = (
-        f"{mark}: 기준 실행(커밋 {result['meta']['commit']})에서 한 문항만큼 둔 바닥·천장값.\n"
+        f"{mark}: {basis}(커밋 {result['meta']['commit']})에서 한 문항만큼 둔 바닥·천장값.\n"
         "# 새 기준 실행을 커밋할 때만 다시 만든다. 결과를 보고 값을 낮추지 않는다\n"
         + yaml.safe_dump(block, allow_unicode=True, sort_keys=False)
     )

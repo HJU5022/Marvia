@@ -393,6 +393,20 @@ def floors(summary: dict, k: int, set_name: str = "v1") -> dict:
     return out
 
 
+def worst_run(summaries: list[dict], higher: list[str], lower: list[str]) -> dict:
+    """여러 실행 요약에서 지표마다 가장 나쁜 값({"value", "n"})을 고른다. floors에 넘겨 바닥값을 짓는다.
+
+    [왜] 한 실행에서 지은 바닥은 실행 사이 흔들림보다 좁아, 같은 커밋의 다른 실행이 문에 걸렸다 (R-089).
+    higher는 높을수록 좋은 지표(가장 낮은 값을 고른다), lower는 낮을수록 좋은 지표(가장 높은 값)다.
+    못 잰(None) 실행은 건너뛰고, 모든 실행이 못 쟀으면 못 잰 값으로 둔다. 분모(n)는 그 값을 낸 실행의 것이다.
+    """
+    out = {}
+    for key, pick in [(k, min) for k in higher] + [(k, max) for k in lower]:
+        measured = [s[key] for s in summaries if s.get(key) and s[key]["value"] is not None]
+        out[key] = pick(measured, key=lambda m: m["value"]) if measured else {"value": None, "n": 0}
+    return out
+
+
 def loosened(old: dict, new: dict) -> list[dict]:
     """바닥이 내려갔거나 천장이 올라갔거나 사라진 지표를 {metric, old, new}로 돌려준다."""
     out = []
