@@ -502,3 +502,12 @@ def test_run_meta_names_the_llm_path_and_the_cli_version(monkeypatch):
     monkeypatch.setattr("marvia.cli_model.subprocess.run", lambda *args, **kwargs: Done())
     assert llm_meta("cli") == {"llm_via": "cli", "llm_cli": "2.1.322 (Claude Code)"}
     assert llm_meta("api") == {"llm_via": "api", "llm_cli": None}
+
+
+def test_row_counts_tool_calls_by_name(agent_deps):
+    calls = (("search_law", {"query": "수입신고 기한"}), ("search_law", {"query": "가산세"}))
+    deps = agent_deps(model=model(*calls), write=lambda prompt: CITING)
+    row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
+    assert row["tool_counts"] == {"search_law": 2}
+    quiet, _ = evaluate_item(agent_deps(model=model()), item("수입신고 기한은요?"), "agent", TODAY, PRICES)
+    assert quiet["tool_counts"] == {}

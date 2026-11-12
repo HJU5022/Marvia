@@ -172,6 +172,8 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "mrr": mrr(rows, items),
         # [왜] 계획자 길은 도구를 부르지 않는다. 에이전트 길 줄이 없으면 None이다
         "trajectory": trajectory_pass(rows, items, path["never"], path["max_calls"]),
+        # [왜] 오류 0만으로는 도구 길이 돌았는지 알 수 없다. 값은 비율이 아니라 문항 수다
+        "gold_without_search": gold_without_search(rows, items, path["search_tools"]),
         # 11-02 RAG 관찰 세 가지 (done 3.3). 근거 채점·고쳐 쓰기 기록(rag)과 검색 근거 순서로 센다
         "stray_articles": stray_articles(rows, items),
         "top_article_share": top_article_share(rows, seen["top"], seen["alert"]),
@@ -231,7 +233,7 @@ def compare_table(results: list[dict]) -> str:
         ["길", "모델"]
         + [name for _, name in TABLE]
         + ["근거 있는 답", "LLM 호출 중앙값·최대", "상한 넘음", "비용 합·문항당 최대($)", "시간 중앙값(초)"]
-        + ["오류", "새는 번호"]
+        + ["오류", "새는 번호", "근거 문항 중 검색·조회 0"]
     )
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for result in results:
@@ -245,6 +247,8 @@ def compare_table(results: list[dict]) -> str:
         cells += [f"{summary['llm_calls_median']}·{summary['llm_calls_max']}", summary["cap_breaches"]]
         cells += [f"{summary['cost_usd']}·{summary['cost_per_item_max']}", summary["seconds_median"]]
         cells += [summary["errors"], summary["leaks"]]
+        quiet = summary["gold_without_search"]
+        cells.append("-" if quiet["value"] is None else f"{quiet['value']} ({quiet['n']})")
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
     return "\n".join(lines)
 
@@ -432,6 +436,16 @@ def trajectory_pass(rows: list[dict], items: dict[str, Item], never: list[str], 
         not trajectory_violations(r["tools"], items[r["id"]].trajectory, never, max_calls) for r in picked
     ]
     return _mean([float(f) for f in flags])
+
+
+def gold_without_search(rows: list[dict], items: dict[str, Item], search_tools: list[str]) -> dict:
+    """정답 근거가 있는 문항 가운데 검색·조회 도구를 한 번도 부르지 않고 끝난 문항 수(value)와 그 문항들.
+
+    에이전트 길에서 오류 없이 끝난 줄만 본다(n). 0이 아니면 도구 길이 돌았는지 먼저 확인한다.
+    """
+    picked = [r for r in rows if r.get("loop") == "agent" and not r.get("error") and items[r["id"]].gold]
+    ids = sorted(r["id"] for r in picked if not set(r["tools"]) & set(search_tools))
+    return {"value": len(ids) if picked else None, "n": len(picked), "ids": ids}
 
 
 def _article(unit_id: str) -> str:

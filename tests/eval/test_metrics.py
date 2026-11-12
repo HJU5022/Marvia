@@ -18,6 +18,7 @@ from marvia.eval.metrics import (
     false_sufficient,
     floors,
     free_answer_score,
+    gold_without_search,
     human_faithful,
     matches,
     mrr,
@@ -582,3 +583,26 @@ def test_runs_measured_through_the_cli_are_never_averaged_with_api_runs():
         spread_groups([api, cli])
     assert len(spread_groups([cli, cli])) == 1
     assert "LLM cli" in spread_table([cli], "aa", {}) and "LLM api" in spread_table([api], "aa", {})
+
+
+def test_gold_items_that_never_searched_are_counted_so_a_quiet_tool_failure_shows():
+    # [왜] 도구 길이 조용히 죽은 실행은 오류 0으로 끝났다(11-12).
+    #      근거가 있어야 할 문항이 검색·조회 없이 끝난 수를 센다
+    rows = [
+        row("R1", loop="agent", tools=["write_todos"]),  # 정답 근거 문항인데 검색·조회 0
+        row("R2", loop="agent", tools=["lookup_cargo", "get_provision"]),  # 조문 조회도 조회다
+        row("S1", loop="agent", tools=[]),  # 정답 근거 없는 문항: 세지 않는다
+        row("B1", loop="agent", tools=[]),
+    ]
+    assert gold_without_search(rows, ITEMS, ["search_law", "get_provision", "research"]) == {
+        "value": 1,
+        "n": 2,
+        "ids": ["R1"],
+    }
+    # 오류 줄(errors가 센다)과 계획자 길(도구를 부르지 않는다)은 뺀다. 줄이 없으면 못 잰 것이다
+    others = [row("R1", loop="agent", tools=[], error="CLIFailed"), row("R2", loop="planner", tools=[])]
+    assert gold_without_search(others, ITEMS, ["search_law"]) == {"value": None, "n": 0, "ids": []}
+    summary = summarize(rows, ITEMS, 8)
+    assert summary["gold_without_search"]["value"] == 1
+    result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summary}
+    assert "근거 문항 중 검색·조회 0" in compare_table([result])

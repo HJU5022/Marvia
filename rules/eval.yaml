@@ -83,6 +83,9 @@ trajectory:
   # 문항에 상한이 없을 때의 도구 호출 수 상한(할 일 갱신 write_todos 포함). [추정] 시작값이다:
   # 한 차례 검색 상한 3(rules/agent.yaml max_searches)에 화물 조회·계산·조문 조회·할 일 갱신을 더해 넉넉히 둔다
   max_calls: 12
+  # 법령 근거를 찾는 도구(검색, 조문 조회, 조사 서브에이전트). 정답 근거가 있는 문항이 이 가운데 하나도
+  # 부르지 않고 끝난 수를 요약에 낸다. [왜] 도구 길이 조용히 죽은 실행이 오류 0으로 끝난 일이 있었다 (11-12)
+  search_tools: [search_law, get_provision, research]
 
 # 11-02 RAG 관찰 세 가지를 재는 값 (done 3.3)
 rag_observations:

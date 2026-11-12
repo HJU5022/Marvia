@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date
@@ -253,6 +254,7 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
     kind = behaviour(values, pauses)
     calc = values.get("calc") or {}
     messages = values.get("messages", [])
+    tools = [c["name"] for m in messages for c in getattr(m, "tool_calls", None) or []]
     numbers = [n for n in values.get("mask_map", {}).values() if n]
     return {
         "behaviour": kind,
@@ -271,7 +273,10 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
         # [왜] 붙여 쓴 번호를 몇 건으로 읽었나(R09)와 찾은 단계. 번호는 남기지 않는다
         "cargo_count": len(values.get("cargos", [])),
         "stages": [c["facts"]["stage"] for c in values.get("cargos", []) if c.get("facts")],
-        "tools": [c["name"] for m in messages for c in getattr(m, "tool_calls", None) or []],
+        "tools": tools,
+        # [왜] 도구 길이 실제로 돌았는지 줄만 보고 알 수 있게 이름별 호출 수를 남긴다.
+        #      [주의] 조사 서브에이전트 안의 호출은 여기 없다. research 한 번으로 보인다
+        "tool_counts": dict(Counter(tools)),
         "plan": [step["action"] for step in values.get("plan", [])] if loop == "planner" else [],
         "llm_calls": values.get("llm_calls"),
         "failed": [f"{t['tool']}: {t['message']}" for t in values.get("failed_tools", [])],
@@ -354,6 +359,7 @@ def evaluate_item(
             "cargo_count": 0,
             "stages": [],
             "tools": [],
+            "tool_counts": {},
             "plan": [],
         }
         # [왜] 죽은 실행도 그때까지 LLM 입력에 실제 번호가 갔는지 본다.
