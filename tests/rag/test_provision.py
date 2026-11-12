@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from marvia.rag.index import index_units
-from marvia.rag.provision import find_provision, parse_label
+from marvia.rag.provision import find_provision, named_labels, parse_label
 
 
 @pytest.mark.parametrize(
@@ -67,3 +67,29 @@ def test_find_provision_reads_annex_labels_down_to_the_sub_items(db, make_unit, 
         "LTEST@20261002#별표9.2호.가목.12).가)",
         "LTEST@20261002#별표9.2호.가목.7)",
     ]
+
+
+LAWS = ["시험 특별법", "시험 특별법 시행규칙", "관세법", "관세법 시행령"]
+
+
+@pytest.mark.parametrize(
+    ("query", "labels"),
+    [
+        # 검색 전용 평가셋의 질의 틀 네 가지
+        ("관세법 시행령 제216조의6 내용", ["관세법 시행령 제216조의6"]),
+        ("관세법 제241조", ["관세법 제241조"]),
+        ("시험 특별법 시행규칙 제18조에는 무엇이 규정되어 있나요?", ["시험 특별법 시행규칙 제18조"]),
+        ("시험 특별법 제45조 조문 알려줘", ["시험 특별법 제45조"]),
+        # 띄어쓰기가 달라도 색인의 이름으로 돌려준다. "제9조의 규정"의 "의"는 조 번호가 아니다
+        ("관세법시행령  제 5 조 의 2 와 관세법 제9조의 규정", ["관세법 시행령 제5조의2", "관세법 제9조"]),
+        ("관세법 제241조제3항 가산세", ["관세법 제241조"]),  # 항·호는 떼고 조문으로 찾는다
+        ("관세법 제241조와 관세법 제241조", ["관세법 제241조"]),  # 같은 조문은 한 번만
+        # 조 번호가 없거나, 색인에 없는 법령이거나, 다른 법령 이름의 끝부분일 뿐이면 지목이 아니다
+        ("관세법 수입신고 기한", []),
+        ("제241조 내용", []),
+        ("식품위생법 제5조", []),
+        ("신관세법 제5조", []),
+    ],
+)
+def test_named_labels_finds_law_plus_article_inside_a_query(query, labels):
+    assert named_labels(query, LAWS) == labels

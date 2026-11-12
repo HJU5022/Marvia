@@ -53,6 +53,37 @@ def parse_label(label: str) -> tuple[str, str] | None:
     return None
 
 
+# 글 안에 조 번호가 있는가. [왜] 없으면 법령 이름 목록을 읽지도 않는다 (rag/search.py)
+ARTICLE_HINT = re.compile(r"제\s*\d+\s*조")
+
+
+def named_labels(query: str, law_names: list[str]) -> list[str]:
+    """검색 질의 안의 "법령 이름 + 제N조(의M)"를 find_provision에 넘길 이름표로 다듬어 돌려준다 (나온 순서).
+
+    입력: query=검색 질의 글, law_names=색인에 있는 법령 이름들.
+    출력: "관세법 시행령 제216조의6" 꼴의 이름표 목록. 조문을 지목하지 않은 질의면 빈 목록.
+    주의: 법령 이름은 색인의 이름과 띄어쓰기만 달라도 맞추고, 조 번호 바로 앞에 있어야 한다.
+          항·호는 떼고 조문까지만 본다. "시행규칙 제5조"처럼 줄인 이름은 어느 법령인지 몰라 읽지 않는다.
+    """
+    if not law_names or not ARTICLE_HINT.search(query):
+        return []
+    # [왜] 긴 이름부터 맞춘다. "특별법"과 "특별법 시행규칙"처럼 한 이름이 다른 이름의 일부일 때 짧은 쪽이
+    #      먼저 잡히지 않게 한다. 이름 안의 띄어쓰기는 있어도 없어도 맞게 한다
+    by_key = {re.sub(r"\s+", "", name): name for name in law_names}
+    names = "|".join(
+        r"\s*".join(re.escape(part) for part in name.split())
+        for name in sorted(law_names, key=len, reverse=True)
+    )
+    # [주의] 앞에 한글이 붙은 이름("신관세법")은 다른 법령이다. "제9조의 규정"의 "의"는 조 번호가 아니다
+    pattern = re.compile(rf"(?<![가-힣])({names})\s*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?")
+    labels = []
+    for law, number, sub in pattern.findall(query):
+        label = f"{by_key[re.sub(r'\s+', '', law)]} 제{number}조" + (f"의{sub}" if sub else "")
+        if label not in labels:
+            labels.append(label)
+    return labels
+
+
 def find_provision(conn: psycopg.Connection, label: str, as_of: date) -> list[Evidence]:
     """이름표가 가리키는 조문 단위(그 아래 항·호 포함)를 돌려준다. 못 찾으면 빈 목록."""
     parsed = parse_label(label)

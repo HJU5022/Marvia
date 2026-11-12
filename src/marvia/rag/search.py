@@ -1,6 +1,8 @@
 """하이브리드 검색: 벡터 검색 상위 k와 키워드 검색 상위 k를 RRF로 합친다 (설계 5.4의 2번, 2절 결정 9).
 
 expand를 주면 하이브리드 상위 단위에서 그래프 이웃을 더한다 (설계 5.4의 3번, 계획 3b Task 4).
+질의가 "법령 이름 + 제N조"로 조문을 지목하면 조문 직접 조회 결과를 후보 맨 앞에 둔다
+(rules/rag.yaml search.named_article).
 하지 않는 일: 리랭커·근거 채점(graph/rag.py), Neo4j 질의(graphdb.py). 그래프는 unit_id만 주고 글은 여기서
 읽는다.
 """
@@ -15,6 +17,7 @@ import psycopg
 from marvia.rag.index import Embed
 from marvia.rag.keywords import keywords
 from marvia.rag.models import Evidence
+from marvia.rag.provision import ARTICLE_HINT, find_provision, named_labels
 from marvia.tools.rules import load_rules
 
 # [왜] <=>는 코사인 거리(작을수록 가깝다). 기준 날짜보다 뒤에 시행된 단위는 뺀다
@@ -36,6 +39,7 @@ SELECT unit_id FROM corpus_units
 WHERE unit_id = ANY(%s) AND NOT unit_id = ANY(%s) AND effective <= %s
 ORDER BY embedding <=> %s::vector LIMIT %s
 """
+LAW_NAMES_SQL = "SELECT DISTINCT law_name FROM corpus_units"  # 색인에 있는 법령 이름
 ROWS_SQL = (
     "SELECT unit_id, law_name, heading, effective, source_url, body FROM corpus_units WHERE unit_id = ANY(%s)"
 )
@@ -71,6 +75,22 @@ def hybrid_search(
         raise
 
 
+def _named_provisions(conn: psycopg.Connection, query: str, as_of: date) -> list[Evidence]:
+    """질의가 지목한 조문의 단위들(origin="provision"). 지목하지 않았거나 꺼져 있으면 빈 목록."""
+    cfg = load_rules("rag")["search"]["named_article"]
+    # [왜] 조 번호가 없는 질의는 법령 이름 목록도 읽지 않는다. 그런 질의의 결과는 한 글자도 달라지지 않는다
+    if not cfg["enabled"] or not ARTICLE_HINT.search(query):
+        return []
+    labels = named_labels(query, [row[0] for row in conn.execute(LAW_NAMES_SQL)])
+    found: dict[str, Evidence] = {}
+    for label in labels:  # 질의에 나온 순서
+        # [주의] 조회에도 검색과 같은 기준 날짜를 건다. 그 날짜에 시행 전인 단위는 오지 않는다
+        for unit in find_provision(conn, label, as_of):
+            if len(found) < cfg["max_units"]:
+                found.setdefault(unit.unit_id, unit.model_copy(update={"origin": "provision"}))
+    return list(found.values())
+
+
 def _hybrid_search(
     conn: psycopg.Connection, query: str, embed: Embed, as_of: date, expand: Expand | None
 ) -> list[Evidence]:
@@ -95,7 +115,11 @@ def _hybrid_search(
             graph_ids = [row[0] for row in conn.execute(GRAPH_SQL, params)]
     rows = {row[0]: row for row in conn.execute(ROWS_SQL, (fused_ids + graph_ids,))}
     hits = [(unit_id, score, "hybrid") for unit_id, score in fused] + [(u, 0.0, "graph") for u in graph_ids]
-    return [
+    named = _named_provisions(conn, query, as_of)
+    # [왜] 조회한 단위를 후보 맨 앞에 두고, 하이브리드·그래프가 찾은 같은 단위는 뺀다(한 번만 둔다).
+    #      순위는 뒤에서 리랭커가 다시 매긴다 (graph/rag.py top_ranked)
+    taken = {e.unit_id for e in named}
+    return named + [
         Evidence(
             unit_id=unit_id,
             law_name=rows[unit_id][1],
@@ -107,4 +131,5 @@ def _hybrid_search(
             origin=origin,
         )
         for unit_id, score, origin in hits
+        if unit_id not in taken
     ]
