@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from marvia.eval.dataset import Domain, Item
+from marvia.eval.dataset import Domain, Item, Route
 from marvia.eval.metrics import (
     agreement,
     behaviour_accuracy,
@@ -28,6 +28,7 @@ from marvia.eval.metrics import (
     mrr,
     ragas_means,
     recall_at_k,
+    routing_accuracy,
     set_view,
     spread,
     spread_groups,
@@ -277,6 +278,36 @@ def test_trajectory_pass_counts_supervisor_rows_and_reads_subagent_visits():
         row("R1", loop="agent", tools=["research", "search_law"]),  # 같은 조건을 에이전트 길도 넘는다
     ]
     assert trajectory_pass(rows, items, [], 12) == {"value": 0.6667, "n": 3}
+
+
+def test_routing_accuracy_checks_visited_subagents_against_must_and_may():
+    # [왜] 기대 서브에이전트(계획 7b): must는 꼭 들러야 하고, may는 들러도 틀리지 않다. 그 밖은 틀린 길이다
+    items = {
+        "R1": item("R1", route={"must": ["cargo"], "may": ["law"]}),
+        "U1": item("U1", route={}),  # 서브에이전트 없이 수퍼바이저가 끝내야 하는 문항
+        "S1": item("S1"),  # 기대가 없는 문항은 세지 않는다
+    }
+    rows = [
+        row("R1", loop="supervisor", visits=["cargo"]),
+        row("R1", loop="supervisor", visits=["cargo", "law", "cargo"]),  # 다시 들러도 된다
+        row("R1", loop="supervisor", visits=["law"]),  # 꼭 들러야 할 곳을 빠뜨렸다
+        row("R1", loop="supervisor", visits=["cargo", "item"]),  # 기대 밖 서브에이전트
+        row("U1", loop="supervisor", visits=[]),
+        row("U1", loop="supervisor", visits=["law"]),
+        row("S1", loop="supervisor", visits=["law"]),
+        row("R1", loop="supervisor", visits=[], error="APIError"),  # 오류 줄은 뺀다
+        row("R1", loop="agent", visits=[]),  # 다른 길은 뺀다
+    ]
+    assert routing_accuracy(rows, items) == {"value": 0.5, "n": 6}
+    assert routing_accuracy([row("R1", loop="agent", visits=[])], items) == {"value": None, "n": 0}
+
+
+def test_summary_reports_routing_only_for_supervisor_rows():
+    rows = [row("R1", loop="supervisor", visits=["law"], tools=["sub:law"], llm_calls=3)]
+    items = ITEMS | {"R1": ITEMS["R1"].model_copy(update={"route": Route(must=["law"])})}
+    assert summarize(rows, items, 8)["routing"] == {"value": 1.0, "n": 1}
+    agent = [row("R1", loop="agent", tools=[], llm_calls=3)]
+    assert summarize(agent, items, 8)["routing"] == {"value": None, "n": 0}
 
 
 def test_rag_observations_from_the_rag_log_and_evidence_order():

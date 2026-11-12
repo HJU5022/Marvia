@@ -57,6 +57,14 @@ class Trajectory(BaseModel):
     max_calls: int | None = None  # 이 문항의 도구 호출 수 상한. 없으면 rules/eval.yaml 기본값
 
 
+class Route(BaseModel):
+    """수퍼바이저 길에서 기대하는 서브에이전트 (계획 7b). 이름은 rules/agent.yaml의 서브에이전트 키다."""
+
+    model_config = ConfigDict(extra="forbid")
+    must: list[str] = []  # 꼭 들러야 할 서브에이전트. 비었으면 수퍼바이저가 혼자 끝내도 된다
+    may: list[str] = []  # 들러도 틀리지 않은 서브에이전트. must와 may 밖을 들르면 틀린 길이다
+
+
 class Domain(BaseModel):
     """범용 도구 비교(done 3.8)에서 자유 글 답으로 볼 것. 코드가 글에서 찾는다."""
 
@@ -95,6 +103,8 @@ class Item(BaseModel):
     # [왜] v2만의 칸. v1과 달라진 문항에만 쓰고 이유를 적는다 (고정 칸 시험이 이 칸만 제외한다)
     identify: Identify | None = None
     v2_change: str = ""
+    # 수퍼바이저 길의 기대 서브에이전트 (v3부터). 없으면 라우팅 정확도에서 뺀다
+    route: Route | None = None
 
 
 class EvalSet(BaseModel):

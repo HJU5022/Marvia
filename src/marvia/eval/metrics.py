@@ -171,6 +171,19 @@ def calc_accuracy(rows: list[dict], items: dict[str, Item]) -> dict:
     return _mean([float(f) for f in flags if f is not None])
 
 
+def routing_accuracy(rows: list[dict], items: dict[str, Item]) -> dict:
+    """라우팅 정확도: 수퍼바이저 길에서 오류 없이 끝난 문항 가운데 기대한 서브에이전트만 들른 비율."""
+    # [왜] 순서와 횟수는 보지 않는다. 같은 서브에이전트를 다시 들르는 것은 호출 수(비용)가 따로 잰다
+    flags = []
+    for r in rows:
+        route = items[r["id"]].route
+        if r.get("loop") != "supervisor" or r.get("error") or route is None:
+            continue
+        visited = set(r.get("visits", []))
+        flags.append(float(set(route.must) <= visited <= set(route.must) | set(route.may)))
+    return _mean(flags)
+
+
 def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
     """실행 한 번(길 하나 × 모델 하나)의 요약. 저장소에 남기는 숫자다."""
     for r in rows:
@@ -214,6 +227,9 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "gold_in_evidence": gold_in_evidence(rows, items),
         # [왜] 계획자 길은 도구를 부르지 않는다. 에이전트 길 줄이 없으면 None이다
         "trajectory": trajectory_pass(rows, items, path["never"], path["max_calls"]),
+        # [왜] 수퍼바이저 길 줄이 없거나 문항에 기대 서브에이전트가 없으면 None이다 (계획 7b).
+        #      판정 밖 보고 값이다
+        "routing": routing_accuracy(rows, items),
         # [왜] 오류 0만으로는 도구 길이 돌았는지 알 수 없다. 값은 비율이 아니라 문항 수다
         "gold_without_search": gold_without_search(rows, items, path["search_tools"]),
         "contract_adherence": contract_adherence(rows),
@@ -254,6 +270,7 @@ TABLE = [
     ("mrr", "MRR"),
     ("gold_in_evidence", "근거 묶음 안 정답"),
     ("trajectory", "궤적"),
+    ("routing", "라우팅"),
 ]
 
 
