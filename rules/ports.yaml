@@ -1,0 +1,19 @@
+# 항만 표. 코드(src/marvia/tools/ports.py)가 읽는다 (설계 1절 "항만은 코드에 고정하지 않고 데이터로", 7.1).
+# 열쇠는 UNI-PASS 양륙항 코드(dsprCd, UN/LOCODE)다. 표에 없는 항만은 코드가 부산 값으로 대신하지 않는다:
+# 항만 값이 필요한 신호는 "모름"이 되고 확신이 내려간다.
+# verified: 이 줄의 값을 그 항만의 실제 응답으로 확인했나. false인 줄은 빈 칸을 채우지 않는다.
+ports:
+  KRPUS:
+    name: 부산
+    verified: true # v1이 실제 호출로 확인한 값(09-23, 태그 v1-final의 clients/mof.py, skills/port-busan/rules.md)
+    mof_office: "020" # 해수부 API의 청코드(prtAgCd)
+    ref: { lat: 35.10, lng: 129.05 } # 항구 앞 정지를 재는 기준점
+    stop_radius_nm: 30 # 기준점에서 이 해리 안에 멈춰 있으면 항구 앞 정지
+    schedule_lookback_days: 3 # 입항 실적을 며칠 전까지 볼지
+    schedule_lookahead_days: 7 # 입항 예정을 며칠 뒤까지 볼지
+    mrn_search_days: 1 # MRN으로 배를 찾을 때 세관 입항일 앞뒤 며칠의 입항 신고를 훑을지
+  KRINC:
+    name: 인천
+    verified: false # 실제 확인 전. 아래 청코드는 v1 주석(09-23)에 적힌 값이고 응답은 받아 보지 않았다
+    mof_office: "030"
+    # 기준점, 반경, 조회 기간은 비워 둔다. 인천의 실제 응답과 위치 자료를 본 뒤에 채운다
