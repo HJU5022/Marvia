@@ -1,0 +1,29 @@
+# 해수부 공공데이터(선박운항정보, 관제정보) 조회 설정. 코드(src/marvia/tools/mof.py)가 읽는다 (계획 8a, 설계 7.2).
+# 주소와 칸 이름은 v1(태그 v1-final backend/app/clients/mof.py, 09-23 부산 실제 호출로 확인)과 같다.
+# 항만마다 다른 값(청코드, 조회 기간)은 여기 두지 않고 rules/ports.yaml에 둔다.
+base_url: https://apis.data.go.kr # MARVIA_MOF_BASE_URL이 있으면 그 주소(서울 릴레이)를 쓴다
+sailing_path: /1192000/VsslEtrynd5/Info5 # 선박운항정보: 입출항 신고. 앞으로 들어올 배의 입항 예정이 있다
+control_path: /1192000/CntlVssl2/Info # 관제정보: 이미 일어난 입항·접안 실적만 있다
+timeout_s: 15 # 한 번 부를 때 기다리는 최대 초
+connect_timeout_s: 3 # 연결 단계만 따로 짧게 둔다. 연결이 안 되는 곳은 오래 기다려도 안 된다
+retries: 2 # 시간 초과·연결 오류·5xx일 때 다시 부르는 횟수 (설계 7.2)
+backoff_s: 0.5 # 다시 부르기 전 기다림. n번째 재시도는 n배
+max_rows: 50 # 한 쪽에 받는 건수. API의 상한이다
+max_pages: 20 # 기간 전체를 훑을 때의 쪽 상한 (v1 실측: 부산 5일치 입항 신고가 12쪽)
+ok_codes: ["00", "0"] # 응답 머리의 resultCode가 이 값이면 정상
+key_error_codes: ["30", "31"] # 등록되지 않았거나 기한이 지난 키
+arrival_report: 입항 # 선박운항정보 detail의 etryndNm이 이 값인 줄이 입항 신고다
+final_revision: 최종 # 이 단계의 신고 시각은 실제 입항 시각이라 "예정"으로 쓰지 않는다 (v1 실측 09-23)
+arrival_events: [입항, 접안] # 관제정보 detail의 cntrlNm이 이 값이면 입항 실적으로 센다
+
+# 오류 글은 이 표에서만 쓴다. [왜] 예외 글과 바깥 응답 글에는 요청 주소(키 serviceKey)나 지시문이 섞일 수 있다
+messages:
+  timeout: 해수부 응답이 늦어요. 잠시 뒤 다시 조회할 수 있어요
+  unavailable: 해수부에 닿지 못했어요. 잠시 뒤 다시 조회할 수 있어요
+  bad_response: 해수부 응답을 읽지 못했어요
+  bad_key: 해수부가 조회 키를 받지 않았어요
+  api_error: 해수부가 조회 값을 받지 않았어요
+  too_many: 조회한 기간의 입항 신고가 너무 많아 끝까지 보지 못했어요
+  no_key: 해수부 키가 없어 실제 조회를 하지 않았어요
+  port_unknown: 이 항만은 해수부 조회에 쓸 값(청코드, 조회 기간)을 아직 확인하지 못했어요
+retryable: [timeout, unavailable] # 다시 시도하면 나아질 수 있는 오류

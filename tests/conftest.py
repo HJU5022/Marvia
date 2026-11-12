@@ -32,6 +32,13 @@ def unipass_replay_only(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def vessel_replay_only(monkeypatch):
+    """모든 시험은 해수부·ShipFinder 재생 데이터만 쓴다. [왜] .env에 live와 키가 있어도 부르지 않는다"""
+    monkeypatch.setenv("MARVIA_MOF_MODE", "replay")
+    monkeypatch.setenv("MARVIA_SHIPFINDER_MODE", "replay")
+
+
+@pytest.fixture(autouse=True)
 def no_raw_langfuse_env(monkeypatch):
     """셸에 걸린 LANGFUSE_* 환경 변수를 지운다. [왜] 서버 시작 검사가 그 이름을 거절한다 (계획 6b)"""
     for name in [name for name in os.environ if name.startswith("LANGFUSE_")]:
