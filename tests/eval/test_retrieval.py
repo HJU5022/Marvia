@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from marvia.eval.dataset import ROOT, SET_PATH, SET_V2_PATH
+from marvia.eval.dataset import ROOT, SET_PATH, SET_V2_PATH, file_sha256
 from marvia.eval.metrics import mrr, recall_at_k
 from marvia.eval.retrieval import (
     article_group,
@@ -242,3 +242,41 @@ def test_the_article_scope_names_follow_the_search_path():
     from marvia.eval.retrieval import article_scope
 
     assert article_scope(via_mcp=False) == "candidates" and article_scope(via_mcp=True) == "top_n"
+
+
+STORED = sorted((ROOT / "eval" / "results").glob("retrieval-*.json"))
+SET_FILES = {"v2": "set_v2.yaml"} | {
+    name: f"{name}.yaml" for name in ("rset_v1", "rset_a2", "rset_a3", "rset_b2", "rset_a4")
+}
+
+
+def test_the_stored_retrieval_results_cover_every_set_and_setting_at_one_commit():
+    metas = [json.loads(path.read_text(encoding="utf-8"))["meta"] for path in STORED]
+    # 묶음 여섯 × 설정 넷(기본, 벡터만, 키워드만, 리랭커 끔)
+    settings = {(m["set"], m["leg"], m["rerank"]) for m in metas}
+    wanted = {
+        (s, leg, rr)
+        for s in SET_FILES
+        for leg, rr in (("rrf", "on"), ("vector", "on"), ("keyword", "on"), ("rrf", "off"))
+    }
+    assert settings == wanted and len(metas) == 24
+    assert len({m["commit"] for m in metas}) == 1  # 한 커밋에서 잰 값끼리만 견준다
+    for meta in metas:
+        # [왜] 색인이 단위 파일과 다르거나 문제가 적힌 측정은 공식 값으로 두지 않는다
+        assert meta["problems"] == [] and meta["index_units"] == meta["file_units"]
+        # 잰 문항 파일이 지금 저장소의 파일과 같다(문항이나 정답이 바뀌면 다시 잰다)
+        assert meta["set_sha256"] == file_sha256(ROOT / "eval" / SET_FILES[meta["set"]])
+
+
+@pytest.mark.parametrize("path", STORED, ids=lambda path: path.stem)
+def test_a_stored_retrieval_summary_equals_the_summary_recomputed_from_its_rows(path):
+    # [왜] 저장한 요약을 믿지 않고 저장한 줄에서 지금 코드로 다시 센다. 계산 규칙이 바뀌면 여기서 드러난다
+    result = json.loads(path.read_text(encoding="utf-8"))
+    assert summarize_layers(result["rows"], result["meta"]["k"]) == result["summary"]
+    assert "본문" not in result["rows"][0] and set(result["rows"][0]) >= {
+        "id",
+        "layer",
+        "gold",
+        "cand",
+        "retrieved",
+    }
