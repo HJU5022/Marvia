@@ -920,3 +920,14 @@ def test_precheck_tells_whether_the_agent_runs_land_in_the_stored_range():
     assert inside["behaviour_accuracy"] == {"mean": 0.8, "low": 0.6, "high": 1.0, "ok": True}
     outside = precheck(five("agent", wrong=("S1", "U1", "B1")), ITEMS, rule)
     assert outside["behaviour_accuracy"]["mean"] == 0.4 and outside["ok"] is False
+
+
+def test_the_call_ratio_is_compared_unrounded_with_the_registered_limit():
+    # [왜] 사전 등록 문장은 "1.5배 이하"다. 반올림한 뒤 견주면 1.504가 통과한다. 표시만 반올림한다
+    limit = RULE["max_call_ratio"]
+    agent = five("agent", llm_calls=1000)
+    exact = compare_paths(agent, five("supervisor", llm_calls=int(1000 * limit)), ITEMS, RULE)
+    assert exact["calls"]["ok"] is True and exact["calls"]["ratio"] == limit
+    over = compare_paths(agent, five("supervisor", llm_calls=int(1000 * limit) + 4), ITEMS, RULE)
+    assert over["calls"]["ratio"] == limit  # 보이는 값은 둘째 자리까지라 같다
+    assert over["calls"]["ok"] is False

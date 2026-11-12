@@ -802,8 +802,9 @@ def compare_paths(
             r["llm_calls"] for rows in runs for r in rows if r.get("llm_calls") is not None
         )
 
-    ratio = round(median(supervisor) / median(agent), 2)
-    calls = {"agent": median(agent), "supervisor": median(supervisor), "ratio": ratio}
+    ratio = median(supervisor) / median(agent)
+    # [주의] 기준과는 반올림하지 않은 값으로 견준다(사전 등록: "1.5배 이하"). 보이는 값만 둘째 자리까지다
+    calls = {"agent": median(agent), "supervisor": median(supervisor), "ratio": round(ratio, 2)}
     calls["ok"] = ratio <= rule["max_call_ratio"]
 
     def cited(r: dict) -> bool:
