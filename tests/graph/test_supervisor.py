@@ -542,3 +542,103 @@ def test_a_visit_that_finds_only_provisions_already_held_says_so_in_its_result(a
     assert results[1] == f"법령 조사 결과: 같은 조문이에요.\n{note}\n{held}"
     # 찾아보지 않은 방문에는 붙이지 않는다
     assert results[2] == "화물·기한 결과: 반입신고 단계예요."
+
+
+def tool_results(graph, thread: str) -> list[list[str]]:
+    """방문마다 서브에이전트가 부른 도구 이름 (visits 칸)."""
+    return [visit["tools"] for visit in graph.get_state(cfg(thread)).values["visits"]]
+
+
+def test_a_label_fetched_once_is_not_fetched_again_in_the_same_turn(agent_deps):
+    asked = []
+
+    def provision(label, as_of):
+        asked.append(label)
+        return [UNIT] if label == "관세법 제241조제3항" else []
+
+    inputs = Inputs()
+    fetch = {"label": "관세법 제241조제3항"}
+    graph = sup_graph(
+        agent_deps,
+        hand("cargo", "근거 조문 확인", "h1"),
+        call("get_provision", fetch, "p1"),
+        # 같은 서브에이전트가 같은 단계에 둘, 다음 단계에 또 하나 (띄어쓰기만 다른 것 포함)
+        AIMessage(
+            "",
+            tool_calls=[
+                {"name": "get_provision", "args": fetch, "id": "p2"},
+                {"name": "get_provision", "args": {"label": "관세법 제9조"}, "id": "p3"},
+                {"name": "get_provision", "args": {"label": "관세법 제9조"}, "id": "p4"},
+            ],
+        ),
+        done("끝"),
+        hand("law", "같은 조문 다시", "h2"),
+        call("get_provision", {"label": " 관세법 제241조제3항 "}, "p5"),  # 다른 서브에이전트가 다시
+        done("끝"),
+        done(),
+        provision=provision,
+    )
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("y3") | {"callbacks": [inputs]})
+    # [왜] 조문 조회에는 "이미 조회함" 기억이 없어 같은 이름표를 열일곱 번 불렀다 (11-13 실측).
+    #      실제 조회는 이름표마다 한 번이다. 못 찾은 이름표도 다시 조회하지 않는다
+    assert asked == ["관세법 제241조제3항", "관세법 제9조"]
+    again = load_rules("agent")["supervisor"]["provision"]["again"]
+    assert inputs.calls[3].count(again.format(label="관세법 제241조제3항")) == 1
+    assert inputs.calls[3].count(again.format(label="관세법 제9조")) == 1
+    assert again.format(label="관세법 제241조제3항") in inputs.calls[6]
+    assert graph.get_state(cfg("y3")).values["provisions"] == ["관세법 제241조제3항", "관세법 제9조"]
+
+
+def test_provision_fetches_stop_at_the_turn_cap_across_subagents(agent_deps, monkeypatch):
+    from marvia.graph import supervisor as supervisor_module
+
+    real = supervisor_module.load_rules
+
+    def two(name: str) -> dict:
+        rules = real(name)
+        if name != "agent":
+            return rules
+        spec = rules["supervisor"]
+        return rules | {"supervisor": spec | {"provision": spec["provision"] | {"max_calls": 2}}}
+
+    monkeypatch.setattr(supervisor_module, "load_rules", two)
+    asked = []
+    inputs = Inputs()
+    graph = sup_graph(
+        agent_deps,
+        hand("cargo", "조문 확인", "h1"),
+        call("get_provision", {"label": "관세법 제1조"}, "p1"),
+        done("끝"),
+        hand("law", "조문 확인", "h2"),
+        AIMessage(
+            "",
+            tool_calls=[
+                {"name": "get_provision", "args": {"label": "관세법 제2조"}, "id": "p2"},
+                {"name": "get_provision", "args": {"label": "관세법 제3조"}, "id": "p3"},
+            ],
+        ),
+        done("끝"),
+        done(),
+        provision=lambda label, as_of: asked.append(label) or [],
+    )
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("y3b") | {"callbacks": [inputs]})
+    assert asked == ["관세법 제1조", "관세법 제2조"]  # 셋째는 조회하지 않는다
+    limit = load_rules("agent")["supervisor"]["provision"]["limit"].format(max=2)
+    assert limit in inputs.calls[5]
+
+
+def test_the_agent_path_fetches_a_label_as_often_as_the_model_asks(agent_deps):
+    # [주의] 막음은 수퍼바이저 길의 서브에이전트에만 있다. 에이전트 길의 도구 동작은 그대로다
+    from test_agent import agent_graph
+
+    asked = []
+    fetch = {"label": "관세법 제241조제3항"}
+    graph = agent_graph(
+        agent_deps,
+        call("get_provision", fetch, "a1"),
+        call("get_provision", fetch, "a2"),
+        done(),
+        provision=lambda label, as_of: asked.append(label) or [UNIT],
+    )
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("y3c"))
+    assert asked == ["관세법 제241조제3항"] * 2

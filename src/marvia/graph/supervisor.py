@@ -10,9 +10,11 @@ router 노드가 그 값을 보고 Command(goto)로 서브에이전트 노드에
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import operator
+from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import date
-from typing import Any
+from typing import Annotated, Any, NotRequired
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
@@ -24,6 +26,7 @@ from langchain.agents.middleware import (
 from langchain.tools import ToolRuntime, tool
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
+from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from marvia.graph.agent import Guards, describe_approval
@@ -48,7 +51,71 @@ HANDED = ("cargos", "evidence", "gaps", "calc", "item", "official", "actions", "
 # [왜] 서브에이전트의 Guards와 search_law가 받은 값에서 이어 세므로 수퍼바이저와 서브에이전트를 합쳐도
 #      상한(rules/agent.yaml loop.max_llm_calls, max_searches)을 넘지 않는다.
 #      조사 도구(research)와 같은 방식이다
-SHARED = (*HANDED, "llm_calls", "searched", "stopped")
+SHARED = (*HANDED, "llm_calls", "searched", "provisions", "stopped")
+PROVISION_TOOL = "get_provision"
+
+
+class SubState(LoopState):
+    """서브에이전트 루프의 공책: 루프 공책에 이번 차례에 조회한 조문 이름표를 더한다."""
+
+    # [왜] 한 단계에 조회가 여럿이면 저마다 이름표 하나를 돌려준다. 더하기 reducer로 모은다 (searched와 같다)
+    provisions: NotRequired[Annotated[list[str], operator.add]]
+
+
+class ProvisionGuard(AgentMiddleware[SubState]):
+    """서브에이전트 안의 조문 직접 조회를 막는다: 같은 이름표는 한 번만, 한 차례의 조회 수는 상한까지.
+
+    [주의] 수퍼바이저 길의 서브에이전트에만 단다. 도구 함수(graph/tools.py get_provision)의 글과 동작은
+           건드리지 않는다. 에이전트 길은 그 도구를 그대로 쓴다.
+    """
+
+    state_schema = SubState
+
+    def _refusal(self, request: ToolCallRequest) -> ToolMessage | None:
+        """이 호출을 조회하지 않고 돌려줄 글. 조회해도 되면 None."""
+        called = request.tool_call
+        if called["name"] != PROVISION_TOOL:
+            return None
+        spec = load_rules("agent")["supervisor"]["provision"]
+        label = str(called["args"].get("label", "")).strip()
+        done = list(request.state.get("provisions", []))
+        # [왜] 한 단계의 도구 호출들은 같은 공책을 보고 함께 돈다. 같은 단계에서 이 호출보다 앞에 적힌
+        #      조회를 마지막 모델 메시지에서 읽어 이미 한 것으로 센다 (search_law의 단계 안 세기와 같다)
+        last = next((m for m in reversed(request.state["messages"]) if m.type == "ai"), None)
+        for earlier in getattr(last, "tool_calls", None) or []:
+            if earlier["id"] == called["id"]:
+                break
+            if earlier["name"] == PROVISION_TOOL:
+                done.append(str(earlier["args"].get("label", "")).strip())
+        if label in done:
+            text = spec["again"].format(label=label)
+        elif len(set(done)) >= spec["max_calls"]:
+            text = spec["limit"].format(max=spec["max_calls"])
+        else:
+            return None
+        return ToolMessage(text, tool_call_id=called["id"], name=PROVISION_TOOL, status="error")
+
+    @staticmethod
+    def _noted(request: ToolCallRequest, result: ToolMessage | Command) -> ToolMessage | Command:
+        """조회한 이름표를 공책에 남긴다. 못 찾은 이름표도 남긴다(다시 조회해도 못 찾는다)."""
+        if request.tool_call["name"] != PROVISION_TOOL or not isinstance(result, Command):
+            return result
+        label = str(request.tool_call["args"].get("label", "")).strip()
+        return replace(result, update={**(result.update or {}), "provisions": [label]})
+
+    def wrap_tool_call(
+        self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], ToolMessage | Command]
+    ) -> ToolMessage | Command:
+        """도구 호출 한 번을 감싼다: 조문 조회면 되풀이와 상한을 본다."""
+        return self._refusal(request) or self._noted(request, handler(request))
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+    ) -> ToolMessage | Command:
+        """wrap_tool_call의 비동기 짝."""
+        return self._refusal(request) or self._noted(request, await handler(request))
 
 
 def subagents() -> dict[str, dict]:
@@ -138,12 +205,13 @@ def build_sub(model: BaseChatModel, tools: list, name: str, permission_mode: str
             )
         )
     middleware.append(Guards(cfg["loop"]["max_llm_calls"], label=name))
+    middleware.append(ProvisionGuard())
     return create_agent(
         model,
         own,
         system_prompt=render(f"sub_{name}"),
         middleware=middleware,
-        state_schema=LoopState,
+        state_schema=SubState,
         name=name,
     )
 
