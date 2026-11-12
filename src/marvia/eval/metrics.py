@@ -271,13 +271,22 @@ def cargo_count_lines(results: list[dict], ids: list[str]) -> list[str]:
 
 
 def compare_table(results: list[dict]) -> str:
-    """실행 결과 파일들(길 × 모델)의 요약을 마크다운 표 하나로 만든다 (done 3.7 모델 비교표)."""
+    """실행 결과 파일들(길 × 모델)의 요약을 마크다운 표 하나로 만든다 (done 3.7 모델 비교표).
+
+    LLM을 부른 길(meta.llm_via)이 섞여 있으면 거절한다. 길별 표는 compare_tables가 낸다.
+    """
+    paths = sorted({r["meta"].get("llm_via", "api") for r in results})
+    if len(paths) > 1:
+        # [왜] claude -p로 잰 실행은 입력 조건이 다르고, 출력 계약 준수율은 뜻부터 다르다
+        #      (contract_adherence의 설명)
+        raise ValueError(f"LLM 길이 다른 실행은 한 표에 넣지 않는다 ({', '.join(paths)})")
     head = (
         ["길", "모델"]
         + [name for _, name in TABLE]
         + ["근거 있는 답", "LLM 호출 중앙값·최대", "상한 넘음", "비용 합·문항당 최대($)", "시간 중앙값(초)"]
         + ["오류", "새는 번호", "근거 문항 중 검색·조회 0", "상한에서 끝남"]
         + [f"{name} p50·p95" for name in ("LLM 호출", "입력 토큰", "출력 토큰")]
+        + ["출력 계약 준수율(분모) · 뺀 호출 · 알 수 없음"]
     )
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for result in results:
@@ -301,8 +310,25 @@ def compare_table(results: list[dict]) -> str:
             f"{summary.get(f'{key}_p50')}·{summary.get(f'{key}_p95')}"
             for key in ("llm_calls", "tokens_in", "tokens_out")
         ]
+        kept = summary.get("contract_adherence") or {"value": None}
+        cells.append(
+            "-"
+            if kept["value"] is None
+            else f"{kept['value']:.2f} ({kept['n']}) · {kept['no_answer']} · {kept['unknown']}"
+        )
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
     return "\n".join(lines)
+
+
+def compare_tables(results: list[dict]) -> str:
+    """LLM을 부른 길(api, cli)마다 비교 표를 따로 만든다. 길이 여럿이면 길 이름을 머리에 붙인다."""
+    by_path: dict[str, list[dict]] = {}
+    for result in results:
+        # [왜] 옛 결과 파일에는 meta.llm_via가 없고 그때는 API뿐이었다
+        by_path.setdefault(result["meta"].get("llm_via", "api"), []).append(result)
+    if len(by_path) == 1:
+        return compare_table(results)
+    return "\n\n".join(f"LLM 길: {path}\n\n{compare_table(group)}" for path, group in sorted(by_path.items()))
 
 
 def bucket(score: float, cuts: list[float]) -> float:

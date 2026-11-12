@@ -38,7 +38,7 @@ from marvia.eval.metrics import (
     LOWER,
     agreement,
     cargo_count_lines,
-    compare_table,
+    compare_tables,
     domain_table,
     floors,
     gate_block,
@@ -342,7 +342,7 @@ if args.command == "report":
         # [왜] v1 정답에는 찾지 못함이 없다. v2 실행 줄도 찾지 못함 규칙 없는 분류로 세야 v1 점수와 같다
         rows = with_base_behaviour(rows) if args.set == "v1" else rows
         result["summary"] = summarize(rows, by_id, result["meta"]["k"])
-    print(compare_table(results))
+    print(compare_tables(results))
     print()
     print(rag_table(results))
     print()

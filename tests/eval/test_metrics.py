@@ -13,6 +13,7 @@ from marvia.eval.metrics import (
     calc_ok,
     cap_stops,
     compare_table,
+    compare_tables,
     contract_adherence,
     correct_citation,
     domain_table,
@@ -699,3 +700,30 @@ def test_cost_and_time_are_reported_only_for_runs_measured_through_the_api():
     result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": cli}
     assert f"| {label} | {label} |" in compare_table([result])
     assert "cost_usd" not in spread([cli, cli])  # 숫자가 아닌 칸은 평균에 넣지 않는다
+
+
+def path_result(via: str | None, tag: str) -> dict:
+    pack = {"calls": 10, "first_try": 9, "no_answer": 2, "unknown": 1, "requests": {"2": 9, "3": 1}}
+    summary = summarize([row("R1", contract=pack, real_llm_calls=3, tokens={})], ITEMS, 8)
+    meta = {"loop": "agent", "model": "m", "k": 8, "tag": tag} | ({"llm_via": via} if via else {})
+    return {"meta": meta, "summary": summary}
+
+
+def test_report_table_shows_contract_adherence_with_its_denominator_and_left_out_calls():
+    table = compare_table([path_result("cli", "c1")])
+    assert "출력 계약 준수율(분모) · 뺀 호출 · 알 수 없음" in table and "| 0.90 (10) · 2 · 1 |" in table
+    old = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summarize([row("R1")], ITEMS, 8)}
+    assert "| - |" in compare_table([old])  # 칸이 없는 옛 줄은 못 잰 것이다
+
+
+def test_runs_measured_through_different_llm_paths_never_share_a_table():
+    api, cli, old = path_result("api", "a1"), path_result("cli", "c1"), path_result(None, "old")
+    # [왜] 출력 계약 준수율은 두 길에서 뜻이 다르다(API는 스키마 강제, cli는 안쪽 다시 시키기를 셈).
+    #      입력 조건도 달라 다른 칸도 나란히 견주지 않는다
+    with pytest.raises(ValueError, match="LLM 길"):
+        compare_table([api, cli])
+    text = compare_tables([api, cli, old])
+    first, second = text.split("\n\nLLM 길: cli")
+    assert first.startswith("LLM 길: api") and "a1" in first and "old" in first and "c1" not in first
+    assert "c1" in second and "a1" not in second
+    assert compare_tables([api]) == compare_table([api])  # 길이 하나면 머리글 없이 표만 낸다
