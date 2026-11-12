@@ -8,6 +8,7 @@ import pytest
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
+from marvia.graph import rag as rag_module
 from marvia.graph.rag import top_ranked
 from marvia.rag.mcp import build_server, http_app, mcp_ranked
 from marvia.rag.models import Evidence, SearchFailed
@@ -99,3 +100,32 @@ def test_http_without_or_with_a_wrong_token_is_401():
 def test_an_empty_token_refuses_to_build_the_http_app():
     with pytest.raises(ValueError, match="MARVIA_MCP_TOKEN"):
         http_app(build_server(direct), "")
+
+
+def test_the_reranker_reads_the_law_name_with_the_body_on_both_paths_and_evidence_text_stays(monkeypatch):
+    # [왜] 본문만 보면 리랭커가 "특별법 제45조"와 "특별법 시행규칙 제45조"를 가르지 못한다.
+    #      임베딩 글에는 머리글이 있는데 리랭커 글에는 법령 이름이 없었다 (11-13 실측)
+    read: list[list[str]] = []
+
+    def scores(query: str, texts: list[str]) -> list[float]:
+        read.append(texts)
+        return [0.2, 0.9, 0.5]
+
+    def find(query: str, as_of: date) -> list[Evidence]:
+        return top_ranked(lambda q, d: [_unit(1), _unit(2), _unit(3)], scores, query, as_of)
+
+    got = find("수입신고 기한", AS_OF)
+    assert read[-1] == ["시험법\n제1조 본문", "시험법\n제2조 본문", "시험법\n제3조 본문"]
+    # [주의] 근거로 남는 글(작성자와 검증이 읽는 글)은 한 글자도 바뀌지 않는다
+    assert [e.text for e in got] == ["제2조 본문", "제3조 본문", "제1조 본문"]
+    assert mcp_ranked(build_server(find))("수입신고 기한", AS_OF) == got  # MCP 길도 같은 함수를 탄다
+    assert read[-1] == read[0]
+    real = rag_module.load_rules
+
+    def off(name: str) -> dict:
+        cfg = real(name)
+        return cfg | {"search": cfg["search"] | {"rerank_law_name": False}} if name == "rag" else cfg
+
+    monkeypatch.setattr(rag_module, "load_rules", off)
+    find("수입신고 기한", AS_OF)
+    assert read[-1] == ["제1조 본문", "제2조 본문", "제3조 본문"]  # 끄면 본문만 넘긴다

@@ -34,6 +34,14 @@ class RagDeps:
     ranked: Callable[[str, date], list[Evidence]] | None = None
 
 
+def rerank_input(candidates: list[Evidence]) -> list[str]:
+    """리랭커에 넘길 글. search.rerank_law_name(rules/rag.yaml)이 켜져 있으면 "법령 이름 + 줄바꿈 + 본문"."""
+    # [주의] 리랭커가 읽는 글만 바꾼다. 근거의 text(작성자와 검증이 읽는 글)는 건드리지 않는다
+    if load_rules("rag")["search"]["rerank_law_name"]:
+        return [f"{c.law_name}\n{c.text}" for c in candidates]
+    return [c.text for c in candidates]
+
+
 def top_ranked(
     search: Callable[[str, date], list[Evidence]],
     rerank: Callable[[str, list[str]], list[float]],
@@ -44,7 +52,7 @@ def top_ranked(
     candidates = search(query, as_of)
     if not candidates:
         return []
-    scores = rerank(query, [c.text for c in candidates])
+    scores = rerank(query, rerank_input(candidates))
     ranked = sorted(zip(candidates, scores, strict=True), key=lambda pair: pair[1], reverse=True)
     # [왜] model_copy(update=…)로 점수만 리랭커 점수로 바꾼 새 객체를 만든다
     return [

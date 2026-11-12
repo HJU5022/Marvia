@@ -18,6 +18,7 @@ import yaml
 
 from marvia.eval.dataset import load_set
 from marvia.eval.metrics import matches
+from marvia.graph.rag import rerank_input
 from marvia.identify.mask import mask_text
 from marvia.rag.models import Evidence
 
@@ -149,7 +150,8 @@ def rank_item(
     ids = [c.unit_id for c in candidates]
     ranked = ids
     if rerank and candidates:
-        marks = scores(query, [c.text for c in candidates])
+        # [왜] 제품 길(top_ranked)과 같은 글을 리랭커에 넘긴다. 다르면 잰 값이 제품의 값이 아니다
+        marks = scores(query, rerank_input(candidates))
         ranked = [u for u, _ in sorted(zip(ids, marks, strict=True), key=lambda pair: pair[1], reverse=True)]
     return {
         "cand": ids,

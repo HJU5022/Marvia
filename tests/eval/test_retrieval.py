@@ -146,6 +146,10 @@ def test_rank_item_reranks_all_candidates_or_keeps_their_order_and_applies_the_c
         "graph": 1,
         "provision": 1,
     }
+    # 측정 길의 리랭커도 제품 길(top_ranked)과 같은 글을 읽는다: 법령 이름 + 본문
+    read = []
+    rank_item("질의", cands, lambda query, texts: read.extend(texts) or [0.1, 0.2, 0.3], rerank=True, cap=0)
+    assert read[0] == "시험법\n제1조 본문"
     off = rank_item("질의", cands, scores, rerank=False, cap=0)
     assert off["ranked"] == off["cand"]
     assert rank_item("질의", [], scores, rerank=True, cap=0)["ranked"] == []
