@@ -82,6 +82,12 @@ def invalid_calls(calls: list[tuple[str, dict]], tools: list[dict]) -> int:
     return bad
 
 
+def cli_version() -> str:
+    """설치된 CLI의 판 번호 글(`claude --version`). 평가 결과의 meta에 남긴다."""
+    done = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=30)  # noqa: S603, S607
+    return done.stdout.strip()
+
+
 class ClaudeCLIChat(BaseChatModel):
     """`claude -p`를 부르는 채팅 모델. bind_tools와 with_structured_output(pydantic)을 지원한다."""
 

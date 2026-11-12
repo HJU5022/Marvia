@@ -13,6 +13,8 @@ run은 돈이 든다.
 run은 먼저 어림 비용을 찍는다. --dry-run이면 거기서 멈추고 키도 DB도 쓰지 않는다.
 MARVIA_LANGFUSE_* 셋이 있으면 모든 평가 차례를 Langfuse로 보낸다(번호는 가린다, 계획 6b).
 키 두 개(MARVIA_ANTHROPIC_API_KEY, MARVIA_VOYAGE_API_KEY), 로컬 DB, 색인이 필요하다.
+MARVIA_LLM_VIA=cli면 Anthropic 키 없이 구독의 `claude -p`로 돈다.
+그 결과는 meta.llm_via로 구분되고 비용을 남기지 않는다.
 묻는 질문에는 권장안(시간 초과)으로, 승인 요청에는 거절로 답한다. 대화 기록은 메모리에만 둔다.
 결과: <out>/<길>-<모델>.json(파생 값과 요약, 저장소에 올릴 수 있다),
       <out>/<길>-<모델>.raw.json(답 글, 저장소 밖에만 둔다).
@@ -54,6 +56,7 @@ from marvia.eval.run import (
     existing_results,
     graph_setting_problem,
     inside_repo,
+    llm_meta,
     preflight,
     result_name,
     run_problems,
@@ -423,13 +426,17 @@ for model in models:
                 "unipass_mode": settings.unipass_mode,
                 "rag_via": settings.rag_via,
                 "tracing": "on" if tracing else "off",
+                # [왜] cli로 잰 줄은 API로 잰 줄과 섞지 않는다. 어느 길, 어느 판의 CLI였는지 남긴다
+                **llm_meta(settings.llm_via),
             }
             name = result_name(loop, model, args.tag)
             for item in items:
                 if spent >= args.max_cost:
                     print(f"상한 ${args.max_cost}에 닿아 {item.id}부터 돌리지 않았다")
                     break
-                row, raw = evaluate_item(deps, item, loop, data.as_of, prices, callbacks=tracing)
+                row, raw = evaluate_item(
+                    deps, item, loop, data.as_of, prices, callbacks=tracing, llm_via=settings.llm_via
+                )
                 row["model"] = model
                 rows.append(row)
                 raws.append(raw)

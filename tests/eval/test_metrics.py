@@ -572,3 +572,13 @@ def test_floors_add_the_false_not_found_ceiling_only_for_a_v2_gate():
     assert floors(summary, 8, "v2")["false_not_found"] == {"max": 0.05}  # 한 문항(1/20)만큼
     summary["false_not_found"] = {"value": None, "n": 0, "count": 0}
     assert "false_not_found" not in floors(summary, 8, "v2")
+
+
+def test_runs_measured_through_the_cli_are_never_averaged_with_api_runs():
+    api, cli = _result("t1", "aa"), _result("c1", "aa")
+    cli["meta"]["llm_via"] = "cli"
+    # [왜] 옛 결과 파일에는 meta.llm_via가 없다. 그때는 API뿐이었다
+    with pytest.raises(ValueError, match="LLM 길이 다르다"):
+        spread_groups([api, cli])
+    assert len(spread_groups([cli, cli])) == 1
+    assert "LLM cli" in spread_table([cli], "aa", {}) and "LLM api" in spread_table([api], "aa", {})

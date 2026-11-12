@@ -30,6 +30,7 @@ from marvia.graph.answer import NOT_FOUND_LEAD, PARTIAL_LEAD, cargo_lines
 from marvia.graph.main import AgentDeps, build_main_graph
 from marvia.graph.resume import approval_reply
 from marvia.identify.mask import mask_text
+from marvia.llm import CLIFailed
 from marvia.rag.models import Evidence
 from marvia.tools.rules import load_rules
 from marvia.watch import WatchDeps
@@ -50,11 +51,18 @@ class LlmWatch(BaseCallbackHandler):
     def __init__(self) -> None:
         self.calls = 0
         self.inputs: list[str] = []
+        self.cli_failures: list[str] = []
 
     def on_chat_model_start(self, serialized, messages, **kwargs) -> None:
         self.calls += 1
         # [왜] 실행이 끝난 뒤 가림 표의 실제 번호가 어떤 LLM 입력에라도 있었는지 본다 (설계 12절)
         self.inputs.append(str(messages))
+
+    def on_llm_error(self, error, **kwargs) -> None:
+        # [왜] 그래프는 모델 실패를 부분 답으로 바꾼다. `claude -p` 실패(사용량 한도, 시간 초과)는 모델의
+        #      행동이 아니라 측정 실패라, 줄의 error에 남겨 그 실행을 무효로 만든다 (run_problems)
+        if isinstance(error, CLIFailed):
+            self.cli_failures.append(f"CLIFailed: {error}")
 
 
 def eval_deps(
@@ -163,6 +171,15 @@ def behaviour(values: dict, pauses: list[dict], *, not_found: bool = True) -> st
     if draft.get("citations") or any((values.get("calc") or {}).values()) or found:
         return "answer"
     return "unsupported"
+
+
+def llm_meta(llm_via: str) -> dict:
+    """결과 meta에 남길 LLM 길과 CLI 판 번호. [왜] CLI로 잰 실행은 API로 잰 실행과 조건이 달라 섞지 않는다."""
+    if llm_via != "cli":
+        return {"llm_via": llm_via, "llm_cli": None}
+    from marvia.cli_model import cli_version  # [왜] API 길은 이 모듈이 필요 없다
+
+    return {"llm_via": llm_via, "llm_cli": cli_version()}
 
 
 def graph_setting_problem(wanted: str, actual: str) -> str | None:
@@ -287,10 +304,12 @@ def evaluate_item(
     *,
     permission_mode: str = "ask",
     callbacks: Sequence[BaseCallbackHandler] = (),
+    llm_via: str = "api",
 ) -> tuple[dict, dict]:
     """문항 하나를 새 대화로 돌려 (줄, raw)를 돌려준다. 예외가 나도 줄을 남긴다.
 
     callbacks는 트레이서(trace.tracer_callbacks)다. 비어 있으면 트레이스를 남기지 않는다.
+    llm_via는 LLM을 부른 길(Settings.llm_via)이다. cli면 비용을 남기지 않는다.
     """
     log: list[dict] = []
     seen: dict[str, str] = {}
@@ -310,7 +329,7 @@ def evaluate_item(
         with get_usage_metadata_callback() as usage:
             values, pauses = drive(graph, item, f"eval-{loop}-{item.id}", [watch, *callbacks])
         row |= observe(values, pauses, watch, loop, log)
-        row["error"] = None
+        row["error"] = watch.cli_failures[0] if watch.cli_failures else None
         draft = values.get("draft") or {}
         top = load_rules("eval")["ragas"]["contexts"]
         # [주의] raw는 저장소에 넣지 않는다 (scripts/run_eval.py가 저장소 밖에 쓴다). 질문·초안은 가린 글이다
@@ -355,7 +374,9 @@ def evaluate_item(
         "rag": log,
         "real_llm_calls": watch.calls,
         "tokens": tokens,
-        "cost_usd": cost_usd(tokens, prices),
+        "llm_via": llm_via,
+        # [왜] 구독으로 부른 호출은 청구액이 없다. 단가로 환산한 값을 비용이라고 남기지 않는다
+        "cost_usd": cost_usd(tokens, prices) if llm_via == "api" else None,
         "seconds": round(time.monotonic() - started, 1),
     }
     return row, raw
@@ -395,7 +416,8 @@ def preflight(items: int, loops: list[str], models: list[str], prices: dict, max
 
 def stop_reason(row: dict) -> str | None:
     """돈이 새는 줄이면 실행을 멈출 까닭. 비용을 못 셌거나 호출이 있는데 토큰이 없으면 상한이 듣지 않는다."""
-    if row["cost_usd"] is None:
+    # [왜] cli 줄은 비용이 없는 것이 정상이다. 옛 줄에는 llm_via가 없고 그때는 API뿐이었다
+    if row["cost_usd"] is None and row.get("llm_via", "api") == "api":
         return "비용을 셀 수 없다 (단가표에 없는 모델 이름)"
     if row["real_llm_calls"] and not row["tokens"]:
         return "LLM 호출은 있는데 토큰 사용량이 없다"

@@ -20,6 +20,7 @@ from marvia.eval.run import (
     existing_results,
     graph_setting_problem,
     inside_repo,
+    llm_meta,
     observe,
     preflight,
     ragas_contexts,
@@ -30,6 +31,7 @@ from marvia.eval.run import (
 )
 from marvia.graph.answer import NOT_FOUND_LEAD
 from marvia.graph.schemas import Draft
+from marvia.llm import CLIFailed
 from marvia.rag.models import Evidence
 from marvia.rag.schemas import Grade, Rewrite
 from marvia.tools.rules import load_rules
@@ -461,3 +463,42 @@ def test_evaluate_item_runs_the_graph_with_the_tracer_callbacks(agent_deps):
         agent_deps(), item("DEMO0001 언제까지 수입신고 해요?"), "planner", TODAY, PRICES, callbacks=[seen]
     )
     assert seen.chains > 0
+
+
+class LimitModel(ToolModel):
+    """부르면 `claude -p` 실패(사용량 한도 등)를 내는 가짜 모델."""
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise CLIFailed("CLI(success,429)")
+
+
+def test_a_cli_failure_makes_the_item_an_error_not_a_quiet_partial_answer(agent_deps):
+    # [왜] 그래프는 모델 실패를 부분 답으로 바꾼다. 사용량 한도로 끊긴 문항이 행동 점수에 섞이면 안 된다
+    deps = agent_deps(model=LimitModel(messages=iter([])))
+    row, _ = evaluate_item(deps, item("수입신고 기한은요?"), "agent", TODAY, PRICES, llm_via="cli")
+    assert row["behaviour"] == "partial" and row["error"] == "CLIFailed: CLI(success,429)"
+    ok, _ = evaluate_item(agent_deps(model=model()), item("수입신고 기한은요?"), "agent", TODAY, PRICES)
+    assert ok["error"] is None
+
+
+def test_cli_rows_carry_the_path_and_no_cost(agent_deps):
+    deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
+    api, _ = evaluate_item(deps, item("수입신고 기한은요?"), "agent", TODAY, PRICES)
+    assert api["llm_via"] == "api" and api["cost_usd"] is not None
+    deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
+    cli, _ = evaluate_item(deps, item("수입신고 기한은요?"), "agent", TODAY, PRICES, llm_via="cli")
+    # [왜] 구독으로 부른 호출은 청구액이 없다. 단가로 환산한 값을 비용으로 남기지 않는다
+    assert cli["llm_via"] == "cli" and cli["cost_usd"] is None
+    # 비용이 없어도 cli 줄은 실행을 멈추지 않는다. 호출은 있는데 토큰이 없으면 멈춘다
+    counted = {"llm_via": "cli", "cost_usd": None, "real_llm_calls": 3, "tokens": {"m": {"in": 1, "out": 1}}}
+    assert stop_reason(counted) is None
+    assert stop_reason(counted | {"tokens": {}}) is not None
+
+
+def test_run_meta_names_the_llm_path_and_the_cli_version(monkeypatch):
+    class Done:
+        stdout = "2.1.322 (Claude Code)\n"
+
+    monkeypatch.setattr("marvia.cli_model.subprocess.run", lambda *args, **kwargs: Done())
+    assert llm_meta("cli") == {"llm_via": "cli", "llm_cli": "2.1.322 (Claude Code)"}
+    assert llm_meta("api") == {"llm_via": "api", "llm_cli": None}

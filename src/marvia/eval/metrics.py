@@ -654,6 +654,13 @@ def spread_groups(results: list[dict]) -> dict[tuple[str, str, str, str, str], l
         )
         groups.setdefault(key, []).append(result)
     for (loop, model, commit, graph, via), group in groups.items():
+        # [왜] `claude -p`로 잰 실행은 입력과 조건이 달라 API로 잰 실행과 한 평균에 넣지 않는다.
+        #      옛 결과 파일에는 meta.llm_via가 없고 그때는 API뿐이었다
+        paths = sorted({r["meta"].get("llm_via", "api") for r in group})
+        if len(paths) > 1:
+            raise ValueError(
+                f"{loop}-{model}-{commit}: LLM 길이 다르다 ({', '.join(paths)}). 같은 길끼리만 묶는다"
+            )
         shas = sorted({r["meta"]["set_sha256"][:12] for r in group})
         if len(shas) > 1:
             raise ValueError(
@@ -670,7 +677,7 @@ def spread_table(group: list[dict], set_label: str, stats: dict) -> str:
     lines = [
         f"### {meta['loop']} {meta['model']} "
         f"(커밋 {meta.get('commit', '?')}, 그래프 {meta.get('graph', 'off')}, "
-        f"검색 {meta.get('rag_via', 'direct')}, {set_label})",
+        f"검색 {meta.get('rag_via', 'direct')}, LLM {meta.get('llm_via', 'api')}, {set_label})",
         "",
         "평균 낸 실행: " + ", ".join(r["meta"].get("tag") or "(태그 없음)" for r in group),
         "",
