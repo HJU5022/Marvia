@@ -633,3 +633,11 @@ def test_gold_in_evidence_counts_items_whose_writer_bundle_holds_a_gold_unit():
     assert summarize(rows, ITEMS, 8)["gold_in_evidence"] == {"value": 0.5, "n": 2}
     result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summarize(rows, ITEMS, 8)}
     assert "근거 묶음 안 정답" in compare_table([result])
+
+
+def test_gold_in_evidence_is_the_share_of_gold_units_covered_like_recall():
+    # [왜] R@k와 같은 꼴(정답 근거를 덮은 몫의 문항 평균)이어야 둘을 나란히 볼 수 있다.
+    #      정답이 둘인데 하나만 봤으면 0.5다
+    items = ITEMS | {"R3": item("R3", gold=[A + "제241조.3항", A + "제9조.1항"])}
+    rows = [row("R3", evidence=[A + "제241조.3항"]), row("R1", evidence=[A + "제241조.3항"])]
+    assert gold_in_evidence(rows, items) == {"value": 0.75, "n": 2}

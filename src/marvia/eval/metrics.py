@@ -124,15 +124,16 @@ def recall_at_k(rows: list[dict], items: dict[str, Item], k: int) -> dict:
 
 
 def gold_in_evidence(rows: list[dict], items: dict[str, Item]) -> dict:
-    """근거 묶음 안 정답 비율: 정답 근거가 있는 문항 가운데 작성자가 본 근거 묶음에 정답이 하나라도 있는 비율.
+    """근거 묶음 안 정답 비율: 작성자가 본 근거 묶음(row.evidence)이 정답 근거를 몇 개 덮는지의 문항 평균.
 
     [왜] R@k는 RAG의 첫 검색 묶음만 센다. 나중 검색과 조문 조회(get_provision)로 찾은 근거는 이 값에만 보인다.
+         세는 법은 R@k와 같고(정답 근거를 덮은 몫) 묶음 전체를 본다는 것만 다르다.
     """
-    values = [
-        float(any(matches(u, items[r["id"]].gold) for u in r["evidence"]))
-        for r in rows
-        if items[r["id"]].gold
-    ]
+    values = []
+    for r in rows:
+        gold = items[r["id"]].gold
+        if gold:
+            values.append(sum(any(matches(u, [g]) for u in r["evidence"]) for g in gold) / len(gold))
     return _mean(values)
 
 
