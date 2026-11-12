@@ -53,6 +53,7 @@ def parse_label(label: str) -> tuple[str, str] | None:
     return None
 
 
+CLOSERS = "」』\"'”’"  # 법령 이름 뒤에 올 수 있는 닫는 낫표와 따옴표
 # 글 안에 조 번호가 있는가. [왜] 없으면 법령 이름 목록을 읽지도 않는다 (rag/search.py)
 ARTICLE_HINT = re.compile(r"제\s*\d+\s*조")
 
@@ -77,11 +78,13 @@ def named_targets(query: str, law_names: list[str]) -> list[tuple[str, str | Non
     )
     # [주의] 앞에 한글이 붙은 이름("신관세법")은 다른 법령이다. "제9조의 규정"의 "의"는 조 번호가 아니다.
     #        조 바로 뒤의 "제K항"만 항으로 읽는다
-    pattern = re.compile(rf"(?<![가-힣])({names})\s*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*제\s*(\d+)\s*항)?")
+    #        이름과 "제" 사이의 닫는 낫표·따옴표(「관세법」 제241조)는 건너뛴다
+    article = rf"[{CLOSERS}\s]*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*제\s*(\d+)\s*항)?"
+    pattern = re.compile(rf"(?<![가-힣])({names}){article}")
     targets: list[tuple[str, str | None]] = []
     for law, number, sub, paragraph in pattern.findall(query):
-        article = f"{by_key[re.sub(r'\s+', '', law)]} 제{number}조" + (f"의{sub}" if sub else "")
-        target = (article, f"{article}제{paragraph}항" if paragraph else None)
+        label = f"{by_key[re.sub(r'\s+', '', law)]} 제{number}조" + (f"의{sub}" if sub else "")
+        target = (label, f"{label}제{paragraph}항" if paragraph else None)
         if target not in targets:
             targets.append(target)
     return targets
