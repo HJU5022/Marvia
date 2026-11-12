@@ -17,6 +17,19 @@ def db_unreachable():
     pytest.skip(msg)
 
 
+def require_test_tables(conn, schema: str) -> None:
+    """시험 스키마에 색인 표(corpus_units)가 없으면 실패한다. DB 준비물이 마이그레이션 뒤에 부른다."""
+    # [왜] 표가 없는 시험 스키마로 시험이 돌면 이름만 쓴 corpus_units가 public(개발 색인)으로 풀려
+    #      시험 줄이 개발 색인에 들어간다 (11-13: migrations/ 없는 나무에서 돌린 시험). 건너뛰지 않는다
+    found = conn.execute("SELECT to_regclass(%s)", (f"{schema}.corpus_units",)).fetchone()[0]
+    if found is None:
+        pytest.fail(
+            f"시험 스키마 {schema}에 corpus_units 표가 없다. 마이그레이션이 돌지 않았다 "
+            "(migrations/ 폴더까지 든 나무에서 시험을 돌린다)",
+            pytrace=False,
+        )
+
+
 def neo4j_unreachable():
     """Neo4j에 닿지 못했을 때: 로컬은 건너뛰고, MARVIA_REQUIRE_NEO4J=1(CI)이면 실패한다."""
     # [왜] 그래프 시험이 CI와 검증 Docker에서 조용히 건너뛰어지는 일을 막는다 (계획 3b 사전 부검 F8)

@@ -5,7 +5,13 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from db_required import db_unreachable, graph_test_settings, neo4j_unreachable, real_graph_problem
+from db_required import (
+    db_unreachable,
+    graph_test_settings,
+    neo4j_unreachable,
+    real_graph_problem,
+    require_test_tables,
+)
 from neo4j.exceptions import DriverError, Neo4jError
 from psycopg.conninfo import make_conninfo
 
@@ -51,6 +57,8 @@ def db():
     # 실행 중에 스키마가 사라져 이름 없는 쓰기가 public으로 가는 일은 없다
     conn.execute(f"SET search_path TO {SCHEMA}, public")
     apply_migrations(conn)
+    # [왜] 표가 시험 스키마에 실제로 생겼는지 본다. 없으면 이름만 쓴 표가 public(개발 색인)으로 풀린다
+    require_test_tables(conn, SCHEMA)
     yield conn
     conn.rollback()
     conn.execute(f"DROP SCHEMA {SCHEMA} CASCADE")
