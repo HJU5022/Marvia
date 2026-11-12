@@ -199,3 +199,15 @@ def test_every_gold_unit_of_v3_is_in_the_corpus():
     for item in load_set(SET_V3_PATH).items:
         for gold in item.gold + item.also_ok:
             assert any(u == gold or u.startswith(gold + ".") for u in ids), (item.id, gold)
+
+
+def test_set_v3_is_frozen_by_its_sha256():
+    # [왜] v3는 독립 대조(eval/gold_check_v3.md) 뒤 동결했다. 고치면 이유를 남기고 해시를 다시 만든다
+    recorded = (SET_V3_PATH.parent / "set_v3.sha256").read_text(encoding="utf-8").split()[0]
+    assert file_sha256(SET_V3_PATH) == recorded
+
+
+def test_v1_and_v2_file_hashes_are_untouched_by_v3():
+    for name, path in (("set_v1", SET_PATH), ("set_v2", SET_V2_PATH)):
+        recorded = (path.parent / f"{name}.sha256").read_text(encoding="utf-8").split()[0]
+        assert file_sha256(path) == recorded, name
