@@ -13,7 +13,6 @@ API 키 없이 평가를 돌리는 길이다. 호출 한 번이 CLI 프로세스
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -21,7 +20,8 @@ import sys
 import tempfile
 import threading
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from marvia.llm import CLIFailed
 from marvia.prompts import render
@@ -86,6 +86,17 @@ def invalid_calls(calls: list[tuple[str, dict]], tools: list[dict]) -> int:
     return bad
 
 
+@contextmanager
+def _workdir() -> Iterator[tuple[Path, Path]]:
+    """호출 하나가 쓸 임시 자리: (빈 작업 폴더, 도구 목록 파일 경로). 호출이 끝나면 실패해도 지운다."""
+    # [왜] 빈 폴더에서 돌려야 프로젝트 CLAUDE.md·설정이 섞이지 않는다. 도구 목록 파일은 그 폴더 밖에 둔다.
+    #      호출마다 만들고 지운다: 지우지 않으면 시스템 임시 폴더에 쌓인다
+    with tempfile.TemporaryDirectory(prefix="marvia-cli-", ignore_cleanup_errors=True) as root:
+        cwd = Path(root, "cwd")
+        cwd.mkdir()
+        yield cwd, Path(root, "tools.json")
+
+
 def cli_version() -> str:
     """설치된 CLI의 판 번호 글(`claude --version`). 평가 결과의 meta에 남긴다."""
     done = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=30)  # noqa: S603, S607
@@ -97,9 +108,6 @@ class ClaudeCLIChat(BaseChatModel):
 
     model: str
     timeout: float  # 호출 한 번의 시간 제한(초). 넘으면 프로세스를 죽인다
-    # [왜] 빈 폴더에서 돌려야 프로젝트 CLAUDE.md·설정이 섞이지 않는다
-    cwd: str = Field(default_factory=lambda: tempfile.mkdtemp(prefix="marvia-cli-"))
-    specs_dir: str = Field(default_factory=lambda: tempfile.mkdtemp(prefix="marvia-cli-specs-"))
     log_dir: str = ""  # 비어 있지 않으면 호출마다 CLI 원본 출력과 요약 한 줄(calls.jsonl)을 남긴다
 
     @property
@@ -233,15 +241,16 @@ class ClaudeCLIChat(BaseChatModel):
         if schema:
             command += ["--json-schema", json.dumps(schema, ensure_ascii=False)]
         try:
-            done = subprocess.run(  # noqa: S603
-                command,
-                input=prompt,
-                capture_output=True,
-                text=True,
-                cwd=self.cwd,
-                timeout=self.timeout,
-                env=self._env(),
-            )
+            with _workdir() as (cwd, _):
+                done = subprocess.run(  # noqa: S603
+                    command,
+                    input=prompt,
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                    timeout=self.timeout,
+                    env=self._env(),
+                )
             out = json.loads(done.stdout)
         except subprocess.TimeoutExpired:
             return {"subtype": "timeout", "is_error": True}
@@ -255,87 +264,85 @@ class ClaudeCLIChat(BaseChatModel):
 
     def _run_tools(self, system: str, prompt: str, tools: list[dict]) -> dict:
         """도구 있는 호출: 스트림에서 첫 모델 메시지(글, 도구 호출)를 읽고 message_stop에서 멈춘다."""
-        specs = json.dumps(tools, ensure_ascii=False)
-        path = Path(self.specs_dir, hashlib.sha256(specs.encode()).hexdigest()[:16] + ".json")
-        if not path.exists():
-            path.write_text(specs, encoding="utf-8")
-        servers = {"mcpServers": {SERVER: {"command": sys.executable, "args": [STUB, str(path)]}}}
-        command = [
-            *self._command(system),
-            "--mcp-config", json.dumps(servers),
-            "--permission-prompts", "none",  # 멈추기 전에 도구 실행까지 가도 아무도 승인하지 않는다
-            "--output-format", "stream-json", "--verbose", "--include-partial-messages",
-        ]  # fmt: skip
-        process = subprocess.Popen(  # noqa: S603
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            cwd=self.cwd,
-            env=self._env(),
-        )
-        timed_out = threading.Event()
+        with _workdir() as (cwd, path):
+            path.write_text(json.dumps(tools, ensure_ascii=False), encoding="utf-8")
+            servers = {"mcpServers": {SERVER: {"command": sys.executable, "args": [STUB, str(path)]}}}
+            command = [
+                *self._command(system),
+                "--mcp-config", json.dumps(servers),
+                "--permission-prompts", "none",  # 멈추기 전에 도구 실행까지 가도 아무도 승인하지 않는다
+                "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+            ]  # fmt: skip
+            process = subprocess.Popen(  # noqa: S603
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                cwd=cwd,
+                env=self._env(),
+            )
+            timed_out = threading.Event()
 
-        def expire() -> None:
-            timed_out.set()
-            process.kill()  # [왜] 죽이면 아래 읽기 루프가 끝난다
+            def expire() -> None:
+                timed_out.set()
+                process.kill()  # [왜] 죽이면 아래 읽기 루프가 끝난다
 
-        timer = threading.Timer(self.timeout, expire)
-        timer.start()
-        out: dict[str, Any] = {"subtype": "no_message", "is_error": True, "calls": [], "num_turns": 1}
-        text, lines, usage, models = "", [], {}, []
-        try:
-            assert process.stdin and process.stdout
-            process.stdin.write(prompt)
-            process.stdin.close()
-            for line in process.stdout:
-                lines.append(line)
-                event = json.loads(line)
-                kind = event.get("type")
-                if kind == "system" and event.get("subtype") == "init":
-                    status = {s["name"]: s["status"] for s in event.get("mcp_servers", [])}
-                    if status.get(SERVER) != "connected":
-                        # [왜] 도구 서버가 안 붙으면 모델이 도구 없이 답한다. 넘어가지 않고 실패로 남긴다
-                        out["subtype"] = "mcp_not_connected"
+            timer = threading.Timer(self.timeout, expire)
+            timer.start()
+            out: dict[str, Any] = {"subtype": "no_message", "is_error": True, "calls": [], "num_turns": 1}
+            text, lines, usage, models = "", [], {}, []
+            try:
+                assert process.stdin and process.stdout
+                process.stdin.write(prompt)
+                process.stdin.close()
+                for line in process.stdout:
+                    lines.append(line)
+                    event = json.loads(line)
+                    kind = event.get("type")
+                    if kind == "system" and event.get("subtype") == "init":
+                        status = {s["name"]: s["status"] for s in event.get("mcp_servers", [])}
+                        if status.get(SERVER) != "connected":
+                            # [왜] 도구 서버가 안 붙으면 모델이 도구 없이 답한다. 넘어가지 않고 실패로 남긴다
+                            out["subtype"] = "mcp_not_connected"
+                            break
+                    elif kind == "assistant":
+                        models = [event["message"].get("model")]
+                        for block in event["message"]["content"]:
+                            if block["type"] == "tool_use":
+                                out["calls"].append((block["name"].removeprefix(PREFIX), block["input"]))
+                            elif block["type"] == "text":
+                                text += block["text"]
+                    elif kind == "stream_event":
+                        inner = event["event"]
+                        if inner["type"] == "message_start":
+                            usage = dict(inner["message"].get("usage") or {})
+                        elif inner["type"] == "message_delta":
+                            usage |= {k: v for k, v in (inner.get("usage") or {}).items() if v is not None}
+                            out["stop_reason"] = inner["delta"].get("stop_reason")
+                        elif inner["type"] == "message_stop":
+                            out |= {"subtype": "success", "is_error": False}
+                            break
+                    elif kind == "result":
+                        # [왜] 모델 메시지가 끝나기 전에 결과가 왔다(사용량 한도, API 오류). 실패로 남긴다
+                        out |= {
+                            "subtype": event.get("subtype"),
+                            "api_error_status": event.get("api_error_status"),
+                        }
                         break
-                elif kind == "assistant":
-                    models = [event["message"].get("model")]
-                    for block in event["message"]["content"]:
-                        if block["type"] == "tool_use":
-                            out["calls"].append((block["name"].removeprefix(PREFIX), block["input"]))
-                        elif block["type"] == "text":
-                            text += block["text"]
-                elif kind == "stream_event":
-                    inner = event["event"]
-                    if inner["type"] == "message_start":
-                        usage = dict(inner["message"].get("usage") or {})
-                    elif inner["type"] == "message_delta":
-                        usage |= {k: v for k, v in (inner.get("usage") or {}).items() if v is not None}
-                        out["stop_reason"] = inner["delta"].get("stop_reason")
-                    elif inner["type"] == "message_stop":
-                        out |= {"subtype": "success", "is_error": False}
-                        break
-                elif kind == "result":
-                    # [왜] 모델 메시지가 끝나기 전에 결과가 왔다(사용량 한도, API 오류). 실패로 남긴다
-                    out |= {
-                        "subtype": event.get("subtype"),
-                        "api_error_status": event.get("api_error_status"),
-                    }
-                    break
-            if timed_out.is_set() and out["subtype"] == "no_message":
-                out["subtype"] = "timeout"
-            if out["subtype"] == "success" and out.get("stop_reason") == "tool_use" and not out["calls"]:
-                # [왜] 모델은 도구를 부르며 끝냈는데 읽은 호출이 없다. CLI의 이벤트 순서가 바뀌었을 수 있다.
-                #      그대로 두면 도구 없이 답한 것처럼 보인다. 실패로 남긴다
-                out |= {"subtype": "tool_use_without_calls", "is_error": True}
-        except json.JSONDecodeError:
-            out["subtype"] = "bad_output"
-        finally:
-            timer.cancel()
-            process.kill()
-            process.wait()
-        return out | {"result": text, "usage": usage, "models": models, "raw": "".join(lines)}
+                if timed_out.is_set() and out["subtype"] == "no_message":
+                    out["subtype"] = "timeout"
+                if out["subtype"] == "success" and out.get("stop_reason") == "tool_use" and not out["calls"]:
+                    # [왜] 모델은 도구를 부르며 끝냈는데 읽은 호출이 없다(CLI 이벤트 순서가 바뀐 경우).
+                    #      그대로 두면 도구 없이 답한 것처럼 보인다. 실패로 남긴다
+                    out |= {"subtype": "tool_use_without_calls", "is_error": True}
+            except json.JSONDecodeError:
+                out["subtype"] = "bad_output"
+            finally:
+                timer.cancel()
+                process.kill()
+                process.wait()
+            return out | {"result": text, "usage": usage, "models": models, "raw": "".join(lines)}
 
     def _log(self, row: dict, raw: str) -> None:
         if not self.log_dir:

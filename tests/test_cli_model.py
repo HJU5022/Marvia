@@ -1,6 +1,7 @@
 """cli_model 시험: `claude -p`를 부르지 않고 가짜 프로세스로 명령·스트림 읽기·실패 모양을 확인한다."""
 
 import json
+import os
 import threading
 
 import pytest
@@ -78,6 +79,10 @@ def popen(monkeypatch):
     def start(events, hang=False):
         def fake(command, **kwargs):
             seen.update(command=command, env=kwargs["env"], process=FakeProcess(events, hang))
+            # 프로세스가 뜨는 순간의 작업 폴더 내용과 도구 목록 파일이 있는지
+            seen["cwd_listing"] = os.listdir(kwargs["cwd"])
+            servers = json.loads(command[command.index("--mcp-config") + 1])["mcpServers"]
+            seen["spec_existed"] = os.path.exists(servers["marvia"]["args"][1])
             return seen["process"]
 
         monkeypatch.setattr(cli_model.subprocess, "Popen", fake)
@@ -279,3 +284,22 @@ def test_the_cli_log_folder_must_be_outside_the_repo(tmp_path):
         chat_model(Settings(_env_file=None, llm_via="cli", cli_log="eval/results/cli-log"))
     llm = chat_model(Settings(_env_file=None, llm_via="cli", cli_log=str(tmp_path)))
     assert llm.log_dir == str(tmp_path)
+
+
+def test_every_call_removes_the_temp_folders_it_made_even_when_it_fails(popen, monkeypatch, tmp_path):
+    # [왜] 호출마다 빈 작업 폴더와 도구 목록 파일을 만든다. 지우지 않으면 시스템 임시 폴더에 쌓인다
+    monkeypatch.setattr(
+        cli_model.tempfile, "tempdir", str(tmp_path)
+    )  # 임시 폴더를 시험 폴더 아래에 만들게 한다
+    seen = popen([INIT, tool_use("find", {"items": ["a"]}), event("message_stop")])
+    cli().bind_tools([find]).invoke("찾아줘")
+    command = seen["command"]
+    spec_file = json.loads(command[command.index("--mcp-config") + 1])["mcpServers"]["marvia"]["args"][1]
+    # 프로세스가 도는 동안에는 있었다: 빈 작업 폴더와 그 밖에 둔 도구 목록 파일
+    assert seen["cwd_listing"] == [] and seen["spec_existed"] and str(tmp_path) in spec_file
+    popen([INIT])  # 실패하는 호출
+    with pytest.raises(CLIFailed):
+        cli().bind_tools([find]).invoke("찾아줘")
+    fake_run(monkeypatch, {"subtype": "success", "is_error": False, "structured_output": {"label": "x"}})
+    cli().with_structured_output(Answer).invoke("질문")
+    assert list(tmp_path.iterdir()) == []
