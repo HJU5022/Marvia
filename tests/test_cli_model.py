@@ -136,6 +136,13 @@ def test_tool_calls_are_read_from_the_stream_until_the_first_message_ends(popen,
             "CLI(success,429)",
         ),
         ([INIT], False, "no_message"),
+        # 모델은 도구 호출로 끝냈는데 읽은 호출이 없다(CLI 이벤트 순서가 바뀐 경우).
+        # 도구 없는 답으로 넘기지 않는다
+        (
+            [INIT, event("message_delta", delta={"stop_reason": "tool_use"}), event("message_stop")],
+            False,
+            "tool_use_without_calls",
+        ),
         ([INIT], True, "timeout"),
     ],
 )

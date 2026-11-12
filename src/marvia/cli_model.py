@@ -325,6 +325,10 @@ class ClaudeCLIChat(BaseChatModel):
                     break
             if timed_out.is_set() and out["subtype"] == "no_message":
                 out["subtype"] = "timeout"
+            if out["subtype"] == "success" and out.get("stop_reason") == "tool_use" and not out["calls"]:
+                # [왜] 모델은 도구를 부르며 끝냈는데 읽은 호출이 없다. CLI의 이벤트 순서가 바뀌었을 수 있다.
+                #      그대로 두면 도구 없이 답한 것처럼 보인다. 실패로 남긴다
+                out |= {"subtype": "tool_use_without_calls", "is_error": True}
         except json.JSONDecodeError:
             out["subtype"] = "bad_output"
         finally:
