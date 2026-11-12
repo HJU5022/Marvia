@@ -178,7 +178,7 @@ def test_structured_output_goes_through_json_schema(monkeypatch):
         cli().with_structured_output(Answer).invoke("질문")
 
 
-@pytest.mark.parametrize(("requests", "first_try"), [(2, True), (3, False)])
+@pytest.mark.parametrize(("requests", "first_try"), [(2, True), (3, False), (None, None)])
 def test_a_structured_answer_says_whether_the_cli_had_to_ask_again(monkeypatch, requests, first_try):
     # [왜] CLI는 StructuredOutput 도구 호출 1번 + 확인 1번이 첫 시도다.
     #      그보다 많으면 모양이 틀려 다시 시킨 것이다
@@ -191,6 +191,9 @@ def test_a_structured_answer_says_whether_the_cli_had_to_ask_again(monkeypatch, 
     fake_run(monkeypatch, out)
     message = cli().bind(json_schema=Answer.model_json_schema()).invoke("질문")
     assert message.response_metadata["structured_first_try"] is first_try
+    # [왜] "첫 시도 = 요청 2"라는 전제를 실행마다 확인할 수 있게 요청 수를 그대로 남긴다.
+    #      요청 수가 없는 결과는 통과로 치지 않는다(None = 알 수 없음)
+    assert message.response_metadata["api_requests"] == requests
 
 
 @pytest.mark.parametrize(

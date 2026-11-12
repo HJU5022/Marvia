@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections import Counter
 from collections.abc import Sequence
@@ -46,14 +47,64 @@ def articles(text: str) -> list[str]:
     return [f"제{n}조" + (f"의{sub}" if sub else "") for n, sub in ARTICLE.findall(text)]
 
 
+class Contract:
+    """출력 계약 세기: 구조화 출력 호출마다 넷 가운데 정확히 하나로 센다 (R-094).
+
+    첫 시도 통과 / 통과 아님(모양 오류, 또는 `claude -p`가 안에서 다시 시킴) / 알 수 없음(CLI 결과에 요청 수가
+    없음) / 답 없음(시간 초과, API 오류, CLI 실패. 분모에서 빼고 수만 남긴다).
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0  # 답을 낸 호출 수 (분모)
+        self.passed = 0  # 첫 시도에 스키마를 통과한 호출 수
+        self.unknown = 0
+        self.no_answer = 0
+        self.requests: Counter[str] = Counter()  # 구조화 호출 하나에 CLI가 낸 API 요청 수의 분포
+        # [왜] 모델 콜백(LlmWatch.on_llm_end)과 그 호출을 감싼 함수(eval_deps의 counted)는 같은
+        #      스레드에서 돈다.
+        #      스레드마다 "방금 끝난 구조화 호출이 어땠나"를 따로 두어, 동시에 도는 검색끼리 섞이지 않게 한다
+        self._last = threading.local()
+
+    def begin(self) -> None:
+        self._last.first_try = True  # API 길은 모델이 이 칸을 남기지 않는다: 모양 오류가 없으면 통과다
+
+    def note(self, first_try: bool | None, requests: int | None) -> None:
+        """`claude -p`의 구조화 호출 하나가 끝났다 (cli_model.py가 남긴 값)."""
+        self._last.first_try = first_try
+        self.requests[NO_REQUESTS if requests is None else str(requests)] += 1
+
+    def answered(self, shape_ok: bool) -> None:
+        """답을 낸 호출 하나를 센다. 모양 오류가 먼저다: 다시 시킨 뒤 검증에서 떨어진 호출도 한 번만 뺀다."""
+        first_try = getattr(self._last, "first_try", True)
+        self.calls += 1
+        if shape_ok and first_try is None:
+            self.unknown += 1
+        elif shape_ok and first_try:
+            self.passed += 1
+
+    def row(self) -> dict:
+        """줄에 남길 모양."""
+        return {
+            "calls": self.calls,
+            "first_try": self.passed,
+            "no_answer": self.no_answer,
+            "unknown": self.unknown,
+            "requests": dict(sorted(self.requests.items())),
+        }
+
+
+NO_REQUESTS = "없음"  # CLI 결과에 API 요청 수가 없을 때 분포에 쓰는 이름
+SHAPE_ERROR = "OutputParserException"  # llm.structured가 답 모양 오류에 남기는 이름 (LLMFailed의 글 앞부분)
+
+
 class LlmWatch(BaseCallbackHandler):
     """채팅 모델 호출을 실제로 세고 입력 글을 모은다 (RAG 안, 작성자, 조사 서브에이전트 호출 포함)."""
 
-    def __init__(self) -> None:
+    def __init__(self, contract: Contract | None = None) -> None:
         self.calls = 0
         self.inputs: list[str] = []
         self.cli_failures: list[str] = []
-        self.reasked = 0  # `claude -p`가 모양이 틀려 다시 시킨 구조화 호출 수
+        self.contract = contract
 
     def on_chat_model_start(self, serialized, messages, **kwargs) -> None:
         self.calls += 1
@@ -61,11 +112,13 @@ class LlmWatch(BaseCallbackHandler):
         self.inputs.append(str(messages))
 
     def on_llm_end(self, response, **kwargs) -> None:
-        # [왜] cli 길은 CLI가 모양 틀린 답을 안에서 다시 시킨다. 끝내 맞아도 첫 시도 통과가 아니다
-        #      (cli_model.py가 구조화 호출에만 structured_first_try를 남긴다. API 길 답에는 이 칸이 없다)
+        # [왜] cli 길은 CLI가 모양 틀린 답을 안에서 다시 시킨다. 끝내 맞아도 첫 시도 통과가 아니다.
+        #      cli_model.py가 구조화 호출에만 structured_first_try와 api_requests를 남긴다
+        #      (API 길 답에는 없다)
         message = getattr(response.generations[0][0], "message", None)
-        if message is not None and message.response_metadata.get("structured_first_try") is False:
-            self.reasked += 1
+        meta = message.response_metadata if message is not None else {}
+        if self.contract is not None and "structured_first_try" in meta:
+            self.contract.note(meta["structured_first_try"], meta.get("api_requests"))
 
     def on_llm_error(self, error, **kwargs) -> None:
         # [왜] 그래프는 모델 실패를 부분 답으로 바꾼다. `claude -p` 실패(사용량 한도, 시간 초과)는 모델의
@@ -99,27 +152,29 @@ def eval_deps(
     log: list[dict],
     seen: dict[str, str] | None = None,
     queries: list[str] | None = None,
-    contract: dict[str, int] | None = None,
+    contract: Contract | None = None,
 ) -> AgentDeps:
     """평가 실행용 AgentDeps. 감시 목록은 DB 없는 가짜로 묶고, 날짜를 고정한다."""
 
     def counted(ask):
-        """구조화 출력 함수(llm.structured)를 감싸 답을 낸 호출 수와 모양이 틀린 수를 센다."""
+        """구조화 출력 함수(llm.structured)를 감싸 호출마다 출력 계약을 센다."""
         if contract is None or ask is None:
             return ask
         counts = contract  # [왜] 안쪽 함수에서 None이 아님을 타입 검사기가 알게 한다
 
         def run(prompt: str):
+            counts.begin()
             try:
                 result = ask(prompt)
             except LLMFailed as error:
-                # [왜] llm.structured는 실패를 오류 종류 이름으로 남긴다. 답 모양 오류만 계약 위반으로 세고,
-                #      시간 초과·API 오류·CLI 실패는 답이 없던 호출이라 분모에 넣지 않는다
-                if str(error).startswith("OutputParserException"):
-                    counts["calls"] += 1
-                    counts["shape_failed"] += 1
+                # [왜] llm.structured는 실패를 오류 종류 이름으로 남긴다. 답 모양 오류는 계약 위반이고,
+                #      시간 초과·API 오류·CLI 실패는 답이 없던 호출이라 분모에 넣지 않고 수만 남긴다
+                if str(error).startswith(SHAPE_ERROR):
+                    counts.answered(shape_ok=False)
+                else:
+                    counts.no_answer += 1
                 raise
-            counts["calls"] += 1
+            counts.answered(shape_ok=True)
             return result
 
         return run
@@ -396,7 +451,7 @@ def evaluate_item(
     seen: dict[str, str] = {}
     queries: list[str] = []
     known: dict[str, str] = {}  # 이 차례의 가림 표. raw에 쓰는 검색어를 가릴 때 쓴다
-    contract = {"calls": 0, "shape_failed": 0}
+    contract = Contract()
     graph = build_main_graph(
         eval_deps(deps, item, today, log, seen, queries, contract),
         InMemorySaver(),
@@ -404,7 +459,7 @@ def evaluate_item(
         store=InMemoryStore(),
         permission_mode=permission_mode,
     )
-    watch = LlmWatch()
+    watch = LlmWatch(contract)
     started = time.monotonic()
     row: dict = {"id": item.id, "loop": loop}
     raw: dict = {"id": item.id, "loop": loop}
@@ -466,10 +521,7 @@ def evaluate_item(
     row |= {
         # 출력 계약: 구조화 출력 호출(계획, 품목 사실, 작성, 질의 분석, 근거 채점, 질의 고쳐 쓰기) 가운데
         # 답을 낸 호출 수와, 그중 첫 시도에 스키마를 통과한 수. 도구 호출과 답 검증(verification)은 따로다
-        "contract": {
-            "calls": contract["calls"],
-            "first_try": contract["calls"] - contract["shape_failed"] - watch.reasked,
-        },
+        "contract": contract.row(),
         "rag": log,
         "real_llm_calls": watch.calls,
         "tokens": tokens,

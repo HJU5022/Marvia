@@ -523,10 +523,27 @@ def cap_stops(rows: list[dict]) -> int:
 
 
 def contract_adherence(rows: list[dict]) -> dict:
-    """출력 계약 준수율: 구조화 출력 호출(n) 가운데 첫 시도에 스키마 검증을 통과한 비율."""
+    """출력 계약 준수율: 답을 낸 구조화 출력 호출(n) 가운데 첫 시도에 스키마 검증을 통과한 비율.
+
+    no_answer는 답이 없어 분모에서 뺀 호출 수(시간 초과, API 오류, CLI 실패), unknown은 CLI 결과에 요청 수가
+    없어 첫 시도인지 알 수 없던 호출 수(통과로 치지 않는다), requests는 호출 하나에 CLI가 낸
+    API 요청 수의 분포다.
+    [주의] 두 길에서 뜻이 다르다. API 길은 스키마를 강제하는 출력(json_schema)이라 구조상 1에 가깝고 남는 것은
+           잘린 답과 pydantic 검증뿐이다. cli 길은 StructuredOutput 도구라 CLI가 안에서 다시 시킨 호출을 센다.
+           두 길의 값을 나란히 견주지 않는다 (R-097). 도구 호출의 인자 검증은 이 값에 없다.
+    """
     packs = [r["contract"] for r in rows if r.get("contract")]  # 칸 없는 옛 줄은 뺀다
     calls = sum(p["calls"] for p in packs)
-    return {"value": round(sum(p["first_try"] for p in packs) / calls, 4) if calls else None, "n": calls}
+    requests: Counter[str] = Counter()
+    for pack in packs:
+        requests.update(pack.get("requests", {}))
+    return {
+        "value": round(sum(p["first_try"] for p in packs) / calls, 4) if calls else None,
+        "n": calls,
+        "no_answer": sum(p.get("no_answer", 0) for p in packs),
+        "unknown": sum(p.get("unknown", 0) for p in packs),
+        "requests": dict(sorted(requests.items())),
+    }
 
 
 def gold_without_search(rows: list[dict], items: dict[str, Item], search_tools: list[str]) -> dict:

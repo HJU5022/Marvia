@@ -161,8 +161,11 @@ class ClaudeCLIChat(BaseChatModel):
             "model_provider": "claude-cli",
         }
         if json_schema is not None:
-            # [왜] 출력 계약 준수율(첫 시도에 스키마 통과)을 세려고 남긴다. 구조화 호출에만 있다
-            metadata["structured_first_try"] = (out.get("num_turns") or 0) <= FIRST_TRY_REQUESTS
+            # [왜] 출력 계약 준수율(첫 시도에 스키마 통과)을 세려고 남긴다. 구조화 호출에만 있다.
+            #      요청 수가 없는 결과는 통과로 치지 않는다: None은 "알 수 없음"이다 (R-094)
+            turns = out.get("num_turns")
+            metadata["api_requests"] = turns
+            metadata["structured_first_try"] = None if turns is None else turns <= FIRST_TRY_REQUESTS
         self._log(
             {
                 "kind": "tools" if tools else "schema" if json_schema else "text",

@@ -618,9 +618,16 @@ def test_contract_adherence_is_first_try_structured_calls_over_all_structured_ca
         row("R2", contract={"calls": 4, "first_try": 3}),
         row("S1"),  # 칸이 없는 옛 줄은 세지 않는다
     ]
-    assert contract_adherence(rows) == {"value": 0.9, "n": 10}
-    assert contract_adherence([row("S1")]) == {"value": None, "n": 0}
-    assert summarize(rows, ITEMS, 8)["contract_adherence"] == {"value": 0.9, "n": 10}
+    assert contract_adherence(rows) == {"value": 0.9, "n": 10, "no_answer": 0, "unknown": 0, "requests": {}}
+    assert contract_adherence([row("S1")])["value"] is None
+    # 분모에서 뺀 호출 수, 알 수 없음, 구조화 호출마다의 API 요청 수 분포를 비율 옆에 낸다
+    more = [
+        row("R1", contract={"calls": 4, "first_try": 3, "no_answer": 2, "unknown": 1, "requests": {"2": 3}}),
+        row("R2", contract={"calls": 1, "first_try": 0, "no_answer": 0, "unknown": 0, "requests": {"3": 1}}),
+    ]
+    want = {"value": 0.6, "n": 5, "no_answer": 2, "unknown": 1, "requests": {"2": 3, "3": 1}}
+    assert contract_adherence(more) == want
+    assert summarize(more, ITEMS, 8)["contract_adherence"] == want
 
 
 def test_gold_in_evidence_counts_items_whose_writer_bundle_holds_a_gold_unit():
