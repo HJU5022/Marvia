@@ -447,3 +447,23 @@ def test_each_subagent_run_is_recorded_with_the_tools_it_called(agent_deps):
     ]
     graph.invoke({"text": "고마워요"}, cfg("v1"))
     assert graph.get_state(cfg("v1")).values["visits"] == []  # 차례마다 비운다
+
+
+def test_a_side_effect_tool_is_out_of_reach_for_the_supervisor_and_for_the_wrong_subagent(agent_deps):
+    # [왜] 승인 미들웨어는 그 도구를 가진 서브에이전트에만 걸려 있다. 도구가 없는 루프가 이름을 불러도
+    #      실행되지 않아야 "승인 없는 부작용 0"이 구조로 지켜진다
+    store, watch = InMemoryStore(), Watch()
+    script = [
+        call("save_item_card", {"name": "건고추"}, "a1"),  # 수퍼바이저에는 이 도구가 없다
+        hand("law", "감시 등록", "h1"),
+        call("watch_cargo", {"token": "[BL1]"}, "w1"),  # 법령 조사 서브에이전트에도 없다
+        done("할 수 없어요."),
+        done(),
+    ]
+    graph = sup_graph(agent_deps, *script, store=store, permission_mode="auto", watch=watch.deps())
+    out = graph.invoke({"text": "DEMO0001 지켜보고 카드도 저장해 줘"}, cfg("p5"))
+    values = graph.get_state(cfg("p5")).values
+    assert "__interrupt__" not in out and done_things(store, watch) == [] and values["actions"] == []
+    refused = next(m for m in values["messages"] if m.type == "tool" and m.tool_call_id == "a1")
+    assert refused.status == "error" and "save_item_card is not a valid tool" in refused.text
+    assert values["visits"] == [{"sub": "law", "tools": ["watch_cargo"]}]  # 불렀지만 돌지 않았다
