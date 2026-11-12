@@ -1,0 +1,280 @@
+# 검색 전용 평가셋 rset_a4: 항을 지목한 조문 질의 20문항 (조회가 "제M항"을 읽게 고치기 전에 뽑아 동결)
+# 쓰임: "법령 이름 제N조 제M항 ..." 꼴 질의에서 지목한 항의 단위를 찾는지 본다.
+# 만든 방법: build_rset_a4.py (시드 1115, corpus/units 7,412단위, unit_id 순서는 로컬 DB의 ORDER BY unit_id).
+#   층(stratum): L 6문항 = 단위가 8개를 넘는 조문에서 지목한 항의 첫 단위가 unit_id 순으로 8번째 뒤(position > 8),
+#                M 4문항 = 단위가 8개를 넘는 조문에서 지목한 항이 앞 8개 안, S 10문항 = 단위가 8개 이하인 조문.
+#   그래서 단위 8개 넘는 조문이 10문항(8 이상), 그 가운데 8번째 뒤가 6문항(절반 이상)이다.
+#   문서 배분은 rset_a2와 같은 상한(관세법 시행령·관세법 3개, 나머지 2개)으로 L, M, S 순서로 채웠다. 한 조문에서 하나만.
+#   틀: 1 "{법령} {조} 제M항 내용", 2 "{법령} {조} 제M항", 3 "{법령} {조} 제M항에는 무엇이 규정되어 있나요?", 4 "{법령} {조} 제M항 조문 알려줘"
+#   낫표 꼴(bracket: true) 4문항: 3, 8, 13, 18번째 문항은 법령 이름을 「」로 쌌다.
+#   뺀 것: rset_v1 층 a·b, rset_a2, rset_a3, rset_b2에 쓰인 조문, 평가셋 v2 정답 조문, 삭제 조문, 별표.
+# 정답(gold)은 그 항의 접두어 하나, gold_units는 그 항의 단위 전부. 맞춤 규칙은 레포의 matches (같거나 "." 아래 단위).
+#   article_units = 그 조문의 단위 수, position = 지목한 항의 첫 단위가 그 조문 안에서 몇 번째인지(unit_id 순).
+# 확인: 스크립트가 20문항 전부를 코드로 대조했다(정답 단위 = 그 항의 단위 전부, 층 조건, 자리, 뺀 조문 없음, 질의 = 틀 + 법령 이름 + 조 + 항).
+# 한계: 20문항(한 문항 0.05). 질의 틀이 넷뿐이다("제N조제M항"처럼 붙여 쓴 꼴, 호까지 지목한 꼴은 없다). 화물 번호 없음.
+version: rset_a4
+as_of: '2026-11-06'
+seed: 1115
+items:
+- id: G01
+  layer: a4
+  query: 관세법 시행령 제192조의5 제7항 내용
+  gold:
+  - L002421@20260227#제192조의5.7항
+  gold_units:
+  - L002421@20260227#제192조의5.7항
+  stratum: L
+  article_units: 15
+  position: 14
+  bracket: false
+  method: 항 지목 틀 1, 시드 1115
+- id: G02
+  layer: a4
+  query: 관세법 시행령 제245조의2 제6항
+  gold:
+  - L002421@20260227#제245조의2.6항
+  gold_units:
+  - L002421@20260227#제245조의2.6항
+  stratum: L
+  article_units: 15
+  position: 14
+  bracket: false
+  method: 항 지목 틀 2, 시드 1115
+- id: G03
+  layer: a4
+  query: 「수입통관 사무처리에 관한 고시」 제26조 제2항에는 무엇이 규정되어 있나요?
+  gold:
+  - A36893@20251217#제26조.2항
+  gold_units:
+  - A36893@20251217#제26조.2항.1호
+  - A36893@20251217#제26조.2항.2호
+  stratum: L
+  article_units: 12
+  position: 9
+  bracket: true
+  method: 항 지목 틀 3, 시드 1115
+- id: G04
+  layer: a4
+  query: 수입통관 사무처리에 관한 고시 제4조 제6항 조문 알려줘
+  gold:
+  - A36893@20251217#제4조.6항
+  gold_units:
+  - A36893@20251217#제4조.6항
+  stratum: L
+  article_units: 43
+  position: 43
+  bracket: false
+  method: 항 지목 틀 4, 시드 1115
+- id: G05
+  layer: a4
+  query: 관세법 제208조 제5항 내용
+  gold:
+  - L001556@20261002#제208조.5항
+  gold_units:
+  - L001556@20261002#제208조.5항
+  stratum: L
+  article_units: 14
+  position: 12
+  bracket: false
+  method: 항 지목 틀 1, 시드 1115
+- id: G06
+  layer: a4
+  query: 관세법 시행령 제288조 제3항
+  gold:
+  - L002421@20260227#제288조.3항
+  gold_units:
+  - L002421@20260227#제288조.3항.1호
+  - L002421@20260227#제288조.3항.2호
+  - L002421@20260227#제288조.3항.3호
+  - L002421@20260227#제288조.3항.4호
+  - L002421@20260227#제288조.3항.5호
+  - L002421@20260227#제288조.3항.6호
+  stratum: L
+  article_units: 22
+  position: 9
+  bracket: false
+  method: 항 지목 틀 2, 시드 1115
+- id: G07
+  layer: a4
+  query: 관세법 제67조의2 제3항에는 무엇이 규정되어 있나요?
+  gold:
+  - L001556@20261002#제67조의2.3항
+  gold_units:
+  - L001556@20261002#제67조의2.3항
+  stratum: M
+  article_units: 9
+  position: 4
+  bracket: false
+  method: 항 지목 틀 3, 시드 1115
+- id: G08
+  layer: a4
+  query: 「관세법」 제118조의4 제2항 조문 알려줘
+  gold:
+  - L001556@20261002#제118조의4.2항
+  gold_units:
+  - L001556@20261002#제118조의4.2항.1호
+  - L001556@20261002#제118조의4.2항.2호
+  - L001556@20261002#제118조의4.2항.3호
+  - L001556@20261002#제118조의4.2항.4호
+  - L001556@20261002#제118조의4.2항.5호
+  - L001556@20261002#제118조의4.2항.6호
+  - L001556@20261002#제118조의4.2항.7호
+  stratum: M
+  article_units: 23
+  position: 7
+  bracket: true
+  method: 항 지목 틀 4, 시드 1115
+- id: G09
+  layer: a4
+  query: 수입식품등 신고 및 검사에 관한 규정 제6조 제1항 내용
+  gold:
+  - A87721@20250901#제6조.1항
+  gold_units:
+  - A87721@20250901#제6조.1항
+  stratum: M
+  article_units: 9
+  position: 1
+  bracket: false
+  method: 항 지목 틀 1, 시드 1115
+- id: G10
+  layer: a4
+  query: 관세법 시행규칙 제39조 제2항
+  gold:
+  - L006392@20260731#제39조.2항
+  gold_units:
+  - L006392@20260731#제39조.2항.2호
+  - L006392@20260731#제39조.2항.3호
+  stratum: M
+  article_units: 9
+  position: 4
+  bracket: false
+  method: 항 지목 틀 2, 시드 1115
+- id: G11
+  layer: a4
+  query: 관세법 시행규칙 제84조 제1항에는 무엇이 규정되어 있나요?
+  gold:
+  - L006392@20260731#제84조.1항
+  gold_units:
+  - L006392@20260731#제84조.1항.1호
+  - L006392@20260731#제84조.1항.2호
+  - L006392@20260731#제84조.1항.3호
+  - L006392@20260731#제84조.1항.4호
+  - L006392@20260731#제84조.1항.5호
+  stratum: S
+  article_units: 6
+  position: 1
+  bracket: false
+  method: 항 지목 틀 3, 시드 1115
+- id: G12
+  layer: a4
+  query: 보세화물관리에 관한 고시 제29조 제2항 조문 알려줘
+  gold:
+  - A36852@20260224#제29조.2항
+  gold_units:
+  - A36852@20260224#제29조.2항
+  stratum: S
+  article_units: 3
+  position: 2
+  bracket: false
+  method: 항 지목 틀 4, 시드 1115
+- id: G13
+  layer: a4
+  query: 「수입식품안전관리 특별법」 제19조 제2항 내용
+  gold:
+  - L012247@20261008#제19조.2항
+  gold_units:
+  - L012247@20261008#제19조.2항
+  stratum: S
+  article_units: 2
+  position: 2
+  bracket: true
+  method: 항 지목 틀 1, 시드 1115
+- id: G14
+  layer: a4
+  query: 수입식품등 신고 및 검사에 관한 규정 제18조 제3항
+  gold:
+  - A87721@20250901#제18조.3항
+  gold_units:
+  - A87721@20250901#제18조.3항
+  stratum: S
+  article_units: 5
+  position: 3
+  bracket: false
+  method: 항 지목 틀 2, 시드 1115
+- id: G15
+  layer: a4
+  query: 수입식품안전관리 특별법 시행규칙 제36조 제2항에는 무엇이 규정되어 있나요?
+  gold:
+  - L012500@20260930#제36조.2항
+  gold_units:
+  - L012500@20260930#제36조.2항.1호
+  - L012500@20260930#제36조.2항.2호
+  stratum: S
+  article_units: 6
+  position: 3
+  bracket: false
+  method: 항 지목 틀 3, 시드 1115
+- id: G16
+  layer: a4
+  query: 수입식품안전관리 특별법 시행규칙 제43조 제1항 조문 알려줘
+  gold:
+  - L012500@20260930#제43조.1항
+  gold_units:
+  - L012500@20260930#제43조.1항
+  stratum: S
+  article_units: 2
+  position: 1
+  bracket: false
+  method: 항 지목 틀 4, 시드 1115
+- id: G17
+  layer: a4
+  query: 수입식품안전관리 특별법 제16조 제4항 내용
+  gold:
+  - L012247@20261008#제16조.4항
+  gold_units:
+  - L012247@20261008#제16조.4항
+  stratum: S
+  article_units: 8
+  position: 7
+  bracket: false
+  method: 항 지목 틀 1, 시드 1115
+- id: G18
+  layer: a4
+  query: 「보세화물관리에 관한 고시」 제22조 제1항
+  gold:
+  - A36852@20260224#제22조.1항
+  gold_units:
+  - A36852@20260224#제22조.1항.1호
+  - A36852@20260224#제22조.1항.2호
+  - A36852@20260224#제22조.1항.3호
+  - A36852@20260224#제22조.1항.4호
+  - A36852@20260224#제22조.1항.5호
+  stratum: S
+  article_units: 6
+  position: 1
+  bracket: true
+  method: 항 지목 틀 2, 시드 1115
+- id: G19
+  layer: a4
+  query: 관리대상화물 관리에 관한 고시 제7조 제2항에는 무엇이 규정되어 있나요?
+  gold:
+  - A36744@20231213#제7조.2항
+  gold_units:
+  - A36744@20231213#제7조.2항
+  stratum: S
+  article_units: 4
+  position: 4
+  bracket: false
+  method: 항 지목 틀 3, 시드 1115
+- id: G20
+  layer: a4
+  query: 관리대상화물 관리에 관한 고시 제6조 제3항 조문 알려줘
+  gold:
+  - A36744@20231213#제6조.3항
+  gold_units:
+  - A36744@20231213#제6조.3항
+  stratum: S
+  article_units: 6
+  position: 3
+  bracket: false
+  method: 항 지목 틀 4, 시드 1115

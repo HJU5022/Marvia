@@ -121,6 +121,7 @@ def test_v1_file_hash_is_untouched_by_v2():
         ("rset_a2", {"a2": 20}),
         ("rset_a3", {"a3": 20}),
         ("rset_b2", {"b2": 20}),
+        ("rset_a4", {"a4": 20}),
     ],
 )
 def test_retrieval_sets_are_frozen_by_their_sha256(name, layers):
