@@ -21,7 +21,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from marvia.config import Settings
 from marvia.identify.models import ToolError
@@ -33,6 +33,10 @@ for _name in ("httpx", "httpcore"):
 CFG = load_rules("shipfinder")
 # src/marvia/tools/shipfinder.py에서 세 단계 올라가면 저장소 루트다 → 루트의 fixtures/shipfinder/
 FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "shipfinder"
+
+# 응답 값의 모양이 달라 읽다가 나는 예외. [왜] 그대로 올리면 부르는 쪽이 죽고 예외 글에 바깥 값이 실린다.
+#      그 조회를 bad_response로 돌려준다 (시각이 너무 크면 OverflowError·OSError, 글자면 ValidationError)
+SHAPE_ERRORS = (ValidationError, OverflowError, OSError, ValueError, TypeError, KeyError)
 
 _lock = threading.Lock()
 # 하루 한도 소진을 받은 한국 날짜. 같은 날에는 바깥을 부르지 않고 바로 quota_exhausted로 돌려준다.
@@ -76,9 +80,19 @@ def _valid(data: dict, name: str):
     return value.strip() if isinstance(value, str) else value
 
 
+def _number(value) -> bool:
+    """수인가. [왜] 참·거짓 글자는 파이썬에서 정수로도 읽혀 1이나 0으로 지나간다. 수로 치지 않는다"""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _epoch(data: dict, name: str) -> datetime | None:
+    """초 단위 시각. 값이 없으면 None. 수가 아니면 TypeError를 낸다(부르는 쪽이 bad_response로 바꾼다)."""
     value = _valid(data, name)
-    return datetime.fromtimestamp(value, UTC) if isinstance(value, (int, float)) else None
+    if value is None:
+        return None
+    if not _number(value):
+        raise TypeError(name)
+    return datetime.fromtimestamp(float(value), UTC)
 
 
 def _call(
@@ -119,9 +133,11 @@ def _call(
         except ValueError:
             return _error("bad_response")
         status = body.get("status") if isinstance(body, dict) else None
+        if not isinstance(status, int) or isinstance(status, bool):
+            return _error("bad_response")  # [왜] 거짓 글자는 0과 같다고 읽혀 정상으로 지나간다
         if status != 0:
             # [왜] msg는 바깥에서 온 글이다. 옮기지 않고 정한 글로 바꾼다
-            code = CFG["status_codes"].get(status, "api_error") if isinstance(status, int) else "bad_response"
+            code = CFG["status_codes"].get(status, "api_error")
             if code == "quota_exhausted":
                 with _lock:
                     _quota_day = today
@@ -129,6 +145,15 @@ def _call(
         data = body.get("data")
         return data if isinstance(data, (dict, list)) else _error("bad_response")
     return _error(last)
+
+
+def _speed(value) -> float | None:
+    """속도 칸. 정수로 와도 소수로 담는다. 수가 아니면 TypeError를 낸다."""
+    if value is None:
+        return None
+    if not _number(value):
+        raise TypeError("sog")
+    return float(value)
 
 
 def search(
@@ -146,19 +171,23 @@ def search(
         return data
     if not isinstance(data, list):
         return _error("bad_response")
-    return [
-        VesselHit.model_validate(
-            {
-                "mmsi": row["mmsi"],
-                "imo": _valid(row, "imo"),
-                "call_sign": _valid(row, "call_sign"),
-                "ship_name": row.get("ship_name") or "",
-                "last_time": _epoch(row, "last_time"),
-            }
-        )
-        for row in data
-        if isinstance(row, dict) and isinstance(row.get("mmsi"), int)
-    ]
+    try:
+        return [
+            VesselHit.model_validate(
+                {
+                    "mmsi": row["mmsi"],
+                    "imo": _valid(row, "imo"),
+                    "call_sign": _valid(row, "call_sign"),
+                    "ship_name": row.get("ship_name") or "",
+                    "last_time": _epoch(row, "last_time"),
+                },
+                strict=True,
+            )
+            for row in data
+            if isinstance(row, dict) and _number(row.get("mmsi"))
+        ]
+    except SHAPE_ERRORS:
+        return _error("bad_response")  # [주의] 예외 글에는 바깥 값이 있다. 옮기지 않는다
 
 
 def _cached(mmsi: int, code: str, now: datetime) -> Position | None:
@@ -183,22 +212,26 @@ def fetch_position(
     data = _call(client, "VesselPositionSingle", {"mmsi": str(mmsi)}, key=key, now=moment, sleep=sleep)
     if isinstance(data, ToolError):
         return _cached(mmsi, data.code, moment) or data
-    if not isinstance(data, dict) or not all(isinstance(data.get(n), (int, float)) for n in ("lat", "lng")):
+    if not isinstance(data, dict) or not all(_number(data.get(n)) for n in ("lat", "lng")):
         return _error("bad_response")
-    found = Position.model_validate(
-        {
-            "mmsi": mmsi,
-            "lat": data["lat"],
-            "lng": data["lng"],
-            "sog": _valid(data, "sog"),
-            "navstat": _valid(data, "navistat"),
-            "dest": _valid(data, "dest"),
-            "dest_code": _valid(data, "destcode"),
-            "ais_eta": _epoch(data, "eta"),
-            "last_time": _epoch(data, "last_time"),
-            "fetched_at": moment,
-        }
-    )
+    try:
+        found = Position.model_validate(
+            {
+                "mmsi": mmsi,
+                "lat": float(data["lat"]),
+                "lng": float(data["lng"]),
+                "sog": _speed(_valid(data, "sog")),
+                "navstat": _valid(data, "navistat"),
+                "dest": _valid(data, "dest"),
+                "dest_code": _valid(data, "destcode"),
+                "ais_eta": _epoch(data, "eta"),
+                "last_time": _epoch(data, "last_time"),
+                "fetched_at": moment,
+            },
+            strict=True,
+        )
+    except SHAPE_ERRORS:
+        return _error("bad_response")  # [주의] 예외 글에는 바깥 값이 있다. 옮기지 않는다
     with _lock:
         _last_good[mmsi] = found
     return found
@@ -218,7 +251,9 @@ def fetch_flag(
     )
     if isinstance(data, ToolError):
         return data
-    return _valid(data, "registry") if isinstance(data, dict) else None
+    registry = _valid(data, "registry") if isinstance(data, dict) else None
+    # [왜] 국적은 글이다. 수나 목록이 오면 모양이 다른 응답이다
+    return registry if registry is None or isinstance(registry, str) else _error("bad_response")
 
 
 def _replay(request: httpx.Request) -> httpx.Response:

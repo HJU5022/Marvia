@@ -246,3 +246,37 @@ def test_a_body_of_an_unexpected_shape_is_bad_response_not_zero_rows(body):
     assert found == ToolError(
         code="bad_response", message=mof.CFG["messages"]["bad_response"], retryable=False
     )
+
+
+def _arrivals(text: str):
+    client, _ = _client(httpx.Response(200, text=text))
+    return control_arrivals(
+        "020", START, END, key=KEY, client=client, base_url="https://mof.test", sleep=lambda s: None
+    )
+
+
+def _control(details: str) -> str:
+    head = "<response><header><resultCode>00</resultCode></header><body><items>"
+    return f"{head}<item><clsgn>QQTST1</clsgn>{details}</item></items></body></response>"
+
+
+def test_arrival_times_that_mix_zoned_and_unzoned_values_are_bad_response_not_an_exception():
+    # [왜] 시간대가 있는 시각과 없는 시각은 견줄 수 없어 TypeError가 났다. 어느 쪽이 맞는지 짐작하지 않는다
+    mixed = _control(
+        "<detail><cntrlNm>입항</cntrlNm><cntrlOpertDt>2026-09-22T10:00:00</cntrlOpertDt></detail>"
+        "<detail><cntrlNm>접안</cntrlNm><cntrlOpertDt>2026-09-22T11:00:00+09:00</cntrlOpertDt></detail>"
+    )
+    assert _arrivals(mixed) == ToolError(
+        code="bad_response", message=mof.CFG["messages"]["bad_response"], retryable=False
+    )
+    # 시간대가 없는 값만 있어도 어느 시간대인지 모른다
+    bare = _control(
+        "<detail><cntrlNm>입항</cntrlNm><cntrlOpertDt>2026-09-22T10:00:00</cntrlOpertDt></detail>"
+    )
+    assert isinstance(_arrivals(bare), ToolError)
+
+
+def test_a_json_body_is_bad_response():
+    assert _arrivals('{"a": 1}') == ToolError(
+        code="bad_response", message=mof.CFG["messages"]["bad_response"], retryable=False
+    )

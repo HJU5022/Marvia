@@ -21,7 +21,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from marvia.config import Settings
 from marvia.identify.models import ToolError
@@ -59,12 +59,25 @@ def _text(node: ElementTree.Element, tag: str) -> str | None:
     return value or None
 
 
+class _BadShape(Exception):
+    """응답 값의 모양이 달라 읽을 수 없다. 부르는 쪽이 bad_response로 바꾼다. 글에 바깥 값을 싣지 않는다."""
+
+
 def _when(value: str | None) -> datetime | None:
-    """2026-09-22T22:30:00+09:00 꼴을 시각으로. 못 읽으면 None."""
+    """2026-09-22T22:30:00+09:00 꼴을 시각으로. 못 읽으면 None. 시간대가 없으면 _BadShape를 낸다."""
     try:
-        return datetime.fromisoformat(value) if value else None
+        moment = datetime.fromisoformat(value) if value else None
     except ValueError:
         return None
+    if moment is not None and moment.tzinfo is None:
+        # [왜] 시간대가 없는 시각은 어느 시간대인지 모른다. 짐작해 채우면 입항 시각이 9시간 어긋날 수 있다.
+        #      시간대가 있는 값과 섞이면 견주다 TypeError가 난다
+        raise _BadShape
+    return moment
+
+
+# 응답 값을 읽다가 나는 예외. 그 조회를 bad_response로 돌려준다
+SHAPE_ERRORS = (_BadShape, ValidationError, TypeError, ValueError, OverflowError)
 
 
 def _sign(call_sign: str | None) -> str:
@@ -209,7 +222,12 @@ def sailing_plans(
         max_pages=max_pages,
         sleep=sleep,
     )
-    return items if isinstance(items, ToolError) else [_plan(item) for item in items]
+    if isinstance(items, ToolError):
+        return items
+    try:
+        return [_plan(item) for item in items]
+    except SHAPE_ERRORS:
+        return _error("bad_response")  # [주의] 예외 글에는 바깥 값이 있다. 옮기지 않는다
 
 
 def control_arrivals(
@@ -237,7 +255,12 @@ def control_arrivals(
         max_pages=max_pages,
         sleep=sleep,
     )
-    return items if isinstance(items, ToolError) else [_arrival(item) for item in items]
+    if isinstance(items, ToolError):
+        return items
+    try:
+        return [_arrival(item) for item in items]
+    except SHAPE_ERRORS:
+        return _error("bad_response")
 
 
 def plan_by_mrn(plans: list[SailingPlan], mrn: str) -> SailingPlan | None:
