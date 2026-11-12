@@ -1,0 +1,68 @@
+{
+ "set": "v3",
+ "commit": "48ca3c5",
+ "model": "claude-haiku-5-5",
+ "graph": "off",
+ "rag_via": "direct",
+ "llm_via": "cli",
+ "invalid_runs": [],
+ "precheck": {
+  "behaviour_accuracy": {
+   "mean": 0.9267,
+   "low": 0.8667,
+   "high": 0.9333,
+   "ok": true
+  },
+  "correct_citation": {
+   "mean": 0.7333,
+   "low": 0.5834,
+   "high": 0.9166,
+   "ok": true
+  },
+  "ok": true
+ },
+ "gates": {
+  "errors": 0,
+  "leaks": 0,
+  "ok": true
+ },
+ "lines": {
+  "cap_stops": {
+   "agent": 1,
+   "supervisor": 0,
+   "ok": true
+  },
+  "behaviour_accuracy": {
+   "agent": 0.9267,
+   "supervisor": 0.94,
+   "ok": true
+  },
+  "correct_citation": {
+   "agent": 0.8833,
+   "supervisor": 0.7833,
+   "ok": false
+  },
+  "unsupported": {
+   "agent": 0.0,
+   "supervisor": 0.0,
+   "ok": true
+  }
+ },
+ "calls": {
+  "agent": 8.0,
+  "supervisor": 7.0,
+  "ratio": 0.88,
+  "ok": true
+ },
+ "right_items": {
+  "behaviour": {
+   "agent": 29,
+   "supervisor": 29
+  },
+  "citation": {
+   "agent": 10,
+   "supervisor": 10
+  }
+ },
+ "verdict": "구분 못 함"
+}

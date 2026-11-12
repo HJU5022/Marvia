@@ -346,3 +346,46 @@ def test_verdict_refuses_an_invalid_run_and_lists_the_ones_that_were_rerun(tmp_p
     # [왜] 무효는 meta.problems로만 정한다. 문제가 없는 실행을 무효라고 빼려 하면 거절한다
     done = verdict("--agent", *agent, "--supervisor", *supervisor, "--invalid", supervisor[0])
     assert done.returncode != 0 and "무효가 아닌 실행은 뺄 수 없다" in done.stderr
+
+
+# 본 측정(계획 7b, 커밋 48ca3c5)의 실행 열 개와 그때의 판정 출력
+COMPARE_AGENT = [f"eval/results/agent-claude-haiku-5-5-a{n}.json" for n in range(1, 6)]
+COMPARE_SUPERVISOR = [f"eval/results/supervisor-claude-haiku-5-5-s{n}.json" for n in range(1, 6)]
+COMPARE_VERDICT = ROOT / "eval/results/verdict-agent-supervisor-48ca3c5.json"
+
+
+def test_the_stored_comparison_runs_are_valid_runs_of_one_condition():
+    from marvia.eval.dataset import SET_V3_PATH, file_sha256, load_set
+    from marvia.eval.metrics import summarize
+
+    items = {item.id: item for item in load_set(SET_V3_PATH).items}
+    for name in COMPARE_AGENT + COMPARE_SUPERVISOR:
+        result = json.loads((ROOT / name).read_text(encoding="utf-8"))
+        meta = result["meta"]
+        picked = {k: meta[k] for k in ("commit", "llm_via", "set", "problems", "graph", "unipass_mode")}
+        assert picked == {
+            "commit": "48ca3c5",
+            "llm_via": "cli",
+            "set": "v3",
+            "problems": [],
+            "graph": "off",
+            "unipass_mode": "replay",
+        }, name
+        assert meta["set_sha256"] == file_sha256(SET_V3_PATH), name
+        assert meta["index_units"] == meta["file_units"], name  # 색인이 코퍼스 파일과 같은 DB에서 쟀다
+        assert len(result["rows"]) == 30 and not any(row["error"] or row["leak"] for row in result["rows"])
+        # [왜] 답 본문은 결과 파일에 두지 않는다. 줄에는 행동, 인용한 근거 번호, 센 값만 있다
+        assert not {"answer", "text", "question"} & {key for row in result["rows"] for key in row}, name
+        # 저장한 요약은 그 줄에서 지금 지표 코드로 다시 센 값과 같다
+        again = summarize(result["rows"], items, meta["k"])
+        assert {k: again[k] for k in result["summary"]} == result["summary"], name
+
+
+def test_the_stored_comparison_runs_give_the_stored_verdict_again():
+    # [왜] 판정은 저장한 줄에서 지금 지표 코드로 다시 센다. 저장한 출력과 다르면 지표가 바뀐 것이다
+    done = verdict("--agent", *COMPARE_AGENT, "--supervisor", *COMPARE_SUPERVISOR, "--set", "v3")
+    assert done.returncode == 0, done.stderr
+    printed = json.loads(done.stdout)
+    assert printed == json.loads(COMPARE_VERDICT.read_text(encoding="utf-8"))
+    assert printed["verdict"] == "구분 못 함" and printed["invalid_runs"] == []
+    assert printed["lines"]["correct_citation"] == {"agent": 0.8833, "supervisor": 0.7833, "ok": False}

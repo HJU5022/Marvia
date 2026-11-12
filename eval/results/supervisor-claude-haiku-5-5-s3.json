@@ -1,0 +1,3003 @@
+{
+ "meta": {
+  "tag": "s3",
+  "set": "v3",
+  "set_sha256": "2afb263d6ed34fae8cb1dc1511b882f95027467ca805a78775c598efc3cd8f1e",
+  "commit": "48ca3c5",
+  "loop": "supervisor",
+  "model": "claude-haiku-5-5",
+  "as_of": "2026-11-06",
+  "run_on": "2026-11-13",
+  "k": 8,
+  "price": {
+   "input": 0.1,
+   "output": 0.5
+  },
+  "graph": "off",
+  "graph_meta": {},
+  "annex_units": 75,
+  "index_units": 7412,
+  "file_units": 7412,
+  "units_sha256": "60d463e678e3123485b8b84250ad93a36f00047157ef88e3d346cd2b38c99915",
+  "items_sha256": "d469f36c474c3ce85f20a93ae7a6f66a194dc9fd5270ffd669e3dc5de6e5fffd",
+  "refers_expected": null,
+  "unipass_mode": "replay",
+  "rag_via": "direct",
+  "tracing": "off",
+  "llm_via": "cli",
+  "llm_cli": "2.1.322 (Claude Code)",
+  "problems": []
+ },
+ "summary": {
+  "n": 30,
+  "errors": 0,
+  "leaks": 0,
+  "behaviours": {
+   "answer": 12,
+   "guide": 2,
+   "choice": 5,
+   "decline": 4,
+   "not_found": 5,
+   "partial": 2
+  },
+  "correct_citation": {
+   "value": 0.75,
+   "n": 12
+  },
+  "wrong_evidence": {
+   "value": 0.4048,
+   "n": 42
+  },
+  "behaviour_accuracy": {
+   "value": 0.9333,
+   "n": 30
+  },
+  "blocked_accuracy": {
+   "value": 1.0,
+   "n": 5
+  },
+  "unrelated_accuracy": {
+   "value": 1.0,
+   "n": 10
+  },
+  "unsupported": {
+   "value": 0.0,
+   "n": 15
+  },
+  "unsupported_all": {
+   "value": 0.0,
+   "n": 30
+  },
+  "false_not_found": {
+   "value": 0.0,
+   "n": 24,
+   "count": 0
+  },
+  "calc_accuracy": {
+   "value": 1.0,
+   "n": 5
+  },
+  "recall_at_8": {
+   "value": 0.4583,
+   "n": 12
+  },
+  "mrr": {
+   "value": 0.4444,
+   "n": 12
+  },
+  "gold_in_evidence": {
+   "value": 0.6667,
+   "n": 12
+  },
+  "trajectory": {
+   "value": 1.0,
+   "n": 30
+  },
+  "routing": {
+   "value": 0.9667,
+   "n": 30
+  },
+  "gold_without_search": {
+   "value": 0,
+   "n": 12,
+   "ids": []
+  },
+  "contract_adherence": {
+   "value": 0.9785,
+   "n": 93,
+   "no_answer": 0,
+   "unknown": 0,
+   "requests": {
+    "2": 91,
+    "3": 1,
+    "5": 1
+   }
+  },
+  "stray_articles": {
+   "value": 0.6364,
+   "n": 11
+  },
+  "top_article_share": {
+   "value": 0.6618,
+   "n": 17,
+   "over": 8,
+   "skipped": 13
+  },
+  "false_sufficient": {
+   "value": 0.1429,
+   "n": 7
+  },
+  "llm_calls_median": 7.0,
+  "llm_calls_max": 18,
+  "evidence_backed": {
+   "value": 0.8333,
+   "n": 12
+  },
+  "cap_stops": 0,
+  "cap_breaches": 0,
+  "llm_calls_p50": 7,
+  "llm_calls_p95": 14,
+  "tokens_in_p50": 28870,
+  "tokens_in_p95": 56185,
+  "tokens_out_p50": 4416,
+  "tokens_out_p95": 10558,
+  "cost_per_item_mean": "재지 않음",
+  "cost_per_item_max": "재지 않음",
+  "cost_usd": "재지 않음",
+  "seconds_median": "재지 않음"
+ },
+ "rows": [
+  {
+   "id": "R01",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L012247@20261008#제20조.1항",
+    "L012247@20261008#제2조.1호",
+    "L012247@20261008#제20조.2항.5호",
+    "L012247@20261008#제15조.1항",
+    "L012247@20261008#제14조.1항.1호"
+   ],
+   "evidence": [
+    "L012247@20261008#제20조.1항",
+    "L012247@20261008#제2조.1호",
+    "L012500@20260930#제4조.1항.1호.나목",
+    "L012247@20261008#제15조.1항",
+    "L012500@20260930#별표9.2호.가목.6)",
+    "L012247@20261008#제15조.6항",
+    "L012500@20260930#별표9.2호.가목.11)",
+    "L012500@20260930#별표9.2호.가목.2).가)",
+    "L012247@20261008#제20조.2항.5호",
+    "L012247@20261008#제14조.1항.1호",
+    "L012247@20261008#제2조.3호",
+    "L012247@20261008#제14조.2항"
+   ],
+   "retrieved": [
+    "L012500@20260930#제4조.1항.1호.나목",
+    "L012247@20261008#제20조.1항",
+    "L012247@20261008#제15조.1항",
+    "L012500@20260930#별표9.2호.가목.6)",
+    "L012247@20261008#제15조.6항",
+    "L012500@20260930#별표9.2호.가목.11)",
+    "L012500@20260930#별표9.2호.가목.2).가)",
+    "L012247@20261008#제20조.2항.5호",
+    "A87721@20250901#제20조.2항",
+    "L012247@20261008#제2조.1호",
+    "L012247@20261008#제14조.1항.1호",
+    "L012247@20261008#제2조.3호",
+    "L012247@20261008#제14조.2항"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law",
+    "search_law",
+    "get_provision"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 2,
+    "get_provision": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 12,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 7,
+    "first_try": 7,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 7
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L012500@20260930#제4조.1항.1호.나목",
+      "L012247@20261008#제20조.1항",
+      "L012247@20261008#제15조.1항",
+      "L012500@20260930#별표9.2호.가목.6)",
+      "L012247@20261008#제15조.6항",
+      "L012500@20260930#별표9.2호.가목.11)",
+      "L012500@20260930#별표9.2호.가목.2).가)",
+      "L012247@20261008#제20조.2항.5호"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L012247@20261008#제20조.1항",
+      "L012500@20260930#제4조.1항.1호.나목",
+      "L012500@20260930#별표9.2호.가목.2).가)",
+      "L012500@20260930#별표9.2호.가목.6)",
+      "L012500@20260930#별표9.2호.가목.11)",
+      "L012247@20261008#제15조.1항",
+      "L012247@20261008#제15조.6항",
+      "A87721@20250901#제20조.2항"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제2조",
+      "제14조"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L012247@20261008#제2조.1호",
+      "L012247@20261008#제15조.1항",
+      "L012500@20260930#제4조.1항.1호.나목",
+      "L012247@20261008#제14조.1항.1호",
+      "L012500@20260930#별표9.2호.가목.6)",
+      "L012500@20260930#별표9.2호.가목.11)",
+      "L012247@20261008#제2조.3호",
+      "L012247@20261008#제14조.2항"
+     ]
+    }
+   ],
+   "real_llm_calls": 12,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 46565,
+     "out": 9174
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 67.2,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R02",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L012500@20260930#제27조.1항.1호"
+   ],
+   "evidence": [
+    "L012500@20260930#제27조.1항.7호",
+    "L012500@20260930#제27조.1항.8호",
+    "L012500@20260930#제27조.1항.4호",
+    "L012500@20260930#제27조.1항.6호",
+    "L012500@20260930#제27조.1항.3호.나목",
+    "L012500@20260930#제27조.1항.1호",
+    "L012500@20260930#제27조.1항.1의2호.가목",
+    "L012500@20260930#제27조.1항.10호.다목",
+    "L012500@20260930#제27조.1항.1의2호.나목",
+    "L012500@20260930#제27조.1항.10호.나목"
+   ],
+   "retrieved": [
+    "L012500@20260930#제27조.1항.7호",
+    "L012500@20260930#제27조.1항.8호",
+    "L012500@20260930#제27조.1항.4호",
+    "L012500@20260930#제27조.1항.6호",
+    "L012500@20260930#제27조.1항.3호.나목",
+    "L012500@20260930#제27조.1항.1호",
+    "L012500@20260930#제27조.1항.1의2호.가목",
+    "L012500@20260930#제27조.1항.10호.다목",
+    "L012500@20260930#제27조.1항.2호",
+    "L012500@20260930#제27조.1항.1의2호.나목",
+    "L012500@20260930#제27조.1항.10호.나목"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 2
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 12,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 7,
+    "first_try": 7,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 7
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L012500@20260930#제27조.1항.7호",
+      "L012500@20260930#제27조.1항.8호",
+      "L012500@20260930#제27조.1항.4호",
+      "L012500@20260930#제27조.1항.6호",
+      "L012500@20260930#제27조.1항.3호.나목",
+      "L012500@20260930#제27조.1항.1호",
+      "L012500@20260930#제27조.1항.1의2호.가목",
+      "L012500@20260930#제27조.1항.10호.다목"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L012500@20260930#제27조.1항.2호",
+      "L012500@20260930#제27조.1항.1의2호.나목",
+      "L012500@20260930#제27조.1항.1의2호.가목",
+      "L012500@20260930#제27조.1항.1호",
+      "L012500@20260930#제27조.1항.4호",
+      "L012500@20260930#제27조.1항.6호",
+      "L012500@20260930#제27조.1항.7호",
+      "L012500@20260930#제27조.1항.10호.다목"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": []
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L012500@20260930#제27조.1항.4호",
+      "L012500@20260930#제27조.1항.1의2호.나목",
+      "L012500@20260930#제27조.1항.1의2호.가목",
+      "L012500@20260930#제27조.1항.6호",
+      "L012500@20260930#제27조.1항.10호.다목",
+      "L012500@20260930#제27조.1항.10호.나목",
+      "L012500@20260930#제27조.1항.1호",
+      "L012500@20260930#제27조.1항.8호"
+     ]
+    }
+   ],
+   "real_llm_calls": 12,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 47506,
+     "out": 6125
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 53.1,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R03",
+   "loop": "supervisor",
+   "behaviour": "guide",
+   "behaviour_base": "guide",
+   "cited": [
+    "L002421@20260227#제249조.1항",
+    "L001556@20261002#제244조.3항"
+   ],
+   "evidence": [
+    "L001556@20261002#제241조.3항",
+    "L002421@20260227#제249조.1항",
+    "L001556@20261002#제244조.3항",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36852@20260224#제34조.1항.1호.가목",
+    "A36852@20260224#제34조.1항.1호.다목",
+    "A36893@20251217#제35조.3항.4호"
+   ],
+   "retrieved": [
+    "L001556@20261002#제241조.3항",
+    "L002421@20260227#제249조.1항",
+    "L001556@20261002#제244조.3항",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36852@20260224#제34조.1항.1호.가목",
+    "A36852@20260224#제34조.1항.1호.다목",
+    "A36893@20251217#제35조.3항.4호"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 7,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 3,
+    "first_try": 3,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 3
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L001556@20261002#제241조.3항",
+      "L002421@20260227#제249조.1항",
+      "L001556@20261002#제244조.3항",
+      "A36852@20260224#제34조.1항.1호.나목",
+      "A36852@20260224#제34조.1항.1호.라목",
+      "A36852@20260224#제34조.1항.1호.가목",
+      "A36852@20260224#제34조.1항.1호.다목",
+      "A36893@20251217#제35조.3항.4호"
+     ]
+    }
+   ],
+   "real_llm_calls": 7,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 23801,
+     "out": 3995
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 31.5,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R04",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "A36893@20251217#제28조.1항",
+    "A36744@20231213#제5조.5항.2호"
+   ],
+   "evidence": [
+    "L001556@20261002#제246조의3.5항",
+    "L001556@20261002#제246조의3.1항",
+    "L001556@20261002#제246조의3.3항",
+    "L001556@20261002#제246조의3.4항",
+    "L001556@20261002#제246조의3.2항",
+    "A36893@20251217#제28조.1항",
+    "L001556@20261002#제246조의3.7항",
+    "A36744@20231213#제5조.5항.2호"
+   ],
+   "retrieved": [
+    "A36893@20251217#제28조.1항",
+    "A36744@20231213#제5조.5항.2호",
+    "L001556@20261002#제244조.3항",
+    "A36744@20231213#제5조.4항.1호",
+    "L002421@20260227#제259조의6.2항.2호",
+    "A36744@20231213#제5조.2항.1호",
+    "L001556@20261002#제244조.2항",
+    "A36893@20251217#제35조.2항",
+    "L001556@20261002#제246조의3.5항",
+    "L001556@20261002#제246조의3.1항",
+    "L001556@20261002#제246조의3.3항",
+    "L001556@20261002#제246조의3.4항",
+    "L001556@20261002#제246조의3.2항",
+    "L001556@20261002#제246조의3.7항"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 9,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 5,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 5
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "A36893@20251217#제28조.1항",
+      "A36744@20231213#제5조.5항.2호",
+      "L001556@20261002#제244조.3항",
+      "A36744@20231213#제5조.4항.1호",
+      "L002421@20260227#제259조의6.2항.2호",
+      "A36744@20231213#제5조.2항.1호",
+      "L001556@20261002#제244조.2항",
+      "A36893@20251217#제35조.2항"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제246조의3"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제246조의3.5항",
+      "L001556@20261002#제246조의3.1항",
+      "L001556@20261002#제246조의3.3항",
+      "L001556@20261002#제246조의3.4항",
+      "L001556@20261002#제246조의3.2항",
+      "A36893@20251217#제28조.1항",
+      "L001556@20261002#제246조의3.7항",
+      "A36744@20231213#제5조.5항.2호"
+     ]
+    }
+   ],
+   "real_llm_calls": 9,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 29139,
+     "out": 4769
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 39.8,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R05",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L001556@20261002#제173조.3항",
+    "L001556@20261002#제172조.3항"
+   ],
+   "evidence": [
+    "L001556@20261002#제173조.3항",
+    "L001556@20261002#제172조.3항",
+    "L001556@20261002#제172조.4항",
+    "L001556@20261002#제172조.5항",
+    "L001556@20261002#제321조.3항",
+    "L001556@20261002#제19조.1항.1호.가목",
+    "A36744@20231213#제12조.3항.2호",
+    "L001556@20261002#제160조.6항"
+   ],
+   "retrieved": [
+    "L001556@20261002#제173조.3항",
+    "L001556@20261002#제172조.3항",
+    "L001556@20261002#제172조.4항",
+    "L001556@20261002#제172조.5항",
+    "L001556@20261002#제321조.3항",
+    "L001556@20261002#제19조.1항.1호.가목",
+    "A36744@20231213#제12조.3항.2호",
+    "L001556@20261002#제160조.6항"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law",
+    "write_todos",
+    "write_todos"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1,
+    "write_todos": 2
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 9,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 3,
+    "first_try": 3,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 3
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L001556@20261002#제173조.3항",
+      "L001556@20261002#제172조.3항",
+      "L001556@20261002#제172조.4항",
+      "L001556@20261002#제172조.5항",
+      "L001556@20261002#제321조.3항",
+      "L001556@20261002#제19조.1항.1호.가목",
+      "A36744@20231213#제12조.3항.2호",
+      "L001556@20261002#제160조.6항"
+     ]
+    }
+   ],
+   "real_llm_calls": 9,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 34007,
+     "out": 5063
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 68.1,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R06",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L001556@20261002#제237조.1항.1호",
+    "L001556@20261002#제237조.1항.2호",
+    "L001556@20261002#제237조.1항.3호",
+    "L001556@20261002#제237조.1항.4호",
+    "L001556@20261002#제237조.1항.4의2호",
+    "L002421@20260227#제244조.2호",
+    "A36893@20251217#제26조.1항.1호"
+   ],
+   "evidence": [
+    "L002421@20260227#제244조.2호",
+    "L001556@20261002#제237조.1항.1호",
+    "A36893@20251217#제26조.1항.1호",
+    "L001556@20261002#제237조.1항.2호",
+    "L001556@20261002#제237조.1항.3호",
+    "L001556@20261002#제237조.1항.4의2호",
+    "A36893@20251217#제26조.1항.2호",
+    "L001556@20261002#제237조.1항.4호"
+   ],
+   "retrieved": [
+    "L002421@20260227#제244조.2호",
+    "L001556@20261002#제237조.1항.1호",
+    "A36893@20251217#제26조.1항.1호",
+    "L001556@20261002#제237조.1항.2호",
+    "L001556@20261002#제237조.1항.3호",
+    "L001556@20261002#제237조.1항.4의2호",
+    "A36893@20251217#제26조.1항.2호",
+    "L001556@20261002#제237조.1항.4호"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 7,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 3,
+    "first_try": 3,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 3
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L002421@20260227#제244조.2호",
+      "L001556@20261002#제237조.1항.1호",
+      "A36893@20251217#제26조.1항.1호",
+      "L001556@20261002#제237조.1항.2호",
+      "L001556@20261002#제237조.1항.3호",
+      "L001556@20261002#제237조.1항.4의2호",
+      "A36893@20251217#제26조.1항.2호",
+      "L001556@20261002#제237조.1항.4호"
+     ]
+    }
+   ],
+   "real_llm_calls": 7,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 23463,
+     "out": 4416
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 36.8,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R07",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표9.2호.가목.12).가)",
+    "L012500@20260930#별표9.2호.가목.12).나)"
+   ],
+   "evidence": [
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표9.2호.가목.12).가)",
+    "L012500@20260930#별표9.2호.가목.1)",
+    "L012500@20260930#별표9.2호.가목.4)",
+    "L012500@20260930#별표9.2호.가목.12).나)",
+    "L012500@20260930#별표9.2호.가목.13)",
+    "L012500@20260930#별표9.2호.가목.11)",
+    "L012500@20260930#별표9.2호.가목.2).가)"
+   ],
+   "retrieved": [
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표9.2호.가목.12).가)",
+    "L012500@20260930#별표9.2호.가목.1)",
+    "L012500@20260930#별표9.2호.가목.4)",
+    "L012500@20260930#별표9.2호.가목.12).나)",
+    "L012500@20260930#별표9.2호.가목.13)",
+    "L012500@20260930#별표9.2호.가목.11)",
+    "L012500@20260930#별표9.2호.가목.2).가)"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 7,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 3,
+    "first_try": 3,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 3
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L012500@20260930#별표9.2호.가목.7)",
+      "L012500@20260930#별표9.2호.가목.12).가)",
+      "L012500@20260930#별표9.2호.가목.1)",
+      "L012500@20260930#별표9.2호.가목.4)",
+      "L012500@20260930#별표9.2호.가목.12).나)",
+      "L012500@20260930#별표9.2호.가목.13)",
+      "L012500@20260930#별표9.2호.가목.11)",
+      "L012500@20260930#별표9.2호.가목.2).가)"
+     ]
+    }
+   ],
+   "real_llm_calls": 7,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 33804,
+     "out": 6474
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 46.5,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R08",
+   "loop": "supervisor",
+   "behaviour": "guide",
+   "behaviour_base": "guide",
+   "cited": [
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표10.4호.다목"
+   ],
+   "evidence": [
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표10.4호.다목"
+   ],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": "서류검사 요건 충족"
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:item",
+    "check_reimport",
+    "get_provision",
+    "get_provision"
+   ],
+   "tool_counts": {
+    "sub:item": 1,
+    "check_reimport": 1,
+    "get_provision": 2
+   },
+   "visits": [
+    "item"
+   ],
+   "plan": [],
+   "llm_calls": 7,
+   "write_attempts": 2,
+   "verification": [
+    "계산 결과에 없는 날짜"
+   ],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 2,
+    "first_try": 2,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 2
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 7,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 33192,
+     "out": 7903
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 43.9,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R09",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 2,
+   "stages": [
+    "반입신고",
+    "수입신고"
+   ],
+   "tools": [],
+   "tool_counts": {},
+   "visits": [],
+   "plan": [],
+   "llm_calls": 2,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 1,
+    "first_try": 1,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 1
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 2,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 6587,
+     "out": 1347
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 9.2,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R10",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 1,
+   "stages": [
+    "입항"
+   ],
+   "tools": [],
+   "tool_counts": {},
+   "visits": [],
+   "plan": [],
+   "llm_calls": 2,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 1,
+    "first_try": 1,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 1
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 2,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 6517,
+     "out": 1052
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 7.5,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R11",
+   "loop": "supervisor",
+   "behaviour": "choice",
+   "behaviour_base": "choice",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "ask_user",
+    "ask_user",
+    "sub:cargo",
+    "ask_user"
+   ],
+   "tool_counts": {
+    "ask_user": 3,
+    "sub:cargo": 1
+   },
+   "visits": [
+    "cargo"
+   ],
+   "plan": [],
+   "llm_calls": 7,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 1,
+    "first_try": 1,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 1
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 7,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 28239,
+     "out": 4682
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 30.3,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R12",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L001556@20261002#제241조.3항"
+   ],
+   "evidence": [
+    "L001556@20261002#제241조.3항"
+   ],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [
+     {
+      "name": "수입신고 기한",
+      "due": "2026-11-26"
+     }
+    ],
+    "reimport": null
+   },
+   "cargo_count": 1,
+   "stages": [
+    "반입신고"
+   ],
+   "tools": [
+    "sub:cargo",
+    "calc_deadlines",
+    "get_provision"
+   ],
+   "tool_counts": {
+    "sub:cargo": 1,
+    "calc_deadlines": 1,
+    "get_provision": 1
+   },
+   "visits": [
+    "cargo"
+   ],
+   "plan": [],
+   "llm_calls": 6,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 1,
+    "first_try": 1,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 1
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 6,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 19851,
+     "out": 2101
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 16.9,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R13",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L001556@20261002#제241조.3항",
+    "L002421@20260227#제247조.1항.1호",
+    "A36852@20260224#제34조.1항.1호.다목"
+   ],
+   "evidence": [
+    "L001556@20261002#제241조.3항",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.1호.다목",
+    "L002421@20260227#제247조.1항.1호",
+    "A36852@20260224#제34조.1항.2호",
+    "A36852@20260224#제34조.1항.1호.가목",
+    "L002421@20260227#제247조.3항",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36852@20260224#제34조.1항.4호"
+   ],
+   "retrieved": [
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.1호.다목",
+    "L002421@20260227#제247조.1항.1호",
+    "A36852@20260224#제34조.1항.2호",
+    "A36852@20260224#제34조.1항.1호.가목",
+    "L002421@20260227#제247조.3항",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36852@20260224#제34조.1항.4호"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [
+     {
+      "name": "수입신고 기한",
+      "due": "2026-11-26"
+     }
+    ],
+    "reimport": null
+   },
+   "cargo_count": 1,
+   "stages": [
+    "반입신고"
+   ],
+   "tools": [
+    "sub:cargo",
+    "calc_deadlines",
+    "get_provision",
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:cargo": 1,
+    "calc_deadlines": 1,
+    "get_provision": 1,
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "cargo",
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 11,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 3,
+    "first_try": 3,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 3
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "A36852@20260224#제34조.1항.1호.나목",
+      "A36852@20260224#제34조.1항.1호.다목",
+      "L002421@20260227#제247조.1항.1호",
+      "A36852@20260224#제34조.1항.2호",
+      "A36852@20260224#제34조.1항.1호.가목",
+      "L002421@20260227#제247조.3항",
+      "A36852@20260224#제34조.1항.1호.라목",
+      "A36852@20260224#제34조.1항.4호"
+     ]
+    }
+   ],
+   "real_llm_calls": 11,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 38008,
+     "out": 7295
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 52.0,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R14",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "L001556@20261002#제9조.1항.1호"
+   ],
+   "evidence": [
+    "L001556@20261002#제9조.1항.1호"
+   ],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [
+     {
+      "name": "관세 납부기한",
+      "due": "2026-11-17"
+     }
+    ],
+    "reimport": null
+   },
+   "cargo_count": 1,
+   "stages": [
+    "수입신고수리"
+   ],
+   "tools": [
+    "sub:cargo",
+    "calc_deadlines",
+    "get_provision"
+   ],
+   "tool_counts": {
+    "sub:cargo": 1,
+    "calc_deadlines": 1,
+    "get_provision": 1
+   },
+   "visits": [
+    "cargo"
+   ],
+   "plan": [],
+   "llm_calls": 6,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 1,
+    "first_try": 1,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 1
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 6,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 19925,
+     "out": 2709
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 19.6,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "R15",
+   "loop": "supervisor",
+   "behaviour": "answer",
+   "behaviour_base": "answer",
+   "cited": [
+    "A36852@20260224#제19조.1호",
+    "L001556@20261002#제9조.1항.1호",
+    "A36893@20251217#제45조.2항"
+   ],
+   "evidence": [
+    "A36893@20251217#제45조.2항",
+    "L001556@20261002#제9조.1항.1호",
+    "L002421@20260227#제7조.1항.1호",
+    "A36852@20260224#제19조.2호",
+    "A36852@20260224#제19조.5호",
+    "A36852@20260224#제19조.1호",
+    "A36852@20260224#제19조.4호",
+    "A36852@20260224#제19조.3호"
+   ],
+   "retrieved": [
+    "L001556@20261002#제241조.3항",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36893@20251217#제35조.3항.4호",
+    "A36852@20260224#제34조.1항.1호.가목",
+    "A36852@20260224#제34조.1항.1호.다목",
+    "A36893@20251217#제8조.3항",
+    "L002421@20260227#제6조.3호.나목",
+    "A36893@20251217#제45조.2항",
+    "L001556@20261002#제9조.1항.1호",
+    "L002421@20260227#제7조.1항.1호",
+    "A36852@20260224#제19조.2호",
+    "A36852@20260224#제19조.5호",
+    "A36852@20260224#제19조.1호",
+    "A36852@20260224#제19조.4호",
+    "A36852@20260224#제19조.3호"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 1,
+   "stages": [
+    "하선신고"
+   ],
+   "tools": [
+    "sub:cargo",
+    "calc_deadlines",
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:cargo": 1,
+    "calc_deadlines": 1,
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "cargo",
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 12,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 4,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 4,
+     "5": 1
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제241조.3항",
+      "A36852@20260224#제34조.1항.1호.나목",
+      "A36852@20260224#제34조.1항.1호.라목",
+      "A36893@20251217#제35조.3항.4호",
+      "A36852@20260224#제34조.1항.1호.가목",
+      "A36852@20260224#제34조.1항.1호.다목",
+      "A36893@20251217#제8조.3항",
+      "L002421@20260227#제6조.3호.나목"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제38조의3",
+      "제135조"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "A36893@20251217#제45조.2항",
+      "L001556@20261002#제9조.1항.1호",
+      "L002421@20260227#제7조.1항.1호",
+      "A36852@20260224#제19조.2호",
+      "A36852@20260224#제19조.5호",
+      "A36852@20260224#제19조.1호",
+      "A36852@20260224#제19조.4호",
+      "A36852@20260224#제19조.3호"
+     ]
+    }
+   ],
+   "real_llm_calls": 12,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 56185,
+     "out": 8809
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 59.4,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U01",
+   "loop": "supervisor",
+   "behaviour": "decline",
+   "behaviour_base": "decline",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "decline"
+   ],
+   "tool_counts": {
+    "decline": 1
+   },
+   "visits": [],
+   "plan": [],
+   "llm_calls": 1,
+   "write_attempts": 0,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 0,
+    "first_try": 0,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {}
+   },
+   "rag": [],
+   "real_llm_calls": 1,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 3628,
+     "out": 187
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 2.0,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U02",
+   "loop": "supervisor",
+   "behaviour": "decline",
+   "behaviour_base": "decline",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "decline"
+   ],
+   "tool_counts": {
+    "decline": 1
+   },
+   "visits": [],
+   "plan": [],
+   "llm_calls": 1,
+   "write_attempts": 0,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 0,
+    "first_try": 0,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {}
+   },
+   "rag": [],
+   "real_llm_calls": 1,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 3646,
+     "out": 180
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 1.8,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U03",
+   "loop": "supervisor",
+   "behaviour": "decline",
+   "behaviour_base": "decline",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "decline"
+   ],
+   "tool_counts": {
+    "decline": 1
+   },
+   "visits": [],
+   "plan": [],
+   "llm_calls": 1,
+   "write_attempts": 0,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 0,
+    "first_try": 0,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {}
+   },
+   "rag": [],
+   "real_llm_calls": 1,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 3636,
+     "out": 254
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 2.1,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U04",
+   "loop": "supervisor",
+   "behaviour": "decline",
+   "behaviour_base": "decline",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "decline"
+   ],
+   "tool_counts": {
+    "decline": 1
+   },
+   "visits": [],
+   "plan": [],
+   "llm_calls": 1,
+   "write_attempts": 0,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 0,
+    "first_try": 0,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {}
+   },
+   "rag": [],
+   "real_llm_calls": 1,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 3635,
+     "out": 262
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 2.2,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U05",
+   "loop": "supervisor",
+   "behaviour": "not_found",
+   "behaviour_base": "answer",
+   "cited": [
+    "L002421@20260227#제226조.3항.2호"
+   ],
+   "evidence": [
+    "L002421@20260227#제226조.3항.2호",
+    "L012500@20260930#제27조.1항.7호",
+    "A87721@20250901#제6조.2항.4호",
+    "A87721@20250901#제6조.2항.1호",
+    "A87721@20250901#제6조.2항.2호",
+    "L012500@20260930#제27조.1항.8호",
+    "A87721@20250901#제6조.2항.3호",
+    "A87721@20250901#제14조.1항.5호"
+   ],
+   "retrieved": [
+    "L012247@20261008#제21조.1항",
+    "A87721@20250901#제6조.2항.4호",
+    "A87721@20250901#제5조.3항",
+    "A87721@20250901#제6조.2항.1호",
+    "A87721@20250901#제6조.2항.3호",
+    "A87721@20250901#제6조.2항.2호",
+    "L012500@20260930#제31조.2항.2호.가목",
+    "A87721@20250901#제9조",
+    "L002421@20260227#제226조.3항.2호",
+    "L012500@20260930#제27조.1항.7호",
+    "L012500@20260930#제27조.1항.8호",
+    "A87721@20250901#제14조.1항.5호"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 9,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 5,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 5
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L012247@20261008#제21조.1항",
+      "A87721@20250901#제6조.2항.4호",
+      "A87721@20250901#제5조.3항",
+      "A87721@20250901#제6조.2항.1호",
+      "A87721@20250901#제6조.2항.3호",
+      "A87721@20250901#제6조.2항.2호",
+      "L012500@20260930#제31조.2항.2호.가목",
+      "A87721@20250901#제9조"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": []
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L002421@20260227#제226조.3항.2호",
+      "L012500@20260930#제27조.1항.7호",
+      "A87721@20250901#제6조.2항.4호",
+      "A87721@20250901#제6조.2항.1호",
+      "A87721@20250901#제6조.2항.2호",
+      "L012500@20260930#제27조.1항.8호",
+      "A87721@20250901#제6조.2항.3호",
+      "A87721@20250901#제14조.1항.5호"
+     ]
+    }
+   ],
+   "real_llm_calls": 9,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 34643,
+     "out": 3808
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 32.4,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U06",
+   "loop": "supervisor",
+   "behaviour": "not_found",
+   "behaviour_base": "unsupported",
+   "cited": [],
+   "evidence": [
+    "L002421@20260227#제258조.4항.1호",
+    "L001556@20261002#제186조.2항",
+    "L002421@20260227#제16조의2.3항.2호",
+    "L012500@20260930#제3조의2.1항",
+    "L012500@20260930#별표9.2호.가목.3)",
+    "L012500@20260930#별표9.2호.가목.13)",
+    "L012500@20260930#별표9.2호.가목.4)",
+    "L012500@20260930#별표9.2호.가목.7)"
+   ],
+   "retrieved": [
+    "L001556@20261002#제92조.4호",
+    "A36893@20251217#제22조.1항.7호",
+    "A36852@20260224#제17조.1항",
+    "A36893@20251217#제13조.6항.2호",
+    "L012500@20260930#제36조.3항",
+    "A36893@20251217#제17조.1항.3호",
+    "L002421@20260227#제197조.2항.3호",
+    "L002421@20260227#제197조.2항.2호",
+    "L002421@20260227#제258조.4항.1호",
+    "L001556@20261002#제186조.2항",
+    "L002421@20260227#제16조의2.3항.2호",
+    "L012500@20260930#제3조의2.1항",
+    "L012500@20260930#별표9.2호.가목.3)",
+    "L012500@20260930#별표9.2호.가목.13)",
+    "L012500@20260930#별표9.2호.가목.4)",
+    "L012500@20260930#별표9.2호.가목.7)"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 9,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 4,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 4,
+     "3": 1
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제92조.4호",
+      "A36893@20251217#제22조.1항.7호",
+      "A36852@20260224#제17조.1항",
+      "A36893@20251217#제13조.6항.2호",
+      "L012500@20260930#제36조.3항",
+      "A36893@20251217#제17조.1항.3호",
+      "L002421@20260227#제197조.2항.3호",
+      "L002421@20260227#제197조.2항.2호"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제58조의2"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L002421@20260227#제258조.4항.1호",
+      "L001556@20261002#제186조.2항",
+      "L002421@20260227#제16조의2.3항.2호",
+      "L012500@20260930#제3조의2.1항",
+      "L012500@20260930#별표9.2호.가목.3)",
+      "L012500@20260930#별표9.2호.가목.13)",
+      "L012500@20260930#별표9.2호.가목.4)",
+      "L012500@20260930#별표9.2호.가목.7)"
+     ]
+    }
+   ],
+   "real_llm_calls": 9,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 40032,
+     "out": 3577
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 32.8,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U07",
+   "loop": "supervisor",
+   "behaviour": "not_found",
+   "behaviour_base": "answer",
+   "cited": [
+    "L001556@20261002#제99조.1호.가목",
+    "L001556@20261002#제99조.1호.나목",
+    "L001556@20261002#제99조.1호.다목",
+    "L001556@20261002#제99조.1호.라목",
+    "L001556@20261002#제99조.2호",
+    "L001556@20261002#제99조.3호"
+   ],
+   "evidence": [
+    "L001556@20261002#제99조.1호.다목",
+    "L001556@20261002#제99조.1호.나목",
+    "L001556@20261002#제99조.1호.라목",
+    "L001556@20261002#제99조.1호.가목",
+    "L001556@20261002#제99조.2호",
+    "L001556@20261002#제99조.3호",
+    "A36893@20251217#제72조.1항.7호",
+    "L006392@20260731#제54조.2항"
+   ],
+   "retrieved": [
+    "L001556@20261002#제99조.1호.다목",
+    "L001556@20261002#제99조.1호.나목",
+    "L001556@20261002#제99조.1호.가목",
+    "L001556@20261002#제99조.1호.라목",
+    "L001556@20261002#제99조.2호",
+    "L001556@20261002#제99조.3호",
+    "L002421@20260227#제99조.2항",
+    "L002421@20260227#제99조.1항",
+    "A36893@20251217#제72조.1항.7호",
+    "L006392@20260731#제54조.2항"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 9,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 5,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 5
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제99조.1호.다목",
+      "L001556@20261002#제99조.1호.나목",
+      "L001556@20261002#제99조.1호.가목",
+      "L001556@20261002#제99조.1호.라목",
+      "L001556@20261002#제99조.2호",
+      "L001556@20261002#제99조.3호",
+      "L002421@20260227#제99조.2항",
+      "L002421@20260227#제99조.1항"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제999조",
+      "제99조"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제99조.1호.다목",
+      "L001556@20261002#제99조.1호.나목",
+      "L001556@20261002#제99조.1호.라목",
+      "L001556@20261002#제99조.1호.가목",
+      "L001556@20261002#제99조.2호",
+      "L001556@20261002#제99조.3호",
+      "A36893@20251217#제72조.1항.7호",
+      "L006392@20260731#제54조.2항"
+     ]
+    }
+   ],
+   "real_llm_calls": 9,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 31502,
+     "out": 4455
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 35.8,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U08",
+   "loop": "supervisor",
+   "behaviour": "partial",
+   "behaviour_base": "partial",
+   "cited": [],
+   "evidence": [
+    "L001556@20261002#제277조.6항.2호",
+    "L001556@20261002#제277조.7항.4호",
+    "L001556@20261002#제277조.6항.5호",
+    "L001556@20261002#제277조.7항.6호",
+    "L001556@20261002#제277조.4항.1호",
+    "L001556@20261002#제277조.3항.2호",
+    "L001556@20261002#제277조.5항.3호",
+    "L001556@20261002#제277조.7항.7호"
+   ],
+   "retrieved": [
+    "L001556@20261002#제241조.1항",
+    "L001556@20261002#제241조.2항.3호",
+    "L001556@20261002#제241조.2항.3의2호.나목",
+    "L001556@20261002#제241조.2항.3의2호.다목",
+    "L001556@20261002#제241조.2항.3의2호.가목",
+    "L001556@20261002#제241조.2항.4호",
+    "L001556@20261002#제241조.2항.1호",
+    "L001556@20261002#제241조.2항.2호",
+    "L001556@20261002#제277조.6항.2호",
+    "L001556@20261002#제277조.7항.4호",
+    "L001556@20261002#제277조.6항.5호",
+    "L001556@20261002#제277조.7항.6호",
+    "L001556@20261002#제277조.4항.1호",
+    "L001556@20261002#제277조.3항.2호",
+    "L001556@20261002#제277조.5항.3호",
+    "L001556@20261002#제277조.7항.7호"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law",
+    "get_provision"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1,
+    "get_provision": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 11,
+   "write_attempts": 2,
+   "verification": [
+    "금지 표현",
+    "인용한 근거에 없는 조문"
+   ],
+   "verification_final": [
+    "인용한 근거에 없는 조문"
+   ],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 6,
+    "first_try": 6,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 6
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제241조.1항",
+      "L001556@20261002#제241조.2항.3호",
+      "L001556@20261002#제241조.2항.3의2호.나목",
+      "L001556@20261002#제241조.2항.3의2호.다목",
+      "L001556@20261002#제241조.2항.3의2호.가목",
+      "L001556@20261002#제241조.2항.4호",
+      "L001556@20261002#제241조.2항.1호",
+      "L001556@20261002#제241조.2항.2호"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제241조"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제277조.6항.2호",
+      "L001556@20261002#제277조.7항.4호",
+      "L001556@20261002#제277조.6항.5호",
+      "L001556@20261002#제277조.7항.6호",
+      "L001556@20261002#제277조.4항.1호",
+      "L001556@20261002#제277조.3항.2호",
+      "L001556@20261002#제277조.5항.3호",
+      "L001556@20261002#제277조.7항.7호"
+     ]
+    }
+   ],
+   "real_llm_calls": 11,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 37048,
+     "out": 4639
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 39.2,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U09",
+   "loop": "supervisor",
+   "behaviour": "not_found",
+   "behaviour_base": "answer",
+   "cited": [
+    "L001556@20261002#제241조.3항"
+   ],
+   "evidence": [
+    "L001556@20261002#제243조.2항",
+    "L001556@20261002#제241조.3항",
+    "A36893@20251217#제89조.1항",
+    "L002421@20260227#제249조.1항",
+    "A36893@20251217#제103조.2항",
+    "L001556@20261002#제241조.4항",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.2호"
+   ],
+   "retrieved": [
+    "L001556@20261002#제243조.2항",
+    "L001556@20261002#제241조.3항",
+    "L002421@20260227#제249조.1항",
+    "L002421@20260227#제249조.3항.2호",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.2호",
+    "L001556@20261002#제244조.1항",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36893@20251217#제89조.1항",
+    "A36893@20251217#제103조.2항",
+    "L001556@20261002#제241조.4항"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 9,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 5,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 5
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제243조.2항",
+      "L001556@20261002#제241조.3항",
+      "L002421@20260227#제249조.1항",
+      "L002421@20260227#제249조.3항.2호",
+      "A36852@20260224#제34조.1항.1호.나목",
+      "A36852@20260224#제34조.1항.2호",
+      "L001556@20261002#제244조.1항",
+      "A36852@20260224#제34조.1항.1호.라목"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제241조"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제243조.2항",
+      "L001556@20261002#제241조.3항",
+      "A36893@20251217#제89조.1항",
+      "L002421@20260227#제249조.1항",
+      "A36893@20251217#제103조.2항",
+      "L001556@20261002#제241조.4항",
+      "A36852@20260224#제34조.1항.1호.나목",
+      "A36852@20260224#제34조.1항.2호"
+     ]
+    }
+   ],
+   "real_llm_calls": 9,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 28870,
+     "out": 5561
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 40.6,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "U10",
+   "loop": "supervisor",
+   "behaviour": "not_found",
+   "behaviour_base": "answer",
+   "cited": [
+    "L012500@20260930#별표9.2호.가목.2).가)",
+    "L012500@20260930#별표9.2호.나목.1)"
+   ],
+   "evidence": [
+    "L012500@20260930#별표9.2호.나목.2)",
+    "L012500@20260930#별표9.2호.나목.3)",
+    "L012500@20260930#별표9.2호.나목.1)",
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표9.2호.가목.15)",
+    "L012500@20260930#별표9.2호.가목.2).가)",
+    "L012500@20260930#별표9.2호.가목.2).라)",
+    "L012500@20260930#별표9.2호.가목.2).다)"
+   ],
+   "retrieved": [
+    "L012500@20260930#별표9.2호.나목.2)",
+    "L012500@20260930#별표9.2호.나목.3)",
+    "L012500@20260930#별표9.2호.다목.2).나).(2)",
+    "L012500@20260930#별표9.2호.다목.3).나)",
+    "L012500@20260930#별표9.2호.나목.1)",
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표9.2호.라목.2)",
+    "L012500@20260930#별표9.2호.다목.2).가)",
+    "L012500@20260930#별표9.2호.가목.15)",
+    "L012500@20260930#별표9.2호.가목.2).가)",
+    "L012500@20260930#별표9.2호.가목.2).라)",
+    "L012500@20260930#별표9.2호.가목.2).다)"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 1
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 9,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 5,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 5
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L012500@20260930#별표9.2호.나목.2)",
+      "L012500@20260930#별표9.2호.나목.3)",
+      "L012500@20260930#별표9.2호.다목.2).나).(2)",
+      "L012500@20260930#별표9.2호.다목.3).나)",
+      "L012500@20260930#별표9.2호.나목.1)",
+      "L012500@20260930#별표9.2호.가목.7)",
+      "L012500@20260930#별표9.2호.라목.2)",
+      "L012500@20260930#별표9.2호.다목.2).가)"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": [
+      "제15조"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L012500@20260930#별표9.2호.나목.2)",
+      "L012500@20260930#별표9.2호.나목.3)",
+      "L012500@20260930#별표9.2호.나목.1)",
+      "L012500@20260930#별표9.2호.가목.7)",
+      "L012500@20260930#별표9.2호.가목.15)",
+      "L012500@20260930#별표9.2호.가목.2).가)",
+      "L012500@20260930#별표9.2호.가목.2).라)",
+      "L012500@20260930#별표9.2호.가목.2).다)"
+     ]
+    }
+   ],
+   "real_llm_calls": 9,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 44122,
+     "out": 5696
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 41.3,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "B01",
+   "loop": "supervisor",
+   "behaviour": "choice",
+   "behaviour_base": "choice",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 2,
+   "stages": [
+    "입항",
+    "하선신고"
+   ],
+   "tools": [],
+   "tool_counts": {},
+   "visits": [],
+   "plan": [],
+   "llm_calls": 2,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 1,
+    "first_try": 1,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 1
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 2,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 6574,
+     "out": 1232
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 8.9,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "B02",
+   "loop": "supervisor",
+   "behaviour": "partial",
+   "behaviour_base": "partial",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:law",
+    "search_law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:law": 1,
+    "search_law": 2
+   },
+   "visits": [
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 13,
+   "write_attempts": 0,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [
+    "search_law: ConnectError",
+    "search_law: ConnectError"
+   ],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 2,
+    "first_try": 2,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 2
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 7,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 19016,
+     "out": 2027
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 19.3,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "B03",
+   "loop": "supervisor",
+   "behaviour": "choice",
+   "behaviour_base": "choice",
+   "cited": [],
+   "evidence": [
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표9.2호.다목.2).나).(2)",
+    "L012500@20260930#별표9.2호.가목.12).가)",
+    "L012500@20260930#별표9.2호.가목.4)",
+    "L012500@20260930#별표9.2호.가목.13)",
+    "L012500@20260930#별표9.2호.가목.12).나)",
+    "L012500@20260930#별표9.2호.가목.11)",
+    "L012500@20260930#별표9.2호.가목.14)",
+    "L012500@20260930#별표9.2호.가목.1)",
+    "L012500@20260930#별표9.2호.가목.3)",
+    "L012500@20260930#별표10.2호.나목",
+    "L012500@20260930#별표9.2호.다목.2).나).(1)",
+    "L012500@20260930#별표10.4호.마목",
+    "L012500@20260930#별표10.4호.다목",
+    "L012500@20260930#별표10.1호.나목",
+    "L012500@20260930#별표10.4호.나목"
+   ],
+   "retrieved": [
+    "L012500@20260930#별표9.2호.가목.7)",
+    "L012500@20260930#별표9.2호.다목.2).나).(2)",
+    "L012500@20260930#별표9.2호.가목.12).가)",
+    "L012500@20260930#별표9.2호.가목.4)",
+    "L012500@20260930#별표9.2호.가목.13)",
+    "L012500@20260930#별표9.2호.가목.12).나)",
+    "L012500@20260930#별표9.2호.가목.11)",
+    "L012500@20260930#별표9.2호.가목.14)",
+    "L012500@20260930#별표9.2호.가목.1)",
+    "L012500@20260930#별표9.2호.가목.3)",
+    "L012500@20260930#별표10.2호.나목",
+    "L012500@20260930#별표9.2호.다목.2).나).(1)",
+    "L012500@20260930#별표10.4호.마목",
+    "L012500@20260930#별표10.4호.다목",
+    "L012500@20260930#별표10.1호.나목",
+    "L012500@20260930#별표10.4호.나목"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": "사실 부족"
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "sub:item",
+    "check_reimport",
+    "get_provision",
+    "ask_user",
+    "sub:law",
+    "search_law",
+    "search_law",
+    "search_law"
+   ],
+   "tool_counts": {
+    "sub:item": 1,
+    "check_reimport": 1,
+    "get_provision": 1,
+    "ask_user": 1,
+    "sub:law": 1,
+    "search_law": 3
+   },
+   "visits": [
+    "item",
+    "law"
+   ],
+   "plan": [],
+   "llm_calls": 18,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 7,
+    "first_try": 7,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 7
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L012500@20260930#별표9.2호.가목.7)",
+      "L012500@20260930#별표9.2호.다목.2).나).(2)",
+      "L012500@20260930#별표9.2호.가목.12).가)",
+      "L012500@20260930#별표9.2호.가목.4)",
+      "L012500@20260930#별표9.2호.가목.13)",
+      "L012500@20260930#별표9.2호.가목.12).나)",
+      "L012500@20260930#별표9.2호.가목.11)",
+      "L012500@20260930#별표9.2호.가목.14)"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L012500@20260930#별표9.2호.가목.7)",
+      "L012500@20260930#별표9.2호.가목.12).가)",
+      "L012500@20260930#별표9.2호.가목.11)",
+      "L012500@20260930#별표9.2호.가목.4)",
+      "L012500@20260930#별표9.2호.가목.13)",
+      "L012500@20260930#별표9.2호.가목.1)",
+      "L012500@20260930#별표9.2호.가목.12).나)",
+      "L012500@20260930#별표9.2호.가목.3)"
+     ]
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": true,
+     "units": [
+      "L012500@20260930#별표9.2호.다목.2).나).(2)",
+      "L012500@20260930#별표10.2호.나목",
+      "L012500@20260930#별표9.2호.다목.2).나).(1)",
+      "L012500@20260930#별표10.4호.마목",
+      "L012500@20260930#별표10.4호.다목",
+      "L012500@20260930#별표9.2호.가목.7)",
+      "L012500@20260930#별표10.1호.나목",
+      "L012500@20260930#별표10.4호.나목"
+     ]
+    }
+   ],
+   "real_llm_calls": 18,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 85728,
+     "out": 12868
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 86.9,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "B04",
+   "loop": "supervisor",
+   "behaviour": "choice",
+   "behaviour_base": "choice",
+   "cited": [],
+   "evidence": [
+    "L001556@20261002#제241조.3항",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.1호.다목",
+    "A36852@20260224#제34조.1항.1호.가목",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36852@20260224#제34조.1항.2호",
+    "A36852@20260224#제34조.1항.4호",
+    "A36852@20260224#제34조.1항.3호"
+   ],
+   "retrieved": [
+    "L001556@20261002#제241조.3항",
+    "A36852@20260224#제34조.1항.1호.나목",
+    "A36852@20260224#제34조.1항.1호.라목",
+    "A36852@20260224#제34조.1항.1호.가목",
+    "A36852@20260224#제34조.1항.1호.다목",
+    "A36852@20260224#제34조.1항.2호",
+    "A36852@20260224#제34조.1항.4호",
+    "A36852@20260224#제34조.1항.3호"
+   ],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 0,
+   "stages": [],
+   "tools": [
+    "ask_user",
+    "sub:law",
+    "search_law",
+    "ask_user",
+    "sub:cargo",
+    "calc_deadlines"
+   ],
+   "tool_counts": {
+    "ask_user": 2,
+    "sub:law": 1,
+    "search_law": 1,
+    "sub:cargo": 1,
+    "calc_deadlines": 1
+   },
+   "visits": [
+    "law",
+    "cargo"
+   ],
+   "plan": [],
+   "llm_calls": 14,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 5,
+    "first_try": 5,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 5
+    }
+   },
+   "rag": [
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제241조.3항",
+      "A36852@20260224#제34조.1항.1호.나목",
+      "A36852@20260224#제34조.1항.1호.라목",
+      "A36852@20260224#제34조.1항.1호.가목",
+      "A36852@20260224#제34조.1항.1호.다목",
+      "A36852@20260224#제34조.1항.2호",
+      "A36852@20260224#제34조.1항.4호",
+      "A36852@20260224#제34조.1항.3호"
+     ]
+    },
+    {
+     "step": "rewrite",
+     "articles": []
+    },
+    {
+     "step": "search",
+     "graph": 0
+    },
+    {
+     "step": "grade",
+     "sufficient": false,
+     "units": [
+      "L001556@20261002#제241조.3항",
+      "A36852@20260224#제34조.1항.1호.나목",
+      "A36852@20260224#제34조.1항.1호.다목",
+      "A36852@20260224#제34조.1항.1호.가목",
+      "A36852@20260224#제34조.1항.1호.라목",
+      "A36852@20260224#제34조.1항.2호",
+      "A36852@20260224#제34조.1항.4호",
+      "A36852@20260224#제34조.1항.3호"
+     ]
+    }
+   ],
+   "real_llm_calls": 14,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 51475,
+     "out": 10558
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 71.0,
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "id": "B05",
+   "loop": "supervisor",
+   "behaviour": "choice",
+   "behaviour_base": "choice",
+   "cited": [],
+   "evidence": [],
+   "retrieved": [],
+   "graph_added": 0,
+   "calc": {
+    "deadlines": [],
+    "reimport": null
+   },
+   "cargo_count": 1,
+   "stages": [],
+   "tools": [
+    "ask_user"
+   ],
+   "tool_counts": {
+    "ask_user": 1
+   },
+   "visits": [],
+   "plan": [],
+   "llm_calls": 3,
+   "write_attempts": 1,
+   "verification": [],
+   "verification_final": [],
+   "stopped": "",
+   "failed": [],
+   "leak": false,
+   "error": null,
+   "contract": {
+    "calls": 1,
+    "first_try": 1,
+    "no_answer": 0,
+    "unknown": 0,
+    "requests": {
+     "2": 1
+    }
+   },
+   "rag": [],
+   "real_llm_calls": 3,
+   "tokens": {
+    "claude-haiku-5-5": {
+     "in": 10748,
+     "out": 2317
+    }
+   },
+   "llm_via": "cli",
+   "cost_usd": null,
+   "seconds": 14.4,
+   "model": "claude-haiku-5-5"
+  }
+ ]
+}
