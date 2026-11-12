@@ -11,6 +11,7 @@ from marvia.eval.metrics import (
     behaviour_ok,
     bucket,
     calc_ok,
+    cap_stops,
     compare_table,
     contract_adherence,
     correct_citation,
@@ -41,6 +42,7 @@ from marvia.eval.metrics import (
     with_base_behaviour,
     wrong_evidence,
 )
+from marvia.tools.rules import load_rules
 
 A = "L001556@20261002#"
 DUTY = {"name": "관세 납부기한", "due": "2026-11-17"}
@@ -641,3 +643,19 @@ def test_gold_in_evidence_is_the_share_of_gold_units_covered_like_recall():
     items = ITEMS | {"R3": item("R3", gold=[A + "제241조.3항", A + "제9조.1항"])}
     rows = [row("R3", evidence=[A + "제241조.3항"]), row("R1", evidence=[A + "제241조.3항"])]
     assert gold_in_evidence(rows, items) == {"value": 0.75, "n": 2}
+
+
+def test_cap_stops_counts_rows_that_ended_at_the_llm_call_cap():
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+    rows = [
+        row("R1", stopped="llm_calls", behaviour="partial"),  # 에이전트 루프가 상한에서 멈췄다
+        # 조사 서브에이전트가 상한에 닿았다. 옛 줄(stopped 칸 없음)도 실패 기록으로 센다
+        row("R2", failed=[f"research: LLM 호출 한도({cap}회)에 닿았어요"]),
+        row(
+            "S1", loop="planner", behaviour="partial", llm_calls=cap
+        ),  # 계획자 길은 표시 없이 부분 답으로 간다
+        row("U1", stopped="llm_failed", behaviour="partial", llm_calls=3),  # 모델 실패는 상한이 아니다
+        row("B1", llm_calls=cap),  # 상한만큼 부르고 답을 냈다
+    ]
+    assert cap_stops(rows) == 3
+    assert summarize(rows, ITEMS, 8)["cap_stops"] == 3

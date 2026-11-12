@@ -206,6 +206,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
                 if r["behaviour"] in ("answer", "unsupported")
             ]
         ),
+        "cap_stops": cap_stops(rows),
         "cap_breaches": sum(max(r.get("real_llm_calls") or 0, r["llm_calls"] or 0) > cap for r in rows),
         "cost_per_item_mean": round(statistics.fmean(costs), 5) if costs else None,
         "cost_per_item_max": max(costs) if costs else None,
@@ -250,7 +251,7 @@ def compare_table(results: list[dict]) -> str:
         ["길", "모델"]
         + [name for _, name in TABLE]
         + ["근거 있는 답", "LLM 호출 중앙값·최대", "상한 넘음", "비용 합·문항당 최대($)", "시간 중앙값(초)"]
-        + ["오류", "새는 번호", "근거 문항 중 검색·조회 0"]
+        + ["오류", "새는 번호", "근거 문항 중 검색·조회 0", "상한에서 끝남"]
     )
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for result in results:
@@ -266,6 +267,7 @@ def compare_table(results: list[dict]) -> str:
         cells += [summary["errors"], summary["leaks"]]
         quiet = summary["gold_without_search"]
         cells.append("-" if quiet["value"] is None else f"{quiet['value']} ({quiet['n']})")
+        cells.append(summary["cap_stops"])
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
     return "\n".join(lines)
 
@@ -453,6 +455,24 @@ def trajectory_pass(rows: list[dict], items: dict[str, Item], never: list[str], 
         not trajectory_violations(r["tools"], items[r["id"]].trajectory, never, max_calls) for r in picked
     ]
     return _mean([float(f) for f in flags])
+
+
+# LLM 호출 상한에 닿았을 때 루프가 실패 기록에 남기는 글의 앞부분 (graph/agent.py Guards.before_model)
+CAP_MARK = "LLM 호출 한도"
+
+
+def cap_stops(rows: list[dict]) -> int:
+    """LLM 호출 상한에 닿아 끝난 줄 수 (설계 6.4). 상한을 넘은 줄 수(cap_breaches)와 다르다."""
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+
+    def stopped(r: dict) -> bool:
+        # 에이전트 루프는 stopped 칸에, 조사 서브에이전트는 실패 기록에 남긴다 (옛 줄에는 실패 기록만 있다)
+        if r.get("stopped") == "llm_calls" or any(CAP_MARK in f for f in r.get("failed", [])):
+            return True
+        # [왜] 계획자 길은 표시 없이 부분 답으로 간다 (graph/main.py route). 호출 수로 본다
+        return r["behaviour"] == "partial" and (r["llm_calls"] or 0) >= cap and not r.get("stopped")
+
+    return sum(stopped(r) for r in rows)
 
 
 def contract_adherence(rows: list[dict]) -> dict:
