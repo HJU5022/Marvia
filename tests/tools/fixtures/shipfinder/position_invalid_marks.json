@@ -1,0 +1,20 @@
+{
+ "status": 0,
+ "msg": "",
+ "data": {
+  "mmsi": 999000002,
+  "imo": 0,
+  "call_sign": "QQTST2",
+  "ship_name": "TEST CARGO B",
+  "dest": "",
+  "destcode": "",
+  "eta": 0,
+  "navistat": -1,
+  "lat": 35.0,
+  "lng": 129.1,
+  "sog": -1,
+  "cog": -1,
+  "hdg": 511,
+  "last_time": 1790044200
+ }
+}
