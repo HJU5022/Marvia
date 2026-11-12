@@ -67,9 +67,12 @@ signals:
 signal_ids: [customs_hold, anchor_wait, dest_changed, position_stale, eta_conflict, navstat_mismatch]
 
 # 믿을 ETA를 고르는 순서. 앞의 값이 있으면 뒤는 보지 않는다
-#   mof_actual: 해수부 관제정보의 실제 입항 / mof_planned: 해수부 입항 신고의 입항 예정(최종 신고 제외)
+#   mof_actual: 해수부 관제정보의 실제 입항
+#   mof_final: 해수부 최종 입항 신고의 시각. 실제 입항 시각으로 본다. 관제 실적이 아직 없는 막 입항한 배에 쓰고,
+#              관제 실적이 있으면 관제 실적이 먼저다 (11-13 덧붙임 3)
+#   mof_planned: 해수부 입항 신고의 입항 예정(최종 신고 제외)
 #   ais_eta: 배 신호의 ETA(목적지가 이 화물의 양륙항일 때만) / forwarder_eta: 사용자가 알려 준 포워더 입항 예정일
-eta_priority: [mof_actual, mof_planned, ais_eta, forwarder_eta]
+eta_priority: [mof_actual, mof_final, mof_planned, ais_eta, forwarder_eta]
 # 배 신호의 ETA는 배 신호의 목적지 코드가 이 화물의 양륙항 코드와 같을 때만 출처로 친다 (11-13 덧붙임 2).
 # [왜] 목적지가 비었거나 깨졌으면 그 ETA가 이 항만 도착 시각이라고 말해 주는 것이 없다. 그 값으로 순항과
 #      여유 일수를 내면 자료가 모자랄수록 등급이 좋아진다. false면 "다른 항구가 아니면 믿는다"는 옛 규칙이다
@@ -96,4 +99,4 @@ info:
   no_sale_date: 판매 예정일을 받지 않아 배와 통관 상태만으로 본 등급이에요
 
 # 배 위치가 없어도 여유 일수를 세는 믿을 ETA의 출처 (11-13 결정). 해수부 신고는 위치와 무관하다
-margin_without_position: [mof_actual, mof_planned]
+margin_without_position: [mof_actual, mof_final, mof_planned]

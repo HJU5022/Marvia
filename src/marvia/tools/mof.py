@@ -333,9 +333,12 @@ def port_schedule(row: Port, call_sign: str, *, today: date) -> PortSchedule | T
     sign = _sign(call_sign)
     arrived = next((a for a in done if _sign(a.call_sign) == sign and a.actual_arrival), None)
     plan = next((p for p in plans if _sign(p.call_sign) == sign), None)
-    planned = plan.planned_arrival if plan and plan.revision != CFG["final_revision"] else None
+    # [왜] 최종 신고의 시각은 실제 입항 시각이다. 예정으로 쓰지 않고 따로 싣는다: 관제 실적이 아직 없는
+    #      막 입항한 배의 입항 시각이 된다 (믿을 ETA의 순서는 rules/verdict.yaml eta_priority)
+    final = bool(plan) and plan.revision == CFG["final_revision"]
     return PortSchedule(
-        planned_arrival=planned,
+        planned_arrival=plan.planned_arrival if plan and not final else None,
+        final_arrival=plan.planned_arrival if plan and final else None,
         actual_arrival=arrived.actual_arrival if arrived else None,
         # 접안 시설은 실적이 있으면 실적 쪽을 쓴다. 예정은 바뀔 수 있다
         facility=(arrived.facility if arrived else None) or (plan.facility if plan else None),

@@ -113,8 +113,9 @@ def test_signal_thresholds_live_in_the_rules_file():
     # [왜] 통관 멈춤은 낱말이 아니라 단계 이름 목록으로 본다. 멈춤 목록과 아는 단계 목록이 겹치면 안 된다
     assert "검사지정" in cuts["hold_stages"] and "수입신고수리" in cuts["known_stages"]
     assert not set(cuts["hold_stages"]) & set(cuts["known_stages"])
-    # [왜] 믿을 ETA의 순서도 규칙이다: 해수부 실제 입항, 해수부 입항 예정, 배 신호 ETA, 포워더가 알려 준 날
-    assert rules["eta_priority"] == ["mof_actual", "mof_planned", "ais_eta", "forwarder_eta"]
+    # [왜] 믿을 ETA의 순서도 규칙이다: 관제 실적, 최종 입항 신고, 입항 예정, 배 신호 ETA, 포워더 날짜
+    assert rules["eta_priority"] == ["mof_actual", "mof_final", "mof_planned", "ais_eta", "forwarder_eta"]
+    assert rules["margin_without_position"] == ["mof_actual", "mof_final", "mof_planned"]
 
 
 def test_every_listed_signal_has_a_grade_or_a_confidence_role():

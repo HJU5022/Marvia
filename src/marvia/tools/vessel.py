@@ -56,6 +56,8 @@ class PortSchedule(BaseModel):
 
     planned_arrival: datetime | None = None  # 아직 믿을 수 있는 입항 예정(최초·변경 신고)
     actual_arrival: datetime | None = None  # 관제 실적의 입항·접안 가운데 가장 이른 시각
+    # 최종 입항 신고의 시각. [왜] 그 시각은 실제 입항 시각이다. 관제 실적이 아직 없는 막 입항한 배에 쓴다
+    final_arrival: datetime | None = None
     facility: str | None = None
     fetched_at: datetime
 
@@ -120,6 +122,7 @@ def trusted_eta(
         ais_ok = as_utc(position.ais_eta) >= as_utc(now) - slack
     values = {
         "mof_actual": schedule.actual_arrival if schedule else None,
+        "mof_final": schedule.final_arrival if schedule else None,
         "mof_planned": schedule.planned_arrival if schedule else None,
         "ais_eta": position.ais_eta if position and ais_ok else None,
         # [왜] 포워더가 알려 준 날은 날짜뿐이다. 한국 날짜의 0시로 본다

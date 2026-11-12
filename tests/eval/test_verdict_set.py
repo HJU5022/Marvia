@@ -14,7 +14,7 @@ from marvia.eval.verdict_set import (
 from marvia.tools.rules import load_rules
 
 SET = load_verdict_set()
-LAYERS = {"ported": 20, "port": 5, "conflict": 14, "failure": 6, "nodata": 4, "stage": 4, "edge": 32}
+LAYERS = {"ported": 20, "port": 5, "conflict": 19, "failure": 6, "nodata": 4, "stage": 4, "edge": 32}
 
 
 def test_set_is_frozen_and_has_every_layer():
@@ -100,7 +100,7 @@ def test_edge_layer_has_cases_around_every_threshold():
 
 def test_summary_counts_every_item_once():
     done = summarize(SET)
-    assert done["items"] == {"n": 85, "passed": 85} and done["matches"] == {"n": 12, "passed": 12}
+    assert done["items"] == {"n": 90, "passed": 90} and done["matches"] == {"n": 12, "passed": 12}
     assert {name: row["n"] for name, row in done["layers"].items()} == LAYERS
 
 

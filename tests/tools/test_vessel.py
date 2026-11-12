@@ -29,8 +29,10 @@ def position(dest_code: str | None = "KRPUS", ais_eta: datetime | None = AIS) ->
     )
 
 
-def schedule(planned: datetime | None = None, actual: datetime | None = None) -> PortSchedule:
-    return PortSchedule(planned_arrival=planned, actual_arrival=actual, fetched_at=NOW)
+def schedule(
+    planned: datetime | None = None, actual: datetime | None = None, final: datetime | None = None
+) -> PortSchedule:
+    return PortSchedule(planned_arrival=planned, actual_arrival=actual, final_arrival=final, fetched_at=NOW)
 
 
 def test_actual_arrival_beats_the_plan_and_the_plan_beats_the_ship_signal():
@@ -38,6 +40,21 @@ def test_actual_arrival_beats_the_plan_and_the_plan_beats_the_ship_signal():
     assert trusted_eta(position(), schedule(PLANNED), "KRPUS") == (PLANNED, "mof_planned")
     assert trusted_eta(position(), schedule(), "KRPUS") == (AIS, "ais_eta")
     assert trusted_eta(position(), None, "KRPUS") == (AIS, "ais_eta")
+
+
+def test_a_final_arrival_report_stands_in_for_the_arrival_until_the_control_record_comes():
+    # [왜] 막 입항한 배는 배 신호 ETA가 이미 지났고 관제 실적은 아직 없다. 최종 입항 신고의 시각이
+    #      실제 입항 시각이므로 그것을 쓴다. 관제 실적이 오면 관제 실적이 먼저다
+    final = ACTUAL - timedelta(minutes=20)
+    arrived = position(ais_eta=ACTUAL - timedelta(hours=1))
+    now = ACTUAL + timedelta(hours=1)
+    assert trusted_eta(arrived, schedule(), "KRPUS", now=now) == (None, None)
+    assert trusted_eta(arrived, schedule(final=final), "KRPUS", now=now) == (final, "mof_final")
+    assert trusted_eta(arrived, schedule(actual=ACTUAL, final=final), "KRPUS", now=now) == (
+        ACTUAL,
+        "mof_actual",
+    )
+    assert trusted_eta(None, schedule(PLANNED, final=final), "KRPUS")[1] == "mof_final"
 
 
 def test_ship_eta_for_another_port_or_an_unknown_port_is_not_this_cargo_eta():

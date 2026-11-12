@@ -149,8 +149,10 @@ def test_replay_is_the_default_and_reads_only_that_office_folder(monkeypatch):
     assert arrived.planned_arrival is None and arrived.actual_arrival == datetime(
         2026, 9, 22, 10, 0, tzinfo=KST
     )
+    assert arrived.final_arrival == datetime(2026, 9, 22, 10, 0, tzinfo=KST)  # 최종 신고의 시각은 따로 싣는다
     coming = port_schedule(busan, "qqtst 1", today=date(2026, 9, 22))
     assert isinstance(coming, PortSchedule) and coming.actual_arrival is None
+    assert coming.final_arrival is None  # 변경 신고는 예정이다
     assert (
         coming.planned_arrival == datetime(2026, 9, 24, 12, 0, tzinfo=KST)
         and coming.facility == "TEST부두 1선석"
@@ -282,7 +284,7 @@ def test_a_json_body_is_bad_response():
     )
 
 
-def _live(monkeypatch, base_url: str) -> list[httpx.Request]:
+def _live(monkeypatch, base_url: str, sailing: str = "empty.xml") -> list[httpx.Request]:
     """실제 모드로 두고, 나간 요청을 모으는 가짜 연결을 끼운다."""
     monkeypatch.setenv("MARVIA_MOF_MODE", "live")
     monkeypatch.setenv("MARVIA_MOF_KEY", KEY)
@@ -294,7 +296,7 @@ def _live(monkeypatch, base_url: str) -> list[httpx.Request]:
 
     def handle(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        return _xml("empty.xml")
+        return _xml(sailing if request.url.path == mof.CFG["sailing_path"] else "empty.xml")
 
     real_client = httpx.Client
     monkeypatch.setattr(
@@ -339,3 +341,14 @@ def test_live_without_a_relay_address_does_not_send_the_relay_token(monkeypatch)
     assert isinstance(port_schedule(busan, "QQTST1", today=date(2026, 9, 22)), PortSchedule)
     assert {r.url.host for r in seen} == {"apis.data.go.kr"}
     assert all("X-Relay-Token" not in r.headers for r in seen)
+
+
+def test_a_final_report_without_a_control_record_is_carried_as_the_final_arrival(monkeypatch):
+    # 관제정보는 비어 있고(실적이 아직 없다) 선박운항정보에 최종 입항 신고만 있다
+    _live(monkeypatch, "https://relay.test", sailing="sailing.xml")
+    busan = port("KRPUS")
+    assert busan is not None
+    found = port_schedule(busan, "QQTST2", today=date(2026, 9, 22))
+    assert isinstance(found, PortSchedule)
+    assert (found.planned_arrival, found.actual_arrival) == (None, None)
+    assert found.final_arrival == datetime(2026, 9, 22, 10, 0, tzinfo=KST)

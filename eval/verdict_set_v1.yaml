@@ -858,6 +858,99 @@ items:
     margin_days: 4
     notes: []
     dest_value: KRPUS
+- id: V-C15
+  layer: conflict
+  why: '막 입항한 배: 배 신호 ETA는 두 시간 전에 지났고 관제 실적은 아직 없다. 최종 입항 신고의 시각을 실제 입항 시각으로 쓴다(등급이 나온다)'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 35.1, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-22T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null, final_arrival: '2026-09-22T10:30:00+09:00'}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 34.2, lng: 128.6, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: fine
+    confidence: partial
+    schedule: on_time
+    eta_source: mof_final
+    margin_days: 6
+    notes: []
+- id: V-C16
+  layer: conflict
+  why: '입항 신고가 최종이 아니다(예정). 지금까지처럼 입항 예정으로 쓴다'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 35.1, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-22T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: '2026-09-22T10:30:00+09:00', actual_arrival: null, final_arrival: null}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 34.2, lng: 128.6, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: on_time
+    eta_source: mof_planned
+    margin_days: 6
+    notes: []
+- id: V-C17
+  layer: conflict
+  why: '최종 입항 신고와 관제 실적이 함께 있다. 관제 실적이 먼저다'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 35.1, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-22T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-22T10:40:00+09:00', final_arrival: '2026-09-22T10:30:00+09:00'}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 34.2, lng: 128.6, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: fine
+    confidence: partial
+    schedule: on_time
+    eta_source: mof_actual
+    margin_days: 6
+    notes: []
+- id: V-C18
+  layer: conflict
+  why: '배 신호 ETA가 두 시간 전에 지났고 해수부 일정이 하나도 없다. 지난 ETA로 여유 일수를 세지 않는다(등급 없음)'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 35.1, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-22T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 34.2, lng: 128.6, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: null
+    confidence: unknown
+    schedule: null
+    eta_source: null
+    margin_days: null
+    notes: [no_eta]
+- id: V-C19
+  layer: conflict
+  why: '마지막 수신 시각이 지금보다 한 시간 뒤다. 방금 받은 위치로 읽지 않고 위치 끊김은 모름이다'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T13:00:00+09:00'}
+  schedule: {planned_arrival: '2026-09-24T12:00:00+09:00', actual_arrival: null}
+  history: []
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: unknown, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: partial
+    schedule: on_time
+    eta_source: mof_planned
+    margin_days: 4
+    notes: []
 - id: V-X01
   layer: failure
   why: 배 위치도 해수부 일정도 받지 못했다. 도착 시각을 알 출처가 없어 등급과 일정을 내지 않는다(순항이라고 하지 않는다)
