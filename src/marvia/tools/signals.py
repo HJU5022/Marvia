@@ -96,13 +96,19 @@ def _anchor_wait(
     if position is None or position.sog is None:
         return _signal("anchor_wait", "unknown", "위치·속도 없음")
     ref, radius, limit = (row.ref.lat, row.ref.lng), row.stop_radius_nm, cuts["stop_speed_kn"]
+    digits = cuts["distance_decimals"]
+
+    def away(lat: float, lng: float) -> float:
+        # [왜] 거리는 소수 계산이라 반경과 "같은" 값이 나오지 않는다. 값에 적는 자릿수로 맞춘 뒤 견주어야
+        #      같을 때 켜진다는 말이 뜻을 갖고, 적힌 거리와 판정이 어긋나지 않는다
+        return round(_nm((lat, lng), ref), digits)
 
     def stopped(lat: float, lng: float, sog: float) -> bool:
-        return _nm((lat, lng), ref) <= radius and sog <= limit
+        return away(lat, lng) <= radius and sog <= limit
 
     if not stopped(position.lat, position.lng, position.sog):
         return _signal(
-            "anchor_wait", "clear", f"{_nm((position.lat, position.lng), ref):.1f}해리, {position.sog}노트"
+            "anchor_wait", "clear", f"{away(position.lat, position.lng):.{digits}f}해리, {position.sog}노트"
         )
     # 지금 멈춰 있다. 얼마나 오래인지는 지난 위치로 잰다: 최신부터 거슬러 올라가 멈춘 점이 이어진 구간의 길이
     points = sorted(history, key=lambda p: as_utc(p.at))

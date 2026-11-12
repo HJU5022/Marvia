@@ -149,6 +149,13 @@ def test_thresholds_at_the_exact_value():
     )  # 23시간
     assert states(cargo(), near(sog=0.5), plan(), day)["anchor_wait"] == "triggered"  # 0.5노트는 멈춤
     assert states(cargo(), near(sog=0.6), plan(), day)["anchor_wait"] == "clear"
+    # 정지 반경 30해리 이하: 거리는 0.1해리로 맞춰 견준다. 30.0해리는 안, 30.1해리는 밖이다
+    edge, outside = {"lat": 34.6002, "lng": 129.05}, {"lat": 34.5985, "lng": 129.05}
+    at_edge = states(cargo(), ship(navstat=1, sog=0.2, **edge), plan(), track([24.5, 12.5, 0.5], **edge))
+    assert value("anchor_wait", cargo(), ship(navstat=1, sog=0.6, **edge), plan()).startswith("30.0해리")
+    assert at_edge["anchor_wait"] == "triggered"
+    assert value("anchor_wait", cargo(), ship(navstat=1, sog=0.2, **outside), plan()).startswith("30.1해리")
+    assert load_rules("verdict")["signals"]["distance_decimals"] == 1
 
 
 def near(sog: float = 0.2, **changes) -> Position:

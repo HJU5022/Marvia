@@ -1697,6 +1697,52 @@ items:
     eta_source: mof_planned
     margin_days: -1
     notes: []
+- id: V-E31
+  layer: edge
+  why: '정지 반경 30해리 이하: 기준점에서 30.0해리(0.1해리로 맞춘 값)에 24시간 멈춰 있으면 장시간 정지'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 34.6002, lng: 129.05, sog: 0.4, navstat: 1, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: '2026-09-24T12:00:00+09:00', actual_arrival: null}
+  history:
+  - {at: '2026-09-21T11:30:00+09:00', lat: 34.6002, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-21T17:30:00+09:00', lat: 34.6002, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-21T23:30:00+09:00', lat: 34.6002, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-22T05:30:00+09:00', lat: 34.6002, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 34.6002, lng: 129.05, sog: 0.4}
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: alert
+    confidence: sure
+    schedule: concern
+    eta_source: mof_planned
+    margin_days: 4
+    notes: []
+- id: V-E32
+  layer: edge
+  why: '정지 반경 30해리 이하: 30.1해리에 24시간 멈춰 있으면 반경 밖이라 꺼짐'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 34.5985, lng: 129.05, sog: 0.4, navstat: 1, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-24T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: '2026-09-24T12:00:00+09:00', actual_arrival: null}
+  history:
+  - {at: '2026-09-21T11:30:00+09:00', lat: 34.5985, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-21T17:30:00+09:00', lat: 34.5985, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-21T23:30:00+09:00', lat: 34.5985, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-22T05:30:00+09:00', lat: 34.5985, lng: 129.05, sog: 0.4}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 34.5985, lng: 129.05, sog: 0.4}
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: on_time
+    eta_source: mof_planned
+    margin_days: 4
+    notes: []
 matches:
 - id: M-01
   why: 같은 이름의 배 둘. 세관 입항일과 적재항이 해수부 입항 신고와 맞는 배가 한 척이다

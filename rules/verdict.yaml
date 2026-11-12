@@ -33,6 +33,9 @@ signals:
   eta_conflict_hours: 12 # 배 신호 ETA와 해수부 입항 예정의 차이가 이 값 초과면 어긋남 (12시간 정각은 꺼짐)
   stop_speed_kn: 0.5 # 속도가 이 값 이하면 멈춘 것으로 본다 (0.5노트는 멈춤)
   stop_hours: 24 # 항구 앞에서 멈춘 구간이 이 값 이상이면 장시간 정지 (24시간 정각은 켜짐)
+  # 기준점까지 거리를 이 소수 자리로 맞춘 뒤 항만의 정지 반경(rules/ports.yaml stop_radius_nm)과 견준다.
+  # 반경 이하면 반경 안이다 (반경이 30이면 30.0해리는 안, 30.1해리는 밖)
+  distance_decimals: 1
   navstat_moored: [1, 5] # AIS 항해상태 코드: 정박, 계류
   navstat_underway: [0] # AIS 항해상태 코드: 항해 중(엔진 사용)
   navstat_moored_max_kn: 2.0 # 정박·계류인데 속도가 이 값 초과면 상태와 속도가 어긋남 (2.0노트는 꺼짐)
