@@ -66,8 +66,31 @@ class LlmWatch(BaseCallbackHandler):
             self.cli_failures.append(f"CLIFailed: {error}")
 
 
+def rule_names(violations: list[str]) -> list[str]:
+    """검증 위반 문장(graph/verify.py)에서 쌍점·괄호 앞의 규칙 이름만 뽑는다 (예: "근거 묶음에 없는 인용")."""
+    # [주의] 쌍점이나 괄호 뒤는 모델이 쓴 값(인용, 날짜, 수)이라 줄에 남기지 않는다
+    return sorted({re.split(r":| \(", v, maxsplit=1)[0].strip() for v in violations})
+
+
+def masked_queries(queries: list[str], mask_map: dict[str, str]) -> list[str]:
+    """검색어를 raw에 쓸 글로 바꾼다: 가림 표의 실제 번호는 그 토큰으로, 표에 없는 번호 덩어리도 토큰으로."""
+    # [왜] 검색어는 모델이 가린 글을 보고 쓰므로 번호가 없어야 맞다. 그래도 파일에 쓰기 전에 한 번 더 가린다
+    out = []
+    for query in queries:
+        for token, number in mask_map.items():
+            if number:
+                query = query.replace(number, token)
+        out.append(mask_text(query, mask_map)[0])
+    return out
+
+
 def eval_deps(
-    deps: AgentDeps, item: Item, today: date, log: list[dict], seen: dict[str, str] | None = None
+    deps: AgentDeps,
+    item: Item,
+    today: date,
+    log: list[dict],
+    seen: dict[str, str] | None = None,
+    queries: list[str] | None = None,
 ) -> AgentDeps:
     """평가 실행용 AgentDeps. 감시 목록은 DB 없는 가짜로 묶고, 날짜를 고정한다."""
     # [왜] 감시 도구가 묶여야 watch_cargo를 막는 궤적 검사(rules/eval.yaml never)가 실제로 걸린다
@@ -92,6 +115,10 @@ def eval_deps(
         def run(query: str, as_of: date) -> list[Evidence]:
             if item.fault == "search":
                 raise httpx.ConnectError("평가 실행이 검색을 일부러 끊었다")
+            if queries is not None:
+                # [왜] R@k가 왜 움직였는지 검색어로 따질 수 있게 검색마다 남긴다 (R-090).
+                #      [주의] LLM이 쓴 글이라 줄(rag)에는 두지 않고 raw에만 쓴다
+                queries.append(query)
             found = find(query, as_of)
             # [왜] 그래프가 실제로 후보를 더했는지 문항마다 센다. 실행 유효성 검사가 본다 (계획 3b).
             #      [주의] direct 길(search)은 리랭커 앞 후보 수이고, MCP 길(ranked)은 리랭커 뒤 상위 n개
@@ -145,10 +172,14 @@ def drive(graph, item: Item, thread: str, callbacks: list) -> tuple[dict, list[d
         else:
             reply = {"timeout": True}
         out = graph.invoke(Command(resume=reply), config)
-    values = graph.get_state({"configurable": {"thread_id": thread}}).values
+    saved = {"configurable": {"thread_id": thread}}
+    values = graph.get_state(saved).values
+    # [왜] 공책의 verification은 마지막 초안의 위반만 갖는다. 다시 써서 통과한 문항도 걸린 규칙을 세려고
+    #      이 차례의 체크포인트를 모두 훑는다 (R-090)
+    hit = [v for snap in graph.get_state_history(saved) for v in snap.values.get("verification") or []]
     # [왜] 답(answer)은 체크포인트에 저장하지 않는 칸이라 get_state에 없다 (R-035).
     #      마지막 invoke 결과에서 읽는다
-    return values | {"answer": out.get("answer", "")}, pauses
+    return values | {"answer": out.get("answer", ""), "verification_hit": hit}, pauses
 
 
 def behaviour(values: dict, pauses: list[dict], *, not_found: bool = True) -> str:
@@ -279,6 +310,12 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
         "tool_counts": dict(Counter(tools)),
         "plan": [step["action"] for step in values.get("plan", [])] if loop == "planner" else [],
         "llm_calls": values.get("llm_calls"),
+        # 작성자 호출 수, 검증에 걸린 규칙 이름(이 차례의 모든 초안 / 마지막 초안), 루프가 멈춘 이유 (R-090).
+        # [왜] 부분 답이 호출 한도 때문인지(stopped) 검증 때문인지(verification_final) 줄만 보고 가른다
+        "write_attempts": values.get("write_attempts", 0),
+        "verification": rule_names(values.get("verification_hit", [])),
+        "verification_final": rule_names(values.get("verification", [])),
+        "stopped": values.get("stopped", ""),
         "failed": [f"{t['tool']}: {t['message']}" for t in values.get("failed_tools", [])],
         "leak": any(n in text for n in numbers for text in watch.inputs),
     }
@@ -318,8 +355,10 @@ def evaluate_item(
     """
     log: list[dict] = []
     seen: dict[str, str] = {}
+    queries: list[str] = []
+    known: dict[str, str] = {}  # 이 차례의 가림 표. raw에 쓰는 검색어를 가릴 때 쓴다
     graph = build_main_graph(
-        eval_deps(deps, item, today, log, seen),
+        eval_deps(deps, item, today, log, seen, queries),
         InMemorySaver(),
         loop=loop,
         store=InMemoryStore(),
@@ -334,6 +373,7 @@ def evaluate_item(
         with get_usage_metadata_callback() as usage:
             values, pauses = drive(graph, item, f"eval-{loop}-{item.id}", [watch, *callbacks])
         row |= observe(values, pauses, watch, loop, log)
+        known = values.get("mask_map") or {}
         row["error"] = watch.cli_failures[0] if watch.cli_failures else None
         draft = values.get("draft") or {}
         top = load_rules("eval")["ragas"]["contexts"]
@@ -360,6 +400,10 @@ def evaluate_item(
             "stages": [],
             "tools": [],
             "tool_counts": {},
+            "write_attempts": None,
+            "verification": [],
+            "verification_final": [],
+            "stopped": "",
             "plan": [],
         }
         # [왜] 죽은 실행도 그때까지 LLM 입력에 실제 번호가 갔는지 본다.
@@ -368,7 +412,8 @@ def evaluate_item(
         # 체크포인트에 남은 가림 표가 있으면 질문 뒤에 가려진 번호도 센다
         try:
             snap = graph.get_state({"configurable": {"thread_id": f"eval-{loop}-{item.id}"}}).values
-            asked += [n for n in (snap.get("mask_map") or {}).values() if n]
+            known = snap.get("mask_map") or {}
+            asked += [n for n in known.values() if n]
         except Exception:  # [왜] 그래프가 처음부터 못 돌았으면 상태가 없다. 질문 번호만으로 본다
             pass
         leak = any(n in text for n in asked for text in watch.inputs)
@@ -376,6 +421,8 @@ def evaluate_item(
     # [왜] 실패한 문항도 그때까지 쓴 토큰은 센다. 돈은 이미 나갔다
     spent = usage.usage_metadata if usage is not None else {}
     tokens = {m: {"in": t["input_tokens"], "out": t["output_tokens"]} for m, t in spent.items()}
+    # [주의] raw는 저장소 밖에만 쓴다. 죽은 실행도 그때까지의 검색어를 남긴다
+    raw["searches"] = masked_queries(queries, known)
     row |= {
         "rag": log,
         "real_llm_calls": watch.calls,

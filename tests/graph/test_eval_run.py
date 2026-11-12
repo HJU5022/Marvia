@@ -21,6 +21,7 @@ from marvia.eval.run import (
     graph_setting_problem,
     inside_repo,
     llm_meta,
+    masked_queries,
     observe,
     preflight,
     ragas_contexts,
@@ -511,3 +512,55 @@ def test_row_counts_tool_calls_by_name(agent_deps):
     assert row["tool_counts"] == {"search_law": 2}
     quiet, _ = evaluate_item(agent_deps(model=model()), item("수입신고 기한은요?"), "agent", TODAY, PRICES)
     assert quiet["tool_counts"] == {}
+
+
+BAD = Draft(
+    answer="기한이 있어요.", citations=["L999999@20260101#제1조"], next_options=[], forwarder_message=""
+)
+PASSING = Draft(answer="화물 상태를 확인했어요.", citations=[], next_options=[], forwarder_message="")
+
+
+def test_row_keeps_write_attempts_verification_rule_names_and_the_stop_reason(agent_deps):
+    drafts = iter([BAD, PASSING])
+    row, _ = evaluate_item(
+        agent_deps(write=lambda prompt: next(drafts)), item("DEMO0001 어디예요?"), "planner", TODAY, PRICES
+    )
+    # [왜] 검증에 걸렸다가 다시 써서 통과한 문항도 걸린 규칙이 남아야 출력 계약을 몇 번 어겼는지 셀 수 있다
+    assert row["write_attempts"] == 2 and row["verification"] == ["근거 묶음에 없는 인용"]
+    assert row["verification_final"] == [] and row["stopped"] == ""
+    # [주의] 줄에는 규칙 이름만 둔다. 위반 문장의 뒷부분(모델이 쓴 값)은 남기지 않는다
+    assert "L999999" not in str(row)
+    blocked, _ = evaluate_item(
+        agent_deps(write=lambda prompt: BAD), item("DEMO0001 어디예요?"), "planner", TODAY, PRICES
+    )
+    limit = load_rules("agent")["answer"]["max_write_attempts"]
+    assert blocked["behaviour"] == "partial" and blocked["write_attempts"] == limit
+    assert blocked["verification_final"] == ["근거 묶음에 없는 인용"] and blocked["stopped"] == ""
+    failed, _ = evaluate_item(
+        agent_deps(model=LimitModel(messages=iter([]))), item("수입신고 기한은요?"), "agent", TODAY, PRICES
+    )
+    assert failed["stopped"] == "llm_failed" and failed["write_attempts"] == 0
+
+
+def test_raw_keeps_each_search_query_masked_and_the_row_keeps_none(agent_deps):
+    deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
+    row, raw = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
+    assert raw["searches"] == ["수입신고 기한"]
+    assert "수입신고 기한" not in str(row["rag"])  # 검색어(LLM 글)는 저장소에 들어가는 줄에 두지 않는다
+    # [주의] raw의 answer는 화면에 나간 답이라 번호가 보인다(기존 동작). 검색어 칸에는 번호가 없어야 한다
+    numbered = model(("search_law", {"query": "DEMO0001 수입신고 기한"}))
+    _, raw = evaluate_item(
+        agent_deps(model=numbered, write=lambda prompt: CITING),
+        item("DEMO0001 언제까지 수입신고 해요?"),
+        "agent",
+        TODAY,
+        PRICES,
+    )
+    assert "DEMO0001" not in str(raw["searches"])
+
+
+def test_a_real_number_in_a_search_query_never_reaches_the_raw_file():
+    # 이 차례의 가림 표에 있는 번호는 그 토큰으로, 표에 없는 번호 덩어리도 토큰으로 바꾼다
+    out = masked_queries(["DEMO0001 수입신고 기한", "MOCK0002 통관"], {"[BL1]": "DEMO0001"})
+    assert out[0] == "[BL1] 수입신고 기한"
+    assert "DEMO0001" not in str(out) and "MOCK0002" not in str(out)
