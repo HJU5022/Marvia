@@ -9,6 +9,12 @@ set:
 
 retrieval_k: 8 # 검색 R@k의 k. [왜] RAG 한 번이 리랭커 상위 8개를 남긴다 (rules/rag.yaml rerank_top_n)
 
+# 요약(metrics.summarize)에 내는 문항당 LLM 호출 수·토큰 수의 백분위와, 재지 않은 칸에 적는 말
+summary:
+  percentiles: [50, 95] # 가까운 순위 법(값을 줄 세워 ceil(q/100 × n)번째)
+  # claude -p(MARVIA_LLM_VIA=cli)로 잰 실행의 비용·시간 칸. [왜] 청구액이 없고 시간에 CLI 시작 시간이 섞인다
+  not_measured: 재지 않음
+
 run:
   # 실행 한 번(scripts/run_eval.py run)의 유료 호출 상한(달러). 다음 문항 전에 쓴 돈이 이 값을 넘으면 멈춘다
   max_cost_usd: 1.0

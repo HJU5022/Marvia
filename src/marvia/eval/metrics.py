@@ -148,6 +148,23 @@ def mrr(rows: list[dict], items: dict[str, Item]) -> dict:
     return _mean(values)
 
 
+def _percentile(values: list[float], q: int) -> float | None:
+    """가까운 순위 법 백분위: 값을 줄 세워 ceil(q/100 × n)번째. 값이 없으면 None."""
+    ranked = sorted(values)
+    return ranked[max(math.ceil(q / 100 * len(ranked)), 1) - 1] if ranked else None
+
+
+def per_item_spread(rows: list[dict], percentiles: list[int]) -> dict:
+    """문항당 LLM 호출 수와 입력·출력 토큰 수의 백분위 (llm_calls_p50, tokens_in_p95, ...)."""
+    series = {
+        "llm_calls": [r["real_llm_calls"] for r in rows if r.get("real_llm_calls") is not None],
+        # [왜] 한 문항이 여러 모델을 부를 수 있다. 모델별 토큰을 문항마다 더한다
+        "tokens_in": [sum(t["in"] for t in r["tokens"].values()) for r in rows if r.get("tokens")],
+        "tokens_out": [sum(t["out"] for t in r["tokens"].values()) for r in rows if r.get("tokens")],
+    }
+    return {f"{name}_p{q}": _percentile(values, q) for name, values in series.items() for q in percentiles}
+
+
 def calc_accuracy(rows: list[dict], items: dict[str, Item]) -> dict:
     """계산 정확도: 정답 계산이 있는 문항 가운데 코드 계산 칸이 정답과 같은 비율."""
     flags = [calc_ok(r, items[r["id"]]) for r in rows]
@@ -168,6 +185,16 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
     cap = limits["loop"]["max_llm_calls"] + limits["answer"]["max_write_attempts"]
     path = load_rules("eval")["trajectory"]
     seen = load_rules("eval")["rag_observations"]
+    shape = load_rules("eval")["summary"]
+    # [왜] claude -p로 잰 줄은 청구액이 없고 시간에 CLI 시작 시간이 섞인다. 비용과 시간은 API로 잰 실행에서만
+    #      숫자로 내고, 그 밖에는 재지 않았다고 적는다. 옛 줄에는 llm_via가 없고 그때는 API뿐이었다
+    api_only = all(r.get("llm_via", "api") == "api" for r in rows)
+    money = {
+        "cost_per_item_mean": round(statistics.fmean(costs), 5) if costs else None,
+        "cost_per_item_max": max(costs) if costs else None,
+        "cost_usd": round(sum(r.get("cost_usd") or 0 for r in rows), 4),
+        "seconds_median": round(statistics.median([r["seconds"] for r in rows]), 1) if rows else None,
+    }
     return {
         "n": len(rows),
         "errors": sum(bool(r.get("error")) for r in rows),
@@ -208,10 +235,8 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         ),
         "cap_stops": cap_stops(rows),
         "cap_breaches": sum(max(r.get("real_llm_calls") or 0, r["llm_calls"] or 0) > cap for r in rows),
-        "cost_per_item_mean": round(statistics.fmean(costs), 5) if costs else None,
-        "cost_per_item_max": max(costs) if costs else None,
-        "cost_usd": round(sum(r.get("cost_usd") or 0 for r in rows), 4),
-        "seconds_median": round(statistics.median([r["seconds"] for r in rows]), 1) if rows else None,
+        **per_item_spread(rows, shape["percentiles"]),
+        **(money if api_only else dict.fromkeys(money, shape["not_measured"])),
     }
 
 
@@ -252,6 +277,7 @@ def compare_table(results: list[dict]) -> str:
         + [name for _, name in TABLE]
         + ["근거 있는 답", "LLM 호출 중앙값·최대", "상한 넘음", "비용 합·문항당 최대($)", "시간 중앙값(초)"]
         + ["오류", "새는 번호", "근거 문항 중 검색·조회 0", "상한에서 끝남"]
+        + [f"{name} p50·p95" for name in ("LLM 호출", "입력 토큰", "출력 토큰")]
     )
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for result in results:
@@ -263,11 +289,18 @@ def compare_table(results: list[dict]) -> str:
         backed = summary["evidence_backed"]
         cells.append("-" if backed["value"] is None else f"{backed['value']:.2f} ({backed['n']})")
         cells += [f"{summary['llm_calls_median']}·{summary['llm_calls_max']}", summary["cap_breaches"]]
-        cells += [f"{summary['cost_usd']}·{summary['cost_per_item_max']}", summary["seconds_median"]]
+        cost = summary["cost_usd"]
+        # [왜] claude -p로 잰 실행은 비용 칸에 숫자 대신 "재지 않음"이 있다. 한 번만 적는다
+        cells.append(cost if isinstance(cost, str) else f"{cost}·{summary['cost_per_item_max']}")
+        cells.append(summary["seconds_median"])
         cells += [summary["errors"], summary["leaks"]]
         quiet = summary["gold_without_search"]
         cells.append("-" if quiet["value"] is None else f"{quiet['value']} ({quiet['n']})")
         cells.append(summary["cap_stops"])
+        cells += [
+            f"{summary.get(f'{key}_p50')}·{summary.get(f'{key}_p95')}"
+            for key in ("llm_calls", "tokens_in", "tokens_out")
+        ]
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
     return "\n".join(lines)
 

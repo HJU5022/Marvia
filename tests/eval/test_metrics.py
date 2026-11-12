@@ -659,3 +659,36 @@ def test_cap_stops_counts_rows_that_ended_at_the_llm_call_cap():
     ]
     assert cap_stops(rows) == 3
     assert summarize(rows, ITEMS, 8)["cap_stops"] == 3
+
+
+def spent(id: str, calls: int, tokens_in: int, **fields) -> dict:
+    tokens = {"m": {"in": tokens_in, "out": tokens_in // 10}}
+    return row(id, real_llm_calls=calls, tokens=tokens, cost_usd=0.01, **fields)
+
+
+def test_summary_gives_p50_and_p95_of_llm_calls_and_tokens_per_item():
+    # 가까운 순위 법: 값 20개의 p50은 10번째, p95는 19번째 값이다
+    rows = [spent("R1", calls=n, tokens_in=n * 1000) for n in range(1, 21)]
+    summary = summarize(rows, ITEMS, 8)
+    assert (summary["llm_calls_p50"], summary["llm_calls_p95"]) == (10, 19)
+    assert (summary["tokens_in_p50"], summary["tokens_in_p95"]) == (10000, 19000)
+    assert (summary["tokens_out_p50"], summary["tokens_out_p95"]) == (1000, 1900)
+    assert summarize([row("R1")], ITEMS, 8)["llm_calls_p95"] is None  # 호출 수가 없는 줄뿐이면 못 잰 것이다
+    result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summary}
+    assert "LLM 호출 p50·p95" in compare_table([result]) and "| 10·19 |" in compare_table([result])
+
+
+def test_cost_and_time_are_reported_only_for_runs_measured_through_the_api():
+    label = load_rules("eval")["summary"]["not_measured"]
+    api = summarize([spent("R1", calls=3, tokens_in=1000, llm_via="api")], ITEMS, 8)
+    assert api["cost_usd"] == 0.01 and api["seconds_median"] == 1.0
+    old = summarize([spent("R1", calls=3, tokens_in=1000)], ITEMS, 8)  # 옛 줄에는 llm_via가 없다(API)
+    assert old["cost_usd"] == 0.01
+    # [왜] claude -p 줄은 청구액이 없고 시간에 CLI 시작 시간이 섞인다. 숫자 대신 재지 않았다고 낸다
+    cli = summarize([spent("R1", calls=3, tokens_in=1000, llm_via="cli") | {"cost_usd": None}], ITEMS, 8)
+    for key in ("cost_usd", "cost_per_item_mean", "cost_per_item_max", "seconds_median"):
+        assert cli[key] == label
+    assert cli["llm_calls_p50"] == 3  # 호출 수와 토큰은 cli 줄에서도 센다
+    result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": cli}
+    assert f"| {label} | {label} |" in compare_table([result])
+    assert "cost_usd" not in spread([cli, cli])  # 숫자가 아닌 칸은 평균에 넣지 않는다
