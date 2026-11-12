@@ -280,3 +280,62 @@ def test_a_json_body_is_bad_response():
     assert _arrivals('{"a": 1}') == ToolError(
         code="bad_response", message=mof.CFG["messages"]["bad_response"], retryable=False
     )
+
+
+def _live(monkeypatch, base_url: str) -> list[httpx.Request]:
+    """실제 모드로 두고, 나간 요청을 모으는 가짜 연결을 끼운다."""
+    monkeypatch.setenv("MARVIA_MOF_MODE", "live")
+    monkeypatch.setenv("MARVIA_MOF_KEY", KEY)
+    monkeypatch.setenv("MARVIA_MOF_BASE_URL", base_url)
+    monkeypatch.setenv("MARVIA_MOF_RELAY_TOKEN", "TESTTOKEN-NOT-REAL")
+    real = mof.Settings
+    monkeypatch.setattr(mof, "Settings", lambda: real(_env_file=None))
+    seen: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return _xml("empty.xml")
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        mof.httpx, "Client", lambda **kw: real_client(**{**kw, "transport": httpx.MockTransport(handle)})
+    )
+    return seen
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://relay.test",
+        "ftp://relay.test",
+        "relay.test",
+        "https://evil.test\\@localhost",
+        "https://relay .test",
+    ],
+)
+def test_live_refuses_an_unsafe_address_without_sending_the_key_or_the_token(monkeypatch, base_url):
+    seen = _live(monkeypatch, base_url)
+    busan = port("KRPUS")
+    assert busan is not None
+    error = port_schedule(busan, "QQTST1", today=date(2026, 9, 22))
+    assert error == ToolError(
+        code="unsafe_address", message=mof.CFG["messages"]["unsafe_address"], retryable=False
+    )
+    assert seen == []
+
+
+def test_live_allows_plain_http_on_loopback(monkeypatch):
+    seen = _live(monkeypatch, "http://localhost:8080")
+    busan = port("KRPUS")
+    assert busan is not None
+    assert isinstance(port_schedule(busan, "QQTST1", today=date(2026, 9, 22)), PortSchedule)
+    assert {r.url.host for r in seen} == {"localhost"}
+
+
+def test_live_without_a_relay_address_does_not_send_the_relay_token(monkeypatch):
+    seen = _live(monkeypatch, "")
+    busan = port("KRPUS")
+    assert busan is not None
+    assert isinstance(port_schedule(busan, "QQTST1", today=date(2026, 9, 22)), PortSchedule)
+    assert {r.url.host for r in seen} == {"apis.data.go.kr"}
+    assert all("X-Relay-Token" not in r.headers for r in seen)

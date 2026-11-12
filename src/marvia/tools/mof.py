@@ -28,6 +28,7 @@ from marvia.identify.models import ToolError
 from marvia.tools.ports import Port
 from marvia.tools.rules import load_rules
 from marvia.tools.vessel import PortSchedule, SailingPlan
+from marvia.trace import _safe_host  # pyright: ignore[reportPrivateUsage]
 
 for _name in ("httpx", "httpcore"):
     logging.getLogger(_name).setLevel(logging.WARNING)  # [왜] httpx는 INFO로 요청 주소(키 포함)를 찍는다
@@ -291,14 +292,20 @@ def _session() -> tuple[httpx.Client, str, str] | ToolError:
     key = settings.mof_key.get_secret_value()
     if not key:
         return _error("no_key")
-    token = settings.mof_relay_token.get_secret_value()
+    base_url = settings.mof_base_url or CFG["base_url"]
+    # [왜] https가 아닌 주소(이 컴퓨터의 http는 예외)로는 키와 릴레이 토큰이 그대로 읽힌다. 열기 전에 멈춘다.
+    #      주소 검사는 Langfuse 주소에 쓰는 것과 같다 (marvia.trace._safe_host)
+    if not _safe_host(base_url):
+        return _error("unsafe_address")
+    # [왜] 릴레이 토큰은 릴레이 주소를 정했을 때만 싣는다. 주소가 비면 해수부로 바로 가므로 보낼 곳이 아니다
+    token = settings.mof_relay_token.get_secret_value() if settings.mof_base_url else ""
     # [왜] follow_redirects=False: 넘겨 주는 주소를 따라가면 키가 다른 호스트로 갈 수 있다
     client = httpx.Client(
         timeout=httpx.Timeout(CFG["timeout_s"], connect=CFG["connect_timeout_s"]),
         follow_redirects=False,
         headers={"X-Relay-Token": token} if token else {},
     )
-    return client, settings.mof_base_url or CFG["base_url"], key
+    return client, base_url, key
 
 
 def port_schedule(row: Port, call_sign: str, *, today: date) -> PortSchedule | ToolError:

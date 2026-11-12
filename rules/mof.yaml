@@ -33,5 +33,6 @@ messages:
   quota_exhausted: 해수부 조회 한도를 넘었어요. 내일 다시 조회할 수 있어요
   too_many: 조회한 기간의 입항 신고가 너무 많아 끝까지 보지 못했어요
   no_key: 해수부 키가 없어 실제 조회를 하지 않았어요
+  unsafe_address: 해수부 조회 주소가 https가 아니라 실제 조회를 하지 않았어요
   port_unknown: 이 항만은 해수부 조회에 쓸 값(청코드, 조회 기간)을 아직 확인하지 못했어요
 retryable: [timeout, unavailable] # 다시 시도하면 나아질 수 있는 오류
