@@ -694,3 +694,54 @@ def test_the_run_stops_at_the_first_item_with_a_cli_failure_even_when_other_call
     assert halt_reason([clean, row], 2) is None and halt_reason([row, clean, row], 2) is not None
     # 돈이 새는 줄의 멈춤 규칙(stop_reason)도 그대로 본다
     assert halt_reason([clean | {"tokens": {}}], limit) == stop_reason(clean | {"tokens": {}})
+
+
+def test_supervisor_row_lists_subagent_visits_and_the_tools_called_inside_them(agent_deps):
+    # 수퍼바이저 길(계획 7b): 화물·기한 서브에이전트 → 법령 조사 서브에이전트
+    def call(name, args, id):
+        return AIMessage("", tool_calls=[{"name": name, "args": args, "id": id}])
+
+    script = [
+        call("handoff", {"to": "cargo", "task": "[BL1]의 수입신고 기한 계산"}, "h1"),
+        call("calc_deadlines", {}, "c1"),
+        AIMessage("기한을 계산했어요."),
+        call("handoff", {"to": "law", "task": "수입신고 기한의 근거"}, "h2"),
+        call("search_law", {"query": "수입신고 기한"}, "s1"),
+        AIMessage("관세법 제241조제3항이에요."),
+        AIMessage(""),
+    ]
+    deps = agent_deps(model=ToolModel(messages=iter(script)), write=lambda prompt: CITING)
+    row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "supervisor", TODAY, PRICES)
+    assert row["error"] is None and row["behaviour"] == "answer"
+    assert row["visits"] == ["cargo", "law"]
+    # [왜] 넘기기는 "sub:이름"으로 적고 그 뒤에 그 서브에이전트가 부른 도구를 잇는다.
+    #      궤적 조건이 이 순서를 본다
+    assert row["tools"] == ["sub:cargo", "calc_deadlines", "sub:law", "search_law"]
+    # [왜] 이름별 호출 수도 서브에이전트 안의 도구를 센다. 도구 길이 돌았는지 줄만 보고 안다
+    assert row["tool_counts"] == {"sub:cargo": 1, "calc_deadlines": 1, "sub:law": 1, "search_law": 1}
+    assert row["cited"] == ["L001556@20261002#제241조.3항"] and not row["leak"]
+
+
+def test_supervisor_row_that_hit_the_cap_inside_a_subagent_is_one_cap_stop(agent_deps):
+    from marvia.eval.metrics import cap_stops
+
+    cap = load_rules("agent")["loop"]["max_llm_calls"]
+
+    def call(name, args, id):
+        return AIMessage("", tool_calls=[{"name": name, "args": args, "id": id}])
+
+    # 수퍼바이저 1 + 화물·기한 서브에이전트 19번에서 상한
+    script = [call("handoff", {"to": "cargo", "task": "기한 계산"}, "h1")]
+    script += [call("calc_deadlines", {}, f"k{i}") for i in range(cap - 1)]
+    deps = agent_deps(model=ToolModel(messages=iter(script)))
+    row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "supervisor", TODAY, PRICES)
+    assert row["behaviour"] == "partial" and row["stopped"] == "llm_calls" and row["llm_calls"] == cap
+    assert row["failed"] == [f"cargo: LLM 호출 한도({cap}회)에 닿았어요"]
+    # [왜] 멈춘 이유 칸과 실패 기록 둘 다 상한을 말해도 한 줄은 한 번만 센다
+    assert cap_stops([row]) == 1
+
+
+def test_agent_row_has_no_visits(agent_deps):
+    deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
+    row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
+    assert row["visits"] == [] and row["tools"] == ["search_law"]

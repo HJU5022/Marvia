@@ -265,6 +265,20 @@ def test_trajectory_pass_counts_only_agent_rows_without_errors():
     assert trajectory_pass(rows, ITEMS, ["watch_cargo"], 12) == {"value": 0.5, "n": 2}
 
 
+def test_trajectory_pass_counts_supervisor_rows_and_reads_subagent_visits():
+    # [왜] 수퍼바이저 길(계획 7b)도 도구를 부른다. 넘기기는 "sub:이름"으로 적혀 궤적 조건에 쓸 수 있다
+    items = {
+        "R1": item("R1", trajectory={"must": ["research|sub:law"], "order": [["sub:law", "search_law"]]}),
+        "R2": item("R2", trajectory={"must": ["research|sub:law"]}),
+    }
+    rows = [
+        row("R1", loop="supervisor", tools=["sub:law", "search_law"]),
+        row("R2", loop="supervisor", tools=["sub:cargo", "calc_deadlines"]),  # 법령으로 넘기지 않았다
+        row("R1", loop="agent", tools=["research", "search_law"]),  # 같은 조건을 에이전트 길도 넘는다
+    ]
+    assert trajectory_pass(rows, items, [], 12) == {"value": 0.6667, "n": 3}
+
+
 def test_rag_observations_from_the_rag_log_and_evidence_order():
     rag = [
         {"step": "grade", "sufficient": True, "units": [A + "제100조.1항"]},  # 정답 없이 "충분"
@@ -607,6 +621,12 @@ def test_gold_items_that_never_searched_are_counted_so_a_quiet_tool_failure_show
     # 오류 줄(errors가 센다)과 계획자 길(도구를 부르지 않는다)은 뺀다. 줄이 없으면 못 잰 것이다
     others = [row("R1", loop="agent", tools=[], error="CLIFailed"), row("R2", loop="planner", tools=[])]
     assert gold_without_search(others, ITEMS, ["search_law"]) == {"value": None, "n": 0, "ids": []}
+    # 수퍼바이저 길(계획 7b)도 센다. 서브에이전트 안에서 부른 검색은 줄의 tools에 풀려 있다
+    routed = [
+        row("R1", loop="supervisor", tools=["sub:law", "search_law"]),
+        row("R2", loop="supervisor", tools=["sub:cargo", "calc_deadlines"]),  # 넘겼지만 검색·조회 0
+    ]
+    assert gold_without_search(routed, ITEMS, ["search_law", "get_provision"])["ids"] == ["R2"]
     summary = summarize(rows, ITEMS, 8)
     assert summary["gold_without_search"]["value"] == 1
     result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summary}
@@ -667,6 +687,15 @@ def test_cap_stops_counts_rows_that_ended_at_the_llm_call_cap():
     ]
     assert cap_stops(rows) == 3
     assert summarize(rows, ITEMS, 8)["cap_stops"] == 3
+    # 수퍼바이저 길(계획 7b): 수퍼바이저든 서브에이전트든 상한에 닿으면 stopped 칸과 실패 기록에 남는다
+    supervisor = [
+        row("R1", loop="supervisor", stopped="llm_calls", behaviour="partial", llm_calls=cap),
+        row(
+            "R2", loop="supervisor", stopped="llm_calls", failed=[f"cargo: LLM 호출 한도({cap}회)에 닿았어요"]
+        ),
+        row("S1", loop="supervisor", behaviour="answer", llm_calls=cap),  # 상한만큼 부르고 답을 냈다
+    ]
+    assert cap_stops(supervisor) == 2
 
 
 def spent(id: str, calls: int, tokens_in: int, **fields) -> dict:

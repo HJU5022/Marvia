@@ -373,13 +373,29 @@ def cost_usd(tokens: dict, prices: dict) -> float | None:
     )
 
 
+def tool_names(messages: list, visits: list[dict]) -> list[str]:
+    """부른 도구 이름을 부른 순서대로. 수퍼바이저 길의 넘기기는 "sub:이름"과 그 안에서 부른 도구로 푼다."""
+    # [왜] 서브에이전트 안의 도구 호출은 부모 대화 기록에 없고 공책 칸 visits에만 있다 (계획 7b).
+    #      handoff가 실제로 넘긴 순서와 visits의 순서가 같으므로 앞에서부터 하나씩 맞춘다
+    left = list(visits)
+    names: list[str] = []
+    for message in messages:
+        for called in getattr(message, "tool_calls", None) or []:
+            if called["name"] == "handoff" and left and left[0]["sub"] == called["args"].get("to"):
+                visit = left.pop(0)
+                names += [f"sub:{visit['sub']}", *visit["tools"]]
+            else:
+                names.append(called["name"])  # 넘기지 못한 handoff(모르는 이름)는 이름 그대로 남는다
+    return names
+
+
 def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: list[dict]) -> dict:
     """끝난 실행의 공책 칸에서 채점에 쓸 파생 값만 뽑는다."""
     draft = values.get("draft") or {}
     kind = behaviour(values, pauses)
     calc = values.get("calc") or {}
     messages = values.get("messages", [])
-    tools = [c["name"] for m in messages for c in getattr(m, "tool_calls", None) or []]
+    tools = tool_names(messages, values.get("visits", []))
     numbers = [n for n in values.get("mask_map", {}).values() if n]
     return {
         "behaviour": kind,
@@ -400,8 +416,11 @@ def observe(values: dict, pauses: list[dict], watch: LlmWatch, loop: str, log: l
         "stages": [c["facts"]["stage"] for c in values.get("cargos", []) if c.get("facts")],
         "tools": tools,
         # [왜] 도구 길이 실제로 돌았는지 줄만 보고 알 수 있게 이름별 호출 수를 남긴다.
-        #      [주의] 조사 서브에이전트 안의 호출은 여기 없다. research 한 번으로 보인다
+        #      수퍼바이저 길은 서브에이전트 안에서 부른 도구와 넘기기("sub:이름")도 센다 (계획 7b).
+        #      [주의] 에이전트 길의 조사 서브에이전트 안의 호출은 여기 없다. research 한 번으로 보인다
         "tool_counts": dict(Counter(tools)),
+        # 돈 서브에이전트 이름, 돈 순서대로 (수퍼바이저 길). 다른 길은 빈 목록이다
+        "visits": [visit["sub"] for visit in values.get("visits", [])],
         "plan": [step["action"] for step in values.get("plan", [])] if loop == "planner" else [],
         "llm_calls": values.get("llm_calls"),
         # 작성자 호출 수, 검증에 걸린 규칙 이름(이 차례의 모든 초안 / 마지막 초안), 루프가 멈춘 이유 (R-090).
@@ -495,6 +514,7 @@ def evaluate_item(
             "stages": [],
             "tools": [],
             "tool_counts": {},
+            "visits": [],
             "write_attempts": None,
             "verification": [],
             "verification_final": [],

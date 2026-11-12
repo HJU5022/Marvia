@@ -522,8 +522,10 @@ def trajectory_violations(tools: list[str], spec: Trajectory, never: list[str], 
 
 
 def trajectory_pass(rows: list[dict], items: dict[str, Item], never: list[str], max_calls: int) -> dict:
-    """궤적 통과율: 에이전트 길에서 오류 없이 끝난 문항 가운데 도구 호출 조건을 모두 지킨 비율."""
-    picked = [r for r in rows if r.get("loop") == "agent" and not r.get("error")]
+    """궤적 통과율: 도구 루프 길에서 오류 없이 끝난 문항 가운데 도구 호출 조건을 모두 지킨 비율."""
+    # [왜] 계획자 길은 도구를 부르지 않아 뺀다.
+    #      수퍼바이저 길의 줄은 넘기기가 "sub:이름"으로 적혀 있다 (계획 7b)
+    picked = [r for r in rows if r.get("loop") in ("agent", "supervisor") and not r.get("error")]
     flags = [
         not trajectory_violations(r["tools"], items[r["id"]].trajectory, never, max_calls) for r in picked
     ]
@@ -575,9 +577,11 @@ def contract_adherence(rows: list[dict]) -> dict:
 def gold_without_search(rows: list[dict], items: dict[str, Item], search_tools: list[str]) -> dict:
     """정답 근거가 있는 문항 가운데 검색·조회 도구를 한 번도 부르지 않고 끝난 문항 수(value)와 그 문항들.
 
-    에이전트 길에서 오류 없이 끝난 줄만 본다(n). 0이 아니면 도구 길이 돌았는지 먼저 확인한다.
+    도구 루프 길(에이전트, 수퍼바이저)에서 오류 없이 끝난 줄만 본다(n). 0이 아니면 도구 길이 돌았는지
+    먼저 확인한다. 수퍼바이저 길의 줄은 서브에이전트 안에서 부른 도구도 tools에 있다 (계획 7b).
     """
-    picked = [r for r in rows if r.get("loop") == "agent" and not r.get("error") and items[r["id"]].gold]
+    loops = ("agent", "supervisor")
+    picked = [r for r in rows if r.get("loop") in loops and not r.get("error") and items[r["id"]].gold]
     ids = sorted(r["id"] for r in picked if not set(r["tools"]) & set(search_tools))
     return {"value": len(ids) if picked else None, "n": len(picked), "ids": ids}
 
