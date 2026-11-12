@@ -57,10 +57,18 @@ class Guards(AgentMiddleware[LoopState]):
     # [왜] 이 미들웨어가 읽고 쓰는 칸(llm_calls, stopped, failed_tools)을 루프 공책에 더한다
     state_schema = LoopState
 
-    def __init__(self, max_llm_calls: int, label: str = "agent"):
+    def __init__(
+        self,
+        max_llm_calls: int,
+        label: str = "agent",
+        alone: tuple[str, ...] = ALONE,
+        alone_text: str = ASK_ALONE,
+    ):
         super().__init__()
         self.max_llm_calls = max_llm_calls
         self.label = label  # 실패 기록(failed_tools)에 남길 루프 이름. 조사 서브에이전트는 "research"
+        # [왜] 수퍼바이저 길은 혼자 부를 도구가 다르다(handoff). 에이전트 길의 글과 목록은 그대로다 (계획 7b)
+        self.alone, self.alone_text = alone, alone_text
 
     @hook_config(can_jump_to=["end"])
     def before_model(self, state: LoopState, runtime: Any) -> dict[str, Any] | None:
@@ -119,10 +127,10 @@ class Guards(AgentMiddleware[LoopState]):
         # [왜] 다른 미들웨어가 오류 결과를 먼저 붙여도 마지막 모델 메시지를 본다
         last = next((m for m in reversed(state["messages"]) if m.type == "ai"), None)
         calls = getattr(last, "tool_calls", None) or []
-        if len(calls) > 1 and any(call["name"] in ALONE for call in calls):
+        if len(calls) > 1 and any(call["name"] in self.alone for call in calls):
             # [왜] 질문(interrupt)과 다른 도구가 한 단계에 섞이면 재개할 때 다른 도구가 다시 돌 수 있다.
             #      조사는 남은 LLM 호출을 모두 쓸 수 있어, 함께 도는 검색이 상한을 넘길 수 있다
-            errors = [ToolMessage(ASK_ALONE, tool_call_id=call["id"], status="error") for call in calls]
+            errors = [ToolMessage(self.alone_text, tool_call_id=call["id"], status="error") for call in calls]
             return {"messages": errors, "jump_to": "model"}
         return None
 

@@ -7,8 +7,9 @@
 에이전트 길(loop="agent", 계획 3c): identify 다음 brief → agent(도구 루프, graph/agent.py)
         → 멈춤: finish / 도메인 밖: decline / 그 밖: write → verify → respond | finish
         (작성·검증은 계획자 길과 같다)
-수퍼바이저 길(loop="supervisor", 계획 7b): identify 다음 brief → supervisor(graph/supervisor.py)
-        → 에이전트 길과 같은 갈림길(finish / decline / write)
+수퍼바이저 길(loop="supervisor", 계획 7b): identify 다음 brief → supervisor(graph/supervisor.py) → router
+        → 넘길 곳이 있으면 그 서브에이전트(cargo | law | item) → supervisor ...
+        → 없으면 에이전트 길과 같은 갈림길(finish / decline / write)
         에이전트 길의 대화 기록(messages)은 차례를 넘어 이어지고, 답(가린 글)이 기록 끝에 붙는다 (계획 3d).
         기록이 길면 brief가 앞부분을 요약하고, 요약 LLM이 실패하면 brief 다음에 finish
 하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다).
@@ -31,7 +32,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
-from langgraph.types import interrupt
+from langgraph.types import Command, interrupt
 
 from marvia.graph.agent import MODEL_ERRORS, build_agent, build_summary
 from marvia.graph.answer import cargo_lines, decline_answer, final_answer, partial_answer, with_news
@@ -39,7 +40,7 @@ from marvia.graph.identify import build_identify_graph, build_lookup_graph
 from marvia.graph.rag import RagDeps, build_rag_graph, evidence_block
 from marvia.graph.schemas import Draft, Plan
 from marvia.graph.state import MarviaState, merge_evidence
-from marvia.graph.supervisor import build_supervisor
+from marvia.graph.supervisor import build_sub, build_supervisor, refused_handoff, sub_node, subagents
 from marvia.graph.tools import (
     cargo_deadlines,
     error_name,
@@ -107,6 +108,9 @@ def start(state: MarviaState) -> dict:
         "watch_news": [],
         "watch_ids": [],
         "actions": [],
+        # 수퍼바이저 길 칸 (계획 7b)
+        "route": "",
+        "task": "",
     }
 
 
@@ -518,11 +522,31 @@ def build_main_graph(
             # [왜] 수퍼바이저 길에는 조사 도구(research)가 없다. model을 넘기지 않으면 만들지 않는다
             tools = make_tools(agent_rag, deps.today, deps.provision, None, deps.web, deps.watch)
             graph.add_node("supervisor", build_supervisor(deps.model, tools))
+            ends = ("write", "decline", "finish")
+
+            def router(state: MarviaState) -> Command:
+                """수퍼바이저 뒤 갈림길: 넘길 곳이 있으면 그 서브에이전트로, 없으면 에이전트 길의 끝으로."""
+                if state.get("stopped"):
+                    return Command(goto="finish")
+                to = state.get("route")
+                if to:
+                    return Command(goto=to)
+                # [왜] handoff가 넘기지 못했으면(모르는 이름) 모델이 오류 글을 보고 고쳐 부르게 한다
+                return Command(goto="supervisor" if refused_handoff(state) else _after_agent(state))
+
+            # [왜] destinations: Command로 가는 곳은 그림(get_graph)에 저절로 나오지 않아 적어 준다
+            graph.add_node("router", router, destinations=(*subagents(), "supervisor", *ends))
+            graph.add_edge("supervisor", "router")
+            for name in subagents():
+                # [왜] 한 단계에 서브에이전트 하나만 돈다. 부모 공책 칸이 덮어쓰기라 둘이 함께 쓰면 멈춘다
+                graph.add_node(name, sub_node(name, build_sub(deps.model, tools, name), deps.today))
+                graph.add_edge(name, "supervisor")
         # [왜] 요약 LLM이 실패해 멈췄으면 루프를 돌리지 않고 부분 답으로 간다
         graph.add_conditional_edges(
             "brief", lambda state: "finish" if state.get("stopped") else loop, [loop, "finish"]
         )
-        graph.add_conditional_edges(loop, _after_agent, ["write", "decline", "finish"])
+        if loop == "agent":
+            graph.add_conditional_edges("agent", _after_agent, ["write", "decline", "finish"])
         graph.add_edge("decline", END)
     else:
         graph.add_node("plan", plan)

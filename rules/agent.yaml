@@ -43,7 +43,23 @@ research:
   max_summary: 400 # 부모에게 돌려주는 요약 글 상한(글자). [왜] 서브에이전트의 값어치는 부모 기록을 짧게 두는 데 있다
 # 수퍼바이저 길 (계획 7b, MARVIA_LOOP=supervisor). 수퍼바이저는 일을 나눠 맡기고, 묻고, 거절만 한다
 supervisor:
-  tools: [ask_user, decline] # 수퍼바이저가 직접 부르는 도구. 할 일 목록(write_todos)은 미들웨어가 더한다
+  # 수퍼바이저가 직접 부르는 도구. 할 일 목록(write_todos)은 미들웨어가, 넘기기(handoff)는 코드가 더한다
+  tools: [ask_user, decline]
+  # 서브에이전트와 그 도구 묶음. 이름은 handoff의 to 값이고 label은 결과 글 머리에 쓴다.
+  # [왜] get_provision이 셋 모두에 있다: 계산 도구(calc_deadlines, check_reimport)가 낸 근거 이름표를
+  #      같은 서브에이전트가 바로 조문으로 바꾼다. 이름표가 넘김 문장을 거치지 않는다 (11-12 결정)
+  subagents:
+    cargo:
+      label: 화물·기한
+      tools: [lookup_cargo, calc_deadlines, get_provision, watch_cargo, unwatch_cargo]
+    law:
+      label: 법령 조사
+      tools: [search_law, get_provision, official_lookup]
+    item:
+      label: 재수입·품목
+      tools: [check_reimport, get_provision, save_item_card, recall_memory, save_preference]
+  max_task: 300 # handoff의 일 문장 상한(글자). 넘는 뒤쪽은 자른다. [왜] 모델이 쓴 글이 서브에이전트 입력으로 간다
+  max_result: 400 # 서브에이전트가 수퍼바이저에게 돌려주는 결과 글 상한(글자). research.max_summary와 같은 까닭
 # 색인 밖 공식 출처 조회 (계획 3d, 설계 2절 결정 8의 C층). 키 없이 법령 이름으로 국가법령정보센터 페이지를 찾는다
 official:
   allowed_hosts: [www.law.go.kr] # 부를 수 있는 사이트. [왜] 정부 공식 출처만 (설계 12절)

@@ -3,6 +3,7 @@
 하지 않는 일: 값 계산. 계획 1은 식별과 답, 계획 2는 RAG 칸, 계획 3a는 근거·계산·초안·검증 칸,
 계획 3c는 에이전트 루프 칸(messages, todos, assumptions, stopped, out_of_scope)과 루프 공책(LoopState)을 둔다.
 계획 3d부터 messages와 mask_map은 차례를 넘어 이어진다(start가 비우지 않는다).
+계획 7b는 수퍼바이저 길의 넘기기 칸(route, task)을 둔다.
 """
 
 from __future__ import annotations
@@ -68,6 +69,9 @@ class MarviaState(IdentifyState, total=False):
     watch_ids: list[int]  # 그 변화의 기록 id. 답을 낸 뒤(respond·finish·decline) 본 것으로 표시한다
     # 이번 차례에 승인을 받고 실제로 한 일 (토큰 글). 코드가 답 아래에 쓰고 작성자에게 데이터로 준다
     actions: list[str]
+    # 아래는 수퍼바이저 길 칸 (계획 7b). handoff 도구가 쓰고 router와 서브에이전트 노드가 읽은 뒤 비운다
+    route: str  # 다음에 돌 서브에이전트 이름. 비었으면 넘길 곳이 없다
+    task: str  # 서브에이전트에게 넘길 일 한 문장 (가린 글)
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
@@ -129,6 +133,9 @@ class LoopState(AgentState):
     clarifications: NotRequired[Annotated[list[str], operator.add]]
     official: NotRequired[Annotated[list[dict], operator.add]]
     actions: NotRequired[Annotated[list[str], operator.add]]  # 승인한 도구가 병렬로 돌아도 모두 남는다
+    # [주의] reducer가 없다. handoff를 혼자 부르게 하는 Guards 덕에 한 단계에 한 번만 쓴다 (계획 7b)
+    route: NotRequired[str]
+    task: NotRequired[str]
 
 
 # RAG 서브그래프의 공책 (설계 5.4). 메인 그래프와 칸을 나눠 쓰고, 계획 3에서 메인 그래프가 evidence를 받는다

@@ -5,10 +5,11 @@
 """
 
 import pytest
+from conftest import UNIT
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
-from test_agent import TWO, ToolModel, cfg
+from test_agent import CITING, TWO, Inputs, ToolModel, cfg
 
 from marvia.graph.main import build_main_graph
 from marvia.tools.rules import load_rules
@@ -92,3 +93,139 @@ def _all_tools(agent_deps):
 
     deps = agent_deps()
     return make_tools(build_rag_graph(deps.rag), deps.today, deps.provision)
+
+
+# --- 넘기기: handoff 도구, router, 서브에이전트 (계획 7b Task 2) ---
+
+
+def hand(to: str, task: str, id: str) -> AIMessage:
+    return call("handoff", {"to": to, "task": task}, id)
+
+
+def shape(values: dict) -> list[tuple[str, str]]:
+    """대화 기록의 (종류, 글 앞부분 또는 부른 도구 이름) 목록."""
+    return [
+        (m.type, ",".join(c["name"] for c in m.tool_calls) if getattr(m, "tool_calls", None) else m.text[:12])
+        for m in values["messages"]
+    ]
+
+
+def test_handoff_runs_one_subagent_and_brings_back_its_keys_and_a_result_text(agent_deps):
+    graph = sup_graph(
+        agent_deps,
+        hand("cargo", "[BL1]의 수입신고 기한을 계산", "h1"),
+        call("calc_deadlines", {}, "c1"),  # 화물·기한 서브에이전트
+        done("[BL1] 수입신고 기한은 2026-11-26이에요."),  # 서브에이전트의 결과 글
+        done(),  # 수퍼바이저가 끝낸다
+    )
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("h1"))
+    values = graph.get_state(cfg("h1")).values
+    assert values["calc"]["deadlines"][0]["due"] == "2026-11-26"
+    # [왜] 서브에이전트 안의 도구 호출과 결과는 부모 기록에 들어오지 않는다.
+    #      넘김 확인 글 자리에 결과 글만 남는다
+    assert [kind for kind, _ in shape(values)] == ["human", "ai", "tool", "ai", "ai"]
+    result = values["messages"][2]
+    assert result.name == "handoff" and result.tool_call_id == "h1"
+    assert result.text == "화물·기한 결과: [BL1] 수입신고 기한은 2026-11-26이에요."
+    assert values["route"] == "" and values["task"] == ""
+
+
+def test_a_subagent_sees_the_task_and_this_turns_message_but_not_the_earlier_conversation(agent_deps):
+    inputs = Inputs()
+    graph = sup_graph(
+        agent_deps,
+        done(),  # 첫 차례: 수퍼바이저가 바로 끝낸다
+        hand("cargo", "[BL1]의 수입신고 기한을 계산", "h1"),  # 둘째 차례
+        done("끝"),
+        done(),
+    )
+    config = cfg("h2") | {"callbacks": [inputs]}
+    graph.invoke({"text": "지난달 수입한 건고추 얘기예요"}, config)
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, config)
+    _, supervisor_input, sub_input, _ = inputs.calls
+    assert "지난달 수입한 건고추 얘기예요" in supervisor_input  # 수퍼바이저는 앞 차례를 본다
+    assert "[BL1]의 수입신고 기한을 계산" in sub_input and "[BL1]: 반입신고" in sub_input
+    # [왜] 이번 차례의 가린 글은 데이터로 준다. 사용자가 말한 사실을 넘김 문장에 옮기다 빠뜨리지 않게
+    assert "<user_message>\n[BL1] 언제까지 수입신고 해야 해요?" in sub_input
+    assert "DEMO0001" not in sub_input
+    # 앞 차례의 대화와 수퍼바이저의 지시문은 넘기지 않는다
+    assert "지난달 수입한 건고추" not in sub_input and "You are the supervisor" not in sub_input
+
+
+def test_a_long_task_sentence_is_cut_to_the_rule(agent_deps):
+    cap = load_rules("agent")["supervisor"]["max_task"]
+    inputs = Inputs()
+    graph = sup_graph(agent_deps, hand("cargo", "가" * (cap + 50), "h1"), done("끝"), done())
+    graph.invoke({"text": "DEMO0001 어디쯤이에요?"}, cfg("h8") | {"callbacks": [inputs]})
+    assert "가" * cap in inputs.calls[1] and "가" * (cap + 1) not in inputs.calls[1]
+
+
+def test_two_subagents_in_one_turn_fill_the_same_notebook(agent_deps):
+    graph = sup_graph(
+        agent_deps,
+        hand("cargo", "[BL1]의 수입신고 기한을 계산", "h1"),
+        call("calc_deadlines", {}, "c1"),
+        done("기한은 2026-11-26이에요."),
+        hand("law", "수입신고 기한의 근거 조문", "h2"),
+        call("search_law", {"query": "수입신고 기한"}, "s1"),
+        done("관세법 제241조제3항이 30일을 정해요."),
+        done(),
+        write=lambda prompt: CITING,
+    )
+    out = graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("h3"))
+    values = graph.get_state(cfg("h3")).values
+    assert "관세법 > 제9장 통관 > 제241조" in out["answer"]
+    assert values["calc"]["deadlines"] and [e["unit_id"] for e in values["evidence"]] == [UNIT.unit_id]
+    # [왜] 법령 서브에이전트가 새로 찾은 조문은 결과 글 아래에 unit_id와 제목으로 붙는다 (조사 도구와 같다)
+    assert values["messages"][4].text == (
+        f"법령 조사 결과: 관세법 제241조제3항이 30일을 정해요.\n[{UNIT.unit_id}] {UNIT.heading}"
+    )
+
+
+def test_every_subagent_can_fetch_a_basis_label_itself(agent_deps):
+    # [왜] 계산 도구가 낸 근거 이름표를 넘김 문장에 옮겨 적지 않아도 되게 한다 (경계 결정 11-12)
+    groups = load_rules("agent")["supervisor"]["subagents"]
+    assert list(groups) == ["cargo", "law", "item"]
+    assert all("get_provision" in group["tools"] for group in groups.values())
+    graph = sup_graph(
+        agent_deps,
+        hand("item", "수입신고 기한 근거 조문 확인", "h1"),
+        call("get_provision", {"label": "관세법 제241조제3항"}, "p1"),
+        done("찾았어요."),
+        done(),
+    )
+    graph.invoke({"text": "수입신고는 언제까지 해요?"}, cfg("h4"))
+    assert [e["unit_id"] for e in graph.get_state(cfg("h4")).values["evidence"]] == [UNIT.unit_id]
+
+
+def test_handoff_called_with_another_tool_is_refused_and_asked_again(agent_deps):
+    both = AIMessage(
+        "",
+        tool_calls=[
+            {"name": "handoff", "args": {"to": "cargo", "task": "조회"}, "id": "x1"},
+            {"name": "decline", "args": {"reason": "날씨"}, "id": "x2"},
+        ],
+    )
+    graph = sup_graph(agent_deps, both, hand("cargo", "[BL1] 기한 계산", "h1"), done("끝"), done())
+    out = graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("h5"))
+    values = graph.get_state(cfg("h5")).values
+    assert "answer" in out and not values["out_of_scope"]  # 함께 부른 decline은 돌지 않았다
+    assert [m.status for m in values["messages"] if m.type == "tool"] == ["error", "error", "success"]
+
+
+def test_an_unknown_subagent_name_goes_back_to_the_supervisor(agent_deps):
+    graph = sup_graph(
+        agent_deps, hand("customs", "조회", "h0"), hand("cargo", "[BL1] 기한 계산", "h1"), done("끝"), done()
+    )
+    graph.invoke({"text": "DEMO0001 언제까지 수입신고 해야 해요?"}, cfg("h6"))
+    tools = [m for m in graph.get_state(cfg("h6")).values["messages"] if m.type == "tool"]
+    assert tools[0].status == "error" and "cargo, law, item" in tools[0].text
+    assert tools[1].text == "화물·기한 결과: 끝"
+
+
+def test_a_long_result_text_is_cut_to_the_rule(agent_deps):
+    cap = load_rules("agent")["supervisor"]["max_result"]
+    graph = sup_graph(agent_deps, hand("cargo", "조회", "h1"), done("가" * (cap + 50)), done())
+    graph.invoke({"text": "DEMO0001 어디쯤이에요?"}, cfg("h7"))
+    result = graph.get_state(cfg("h7")).values["messages"][2]
+    assert result.text == "화물·기한 결과: " + "가" * cap
