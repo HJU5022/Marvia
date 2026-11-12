@@ -1,5 +1,10 @@
 """평가셋 v1 시험 (done 3.1). 키와 DB 없이 돈다."""
 
+from collections import Counter
+
+import pytest
+import yaml
+
 from marvia.eval.dataset import SET_PATH, SET_V2_PATH, corpus_unit_ids, file_sha256, load_set
 from marvia.identify.models import CargoFacts
 from marvia.identify.parse import read_numbers
@@ -107,3 +112,16 @@ def test_v1_file_hash_is_untouched_by_v2():
     recorded = (SET_PATH.parent / "set_v1.sha256").read_text(encoding="utf-8").split()[0]
     assert file_sha256(SET_PATH) == recorded
     assert file_sha256(SET_V2_PATH) != recorded
+
+
+@pytest.mark.parametrize(
+    ("name", "layers"), [("rset_v1", {"a": 20, "b": 20, "c": 20}), ("rset_a2", {"a2": 20})]
+)
+def test_retrieval_sets_are_frozen_by_their_sha256(name, layers):
+    # [왜] 검색 전용 평가셋도 측정 뒤에 문항이나 정답을 고치면 앞뒤 값을 견줄 수 없다. 고치면 새 판을 만든다
+    path = SET_PATH.parent / f"{name}.yaml"
+    recorded = (SET_PATH.parent / f"{name}.sha256").read_text(encoding="utf-8").split()[0]
+    assert file_sha256(path) == recorded
+    items = yaml.safe_load(path.read_text(encoding="utf-8"))["items"]
+    assert dict(Counter(i["layer"] for i in items)) == layers
+    assert len({i["id"] for i in items}) == len(items) and all(i["query"] and i["gold"] for i in items)
