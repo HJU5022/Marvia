@@ -25,8 +25,10 @@ import json
 import sys
 from pathlib import Path
 
-from marvia.eval.dataset import ROOT, file_sha256
+from marvia.eval.dataset import CORPUS_UNITS, ROOT, file_sha256
 from marvia.eval.retrieval import load_items, measure, summarize_layers
+from marvia.eval.run import index_problem
+from marvia.rag.index import read_units
 from marvia.tools.rules import load_rules
 
 parser = argparse.ArgumentParser()
@@ -80,6 +82,7 @@ with connect(settings.database_url) as conn, read_pool(settings.database_url) as
     annex = conn.execute(
         "SELECT count(*) FROM corpus_units WHERE split_part(unit_id, '#', 2) LIKE '별표%'"
     ).fetchone()
+    index_units = conn.execute("SELECT count(*) FROM corpus_units").fetchone()
     conn.commit()  # [왜] 읽은 뒤 트랜잭션을 닫는다 (R-066)
 
     def one_leg(query, day):
@@ -117,7 +120,13 @@ meta = {
     "embed_model": settings.embed_model,
     "rerank_model": settings.rerank_model,
     "annex_units": annex[0] if annex else 0,
+    "index_units": index_units[0] if index_units else 0,
+    "file_units": len(read_units(CORPUS_UNITS)),
 }
+# [왜] 색인이 단위 파일과 다르면(시험이 남긴 줄 등) 후보가 달라진다. 그 측정은 무효로 표시한다
+meta["problems"] = [p for p in [index_problem(meta)] if p]
+for problem in meta["problems"]:
+    print(f"[무효] {problem}")
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_text(
     json.dumps({"meta": meta, "summary": summary, "rows": rows}, ensure_ascii=False, indent=1),

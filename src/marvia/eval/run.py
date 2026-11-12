@@ -314,6 +314,16 @@ def graph_setting_problem(wanted: str, actual: str) -> str | None:
     return None if wanted == actual else f"--graph {wanted}인데 실제 설정(MARVIA_GRAPH)은 {actual}다"
 
 
+def index_problem(meta: dict) -> str | None:
+    """색인의 단위 수가 단위 파일(corpus/units)의 단위 수와 다르면 그 까닭 글. 같거나 칸이 없으면 None."""
+    # [왜] 색인에 단위 파일에 없는 줄이 섞이면(시험이 남긴 줄 등) 검색 후보가 달라진다. 그 실행은 세지 않는다.
+    #      검색 전용 측정(scripts/retrieval_check.py)도 같은 검사를 쓴다
+    index, files = meta.get("index_units"), meta.get("file_units")
+    if index is None or files is None or index == files:
+        return None
+    return f"색인 단위 수({index})가 단위 파일의 단위 수({files})와 다르다"
+
+
 def run_problems(
     meta: dict, rows: list[dict], summary: dict, faults: set[str], uncovered: list[str] | None = None
 ) -> list[str]:
@@ -323,6 +333,8 @@ def run_problems(
         problems.append(f"평가셋 문항을 다 덮지 못했다: {', '.join(uncovered)}")
     if not meta.get("annex_units"):
         problems.append("DB에 별표 단위가 없다 (scripts/index_corpus.py)")
+    if mismatch := index_problem(meta):
+        problems.append(mismatch)
     if meta.get("graph") == "on":
         graph = meta.get("graph_meta") or {}
         if not graph.get("sha"):

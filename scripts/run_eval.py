@@ -494,6 +494,9 @@ for model in models:
     ):
         deps = agent_deps(settings, pool, watch_conn)
         annex_units = conn.execute(ANNEX_SQL).fetchone()[0]
+        # [왜] 색인이 단위 파일과 같은지 실행 유효성이 본다 (시험이 남긴 줄이 섞인 색인으로 잰 일이 있었다)
+        index_units = conn.execute("SELECT count(*) FROM corpus_units").fetchone()[0]
+        file_units = len(read_units(CORPUS_UNITS))
         conn.commit()  # [왜] 읽은 뒤 트랜잭션을 닫는다. 긴 실행 내내 열려 있지 않게 (R-066)
         docs = sorted({p.name.split(".")[0] for p in CORPUS_UNITS.glob("*.jsonl")})
         graph = {}
@@ -523,6 +526,8 @@ for model in models:
                 "graph": settings.graph,
                 "graph_meta": graph,
                 "annex_units": annex_units,
+                "index_units": index_units,
+                "file_units": file_units,
                 "units_sha256": units_sha256(CORPUS_UNITS),
                 "items_sha256": items_sha256(),
                 "refers_expected": refers_expected,

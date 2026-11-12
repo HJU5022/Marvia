@@ -26,6 +26,7 @@ from marvia.eval.run import (
     existing_results,
     graph_setting_problem,
     halt_reason,
+    index_problem,
     inside_repo,
     llm_meta,
     masked_queries,
@@ -745,3 +746,19 @@ def test_agent_row_has_no_visits(agent_deps):
     deps = agent_deps(model=model(("search_law", {"query": "수입신고 기한"})), write=lambda prompt: CITING)
     row, _ = evaluate_item(deps, item("DEMO0001 언제까지 수입신고 해요?"), "agent", TODAY, PRICES)
     assert row["visits"] == [] and row["tools"] == ["search_law"]
+
+
+def test_a_run_on_an_index_that_does_not_match_the_unit_files_is_invalid():
+    clean = {"errors": 0, "leaks": 0, "cap_breaches": 0}
+    meta = {"annex_units": 75, "graph": "off", "unipass_mode": "replay"}
+    same = meta | {"index_units": 7412, "file_units": 7412}
+    assert run_problems(same, [], clean, set()) == [] and index_problem(same) is None
+    # [왜] 시험이 남긴 줄이 개발 색인에 섞인 채 잰 일이 있었다(22줄).
+    #      색인이 단위 파일과 다르면 그 실행은 세지 않는다
+    extra = meta | {"index_units": 7434, "file_units": 7412}
+    assert run_problems(extra, [], clean, set()) == [
+        "색인 단위 수(7434)가 단위 파일의 단위 수(7412)와 다르다"
+    ]
+    assert index_problem(extra) == "색인 단위 수(7434)가 단위 파일의 단위 수(7412)와 다르다"
+    # 옛 결과에는 이 칸이 없다. 없는 칸으로는 판정하지 않는다
+    assert index_problem(meta) is None
