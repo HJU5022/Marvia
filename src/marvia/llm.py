@@ -1,4 +1,5 @@
 """대화 LLM 연결 (설계 13절, 2절 결정 14: Anthropic API의 Claude Haiku 5.5).
+MARVIA_LLM_VIA=cli면 API 대신 구독의 `claude -p`를 부르는 모델(cli_model.py)을 만든다.
 
 하지 않는 일: 프롬프트 내용, 그래프 흐름. 노드는 여기서 만든 "프롬프트 → 정해진 모양의 답" 함수만 받는다.
 시간 제한·재시도 횟수는 rules/agent.yaml의 llm 칸에서 읽는다 (설계 6.4).
@@ -23,8 +24,18 @@ class LLMFailed(Exception):
     """LLM 호출이 재시도 뒤에도 실패했다(API 오류·시간 초과·답 모양 오류). 그래프가 잡아 부분 답으로 간다."""
 
 
+class CLIFailed(Exception):
+    """`claude -p` 호출 실패(시간 초과, 사용량 한도, API 오류, 깨진 출력, 도구 서버 연결 실패)."""
+
+
 def chat_model(settings: Settings) -> BaseChatModel:
     """설정의 모델 이름으로 대화 LLM 객체를 만든다. 만들기만 하고 부르지는 않는다."""
+    if settings.llm_via == "cli":
+        # [왜] 여기서 읽는다: cli_model이 이 파일의 CLIFailed를 읽어 서로 물린다. API 길은 이 모듈이 필요 없다
+        from marvia.cli_model import ClaudeCLIChat
+
+        timeout = load_rules("agent")["llm"]["cli_timeout_s"]
+        return ClaudeCLIChat(model=settings.chat_model, timeout=timeout, log_dir=settings.cli_log)
     key = settings.anthropic_api_key.get_secret_value()
     if not key:
         # [왜] 키 없이 만들면 첫 호출에서야 인증 오류가 난다. 만들 때 바로 알려 준다
@@ -57,8 +68,8 @@ def structured[T: BaseModel](llm: BaseChatModel, schema: type[T]) -> Callable[[s
             # [왜] with_structured_output은 dict를 돌려줄 수도 있다고 적혀 있어 pyright가 모른다.
             # schema가 pydantic 클래스면 그 객체가 온다
             return cast(T, runnable.invoke(prompt))
-        except (anthropic.APIError, OutputParserException) as error:
-            # [왜] API 오류(시간 초과·429·5xx·인증)와 답 모양 오류만 잡는다. 코드 버그는 그대로 올라간다
+        except (anthropic.APIError, OutputParserException, CLIFailed) as error:
+            # [왜] API 오류(시간 초과·429·5xx·인증), CLI 실패, 답 모양 오류만 잡는다. 코드 버그는 올라간다
             # [주의] 오류 종류 이름과 HTTP 상태 코드만 남긴다. 오류 글에는 요청 내용이 섞일 수 있다
             # [왜] 429(잠시 뒤 다시)와 400(요청 모양 문제)은 다음 길이 달라 상태 코드는 남긴다
             status = getattr(error, "status_code", None)

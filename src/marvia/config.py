@@ -36,6 +36,10 @@ class Settings(BaseSettings):
 
     # 모델 (설계 2절 결정 14). [왜] 이름을 설정에 두면 평가 때 환경 변수만 바꿔 다른 모델과 비교할 수 있다
     chat_model: str = "claude-haiku-5-5"  # 대화 LLM (Anthropic API)
+    # [왜] cli면 API 키 없이 구독의 `claude -p`로 부른다(cli_model.py). API와 조건이 달라 이 길로 잰 값은
+    #      결과에 따로 표시하고(meta.llm_via) API로 잰 값과 섞어 견주지 않는다. 다른 값이면 설정이 거절한다
+    llm_via: Literal["api", "cli"] = "api"  # MARVIA_LLM_VIA
+    cli_log: str = ""  # MARVIA_CLI_LOG. cli 길의 호출별 원본 출력을 남길 폴더(저장소 밖). 비면 남기지 않는다
     embed_model: str = "voyage-4"  # 임베딩 (Voyage AI)
     embed_dim: int = 1024  # [주의] migrations/001_corpus_units.sql의 vector(1024)와 같아야 한다
     rerank_model: str = "rerank-3"  # 리랭커 (Voyage AI)

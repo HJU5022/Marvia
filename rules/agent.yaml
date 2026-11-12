@@ -4,6 +4,9 @@
 llm:
   timeout_s: 60 # LLM 호출 한 번의 시간 제한(초). ChatAnthropic 기본값은 제한 없음이라 꼭 둔다 (11-02 실측)
   max_retries: 2 # Anthropic SDK 재시도 횟수(429·5xx·연결 오류). SDK 기본값과 같다
+  # `claude -p` 호출 한 번의 시간 제한(초, MARVIA_LLM_VIA=cli). [왜] CLI 시작과 구조화 출력의 요청 두 번이 더해진다.
+  # 11-12 실측: 호출 51회 가운데 가장 긴 것이 16.1초였다. 넘으면 프로세스를 죽이고 그 호출은 실패다
+  cli_timeout_s: 180
 
 loop:
   # 한 차례 LLM 호출 상한 (설계 6.4). 계획자 길: 계획자 다음 갈림길에서 닿았으면 finish.

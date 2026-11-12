@@ -34,11 +34,12 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from marvia.graph.state import LoopState
+from marvia.llm import CLIFailed
 from marvia.prompts import render
 from marvia.tools.rules import load_rules
 
-# [왜] 모델 호출 실패로 보는 오류: API 오류와 구조화 출력 모양 오류
-MODEL_ERRORS = (anthropic.APIError, OutputParserException)
+# [왜] 모델 호출 실패로 보는 오류: API 오류, 구조화 출력 모양 오류, `claude -p` 실패(MARVIA_LLM_VIA=cli)
+MODEL_ERRORS = (anthropic.APIError, OutputParserException, CLIFailed)
 # 한 단계에 혼자 불러야 하는 도구: 질문(interrupt)과 조사 서브에이전트(LLM 호출 상한을 함께 쓴다)
 ALONE = ("ask_user", "research")
 ASK_ALONE = (
