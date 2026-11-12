@@ -18,8 +18,13 @@ MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 
 
 def apply_migrations(conn: psycopg.Connection) -> None:
-    """migrations/*.sql을 이름 순서로 돌린다."""
-    for path in sorted(MIGRATIONS.glob("*.sql")):
+    """migrations/*.sql을 이름 순서로 돌린다. 파일을 하나도 못 찾으면 실패한다."""
+    paths = sorted(MIGRATIONS.glob("*.sql"))
+    if not paths:
+        # [왜] 조용히 끝나면 표가 없는 채로 다음 단계가 돈다. 시험 스키마가 비면 이름만 쓴 표가 public으로
+        #      풀려 시험 줄이 개발 색인에 들어간다 (11-13: migrations/ 없는 나무에서 돌린 시험)
+        raise RuntimeError(f"마이그레이션 파일이 없다: {MIGRATIONS}")
+    for path in paths:
         # [왜] 값 자리(%s)가 없는 SQL은 한 번에 여러 문장을 보낼 수 있다.
         # 파일 글을 bytes로 넘긴다: psycopg 타입 표시는 코드에 직접 쓴 글이나 bytes만 받는다(SQL 주입 방지)
         conn.execute(path.read_bytes())
