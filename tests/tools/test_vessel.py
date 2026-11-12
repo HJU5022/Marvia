@@ -101,3 +101,10 @@ def test_a_position_outside_the_globe_is_not_a_position(lat, lng):
         Position(mmsi=999000001, lat=lat, lng=lng, fetched_at=NOW)
     with pytest.raises(ValidationError):
         TrackPoint(at=NOW, lat=lat, lng=lng)
+
+
+def test_a_blank_port_code_never_matches_a_missing_destination():
+    # [왜] 공백뿐인 양륙항 코드와 없는 목적지 코드는 둘 다 빈 글이 된다. 빈 글끼리는 같다고 보지 않는다
+    for blank in (" ", "", "\t"):
+        assert trusted_eta(position(None), schedule(), blank) == (None, None)
+        assert trusted_eta(position(" "), schedule(), blank) == (None, None)

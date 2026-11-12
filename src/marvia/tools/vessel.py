@@ -110,7 +110,9 @@ def trusted_eta(
     if ais_ok and position is not None and rules["ais_eta_requires_port_match"]:
         # [왜] 목적지가 비었거나 깨졌으면 "다른 항구가 아님"일 뿐 이 항만이라는 근거는 없다.
         #      목적지 코드가 양륙항 코드와 같을 때만 그 ETA를 이 화물의 도착 시각으로 쓴다
-        ais_ok = (position.dest_code or "").strip().upper() == (port_code or "").strip().upper()
+        # [주의] 공백뿐인 코드는 빈 글이 된다. 빈 글끼리는 같다고 보지 않는다
+        mine = (port_code or "").strip().upper()
+        ais_ok = bool(mine) and (position.dest_code or "").strip().upper() == mine
     if ais_ok and now is not None and position is not None and position.ais_eta is not None:
         # [왜] 지난 시각의 배 신호 ETA는 고치지 않은 옛 입력이다. 그것으로 여유 일수를 세면 아직 먼 배가
         #      순항이 된다. 해수부의 실제 입항은 지난 시각이 맞으므로 이 검사는 배 신호 ETA에만 건다
