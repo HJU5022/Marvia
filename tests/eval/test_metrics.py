@@ -19,6 +19,7 @@ from marvia.eval.metrics import (
     false_sufficient,
     floors,
     free_answer_score,
+    gold_in_evidence,
     gold_without_search,
     human_faithful,
     matches,
@@ -618,3 +619,17 @@ def test_contract_adherence_is_first_try_structured_calls_over_all_structured_ca
     assert contract_adherence(rows) == {"value": 0.9, "n": 10}
     assert contract_adherence([row("S1")]) == {"value": None, "n": 0}
     assert summarize(rows, ITEMS, 8)["contract_adherence"] == {"value": 0.9, "n": 10}
+
+
+def test_gold_in_evidence_counts_items_whose_writer_bundle_holds_a_gold_unit():
+    # [왜] R@k는 첫 검색 묶음(retrieved)만 센다. 나중 검색이나 조문 조회로 정답을 찾은 문항은 여기서 보인다
+    rows = [
+        row("R1", retrieved=[], evidence=[A + "제100조", A + "제241조.3항"]),  # 조문 조회로 찾았다
+        row("R2", retrieved=[A + "제9조.1항"], evidence=[A + "제100조"]),  # 작성자는 정답을 못 봤다
+        row("S1", evidence=[A + "제241조.3항"]),  # 정답 근거 없는 문항: 세지 않는다
+    ]
+    assert gold_in_evidence(rows, ITEMS) == {"value": 0.5, "n": 2}
+    assert recall_at_k(rows, ITEMS, 8) == {"value": 0.5, "n": 2}
+    assert summarize(rows, ITEMS, 8)["gold_in_evidence"] == {"value": 0.5, "n": 2}
+    result = {"meta": {"loop": "agent", "model": "m", "k": 8}, "summary": summarize(rows, ITEMS, 8)}
+    assert "근거 묶음 안 정답" in compare_table([result])

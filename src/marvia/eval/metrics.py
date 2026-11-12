@@ -123,6 +123,19 @@ def recall_at_k(rows: list[dict], items: dict[str, Item], k: int) -> dict:
     return _mean(values)
 
 
+def gold_in_evidence(rows: list[dict], items: dict[str, Item]) -> dict:
+    """근거 묶음 안 정답 비율: 정답 근거가 있는 문항 가운데 작성자가 본 근거 묶음에 정답이 하나라도 있는 비율.
+
+    [왜] R@k는 RAG의 첫 검색 묶음만 센다. 나중 검색과 조문 조회(get_provision)로 찾은 근거는 이 값에만 보인다.
+    """
+    values = [
+        float(any(matches(u, items[r["id"]].gold) for u in r["evidence"]))
+        for r in rows
+        if items[r["id"]].gold
+    ]
+    return _mean(values)
+
+
 def mrr(rows: list[dict], items: dict[str, Item]) -> dict:
     """검색 MRR: RAG 순위에서 처음 나온 정답 근거 순위의 역수(없으면 0)의 문항 평균."""
     values = []
@@ -170,6 +183,7 @@ def summarize(rows: list[dict], items: dict[str, Item], k: int) -> dict:
         "calc_accuracy": calc_accuracy(rows, items),
         f"recall_at_{k}": recall_at_k(rows, items, k),
         "mrr": mrr(rows, items),
+        "gold_in_evidence": gold_in_evidence(rows, items),
         # [왜] 계획자 길은 도구를 부르지 않는다. 에이전트 길 줄이 없으면 None이다
         "trajectory": trajectory_pass(rows, items, path["never"], path["max_calls"]),
         # [왜] 오류 0만으로는 도구 길이 돌았는지 알 수 없다. 값은 비율이 아니라 문항 수다
@@ -211,6 +225,7 @@ TABLE = [
     ("calc_accuracy", "계산"),
     ("recall", "R@k"),
     ("mrr", "MRR"),
+    ("gold_in_evidence", "근거 묶음 안 정답"),
     ("trajectory", "궤적"),
 ]
 
