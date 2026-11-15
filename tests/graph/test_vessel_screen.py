@@ -259,9 +259,9 @@ def test_typing_a_call_sign_that_two_ships_share_cannot_pick_either_and_the_mmsi
     assert picked["verdict"]["confidence"] != "확실"  # 위치와 일정이 없어 등급도 없다(불명). 확실은 아니다
 
 
-def test_a_picked_ship_is_a_user_choice_on_the_card_and_nothing_on_it_reads_as_sure(agent_deps):
-    # (가) 카드 글은 status가 아니라 reason과 basis로 만든다. 고른 배는 확신 상한(부분) 때문에 "확실"로
-    #      보이지 않는다.
+def test_a_picked_ship_at_a_ship_watching_stage_never_reads_as_sure(agent_deps):
+    # (가) 카드 글은 status가 아니라 reason과 basis로 만든다. 배를 보는 단계에서 고른 배는 확신 상한(부분)
+    #      때문에 "확실"로 보이지 않는다(내린 단계의 화물은 아래 시험이 따로 본다).
     #      위치와 입항 일정이 모두 있는 배(TESTVSL0002의 QQTST1), 같은 호출부호의 두 배 가운데 하나를 고른
     #      경우를 본다
     client = served(agent_deps)
@@ -281,3 +281,25 @@ def test_a_picked_ship_is_a_user_choice_on_the_card_and_nothing_on_it_reads_as_s
         twin["ship"]["status"] == "user_choice" and twin["ship"]["check"] == "같은 호출부호의 배가 여럿이에요"
     )
     assert "확실" not in json.dumps(twin, ensure_ascii=False)
+
+
+def test_a_picked_ship_whose_cargo_has_landed_is_sure_and_the_card_says_it_was_not_watched(
+    agent_deps, monkeypatch
+):
+    # [왜] 11-16 R-139. 내린 화물은 통관만 보므로 고른 배라도 확신 상한이 걸리지 않고 확실이다.
+    #      그 카드에 "고르신 배로 봤어요"만 있으면 배를 보고 확실이라 한 것처럼 읽히니, 배를 보지 않았다는
+    #      참고 글이 같은 카드에 함께 보여야 한다
+    from marvia.graph import identify
+    from marvia.tools.unipass_replay import lookup_cargo
+
+    client = served(agent_deps)
+    card = run(client, "s16", "TESTVSL0002 어디쯤 왔어요?")[-1]["outcome"]["interrupts"][0]
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"selected": 1}}]
+    cards(run(client, "s16", resume=resume))
+    monkeypatch.setattr(
+        identify, "lookup_cargo", lambda number: lookup_cargo(number).model_copy(update={"stage": "반입신고"})
+    )
+    landed = cards(run(client, "s16", "TESTVSL0002 지금은요?"))[0]
+    assert landed["ship"]["reason"] == "고르신 배로 봤어요"
+    assert landed["verdict"]["confidence"] == "확실"
+    assert "배에서 내린 화물이라 배 위치는 보지 않았어요" in json.dumps(landed["verdict"], ensure_ascii=False)
