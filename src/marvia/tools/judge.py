@@ -130,6 +130,9 @@ def judge(
         )
         if differs:
             arrived = False
+            # [왜] 11-16 판정(R-129). 어긋나면 믿을 ETA는 늦은 쪽(배 신호 ETA)이다. 신고가 있다고 신고가
+            #      없을 때보다 여유가 늘면 안 된다. 여유 일수도 이 값으로 센다
+            eta, source = as_utc(position.ais_eta), "ais_eta"
             signals = [
                 Signal(id=s.id, state="triggered", value=f"입항 신고와 {gap:.1f}시간 어긋남")
                 if s.id == "eta_conflict"

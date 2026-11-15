@@ -345,6 +345,8 @@ def test_a_ship_signal_that_contradicts_the_arrival_report_keeps_the_ship_signal
     states = {s.id: s.state for s in seen.signals}
     assert states["eta_conflict"] == "triggered" and seen.confidence == "partial" and seen.grade != "fine"
     assert "arrived" not in seen.info
+    # [왜] 11-16 판정(R-129). 어긋나면 믿을 ETA는 늦은 쪽(배 신호 ETA)이고 여유 일수도 그 값으로 센다
+    assert seen.eta_source == "ais_eta" and seen.margin_days == 5
     # 배 신호가 입항 시각과 맞으면 입항으로 본다
     near = ship(lat=32.4, lng=129.05, ais_eta=NOW - timedelta(hours=4))
     assert "arrived" in judge(cargo(entry_date=here), near, report, now=NOW).info
@@ -377,3 +379,22 @@ def test_only_the_voyage_guard_keeps_the_final_report_of_an_earlier_voyage_out()
         cargo(entry_date=date(2026, 9, 24)), ship(ais_eta=None), old, now=NOW, sale_due=date(2026, 9, 28)
     )
     assert seen.eta_source is None and seen.grade is None and "other_voyage" in seen.notes
+
+
+def test_a_conflicting_arrival_report_never_makes_the_grade_better_than_having_no_report():
+    # [왜] 11-16 판정(R-129). 신고와 배 신호가 어긋나면 늦은 쪽을 믿는다. 신고가 있다고 신고가 없을 때보다
+    #      등급이 좋아지면 안 된다
+    here, due = date(2026, 9, 22), date(2026, 9, 28)
+    morning = datetime(2026, 9, 22, 9, 0, tzinfo=KST)
+    far = ship(lat=32.4, lng=129.05, ais_eta=datetime(2026, 9, 23, 8, 0, tzinfo=KST))
+    with_report = judge(
+        cargo(entry_date=here),
+        far,
+        PortSchedule(final_arrival=morning, fetched_at=NOW),
+        now=NOW,
+        sale_due=due,
+    )
+    without = judge(cargo(entry_date=here), far, None, now=NOW, sale_due=due)
+    order = ["fine", "watch", "alert", "act"]
+    assert order.index(with_report.grade or "fine") >= order.index(without.grade or "fine")
+    assert with_report.eta_source == "ais_eta" and with_report.margin_days == without.margin_days == 5
