@@ -90,6 +90,8 @@ services:
       MARVIA_AUTH: dev
       MARVIA_DEV_TOKEN: e2e-token # 시험용 값. 운영에 쓰지 않는다
       MARVIA_WEB_ORIGIN: http://web-e2e:3000
+      # 배 식별 화면 시험: E2E_VESSEL=on docker compose --profile e2e run --rm --build playwright (계획 8b)
+      MARVIA_VESSEL: ${E2E_VESSEL:-off}
     networks: [e2e]
   web-e2e:
     profiles: [e2e]
@@ -106,6 +108,7 @@ services:
     environment:
       E2E_BASE_URL: http://web-e2e:3000
       E2E_DEV_TOKEN: e2e-token
+      E2E_VESSEL: ${E2E_VESSEL:-off} # on이면 배 식별 흐름만, off면 기존 흐름만 돈다
     volumes:
       - ./web/e2e/screenshots:/work/e2e/screenshots # 스크린샷을 저장소에 남긴다
     depends_on:

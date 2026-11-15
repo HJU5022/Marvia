@@ -4,9 +4,13 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 
 const TOKEN = process.env.E2E_DEV_TOKEN ?? "e2e-token";
+// 서버의 배 식별 스위치와 같은 값 (compose의 E2E_VESSEL, 계획 8b). off(기본)면 "배 식별" 묶음을 건너뛰고,
+// on이면 그 묶음만 돈다. [왜] 켜면 화물 카드에 칸이 늘어 기존 그림(answer.png)이 달라진다. 기존 흐름은 off에서만 찍는다
+const VESSEL = process.env.E2E_VESSEL === "on";
 const outside: string[] = [];
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
+  test.skip(testInfo.titlePath.includes("배 식별") !== VESSEL, "E2E_VESSEL에 맞는 묶음만 돈다");
   // [왜] 화면이 모델·임베딩 공급자에 닿지 않는지 센다. 닿으면 막고 적는다 (바깥 호출 0건)
   await page.route(/(anthropic\.com|voyageai\.com)/, (route) => {
     outside.push(route.request().url());
@@ -34,6 +38,84 @@ async function accessible(page: Page) {
 
 const answers = (page: Page) => page.locator('.chat li[data-role="assistant"]');
 
+test.describe("배 식별", () => {
+  const card = (page: Page, number: string) => page.locator(".cargo", { has: page.getByRole("heading", { name: number }) });
+
+  test("배를 확정하면 화물 카드에 배와 판정 네 칸이 보인다", async ({ page }) => {
+    await ask(page, "TESTVSL0001 어디쯤 왔어요?");
+    await expect(answers(page)).toContainText("정리했어요");
+    const cargo = card(page, "TESTVSL0001");
+    await expect(cargo).toContainText("TEST CARGO A (호출부호 QQTST1 · 배 번호 999000001)");
+    await expect(cargo.locator("dd[data-grade]")).toHaveText("순항");
+    await expect(cargo).toContainText("일정 모름"); // 처음 알던 도착 예정을 받지 않아 지연을 보지 못했다
+    await expect(cargo).toContainText("처음 알던 도착 예정이 없어 지연은 보지 못했어요");
+    await expect(cargo).toContainText("판매 예정일을 받지 않아 여유 일수는 세지 않았어요");
+    await expect(cargo).toContainText("확실");
+    await expect(cargo).toContainText("해수부 입항 예정");
+    await expect(cargo).not.toContainText("선박 위치 조회 뒤(2차)");
+    await accessible(page);
+    await page.screenshot({ path: "e2e/screenshots/vessel-confirmed.png", fullPage: true, mask: [page.locator(".cargo .meta")] });
+  });
+
+  test("같은 이름의 배가 여럿이면 선택 카드로 묻고, 고른 배로 판정한다", async ({ page }) => {
+    await ask(page, "TESTVSL0002 어디쯤 왔어요?");
+    await expect(page.getByRole("heading", { name: /TESTVSL0002 화물을 실은 배를 가리지 못했어요/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /모르겠어요 \(권장\)/ })).toBeVisible();
+    await expect(card(page, "TESTVSL0002")).toContainText("배를 확인한 뒤에 보여 드려요");
+    // 선택지의 이름과 설명은 서버가 자리표를 후보로 바꿔 채운다. 서류로 본 결과가 함께 보인다
+    await expect(page.getByRole("button", { name: /호출부호 QQTST1 · 배 번호 999000001/ })).toContainText("MRN)로 찾은 입항 신고가 없어 서류로 확정하지 않았어요");
+    await expect(page.locator(".card")).not.toContainText("{ship");
+    await accessible(page);
+    await page.screenshot({ path: "e2e/screenshots/vessel-choice.png", fullPage: true, mask: [page.locator(".cargo .meta")] });
+    await page.getByRole("button", { name: /배 번호 999000001/ }).click();
+    await expect(answers(page)).toContainText("정리했어요");
+    await expect(card(page, "TESTVSL0002")).toContainText("고르신 배로 봤어요");
+    await expect(card(page, "TESTVSL0002").locator("dd[data-grade]")).toHaveText("순항");
+    await expect(card(page, "TESTVSL0002")).toContainText("호출부호를 맞춰 보지 못해 확신을 부분으로 낮췄어요");
+  });
+
+  test("호출부호가 같은 두 배는 자동 확정하지 않고, 고르면 확신이 부분이다", async ({ page }) => {
+    await ask(page, "TESTVSL0007 어디쯤 왔어요?");
+    await expect(page.getByRole("heading", { name: /TESTVSL0007 화물을 실은 배를 가리지 못했어요/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /배 번호 999000007/ })).toContainText("호출부호 QQTWN");
+    await page.getByRole("button", { name: /배 번호 999000008/ }).click();
+    await expect(answers(page)).toContainText("정리했어요");
+    const cargo = card(page, "TESTVSL0007");
+    await expect(cargo).toContainText("고르신 배로 봤어요");
+    await expect(cargo).not.toContainText("확신 확실");
+  });
+
+  test("모르겠다고 하면 배 없이 진행하고 등급을 지어내지 않는다", async ({ page }) => {
+    await ask(page, "TESTVSL0002 어디쯤 왔어요?");
+    await page.getByRole("button", { name: /모르겠어요 \(권장\)/ }).click();
+    await expect(answers(page)).toContainText("정리했어요");
+    const cargo = card(page, "TESTVSL0002");
+    await expect(cargo).toContainText("배를 모른다고 하셔서 배 없이 진행했어요");
+    await expect(cargo.locator("dd[data-grade]")).toHaveText("등급 없음");
+  });
+
+  test("배에서 내린 화물은 배 위치를 보지 않았다고 말한다", async ({ page }) => {
+    await ask(page, "TESTVSL0006 어디쯤 왔어요?");
+    await expect(answers(page)).toContainText("정리했어요");
+    const cargo = card(page, "TESTVSL0006");
+    await expect(cargo).toContainText("배에서 내린 화물이라 배 위치는 보지 않았어요");
+    await expect(cargo.locator("dd[data-grade]")).toHaveText("순항");
+    await expect(cargo.locator("dt", { hasText: "도착 예정" }).locator("+ dd")).toHaveText("모름");
+  });
+
+  test("배를 찾지 못하면 '등급 없음'과 그 까닭을 보인다", async ({ page }) => {
+    await ask(page, "TESTVSL0003 어디쯤 왔어요?");
+    await expect(answers(page)).toContainText("정리했어요");
+    const cargo = card(page, "TESTVSL0003");
+    await expect(cargo).toContainText("배 후보를 찾지 못했어요");
+    await expect(cargo.locator("dd[data-grade]")).toHaveText("등급 없음");
+    await expect(cargo).toContainText("도착 시각을 알 출처가 없어 등급을 내지 않았어요");
+    await accessible(page);
+    await page.screenshot({ path: "e2e/screenshots/vessel-no-grade.png", fullPage: true, mask: [page.locator(".cargo .meta")] });
+  });
+});
+
+// 아래 기존 흐름은 스위치가 꺼진 서버에서만 돈다. 그림(answer·choice·approval.png)이 계획 8b 전과 같아야 한다
 test("질문하면 계획이 답보다 먼저 보이고, 답·근거·화물 카드가 뜬다", async ({ page }) => {
   await ask(page, "DEMO0001 언제까지 수입신고 해야 해요?");
   // 가짜 검색이 2초 늦다. 그동안 진행 중인 할 일이 보이고 답은 아직 없다 (실시간 계획)

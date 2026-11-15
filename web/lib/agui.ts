@@ -14,6 +14,32 @@ export type Cargo = {
   source: string | null;
   fetched_at: string | null;
   error: string | null;
+  // 아래 두 칸은 서버의 배 식별 스위치(MARVIA_VESSEL)가 켜졌을 때만 온다 (계획 8b). 없으면 카드가 그대로다
+  ship?: Ship | null; // 스위치가 꺼진 서버는 이 칸을 보내지 않는다(undefined)
+  verdict?: Verdict | null;
+};
+// 배 확인 결과. 글은 서버 규칙(rules/vessel.yaml)이 정한다
+export type Ship = {
+  status: "confirmed" | "user_choice" | "ask" | "none" | "unknown";
+  reason: string; // 서버 규칙(rules/vessel.yaml)이 정한 글
+  detail: string | null; // 조회 서비스의 정한 오류 글(한도 소진과 일시 실패가 갈린다)
+  check: string | null; // 사용자가 고른 배를 서류로 맞춰 본 결과
+  name: string | null;
+  call_sign: string | null;
+  mmsi: string | null;
+};
+// 판정 칸. 등급·일정·확신은 서버 코드가 냈다. grade가 null이면 grade_label은 "등급 없음"이다
+export type Verdict = {
+  grade: "fine" | "watch" | "alert" | "act" | null;
+  grade_label: string;
+  confidence: string;
+  schedule: string;
+  eta: string | null;
+  eta_source: string | null;
+  margin_days: number | null;
+  signals: string[];
+  notes: string[];
+  info: string[];
 };
 export type EvidenceUnit = {
   unit_id: string;

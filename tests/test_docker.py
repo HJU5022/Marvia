@@ -28,6 +28,8 @@ def test_the_build_context_is_an_allow_list_without_secrets_or_real_data():
         "fixtures/unipass",
         "corpus/graph",
         "e2e/fake_api.py",
+        "fixtures/mof",  # 배 식별 화면 시험의 재생 응답(가공값). e2e 이미지에만 복사한다 (계획 8b)
+        "fixtures/shipfinder",
     }
 
 
@@ -145,3 +147,17 @@ def test_local_web_servers_listen_on_loopback_and_the_e2e_image_does_not_run_as_
         if line.startswith("USER ")
     ]
     assert users[-1:] == ["pwuser"], users
+
+
+def test_vessel_screen_test_is_off_by_default_and_its_replay_data_stays_out_of_the_runtime_image():
+    # [왜] 배 식별 화면 시험은 E2E_VESSEL=on으로 부를 때만 켠다. 기본 실행의 화면과 그림은 그대로다 (계획 8b)
+    services = COMPOSE["services"]
+    assert services["api-e2e"]["environment"]["MARVIA_VESSEL"] == "${E2E_VESSEL:-off}"
+    assert services["playwright"]["environment"]["E2E_VESSEL"] == "${E2E_VESSEL:-off}"
+    assert all(
+        "MARVIA_VESSEL" not in (services[name].get("environment") or {}) for name in ("api", "prepare")
+    )
+    stages = re.split(r"(?m)^FROM ", (ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    by_name = {stage.splitlines()[0].split()[-1]: stage for stage in stages[1:]}
+    assert "fixtures/mof" in by_name["e2e"] and "fixtures/shipfinder" in by_name["e2e"]
+    assert all("fixtures/mof" not in by_name[name] for name in ("build", "base", "runtime"))

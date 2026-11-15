@@ -36,6 +36,9 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
 
 FROM base AS e2e
 COPY e2e/fake_api.py /app/e2e/fake_api.py
+# [왜] 배 식별 화면 시험이 쓰는 재생 응답(가공값)이다. 운영 이미지에는 넣지 않는다 (계획 8b)
+COPY fixtures/mof /app/fixtures/mof
+COPY fixtures/shipfinder /app/fixtures/shipfinder
 CMD ["python", "/app/e2e/fake_api.py"]
 
 FROM base AS runtime
