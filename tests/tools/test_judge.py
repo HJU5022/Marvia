@@ -174,7 +174,8 @@ def test_schedule_cell_is_empty_without_a_first_known_eta_except_overdue():
 def test_an_arrived_ship_is_not_marked_down_for_having_no_planned_arrival_to_compare():
     # [왜] 11-13 판정. 입항이 끝난 배에 "입항 예정과 견주지 못함"으로 확신을 깎지 않는다.
     #      믿을 ETA의 출처가 실제 입항(관제 실적, 최종 입항 신고)이면 ETA 어긋남 신호는 꺼짐이다
-    docked = ship(ais_eta=NOW - timedelta(hours=2))  # 지난 배 신호 ETA. 입항 예정은 없고 관제 실적이 있다
+    # 부두에 선 배(반경 안, 멈춤). 지난 배 신호 ETA. 입항 예정은 없고 관제 실적이 있다
+    docked = ship(lat=35.1, lng=129.05, sog=0.0, navstat=5, ais_eta=NOW - timedelta(hours=2))
     arrived = plan(planned=None, actual=NOW - timedelta(hours=1))
     seen = judge(cargo(entry_date=date(2026, 9, 22)), docked, arrived, now=NOW)
     state = {s.id: s.state for s in seen.signals}
@@ -347,9 +348,12 @@ def test_a_ship_signal_that_contradicts_the_arrival_report_keeps_the_ship_signal
     assert "arrived" not in seen.info
     # [왜] 11-16 판정(R-129). 어긋나면 믿을 ETA는 늦은 쪽(배 신호 ETA)이고 여유 일수도 그 값으로 센다
     assert seen.eta_source == "ais_eta" and seen.margin_days == 5
-    # 배 신호가 입항 시각과 맞으면 입항으로 본다
-    near = ship(lat=32.4, lng=129.05, ais_eta=NOW - timedelta(hours=4))
-    assert "arrived" in judge(cargo(entry_date=here), near, report, now=NOW).info
+    # [왜] 11-16 판정(R-131). 어긋남은 ETA의 차이가 아니라 "이 항만행의 새 배 신호가 항구에 없다"는 것이다.
+    #      ETA가 신고와 가깝거나 이미 지났어도 같다
+    near = ship(lat=32.4, lng=129.05, ais_eta=report.final_arrival + timedelta(hours=1))
+    assert "arrival_report_differs" in judge(cargo(entry_date=here), near, report, now=NOW).notes
+    gone_by = ship(lat=32.4, lng=129.05, ais_eta=NOW - timedelta(hours=4))
+    assert "arrival_report_differs" in judge(cargo(entry_date=here), gone_by, report, now=NOW).notes
     # 배 신호가 오래됐거나 다른 항구행이면 어긋남으로 보지 않는다
     stale = ship(ais_eta=NOW + timedelta(hours=24), last_time=NOW - timedelta(hours=9))
     assert "arrived" in judge(cargo(entry_date=here), stale, report, now=NOW).info

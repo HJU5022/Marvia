@@ -112,12 +112,12 @@ def judge(
     #      통관 단계와 통관 멈춤만 본다. 입항 전(실적 없음)의 신호는 그대로 켜진다
     arrived = source in rules["arrived_sources"]
     differs = False
-    if arrived and position is not None and position.ais_eta is not None and eta is not None:
-        # [왜] 11-15 판정(R-128). 입항 신고가 있어도 새 배 신호가 이 항만행이고 그 ETA가 입항 시각보다
-        #      eta_conflict_hours 넘게 뒤면 두 출처가 어긋난 것이다. 입항으로 치지 않고 ETA 어긋남을 켜며
-        #      확신은 부분이다. 배 신호가 오래됐거나 다른 항구행이면 어긋남으로 보지 않는다
+    if arrived and position is not None:
+        # [왜] 11-15, 11-16 판정(R-128, R-131). 입항 신고(실적, 최종)가 있어도 배 신호가 새것이고 목적지가
+        #      이 항만인데 배가 항구에 서 있지 않으면 두 출처가 어긋난 것이다. ETA의 차이는 보지 않는다
+        #      (가깝거나 이미 지났어도 같다). 입항으로 치지 않고 ETA 어긋남을 켜며 확신은 부분이다.
+        #      배 신호가 오래됐거나 다른 항구행이면 이 검사는 하지 않는다
         state = {s.id: s.state for s in signals}
-        gap = (as_utc(position.ais_eta) - eta).total_seconds() / 3600
         # [왜] 배가 항만 기준점 반경 안에서 멈춰 있으면(실제로 항구에 있음) 배 신호 ETA를 고치지 않은 것일
         #      뿐이라 두 출처가 맞는 것으로 본다. 반경 안이어도 움직이면(속도가 stop_speed_kn 넘음) 항구에
         #      선 것이 아니다. 속도를 모르면 멈춘 것으로 보지 않는다. 항만 표에 기준점이 없어 거리를 볼 수
@@ -132,25 +132,21 @@ def judge(
             and position.sog is not None
             and position.sog <= limit
         )
-        differs = (
-            state["position_stale"] == "clear"
-            and state["dest_changed"] == "clear"
-            and gap > rules["signals"]["eta_conflict_hours"]
-            and not docked
-        )
+        differs = state["position_stale"] == "clear" and state["dest_changed"] == "clear" and not docked
         if differs:
             arrived = False
-            # [왜] 11-16 판정(R-129). 어긋나면 믿을 ETA는 늦은 쪽(배 신호 ETA)이다. 신고가 있다고 신고가
-            #      없을 때보다 여유가 늘면 안 된다. 여유 일수도 이 값으로 센다
-            # [왜] 11-16 판정. 그 배 신호 ETA도 평소와 같이 이미 지났으면 출처가 아니다. 이른 쪽 신고로
-            #      돌아가지 않고 믿을 ETA가 없다
+            # [왜] 11-16 판정(R-129, E6). 어긋나면 믿을 ETA는 배 신호 ETA다. 신고가 있다고 신고가 없을 때보다
+            #      여유가 늘면 안 된다. 그 ETA도 평소와 같이 이미 지났거나 없으면 출처가 아니고, 이른 쪽
+            #      신고로 돌아가지 않고 믿을 ETA가 없다
             slack = timedelta(minutes=rules["clock_skew_minutes"])
-            late = as_utc(position.ais_eta)
-            eta, source = (late, "ais_eta") if late >= as_utc(now) - slack else (None, None)
+            late = as_utc(position.ais_eta) if position.ais_eta is not None else None
+            if late is not None and late >= as_utc(now) - slack:
+                eta, source = late, "ais_eta"
+            else:
+                eta, source = None, None
+            value = "입항 신고와 배 신호가 어긋남"
             signals = [
-                Signal(id=s.id, state="triggered", value=f"입항 신고와 {gap:.1f}시간 어긋남")
-                if s.id == "eta_conflict"
-                else s
+                Signal(id=s.id, state="triggered", value=value) if s.id == "eta_conflict" else s
                 for s in signals
             ]
     if arrived:
