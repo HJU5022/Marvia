@@ -121,16 +121,24 @@ def trusted_eta(
         slack = timedelta(minutes=rules["clock_skew_minutes"])
         ais_ok = as_utc(position.ais_eta) >= as_utc(now) - slack
     planned = schedule.planned_arrival if schedule else None
+    actual = schedule.actual_arrival if schedule else None
+    final = schedule.final_arrival if schedule else None
+    if now is not None:
+        # [왜] 11-15 판정(R-127). 실적이나 최종 신고의 시각이 지금보다 허용 오차 넘게 뒤면 입항한 것이 아니다.
+        #      입항 예정과 같은 경계라 출처로 치지 않는다
+        ahead = as_utc(now) + timedelta(minutes=rules["clock_skew_minutes"])
+        actual = actual if actual is not None and as_utc(actual) <= ahead else None
+        final = final if final is not None and as_utc(final) <= ahead else None
     if planned is not None and now is not None and schedule is not None:
         # [왜] 11-15 판정. 실적과 최종 신고가 없는데 이미 지난 입항 예정은 고치지 않은 옛 입력이다(배 신호
         #      ETA와 같다)
-        arrived = schedule.actual_arrival is not None or schedule.final_arrival is not None
+        arrived = actual is not None or final is not None
         slack = timedelta(minutes=rules["clock_skew_minutes"])
         if not arrived and as_utc(planned) < as_utc(now) - slack:
             planned = None
     values = {
-        "mof_actual": schedule.actual_arrival if schedule else None,
-        "mof_final": schedule.final_arrival if schedule else None,
+        "mof_actual": actual,
+        "mof_final": final,
         "mof_planned": planned,
         "ais_eta": position.ais_eta if position and ais_ok else None,
         # [왜] 포워더가 알려 준 날은 날짜뿐이다. 한국 날짜의 0시로 본다

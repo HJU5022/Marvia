@@ -320,6 +320,21 @@ def test_once_the_ship_has_really_arrived_its_signals_are_not_read_any_more():
     ] == "triggered" and anchored.grade == "alert"
 
 
+def test_a_future_arrival_is_not_an_arrival():
+    # [왜] 11-15 판정(R-127). 실적이나 최종 신고의 시각이 지금보다 허용 오차 넘게 뒤면 입항한 것이 아니다.
+    #      입항 예정과 같은 경계다: 출처가 아니고 배 신호를 읽는다
+    here = date(2026, 9, 23)
+    anchored = ship(lat=35.1, lng=129.05, sog=0.0, navstat=5, ais_eta=None)
+    history = [TrackPoint(at=NOW - timedelta(hours=30), lat=35.1, lng=129.05, sog=0.0)]
+    tomorrow = PortSchedule(final_arrival=NOW + timedelta(hours=24), fetched_at=NOW)
+    seen = judge(
+        cargo(entry_date=here), anchored, tomorrow, now=NOW, sale_due=date(2026, 9, 28), history=history
+    )
+    assert seen.eta_source is None and seen.grade == "alert" and "arrived" not in seen.info
+    soon = PortSchedule(final_arrival=NOW + timedelta(minutes=5), fetched_at=NOW)
+    assert judge(cargo(entry_date=here), anchored, soon, now=NOW).eta_source == "mof_final"
+
+
 def test_only_the_voyage_guard_keeps_the_final_report_of_an_earlier_voyage_out():
     # [왜] 검증 N1. 지난 항차의 최종 신고는 이미 지난 시각이라 "지난 예정 거르기"에 걸리지 않는다.
     #      항차 가드만이 이것을 막는다
