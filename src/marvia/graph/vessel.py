@@ -286,7 +286,9 @@ def verdict_node(now: Callable[[], datetime]):
             # [왜] 배를 확정하지 못했거나 내린 화물이면 위치와 일정을 부르지 않는다.
             #      판정은 화물 사실만으로 낸다(tools/judge.py). 도착 시각을 모르니 등급이 비고
             #      확신이 내려간다. 값을 지어내지 않는다
-            sailing = ship["status"] in ("confirmed", "user_choice")
+            # [주의] 지난 차례에 배를 확정했어도 이번 차례 단계가 내린 뒤면 배를 보지 않는다
+            #      (화물 수 상한 칸도 쓰지 않는다)
+            sailing = ship["status"] in ("confirmed", "user_choice") and watches_ship(facts.stage)
             capped = sailing and looked >= limit
             if sailing and not capped:
                 looked += 1

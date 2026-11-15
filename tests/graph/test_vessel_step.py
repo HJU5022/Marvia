@@ -482,6 +482,25 @@ def test_a_cargo_whose_lookup_fails_this_turn_gets_no_verdict_even_if_its_ship_w
     assert values["vessels"][0]["status"] == "confirmed"  # 확정한 배는 남는다
 
 
+def test_a_cargo_that_landed_since_the_ship_was_confirmed_is_judged_by_customs_only(agent_deps, monkeypatch):
+    from marvia.graph import identify
+
+    graph = graph_on(agent_deps)
+    config, _ = run(graph, "TESTVSL0001 어디쯤 왔어요?")
+    real = identify.lookup_cargo
+    landed = lambda number: facts(number).model_copy(update={"stage": "반입신고"})  # noqa: E731
+    monkeypatch.setattr(
+        identify, "lookup_cargo", lambda number: landed(number) if "0001" in number else real(number)
+    )
+    for module, name in ((shipfinder, "vessel_position"), (mof, "port_schedule")):
+        monkeypatch.setattr(module, name, lambda *a, **k: pytest.fail("내린 화물인데 바깥을 불렀다"))
+    monkeypatch.setitem(load_rules("vessel"), "max_cargos", 0)  # 상한 칸을 쓰면 over_cap이 붙는다
+    graph.invoke({"text": "TESTVSL0001 지금은요?"}, config)
+    cell = graph.get_state(config).values["verdicts"][0]
+    assert (cell["grade"], cell["confidence"], cell["info"]) == ("fine", "sure", ["landed"])
+    assert "over_cap" not in cell["notes"]
+
+
 def test_the_cap_also_limits_position_and_schedule_lookups_for_ships_already_confirmed(
     agent_deps, monkeypatch
 ):
