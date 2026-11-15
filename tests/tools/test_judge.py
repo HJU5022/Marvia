@@ -433,3 +433,23 @@ def test_a_past_ship_eta_in_a_conflict_leaves_no_trusted_eta():
     assert (seen.eta_source, seen.trusted_eta, seen.margin_days) == (None, None, None)
     assert "arrival_report_differs" in seen.notes and "no_eta" in seen.notes
     assert seen.grade != "fine" and seen.confidence != "sure"
+
+
+def test_an_arrival_report_does_not_wipe_out_a_garbled_destination_input_error():
+    # [왜] 11-16 판정(R-134). 입항 신고가 있고 새 배 신호가 항구에 서 있지 않은데 목적지가 입력 오류
+    #      값(깨짐, 빈 값)이면 입항은 그대로 두되 확신은 부분이고 이유가 붙는다. 8a의 입력 오류 규칙이
+    #      입항 길에서 지워지지 않게 한다
+    here = date(2026, 9, 22)
+    report = PortSchedule(final_arrival=NOW - timedelta(hours=1), fetched_at=NOW)
+    for broken in (
+        ship(lat=32.4, lng=129.05, dest="@@##", dest_code=None),
+        ship(lat=32.4, lng=129.05, dest=None, dest_code=None),
+    ):
+        seen = judge(cargo(entry_date=here), broken, report, now=NOW)
+        assert seen.eta_source == "mof_final" and "arrived" in seen.info and seen.grade == "fine"
+        assert seen.confidence == "partial" and seen.notes == ["dest_input_error"]
+    assert "dest_input_error" in load_rules("verdict")["notes"]
+    # 항구에 서 있으면(반경 안, 멈춤) 목적지가 깨져도 입력 오류로 보지 않는다
+    docked = ship(lat=35.1, lng=129.05, sog=0.0, navstat=5, dest="@@##", dest_code=None)
+    ok = judge(cargo(entry_date=here), docked, report, now=NOW)
+    assert ok.confidence == "sure" and ok.notes == []

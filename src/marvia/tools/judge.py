@@ -112,6 +112,7 @@ def judge(
     #      통관 단계와 통관 멈춤만 본다. 입항 전(실적 없음)의 신호는 그대로 켜진다
     arrived = source in rules["arrived_sources"]
     differs = False
+    dest_error = False
     if arrived and position is not None:
         # [왜] 11-15, 11-16 판정(R-128, R-131). 입항 신고(실적, 최종)가 있어도 배 신호가 새것이고 목적지가
         #      이 항만인데 배가 항구에 서 있지 않으면 두 출처가 어긋난 것이다. ETA의 차이는 보지 않는다
@@ -133,6 +134,15 @@ def judge(
             and position.sog <= limit
         )
         differs = state["position_stale"] == "clear" and state["dest_changed"] == "clear" and not docked
+        # [왜] 11-16 판정(R-134). 배 신호가 새것이고 항구에 서 있지 않은데 목적지가 입력 오류 값(깨짐, 빈 값)
+        #      이면 입항은 그대로 두되 확신은 부분이다. 입항 길에서 8a의 입력 오류 규칙이 지워지지 않게 한다
+        dest = next(s for s in signals if s.id == "dest_changed")
+        dest_error = (
+            state["position_stale"] == "clear"
+            and not docked
+            and dest.state == "triggered"
+            and dest.value in rules["input_error_dest_values"]
+        )
         if differs:
             arrived = False
             # [왜] 11-16 판정(R-129, E6). 어긋나면 믿을 ETA는 배 신호 ETA다. 신고가 있다고 신고가 없을 때보다
@@ -169,6 +179,8 @@ def judge(
     #      없다는 사실이 확신을 낮추지 않는다(11-15 판정). 그 사실은 참고 글(arrived)로 알린다
     if differs:
         notes.append("arrival_report_differs")
+    if dest_error:
+        notes.append("dest_input_error")
     if position is None and not arrived:
         notes.append("no_position")
     if plan is None and not arrived:
@@ -179,7 +191,7 @@ def judge(
     # [왜] 항만 값을 확인하지 못했으면 신호가 모두 꺼져 보여도 "확실"이라고 하지 않는다
     if sure == "sure" and port_note:
         sure = "partial"
-    if sure == "sure" and differs:
+    if sure == "sure" and (differs or dest_error):
         sure = "partial"
     # [왜] 11-15 판정. 배 확정이 호출부호를 코드로 맞추지 못했으면(서류만, 사용자 선택만, 같은 호출부호의
     #      배가 여럿)
