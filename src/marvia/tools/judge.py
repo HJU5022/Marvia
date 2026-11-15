@@ -118,15 +118,25 @@ def judge(
         #      확신은 부분이다. 배 신호가 오래됐거나 다른 항구행이면 어긋남으로 보지 않는다
         state = {s.id: s.state for s in signals}
         gap = (as_utc(position.ais_eta) - eta).total_seconds() / 3600
-        # [왜] 배가 항만 기준점 반경 안(실제로 항구에 있음)이면 배 신호 ETA를 고치지 않은 것일 뿐이라 두
-        #      출처가 맞는 것으로 본다. 항만 표에 기준점이 없어 거리를 볼 수 없으면 어긋남으로 둔다(보수적)
+        # [왜] 배가 항만 기준점 반경 안에서 멈춰 있으면(실제로 항구에 있음) 배 신호 ETA를 고치지 않은 것일
+        #      뿐이라 두 출처가 맞는 것으로 본다. 반경 안이어도 움직이면(속도가 stop_speed_kn 넘음) 항구에
+        #      선 것이 아니다. 속도를 모르면 멈춘 것으로 보지 않는다. 항만 표에 기준점이 없어 거리를 볼 수
+        #      없으면 어긋남으로 둔다(보수적)
         dist = away_nm(position.lat, position.lng, row)
-        outside = dist is None or row is None or row.stop_radius_nm is None or dist > row.stop_radius_nm
+        limit = rules["signals"]["stop_speed_kn"]
+        docked = (
+            dist is not None
+            and row is not None
+            and row.stop_radius_nm is not None
+            and dist <= row.stop_radius_nm
+            and position.sog is not None
+            and position.sog <= limit
+        )
         differs = (
             state["position_stale"] == "clear"
             and state["dest_changed"] == "clear"
             and gap > rules["signals"]["eta_conflict_hours"]
-            and outside
+            and not docked
         )
         if differs:
             arrived = False

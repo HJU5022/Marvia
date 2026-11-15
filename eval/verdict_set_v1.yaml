@@ -1121,6 +1121,24 @@ items:
     eta_source: ais_eta
     margin_days: 5
     notes: [arrival_report_differs]
+- id: V-C28
+  layer: conflict
+  why: '입항 실적이 있고 배는 항만 기준점 24해리 안이지만 14노트로 움직인다(멈춘 것이 아니다). 배 신호 ETA는 내일이라 입항 신고와 어긋난 것으로 보고 늦은 쪽(배 신호 ETA)을 믿는다. 주의, 부분'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항, port_code: KRPUS, entry_date: '2026-09-22'}
+  position: {mmsi: 999000001, lat: 34.7, lng: 129.05, sog: 14.0, navstat: 0, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-23T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-22T10:40:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: triggered, navstat_mismatch: clear}
+    grade: watch
+    confidence: partial
+    schedule: null
+    eta_source: ais_eta
+    margin_days: 5
+    notes: [arrival_report_differs]
 - id: V-X01
   layer: failure
   why: 배 위치도 해수부 일정도 받지 못했다. 도착 시각을 알 출처가 없어 등급과 일정을 내지 않는다(순항이라고 하지 않는다)
@@ -2212,6 +2230,43 @@ items:
     eta_source: mof_planned
     margin_days: 4
     notes: []
+- id: V-E33
+  layer: edge
+  why: '기준점까지 30.0해리에서 멈춰 있다(반경 30해리와 같다). 반경 안으로 보아 입항 신고와 맞는 것으로 본다(항구 앞 정지와 같은 뜻). 순항, 확실'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항, port_code: KRPUS, entry_date: '2026-09-22'}
+  position: {mmsi: 999000001, lat: 34.6, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-23T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-22T10:40:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: null
+    eta_source: mof_actual
+    margin_days: 6
+    notes: []
+    info: [no_first_eta, arrived]
+- id: V-E34
+  layer: edge
+  why: '기준점까지 30.1해리에서 멈춰 있다(반경 30해리 밖). 입항 신고와 배 신호 ETA(내일)가 어긋난 것으로 본다. 주의, 부분'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항, port_code: KRPUS, entry_date: '2026-09-22'}
+  position: {mmsi: 999000001, lat: 34.5985, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-23T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-22T10:40:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: triggered, navstat_mismatch: clear}
+    grade: watch
+    confidence: partial
+    schedule: null
+    eta_source: ais_eta
+    margin_days: 5
+    notes: [arrival_report_differs]
 matches:
 - id: M-01
   why: 같은 이름의 배 둘. 세관 입항일과 적재항이 해수부 입항 신고와 맞는 배가 한 척이다

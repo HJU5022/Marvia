@@ -398,3 +398,22 @@ def test_a_conflicting_arrival_report_never_makes_the_grade_better_than_having_n
     order = ["fine", "watch", "alert", "act"]
     assert order.index(with_report.grade or "fine") >= order.index(without.grade or "fine")
     assert with_report.eta_source == "ais_eta" and with_report.margin_days == without.margin_days == 5
+
+
+def test_a_ship_inside_the_radius_counts_as_at_the_port_only_when_it_is_stopped(monkeypatch):
+    # [왜] 11-16 판정(N7, N5). 반경 안이어도 움직이면 항구에 선 것이 아니다. 거리가 반경과 같으면 안이다
+    #      (항구 앞 정지 신호와 같은 뜻). 멈춤은 stop_speed_kn 이하다
+    here = date(2026, 9, 22)
+    report = PortSchedule(final_arrival=NOW - timedelta(hours=5), fetched_at=NOW)
+    late = NOW + timedelta(hours=24)
+
+    def seen(lat: float, sog: float) -> Verdict:
+        return judge(
+            cargo(entry_date=here), ship(lat=lat, lng=129.05, sog=sog, ais_eta=late), report, now=NOW
+        )
+
+    assert "arrived" in seen(34.7, 0.5).info  # 24해리, 0.5노트(멈춤 기준과 같음)는 멈춘 것
+    moving = seen(34.7, 14.0)
+    assert "arrived" not in moving.info and "arrival_report_differs" in moving.notes
+    assert "arrived" in seen(34.6, 0.0).info  # 30.0해리: 반경과 같으면 안
+    assert "arrival_report_differs" in seen(34.5985, 0.0).notes  # 30.1해리: 밖
