@@ -82,6 +82,12 @@ class MarviaState(IdentifyState, total=False):
     # [왜] 서브에이전트 안의 메시지는 부모 기록에 들어오지 않는다.
     #      평가가 도구 순서와 방문 순서를 여기서 읽는다
     visits: list[dict]
+    # 아래는 배 식별 단계 칸 (계획 8b). 스위치 MARVIA_VESSEL=on일 때만 생긴다. start가 비우지 않고
+    # vessel 노드가 차례마다 다시 쓴다. [주의] 모델에 주지 않는다. 화면의 화물 카드로만 간다
+    # 화물마다 배 확인 결과 {"token", "status", "reason", "mmsi"(글), "call_sign", "name", "basis", "check"}
+    vessels: list[dict]
+    verdicts: list[dict]  # 화물마다 판정 {"token", ...tools/judge.Verdict}
+    vessel_question: dict | None  # 배를 가리지 못해 물을 선택 카드와 후보. 없으면 None
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:

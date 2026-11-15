@@ -12,6 +12,9 @@
         → 없으면 에이전트 길과 같은 갈림길(finish / decline / write)
         에이전트 길의 대화 기록(messages)은 차례를 넘어 이어지고, 답(가린 글)이 기록 끝에 붙는다 (계획 3d).
         기록이 길면 brief가 앞부분을 요약하고, 요약 LLM이 실패하면 brief 다음에 finish
+배 식별(vessel이 참일 때, 계획 8b): 화물 조회가 끝난 자리(identify 또는 lookup 다음)와 첫 일 사이에
+        vessel → (가르지 못한 화물이 있으면 ask_vessel) → verdict를 둔다. 세 노드는 graph/vessel.py에 있다.
+        꺼져 있으면(기본) 그 노드를 만들지 않는다
 하지 않는 일: 노드 재시도(LLM은 SDK가 재시도한다).
 LLM·RAG는 AgentDeps로 받는다. 테스트는 가짜 함수·가짜 모델을 넣어 키 없이 돈다.
 """
@@ -22,7 +25,7 @@ import json
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 
 import httpx
 import psycopg
@@ -52,6 +55,7 @@ from marvia.graph.tools import (
     worst_search_calls,
 )
 from marvia.graph.verify import verify
+from marvia.graph.vessel import ask_vessel, find_vessels, verdict_node
 from marvia.identify.mask import token_for, unmask
 from marvia.identify.parse import kind_of, read_numbers
 from marvia.llm import LLMFailed
@@ -78,6 +82,7 @@ class AgentDeps:
     # 공식 사이트 조회용 HTTP 클라이언트 (에이전트 길의 official_lookup, 계획 3d). 없으면 그 도구도 없다
     web: httpx.Client | None = None
     watch: WatchDeps | None = None  # 감시 목록 (에이전트 길의 watch_cargo, 계획 3d). 없으면 그 도구도 없다
+    now: Callable[[], datetime] = lambda: datetime.now(UTC)  # 판정의 기준 시각 (배 식별 단계, 계획 8b)
 
 
 def start(state: MarviaState) -> dict:
@@ -236,7 +241,13 @@ def _after_agent(state: MarviaState) -> str:
 
 
 def build_main_graph(
-    deps: AgentDeps, checkpointer=None, *, loop: str = "planner", store=None, permission_mode: str = "ask"
+    deps: AgentDeps,
+    checkpointer=None,
+    *,
+    loop: str = "planner",
+    store=None,
+    permission_mode: str = "ask",
+    vessel: bool = False,
 ):
     """메인 순서도를 조립한다. checkpointer가 있어야 interrupt로 멈췄다가 이어 갈 수 있다.
 
@@ -244,6 +255,8 @@ def build_main_graph(
     store: 장기 기억 저장소(LangGraph Store).
     permission_mode: "ask"면 저장 같은 부작용 앞에서 승인을 받고,
     "auto"면 always_ask 도구만 묻는다 (설계 6.3).
+    vessel: 참이면 화물 조회 뒤에 배 식별 단계(vessel → ask_vessel → verdict)를 둔다 (계획 8b).
+    거짓(기본)이면 그 노드를 만들지 않아 그래프가 그대로다.
     """
     if loop not in LOOPS:
         # [왜] 모르는 이름이 조용히 계획자 길로 떨어지면 다른 길을 돌린 줄 모른다
@@ -501,11 +514,24 @@ def build_main_graph(
     graph.add_edge("start", "identify")
     # [왜] 식별 뒤 첫 일: 계획자 길은 plan, 에이전트 길은 news(감시 변화) → brief
     first = "news" if loop in LOOP_PATHS else "plan"
+    # [왜] 배 식별 단계는 화물 조회가 끝난 자리와 첫 일 사이에 끼운다. 꺼져 있으면 그 자리가 곧 첫 일이다
+    after_cargo = "vessel" if vessel else first
     graph.add_conditional_edges(
-        "identify", lambda state: "ask" if state.get("question") else first, ["ask", first]
+        "identify", lambda state: "ask" if state.get("question") else after_cargo, ["ask", after_cargo]
     )
     graph.add_edge("ask", "lookup")
-    graph.add_edge("lookup", first)
+    graph.add_edge("lookup", after_cargo)
+    if vessel:
+        graph.add_node("vessel", find_vessels)
+        graph.add_node("ask_vessel", ask_vessel)
+        graph.add_node("verdict", verdict_node(deps.now))
+        graph.add_conditional_edges(
+            "vessel",
+            lambda state: "ask_vessel" if state.get("vessel_question") else "verdict",
+            ["ask_vessel", "verdict"],
+        )
+        graph.add_edge("ask_vessel", "verdict")
+        graph.add_edge("verdict", first)
     if loop in LOOP_PATHS:
         if deps.model is None:
             raise ValueError(

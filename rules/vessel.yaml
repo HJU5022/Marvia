@@ -25,6 +25,8 @@ skip:
   label: 모르겠어요
   description: 배 정보 없이 진행해요. 통관 단계는 그대로 보여 드려요
 candidate: "호출부호 {call_sign} · 배 번호 {mmsi}" # 후보 선택지의 설명. 이름표(label)는 배 이름이다
+candidate_check: "서류로 본 결과: {check}" # 후보 설명 뒤에 붙는 글. {check}는 아래 reasons의 글이다
+no_name: 이름 없는 배 # 후보에 배 이름이 없을 때의 이름표
 no_call_sign: 없음 # 후보에 호출부호가 없을 때 위 글에 넣는 말
 assumption: "{token} 화물의 배를 확인하지 못해 배 정보 없이 진행했어요" # 답 없이 넘어갔을 때 가정으로 남기는 글
 

@@ -14,14 +14,23 @@
 from __future__ import annotations
 
 import re
+import time
+from collections.abc import Callable
+from datetime import datetime
 
+from langgraph.types import interrupt
+
+from marvia.graph.state import MarviaState
 from marvia.identify.models import CargoFacts, ToolError
 from marvia.tools import mof, shipfinder
+from marvia.tools.judge import judge
 from marvia.tools.ports import port
 from marvia.tools.rules import load_rules
 from marvia.tools.signals import watches_ship
-from marvia.tools.vessel import SailingPlan
-from marvia.tools.vessel_match import Candidate, MrnLookup, match_vessel
+from marvia.tools.vessel import KST, SailingPlan
+from marvia.tools.vessel_match import Candidate, Match, MrnLookup, check_candidate, match_vessel
+
+_clock = time.monotonic  # [왜] 시험이 시계를 바꿔 끼운다
 
 
 def _sign(call_sign: str | None) -> str:
@@ -120,7 +129,185 @@ def find_vessel(facts: CargoFacts, *, near: dict | None = None) -> dict:
             "status": "ask",
             "reason": match.reason,
             "candidates": shown,
+            # 검색 결과 전체(카드에 보이는 둘이나 상한으로 자르기 전). 같은 호출부호의 다른 배를 가리는 데
+            #      쓴다
+            "hits": [{"mmsi": ship["mmsi"], "call_sign": ship["call_sign"]} for ship in ships],
             "lookup": lookup,
             "mrn_call_sign": mrn_sign,
         }
     return {"status": "none", "reason": match.reason}
+
+
+def find_vessels(state: MarviaState) -> dict:
+    """vessel 노드: 조회에 성공한 화물마다 배를 찾는다. 한 차례에 max_cargos건까지 찾고 하나만 되묻는다."""
+    cfg = load_rules("vessel")
+    # [왜] 확정한 배와 "모르겠어요"라고 답한 화물은 같은 대화에서 다시 찾거나 다시 묻지 않는다
+    kept = {
+        v["token"]: v
+        for v in state.get("vessels", [])
+        if v["status"] in ("confirmed", "user_choice") or v["reason"] == "user_skipped"
+    }
+    rows: list[dict] = []
+    question = None
+    looked = 0
+    started = _clock()
+    near: dict = {}  # 같은 차례에 같은 항만·같은 날의 해수부 입항 신고 목록은 한 번만 받는다
+    for cargo in state.get("cargos", []):
+        token = cargo["token"]
+        if not cargo.get("facts"):
+            continue  # 조회에 실패한 화물은 화물 카드가 이미 그 까닭을 보인다
+        facts = CargoFacts.model_validate(cargo["facts"])
+        if token in kept:
+            rows.append(kept[token])
+            continue
+        if not watches_ship(facts.stage):
+            rows.append({"token": token, "status": "unknown", "reason": "landed"})  # 바깥 호출이 없다
+            continue
+        if looked >= cfg["max_cargos"]:
+            rows.append({"token": token, "status": "unknown", "reason": "over_cap"})
+            continue
+        if looked and _clock() - started >= cfg["max_seconds"]:
+            rows.append({"token": token, "status": "unknown", "reason": "time_limit"})
+            continue
+        looked += 1
+        found = find_vessel(facts, near=near)
+        ships = found.pop("candidates", [])
+        meta = {
+            "lookup": found.pop("lookup", "none"),
+            "mrn_call_sign": found.pop("mrn_call_sign", None),
+            "hits": found.pop("hits", []),
+        }
+        if found["status"] == "ask" and question is not None:
+            found = {"status": "unknown", "reason": "another_question"}
+        elif found["status"] == "ask":
+            # [왜] 이름·호출부호·배 번호는 끼어들기 값에 싣지 않는다(트레이스와 체크포인트로 간다).
+            #      자리표만 싣고 서버가 화면으로 보낼 때 이 후보들(question["candidates"])로 바꾼다
+            options = [
+                {"label": f"{{ship{i}}}", "description": f"{{ship{i}_info}}"}
+                for i in range(1, min(len(ships), cfg["max_choices"]) + 1)
+            ]
+            question = {
+                "kind": "choice",
+                "question": cfg["question"].format(token=token),
+                "options": [cfg["skip"], *options],
+                "recommended": 0,  # [왜] 근거 없이 한 척을 권하지 않는다. 권고는 "배 없이 진행"이다
+                "token": token,
+                "candidates": ships,
+                **meta,  # 고른 뒤 검사가 쓴다
+            }
+        rows.append({"token": token, **found})
+    # [왜] 화물 칸은 이번 차례에 말한 화물만 담는다. 말하지 않은 화물의 확정과 답도 다음 차례를 위해 남긴다
+    seen = {row["token"] for row in rows}
+    rows += [row for token, row in kept.items() if token not in seen]
+    return {"vessels": rows, "vessel_question": question, "verdicts": []}
+
+
+def check_pick(state: MarviaState, token: str, question: dict, picked: dict) -> Match:
+    """고른 후보를 check_candidate에 건다. 그 배의 입항 신고는 서류로 맞추는 길일 때만 한 번 받는다."""
+    cargo = next(c for c in state.get("cargos", []) if c["token"] == token)
+    facts = CargoFacts.model_validate(cargo["facts"])
+    # [왜] 검색 결과 전체를 넘긴다. 카드에 보인 후보만 넘기면 잘린 쪽의 같은 호출부호의 배를 놓쳐 상한이
+    #      빠진다
+    everyone = [Candidate(mmsi=int(c["mmsi"]), call_sign=c["call_sign"]) for c in question["hits"]]
+    mine = Candidate(mmsi=int(picked["mmsi"]), call_sign=picked["call_sign"])
+    lookup: MrnLookup = question.get("lookup", "none")
+    plans: dict[str, list[SailingPlan] | None] = {}
+    row = port(facts.port_code) if facts.port_code else None
+    sign = _sign(picked["call_sign"])
+    if lookup == "found_unsigned" and sign and row and facts.entry_date:
+        got = mof.plans_for(row, sign, facts.entry_date)
+        if isinstance(got, ToolError):
+            lookup = (
+                "failed"  # 고른 뒤의 조회가 실패하면 조회 실패로 본다(확신 상한과 이유 mrn_lookup_failed)
+            )
+        else:
+            plans[sign] = got
+    return check_candidate(facts, mine, everyone, plans, question.get("mrn_call_sign"), lookup)
+
+
+def ask_vessel(state: MarviaState) -> dict:
+    """ask_vessel 노드: 선택 카드로 묻고 답으로 배를 정한다. 답이 없으면 배 없이 진행하고 가정으로 남긴다."""
+    cfg = load_rules("vessel")
+    question = state.get("vessel_question") or {}
+    # [주의] 재개하면 이 노드가 처음부터 다시 돈다. interrupt 앞에 바깥 조회를 두지 않는다
+    reply = interrupt({k: question[k] for k in ("kind", "question", "options", "recommended")}) or {}
+    ships, picked = question["candidates"], None
+    selected = reply.get("selected")
+    # [왜] 번호만 받는다. 직접 입력한 글은 서버가 후보와 맞춰 번호로 바꿔 보낸다(server.turn_input)
+    #      그래서 사용자가 적은 호출부호가 그래프의 입력과 트레이스에 실리지 않는다
+    if isinstance(selected, int) and 1 <= selected <= len(ships):
+        picked = ships[selected - 1]
+    reason = "user_skipped" if "selected" in reply else "no_answer"  # 시간 초과나 취소는 선택이 없다
+    token = question["token"]
+    if picked:
+        # [왜] 사용자가 고른 배를 같은 검사에 건다(check_candidate). 서류로 맞추는 길(MRN 조회가 성공했고
+        #      신고에
+        #      호출부호가 없을 때)에는 그 배의 입항 신고를 이때 한 번 받는다(해수부 요청 1회, rules
+        #      pick_calls).
+        #      받지 못하면 조회 실패로 본다. 입항 신고는 공책에 두지 않는다
+        found = check_pick(state, token, question, picked)
+        row = {
+            "token": token,
+            "status": found.status,  # user_choice: 자동 확정(confirmed)과 구분한다
+            "reason": found.reason,
+            "basis": found.basis,
+            "cap": found.cap,
+            "mmsi": picked["mmsi"],
+            "call_sign": picked["call_sign"],
+            "name": picked["name"],
+        }
+    else:
+        row = {"token": token, "status": "unknown", "reason": reason}
+    update: dict = {
+        "vessels": [row if v["token"] == token else v for v in state.get("vessels", [])],
+        "vessel_question": None,
+    }
+    if not picked and reason == "no_answer":
+        update["assumptions"] = [*state.get("assumptions", []), cfg["assumption"].format(token=token)]
+    return update
+
+
+# [주의] 돌려주는 타입을 Callable로 적지 않는다. 인자 이름(state)이 빠져 add_node 타입 검사가 거절한다
+def verdict_node(now: Callable[[], datetime]):
+    """verdict 노드를 만든다. now는 판정의 기준 시각(시험이 고정한다)."""
+
+    def verdict(state: MarviaState) -> dict:
+        ships = {v["token"]: v for v in state.get("vessels", [])}
+        limit = load_rules("vessel")["max_cargos"]
+        out = []
+        looked = 0
+        for cargo in state.get("cargos", []):
+            ship = ships.get(cargo["token"])
+            # [왜] 이번 차례의 화물 조회가 실패했으면 지난 차례에 배를 확정했어도 판정하지 않는다
+            if ship is None or not cargo.get("facts"):
+                continue
+            facts = CargoFacts.model_validate(cargo["facts"])
+            position = plan = None
+            # [왜] 배를 확정하지 못했거나 내린 화물이면 위치와 일정을 부르지 않는다.
+            #      판정은 화물 사실만으로 낸다(tools/judge.py). 도착 시각을 모르니 등급이 비고
+            #      확신이 내려간다. 값을 지어내지 않는다
+            sailing = ship["status"] in ("confirmed", "user_choice")
+            capped = sailing and looked >= limit
+            if sailing and not capped:
+                looked += 1
+                got = shipfinder.vessel_position(int(ship["mmsi"]))
+                position = None if isinstance(got, ToolError) else got
+                row = port(facts.port_code) if facts.port_code else None
+                if row and ship.get("call_sign"):
+                    today = now().astimezone(KST).date()  # 한국 날짜
+                    schedule = mof.port_schedule(
+                        row, ship["call_sign"], today=today, entry_date=facts.entry_date
+                    )
+                    plan = None if isinstance(schedule, ToolError) else schedule
+            # [왜] 호출부호를 코드로 맞춘 배만 "확실"이 될 수 있다. 서류(입항일·적재항)로만 확정했거나
+            #      사용자가 고른 배,
+            #      같은 호출부호의 배가 여럿인 배는 확신이 부분을 넘지 못한다(11-15 판정). 상한은 judge가 건다
+            cap = ship.get("cap") if sailing else None
+            found = judge(facts, position, plan, now=now(), cap=cap, cap_note="ship_unchecked")
+            found = found.model_dump(mode="json")
+            if capped:
+                found["notes"].append("over_cap")  # 글은 rules/vessel.yaml reasons에 있다
+            out.append({"token": cargo["token"], **found})
+        return {"verdicts": out}
+
+    return verdict
