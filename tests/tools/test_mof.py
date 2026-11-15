@@ -352,3 +352,42 @@ def test_a_final_report_without_a_control_record_is_carried_as_the_final_arrival
     assert isinstance(found, PortSchedule)
     assert (found.planned_arrival, found.actual_arrival) == (None, None)
     assert found.final_arrival == datetime(2026, 9, 22, 10, 0, tzinfo=KST)
+
+
+def test_the_schedule_window_reaches_back_so_yesterdays_final_report_is_inside_it(monkeypatch):
+    # [왜] R-125. 입항 신고(최종 포함)를 오늘부터 앞으로만 조회하면 어제(한국 날짜) 입항한 배의 최종 신고가
+    #      빠진다. 기간은 rules/ports.yaml의 지난 며칠·앞으로 며칠이고 날짜는 한국 날짜로 센다
+    monkeypatch.setenv("MARVIA_MOF_MODE", "live")
+    monkeypatch.setenv("MARVIA_MOF_KEY", KEY)
+    monkeypatch.setenv("MARVIA_MOF_BASE_URL", "https://relay.test/")
+    real = mof.Settings
+    monkeypatch.setattr(mof, "Settings", lambda: real(_env_file=None))
+    seen: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        # 입항 신고는 어제 입항한 배의 최종 신고, 관제 실적은 아직 없다
+        return _xml(
+            "sailing_final_yesterday.xml" if mof.CFG["sailing_path"] in request.url.path else "empty.xml"
+        )
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        mof.httpx, "Client", lambda **kw: real_client(**{**kw, "transport": httpx.MockTransport(handle)})
+    )
+    busan = port("KRPUS")
+    assert busan is not None and busan.schedule_lookback_days is not None
+    today = date(2026, 9, 22)  # 한국 날짜. 최종 신고의 입항은 어제(09-21) 22시다
+    got = port_schedule(busan, "QQTST1", today=today)
+    assert isinstance(got, PortSchedule)
+    assert got.final_arrival == datetime(2026, 9, 21, 22, 0, tzinfo=KST) and got.planned_arrival is None
+    sailing = next(r for r in seen if mof.CFG["sailing_path"] in r.url.path)
+    first, last = sailing.url.params["sde"], sailing.url.params["ede"]
+    back = today - timedelta(days=busan.schedule_lookback_days)
+    ahead = today + timedelta(days=busan.schedule_lookahead_days or 0)
+    assert (first, last) == (back.strftime("%Y%m%d"), ahead.strftime("%Y%m%d"))
+    assert first < "20260922"  # 오늘 이전이 들어 있다
+    from marvia.tools.vessel import trusted_eta
+
+    eta, source = trusted_eta(None, got, "KRPUS", None, now=datetime(2026, 9, 22, 12, 0, tzinfo=KST))
+    assert source == "mof_final" and eta == got.final_arrival  # 어제 입항한 배의 최종 신고가 출처가 된다

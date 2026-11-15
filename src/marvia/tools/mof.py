@@ -309,7 +309,10 @@ def _session() -> tuple[httpx.Client, str, str] | ToolError:
 
 
 def port_schedule(row: Port, call_sign: str, *, today: date) -> PortSchedule | ToolError:
-    """배 한 척의 그 항만 입항 일정: 지난 며칠의 실적과 앞으로 며칠의 예정. 기간과 청코드는 항만 표의 값."""
+    """배 한 척의 그 항만 입항 일정: 지난 며칠의 실적과 신고, 앞으로 며칠의 예정. today는 한국 날짜.
+
+    기간과 청코드는 항만 표의 값이다.
+    """
     if not row.mof_office or row.schedule_lookback_days is None or row.schedule_lookahead_days is None:
         return _error("port_unknown")  # [왜] 다른 항만의 청코드나 기간으로 대신 부르지 않는다
     session = _session()
@@ -324,8 +327,10 @@ def port_schedule(row: Port, call_sign: str, *, today: date) -> PortSchedule | T
         )
         if isinstance(done, ToolError):
             return done
+        # [왜] R-125. 입항 신고도 지난 며칠부터 본다: 어제(한국 날짜) 입항한 배의 최종 신고가 빠지지 않게.
+        #      실제 API가 기간을 무엇으로 거르는지(입항 예정일, 신고일 등)는 확인하지 못했다
         plans = sailing_plans(
-            row.mof_office, today, ahead, key=key, client=client, base_url=base_url, call_sign=call_sign
+            row.mof_office, back, ahead, key=key, client=client, base_url=base_url, call_sign=call_sign
         )
         if isinstance(plans, ToolError):
             return plans

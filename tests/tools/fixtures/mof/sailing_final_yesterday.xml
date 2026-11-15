@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. QQTST1이 어제 입항한 뒤의 최종 입항 신고 한 건(R-125 시험). 시설 이름은 TEST로 시작한다 -->
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST1</clsgn><vsslNm>TEST CARGO A</vsslNm>
+<vsslNltyCd>PA</vsslNltyCd><vsslKndNm>풀컨테이너선</vsslKndNm>
+<etryptPurpsNm>양하</etryptPurpsNm><prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm><nxlnptPrtNm>TEST NEXT</nxlnptPrtNm>
+<details>
+<detail><reqstSeNm>최종</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-21T22:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 1선석</laidupFcltyNm><mrNum>26TEST0001I</mrNum></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>1</totalCount></body></response>
