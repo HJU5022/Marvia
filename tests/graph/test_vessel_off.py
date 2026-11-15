@@ -12,7 +12,6 @@
 import ast
 import hashlib
 import json
-import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -308,13 +307,14 @@ def test_the_eval_runner_builds_a_graph_without_the_vessel_step_even_when_the_en
     # 서버 진입점만 스위치를 읽는다: build_main_graph를 부르며 vessel= 키워드를 넘기는 파일은 server.py뿐이다
     root = Path(__file__).resolve().parents[2]
     passing = []
-    # [왜] 폴더 목록으로 좁히면 eval/ 같은 새 폴더의 호출을 놓친다. 시험을 뺀 저장소의 모든 .py를 본다
-    tracked = subprocess.run(
-        ["git", "ls-files", "*.py"], cwd=root, capture_output=True, text=True, check=True
-    ).stdout.split()
-    for name in tracked:
-        if name.startswith("tests/"):
+    # [왜] 폴더 목록으로 좁히면 eval/ 같은 새 폴더의 호출을 놓친다. 시험과 점으로 시작하는 폴더, 설치·빌드
+    #      산출물을 뺀 저장소의 모든 .py를 본다. git을 부르지 않는다(git archive로 푼 사본에는 .git이 없다)
+    skipped = {"tests", "node_modules", "graphify-out"}
+    for path in sorted(root.rglob("*.py")):
+        parts = path.relative_to(root).parts
+        if any(part.startswith(".") or part in skipped for part in parts[:-1]):
             continue
+        name = str(path.relative_to(root))
         for node in ast.walk(ast.parse((root / name).read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1] == "build_main_graph":
                 for keyword in node.keywords:
