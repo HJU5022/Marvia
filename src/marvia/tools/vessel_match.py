@@ -21,7 +21,6 @@ from marvia.tools.vessel import KST, SailingPlan, as_utc
 
 Reason = Literal[
     "no_candidate",  # 후보가 없다
-    "single_candidate",  # 후보가 한 척이고 서류와 어긋나지 않는다
     "mrn_call_sign",  # MRN으로 찾은 입항 신고의 호출부호와 같은 배가 한 척
     "papers_match",  # 세관 입항일·적재항과 해수부 입항 신고가 맞는 배가 한 척
     "mrn_call_sign_differs",
@@ -50,6 +49,9 @@ class Match(BaseModel):
     mmsi: int | None = None
     call_sign: str | None = None
     reason: Reason
+    # 확정할 때 실제로 맞춰 본 칸의 이름: call_sign(MRN 호출부호와 같음), entry_date, loading_port(서류 대조).
+    # 호출부호를 맞추지 못한 확정(서류 대조뿐)은 확신을 부분 이상으로 올리지 않는다(11-13 판정)
+    basis: list[str] = []
 
 
 def _sign(call_sign: str | None) -> str:
@@ -78,8 +80,11 @@ def _ask(reason: Reason) -> Match:
     return Match(status="ask", reason=reason)
 
 
-def _confirmed(ship: Candidate, reason: Reason) -> Match:
-    return Match(status="confirmed", mmsi=ship.mmsi, call_sign=ship.call_sign, reason=reason)
+def _confirmed(ship: Candidate, reason: Reason, basis: list[str]) -> Match:
+    return Match(status="confirmed", mmsi=ship.mmsi, call_sign=ship.call_sign, reason=reason, basis=basis)
+
+
+PAPERS = ["entry_date", "loading_port"]
 
 
 def match_vessel(
@@ -96,19 +101,24 @@ def match_vessel(
     if not candidates:
         return Match(status="none", reason="no_candidate")
     wanted = _sign(mrn_call_sign)
-    if len(candidates) == 1:
+    if len(candidates) == 1 and wanted:
+        # [왜] 11-13 판정. 한 척이라는 이유만으로 확정하지 않는다. MRN 호출부호와 글자까지 같을 때만이다
         only = candidates[0]
-        if wanted and _sign(only.call_sign) and _sign(only.call_sign) != wanted:
+        if not _sign(only.call_sign):
+            return _ask("candidate_without_call_sign")
+        if _sign(only.call_sign) != wanted:
             return _ask("mrn_call_sign_differs")
         return (
             _ask("flag_differs")
             if _flags_differ(facts.vessel_flag, only.flag)
-            else _confirmed(only, "single_candidate")
+            else _confirmed(only, "mrn_call_sign", ["call_sign"])
         )
+    if len(candidates) == 1 and _flags_differ(facts.vessel_flag, candidates[0].flag):
+        return _ask("flag_differs")
     if wanted:
         same = [c for c in candidates if _sign(c.call_sign) == wanted]
         if len(same) == 1:
-            return _confirmed(same[0], "mrn_call_sign")
+            return _confirmed(same[0], "mrn_call_sign", ["call_sign"])
         if len(same) > 1:
             return _ask("same_call_sign_many_mmsi")
     # 서류 대조: 세관 입항(예정)일 = 해수부 입항 신고의 날짜(한국 날짜), 세관 적재항 = 그 신고의 직전 기항지
@@ -138,4 +148,4 @@ def match_vessel(
         return _ask("same_call_sign_many_mmsi")
     if wanted and wanted != matched[0]:
         return _ask("mrn_call_sign_differs")
-    return _confirmed(ships[0], "papers_match")
+    return _confirmed(ships[0], "papers_match", [*PAPERS, *(["call_sign"] if wanted else [])])

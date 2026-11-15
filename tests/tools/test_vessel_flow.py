@@ -44,7 +44,11 @@ def test_replay_chain_from_cargo_facts_to_the_four_verdict_cells():
     found = match_vessel(
         facts, [Candidate(mmsi=h.mmsi, call_sign=h.call_sign) for h in hits], {}, report.call_sign
     )
-    assert (found.status, found.mmsi, found.reason) == ("confirmed", 999000001, "single_candidate")
+    assert (found.status, found.mmsi, found.reason) == (
+        "confirmed",
+        999000001,
+        "mrn_call_sign",
+    )  # MRN 호출부호와 같음
     assert found.mmsi is not None and found.call_sign is not None
     position = vessel_position(found.mmsi)
     schedule = port_schedule(row, found.call_sign, today=NOW.date())

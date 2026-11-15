@@ -2049,3 +2049,57 @@ matches:
     - {call_sign: QQTST2, planned_arrival: '2026-09-25T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: QQTST9
   expect: {status: ask, mmsi: null, reason: mrn_call_sign_differs}
+- id: M-13
+  why: 후보가 한 척이고 MRN 입항 신고의 호출부호와 글자까지 같다. 맞춰 본 칸은 호출부호다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans: {}
+  mrn_call_sign: QQTST1
+  expect: {status: confirmed, mmsi: 999000001, reason: mrn_call_sign, basis: [call_sign]}
+- id: M-14
+  why: 후보가 한 척이고 MRN 호출부호가 없다. 그 배의 입항 신고에서 입항일과 적재항이 둘 다 맞는다. 맞춰 본 칸은 둘이다(호출부호는 못 맞췄다)
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans:
+    QQTST1:
+    - {call_sign: QQTST1, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
+  mrn_call_sign: null
+  expect: {status: confirmed, mmsi: 999000001, reason: papers_match, basis: [entry_date, loading_port]}
+- id: M-15
+  why: 후보가 한 척이고 MRN 호출부호가 없고 입항 신고가 없다(빈 결과). 이름이 닮았을 뿐이다. 되묻는다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans:
+    QQTST1: []
+  mrn_call_sign: null
+  expect: {status: ask, mmsi: null, reason: papers_match_none}
+- id: M-16
+  why: 후보가 한 척이고 MRN 호출부호가 없고 입항 신고를 받지 못했다. 되묻는다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans:
+    QQTST1: null
+  mrn_call_sign: null
+  expect: {status: ask, mmsi: null, reason: schedule_lookup_failed}
+- id: M-17
+  why: 후보가 한 척인데 호출부호가 비었고 MRN 호출부호는 있다. 확정하지 않는다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: null, flag: PA}
+  plans: {}
+  mrn_call_sign: QQTST1
+  expect: {status: ask, mmsi: null, reason: candidate_without_call_sign}
+- id: M-18
+  why: 후보가 한 척이고 MRN 호출부호가 없는데 입항일이 하루 다르다. 하루 차이는 같은 날로 치지 않는다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans:
+    QQTST1:
+    - {call_sign: QQTST1, planned_arrival: '2026-09-25T12:00:00+09:00', previous_port: Qingdao}
+  mrn_call_sign: null
+  expect: {status: ask, mmsi: null, reason: papers_match_none}

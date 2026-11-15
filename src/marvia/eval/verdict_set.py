@@ -71,6 +71,7 @@ class MatchExpect(BaseModel):
     status: Literal["confirmed", "ask", "none"]
     mmsi: int | None
     reason: str
+    basis: list[str] | None = None  # 확정할 때 맞춰 본 칸. 적은 문항만 본다
 
 
 class MatchItem(BaseModel):
@@ -158,6 +159,8 @@ def match_mismatches(item: MatchItem) -> list[str]:
         ("mmsi", got.mmsi, want.mmsi),
         ("reason", got.reason, want.reason),
     ]
+    if want.basis is not None:
+        pairs.append(("basis", got.basis, want.basis))
     return [f"{name}: {seen!r} != {expected!r}" for name, seen, expected in pairs if seen != expected]
 
 
