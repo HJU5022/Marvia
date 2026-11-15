@@ -110,7 +110,9 @@ def _anchor_wait(
     digits = cuts["distance_decimals"]
 
     def away(lat: float, lng: float) -> float:
-        return away_nm(lat, lng, row) or 0.0
+        # [주의] 거리 0.0도 값이다. 참거짓으로 읽지 않고 None인지만 본다(여기서는 기준점이 있어 None이 아니다)
+        distance = away_nm(lat, lng, row)
+        return 0.0 if distance is None else distance
 
     def stopped(lat: float, lng: float, sog: float) -> bool:
         return away(lat, lng) <= radius and sog <= limit
