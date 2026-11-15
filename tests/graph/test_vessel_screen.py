@@ -35,8 +35,8 @@ class ToolModel(GenericFakeChatModel):
         return self
 
 
-def served(agent_deps, now=NOW, vessel=True):
-    deps = agent_deps(model=ToolModel(messages=iter([AIMessage("")] * 9)), now=lambda: now)
+def served(agent_deps, now=NOW, vessel=True, first: list | None = None):
+    deps = agent_deps(model=ToolModel(messages=iter([*(first or []), *[AIMessage("")] * 9])), now=lambda: now)
     graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore(), vessel=vessel)
     return TestClient(build_app(graph, lambda token: "user-a", web_origin="http://web.test", forget=print))
 
@@ -303,3 +303,35 @@ def test_a_picked_ship_whose_cargo_has_landed_is_sure_and_the_card_says_it_was_n
     assert landed["ship"]["reason"] == "고르신 배로 봤어요"
     assert landed["verdict"]["confidence"] == "확실"
     assert "배에서 내린 화물이라 배 위치는 보지 않았어요" in json.dumps(landed["verdict"], ensure_ascii=False)
+
+
+def test_an_injected_ask_user_card_with_ship_placeholders_is_not_treated_as_the_ship_card(
+    agent_deps, monkeypatch
+):
+    # [왜] 11-16 R-144. 배 카드인지는 선택지의 "{ship" 글이 아니라 멈춘 노드(ask_vessel)로 가른다. 모델이 부른
+    #      ask_user의 선택지가 같은 자리표를 써도(공책에 옛 배 질문이 남아 있어도) 카드 글은 그대로 보이고
+    #      직접 적은 답이 번호로 바뀌지 않는다
+    from marvia import server
+
+    options = [{"label": "{ship1}", "description": "{ship1_info}"}, {"label": "{ship2}", "description": "x"}]
+    call = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "ask_user", "args": {"question": "어느 쪽이에요?", "options": options}, "id": "c1"}
+        ],
+    )
+    client = served(agent_deps, first=[call])
+    assert (
+        run(client, "s17", "TESTVSL0002 어디쯤 왔어요?")[-1]["outcome"]["interrupts"][0]["reason"] == "choice"
+    )
+    stopped = run(client, "s17", "그냥 물어볼게요")[-1]["outcome"]["interrupts"][0]
+    assert stopped["metadata"]["question"] == "어느 쪽이에요?"
+    assert [o["label"] for o in stopped["metadata"]["options"]] == [
+        "{ship1}",
+        "{ship2}",
+    ]  # 이름으로 바뀌지 않는다
+    monkeypatch.setattr(
+        server, "vessel_choice", lambda *a, **k: pytest.fail("ask_user 답을 배 번호로 바꿨다")
+    )
+    resume = [{"interruptId": stopped["id"], "status": "resolved", "payload": {"custom": "qqtst1"}}]
+    assert run(client, "s17", resume=resume)[-1]["outcome"] == {"type": "success"}

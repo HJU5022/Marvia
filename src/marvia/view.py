@@ -219,8 +219,3 @@ def vessel_choice(typed: str, candidates: list[dict]) -> int:
         if (ship["call_sign"] and "".join(ship["call_sign"].split()).upper() in text) or ship["mmsi"] in text
     ]
     return named[0] if len(named) == 1 else 0
-
-
-def is_vessel_card(value: dict) -> bool:
-    """멈춘 값이 배 선택 카드인가. 후보 선택지의 이름이 자리표({ship1}...)로 실려 있다."""
-    return any(str(o.get("label", "")).startswith("{ship") for o in value.get("options", []))

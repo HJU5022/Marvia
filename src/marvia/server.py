@@ -64,7 +64,7 @@ from marvia.graph.state import merge_cargos, merge_evidence
 from marvia.graph.tools import SERVER_SURFACE
 from marvia.tools.rules import load_rules
 from marvia.trace import tracer_callbacks
-from marvia.view import interrupt_card, is_vessel_card, screen_view, vessel_choice
+from marvia.view import interrupt_card, screen_view, vessel_choice
 from marvia.watch import forget_user
 
 LOG = logging.getLogger(__name__)
@@ -140,7 +140,9 @@ def turn_events(
         if state.interrupts:
             # [왜] 질문과 승인은 한 번에 하나씩 멈춘다 (batched, ask_user 혼자 부르기)
             pending = state.interrupts[0]
-            asked = state.values.get("vessel_question") or {}
+            # [왜] 배 후보 이름은 ask_vessel이 멈췄을 때만 자리표 자리에 채운다. 모델이 부른
+            #      ask_user의 선택지가 같은 자리표 글을 써도 채우지 않는다(공책에 옛 배 질문이 있어도)
+            asked = (state.values.get("vessel_question") or {}) if "ask_vessel" in state.next else {}
             card = interrupt_card(pending.value, state.values.get("mask_map", {}), asked.get("candidates"))
             stopped = CardInterrupt(id=pending.id, reason=card["kind"], metadata=card)
             outcome = RunFinishedInterruptOutcome(interrupts=[stopped])
@@ -220,8 +222,8 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
             raise Refused(422, "답 모양이 틀렸어요")
         if len(custom) > max_text:
             raise Refused(422, "글이 너무 길어요")
-        if is_vessel_card(value) and custom:
-            # [왜] 멈춘 카드가 배 선택 카드일 때만(공책에 남은 옛 질문이 아니라 멈춘 값으로 가른다).
+        if "ask_vessel" in state.next and custom:
+            # [왜] 멈춘 노드가 ask_vessel일 때만(옛 질문이나 선택지 글이 아니라 멈춘 곳으로 가른다).
             #      직접 적은 글(호출부호나 배 번호)은 후보와 맞춰 번호로 바꿔 그래프에 넘긴다. 사용자가
             #      적은 값이 노드 입력과 트레이스에 실리지 않는다. 후보 한 척에만 맞을 때만 그 배고 아니면
             #      "모르겠어요"(0번)다. 카드에 안 보인 후보(둘 넘는 후보)도 맞고 번호는 후보 목록 안이다
