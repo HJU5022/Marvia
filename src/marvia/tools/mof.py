@@ -373,7 +373,7 @@ def port_schedule(
     )
 
 
-def plans_near(row: Port, day: date) -> list[SailingPlan] | ToolError:
+def plans_near(row: Port, day: date, *, max_pages: int | None = None) -> list[SailingPlan] | ToolError:
     """세관 입항(예정)일 앞뒤의 입항 신고 전체. MRN으로 배를 찾을 때 쓴다(plan_by_mrn). 범위는 항만 표에서."""
     if not row.mof_office or row.mrn_search_days is None:
         return _error("port_unknown")
@@ -390,7 +390,7 @@ def plans_near(row: Port, day: date) -> list[SailingPlan] | ToolError:
             key=key,
             client=client,
             base_url=base_url,
-            max_pages=CFG["max_pages"],
+            max_pages=max_pages or CFG["max_pages"],
         )
 
 

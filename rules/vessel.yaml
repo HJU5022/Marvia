@@ -1,6 +1,20 @@
 # 배 식별 단계의 값과 글. 코드(src/marvia/graph/vessel.py, src/marvia/view.py)가 읽는다 (계획 8b, 설계 4.1 ②, 6.3).
 # 스위치 MARVIA_VESSEL=on일 때만 이 단계가 돈다. 기본은 off다.
 max_cargos: 3 # 한 차례에 배를 찾는 화물 수 상한. 넘는 화물은 배를 찾지 않고 그렇다고 적는다
+# 한 화물이 쓰는 해수부·ShipFinder 요청 수 상한(재시도는 세지 않는다. 실패한 요청은 두 번 더 부른다).
+# 배 찾기 max_find_calls = MRN 길의 입항 신고 목록 쪽 수 max_mrn_pages + 배 검색 1 + 후보별 입항 신고 max_candidates.
+# 판정 verdict_calls = 배 위치 1 + 해수부 입항 실적 1 + 입항 예정 1. 닿으면 배를 지어내지 않는다.
+# 고른 뒤 pick_calls = 고른 배의 입항 신고 1(서류로 맞추는 길일 때). 합 max_calls = 18.
+# 한 차례에 많아야 max_cargos x 18 = 54 (같은 날의 입항 신고 목록은 한 번만 받는다)
+# max_mrn_pages 8의 까닭 [추정]: v1이 부산 5일치를 12쪽으로 쟀다(쪽당 50건). MRN 창은 3일(rules/ports.yaml
+# mrn_search_days 1)이라 약 7쪽이다. 쪽 상한을 채우면 8a의 규칙대로 too_many 오류이고 MRN 길이 실패한다.
+# 실제 응답으로 쪽 수를 재 보면 고친다
+max_calls: 18
+max_find_calls: 14
+verdict_calls: 3
+pick_calls: 1
+max_mrn_pages: 8
+max_seconds: 30 # 한 차례에 배 찾기에 쓰는 시간. 넘으면 남은 화물은 찾지 않는다(요청 하나는 15초까지 기다릴 수 있다)
 max_candidates: 5 # 배 후보를 이 수까지만 맞춰 본다. 후보마다 해수부 입항 신고를 한 번 조회한다
 max_choices: 2 # 선택 카드에 보이는 배 후보 수. 권고 선택지(배 없이 진행)와 합쳐 셋까지다 (설계 6.3: 2~3개)
 
@@ -31,6 +45,9 @@ reasons:
   mrn_report_missing: 입항 신고 번호(MRN)로 찾은 입항 신고가 없어 서류로 확정하지 않았어요
   no_clue: 배를 찾을 단서(입항 신고 번호, 배 이름)가 없어요
   lookup_failed: 배 위치 서비스에서 후보를 받지 못했어요
+  call_limit: 조회 한도에 닿아 배를 확인하지 못했어요
+  time_limit: 조회 시간이 길어져 이 화물은 찾지 않았어요
+  not_looked: 이번 차례에는 배를 보지 않았어요
   over_cap: 한 번에 배를 찾는 화물 수를 넘어 이 화물은 찾지 않았어요
   another_question: 다른 화물의 배를 먼저 여쭤봤어요. 이 화물은 배 없이 진행했어요
   user_choice: 고르신 배로 봤어요

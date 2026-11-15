@@ -440,3 +440,10 @@ def test_plans_for_one_ship_use_the_ports_search_window(monkeypatch):
     incheon = port("KRINC")
     assert incheon is not None
     assert mof.plans_for(incheon, "QQTST1", date(2026, 9, 24)).code == "port_unknown"  # type: ignore[union-attr]
+
+
+def test_plans_near_takes_a_page_cap_for_the_caller_to_count_requests_by():
+    busan = port("KRPUS")
+    assert busan is not None
+    assert isinstance(mof.plans_near(busan, date(2026, 9, 24), max_pages=2), list)
+    assert isinstance(mof.plans_near(busan, date(2026, 9, 24)), list)  # 안 주면 rules/mof.yaml의 쪽 수 상한
