@@ -179,6 +179,17 @@ def _customs_hold(facts: CargoFacts | None, cuts: dict) -> Signal:
     return _signal("customs_hold", "unknown", "모르는 단계")
 
 
+def watches_ship(stage: str | None) -> bool:
+    """이 통관 단계에서 배를 보는가. 배에서 내린 뒤의 단계(아는 단계 가운데 ship_stages에 없는 것)만 아니다.
+
+    통관이 멈춘 단계와 모르는 단계, 단계가 없는 화물은 배를 본다: 어디까지 왔는지 모르는데 배를 빼면 안 된다.
+    """
+    cuts = load_rules("verdict")["signals"]
+    key = _stage_key(stage or "")
+    known = {_stage_key(name) for name in cuts["known_stages"]}
+    return key not in known or key in {_stage_key(name) for name in cuts["ship_stages"]}
+
+
 def compute(
     facts: CargoFacts | None,
     position: Position | None,

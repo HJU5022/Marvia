@@ -1210,7 +1210,7 @@ items:
     notes: []
 - id: V-S04
   layer: stage
-  why: 아는 단계와 띄어쓰기만 다른 이름(수입신고 수리). 꺼짐이다
+  why: '아는 단계와 띄어쓰기만 다른 이름(수입신고 수리). 꺼짐이다. 배에서 내린 단계라 배 신호와 도착 예정은 판정에 넣지 않는다(11-13 판정)'
   now: '2026-09-22T12:00:00+09:00'
   sale_due: '2026-09-28'
   cargo: {stage: 수입신고 수리, port_code: KRPUS}
@@ -1223,9 +1223,67 @@ items:
     grade: fine
     confidence: sure
     schedule: null
-    eta_source: mof_planned
-    margin_days: 4
+    eta_source: null
+    margin_days: null
     notes: []
+    info: [landed]
+- id: V-S05
+  layer: stage
+  why: '반입신고: 배에서 내린 화물이다. 실은 배는 다음 항구(JPOSA)로 떠났다. 배 신호를 넣지 않으니 목적지 바뀜으로 경계가 되지 않는다'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 반입신고, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 34.5, lng: 131.0, sog: 14.0, navstat: 0, dest: OSAKA, dest_code: JPOSA, ais_eta: '2026-09-23T18:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-20T10:00:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: null
+    eta_source: null
+    margin_days: null
+    notes: []
+    info: [landed]
+- id: V-S06
+  layer: stage
+  why: '반출완료이고 해수부 입항 일정도 조회 기간이 지나 없다. 내린 화물은 도착 시각을 몰라도 등급 없음이 아니다'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 반출완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 34.5, lng: 131.0, sog: 14.0, navstat: 0, dest: OSAKA, dest_code: JPOSA, ais_eta: '2026-09-23T18:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: null
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: null
+    eta_source: null
+    margin_days: null
+    notes: []
+    info: [landed]
+- id: V-S07
+  layer: stage
+  why: '하선신고 수리: 배를 보는 단계의 마지막이다. 같은 배 신호(다른 항구로 가는 중)가 그대로 실려 경계다. 입항 실적이 있어 ETA 어긋남은 꺼짐'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 하선신고 수리, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 34.5, lng: 131.0, sog: 14.0, navstat: 0, dest: OSAKA, dest_code: JPOSA, ais_eta: '2026-09-23T18:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-20T10:00:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: alert
+    confidence: sure
+    schedule: null
+    eta_source: mof_actual
+    margin_days: 8
+    notes: []
+    info: [no_first_eta]
 - id: V-E01
   layer: edge
   why: '위치 끊김 6시간 초과: 5시간 59분 전 수신은 꺼짐'

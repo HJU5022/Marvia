@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from marvia.identify.models import CargoFacts
 from marvia.tools.ports import port
 from marvia.tools.rules import load_rules
-from marvia.tools.signals import compute
+from marvia.tools.signals import compute, watches_ship
 from marvia.tools.verdict import Confidence, Grade, Schedule, Signal, confidence, grade, schedule
 from marvia.tools.vessel import PortSchedule, Position, TrackPoint, days_margin, trusted_eta
 
@@ -62,6 +62,26 @@ def judge(
 ) -> Verdict:
     """판정 네 칸. sale_due=판매 예정일, first_eta=처음 알던 도착 예정, forwarder_eta=포워더가 알려 준 날."""
     rules = load_rules("verdict")
+    # [왜] 배 신호는 화물이 배에 실려 있는 동안에만 판정에 쓴다(11-13 판정). 내린 뒤에는 배가 다음 항구로
+    #      떠나는 것이 정상이라, 그 배의 목적지·위치·ETA를 넣으면 멀쩡한 화물이 "경계"가 된다.
+    #      통관 단계와 통관 멈춤만 본다. 누가 배 신호를 넘겨도 여기서 버린다
+    if facts is not None and not watches_ship(facts.stage):
+        signals = [
+            s if s.id == "customs_hold" else Signal(id=s.id, state="clear", value="배에서 내린 화물")
+            for s in compute(facts, None, None, now=now)
+        ]
+        return Verdict(
+            grade=grade(signals, None),
+            confidence=confidence(signals, identified=True, has_source=True),
+            schedule=None,
+            stage=facts.stage,
+            signals=signals,
+            trusted_eta=None,
+            eta_source=None,
+            margin_days=None,
+            notes=[],
+            info=["landed"],
+        )
     signals = compute(facts, position, plan, now=now, history=history)
     eta, source = trusted_eta(position, plan, facts.port_code if facts else None, forwarder_eta, now=now)
     # [왜] 입항이 끝난 배는 배 신호 ETA를 입항 예정과 견줄 일이 없다. 그 신호를 "모름"으로 두면 입항한 배의

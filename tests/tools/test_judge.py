@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from marvia.identify.models import CargoFacts
 from marvia.tools.judge import Verdict, judge
 from marvia.tools.rules import load_rules
+from marvia.tools.signals import watches_ship
 from marvia.tools.vessel import PortSchedule, Position
 
 KST = timezone(timedelta(hours=9))
@@ -175,3 +176,46 @@ def test_an_arrived_ship_is_not_marked_down_for_having_no_planned_arrival_to_com
     before = judge(cargo(), ship(), plan(planned=None), now=NOW)
     assert {s.id: s.state for s in before.signals}["eta_conflict"] == "unknown"
     assert load_rules("verdict")["arrived_sources"] == ["mof_actual", "mof_final"]
+
+
+def test_a_cargo_already_off_the_ship_is_judged_by_customs_only():
+    # [왜] 11-13 판정. 배 신호는 화물이 배에 실려 있는 동안에만 판정에 쓴다. 내린 뒤에는 배가 다음 항구로
+    #      떠나는 것이 정상이다. 그 배의 목적지·위치·ETA로 등급을 올리면 멀쩡한 화물이 "경계"가 된다
+    gone = ship(dest="OSAKA", dest_code="JPOSA", last_time=NOW - timedelta(hours=30))  # 떠난 배, 위치도 끊김
+    for stage in ("반입신고", "수입신고", "수입(사용소비) 심사진행", "수입신고 수리", "반출신고", "반출완료"):
+        seen = judge(cargo(stage), gone, plan(), now=NOW, sale_due=date(2026, 9, 23), first_eta=PLANNED)
+        assert cells(seen) == ("fine", "sure", None), stage
+        assert {s.id for s in seen.signals if s.state != "clear"} == set(), stage
+        assert (seen.trusted_eta, seen.eta_source, seen.margin_days, seen.notes) == (None, None, None, []), (
+            stage
+        )
+        assert seen.info == ["landed"], stage
+    # 배에 실려 있는 단계는 지금까지와 같다: 같은 배 신호로 경계다
+    for stage in load_rules("verdict")["signals"]["ship_stages"]:
+        assert judge(cargo(stage), gone, plan(), now=NOW).grade == "alert", stage
+    # 통관이 멈춘 단계와 모르는 단계는 "내린 화물"로 보지 않는다. 배 신호를 싣고 모르는 단계는 확신이 내린다
+    held = judge(cargo("검사지정"), gone, plan(), now=NOW)
+    assert held.grade == "act" and "landed" not in held.info
+    odd = judge(cargo("TEST 낯선 단계"), gone, plan(), now=NOW)
+    assert (odd.grade, odd.confidence) == ("alert", "partial") and "landed" not in odd.info
+
+
+def test_ship_stages_are_known_stages_and_the_rest_of_the_known_ones_are_landed():
+    cuts = load_rules("verdict")["signals"]
+    assert set(cuts["ship_stages"]) < set(cuts["known_stages"])
+    assert set(cuts["known_stages"]) - set(cuts["ship_stages"]) == {
+        "반입신고",
+        "수입신고",
+        "수입(사용소비) 심사진행",
+        "수입신고수리",
+        "반출신고",
+        "반출완료",
+    }
+    assert (
+        watches_ship("입항")
+        and watches_ship("검사지정")
+        and watches_ship("TEST 낯선 단계")
+        and watches_ship(None)
+    )
+    assert not watches_ship("반입신고") and not watches_ship("수입신고 수리")  # 띄어쓰기만 다른 이름도 같다
+    assert "landed" in load_rules("verdict")["info"]

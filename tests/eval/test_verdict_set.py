@@ -14,7 +14,7 @@ from marvia.eval.verdict_set import (
 from marvia.tools.rules import load_rules
 
 SET = load_verdict_set()
-LAYERS = {"ported": 20, "port": 5, "conflict": 19, "failure": 6, "nodata": 5, "stage": 4, "edge": 32}
+LAYERS = {"ported": 20, "port": 5, "conflict": 19, "failure": 6, "nodata": 5, "stage": 7, "edge": 32}
 
 
 def test_set_is_frozen_and_has_every_layer():
@@ -81,7 +81,8 @@ def test_less_data_never_gives_a_better_grade_in_any_item():
     # [왜] 11-13 결정. 도착 시각을 알 출처가 없으면 "순항"도 "정시"도 아니다. 순항은 믿을 ETA가 있어야 나온다
     for item in SET.items:
         want = item.expect
-        if want.eta_source is None:
+        landed = want.info is not None and "landed" in want.info  # 배에서 내린 화물은 도착 시각을 보지 않는다
+        if want.eta_source is None and not landed:
             assert want.grade != "fine" and want.schedule != "on_time", item.id
             assert "no_eta" in want.notes, item.id
         if want.grade is None:
@@ -106,7 +107,7 @@ def test_edge_layer_has_cases_around_every_threshold():
 
 def test_summary_counts_every_item_once():
     done = summarize(SET)
-    assert done["items"] == {"n": 91, "passed": 91} and done["matches"] == {"n": 12, "passed": 12}
+    assert done["items"] == {"n": 94, "passed": 94} and done["matches"] == {"n": 12, "passed": 12}
     assert {name: row["n"] for name, row in done["layers"].items()} == LAYERS
 
 
