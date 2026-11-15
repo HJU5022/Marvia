@@ -4,7 +4,8 @@
 계획 8b는 그 가운데 다섯 파일(graph/main.py, graph/state.py, server.py, view.py, trace.py)을 고친다.
 그 다섯은 해시 묶음에서 빼고 여기서 "스위치가 꺼져 있으면 동작이 같다"로 묶는다.
 나머지 파일은 해시 묶음에 그대로 남는다.
-아래 값은 계획 8b의 첫 코드 커밋 전 상태(ad17004와 같은 코드, 다섯 파일은 48ca3c5와 같다)에서 낸 값이다.
+아래 값(MODEL_SHA, CARD_SHA, ASK_SHA 포함)은 계획 8b의 첫 코드 커밋 전 상태
+(ad17004와 같은 코드, 다섯 파일은 48ca3c5와 같다)에서 낸 값이다. 뒤의 셋은 2bc6073에서 다시 냈다.
 값이 달라지면 고치기 전에 무엇이 달라졌는지부터 본다.
 """
 
@@ -12,12 +13,14 @@ import ast
 import hashlib
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
+from pydantic import Field
 from starlette.testclient import TestClient
 
 from marvia.graph.main import LOOPS, build_main_graph
@@ -33,6 +36,12 @@ STREAM_SHA = "48a3d2b6d6d226e7dcc2ae8585de7f168f1442314538b39741d188e5f32a8394"
 STATE_SHA = "32b3a156446f45ec5f2be40b059ca30a46e744435c45e7888d971d5ec376aee7"
 # 길 셋의 한 차례씩: 화면 이벤트, 공책의 칸 이름, 그 둘을 트레이스 가림에 넣은 결과
 LOOPS_SHA = "99e5986c5e0f58cb7d17296aa97e89ce9923967e5f290a11b9b072f0fdd6b1b0"
+# 모델이 받는 것(묶은 도구 이름의 순서, 메시지 글, 계획자·품목·작성자 프롬프트)을 길 셋에서 적은 것
+MODEL_SHA = "15cbd316148f0e2ceb916811aa6ddf491ddf7f3fcc25c42417223efc4b35e37b"
+# 번호가 애매한 화물의 선택 카드와 직접 적은 글로 재개한 차례: 이벤트와 재개 뒤 공책
+CARD_SHA = "d8dbe213efd5cb155faf0f82e34a229c12c58cbc19a1ddf266ff767012e190cd"
+# 모델이 부른 ask_user 카드와 직접 적은 글로 재개한 차례: 이벤트, 공책, 다음 모델 호출이 받은 메시지
+ASK_SHA = "5ea06eede07f3d4d515e05335678bc80db17221cb34a06e78188f02c4aee067f"
 CARD_KEYS = ["error", "fetched_at", "number", "port", "source", "stage", "stage_at", "vessel"]
 
 
@@ -127,6 +136,152 @@ def test_other_loops_and_the_trace_scrubber_are_unchanged_when_the_switch_is_off
         }
         assert not {"vessels", "verdicts", "vessel_question"} & set(values), loop
     assert _sha(seen) == LOOPS_SHA
+
+
+class Recorder(ToolModel):
+    """가짜 모델이 받은 것을 적는다: 묶은 도구 이름(순서 그대로)과 호출마다 받은 메시지 글(id 뺌)."""
+
+    bound: list = Field(default_factory=list)
+    calls: list = Field(default_factory=list)
+
+    def bind_tools(self, tools, **kwargs):
+        self.bound.append([getattr(t, "name", None) or t.get("name") for t in tools])
+        return self
+
+    def _generate(self, messages, *args, **kwargs):
+        self.calls.append(
+            [
+                [m.type, m.content, [(c["name"], c["args"]) for c in getattr(m, "tool_calls", [])]]
+                for m in messages
+            ]
+        )
+        return super()._generate(messages, *args, **kwargs)
+
+
+def _stable(value):
+    """실행마다 달라지는 값(조회 시각, 끼어들기·메시지 id)을 고정 글로 바꾼다."""
+    if isinstance(value, dict):
+        return {
+            k: ("X" if k in ("fetched_at", "id", "interruptId", "message_id", "messageId") else _stable(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_stable(v) for v in value]
+    return value
+
+
+def _client(graph):
+    return TestClient(build_app(graph, lambda token: "user-a", web_origin="http://web.test", forget=print))
+
+
+def _post(client, thread: str, text: str = "", resume: list | None = None) -> list[dict]:
+    payload: dict = {"threadId": thread, "runId": f"run-{thread}", "messages": []}
+    if text:
+        payload["messages"] = [{"id": "m1", "role": "user", "content": text}]
+    if resume:
+        payload["resume"] = resume
+    response = client.post("/agui", json=payload, headers={"Authorization": "Bearer tok"})
+    return [json.loads(line[6:]) for line in response.text.split("\n") if line.startswith("data: ")]
+
+
+def _notebook(graph, thread: str) -> dict:
+    values = graph.get_state({"configurable": {"thread_id": f"user-a/{thread}"}}).values
+    messages = [[m.type, m.content] for m in values.get("messages", [])]
+    rest = {k: v for k, v in values.items() if k != "messages"}
+    return {"messages": messages, "values": _stable(rest), "view": _stable(screen_view(values))}
+
+
+def test_what_the_model_receives_is_unchanged_when_the_switch_is_off(agent_deps):
+    # [왜] 11-16 R-136. 위의 해시는 화면과 공책만 본다. 모델이 받는 것(묶은 도구, 메시지 글,
+    #      계획자·품목·작성자 프롬프트)이 바뀌어도 화면이 같으면 지나간다. 길 셋 모두 적어 해시한다
+    seen = {}
+    for loop in LOOPS:
+        prompts: dict[str, list] = {"plan": [], "item": [], "write": []}
+
+        def record(name, fn, sink=prompts):
+            return lambda prompt: sink[name].append(prompt) or fn(prompt)
+
+        # [왜] 수퍼바이저 길은 먼저 서브에이전트(law)에 넘긴다. 서브에이전트가 묶는 도구도 적는다
+        handoff = (
+            (_say("handoff", {"to": "law", "task": "조문 찾기"}, 0), AIMessage(""))
+            if loop == "supervisor"
+            else ()
+        )
+        model = Recorder(
+            messages=iter(
+                (
+                    *handoff,
+                    _say("write_todos", {"todos": [{"content": "기한 계산", "status": "in_progress"}]}, 1),
+                    _say("calc_deadlines", {}, 2),
+                    AIMessage(""),
+                    AIMessage(""),
+                    AIMessage(""),
+                )
+            )
+        )
+        base = agent_deps(model=model)
+        deps = replace(
+            base,
+            plan=record("plan", base.plan),
+            item=record("item", base.item),
+            write=record("write", base.write),
+        )
+        graph = build_main_graph(
+            deps,
+            InMemorySaver(),
+            loop=loop,
+            store=InMemoryStore(),
+        )
+        events = _post(_client(graph), "off", "DEMO0001 DEMO0002 고춧가루 수입 요건이 뭐예요?")
+        assert events[-1]["type"] == "RUN_FINISHED"
+        seen[loop] = {"bound": model.bound, "calls": _stable(model.calls), "prompts": _stable(prompts)}
+    assert _sha(seen) == MODEL_SHA
+
+
+def test_a_number_card_and_the_typed_reply_are_unchanged_when_the_switch_is_off(agent_deps):
+    # [왜] 11-16 R-136. 번호가 애매해 카드가 뜨는 화물로 멈추고 직접 적은 글로 재개한다. 서버의 카드 처리와
+    #      재개 뒤 공책이 꺼진 길에서 그대로여야 한다
+    graph = build_main_graph(
+        agent_deps(model=ToolModel(messages=iter([AIMessage("")] * 5))),
+        InMemorySaver(),
+        loop="agent",
+        store=InMemoryStore(),
+    )
+    client = _client(graph)
+    first = _post(client, "card", "MOCK12345678TEST87654321 어디예요?")
+    card = first[-1]["outcome"]["interrupts"][0]
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"custom": "TEST87654321"}}]
+    second = _post(client, "card", resume=resume)
+    seen = {"first": _stable(first), "second": _stable(second), "notebook": _notebook(graph, "card")}
+    assert _sha(seen) == CARD_SHA
+
+
+def test_an_ask_user_card_and_the_typed_reply_are_unchanged_when_the_switch_is_off(agent_deps):
+    # [왜] 11-16 R-136. B가 서버의 카드 처리를 모든 카드에 걸었다. 모델이 ask_user를 부르고
+    #      사용자가 글로 답하는 한 차례: 화면 이벤트, 차례 뒤 공책, 다음 모델 호출이 받은 메시지를 묶는다
+    options = [
+        {"label": "부산", "description": "부산항 기준"},
+        {"label": "인천", "description": "인천항 기준"},
+    ]
+    model = Recorder(
+        messages=iter(
+            [_say("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": options}, 1)]
+            + [AIMessage("")] * 4
+        )
+    )
+    graph = build_main_graph(agent_deps(model=model), InMemorySaver(), loop="agent", store=InMemoryStore())
+    client = _client(graph)
+    first = _post(client, "ask", "장치기간이 궁금해요")
+    card = first[-1]["outcome"]["interrupts"][0]
+    resume = [{"interruptId": card["id"], "status": "resolved", "payload": {"custom": "광양이요"}}]
+    second = _post(client, "ask", resume=resume)
+    seen = {
+        "first": _stable(first),
+        "second": _stable(second),
+        "notebook": _notebook(graph, "ask"),
+        "model": _stable(model.calls),
+    }
+    assert _sha(seen) == ASK_SHA
 
 
 def test_the_eval_runner_builds_a_graph_without_the_vessel_step_even_when_the_env_asks_for_it(
