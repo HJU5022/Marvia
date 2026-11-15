@@ -64,7 +64,7 @@ from marvia.graph.state import merge_cargos, merge_evidence
 from marvia.graph.tools import SERVER_SURFACE
 from marvia.tools.rules import load_rules
 from marvia.trace import tracer_callbacks
-from marvia.view import interrupt_card, screen_view
+from marvia.view import interrupt_card, is_vessel_card, screen_view, vessel_choice
 from marvia.watch import forget_user
 
 LOG = logging.getLogger(__name__)
@@ -75,7 +75,8 @@ ERROR_TEXT = "이번 차례를 끝내지 못했어요. 다시 물어봐 주세�
 THREAD_ID = re.compile(r"[A-Za-z0-9_-]+")
 # [왜] 프록시·압축이 이벤트를 모았다가 한꺼번에 보내면 "진행 중인 할 일"이 답과 함께 뜬다
 SSE_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
-LIVE_KEYS = ("todos", "plan", "cargos", "evidence", "mask_map")  # 화면 보기를 바꾸는 공책 칸
+# 화면 보기를 바꾸는 공책 칸. vessels와 verdicts는 배 식별 스위치가 켜졌을 때만 흘러온다 (계획 8b)
+LIVE_KEYS = ("todos", "plan", "cargos", "evidence", "mask_map", "vessels", "verdicts")
 CHOICE_KEYS = ("selected", "custom", "timeout")  # 선택지 재개 값에서 받는 칸 (설계 6.3)
 
 
@@ -117,6 +118,9 @@ def turn_events(
 ) -> Iterator[BaseEvent]:
     """한 차례를 돌리며 AG-UI 이벤트를 낸다. 작업 스레드 하나에서 끝까지 돈다(동기 그래프와 저장기)."""
     yield RunStartedEvent(thread_id=thread, run_id=run)
+    vessel = "vessel" in getattr(
+        graph, "nodes", {}
+    )  # 배 식별 단계가 있는 그래프만 화물 카드에 배·판정 칸을 붙인다 (계획 8b)
     answer = ""
     tail: list[
         BaseEvent
@@ -131,12 +135,13 @@ def turn_events(
                     if not namespace and "answer" in part:
                         answer = part["answer"]  # [왜] 답은 저장하지 않는 칸이라 갱신에서만 읽는다 (R-035)
                     if node != "__interrupt__" and _merge(live, part, inside=bool(namespace)):
-                        yield StateSnapshotEvent(snapshot=screen_view(live))
+                        yield StateSnapshotEvent(snapshot=screen_view(live, vessel))
         state = graph.get_state(config)
         if state.interrupts:
             # [왜] 질문과 승인은 한 번에 하나씩 멈춘다 (batched, ask_user 혼자 부르기)
             pending = state.interrupts[0]
-            card = interrupt_card(pending.value, state.values.get("mask_map", {}))
+            asked = state.values.get("vessel_question") or {}
+            card = interrupt_card(pending.value, state.values.get("mask_map", {}), asked.get("candidates"))
             stopped = CardInterrupt(id=pending.id, reason=card["kind"], metadata=card)
             outcome = RunFinishedInterruptOutcome(interrupts=[stopped])
             tail = [RunFinishedEvent(thread_id=thread, run_id=run, outcome=outcome)]
@@ -215,6 +220,16 @@ def turn_input(graph, body: RunAgentInput, config: dict) -> Any:
             raise Refused(422, "답 모양이 틀렸어요")
         if len(custom) > max_text:
             raise Refused(422, "글이 너무 길어요")
+        if is_vessel_card(value) and custom:
+            # [왜] 멈춘 카드가 배 선택 카드일 때만(공책에 남은 옛 질문이 아니라 멈춘 값으로 가른다).
+            #      직접 적은 글(호출부호나 배 번호)은 후보와 맞춰 번호로 바꿔 그래프에 넘긴다. 사용자가
+            #      적은 값이 노드 입력과 트레이스에 실리지 않는다. 후보 한 척에만 맞을 때만 그 배고 아니면
+            #      "모르겠어요"(0번)다. 카드에 안 보인 후보(둘 넘는 후보)도 맞고 번호는 후보 목록 안이다
+            choice = {
+                "selected": vessel_choice(
+                    custom, (state.values.get("vessel_question") or {}).get("candidates", [])
+                )
+            }
         return Command(resume=choice)
     # [왜] 마지막 메시지 하나만 본다. user가 아니거나 글이 아니면 앞 메시지로 물러서지 않고 거절한다
     last = body.messages[-1] if body.messages else None
@@ -399,7 +414,12 @@ def main() -> None:
     ):
         deps = agent_deps(settings, pool, watch_conn)
         graph = build_main_graph(
-            deps, saver, loop=settings.loop, store=store, permission_mode=settings.permission_mode
+            deps,
+            saver,
+            loop=settings.loop,
+            store=store,
+            permission_mode=settings.permission_mode,
+            vessel=settings.vessel == "on",  # 기본은 off다 (계획 8b)
         )
         app = build_app(
             graph,

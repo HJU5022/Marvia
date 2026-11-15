@@ -67,3 +67,10 @@ labels:
     mof_planned: 해수부 입항 예정
     ais_eta: 배 신호
     forwarder_eta: 포워더가 알려 준 날
+  signals: # 켜진 신호의 이름 → 카드에 보이는 글. 열쇠는 rules/verdict.yaml signal_ids와 같다
+    customs_hold: 통관이 보류되었거나 검사 대상으로 지정됐어요
+    anchor_wait: 배가 항구 앞에 오래 멈춰 있어요
+    dest_changed: 배 신호의 목적지가 이 항만이 아니에요
+    position_stale: 배 위치가 한동안 들어오지 않았어요
+    eta_conflict: 배 신호의 도착 예정과 해수부 입항 예정이 어긋나요
+    navstat_mismatch: 배 신호의 항해 상태와 속도가 맞지 않아요
