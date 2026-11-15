@@ -50,7 +50,7 @@ def test_replay_chain_from_cargo_facts_to_the_four_verdict_cells():
     schedule = port_schedule(row, found.call_sign, today=NOW.date())
     assert isinstance(position, Position) and isinstance(schedule, PortSchedule)
     verdict = judge(facts, position, schedule, now=NOW, sale_due=date(2026, 9, 28))
-    assert (verdict.grade, verdict.confidence, verdict.schedule) == ("fine", "sure", "on_time")
+    assert (verdict.grade, verdict.confidence, verdict.schedule) == ("fine", "sure", None)  # 처음 예정 없음
     assert (verdict.eta_source, verdict.margin_days, verdict.notes) == ("mof_planned", 4, [])
 
 

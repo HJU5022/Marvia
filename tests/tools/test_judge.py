@@ -40,7 +40,7 @@ def cells(verdict: Verdict) -> tuple[str | None, str, str | None]:
 
 
 def test_all_known_and_clear_is_fine_sure_on_time():
-    verdict = judge(cargo(), ship(), plan(), now=NOW, sale_due=date(2026, 9, 28))
+    verdict = judge(cargo(), ship(), plan(), now=NOW, sale_due=date(2026, 9, 28), first_eta=PLANNED)
     assert cells(verdict) == ("fine", "sure", "on_time")
     assert (verdict.stage, verdict.eta_source, verdict.margin_days) == (
         "입항적재화물목록 심사완료",
@@ -64,12 +64,13 @@ def test_grade_comes_from_signals_and_margin_only():
     stale = ship(last_time=NOW - timedelta(hours=7))
     assert cells(judge(cargo(), stale, plan(), now=NOW))[0] == "watch"
     both = stale.model_copy(update={"ais_eta": PLANNED + timedelta(hours=20)})
-    assert cells(judge(cargo(), both, plan(), now=NOW)) == ("alert", "sure", "concern")  # 주의 신호 둘
+    seen = judge(cargo(), both, plan(), now=NOW, first_eta=PLANNED)
+    assert cells(seen) == ("alert", "sure", "concern")  # 주의 신호 둘
 
 
 def test_input_error_signals_lower_confidence_not_grade():
     broken = ship(dest="XX QZQZZZZZ", dest_code=None)
-    assert cells(judge(cargo(), broken, plan(), now=NOW)) == ("fine", "partial", "on_time")
+    assert cells(judge(cargo(), broken, plan(), now=NOW, first_eta=PLANNED)) == ("fine", "partial", "on_time")
     odd = ship(navstat=1, sog=3.0)
     assert cells(judge(cargo(), odd, plan(), now=NOW))[:2] == ("fine", "partial")
 
@@ -87,7 +88,7 @@ def test_less_data_never_makes_the_grade_better():
     late = judge(cargo(), None, plan(), now=NOW, sale_due=date(2026, 9, 23))
     assert (late.margin_days, late.eta_source) == (-1, "mof_planned")
     assert cells(late) == ("act", "partial", "overdue") and late.notes == ["no_position"]
-    ok = judge(cargo(), None, plan(), now=NOW, sale_due=date(2026, 9, 28))
+    ok = judge(cargo(), None, plan(), now=NOW, sale_due=date(2026, 9, 28), first_eta=PLANNED)
     assert cells(ok) == ("fine", "partial", "on_time") and ok.margin_days == 4
     # 포워더가 알려 준 날뿐이고 위치가 없으면 여유 일수를 세지 않는다. 판매 예정일과 견줄 수 없으니
     # 그 날이 판매 예정일 뒤든 앞이든 순항이라고도 정시라고도 하지 않는다 (11-13 덧붙임)
@@ -127,13 +128,13 @@ def test_port_that_is_missing_or_unverified_lowers_confidence_and_says_why():
 def test_without_a_sale_date_the_grade_comes_from_signals_and_says_so():
     # [왜] 판매 예정일을 주지 않은 질문은 견줄 날이 없다. 신호만으로 등급을 내고 그 사실을 참고 칸에 남긴다
     plain = judge(cargo(), ship(), plan(), now=NOW)
-    assert cells(plain) == ("fine", "sure", "on_time") and plain.margin_days is None
-    assert plain.info == ["no_sale_date"] and plain.notes == []
+    assert cells(plain) == ("fine", "sure", None) and plain.margin_days is None
+    assert plain.info == ["no_sale_date", "no_first_eta"] and plain.notes == []
     dated = judge(cargo(), ship(), plan(), now=NOW, sale_due=date(2026, 9, 28))
-    assert dated.info == [] and dated.margin_days == 4
+    assert dated.info == ["no_first_eta"] and dated.margin_days == 4
     # 판매 예정일이 없고 포워더 날짜뿐이어도 신호만으로 낸 등급은 그대로다(견줄 날이 없다)
     told = judge(cargo(), None, None, now=NOW, forwarder_eta=date(2026, 9, 30))
-    assert (told.grade, told.info) == ("fine", ["no_sale_date"])
+    assert (told.grade, told.info) == ("fine", ["no_sale_date", "no_first_eta"])
     rules = load_rules("verdict")
     assert "no_margin" in rules["notes"] and "no_sale_date" in rules["info"]
 
@@ -143,3 +144,17 @@ def test_a_raised_grade_survives_a_missing_margin():
         cargo("검사지정"), None, None, now=NOW, sale_due=date(2026, 9, 23), forwarder_eta=date(2026, 9, 30)
     )
     assert (held.grade, held.schedule, held.margin_days) == ("act", None, None) and "no_margin" in held.notes
+
+
+def test_schedule_cell_is_empty_without_a_first_known_eta_except_overdue():
+    # [왜] 11-13 판정. 처음 알던 도착 예정이 없으면 "지연"이 나올 수 없다. 그 상태의 "정시"는 틀린 인상이다.
+    #      정시·우려·지연은 견줄 처음 예정이 있을 때만 낸다. "초과"는 판매 예정일로 내므로 그대로다
+    late_signal = ship(ais_eta=PLANNED + timedelta(hours=20))  # ETA 어긋남: 우려를 만드는 신호
+    bare = judge(cargo(), late_signal, plan(), now=NOW)
+    assert bare.schedule is None and "no_first_eta" in bare.info and bare.grade == "watch"  # 등급은 그대로
+    assert judge(cargo(), late_signal, plan(), now=NOW, first_eta=PLANNED).schedule == "concern"
+    known = judge(cargo(), ship(), plan(), now=NOW, first_eta=PLANNED)
+    assert known.schedule == "on_time" and "no_first_eta" not in known.info
+    over = judge(cargo(), ship(), plan(), now=NOW, sale_due=date(2026, 9, 23))
+    assert over.schedule == "overdue" and over.info == ["no_first_eta"]
+    assert "no_first_eta" in load_rules("verdict")["info"]

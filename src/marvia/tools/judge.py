@@ -100,6 +100,14 @@ def judge(
             level, sure = None, "unknown"
         if cell == "on_time":
             cell = None
+    # [왜] 처음 알던 도착 예정이 없으면 "지연"이 나올 수 없다. 그 상태에서 "정시"나 "우려"를 보이면
+    #      견줘 본 것처럼 읽힌다(11-13 판정). 일정 칸은 견줄 처음 예정이 있을 때만 낸다.
+    #      "초과"는 판매 예정일로 내므로 그대로 둔다. 켜진 신호는 등급 칸이 그대로 드러낸다
+    if first_eta is None and cell != "overdue":
+        cell = None
+    info = ["no_sale_date"] if sale_due is None else []
+    if first_eta is None:
+        info.append("no_first_eta")
     return Verdict(
         grade=level,
         confidence=sure,
@@ -110,5 +118,5 @@ def judge(
         eta_source=source,
         margin_days=margin,
         notes=notes,
-        info=["no_sale_date"] if sale_due is None else [],
+        info=info,
     )

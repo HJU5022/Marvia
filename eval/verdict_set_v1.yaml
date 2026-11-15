@@ -30,7 +30,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -78,7 +78,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_actual
     margin_days: 6
     notes: []
@@ -102,7 +102,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 6
     notes: []
@@ -126,7 +126,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 5
     notes: []
@@ -220,7 +220,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: triggered, eta_conflict: clear, navstat_mismatch: clear}
     grade: watch
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -244,7 +244,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -296,7 +296,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: triggered, navstat_mismatch: clear}
     grade: watch
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -320,7 +320,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: triggered}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -349,7 +349,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -373,7 +373,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: alert
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 1
     notes: []
@@ -398,7 +398,7 @@ items:
     signals: {customs_hold: triggered, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: act
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -422,7 +422,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -444,7 +444,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: unknown, navstat_mismatch: unknown}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: [no_position]
@@ -491,7 +491,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: unknown, navstat_mismatch: unknown}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: [no_position]
@@ -509,7 +509,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: [port_unverified]
@@ -527,7 +527,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: [port_not_in_table]
@@ -545,7 +545,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: [port_unknown]
@@ -568,7 +568,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: triggered, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: alert
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: [port_unverified]
@@ -605,7 +605,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: triggered, navstat_mismatch: clear}
     grade: watch
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 2
     notes: []
@@ -623,7 +623,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: triggered, eta_conflict: unknown, navstat_mismatch: clear}
     grade: watch
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_actual
     margin_days: 6
     notes: []
@@ -641,7 +641,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: alert
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -660,7 +660,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -678,7 +678,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: triggered, eta_conflict: clear, navstat_mismatch: triggered}
     grade: watch
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -696,7 +696,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: triggered, eta_conflict: triggered, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -714,7 +714,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -736,7 +736,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -754,7 +754,7 @@ items:
     signals: {customs_hold: triggered, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: act
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -853,7 +853,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: ais_eta
     margin_days: 4
     notes: []
@@ -873,7 +873,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_final
     margin_days: 6
     notes: []
@@ -892,7 +892,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 6
     notes: []
@@ -911,7 +911,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_actual
     margin_days: 6
     notes: []
@@ -947,7 +947,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: unknown, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1057,11 +1057,11 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: null
     notes: []
-    info: [no_sale_date]
+    info: [no_sale_date, no_first_eta]
 - id: V-D01
   layer: nodata
   why: 배 위치가 없는데 해수부 입항 예정이 판매 예정일을 하루 넘긴다. 위치가 없어도 그 시각으로 세어 긴급이다
@@ -1094,7 +1094,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: unknown, navstat_mismatch: unknown}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_actual
     margin_days: 6
     notes: [no_position]
@@ -1130,10 +1130,30 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: triggered, eta_conflict: unknown, navstat_mismatch: clear}
     grade: watch
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: ais_eta
     margin_days: 4
     notes: [no_schedule]
+- id: V-D05
+  layer: nodata
+  why: '처음 알던 도착 예정을 받았다. 견줄 값이 있으니 일정 칸을 낸다: 신호가 켜져 있어 우려다. 같은 입력에서 처음 예정이 없으면(V-B05) 일정 칸은 비어 있다'
+  now: '2026-09-22T12:00:00+09:00'
+  first_eta: '2026-09-24T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-23T12:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: '2026-09-24T12:00:00+09:00', actual_arrival: null}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 31.9, lng: 127.3, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 33.0, lng: 128.0, sog: 12.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: triggered, navstat_mismatch: clear}
+    grade: watch
+    confidence: sure
+    schedule: concern
+    eta_source: mof_planned
+    margin_days: 4
+    notes: []
 - id: V-S01
   layer: stage
   why: 단계 이름에 '검사'가 들어 있지만 멈춤 목록에 없는 이름이다. 멈춤으로 치지 않고 모르는 단계로 둔다(확신 부분)
@@ -1148,7 +1168,7 @@ items:
     signals: {customs_hold: unknown, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1166,7 +1186,7 @@ items:
     signals: {customs_hold: triggered, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: act
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1184,7 +1204,7 @@ items:
     signals: {customs_hold: unknown, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1202,7 +1222,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1220,7 +1240,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1238,7 +1258,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1256,7 +1276,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: triggered, eta_conflict: clear, navstat_mismatch: clear}
     grade: watch
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1274,7 +1294,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1292,7 +1312,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1310,7 +1330,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: triggered, navstat_mismatch: clear}
     grade: watch
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1333,7 +1353,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1356,7 +1376,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1379,7 +1399,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1402,7 +1422,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1426,7 +1446,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1449,7 +1469,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1472,7 +1492,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1495,7 +1515,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1513,7 +1533,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1531,7 +1551,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1549,7 +1569,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: triggered}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1567,7 +1587,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1585,7 +1605,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1603,7 +1623,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: triggered}
     grade: fine
     confidence: partial
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1621,7 +1641,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 3
     notes: []
@@ -1639,7 +1659,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 2
     notes: []
@@ -1657,7 +1677,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 1
     notes: []
@@ -1675,7 +1695,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 0
     notes: []
@@ -1768,7 +1788,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 0
     notes: []
@@ -1809,7 +1829,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: alert
     confidence: sure
-    schedule: concern
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
@@ -1832,7 +1852,7 @@ items:
     signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
     confidence: sure
-    schedule: on_time
+    schedule: null
     eta_source: mof_planned
     margin_days: 4
     notes: []
