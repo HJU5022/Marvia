@@ -3,8 +3,9 @@
 from datetime import date, datetime, timedelta, timezone
 
 from marvia.identify.models import CargoFacts
-from marvia.tools.vessel import SailingPlan
-from marvia.tools.vessel_match import Candidate, match_vessel
+from marvia.tools.judge import judge
+from marvia.tools.vessel import PortSchedule, Position, SailingPlan
+from marvia.tools.vessel_match import Candidate, check_candidate, match_vessel
 
 KST = timezone(timedelta(hours=9))
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=KST)
@@ -31,6 +32,11 @@ def plan(call_sign: str, day: int = 24, previous_port: str = "Qingdao", hour: in
 
 
 def result(*args, **kwargs) -> tuple[str, int | None, str]:
+    # [왜] 서류 대조 시험은 MRN 조회가 성공했고 그 신고에 호출부호가 없는 경우(found_unsigned)를 기본으로
+    #      한다.
+    #      MRN 호출부호를 준 시험은 match_vessel이 found_signed로 읽는다
+    if len(args) < 4 and "mrn_call_sign" not in kwargs:
+        kwargs.setdefault("mrn_lookup", "found_unsigned")
     found = match_vessel(*args, **kwargs)
     return found.status, found.mmsi, found.reason
 
@@ -61,7 +67,7 @@ def test_one_candidate_is_confirmed_by_the_mrn_call_sign_or_by_both_papers():
         "mrn_call_sign",
         ["call_sign"],
     )
-    found = match_vessel(cargo(), [A], {"QQTST1": [plan("QQTST1")]})
+    found = match_vessel(cargo(), [A], {"QQTST1": [plan("QQTST1")]}, mrn_lookup="found_unsigned")
     assert (found.status, found.reason, found.basis) == (
         "confirmed",
         "papers_match",
@@ -102,7 +108,7 @@ def test_mrn_call_sign_picks_the_ship_among_same_named_ships():
 def test_papers_confirm_only_when_exactly_one_ship_matches_both_conditions():
     plans = {"QQTST1": [plan("QQTST1")], "QQTST2": [plan("QQTST2", day=25)]}
     assert result(cargo(), [A, B], plans) == ("confirmed", 999000001, "papers_match")
-    assert match_vessel(cargo(), [A, B], plans).basis == [
+    assert match_vessel(cargo(), [A, B], plans, mrn_lookup="found_unsigned").basis == [
         "entry_date",
         "loading_port",
     ]  # 호출부호는 맞춰 보지 않았다
@@ -152,3 +158,96 @@ def test_a_ship_of_another_flag_is_left_out_before_matching():
     assert (
         result(cargo(), [A, B.model_copy(update={"flag": None})], both)[2] == "papers_match_many"
     )  # 모르면 빼지 않는다
+
+
+def ship(**changes) -> Position:
+    base = {
+        "mmsi": 999000001,
+        "lat": 33.0,
+        "lng": 128.0,
+        "sog": 12.0,
+        "navstat": 0,
+        "dest_code": "KRPUS",
+        "ais_eta": datetime(2026, 9, 24, 12, 0, tzinfo=KST),
+        "last_time": NOW - timedelta(minutes=30),
+        "fetched_at": NOW,
+    }
+    return Position.model_validate({**base, **changes})
+
+
+def schedule() -> PortSchedule:
+    return PortSchedule(planned_arrival=datetime(2026, 9, 24, 12, 0, tzinfo=KST), fetched_at=NOW)
+
+
+def test_papers_confirm_only_when_the_mrn_lookup_worked_and_its_report_has_no_call_sign():
+    # [왜] 11-15 판정. 입항일과 적재항으로 확정하는 길은 MRN 조회가 성공했고 그 신고에 호출부호가 없을
+    #      때만이다.
+    #      MRN이 없거나 조회가 실패했거나(too_many, 모양 오류 포함) 그 MRN의 신고가 없으면 서류가 맞아도
+    #      고르는 카드다
+    plans = {"QQTST1": [plan("QQTST1")]}
+    assert result(cargo(), [A], plans, mrn_lookup="found_unsigned") == (
+        "confirmed",
+        999000001,
+        "papers_match",
+    )
+    assert result(cargo(), [A], plans, mrn_lookup="failed") == ("ask", None, "mrn_lookup_failed")
+    assert result(cargo(), [A], plans, mrn_lookup="not_found") == ("ask", None, "mrn_report_missing")
+    assert result(cargo(), [A], plans, mrn_lookup="none") == ("ask", None, "mrn_report_missing")
+    both = {"QQTST1": [plan("QQTST1")], "QQTST2": [plan("QQTST2", day=25)]}
+    assert result(cargo(), [A, B], both, mrn_lookup="found_unsigned") == (
+        "confirmed",
+        999000001,
+        "papers_match",
+    )
+    assert result(cargo(), [A, B], both, mrn_lookup="failed") == ("ask", None, "mrn_lookup_failed")
+    # MRN 호출부호가 있으면 서류로 가르지 않는다: 후보 가운데 같은 호출부호가 없으면 서류가 맞아도 묻는다
+    assert result(cargo(), [A, B], both, "QQTST9") == ("ask", None, "mrn_call_sign_differs")
+    blank = B.model_copy(update={"call_sign": None})
+    assert result(cargo(), [A, blank], both, "QQTST9") == ("ask", None, "candidate_without_call_sign")
+
+
+def test_ships_sharing_a_call_sign_are_never_confirmed_automatically():
+    twin = A.model_copy(update={"mmsi": 999000009})
+    assert result(cargo(), [A, twin], {}, "QQTST1") == ("ask", None, "same_call_sign_many_mmsi")
+    plans = {"QQTST1": [plan("QQTST1")]}
+    assert result(cargo(), [A, twin], plans, mrn_lookup="found_unsigned") == (
+        "ask",
+        None,
+        "same_call_sign_many_mmsi",
+    )
+
+
+def test_a_confirmation_without_the_call_sign_check_carries_a_partial_cap():
+    # [왜] 호출부호를 코드로 맞추지 못한 확정(서류만)은 확신이 부분을 넘지 못한다. 그 상한이 judge까지 닿는다
+    papers = match_vessel(cargo(), [A], {"QQTST1": [plan("QQTST1")]}, mrn_lookup="found_unsigned")
+    assert papers.status == "confirmed" and papers.cap == "partial"
+    sign = match_vessel(cargo(), [A], {}, "QQTST1")
+    assert sign.status == "confirmed" and sign.cap is None
+    first = datetime(2026, 9, 24, 12, 0, tzinfo=KST)
+    kw = {"now": NOW, "first_eta": first}
+    clear = judge(cargo(), ship(), schedule(), cap=sign.cap, cap_note="ship_unchecked", **kw)
+    assert (clear.confidence, "ship_unchecked" in clear.notes) == ("sure", False)
+    capped = judge(cargo(), ship(), schedule(), cap=papers.cap, cap_note="ship_unchecked", **kw)
+    assert (capped.grade, capped.confidence) == ("fine", "partial") and "ship_unchecked" in capped.notes
+
+
+def test_a_pick_among_ships_sharing_a_call_sign_is_capped_even_though_the_call_sign_matches():
+    # 사용자가 같은 호출부호의 두 배 가운데 하나를 골랐다. 호출부호는 맞지만 배를 가르지 못했으니 확신은
+    #      부분이다
+    twin = A.model_copy(update={"mmsi": 999000009})
+    picked = check_candidate(cargo(), A, [A, twin], {}, "QQTST1", "found_signed")
+    assert (picked.status, picked.mmsi, picked.reason, picked.cap) == (
+        "confirmed",
+        999000001,
+        "same_call_sign_many_mmsi",
+        "partial",
+    )
+    assert "call_sign" not in picked.basis
+    alone = check_candidate(cargo(), A, [A, B], {}, "QQTST1", "found_signed")
+    assert (alone.reason, alone.cap) == (
+        "mrn_call_sign",
+        None,
+    )  # 같은 호출부호의 다른 배가 없으면 상한이 없다
+    # 서류와 어긋나는 후보를 골라도 그 결과가 그대로 따라온다(되묻기 이유)
+    differs = check_candidate(cargo(), B, [A, B], {}, "QQTST1", "found_signed")
+    assert (differs.status, differs.reason) == ("ask", "mrn_call_sign_differs")

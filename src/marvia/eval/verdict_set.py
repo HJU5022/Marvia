@@ -72,6 +72,7 @@ class MatchExpect(BaseModel):
     mmsi: int | None
     reason: str
     basis: list[str] | None = None  # 확정할 때 맞춰 본 칸. 적은 문항만 본다
+    cap: Literal["partial", "none"] | None = None  # 확신 상한(none=상한 없음). 적은 문항만 본다
 
 
 class MatchItem(BaseModel):
@@ -82,6 +83,9 @@ class MatchItem(BaseModel):
     candidates: list[Candidate]
     plans: dict[str, list[SailingPlan] | None]
     mrn_call_sign: str | None = None
+    mrn_lookup: str | None = (
+        None  # MRN으로 입항 신고를 찾은 결과. 안 적으면 호출부호가 있을 때 found_signed, 없을 때 none
+    )
     expect: MatchExpect
 
 
@@ -149,7 +153,7 @@ def run_match(item: MatchItem) -> Match:
     facts = CargoFacts.model_validate(
         {"number": "TEST0001", "fetched_at": datetime.now().astimezone(), **item.cargo}
     )
-    return match_vessel(facts, item.candidates, item.plans, item.mrn_call_sign)
+    return match_vessel(facts, item.candidates, item.plans, item.mrn_call_sign, item.mrn_lookup)  # type: ignore[arg-type]
 
 
 def match_mismatches(item: MatchItem) -> list[str]:
@@ -161,6 +165,8 @@ def match_mismatches(item: MatchItem) -> list[str]:
     ]
     if want.basis is not None:
         pairs.append(("basis", got.basis, want.basis))
+    if want.cap is not None:
+        pairs.append(("cap", got.cap or "none", want.cap))
     return [f"{name}: {seen!r} != {expected!r}" for name, seen, expected in pairs if seen != expected]
 
 

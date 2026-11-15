@@ -2132,7 +2132,8 @@ matches:
     QQTST2:
     - {call_sign: QQTST2, planned_arrival: '2026-09-25T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: null
-  expect: {status: confirmed, mmsi: 999000001, reason: papers_match}
+  mrn_lookup: found_unsigned
+  expect: {status: confirmed, mmsi: 999000001, reason: papers_match, cap: partial}
 - id: M-02
   why: 두 척 모두 입항일과 적재항이 맞는다. 고르지 않고 되묻는다
   cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
@@ -2145,6 +2146,7 @@ matches:
     QQTST2:
     - {call_sign: QQTST2, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: papers_match_many}
 - id: M-03
   why: 입항 신고 날짜가 하루 다르다. 하루 차이는 같은 날로 치지 않는다
@@ -2158,6 +2160,7 @@ matches:
     QQTST2:
     - {call_sign: QQTST2, planned_arrival: '2026-09-23T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: papers_match_none}
 - id: M-04
   why: 직전 기항지가 적재항과 다른 항구다(적재 뒤 다른 항구를 들른 배)
@@ -2170,6 +2173,7 @@ matches:
     - {call_sign: QQTST1, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: NINGBO}
     QQTST2: []
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: papers_match_none}
 - id: M-05
   why: 한 척의 입항 신고를 받지 못했다. 확인하지 못한 후보가 있으면 한 척만 맞다고 하지 않는다
@@ -2182,6 +2186,7 @@ matches:
     - {call_sign: QQTST1, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
     QQTST2: null
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: schedule_lookup_failed}
 - id: M-06
   why: MRN으로 찾은 입항 신고의 호출부호와 같은 배가 한 척이다. 이름이 같아도 그 배다
@@ -2220,6 +2225,7 @@ matches:
     QQTST2:
     - {call_sign: QQTST2, planned_arrival: '2026-09-25T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: no_papers}
 - id: M-10
   why: 국적이 다른 후보는 빼고 맞춘다. 남은 한 척이 서류와 맞는다
@@ -2233,6 +2239,7 @@ matches:
     QQTST2:
     - {call_sign: QQTST2, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: confirmed, mmsi: 999000001, reason: papers_match}
 - id: M-11
   why: 후보가 없다
@@ -2261,7 +2268,7 @@ matches:
   - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
   plans: {}
   mrn_call_sign: QQTST1
-  expect: {status: confirmed, mmsi: 999000001, reason: mrn_call_sign, basis: [call_sign]}
+  expect: {status: confirmed, mmsi: 999000001, reason: mrn_call_sign, basis: [call_sign], cap: none}
 - id: M-14
   why: 후보가 한 척이고 MRN 호출부호가 없다. 그 배의 입항 신고에서 입항일과 적재항이 둘 다 맞는다. 맞춰 본 칸은 둘이다(호출부호는 못 맞췄다)
   cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
@@ -2271,7 +2278,8 @@ matches:
     QQTST1:
     - {call_sign: QQTST1, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: null
-  expect: {status: confirmed, mmsi: 999000001, reason: papers_match, basis: [entry_date, loading_port]}
+  mrn_lookup: found_unsigned
+  expect: {status: confirmed, mmsi: 999000001, reason: papers_match, basis: [entry_date, loading_port], cap: partial}
 - id: M-15
   why: 후보가 한 척이고 MRN 호출부호가 없고 입항 신고가 없다(빈 결과). 이름이 닮았을 뿐이다. 되묻는다
   cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
@@ -2280,6 +2288,7 @@ matches:
   plans:
     QQTST1: []
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: papers_match_none}
 - id: M-16
   why: 후보가 한 척이고 MRN 호출부호가 없고 입항 신고를 받지 못했다. 되묻는다
@@ -2289,6 +2298,7 @@ matches:
   plans:
     QQTST1: null
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: schedule_lookup_failed}
 - id: M-17
   why: 후보가 한 척인데 호출부호가 비었고 MRN 호출부호는 있다. 확정하지 않는다
@@ -2307,4 +2317,47 @@ matches:
     QQTST1:
     - {call_sign: QQTST1, planned_arrival: '2026-09-25T12:00:00+09:00', previous_port: Qingdao}
   mrn_call_sign: null
+  mrn_lookup: found_unsigned
   expect: {status: ask, mmsi: null, reason: papers_match_none}
+- id: M-19
+  why: 서류(입항일, 적재항)는 맞지만 MRN이 없어 입항 신고를 찾지 않았다. 서류만으로 확정하지 않고 되묻는다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans:
+    QQTST1:
+    - {call_sign: QQTST1, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
+  mrn_call_sign: null
+  mrn_lookup: none
+  expect: {status: ask, mmsi: null, reason: mrn_report_missing}
+- id: M-20
+  why: 서류는 맞지만 MRN으로 입항 신고를 받지 못했다(실패, 쪽 상한, 모양 오류). 되묻고 이유를 적는다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans:
+    QQTST1:
+    - {call_sign: QQTST1, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
+  mrn_call_sign: null
+  mrn_lookup: failed
+  expect: {status: ask, mmsi: null, reason: mrn_lookup_failed}
+- id: M-21
+  why: 서류는 맞지만 MRN으로 입항 신고 목록을 받았는데 그 MRN의 줄이 없다. 되묻는다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  plans:
+    QQTST1:
+    - {call_sign: QQTST1, planned_arrival: '2026-09-24T12:00:00+09:00', previous_port: Qingdao}
+  mrn_call_sign: null
+  mrn_lookup: not_found
+  expect: {status: ask, mmsi: null, reason: mrn_report_missing}
+- id: M-22
+  why: MRN 호출부호와 같은 후보가 둘(배 번호만 다르다). 자동 확정하지 않고 고르는 카드다
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24', loading_port: QINGDAO, vessel_flag: PA}
+  candidates:
+  - {mmsi: 999000001, call_sign: QQTST1, flag: PA}
+  - {mmsi: 999000009, call_sign: QQTST1, flag: PA}
+  plans: {}
+  mrn_call_sign: QQTST1
+  expect: {status: ask, mmsi: null, reason: same_call_sign_many_mmsi}

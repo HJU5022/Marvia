@@ -21,7 +21,7 @@ def test_set_is_frozen_and_has_every_layer():
     recorded = (SET_PATH.parent / "verdict_set_v1.sha256").read_text(encoding="utf-8").split()[0]
     assert file_sha256(SET_PATH) == recorded
     assert Counter(item.layer for item in SET.items) == LAYERS
-    assert len(SET.matches) == 18
+    assert len(SET.matches) == 22
     ids = [item.id for item in SET.items] + [m.id for m in SET.matches]
     assert len(ids) == len(set(ids))
 
@@ -107,7 +107,7 @@ def test_edge_layer_has_cases_around_every_threshold():
 
 def test_summary_counts_every_item_once():
     done = summarize(SET)
-    assert done["items"] == {"n": 105, "passed": 105} and done["matches"] == {"n": 18, "passed": 18}
+    assert done["items"] == {"n": 105, "passed": 105} and done["matches"] == {"n": 22, "passed": 22}
     assert {name: row["n"] for name, row in done["layers"].items()} == LAYERS
 
 

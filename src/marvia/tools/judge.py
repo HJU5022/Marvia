@@ -59,8 +59,14 @@ def judge(
     first_eta: datetime | None = None,
     forwarder_eta: date | None = None,
     history: list[TrackPoint] | None = None,
+    cap: Confidence | None = None,
+    cap_note: str | None = None,
 ) -> Verdict:
-    """판정 네 칸. sale_due=판매 예정일, first_eta=처음 알던 도착 예정, forwarder_eta=포워더가 알려 준 날."""
+    """판정 네 칸. sale_due=판매 예정일, first_eta=처음 알던 도착 예정, forwarder_eta=포워더가 알려 준 날.
+
+    cap="partial"이면 확신이 확실이어도 부분으로 낮추고 이유 cap_note를 더한다(배 확정이 호출부호를 맞추지
+    못했을 때, tools/vessel_match.Match.cap). 확신이 이미 낮으면 그대로 두고 이유만 남긴다.
+    """
     rules = load_rules("verdict")
     # [왜] 배 신호는 화물이 배에 실려 있는 동안에만 판정에 쓴다(11-13 판정). 내린 뒤에는 배가 다음 항구로
     #      떠나는 것이 정상이라, 그 배의 목적지·위치·ETA를 넣으면 멀쩡한 화물이 "경계"가 된다.
@@ -125,6 +131,14 @@ def judge(
     # [왜] 항만 값을 확인하지 못했으면 신호가 모두 꺼져 보여도 "확실"이라고 하지 않는다
     if sure == "sure" and port_note:
         sure = "partial"
+    # [왜] 11-15 판정. 배 확정이 호출부호를 코드로 맞추지 못했으면(서류만, 사용자 선택만, 같은 호출부호의
+    #      배가 여럿)
+    #      확신이 부분을 넘지 못한다
+    if cap == "partial":
+        if sure == "sure":
+            sure = "partial"
+        if cap_note:
+            notes.append(cap_note)
     # [왜] 세관 입항일이나 항만의 기간을 몰라 해수부 신고를 쓰지 못했으면 "확실"이라고 하지 않는다
     if sure == "sure" and ({"no_entry_date", "voyage_unchecked"} & set(voyage_notes)):
         sure = "partial"
