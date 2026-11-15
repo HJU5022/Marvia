@@ -951,6 +951,25 @@ items:
     eta_source: mof_planned
     margin_days: 4
     notes: []
+- id: V-C20
+  layer: conflict
+  why: '막 입항한 배: 최종 입항 신고(10:30)가 있고 배 신호 ETA는 아직 지나지 않았다(내일 10시). 실제 입항 출처가 앞선다(출처 mof_final)'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: {mmsi: 999000001, lat: 35.1, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-23T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null, final_arrival: '2026-09-22T10:30:00+09:00'}
+  history:
+  - {at: '2026-09-22T05:30:00+09:00', lat: 34.2, lng: 128.6, sog: 12.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: null
+    eta_source: mof_final
+    margin_days: 6
+    notes: []
 - id: V-X01
   layer: failure
   why: 배 위치도 해수부 일정도 받지 못했다. 도착 시각을 알 출처가 없어 등급과 일정을 내지 않는다(순항이라고 하지 않는다)
@@ -1154,6 +1173,24 @@ items:
     eta_source: mof_planned
     margin_days: 4
     notes: []
+- id: V-D06
+  layer: nodata
+  why: '배 위치가 없고 최종 입항 신고(10:30)만 있다. 판매 예정일이 있으면 그 시각으로 여유 6일을 센다(최종 신고도 위치 없이 세는 출처). 확신은 부분'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS}
+  position: null
+  schedule: {planned_arrival: null, actual_arrival: null, final_arrival: '2026-09-22T10:30:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: clear, navstat_mismatch: unknown}
+    grade: fine
+    confidence: partial
+    schedule: null
+    eta_source: mof_final
+    margin_days: 6
+    notes: [no_position]
 - id: V-S01
   layer: stage
   why: 단계 이름에 '검사'가 들어 있지만 멈춤 목록에 없는 이름이다. 멈춤으로 치지 않고 모르는 단계로 둔다(확신 부분)
