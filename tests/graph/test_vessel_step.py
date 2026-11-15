@@ -579,6 +579,7 @@ def test_ship_identifiers_and_ais_text_never_reach_the_model(agent_deps):
     config, state = run(graph, "TESTVSL0001 어디쯤 왔어요?")
     seen = "\n".join(prompts) + "\n".join(str(m.content) for m in state.values["messages"])
     assert prompts and "QQTST1" not in seen and "999000001" not in seen and "26TEST0001I" not in seen
+    assert "TEST CARGO A" not in seen  # 11-16 R-142: 배 이름(재생 검색 결과)도 모델 입력에 없다
     # 배 신호의 목적지 글(재생 값 "BUSAN, KR")은 공책 어디에도 없다
     assert "BUSAN, KR" not in json.dumps(state.values, ensure_ascii=False, default=str)
 
