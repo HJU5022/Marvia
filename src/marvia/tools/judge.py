@@ -18,7 +18,15 @@ from marvia.tools.ports import port
 from marvia.tools.rules import load_rules
 from marvia.tools.signals import compute, watches_ship
 from marvia.tools.verdict import Confidence, Grade, Schedule, Signal, confidence, grade, schedule
-from marvia.tools.vessel import PortSchedule, Position, TrackPoint, days_margin, trusted_eta, voyage_guard
+from marvia.tools.vessel import (
+    PortSchedule,
+    Position,
+    TrackPoint,
+    as_utc,
+    days_margin,
+    trusted_eta,
+    voyage_guard,
+)
 
 
 class Verdict(BaseModel):
@@ -102,7 +110,28 @@ def judge(
     #      그 뒤 다음 항구로 떠나거나 부두에 오래 서 있는 것은 이 화물의 위험이 아니다(11-13, 11-15 판정).
     #      배 신호(목적지, 항구 앞 정지, ETA 어긋남, 위치 끊김, 항해 상태)는 해당 없음(꺼짐)이고
     #      통관 단계와 통관 멈춤만 본다. 입항 전(실적 없음)의 신호는 그대로 켜진다
-    if source in rules["arrived_sources"]:
+    arrived = source in rules["arrived_sources"]
+    differs = False
+    if arrived and position is not None and position.ais_eta is not None and eta is not None:
+        # [왜] 11-15 판정(R-128). 입항 신고가 있어도 새 배 신호가 이 항만행이고 그 ETA가 입항 시각보다
+        #      eta_conflict_hours 넘게 뒤면 두 출처가 어긋난 것이다. 입항으로 치지 않고 ETA 어긋남을 켜며
+        #      확신은 부분이다. 배 신호가 오래됐거나 다른 항구행이면 어긋남으로 보지 않는다
+        state = {s.id: s.state for s in signals}
+        gap = (as_utc(position.ais_eta) - eta).total_seconds() / 3600
+        differs = (
+            state["position_stale"] == "clear"
+            and state["dest_changed"] == "clear"
+            and gap > rules["signals"]["eta_conflict_hours"]
+        )
+        if differs:
+            arrived = False
+            signals = [
+                Signal(id=s.id, state="triggered", value=f"입항 신고와 {gap:.1f}시간 어긋남")
+                if s.id == "eta_conflict"
+                else s
+                for s in signals
+            ]
+    if arrived:
         signals = [
             s if s.id == "customs_hold" else Signal(id=s.id, state="clear", value="이미 입항")
             for s in signals
@@ -120,7 +149,8 @@ def judge(
     notes += voyage_notes
     # [왜] notes는 확신을 낮춘 이유다. 이 항차의 실제 입항이 확인됐으면 배 신호를 보지 않으므로 위치나 일정이
     #      없다는 사실이 확신을 낮추지 않는다(11-15 판정). 그 사실은 참고 글(arrived)로 알린다
-    arrived = source in rules["arrived_sources"]
+    if differs:
+        notes.append("arrival_report_differs")
     if position is None and not arrived:
         notes.append("no_position")
     if plan is None and not arrived:
@@ -130,6 +160,8 @@ def judge(
     )
     # [왜] 항만 값을 확인하지 못했으면 신호가 모두 꺼져 보여도 "확실"이라고 하지 않는다
     if sure == "sure" and port_note:
+        sure = "partial"
+    if sure == "sure" and differs:
         sure = "partial"
     # [왜] 11-15 판정. 배 확정이 호출부호를 코드로 맞추지 못했으면(서류만, 사용자 선택만, 같은 호출부호의
     #      배가 여럿)

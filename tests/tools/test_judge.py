@@ -335,6 +335,26 @@ def test_a_future_arrival_is_not_an_arrival():
     assert judge(cargo(entry_date=here), anchored, soon, now=NOW).eta_source == "mof_final"
 
 
+def test_a_ship_signal_that_contradicts_the_arrival_report_keeps_the_ship_signals_on():
+    # [왜] 11-15 판정(R-128). 입항 신고가 있어도 새 배 신호가 이 항만행이고 ETA가 입항 시각보다 12시간 넘게
+    #      뒤면 두 출처가 어긋난 것이다. 입항으로 치지 않고 ETA 어긋남을 켜며 확신은 부분이다
+    here = date(2026, 9, 22)
+    report = PortSchedule(final_arrival=NOW - timedelta(hours=5), fetched_at=NOW)
+    far = ship(lat=32.4, lng=129.05, ais_eta=NOW + timedelta(hours=24))
+    seen = judge(cargo(entry_date=here), far, report, now=NOW, sale_due=date(2026, 9, 28))
+    states = {s.id: s.state for s in seen.signals}
+    assert states["eta_conflict"] == "triggered" and seen.confidence == "partial" and seen.grade != "fine"
+    assert "arrived" not in seen.info
+    # 배 신호가 입항 시각과 맞으면 입항으로 본다
+    near = ship(lat=32.4, lng=129.05, ais_eta=NOW - timedelta(hours=4))
+    assert "arrived" in judge(cargo(entry_date=here), near, report, now=NOW).info
+    # 배 신호가 오래됐거나 다른 항구행이면 어긋남으로 보지 않는다
+    stale = ship(ais_eta=NOW + timedelta(hours=24), last_time=NOW - timedelta(hours=9))
+    assert "arrived" in judge(cargo(entry_date=here), stale, report, now=NOW).info
+    gone = ship(ais_eta=NOW + timedelta(hours=24), dest="OSAKA", dest_code="JPOSA")
+    assert "arrived" in judge(cargo(entry_date=here), gone, report, now=NOW).info
+
+
 def test_only_the_voyage_guard_keeps_the_final_report_of_an_earlier_voyage_out():
     # [왜] 검증 N1. 지난 항차의 최종 신고는 이미 지난 시각이라 "지난 예정 거르기"에 걸리지 않는다.
     #      항차 가드만이 이것을 막는다
