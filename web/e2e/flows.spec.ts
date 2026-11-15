@@ -66,7 +66,12 @@ test.describe("배 식별", () => {
     await expect(page.getByRole("button", { name: /호출부호 QQTST1 · 배 번호 999000001/ })).toContainText("MRN)로 찾은 입항 신고가 없어 서류로 확정하지 않았어요");
     await expect(page.locator(".card")).not.toContainText("{ship");
     await accessible(page);
-    await page.screenshot({ path: "e2e/screenshots/vessel-choice.png", fullPage: true, mask: [page.locator(".cargo .meta")] });
+    // [왜] "권장안으로 진행 (N초 뒤 자동)"의 초는 찍을 때마다 달라 마스크한다
+    await page.screenshot({
+      path: "e2e/screenshots/vessel-choice.png",
+      fullPage: true,
+      mask: [page.locator(".cargo .meta"), page.getByRole("button", { name: /권장안으로 진행/ })],
+    });
     await page.getByRole("button", { name: /배 번호 999000001/ }).click();
     await expect(answers(page)).toContainText("정리했어요");
     await expect(card(page, "TESTVSL0002")).toContainText("고르신 배로 봤어요");
@@ -82,7 +87,8 @@ test.describe("배 식별", () => {
     await expect(answers(page)).toContainText("정리했어요");
     const cargo = card(page, "TESTVSL0007");
     await expect(cargo).toContainText("고르신 배로 봤어요");
-    await expect(cargo).not.toContainText("확신 확실");
+    // [왜] dt와 dd 사이에 공백이 없어 "확신 확실"이라는 글은 화면에 없다. 확신 칸의 값을 직접 본다
+    await expect(cargo.locator("dt", { hasText: "확신" }).locator("+ dd")).not.toHaveText("확실");
   });
 
   test("모르겠다고 하면 배 없이 진행하고 등급을 지어내지 않는다", async ({ page }) => {
