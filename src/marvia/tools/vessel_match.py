@@ -50,9 +50,10 @@ class Candidate(BaseModel):
 
 
 class Match(BaseModel):
-    """배 확정 결과. confirmed=이 배다, ask=가르지 못했으니 되묻는다, none=후보가 없다."""
+    """배 확정 결과. confirmed=코드가 이 배라고 정했다, ask=가르지 못했으니 되묻는다, none=후보가 없다,
+    user_choice=사용자가 고른 배(자동 확정과 구분한다. 근거와 상한은 basis, reason, cap에 있다)."""
 
-    status: Literal["confirmed", "ask", "none"]
+    status: Literal["confirmed", "ask", "none", "user_choice"]
     mmsi: int | None = None
     call_sign: str | None = None
     reason: Reason
@@ -182,7 +183,7 @@ def check_candidate(
 
     같은 호출부호를 가진 다른 배가 후보에 더 있으면 호출부호로는 이 배를 가르지 못했다: 확정은 하되
     호출부호를 맞춘 칸을 빼고 확신 상한(부분)을 건다. 그 결과가 되묻기(ask)면 어긋난 까닭을 이유로 달고
-    확정하되 상한(부분)을 건다.
+    확정하되 상한(부분)을 건다. 돌려주는 status는 늘 user_choice다(자동 확정 confirmed와 구분한다).
     """
     alone = match_vessel(facts, [candidate], plans, mrn_call_sign, mrn_lookup)
     shared = _sign(candidate.call_sign) and any(
@@ -191,17 +192,22 @@ def check_candidate(
     if alone.status == "confirmed" and shared:
         kept = [name for name in alone.basis if name != "call_sign"]
         return alone.model_copy(
-            update={"reason": "same_call_sign_many_mmsi", "basis": kept, "cap": "partial"}
+            update={
+                "status": "user_choice",
+                "reason": "same_call_sign_many_mmsi",
+                "basis": kept,
+                "cap": "partial",
+            }
         )
     if alone.status == "ask":
         # [왜] 사용자의 선택은 받는다. 다만 호출부호를 코드로 맞추지 못했으니 어긋난 까닭을 이유로 달고
         #      확신을 부분까지만 둔다 (11-15 판정, R-126). 사용자가 골랐다는 것만으로 "확실"이 되지 않는다
         return Match(
-            status="confirmed",
+            status="user_choice",
             mmsi=candidate.mmsi,
             call_sign=candidate.call_sign,
             reason=alone.reason,
             basis=[],
             cap="partial",
         )
-    return alone
+    return alone.model_copy(update={"status": "user_choice"})

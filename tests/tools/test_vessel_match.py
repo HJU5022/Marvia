@@ -237,21 +237,25 @@ def test_a_pick_among_ships_sharing_a_call_sign_is_capped_even_though_the_call_s
     twin = A.model_copy(update={"mmsi": 999000009})
     picked = check_candidate(cargo(), A, [A, twin], {}, "QQTST1", "found_signed")
     assert (picked.status, picked.mmsi, picked.reason, picked.cap) == (
-        "confirmed",
+        "user_choice",
         999000001,
         "same_call_sign_many_mmsi",
         "partial",
     )
     assert "call_sign" not in picked.basis
     alone = check_candidate(cargo(), A, [A, B], {}, "QQTST1", "found_signed")
-    assert (alone.reason, alone.cap) == (
+    # [왜] 11-16 판정(R-130). 사용자가 고른 결과는 자동 확정(confirmed)과 구분해 user_choice로 둔다.
+    #      호출부호를 코드로 맞춘 고름은 근거(basis)와 이유를 지니고 상한이 없다(그 근거가 있어서다)
+    assert (alone.status, alone.reason, alone.cap, alone.basis) == (
+        "user_choice",
         "mrn_call_sign",
         None,
-    )  # 같은 호출부호의 다른 배가 없으면 상한이 없다
+        ["call_sign"],
+    )
     # 서류와 어긋나는 후보를 골라도 사용자의 선택은 받되, 어긋난 까닭을 이유로 달고 확신 상한을 건다
     differs = check_candidate(cargo(), B, [A, B], {}, "QQTST1", "found_signed")
     assert (differs.status, differs.mmsi, differs.reason, differs.cap, differs.basis) == (
-        "confirmed",
+        "user_choice",
         999000002,
         "mrn_call_sign_differs",
         "partial",
@@ -274,7 +278,7 @@ def test_every_pick_not_matched_by_call_sign_is_capped_and_cannot_reach_sure_in_
     ]
     first = datetime(2026, 9, 24, 12, 0, tzinfo=KST)
     for pick in picks:
-        assert pick.status == "confirmed" and pick.cap == "partial" and "call_sign" not in pick.basis
+        assert pick.status == "user_choice" and pick.cap == "partial" and "call_sign" not in pick.basis
         seen = judge(
             cargo(), ship(), schedule(), now=NOW, first_eta=first, cap=pick.cap, cap_note="ship_unchecked"
         )
