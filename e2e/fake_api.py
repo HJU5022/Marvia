@@ -1,7 +1,8 @@
 """화면 e2e용 가짜 API (계획 4b Task 9). 실제 모델·Voyage·DB 없이 화면 서버(marvia.server)를 띄운다.
 
 질문 글로 각본을 고르는 가짜 모델, 가짜 RAG·조문 조회·작성자, 메모리 대화 기록으로 그래프를 만든다.
-UNI-PASS는 재생 데이터(DEMO 번호)다. 로그인은 개발 로그인(MARVIA_AUTH=dev)만 쓴다.
+UNI-PASS·해수부·ShipFinder는 재생 데이터(DEMO·TESTVSL 번호, QQ 호출부호)다.
+로그인은 개발 로그인(MARVIA_AUTH=dev)만 쓴다.
 [주의] 운영 이미지에는 이 파일이 들어가지 않는다(Dockerfile의 e2e 단계에만 복사한다). 바깥 호출 0건:
        Anthropic·Voyage 클라이언트를 만들지 않고, compose e2e 망은 바깥으로 나가지 못한다(internal).
 실행(컨테이너 안): python e2e/fake_api.py
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 import uvicorn
@@ -127,12 +128,17 @@ def fake_deps() -> AgentDeps:
         write=write,
         model=ScriptModel(),
         provision=lambda label, as_of: [UNIT] if label == "관세법 제241조제3항" else [],
+        # [왜] 재생 배의 마지막 위치 수신(09-22 11:30) 30분 뒤로 고정한다. 판정과 그림이 날마다 같다 (계획 8b)
+        now=lambda: datetime(2026, 9, 22, 3, 0, tzinfo=UTC),
     )
 
 
 def main() -> None:
     settings = Settings()
-    graph = build_main_graph(fake_deps(), InMemorySaver(), loop="agent", store=InMemoryStore())
+    # [왜] 배 식별 화면은 MARVIA_VESSEL=on으로 띄웠을 때만 본다(compose의 E2E_VESSEL). 기본은 off다 (계획 8b)
+    graph = build_main_graph(
+        fake_deps(), InMemorySaver(), loop="agent", store=InMemoryStore(), vessel=settings.vessel == "on"
+    )
     app = build_app(graph, verifier(settings), web_origin=settings.web_origin, forget=lambda user: None)
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
 

@@ -8,8 +8,10 @@
 값이 달라지면 고치기 전에 무엇이 달라졌는지부터 본다.
 """
 
+import ast
 import hashlib
 import json
+from pathlib import Path
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
@@ -124,3 +126,51 @@ def test_other_loops_and_the_trace_scrubber_are_unchanged_when_the_switch_is_off
         }
         assert not {"vessels", "verdicts", "vessel_question"} & set(values), loop
     assert _sha(seen) == LOOPS_SHA
+
+
+def test_the_eval_runner_builds_a_graph_without_the_vessel_step_even_when_the_env_asks_for_it(
+    agent_deps, monkeypatch
+):
+    # [왜] 11-13 판정. 켜는 길은 서버 하나다. 평가 실행기가 스위치를 환경에서 읽으면 측정이 달라진다.
+    #      환경에 MARVIA_VESSEL=on을 넣고 평가 실행기가 실제로 만든 그래프를 본다(글자 찾기가 아니라 동작)
+    from marvia.eval import run as eval_run
+    from marvia.eval.dataset import Item, load_set
+    from marvia.tools.rules import load_rules
+
+    monkeypatch.setenv("MARVIA_VESSEL", "on")
+    built = []
+    real = eval_run.build_main_graph
+    monkeypatch.setattr(
+        eval_run, "build_main_graph", lambda *a, **k: built.append(real(*a, **k)) or built[-1]
+    )
+    base = {"id": "T1", "group": "related", "kind": "시험", "behaviour": ["answer"]}
+    asked = Item.model_validate({**base, "question": "DEMO0001 언제까지 수입신고 해요?"})
+    for loop in ("planner", "agent"):
+        deps = agent_deps(model=ToolModel(messages=iter([AIMessage("끝")] * 5)))
+        eval_run.evaluate_item(deps, asked, loop, load_set().as_of, load_rules("pricing"))
+    assert len(built) == 2 and all("vessel" not in graph.nodes for graph in built)
+    # 서버 진입점만 스위치를 읽는다: build_main_graph를 부르며 vessel= 키워드를 넘기는 파일은 server.py뿐이다
+    root = Path(__file__).resolve().parents[2]
+    passing = []
+    for folder in ("src", "scripts", "e2e"):
+        for path in (root / folder).rglob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "build_main_graph":
+                    if any(keyword.arg == "vessel" for keyword in node.keywords):
+                        passing.append(
+                            (
+                                str(path.relative_to(root)),
+                                ast.unparse(next(k for k in node.keywords if k.arg == "vessel").value),
+                            )
+                        )
+    assert sorted(passing) == [
+        ("e2e/fake_api.py", "settings.vessel == 'on'"),
+        ("src/marvia/server.py", "settings.vessel == 'on'"),
+    ]
+
+
+def test_the_default_setting_is_off_and_compose_does_not_turn_it_on_for_the_runtime(monkeypatch):
+    from marvia.config import Settings
+
+    monkeypatch.delenv("MARVIA_VESSEL", raising=False)
+    assert Settings(_env_file=None).vessel == "off"  # type: ignore[call-arg]
