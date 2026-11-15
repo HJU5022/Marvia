@@ -248,6 +248,34 @@ def test_a_pick_among_ships_sharing_a_call_sign_is_capped_even_though_the_call_s
         "mrn_call_sign",
         None,
     )  # 같은 호출부호의 다른 배가 없으면 상한이 없다
-    # 서류와 어긋나는 후보를 골라도 그 결과가 그대로 따라온다(되묻기 이유)
+    # 서류와 어긋나는 후보를 골라도 사용자의 선택은 받되, 어긋난 까닭을 이유로 달고 확신 상한을 건다
     differs = check_candidate(cargo(), B, [A, B], {}, "QQTST1", "found_signed")
-    assert (differs.status, differs.reason) == ("ask", "mrn_call_sign_differs")
+    assert (differs.status, differs.mmsi, differs.reason, differs.cap, differs.basis) == (
+        "confirmed",
+        999000002,
+        "mrn_call_sign_differs",
+        "partial",
+        [],
+    )
+
+
+def test_every_pick_not_matched_by_call_sign_is_capped_and_cannot_reach_sure_in_the_verdict():
+    # [왜] 11-15 판정(R-126). 사용자가 고른 배는 호출부호를 코드로 맞추지 못했으면 늘 상한이 걸린다:
+    #      MRN 없음, 조회 실패, 서류 불일치, 호출부호 다름, 같은 호출부호 여럿
+    wrong_papers = {"QQTST1": [plan("QQTST1", day=27)]}
+    picks = [
+        check_candidate(cargo(), A, [A, B], {}, None, "none"),
+        check_candidate(cargo(), A, [A, B], {}, None, "failed"),
+        check_candidate(cargo(), A, [A, B], wrong_papers, None, "found_unsigned"),
+        check_candidate(cargo(), B, [A, B], {}, "QQTST1", "found_signed"),
+        check_candidate(
+            cargo(), A, [A, A.model_copy(update={"mmsi": 999000009})], {}, "QQTST1", "found_signed"
+        ),
+    ]
+    first = datetime(2026, 9, 24, 12, 0, tzinfo=KST)
+    for pick in picks:
+        assert pick.status == "confirmed" and pick.cap == "partial" and "call_sign" not in pick.basis
+        seen = judge(
+            cargo(), ship(), schedule(), now=NOW, first_eta=first, cap=pick.cap, cap_note="ship_unchecked"
+        )
+        assert seen.confidence != "sure" and "ship_unchecked" in seen.notes, pick.reason

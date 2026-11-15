@@ -181,7 +181,8 @@ def check_candidate(
     """사용자가 고른 후보 하나를 같은 검사에 건다(그 후보 하나만 있다고 보고 맞춘다).
 
     같은 호출부호를 가진 다른 배가 후보에 더 있으면 호출부호로는 이 배를 가르지 못했다: 확정은 하되
-    호출부호를 맞춘 칸을 빼고 확신 상한(부분)을 건다. 그 결과가 되묻기(ask)면 어긋난 까닭이다.
+    호출부호를 맞춘 칸을 빼고 확신 상한(부분)을 건다. 그 결과가 되묻기(ask)면 어긋난 까닭을 이유로 달고
+    확정하되 상한(부분)을 건다.
     """
     alone = match_vessel(facts, [candidate], plans, mrn_call_sign, mrn_lookup)
     shared = _sign(candidate.call_sign) and any(
@@ -191,5 +192,16 @@ def check_candidate(
         kept = [name for name in alone.basis if name != "call_sign"]
         return alone.model_copy(
             update={"reason": "same_call_sign_many_mmsi", "basis": kept, "cap": "partial"}
+        )
+    if alone.status == "ask":
+        # [왜] 사용자의 선택은 받는다. 다만 호출부호를 코드로 맞추지 못했으니 어긋난 까닭을 이유로 달고
+        #      확신을 부분까지만 둔다 (11-15 판정, R-126). 사용자가 골랐다는 것만으로 "확실"이 되지 않는다
+        return Match(
+            status="confirmed",
+            mmsi=candidate.mmsi,
+            call_sign=candidate.call_sign,
+            reason=alone.reason,
+            basis=[],
+            cap="partial",
         )
     return alone
