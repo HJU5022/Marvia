@@ -11,6 +11,7 @@
 import ast
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -152,17 +153,18 @@ def test_the_eval_runner_builds_a_graph_without_the_vessel_step_even_when_the_en
     # 서버 진입점만 스위치를 읽는다: build_main_graph를 부르며 vessel= 키워드를 넘기는 파일은 server.py뿐이다
     root = Path(__file__).resolve().parents[2]
     passing = []
-    for folder in ("src", "scripts", "e2e"):
-        for path in (root / folder).rglob("*.py"):
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "build_main_graph":
-                    if any(keyword.arg == "vessel" for keyword in node.keywords):
-                        passing.append(
-                            (
-                                str(path.relative_to(root)),
-                                ast.unparse(next(k for k in node.keywords if k.arg == "vessel").value),
-                            )
-                        )
+    # [왜] 폴더 목록으로 좁히면 eval/ 같은 새 폴더의 호출을 놓친다. 시험을 뺀 저장소의 모든 .py를 본다
+    tracked = subprocess.run(
+        ["git", "ls-files", "*.py"], cwd=root, capture_output=True, text=True, check=True
+    ).stdout.split()
+    for name in tracked:
+        if name.startswith("tests/"):
+            continue
+        for node in ast.walk(ast.parse((root / name).read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1] == "build_main_graph":
+                for keyword in node.keywords:
+                    if keyword.arg == "vessel":
+                        passing.append((name, ast.unparse(keyword.value)))
     assert sorted(passing) == [
         ("e2e/fake_api.py", "settings.vessel == 'on'"),
         ("src/marvia/server.py", "settings.vessel == 'on'"),
