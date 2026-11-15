@@ -14,4 +14,14 @@
 <details>
 <detail><reqstSeNm>최종</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-22T10:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 2선석</laidupFcltyNm><mrNum>26TEST0002I</mrNum></detail>
 </details></item>
-</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>2</totalCount></body></response>
+<item><prtAgCd>020</prtAgCd><clsgn></clsgn><vsslNm>TEST CARGO C</vsslNm><vsslNltyCd>PA</vsslNltyCd><vsslKndNm>풀컨테이너선</vsslKndNm>
+<prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm>
+<details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 3선석</laidupFcltyNm><mrNum>26TEST0004I</mrNum></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTWN</clsgn><vsslNm>TEST TWIN</vsslNm><vsslNltyCd>PA</vsslNltyCd><vsslKndNm>풀컨테이너선</vsslKndNm>
+<prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm>
+<details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 4선석</laidupFcltyNm><mrNum>26TEST0007I</mrNum></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>4</totalCount></body></response>

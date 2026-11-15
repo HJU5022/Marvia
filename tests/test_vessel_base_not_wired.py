@@ -20,6 +20,7 @@ from marvia.graph.answer import cargo_lines
 from marvia.graph.tools import make_tools
 
 ROOT = Path(__file__).resolve().parents[1]
+MEASURED_CARGOS = ("DEMO0001", "DEMO0002", "DEMO0003", "MOCK12345678", "TEST87654321")
 GRAPH_FILES = (
     "__init__",
     "agent",
@@ -60,7 +61,8 @@ GROUPS: dict[str, tuple[list[str], str]] = {
     ),
     "평가셋 v3": (["eval/set_v3.yaml"], "e222b902acec89b9ba121e3c4b3361827ec37161e0b9c98b6f63ee63b0a8b705"),
     "재생 화물": (
-        ["fixtures/unipass/*.json"],
+        # [왜] 측정에 쓴 다섯 화물만 묶는다. 계획 8b가 더한 화물(TESTVSL000x)은 평가 문항이 쓰지 않는다
+        [f"fixtures/unipass/{name}.json" for name in MEASURED_CARGOS],
         "6e67943f9416bd31e256b5c04c553fa746c55e5844b962967df08b1005f8385b",
     ),
     # 아래 다섯 묶음은 11-13에 더했다. 값은 측정 커밋과 같음을 git diff로 확인한 뒤 적었다.
