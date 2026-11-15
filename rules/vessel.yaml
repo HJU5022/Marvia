@@ -1,0 +1,50 @@
+# 배 식별 단계의 값과 글. 코드(src/marvia/graph/vessel.py, src/marvia/view.py)가 읽는다 (계획 8b, 설계 4.1 ②, 6.3).
+# 스위치 MARVIA_VESSEL=on일 때만 이 단계가 돈다. 기본은 off다.
+max_cargos: 3 # 한 차례에 배를 찾는 화물 수 상한. 넘는 화물은 배를 찾지 않고 그렇다고 적는다
+max_candidates: 5 # 배 후보를 이 수까지만 맞춰 본다. 후보마다 해수부 입항 신고를 한 번 조회한다
+max_choices: 2 # 선택 카드에 보이는 배 후보 수. 권고 선택지(배 없이 진행)와 합쳐 셋까지다 (설계 6.3: 2~3개)
+
+# 배를 가리지 못했을 때의 선택 카드. {token}은 가린 화물 이름표이고 화면으로 갈 때 실제 번호로 되돌린다.
+# [주의] 질문 머리와 가정 글에는 배 이름을 넣지 않는다. 가정 글은 답과 대화 기록에 남아 모델이 다시 읽는다
+question: "{token} 화물을 실은 배를 가리지 못했어요. 어느 배인가요?"
+skip:
+  label: 모르겠어요
+  description: 배 정보 없이 진행해요. 통관 단계는 그대로 보여 드려요
+candidate: "호출부호 {call_sign} · 배 번호 {mmsi}" # 후보 선택지의 설명. 이름표(label)는 배 이름이다
+no_call_sign: 없음 # 후보에 호출부호가 없을 때 위 글에 넣는 말
+assumption: "{token} 화물의 배를 확인하지 못해 배 정보 없이 진행했어요" # 답 없이 넘어갔을 때 가정으로 남기는 글
+
+# 배 확인 결과의 이유 이름 → 화물 카드에 보이는 글. 앞의 열둘은 tools/vessel_match.py의 이유다
+reasons:
+  no_candidate: 배 후보를 찾지 못했어요
+  mrn_call_sign: 맞춰 본 칸은 호출부호예요. 입항 신고의 호출부호와 같아요
+  papers_match: 맞춰 본 칸은 입항일과 적재항이에요. 세관 기록과 해수부 입항 신고가 맞아요
+  mrn_call_sign_differs: 후보의 호출부호가 입항 신고와 달라요
+  flag_differs: 후보의 국적이 세관 기록과 달라요
+  same_call_sign_many_mmsi: 같은 호출부호의 배가 여럿이에요
+  candidate_without_call_sign: 호출부호가 없는 후보가 있어 가리지 못했어요
+  no_papers: 맞춰 볼 세관 입항일이나 적재항이 없어요
+  schedule_lookup_failed: 후보의 입항 신고를 받지 못했어요
+  papers_match_none: 세관 입항일·적재항과 맞는 후보가 없어요
+  papers_match_many: 세관 입항일·적재항과 맞는 후보가 여럿이에요
+  mrn_lookup_failed: 입항 신고 번호(MRN)로 해수부 입항 신고를 받지 못해 서류로 확정하지 않았어요
+  mrn_report_missing: 입항 신고 번호(MRN)로 찾은 입항 신고가 없어 서류로 확정하지 않았어요
+  no_clue: 배를 찾을 단서(입항 신고 번호, 배 이름)가 없어요
+  lookup_failed: 배 위치 서비스에서 후보를 받지 못했어요
+  over_cap: 한 번에 배를 찾는 화물 수를 넘어 이 화물은 찾지 않았어요
+  another_question: 다른 화물의 배를 먼저 여쭤봤어요. 이 화물은 배 없이 진행했어요
+  user_choice: 고르신 배로 봤어요
+  landed: 배에서 내린 화물이라 배 위치는 보지 않았어요
+  user_skipped: 배를 모른다고 하셔서 배 없이 진행했어요
+  no_answer: 답이 없어 배 없이 진행했어요
+
+# 화물 카드의 판정 칸에 쓰는 말
+labels:
+  no_grade: 등급 없음
+  no_schedule: 일정 모름
+  eta_sources:
+    mof_actual: 해수부 입항 실적
+    mof_final: 해수부 최종 입항 신고
+    mof_planned: 해수부 입항 예정
+    ais_eta: 배 신호
+    forwarder_eta: 포워더가 알려 준 날

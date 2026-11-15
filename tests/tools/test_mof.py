@@ -428,3 +428,15 @@ def test_among_several_reports_of_one_call_sign_the_one_nearest_the_customs_entr
     # 세관 입항일을 모르면 고르지 않는다: 받은 첫 줄 그대로이고 판정(judge)이 어느 줄도 쓰지 않는다
     first = seen(None)
     assert first.final_arrival == datetime(2026, 9, 22, 8, 0, tzinfo=KST)
+
+
+def test_plans_for_one_ship_use_the_ports_search_window(monkeypatch):
+    # [왜] 같은 이름의 배 후보마다 그 배의 입항 신고를 받아 세관 입항일·적재항과 맞춘다(계획 8b 배 확정)
+    busan = port("KRPUS")
+    assert busan is not None
+    found = mof.plans_for(busan, "qqtst 1", date(2026, 9, 24))
+    assert isinstance(found, list) and [p.call_sign for p in found] == ["QQTST1"]
+    assert mof.plans_for(busan, "QQNONE", date(2026, 9, 24)) == []
+    incheon = port("KRINC")
+    assert incheon is not None
+    assert mof.plans_for(incheon, "QQTST1", date(2026, 9, 24)).code == "port_unknown"  # type: ignore[union-attr]

@@ -392,3 +392,30 @@ def plans_near(row: Port, day: date) -> list[SailingPlan] | ToolError:
             base_url=base_url,
             max_pages=CFG["max_pages"],
         )
+
+
+def plans_for(row: Port, call_sign: str, day: date) -> list[SailingPlan] | ToolError:
+    """배 한 척의 세관 입항(예정)일 앞뒤 입항 신고. 같은 이름의 배 후보를 서류로 가를 때 쓴다."""
+    if not row.mof_office or row.mrn_search_days is None:
+        return _error("port_unknown")
+    session = _session()
+    if isinstance(session, ToolError):
+        return session
+    client, base_url, key = session
+    span = timedelta(days=row.mrn_search_days)
+    with client:
+        found = sailing_plans(
+            row.mof_office,
+            day - span,
+            day + span,
+            key=key,
+            client=client,
+            base_url=base_url,
+            call_sign=call_sign,
+        )
+    # [왜] 해수부가 조회 조건을 다르게 적용해도 남의 배 신고를 그 배의 것으로 쓰지 않는다
+    return (
+        found
+        if isinstance(found, ToolError)
+        else [p for p in found if _sign(p.call_sign) == _sign(call_sign)]
+    )

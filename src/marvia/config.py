@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     shipfinder_mode: Literal["replay", "live"] = "replay"  # MARVIA_SHIPFINDER_MODE
     shipfinder_key: SecretStr = SecretStr("")  # MARVIA_SHIPFINDER_KEY
 
+    # 배 식별 단계와 화물 카드의 판정 칸 (계획 8b). [왜] 기본이 off라 켜기 전에는 그래프와 화면이 그대로다
+    vessel: Literal["off", "on"] = "off"  # MARVIA_VESSEL
+
     # 규정 검색 MCP (계획 3b Task 8). [왜] mcp면 에이전트 RAG가 같은 MCP 서버를 메모리 통로로 부른다(설계 9절)
     rag_via: Literal["direct", "mcp"] = "mcp"  # MARVIA_RAG_VIA
     mcp_token: SecretStr = SecretStr("")  # MARVIA_MCP_TOKEN. 비면 scripts/serve_mcp.py가 뜨지 않는다
