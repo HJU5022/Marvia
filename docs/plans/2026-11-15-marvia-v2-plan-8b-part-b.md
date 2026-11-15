@@ -113,11 +113,11 @@ npx tsc --noEmit
 화면 시험 (Docker, 바깥으로 나가지 못하는 망). 두 번 돈다. 사이에 컨테이너를 내려야 가짜 API가 새 값으로 뜬다:
 
 ```bash
-docker compose --profile e2e run --rm --build playwright
+docker compose -p marvia-v2-e2e --profile e2e run --rm --build playwright
 git status --short web/e2e/screenshots     # 아무 줄도 없어야 한다(기존 그림 셋이 바이트까지 같다)
-docker compose --profile e2e down
-E2E_VESSEL=on docker compose --profile e2e run --rm --build playwright
-docker compose --profile e2e down
+docker compose -p marvia-v2-e2e --profile e2e down
+E2E_VESSEL=on docker compose -p marvia-v2-e2e --profile e2e run --rm --build playwright
+docker compose -p marvia-v2-e2e --profile e2e down
 ```
 
 - 코드 블록 검증: A부분이 들어간 `2bc6073`를 내보낸 깨끗한 사본에 아래 커밋을 차례로 쌓고, 커밋마다 명령 A와 명령 B를 돌렸다. 사본의 시험은 개발 DB가 아니라 검증용 DB(`marvia_verify`)에 붙였고 시험 스키마는 실행마다 무작위 이름이다. 시험용 Neo4j는 꺼 둔 상태라 8개가 건너뛰어졌다. 기준(`2bc6073`)은 1205 passed, 8 skipped이고 커밋마다의 수는 아래 표다. 커밋마다 ruff, 형식, pyright 오류 0이었다. 한 커밋의 파일은 14개 이하다 [실측 11-16]. 이 문서의 diff 블록 55개만으로 `2bc6073`을 내보낸 새 사본에 다시 깔아 보았다: 쌓은 사본과 파일이 모두 같았고, 그 새 사본에서 전체 시험은 1271 passed, 8 skipped였다 [실측 11-16].
@@ -3110,11 +3110,11 @@ git commit -m "test(server): 환경에 스위치를 켜도 평가 실행기의 �
 
 ```bash
 cd web && npm ci && npx tsc --noEmit && cd ..
-docker compose --profile e2e run --rm --build playwright      # 기존 흐름 통과, 배 식별 건너뜀
+docker compose -p marvia-v2-e2e --profile e2e run --rm --build playwright      # 기존 흐름 통과, 배 식별 건너뜀
 git status --short web/e2e/screenshots                       # 아무 줄도 없어야 한다(기존 그림 셋이 바이트까지 같다)
-docker compose --profile e2e down
-E2E_VESSEL=on docker compose --profile e2e run --rm --build playwright   # 배 식별 통과, 기존 건너뜀
-docker compose --profile e2e down
+docker compose -p marvia-v2-e2e --profile e2e down
+E2E_VESSEL=on docker compose -p marvia-v2-e2e --profile e2e run --rm --build playwright   # 배 식별 통과, 기존 건너뜀
+docker compose -p marvia-v2-e2e --profile e2e down
 ```
 
 기본 실행 뒤 그림이 달라졌으면 멈추고 무엇이 달라졌는지 본다(꺼진 화면이 바뀐 것이다). 켠 실행이 만든 그림 셋은 눈으로 본 뒤 이 커밋에 함께 넣는다. `web/tsconfig.tsbuildinfo`는 커밋에 넣지 않는다.
@@ -3192,7 +3192,7 @@ Expected: `2 failed, 6 passed in 5.54s`. 실패하는 것: `test_the_build_conte
        MARVIA_AUTH: dev
        MARVIA_DEV_TOKEN: e2e-token # 시험용 값. 운영에 쓰지 않는다
        MARVIA_WEB_ORIGIN: http://web-e2e:3000
-+      # 배 식별 화면 시험: E2E_VESSEL=on docker compose --profile e2e run --rm --build playwright (계획 8b)
++      # 배 식별 화면 시험: E2E_VESSEL=on docker compose -p marvia-v2-e2e --profile e2e run --rm --build playwright (계획 8b)
 +      MARVIA_VESSEL: ${E2E_VESSEL:-off}
      networks: [e2e]
    web-e2e:

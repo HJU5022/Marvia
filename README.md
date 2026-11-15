@@ -130,7 +130,7 @@ v1(B/L 하나로 순항·주의·긴급 판정)은 태그 `v1-final`에 있다.
 화면과 화면 흐름은 Docker 안에서만 돈다(호스트에 npm·브라우저를 깔지 않는다).
 
 - 로컬 앱(DB 표 만들기(prepare) → API `127.0.0.1:8080`, 화면 `127.0.0.1:3000`): `docker compose --profile app up -d --build`. 모델·데이터 키와 로그인 설정이 없으면 서버가 시작을 거절한다.
-- 화면 흐름(공식 Playwright 이미지, 가짜 모델, 바깥 막힌 망): `docker compose --profile e2e run --rm --build playwright`. 스크린샷을 임시 폴더에 쓰는 꼴은 [계획 6c 문서](docs/plans/2026-11-08-marvia-v2-plan-6c-fixes.md)의 명령 C다.
+- 화면 흐름(공식 Playwright 이미지, 가짜 모델, 바깥 막힌 망): `docker compose -p marvia-v2-e2e --profile e2e run --rm --build playwright`(프로젝트 이름을 따로 줘서 끝낸 뒤 `down`이 개발 DB 컨테이너를 지우지 않는다). 스크린샷을 임시 폴더에 쓰는 꼴은 [계획 6c 문서](docs/plans/2026-11-08-marvia-v2-plan-6c-fixes.md)의 명령 C다.
 - 배포 절차와 이 컴퓨터에서 돌린 확인: [`docs/deploy.md`](docs/deploy.md).
 
 ## 문서 지도

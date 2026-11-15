@@ -90,7 +90,7 @@ services:
       MARVIA_AUTH: dev
       MARVIA_DEV_TOKEN: e2e-token # 시험용 값. 운영에 쓰지 않는다
       MARVIA_WEB_ORIGIN: http://web-e2e:3000
-      # 배 식별 화면 시험: E2E_VESSEL=on docker compose --profile e2e run --rm --build playwright (계획 8b)
+      # 배 식별 화면 시험: E2E_VESSEL=on docker compose -p marvia-v2-e2e --profile e2e run --rm --build playwright (계획 8b)
       MARVIA_VESSEL: ${E2E_VESSEL:-off}
     networks: [e2e]
   web-e2e:
