@@ -158,3 +158,20 @@ def test_schedule_cell_is_empty_without_a_first_known_eta_except_overdue():
     over = judge(cargo(), ship(), plan(), now=NOW, sale_due=date(2026, 9, 23))
     assert over.schedule == "overdue" and over.info == ["no_first_eta"]
     assert "no_first_eta" in load_rules("verdict")["info"]
+
+
+def test_an_arrived_ship_is_not_marked_down_for_having_no_planned_arrival_to_compare():
+    # [왜] 11-13 판정. 입항이 끝난 배에 "입항 예정과 견주지 못함"으로 확신을 깎지 않는다.
+    #      믿을 ETA의 출처가 실제 입항(관제 실적, 최종 입항 신고)이면 ETA 어긋남 신호는 꺼짐이다
+    docked = ship(ais_eta=NOW - timedelta(hours=2))  # 지난 배 신호 ETA. 입항 예정은 없고 관제 실적이 있다
+    arrived = plan(planned=None, actual=NOW - timedelta(hours=1))
+    seen = judge(cargo(), docked, arrived, now=NOW)
+    state = {s.id: s.state for s in seen.signals}
+    assert seen.eta_source == "mof_actual" and state["eta_conflict"] == "clear" and seen.confidence == "sure"
+    # 다른 신호는 그대로다: 위치가 없으면 위치로 보는 신호가 모름이라 확신은 부분이다
+    blind = judge(cargo(), None, arrived, now=NOW)
+    assert {s.id: s.state for s in blind.signals}["eta_conflict"] == "clear" and blind.confidence == "partial"
+    # 입항 전이면 지금까지와 같다: 입항 예정이 없으면 모름
+    before = judge(cargo(), ship(), plan(planned=None), now=NOW)
+    assert {s.id: s.state for s in before.signals}["eta_conflict"] == "unknown"
+    assert load_rules("verdict")["arrived_sources"] == ["mof_actual", "mof_final"]

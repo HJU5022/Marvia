@@ -39,12 +39,18 @@ def test_every_vessel_match_item_gets_the_expected_result():
 def test_ported_items_give_the_same_six_signals_as_v1():
     # [왜] 옮긴 문항의 v1 칸은 v1 신호 코드가 같은 입력에 낸 값이다. 다르면 옮기다 판단이 바뀐 것이다
     ids = load_rules("verdict")["signal_ids"]
+    arrived = load_rules("verdict")["arrived_sources"]
     for item in SET.items:
         if item.layer != "ported":
             assert item.v1 is None
             continue
         assert item.v1 is not None and sorted(item.v1.signals) == sorted(ids)
-        assert item.expect.signals == item.v1.signals, item.id
+        want = dict(item.v1.signals)
+        # [왜] v1과 다른 곳 하나(11-13 판정): 이미 입항한 배(믿을 ETA의 출처가 실제 입항)는 ETA 어긋남이
+        #      "모름"이 아니라 꺼짐이다. v1은 입항 예정이 없으면 모름으로 두어 입항한 배의 확신을 깎았다
+        if item.expect.eta_source in arrived:
+            want["eta_conflict"] = "clear"
+        assert item.expect.signals == want, item.id
 
 
 def test_grade_differs_from_v1_only_where_the_set_says_why():

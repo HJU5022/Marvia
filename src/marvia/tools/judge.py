@@ -64,6 +64,13 @@ def judge(
     rules = load_rules("verdict")
     signals = compute(facts, position, plan, now=now, history=history)
     eta, source = trusted_eta(position, plan, facts.port_code if facts else None, forwarder_eta, now=now)
+    # [왜] 입항이 끝난 배는 배 신호 ETA를 입항 예정과 견줄 일이 없다. 그 신호를 "모름"으로 두면 입항한 배의
+    #      확신이 까닭 없이 내려간다(11-13 판정). 실제 입항 출처가 있으면 꺼짐(견줄 필요 없음)으로 둔다
+    if source in rules["arrived_sources"]:
+        signals = [
+            Signal(id=s.id, state="clear", value="이미 입항") if s.id == "eta_conflict" else s
+            for s in signals
+        ]
     # [왜] 해수부의 입항 실적과 입항 예정은 배 위치와 무관한 신고다. 위치가 없어도 그 시각으로 센다.
     #      배 신호의 ETA나 포워더가 알려 준 날뿐인데 위치가 없으면 세지 않는다(그 값을 뒷받침할 것이 없다).
     #      v1은 위치가 없으면 늘 세지 않았다. 그때는 판정 자체를 하지 않고 되물었다
