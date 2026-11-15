@@ -1,4 +1,9 @@
-"""배 추적 기반(계획 8a)은 그래프에 연결하지 않는다. 측정 커밋(48ca3c5)의 평가 조건이 그대로임을 고정한다.
+"""측정 커밋(48ca3c5)의 파일 묶음이 그대로임을 고정한다 (계획 8a, 계획 8b에서 다섯 파일을 뺌).
+
+본 측정은 끝났다. 이 고정의 목적은 이제 "배 식별 스위치가 꺼진 길이 그대로"를 지키는 것이다.
+계획 8b는 배 식별 단계를 스위치(MARVIA_VESSEL, 기본 off) 뒤에 더하며 다섯 파일을 고친다:
+graph/main.py, graph/state.py, server.py, view.py, trace.py. 그 다섯만 묶음에서 빼고
+"꺼져 있으면 동작이 같다"를 tests/graph/test_vessel_off.py가 본다. 나머지 묶음과 값은 그대로다.
 
 묶음마다 파일 이름과 내용을 이어 sha256 하나로 묶었다. 값은 측정 커밋의 것이다.
 연결하는 계획(도구 목록·지시문·화물 줄을 바꾸는 계획)은 바뀐 묶음의 값을 함께 바꾸고 그 까닭을 적는다.
@@ -15,6 +20,19 @@ from marvia.graph.answer import cargo_lines
 from marvia.graph.tools import make_tools
 
 ROOT = Path(__file__).resolve().parents[1]
+GRAPH_FILES = (
+    "__init__",
+    "agent",
+    "answer",
+    "identify",
+    "live",
+    "rag",
+    "resume",
+    "schemas",
+    "supervisor",
+    "tools",
+    "verify",
+)
 # 묶음 이름 → (파일을 고르는 glob 목록, 측정 커밋의 sha256)
 GROUPS: dict[str, tuple[list[str], str]] = {
     "지시문": (["prompts/*.md"], "56a43bb60bac04e7796db22cf85a2c10f31152eaccba730f36ccb61d584029d3"),
@@ -22,7 +40,11 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         [f"rules/{name}.yaml" for name in ("agent", "rag", "deadlines", "reimport", "identify", "eval")],
         "0725b7cd0f475d61a4ec72860ec42546672074bfa664121308bb78fa0725bb12",
     ),
-    "그래프": (["src/marvia/graph/*.py"], "ff0635075c9c63f217dedee43cb2e882816513920b53533782ab5bcf9e3d09f5"),
+    # [왜] 폴더 전체가 아니라 이름으로 적는다. main.py와 state.py(계획 8b가 고침)와 새 파일 vessel.py는 뺀다
+    "그래프(main·state 제외)": (
+        [f"src/marvia/graph/{name}.py" for name in GRAPH_FILES],
+        "fef3e2c948a43bb90c69e759d41cda1e53425f64876c5f099223a9ad36ed52eb",
+    ),
     "검색": (["src/marvia/rag/*.py"], "fcab4969270619777247aeee8325aa3db33f4116350fd25ace3342214e355eac"),
     "가림과 번호 읽기": (
         ["src/marvia/identify/mask.py", "src/marvia/identify/parse.py"],
@@ -54,18 +76,16 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         ],
         "1baf7cdf1e623fe659d2c596f6caa0d002127970c956722884d97308a28f22c2",
     ),
-    "서버·화면·감시·추적": (
+    # server.py, view.py, trace.py는 계획 8b가 고쳐서 뺐다
+    "감시·지시문 읽기·추적 연결·DB·로그인": (
         [
-            "src/marvia/server.py",
-            "src/marvia/view.py",
             "src/marvia/watch.py",
             "src/marvia/prompts.py",
-            "src/marvia/trace.py",
             "src/marvia/langfuse_trace.py",
             "src/marvia/db.py",
             "src/marvia/auth.py",
         ],
-        "9879f048f94081528de7f5296357aefcc5631a461aff80afee4b9db8e521ab2f",
+        "d6f476b730ef576b312e4e4e45c006c7b3ebaad561a156e9337e4548525b5303",
     ),
     "화물 조회 도구": (
         ["src/marvia/tools/unipass_replay.py", "src/marvia/tools/verdict.py", "src/marvia/tools/rules.py"],
@@ -100,7 +120,8 @@ WIRED_FILES = [
 ]
 # [왜] 판정 평가 문항을 돌리는 코드는 판정 함수를 부르는 것이 일이다. 에이전트 평가 실행기(run.py)와
 #      다른 파일이다
-ALLOWED = {"src/marvia/eval/verdict_set.py"}
+# 배 식별 단계(계획 8b)는 graph/vessel.py 한 파일만 판정·조회 모듈을 부른다
+ALLOWED = {"src/marvia/eval/verdict_set.py", "src/marvia/graph/vessel.py"}
 NEW_MODULES = ["ports", "vessel", "signals", "judge", "vessel_match", "mof", "shipfinder"]
 
 
