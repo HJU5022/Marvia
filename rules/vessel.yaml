@@ -72,5 +72,5 @@ labels:
     anchor_wait: 배가 항구 앞에 오래 멈춰 있어요
     dest_changed: 배 신호의 목적지가 이 항만이 아니에요
     position_stale: 배 위치가 한동안 들어오지 않았어요
-    eta_conflict: 배 신호의 도착 예정과 해수부 입항 예정이 어긋나요
+    eta_conflict: 배 신호가 해수부 입항 예정과 어긋나요. 입항 신고가 있어도 새 배 신호가 이 항구로 오는 중인데 항구에 서 있지 않으면 어긋난 것으로 봐요
     navstat_mismatch: 배 신호의 항해 상태와 속도가 맞지 않아요

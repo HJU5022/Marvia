@@ -453,3 +453,13 @@ def test_an_arrival_report_does_not_wipe_out_a_garbled_destination_input_error()
     docked = ship(lat=35.1, lng=129.05, sog=0.0, navstat=5, dest="@@##", dest_code=None)
     ok = judge(cargo(entry_date=here), docked, report, now=NOW)
     assert ok.confidence == "sure" and ok.notes == []
+
+
+def test_the_card_texts_of_a_contradicted_arrival_report_say_the_current_rule():
+    # [왜] 11-16 R-131: 어긋남은 도착 시각의 차이가 아니라
+    #      "새 배 신호가 이 항구로 오는 중인데 항구에 서 있지 않음"이다.
+    #      카드 글이 옛 규칙(시각 차이)을 말하면 카드가 판정의 까닭을 틀리게 보인다
+    notes = load_rules("verdict")["notes"]["arrival_report_differs"]
+    signal = load_rules("vessel")["labels"]["signals"]["eta_conflict"]
+    assert "이 항구로 오는 중" in notes and "서 있지 않" in notes and "시각이 기준" not in notes
+    assert "입항 신고" in signal and "서 있지 않" in signal
