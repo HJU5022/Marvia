@@ -125,3 +125,19 @@ def test_a_blank_port_code_never_matches_a_missing_destination():
     for blank in (" ", "", "\t"):
         assert trusted_eta(position(None), schedule(), blank) == (None, None)
         assert trusted_eta(position(" "), schedule(), blank) == (None, None)
+
+
+def test_a_planned_arrival_that_already_passed_is_not_a_source_unless_an_arrival_exists():
+    # [왜] 11-15 판정. 실적이나 최종 신고가 없는데 이미 지난 입항 예정은 고치지 않은 옛 입력이다(배 신호
+    #      ETA와 같다)
+    late = datetime(2026, 9, 22, 8, 0, tzinfo=KST)
+    schedule = PortSchedule(planned_arrival=late, fetched_at=NOW)
+    now = datetime(2026, 9, 22, 12, 0, tzinfo=KST)
+    assert trusted_eta(None, schedule, "KRPUS", now=now) == (None, None)
+    assert trusted_eta(None, schedule, "KRPUS", now=now - timedelta(hours=4, minutes=5))[1] == "mof_planned"
+    slack = timedelta(minutes=load_rules("verdict")["clock_skew_minutes"])
+    assert trusted_eta(None, schedule, "KRPUS", now=late + slack)[1] == "mof_planned"  # 허용 오차 안
+    assert trusted_eta(None, schedule, "KRPUS", now=late + slack + timedelta(seconds=1)) == (None, None)
+    both = PortSchedule(planned_arrival=late, actual_arrival=late, fetched_at=NOW)
+    assert trusted_eta(None, both, "KRPUS", now=now)[1] == "mof_actual"
+    assert trusted_eta(None, schedule, "KRPUS")[1] == "mof_planned"  # 지금 시각을 주지 않으면 거르지 않는다

@@ -13,8 +13,14 @@ NOW = datetime(2026, 9, 22, 12, 0, tzinfo=KST)
 PLANNED = datetime(2026, 9, 24, 12, 0, tzinfo=KST)
 
 
-def cargo(stage: str = "입항적재화물목록 심사완료", port_code: str | None = "KRPUS") -> CargoFacts:
-    return CargoFacts(number="TEST0001", stage=stage, port_code=port_code, fetched_at=NOW)
+def cargo(
+    stage: str = "입항적재화물목록 심사완료",
+    port_code: str | None = "KRPUS",
+    entry_date: date | None = date(2026, 9, 24),
+) -> CargoFacts:
+    return CargoFacts(
+        number="TEST0001", stage=stage, port_code=port_code, entry_date=entry_date, fetched_at=NOW
+    )
 
 
 def ship(**changes) -> Position:
@@ -118,11 +124,15 @@ def test_no_eta_source_means_no_grade_but_a_raised_grade_is_kept():
 
 def test_port_that_is_missing_or_unverified_lowers_confidence_and_says_why():
     notes = load_rules("verdict")["notes"]
-    for code, name in ((None, "port_unknown"), ("JPOSA", "port_not_in_table"), ("KRINC", "port_unverified")):
+    # 항만 표에 기간이 없는 항만은 해수부 신고를 쓰지 않는다(voyage_unchecked). 배 신호 ETA만으로 본다
+    for code, name in (("JPOSA", "port_not_in_table"), ("KRINC", "port_unverified")):
         verdict = judge(cargo(port_code=code), ship(dest_code=code), plan(), now=NOW)
         assert verdict.confidence == "partial" and name in verdict.notes, code
         assert verdict.grade == "fine"  # 모르는 것으로 등급을 올리거나 내리지 않는다
+        assert {"voyage_unchecked", name} <= set(verdict.notes) and verdict.eta_source == "ais_eta"
         assert name in notes  # 이유의 글은 rules/verdict.yaml에 있다
+    nameless = judge(cargo(port_code=None), ship(dest_code=None), plan(), now=NOW)
+    assert "port_unknown" in nameless.notes and nameless.grade is None  # 도착 시각을 알 출처가 없다
     assert judge(cargo(), ship(), plan(), now=NOW).notes == []
 
 
@@ -166,11 +176,11 @@ def test_an_arrived_ship_is_not_marked_down_for_having_no_planned_arrival_to_com
     #      믿을 ETA의 출처가 실제 입항(관제 실적, 최종 입항 신고)이면 ETA 어긋남 신호는 꺼짐이다
     docked = ship(ais_eta=NOW - timedelta(hours=2))  # 지난 배 신호 ETA. 입항 예정은 없고 관제 실적이 있다
     arrived = plan(planned=None, actual=NOW - timedelta(hours=1))
-    seen = judge(cargo(), docked, arrived, now=NOW)
+    seen = judge(cargo(entry_date=date(2026, 9, 22)), docked, arrived, now=NOW)
     state = {s.id: s.state for s in seen.signals}
     assert seen.eta_source == "mof_actual" and state["eta_conflict"] == "clear" and seen.confidence == "sure"
     # 다른 신호는 그대로다: 위치가 없으면 위치로 보는 신호가 모름이라 확신은 부분이다
-    blind = judge(cargo(), None, arrived, now=NOW)
+    blind = judge(cargo(entry_date=date(2026, 9, 22)), None, arrived, now=NOW)
     assert {s.id: s.state for s in blind.signals}["eta_conflict"] == "clear" and blind.confidence == "partial"
     # 입항 전이면 지금까지와 같다: 입항 예정이 없으면 모름
     before = judge(cargo(), ship(), plan(planned=None), now=NOW)
@@ -219,3 +229,53 @@ def test_ship_stages_are_known_stages_and_the_rest_of_the_known_ones_are_landed(
     )
     assert not watches_ship("반입신고") and not watches_ship("수입신고 수리")  # 띄어쓰기만 다른 이름도 같다
     assert "landed" in load_rules("verdict")["info"]
+
+
+def test_a_report_of_another_voyage_is_never_this_cargos_arrival():
+    # [왜] 11-15 판정. 같은 배의 지난 항차 입항 예정(-2일)이 믿을 ETA로 들어오면 등급이 좋아진다(경계가
+    #      주의가 된다).
+    #      해수부 신고(실적, 최종, 예정)는 화물의 세관 입항일 앞뒤 며칠(rules/ports.yaml voyage_window_days)
+    #      안의
+    #      것만 이 항차의 것으로 쓴다
+    old = datetime(2026, 9, 22, 8, 0, tzinfo=KST)  # 세관 입항일(09-24)보다 이틀 앞
+    for position in (ship(ais_eta=None), None):
+        seen = judge(cargo(), position, plan(planned=old), now=NOW, sale_due=date(2026, 9, 28))
+        assert (seen.trusted_eta, seen.eta_source) == (None, None), position
+        assert seen.grade != "fine" and "other_voyage" in seen.notes, position
+        assert "no_eta" in seen.notes and seen.confidence != "sure"
+    # 같은 입력이 이번 항차의 값이면(세관 입항일 앞뒤 하루 안) 쓴다
+    mine = judge(cargo(), ship(ais_eta=None), plan(planned=PLANNED + timedelta(days=1)), now=NOW)
+    assert mine.eta_source == "mof_planned" and "other_voyage" not in mine.notes
+    edge = judge(cargo(), None, plan(planned=PLANNED - timedelta(days=1)), now=NOW)  # 앞뒤 하루는 경계 안
+    assert edge.eta_source == "mof_planned"
+    out = judge(
+        cargo(), None, plan(planned=PLANNED - timedelta(days=1, hours=13)), now=NOW
+    )  # 한국 날짜로 이틀 앞
+    assert out.eta_source is None and "other_voyage" in out.notes
+    # 실적과 최종 신고도 같은 가드를 지난다
+    for field in ("actual", "final"):
+        schedule = PortSchedule(**{f"{field}_arrival": old}, fetched_at=NOW)
+        seen = judge(cargo(), ship(ais_eta=None), schedule, now=NOW, sale_due=date(2026, 9, 28))
+        assert seen.eta_source is None and "other_voyage" in seen.notes, field
+
+
+def test_without_a_customs_entry_date_no_ministry_report_is_used_and_the_confidence_drops():
+    # 세관 입항일이 없으면 어느 줄도 입항 시각으로 쓰지 않는다(여러 줄 가운데 고르지도 않는다). 이유를 적고
+    #      확신을 낮춘다
+    for schedule in (plan(), plan(planned=None, actual=NOW - timedelta(hours=1))):
+        seen = judge(
+            cargo(entry_date=None), ship(ais_eta=None), schedule, now=NOW, sale_due=date(2026, 9, 28)
+        )
+        assert seen.eta_source is None and "no_entry_date" in seen.notes
+        assert seen.confidence != "sure" and seen.grade != "fine"
+    # 배 신호의 ETA는 해수부 신고가 아니라 이 가드를 받지 않는다
+    ais = judge(cargo(entry_date=None), ship(), plan(), now=NOW)
+    assert ais.eta_source == "ais_eta" and "no_entry_date" in ais.notes and ais.confidence == "partial"
+    # 해수부 신고가 없으면 가드가 말할 것이 없다
+    quiet = judge(cargo(entry_date=None), ship(), None, now=NOW)
+    assert "no_entry_date" not in quiet.notes
+    # 항만 표에 항차 기간이 없는 항만은 신고를 쓰지 않는다
+    unknown = judge(cargo(port_code="KRINC"), ship(dest_code="KRINC", ais_eta=None), plan(), now=NOW)
+    assert unknown.eta_source is None and "voyage_unchecked" in unknown.notes
+    for name in ("no_entry_date", "other_voyage", "voyage_unchecked"):
+        assert name in load_rules("verdict")["notes"]

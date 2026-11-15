@@ -120,10 +120,18 @@ def trusted_eta(
         #      순항이 된다. 해수부의 실제 입항은 지난 시각이 맞으므로 이 검사는 배 신호 ETA에만 건다
         slack = timedelta(minutes=rules["clock_skew_minutes"])
         ais_ok = as_utc(position.ais_eta) >= as_utc(now) - slack
+    planned = schedule.planned_arrival if schedule else None
+    if planned is not None and now is not None and schedule is not None:
+        # [왜] 11-15 판정. 실적과 최종 신고가 없는데 이미 지난 입항 예정은 고치지 않은 옛 입력이다(배 신호
+        #      ETA와 같다)
+        arrived = schedule.actual_arrival is not None or schedule.final_arrival is not None
+        slack = timedelta(minutes=rules["clock_skew_minutes"])
+        if not arrived and as_utc(planned) < as_utc(now) - slack:
+            planned = None
     values = {
         "mof_actual": schedule.actual_arrival if schedule else None,
         "mof_final": schedule.final_arrival if schedule else None,
-        "mof_planned": schedule.planned_arrival if schedule else None,
+        "mof_planned": planned,
         "ais_eta": position.ais_eta if position and ais_ok else None,
         # [왜] 포워더가 알려 준 날은 날짜뿐이다. 한국 날짜의 0시로 본다
         "forwarder_eta": datetime.combine(forwarder_eta, time.min, tzinfo=KST) if forwarder_eta else None,
@@ -140,3 +148,33 @@ def days_margin(trusted: datetime | None, sale_due: date | None) -> int | None:
     if trusted is None or sale_due is None:
         return None
     return (sale_due - as_utc(trusted).astimezone(KST).date()).days
+
+
+def voyage_guard(
+    schedule: PortSchedule | None, entry_date: date | None, window_days: int | None
+) -> tuple[PortSchedule | None, list[str]]:
+    """해수부 신고(실적, 최종, 예정)가 이 화물의 항차 것인지 가린다. 아닌 값을 비운 일정과 이유를 돌려준다.
+
+    기준은 화물의 세관 입항일(한국 날짜) 앞뒤 window_days(rules/ports.yaml voyage_window_days) 안이다.
+    세관 입항일이나 기간을 모르면 어느 신고도 쓰지 않는다(여러 줄 가운데 고르지도 않는다).
+    이유: no_entry_date, voyage_unchecked(항만의 기간을 모름), other_voyage(다른 항차의 값을 뺌).
+    """
+    if schedule is None:
+        return None, []
+    names = ("actual_arrival", "final_arrival", "planned_arrival")
+    given = [name for name in names if getattr(schedule, name) is not None]
+    if not given:
+        return schedule, []
+    if entry_date is None or window_days is None:
+        reason = "no_entry_date" if entry_date is None else "voyage_unchecked"
+        return schedule.model_copy(update=dict.fromkeys(names)), [reason]
+    kept: dict[str, datetime | None] = {}
+    dropped = False
+    for name in names:
+        value = getattr(schedule, name)
+        mine = (
+            value is not None and abs((as_utc(value).astimezone(KST).date() - entry_date).days) <= window_days
+        )
+        kept[name] = value if mine else None
+        dropped = dropped or (value is not None and not mine)
+    return schedule.model_copy(update=kept), (["other_voyage"] if dropped else [])

@@ -18,7 +18,7 @@ from marvia.tools.ports import port
 from marvia.tools.rules import load_rules
 from marvia.tools.signals import compute, watches_ship
 from marvia.tools.verdict import Confidence, Grade, Schedule, Signal, confidence, grade, schedule
-from marvia.tools.vessel import PortSchedule, Position, TrackPoint, days_margin, trusted_eta
+from marvia.tools.vessel import PortSchedule, Position, TrackPoint, days_margin, trusted_eta, voyage_guard
 
 
 class Verdict(BaseModel):
@@ -82,6 +82,14 @@ def judge(
             notes=[],
             info=["landed"],
         )
+    # [왜] 11-15 판정. 해수부 신고는 이 화물의 항차 것만 쓴다(세관 입항일 앞뒤 며칠 안). 지난 항차의 입항
+    #      예정이
+    #      믿을 ETA로 들어오면 경계가 주의로 좋아진다. 세관 입항일이 없으면 어느 신고도 입항 시각으로 쓰지
+    #      않는다
+    row = port(facts.port_code) if facts and facts.port_code else None
+    plan, voyage_notes = voyage_guard(
+        plan, facts.entry_date if facts else None, row.voyage_window_days if row else None
+    )
     signals = compute(facts, position, plan, now=now, history=history)
     eta, source = trusted_eta(position, plan, facts.port_code if facts else None, forwarder_eta, now=now)
     # [왜] 입항이 끝난 배는 배 신호 ETA를 입항 예정과 견줄 일이 없다. 그 신호를 "모름"으로 두면 입항한 배의
@@ -101,6 +109,7 @@ def judge(
     )
     port_note = _port_note(facts)
     notes = [port_note] if port_note else []
+    notes += voyage_notes
     if position is None:
         notes.append("no_position")
     if plan is None:
@@ -110,6 +119,9 @@ def judge(
     )
     # [왜] 항만 값을 확인하지 못했으면 신호가 모두 꺼져 보여도 "확실"이라고 하지 않는다
     if sure == "sure" and port_note:
+        sure = "partial"
+    # [왜] 세관 입항일이나 항만의 기간을 몰라 해수부 신고를 쓰지 못했으면 "확실"이라고 하지 않는다
+    if sure == "sure" and ({"no_entry_date", "voyage_unchecked"} & set(voyage_notes)):
         sure = "partial"
     level: Grade | None = grade(signals, margin)
     cell: Schedule | None = schedule(signals, margin, first_eta, eta)

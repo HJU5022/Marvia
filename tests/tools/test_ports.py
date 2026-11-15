@@ -16,6 +16,7 @@ def test_busan_row_carries_every_value_v1_had_fixed_in_code():
     assert busan.ref is not None and (busan.ref.lat, busan.ref.lng) == (35.10, 129.05)
     assert busan.stop_radius_nm == 30
     assert (busan.schedule_lookback_days, busan.schedule_lookahead_days, busan.mrn_search_days) == (3, 7, 1)
+    assert busan.voyage_window_days == 1  # 같은 배의 지난 항차 신고가 이 화물의 도착으로 들어오지 않게
 
 
 def test_incheon_row_is_marked_unverified_and_leaves_unknown_cells_empty():

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. QQTST1의 입항 신고 네 줄: 지난 항차(09-22, 최종), 이번 항차(09-24)의 변경과 최종, 먼 항차(09-30, 변경) -->
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST1</clsgn><vsslNm>TEST CARGO A</vsslNm><vsslNltyCd>PA</vsslNltyCd>
+<prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm><details>
+<detail><reqstSeNm>최종</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-22T08:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 1선석</laidupFcltyNm><mrNum>26TEST0000I</mrNum></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST1</clsgn><vsslNm>TEST CARGO A</vsslNm><vsslNltyCd>PA</vsslNltyCd>
+<prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm><details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 1선석</laidupFcltyNm><mrNum>26TEST0001I</mrNum></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST1</clsgn><vsslNm>TEST CARGO A</vsslNm><vsslNltyCd>PA</vsslNltyCd>
+<prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm><details>
+<detail><reqstSeNm>최종</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T14:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 1선석</laidupFcltyNm><mrNum>26TEST0001I</mrNum></detail>
+</details></item>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTST1</clsgn><vsslNm>TEST CARGO A</vsslNm><vsslNltyCd>PA</vsslNltyCd>
+<prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm><details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-30T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 1선석</laidupFcltyNm><mrNum>26TEST0002I</mrNum></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>4</totalCount></body></response>

@@ -27,7 +27,7 @@ from marvia.config import Settings
 from marvia.identify.models import ToolError
 from marvia.tools.ports import Port
 from marvia.tools.rules import load_rules
-from marvia.tools.vessel import PortSchedule, SailingPlan
+from marvia.tools.vessel import KST, PortSchedule, SailingPlan, as_utc
 from marvia.trace import _safe_host  # pyright: ignore[reportPrivateUsage]
 
 for _name in ("httpx", "httpcore"):
@@ -308,7 +308,25 @@ def _session() -> tuple[httpx.Client, str, str] | ToolError:
     return client, base_url, key
 
 
-def port_schedule(row: Port, call_sign: str, *, today: date) -> PortSchedule | ToolError:
+def _nearest(rows: list, entry_date: date | None):
+    """세관 입항일(한국 날짜)에 가장 가까운 줄. 같으면 최종 신고, 그다음은 받은 순서. 모르면 첫 줄."""
+    if not rows:
+        return None
+    if entry_date is None:
+        return rows[0]
+
+    def key(item: tuple[int, object]) -> tuple[int, int, int]:
+        index, row = item
+        stamp = getattr(row, "actual_arrival", None) or getattr(row, "planned_arrival", None)
+        gap = abs((as_utc(stamp).astimezone(KST).date() - entry_date).days) if stamp else 10**6
+        return gap, 0 if getattr(row, "revision", None) == CFG["final_revision"] else 1, index
+
+    return min(enumerate(rows), key=key)[1]
+
+
+def port_schedule(
+    row: Port, call_sign: str, *, today: date, entry_date: date | None = None
+) -> PortSchedule | ToolError:
     """배 한 척의 그 항만 입항 일정: 지난 며칠의 실적과 신고, 앞으로 며칠의 예정. today는 한국 날짜.
 
     기간과 청코드는 항만 표의 값이다.
@@ -336,8 +354,12 @@ def port_schedule(row: Port, call_sign: str, *, today: date) -> PortSchedule | T
             return plans
     # [왜] 해수부가 조회 조건을 다르게 적용해도 남의 배 기록을 쓰지 않게 호출부호를 다시 본다
     sign = _sign(call_sign)
-    arrived = next((a for a in done if _sign(a.call_sign) == sign and a.actual_arrival), None)
-    plan = next((p for p in plans if _sign(p.call_sign) == sign), None)
+    # [왜] 11-15 판정. 같은 호출부호의 줄이 여럿이면(지난 항차, 이번 항차의 변경과 최종, 다음 항차) 첫 줄이
+    #      아니라
+    #      세관 입항일에 가장 가까운 줄이다. 같은 거리면 최종 신고가 앞서고 그다음은 받은 순서다.
+    #      세관 입항일을 모르면 고르지 않고 받은 첫 줄을 그대로 둔다(판정이 그 값을 쓰지 않는다)
+    arrived = _nearest([a for a in done if _sign(a.call_sign) == sign and a.actual_arrival], entry_date)
+    plan = _nearest([p for p in plans if _sign(p.call_sign) == sign], entry_date)
     # [왜] 최종 신고의 시각은 실제 입항 시각이다. 예정으로 쓰지 않고 따로 싣는다: 관제 실적이 아직 없는
     #      막 입항한 배의 입항 시각이 된다 (믿을 ETA의 순서는 rules/verdict.yaml eta_priority)
     final = bool(plan) and plan.revision == CFG["final_revision"]

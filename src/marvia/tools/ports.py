@@ -32,6 +32,7 @@ class Port(BaseModel):
     schedule_lookback_days: int | None = None
     schedule_lookahead_days: int | None = None
     mrn_search_days: int | None = None
+    voyage_window_days: int | None = None  # 세관 입항일 앞뒤 이 일수 안의 해수부 신고만 이 항차의 것으로 본다
 
 
 def port(code: str | None) -> Port | None:

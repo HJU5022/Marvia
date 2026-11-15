@@ -391,3 +391,40 @@ def test_the_schedule_window_reaches_back_so_yesterdays_final_report_is_inside_i
 
     eta, source = trusted_eta(None, got, "KRPUS", None, now=datetime(2026, 9, 22, 12, 0, tzinfo=KST))
     assert source == "mof_final" and eta == got.final_arrival  # 어제 입항한 배의 최종 신고가 출처가 된다
+
+
+def test_among_several_reports_of_one_call_sign_the_one_nearest_the_customs_entry_date_wins(monkeypatch):
+    # [왜] 11-15 판정. 같은 호출부호의 신고가 여러 줄이면(지난 항차, 이번 항차의 변경과 최종, 다음 항차)
+    #      첫 줄이 아니라 세관 입항일에 가장 가까운 줄이다. 같은 거리면 최종 신고가 앞서고 그다음은 받은
+    #      순서다
+    monkeypatch.setenv("MARVIA_MOF_MODE", "live")
+    monkeypatch.setenv("MARVIA_MOF_KEY", KEY)
+    monkeypatch.setenv("MARVIA_MOF_BASE_URL", "https://relay.test/")
+    real = mof.Settings
+    monkeypatch.setattr(mof, "Settings", lambda: real(_env_file=None))
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return _xml("sailing_two_voyages.xml" if mof.CFG["sailing_path"] in request.url.path else "empty.xml")
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        mof.httpx, "Client", lambda **kw: real_client(**{**kw, "transport": httpx.MockTransport(handle)})
+    )
+    busan = port("KRPUS")
+    assert busan is not None
+    today = date(2026, 9, 22)
+
+    def seen(entry: date | None) -> PortSchedule:
+        got = port_schedule(busan, "QQTST1", today=today, entry_date=entry)
+        assert isinstance(got, PortSchedule)
+        return got
+
+    mine = seen(date(2026, 9, 24))  # 이번 항차: 변경(12시)과 최종(14시)이 같은 날이라 최종이 앞선다
+    assert mine.final_arrival == datetime(2026, 9, 24, 14, 0, tzinfo=KST) and mine.planned_arrival is None
+    last = seen(date(2026, 9, 22))  # 지난 항차의 최종
+    assert last.final_arrival == datetime(2026, 9, 22, 8, 0, tzinfo=KST)
+    far = seen(date(2026, 9, 29))  # 가장 가까운 줄은 09-30의 변경 신고(이틀 거리가 아니라 하루)
+    assert far.planned_arrival == datetime(2026, 9, 30, 12, 0, tzinfo=KST) and far.final_arrival is None
+    # 세관 입항일을 모르면 고르지 않는다: 받은 첫 줄 그대로이고 판정(judge)이 어느 줄도 쓰지 않는다
+    first = seen(None)
+    assert first.final_arrival == datetime(2026, 9, 22, 8, 0, tzinfo=KST)

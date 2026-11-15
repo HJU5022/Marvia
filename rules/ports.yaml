@@ -12,6 +12,7 @@ ports:
     schedule_lookback_days: 3 # 입항 실적을 며칠 전까지 볼지
     schedule_lookahead_days: 7 # 입항 예정을 며칠 뒤까지 볼지
     mrn_search_days: 1 # MRN으로 배를 찾을 때 세관 입항일 앞뒤 며칠의 입항 신고를 훑을지
+    voyage_window_days: 1 # 판정에 쓰는 해수부 신고(실적, 최종, 예정)는 세관 입항일 앞뒤 이 일수(한국 날짜) 안의 것만 쓴다
   KRINC:
     name: 인천
     verified: false # 실제 확인 전. 아래 청코드는 v1 주석(09-23)에 적힌 값이고 응답은 받아 보지 않았다
