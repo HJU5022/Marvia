@@ -335,7 +335,7 @@ def test_a_future_arrival_is_not_an_arrival():
     assert judge(cargo(entry_date=here), anchored, soon, now=NOW).eta_source == "mof_final"
 
 
-def test_a_ship_signal_that_contradicts_the_arrival_report_keeps_the_ship_signals_on():
+def test_a_ship_signal_that_contradicts_the_arrival_report_keeps_the_ship_signals_on(monkeypatch):
     # [왜] 11-15 판정(R-128). 입항 신고가 있어도 새 배 신호가 이 항만행이고 ETA가 입항 시각보다 12시간 넘게
     #      뒤면 두 출처가 어긋난 것이다. 입항으로 치지 않고 ETA 어긋남을 켜며 확신은 부분이다
     here = date(2026, 9, 22)
@@ -353,6 +353,20 @@ def test_a_ship_signal_that_contradicts_the_arrival_report_keeps_the_ship_signal
     assert "arrived" in judge(cargo(entry_date=here), stale, report, now=NOW).info
     gone = ship(ais_eta=NOW + timedelta(hours=24), dest="OSAKA", dest_code="JPOSA")
     assert "arrived" in judge(cargo(entry_date=here), gone, report, now=NOW).info
+    # [왜] 11-15 판정. 배가 항만 기준점 반경 안(실제로 항구에 있음)이면 ETA를 고치지 않은 것이라 두 출처가
+    #      맞는 것으로 본다. 반경 밖이거나 거리를 볼 수 없는 항만이면 어긋남이다
+    docked = ship(lat=35.1, lng=129.05, sog=0.0, navstat=5, ais_eta=NOW + timedelta(hours=24))
+    assert "arrived" in judge(cargo(entry_date=here), docked, report, now=NOW).info
+    from marvia.tools import judge as judge_module
+
+    real = judge_module.port
+    monkeypatch.setattr(
+        judge_module,
+        "port",
+        lambda code: (row := real(code)) and row.model_copy(update={"ref": None, "stop_radius_nm": None}),
+    )
+    blind = judge(cargo(entry_date=here), docked, report, now=NOW)
+    assert "arrived" not in blind.info and "arrival_report_differs" in blind.notes
 
 
 def test_only_the_voyage_guard_keeps_the_final_report_of_an_earlier_voyage_out():

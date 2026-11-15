@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from marvia.identify.models import CargoFacts
 from marvia.tools.ports import port
 from marvia.tools.rules import load_rules
-from marvia.tools.signals import compute, watches_ship
+from marvia.tools.signals import away_nm, compute, watches_ship
 from marvia.tools.verdict import Confidence, Grade, Schedule, Signal, confidence, grade, schedule
 from marvia.tools.vessel import (
     PortSchedule,
@@ -118,10 +118,15 @@ def judge(
         #      확신은 부분이다. 배 신호가 오래됐거나 다른 항구행이면 어긋남으로 보지 않는다
         state = {s.id: s.state for s in signals}
         gap = (as_utc(position.ais_eta) - eta).total_seconds() / 3600
+        # [왜] 배가 항만 기준점 반경 안(실제로 항구에 있음)이면 배 신호 ETA를 고치지 않은 것일 뿐이라 두
+        #      출처가 맞는 것으로 본다. 항만 표에 기준점이 없어 거리를 볼 수 없으면 어긋남으로 둔다(보수적)
+        dist = away_nm(position.lat, position.lng, row)
+        outside = dist is None or row is None or row.stop_radius_nm is None or dist > row.stop_radius_nm
         differs = (
             state["position_stale"] == "clear"
             and state["dest_changed"] == "clear"
             and gap > rules["signals"]["eta_conflict_hours"]
+            and outside
         )
         if differs:
             arrived = False

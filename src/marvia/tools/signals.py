@@ -86,6 +86,17 @@ def _eta_conflict(
     )
 
 
+def away_nm(lat: float, lng: float, row: Port | None) -> float | None:
+    """항만 기준점까지 거리(해리). 항만 표에 기준점이나 반경이 없으면 None(거리를 볼 수 없다)."""
+    if row is None or row.ref is None or row.stop_radius_nm is None:
+        return None
+    # [왜] 거리는 소수 계산이라 반경과 "같은" 값이 나오지 않는다. 값에 적는 자릿수로 맞춘 뒤 견주어야
+    #      같을 때 켜진다는 말이 뜻을 갖고, 적힌 거리와 판정이 어긋나지 않는다
+    return round(
+        _nm((lat, lng), (row.ref.lat, row.ref.lng)), load_rules("verdict")["signals"]["distance_decimals"]
+    )
+
+
 def _anchor_wait(
     position: Position | None, row: Port | None, now: datetime, history: list[TrackPoint], cuts: dict
 ) -> Signal:
@@ -95,13 +106,11 @@ def _anchor_wait(
         return _signal("anchor_wait", "unknown", "항만 기준점 없음")
     if position is None or position.sog is None:
         return _signal("anchor_wait", "unknown", "위치·속도 없음")
-    ref, radius, limit = (row.ref.lat, row.ref.lng), row.stop_radius_nm, cuts["stop_speed_kn"]
+    radius, limit = row.stop_radius_nm, cuts["stop_speed_kn"]
     digits = cuts["distance_decimals"]
 
     def away(lat: float, lng: float) -> float:
-        # [왜] 거리는 소수 계산이라 반경과 "같은" 값이 나오지 않는다. 값에 적는 자릿수로 맞춘 뒤 견주어야
-        #      같을 때 켜진다는 말이 뜻을 갖고, 적힌 거리와 판정이 어긋나지 않는다
-        return round(_nm((lat, lng), ref), digits)
+        return away_nm(lat, lng, row) or 0.0
 
     def stopped(lat: float, lng: float, sog: float) -> bool:
         return away(lat, lng) <= radius and sog <= limit
