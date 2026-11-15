@@ -3,8 +3,8 @@
 하지 않는 일: 바깥 조회, 배 고르기, 답 글. 등급·확신·일정은 tools/verdict.py가, 신호는
 tools/signals.py가 정한다.
 여기는 그 둘을 잇고, 항만 값이나 조회 결과가 없을 때 "판정을 미루지 않고 확신을 낮추며 이유를 적는" 일만 한다.
-[주의] 아직 그래프의 어느 노드도 이 함수를 부르지 않는다. 연결은 다음 계획이다
-       (tests/test_vessel_base_not_wired.py).
+[주의] 그래프에서는 배 식별 단계(graph/vessel.py)만 부른다. MARVIA_VESSEL=on일 때만 돈다 (계획 8b).
+       다른 파일이 부르면 tests/test_vessel_base_not_wired.py가 막는다.
 """
 
 from __future__ import annotations

@@ -5,7 +5,7 @@ v1 backend/app/services/judge/identify.py match_by_papers와 routers/agent.py _i
 코드 판단을 옮겼다. v1이 되묻기 답을 받은 뒤 LLM에게 고르게 하던 길은 옮기지 않았다(11-13 결정).
 [왜] 배 이름·배 신호의 목적지·위치는 "어느 배가 내 화물을 실었나"의 근거가 아니다. v1에서 근거 없이
      고르게 했더니 남의 배를 확정했다(평가 문항 B01, B12). 틀린 배를 확정하는 것보다 되묻는 쪽이 낫다.
-[주의] 아직 그래프의 어느 노드도 이 함수를 부르지 않는다. 연결은 다음 계획이다.
+[주의] 그래프에서는 배 식별 단계(graph/vessel.py)만 부른다. MARVIA_VESSEL=on일 때만 돈다 (계획 8b).
 """
 
 from __future__ import annotations
