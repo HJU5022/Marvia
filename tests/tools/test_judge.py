@@ -6,7 +6,7 @@ from marvia.identify.models import CargoFacts
 from marvia.tools.judge import Verdict, judge
 from marvia.tools.rules import load_rules
 from marvia.tools.signals import watches_ship
-from marvia.tools.vessel import PortSchedule, Position
+from marvia.tools.vessel import PortSchedule, Position, TrackPoint
 
 KST = timezone(timedelta(hours=9))
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=KST)
@@ -179,9 +179,11 @@ def test_an_arrived_ship_is_not_marked_down_for_having_no_planned_arrival_to_com
     seen = judge(cargo(entry_date=date(2026, 9, 22)), docked, arrived, now=NOW)
     state = {s.id: s.state for s in seen.signals}
     assert seen.eta_source == "mof_actual" and state["eta_conflict"] == "clear" and seen.confidence == "sure"
-    # 다른 신호는 그대로다: 위치가 없으면 위치로 보는 신호가 모름이라 확신은 부분이다
+    # 위치가 없어도 확신이 내려가지 않는다: 입항한 배는 배 신호를 보지 않는다(11-15). 위치가 없다는 사실은
+    #      참고 글로 남는다
     blind = judge(cargo(entry_date=date(2026, 9, 22)), None, arrived, now=NOW)
-    assert {s.id: s.state for s in blind.signals}["eta_conflict"] == "clear" and blind.confidence == "partial"
+    assert {s.id: s.state for s in blind.signals}["eta_conflict"] == "clear" and blind.confidence == "sure"
+    assert "no_position" not in blind.notes and "no_schedule" not in blind.notes and "arrived" in blind.info
     # 입항 전이면 지금까지와 같다: 입항 예정이 없으면 모름
     before = judge(cargo(), ship(), plan(planned=None), now=NOW)
     assert {s.id: s.state for s in before.signals}["eta_conflict"] == "unknown"
@@ -279,3 +281,40 @@ def test_without_a_customs_entry_date_no_ministry_report_is_used_and_the_confide
     assert unknown.eta_source is None and "voyage_unchecked" in unknown.notes
     for name in ("no_entry_date", "other_voyage", "voyage_unchecked"):
         assert name in load_rules("verdict")["notes"]
+
+
+def test_once_the_ship_has_really_arrived_its_signals_are_not_read_any_more():
+    # [왜] 11-15 판정. 이 항차의 실제 입항(관제 실적, 최종 신고)이 믿을 ETA의 출처면 그 배는 도착했다.
+    #      그 뒤 다음 항구로 떠나거나 부두에 오래 서 있는 것은 이 화물의 위험이 아니다. 배 신호 다섯(목적지,
+    #      항구 앞 정지, ETA 어긋남, 위치 끊김, 항해 상태)은 모두 해당 없음이고 통관 단계와 통관 멈춤만 본다
+    here = date(2026, 9, 22)
+    arrived = plan(planned=None, actual=NOW - timedelta(hours=1))
+    gone = ship(dest="OSAKA", dest_code="JPOSA", last_time=NOW - timedelta(hours=30), navstat=5, sog=9.0)
+    for stage in ("입항", "하선신고 수리"):
+        seen = judge(cargo(stage, entry_date=here), gone, arrived, now=NOW, sale_due=date(2026, 9, 28))
+        assert seen.eta_source == "mof_actual" and seen.grade == "fine" and seen.confidence == "sure", stage
+        states = {s.id: s.state for s in seen.signals}
+        assert set(states.values()) == {"clear"}, (stage, states)
+    # 관제 실적이 아니라 최종 입항 신고여도 같다
+    final = PortSchedule(final_arrival=NOW - timedelta(hours=1), fetched_at=NOW)
+    assert judge(cargo(entry_date=here), gone, final, now=NOW).grade == "fine"
+    # 배 위치가 없어도 확신이 내려가지 않는다(배 신호를 보지 않으니 모름이 없다). 위치가 없다는 사실은
+    #      확신을 낮춘 이유가 아니라서 notes에 두지 않는다
+    blind = judge(cargo(entry_date=here), None, arrived, now=NOW)
+    assert blind.confidence == "sure" and blind.notes == [] and "arrived" in blind.info
+    # [왜] notes는 확신을 낮춘 이유다. 낮추지 않았으니 위치가 없다는 말은 참고 글로 적는다
+    assert "arrived" in load_rules("verdict")["info"]
+    # 통관이 멈춘 단계는 입항 뒤에도 긴급이다
+    held = judge(cargo("검사지정", entry_date=here), gone, arrived, now=NOW)
+    assert held.grade == "act"
+    # 입항 전(실적 없음)에 항구 앞 묘박지에서 오래 서 있는 배는 그대로 켜진다
+    anchored = judge(
+        cargo(entry_date=here),
+        ship(lat=35.0, lng=129.1, sog=0.0, navstat=1),
+        plan(planned=NOW + timedelta(hours=6)),
+        now=NOW,
+        history=[TrackPoint(at=NOW - timedelta(hours=30), lat=35.0, lng=129.1, sog=0.0)],
+    )
+    assert {s.id: s.state for s in anchored.signals}[
+        "anchor_wait"
+    ] == "triggered" and anchored.grade == "alert"

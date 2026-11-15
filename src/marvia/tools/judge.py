@@ -92,11 +92,13 @@ def judge(
     )
     signals = compute(facts, position, plan, now=now, history=history)
     eta, source = trusted_eta(position, plan, facts.port_code if facts else None, forwarder_eta, now=now)
-    # [왜] 입항이 끝난 배는 배 신호 ETA를 입항 예정과 견줄 일이 없다. 그 신호를 "모름"으로 두면 입항한 배의
-    #      확신이 까닭 없이 내려간다(11-13 판정). 실제 입항 출처가 있으면 꺼짐(견줄 필요 없음)으로 둔다
+    # [왜] 이 항차의 실제 입항(위의 가드를 지난 관제 실적이나 최종 신고)이 믿을 ETA의 출처면 그 배는 도착했다.
+    #      그 뒤 다음 항구로 떠나거나 부두에 오래 서 있는 것은 이 화물의 위험이 아니다(11-13, 11-15 판정).
+    #      배 신호(목적지, 항구 앞 정지, ETA 어긋남, 위치 끊김, 항해 상태)는 해당 없음(꺼짐)이고
+    #      통관 단계와 통관 멈춤만 본다. 입항 전(실적 없음)의 신호는 그대로 켜진다
     if source in rules["arrived_sources"]:
         signals = [
-            Signal(id=s.id, state="clear", value="이미 입항") if s.id == "eta_conflict" else s
+            s if s.id == "customs_hold" else Signal(id=s.id, state="clear", value="이미 입항")
             for s in signals
         ]
     # [왜] 해수부의 입항 실적과 입항 예정은 배 위치와 무관한 신고다. 위치가 없어도 그 시각으로 센다.
@@ -110,9 +112,12 @@ def judge(
     port_note = _port_note(facts)
     notes = [port_note] if port_note else []
     notes += voyage_notes
-    if position is None:
+    # [왜] notes는 확신을 낮춘 이유다. 이 항차의 실제 입항이 확인됐으면 배 신호를 보지 않으므로 위치나 일정이
+    #      없다는 사실이 확신을 낮추지 않는다(11-15 판정). 그 사실은 참고 글(arrived)로 알린다
+    arrived = source in rules["arrived_sources"]
+    if position is None and not arrived:
         notes.append("no_position")
-    if plan is None:
+    if plan is None and not arrived:
         notes.append("no_schedule")
     sure = confidence(
         signals, identified=facts is not None, has_source=facts is not None or position is not None
@@ -147,6 +152,8 @@ def judge(
     info = ["no_sale_date"] if sale_due is None else []
     if first_eta is None:
         info.append("no_first_eta")
+    if arrived:
+        info.append("arrived")
     return Verdict(
         grade=level,
         confidence=sure,

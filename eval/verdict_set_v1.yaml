@@ -611,7 +611,7 @@ items:
     notes: []
 - id: V-C02
   layer: conflict
-  why: 해수부 관제 실적으로는 이미 입항했는데 배 신호는 8시간 전에 끊겼고 ETA는 내일이다. 실적을 믿는다
+  why: 해수부 관제 실적으로는 이미 입항했는데 배 신호는 8시간 전에 끊겼고 ETA는 내일이다. 실적을 믿고, 입항한 배의 신호는 읽지 않아 위치 끊김도 켜지지 않는다(11-15)
   now: '2026-09-22T12:00:00+09:00'
   sale_due: '2026-09-28'
   cargo: {stage: 입항보고 수리, port_code: KRPUS, entry_date: '2026-09-22'}
@@ -620,8 +620,8 @@ items:
   history: []
   v1: null
   expect:
-    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: triggered, eta_conflict: clear, navstat_mismatch: clear}
-    grade: watch
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
     confidence: sure
     schedule: null
     eta_source: mof_actual
@@ -970,6 +970,64 @@ items:
     eta_source: mof_final
     margin_days: 6
     notes: []
+- id: V-C21
+  layer: conflict
+  why: '입항 실적이 있고 입항 단계다. 배는 이미 다음 항구(JPOSA)로 떠났다. 입항한 배의 신호는 읽지 않아 경계가 아니다'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항, port_code: KRPUS, entry_date: '2026-09-22'}
+  position: {mmsi: 999000001, lat: 34.5, lng: 131.0, sog: 14.0, navstat: 0, dest: OSAKA, dest_code: JPOSA, ais_eta: '2026-09-23T18:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-22T10:40:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: null
+    eta_source: mof_actual
+    margin_days: 6
+    notes: []
+- id: V-C22
+  layer: conflict
+  why: '입항 실적이 있고 하선신고 수리 단계다. 배는 부두에 30시간 계류 중이다(항구 앞 정지 기준을 넘는다). 입항한 배의 신호는 읽지 않아 경계가 아니다'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 하선신고 수리, port_code: KRPUS, entry_date: '2026-09-21'}
+  position: {mmsi: 999000001, lat: 35.1, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-23T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: '2026-09-21T10:00:00+09:00'}
+  history:
+  - {at: '2026-09-21T06:00:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: fine
+    confidence: sure
+    schedule: null
+    eta_source: mof_actual
+    margin_days: 7
+    notes: []
+- id: V-C23
+  layer: conflict
+  why: '입항 실적이 아직 없고 항구 앞에서 30시간 멈춰 있다(묘박지 대기). 입항 전의 신호는 그대로 켜진다: 항구 앞 장시간 정지는 경계'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-23'}
+  position: {mmsi: 999000001, lat: 35.1, lng: 129.05, sog: 0.0, navstat: 5, dest: BUSAN, dest_code: KRPUS, ais_eta: '2026-09-23T10:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: '2026-09-23T12:00:00+09:00', actual_arrival: null}
+  history:
+  - {at: '2026-09-21T06:00:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  - {at: '2026-09-22T11:30:00+09:00', lat: 35.1, lng: 129.05, sog: 0.0}
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: triggered, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    grade: alert
+    confidence: sure
+    schedule: null
+    eta_source: mof_planned
+    margin_days: 5
+    notes: []
 - id: V-X01
   layer: failure
   why: 배 위치도 해수부 일정도 받지 못했다. 도착 시각을 알 출처가 없어 등급과 일정을 내지 않는다(순항이라고 하지 않는다)
@@ -1101,7 +1159,7 @@ items:
     notes: [no_position]
 - id: V-D02
   layer: nodata
-  why: 배 위치가 없고 해수부 관제 실적으로 이미 입항했다. 실적 시각으로 세어 여유 6일, 순항이되 확신은 부분
+  why: 배 위치가 없고 해수부 관제 실적으로 이미 입항했다. 실적 시각으로 세어 여유 6일, 순항이되 입항한 배의 신호는 읽지 않아 확신도 확실
   now: '2026-09-22T12:00:00+09:00'
   sale_due: '2026-09-28'
   cargo: {stage: 입항보고 수리, port_code: KRPUS, entry_date: '2026-09-22'}
@@ -1110,13 +1168,14 @@ items:
   history: []
   v1: null
   expect:
-    signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: clear, navstat_mismatch: unknown}
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
-    confidence: partial
+    confidence: sure
     schedule: null
     eta_source: mof_actual
     margin_days: 6
-    notes: [no_position]
+    notes: []
+    info: [no_first_eta, arrived]
 - id: V-D03
   layer: nodata
   why: 도착 시각을 알 출처가 없지만 통관이 검사지정이다. 올라간 등급(긴급)은 비우지 않는다. 일정은 낼 근거가 없어 비운다
@@ -1175,7 +1234,7 @@ items:
     notes: []
 - id: V-D06
   layer: nodata
-  why: '배 위치가 없고 최종 입항 신고(10:30)만 있다. 판매 예정일이 있으면 그 시각으로 여유 6일을 센다(최종 신고도 위치 없이 세는 출처). 확신은 부분'
+  why: '배 위치가 없고 최종 입항 신고(10:30)만 있다. 판매 예정일이 있으면 그 시각으로 여유 6일을 센다(최종 신고도 위치 없이 세는 출처). 입항한 배의 신호는 읽지 않아 확신은 확실'
   now: '2026-09-22T12:00:00+09:00'
   sale_due: '2026-09-28'
   cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-22'}
@@ -1184,13 +1243,14 @@ items:
   history: []
   v1: null
   expect:
-    signals: {customs_hold: clear, anchor_wait: unknown, dest_changed: unknown, position_stale: unknown, eta_conflict: clear, navstat_mismatch: unknown}
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
     grade: fine
-    confidence: partial
+    confidence: sure
     schedule: null
     eta_source: mof_final
     margin_days: 6
-    notes: [no_position]
+    notes: []
+    info: [no_first_eta, arrived]
 - id: V-D07
   layer: nodata
   why: '같은 배의 지난 항차 입항 예정(세관 입항일 09-24보다 이틀 앞)이 들어왔다. 배 위치가 있다. 다른 항차의 값은 쓰지 않아 등급이 없다(쓰면 여유 6일로 순항이 된다)'
@@ -1412,21 +1472,21 @@ items:
     info: [landed]
 - id: V-S07
   layer: stage
-  why: '하선신고 수리: 배를 보는 단계의 마지막이다. 같은 배 신호(다른 항구로 가는 중)가 그대로 실려 경계다. 입항 실적이 있어 ETA 어긋남은 꺼짐'
+  why: '하선신고 수리: 배를 보는 단계의 마지막이다. 입항 실적이 아직 없으니 같은 배 신호(다른 항구로 가는 중)가 그대로 실려 경계다'
   now: '2026-09-22T12:00:00+09:00'
   sale_due: '2026-09-28'
-  cargo: {stage: 하선신고 수리, port_code: KRPUS, entry_date: '2026-09-20'}
+  cargo: {stage: 하선신고 수리, port_code: KRPUS, entry_date: '2026-09-24'}
   position: {mmsi: 999000001, lat: 34.5, lng: 131.0, sog: 14.0, navstat: 0, dest: OSAKA, dest_code: JPOSA, ais_eta: '2026-09-23T18:00:00+09:00', last_time: '2026-09-22T11:30:00+09:00'}
-  schedule: {planned_arrival: null, actual_arrival: '2026-09-20T10:00:00+09:00'}
+  schedule: {planned_arrival: '2026-09-24T12:00:00+09:00', actual_arrival: null}
   history: []
   v1: null
   expect:
-    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: clear, navstat_mismatch: clear}
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: triggered, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
     grade: alert
-    confidence: sure
+    confidence: partial
     schedule: null
-    eta_source: mof_actual
-    margin_days: 8
+    eta_source: mof_planned
+    margin_days: 4
     notes: []
     info: [no_first_eta]
 - id: V-E01
