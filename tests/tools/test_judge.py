@@ -417,3 +417,15 @@ def test_a_ship_inside_the_radius_counts_as_at_the_port_only_when_it_is_stopped(
     assert "arrived" not in moving.info and "arrival_report_differs" in moving.notes
     assert "arrived" in seen(34.6, 0.0).info  # 30.0해리: 반경과 같으면 안
     assert "arrival_report_differs" in seen(34.5985, 0.0).notes  # 30.1해리: 밖
+
+
+def test_a_past_ship_eta_in_a_conflict_leaves_no_trusted_eta():
+    # [왜] 11-16 판정(E6). 어긋남 경로의 배 신호 ETA도 평소와 같이 이미 지났으면 출처가 아니다.
+    #      이른 쪽 신고로 돌아가지 않고 믿을 ETA가 없다. 신고가 있다고 좋아지면 안 된다
+    here = date(2026, 9, 21)
+    report = PortSchedule(final_arrival=datetime(2026, 9, 21, 9, 0, tzinfo=KST), fetched_at=NOW)
+    past = ship(lat=32.4, lng=129.05, ais_eta=datetime(2026, 9, 22, 4, 0, tzinfo=KST))
+    seen = judge(cargo(entry_date=here), past, report, now=NOW, sale_due=date(2026, 9, 28))
+    assert (seen.eta_source, seen.trusted_eta, seen.margin_days) == (None, None, None)
+    assert "arrival_report_differs" in seen.notes and "no_eta" in seen.notes
+    assert seen.grade != "fine" and seen.confidence != "sure"

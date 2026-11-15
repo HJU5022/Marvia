@@ -9,7 +9,7 @@ tools/signals.py가 정한다.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from pydantic import BaseModel
 
@@ -142,7 +142,11 @@ def judge(
             arrived = False
             # [왜] 11-16 판정(R-129). 어긋나면 믿을 ETA는 늦은 쪽(배 신호 ETA)이다. 신고가 있다고 신고가
             #      없을 때보다 여유가 늘면 안 된다. 여유 일수도 이 값으로 센다
-            eta, source = as_utc(position.ais_eta), "ais_eta"
+            # [왜] 11-16 판정. 그 배 신호 ETA도 평소와 같이 이미 지났으면 출처가 아니다. 이른 쪽 신고로
+            #      돌아가지 않고 믿을 ETA가 없다
+            slack = timedelta(minutes=rules["clock_skew_minutes"])
+            late = as_utc(position.ais_eta)
+            eta, source = (late, "ais_eta") if late >= as_utc(now) - slack else (None, None)
             signals = [
                 Signal(id=s.id, state="triggered", value=f"입항 신고와 {gap:.1f}시간 어긋남")
                 if s.id == "eta_conflict"
