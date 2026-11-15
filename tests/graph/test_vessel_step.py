@@ -501,6 +501,42 @@ def test_a_cargo_that_landed_since_the_ship_was_confirmed_is_judged_by_customs_o
     assert "over_cap" not in cell["notes"]
 
 
+def test_a_dont_know_answer_is_remembered_and_the_next_turn_does_not_ask_again(agent_deps, monkeypatch):
+    # [왜] 11-16 R-140 (B11). "모르겠어요"라고 한 화물을 다음 차례에 또 묻지 않는다
+    graph = graph_on(agent_deps)
+    config, _ = run(graph, "TESTVSL0002 어디쯤 왔어요?")
+    graph.invoke(Command(resume={"selected": 0}), config)
+    monkeypatch.setattr(
+        vessel, "find_vessel", lambda facts, **kw: pytest.fail("모른다고 한 배를 다시 찾았다")
+    )
+    graph.invoke({"text": "TESTVSL0002 지금은요?"}, config)
+    state = graph.get_state(config)
+    assert not state.interrupts and state.values["vessel_question"] is None
+    assert state.values["vessels"][0]["reason"] == "user_skipped"
+
+
+def test_a_pick_that_is_not_the_papers_path_does_not_ask_for_the_arrival_report_again(
+    agent_deps, monkeypatch
+):
+    # [왜] 11-16 R-140 (B7). 입항 신고를 고른 뒤에 다시 받는 것은 서류로 맞추는 길(신고에 호출부호가 없을
+    #      때)뿐이다. TESTVSL0002는 MRN으로 찾은 입항 신고가 없는 길이다
+    graph = graph_on(agent_deps)
+    config, _ = run(graph, "TESTVSL0002 어디쯤 왔어요?")
+    monkeypatch.setattr(mof, "plans_for", lambda *a, **k: pytest.fail("서류 길이 아닌데 입항 신고를 받았다"))
+    graph.invoke(Command(resume={"selected": 1}), config)
+    assert graph.get_state(config).values["vessels"][0]["status"] == "user_choice"
+
+
+def test_the_verdict_asks_for_the_schedule_with_the_korean_date_not_the_utc_date(agent_deps, monkeypatch):
+    # [왜] 11-16 R-140. UTC 09-22 16:30은 한국 시각 09-23 01:30이다. 날짜가 UTC로 나가면 하루 일찍 읽는다
+    seen = []
+    real = mof.port_schedule
+    monkeypatch.setattr(mof, "port_schedule", lambda *a, **k: seen.append(k["today"]) or real(*a, **k))
+    now = datetime(2026, 9, 22, 16, 30, tzinfo=UTC)
+    run(graph_on(agent_deps, now=now), "TESTVSL0001 어디쯤 왔어요?")
+    assert seen and all(day.isoformat() == "2026-09-23" for day in seen)
+
+
 def test_the_cap_also_limits_position_and_schedule_lookups_for_ships_already_confirmed(
     agent_deps, monkeypatch
 ):
