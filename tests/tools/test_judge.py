@@ -318,3 +318,13 @@ def test_once_the_ship_has_really_arrived_its_signals_are_not_read_any_more():
     assert {s.id: s.state for s in anchored.signals}[
         "anchor_wait"
     ] == "triggered" and anchored.grade == "alert"
+
+
+def test_only_the_voyage_guard_keeps_the_final_report_of_an_earlier_voyage_out():
+    # [왜] 검증 N1. 지난 항차의 최종 신고는 이미 지난 시각이라 "지난 예정 거르기"에 걸리지 않는다.
+    #      항차 가드만이 이것을 막는다
+    old = PortSchedule(final_arrival=datetime(2026, 9, 22, 8, 0, tzinfo=KST), fetched_at=NOW)
+    seen = judge(
+        cargo(entry_date=date(2026, 9, 24)), ship(ais_eta=None), old, now=NOW, sale_due=date(2026, 9, 28)
+    )
+    assert seen.eta_source is None and seen.grade is None and "other_voyage" in seen.notes

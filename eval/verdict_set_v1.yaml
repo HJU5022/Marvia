@@ -1028,6 +1028,24 @@ items:
     eta_source: mof_planned
     margin_days: 5
     notes: []
+- id: V-D13
+  layer: nodata
+  why: '지난 항차의 최종 입항 신고(세관 입항일 09-24보다 이틀 앞, 이미 지난 시각)가 들어왔고 배는 항해 중이다. 이 신고는 지난 예정 거르기에 걸리지 않아 항차 가드만 막는다. 다른 항차의 값은 쓰지 않아 등급이 없다(쓰면 여유 6일로 순항이 된다)'
+  now: '2026-09-22T12:00:00+09:00'
+  sale_due: '2026-09-28'
+  cargo: {stage: 입항적재화물목록 심사완료, port_code: KRPUS, entry_date: '2026-09-24'}
+  position: {mmsi: 999000001, lat: 33.0, lng: 128.0, sog: 12.0, navstat: 0, dest: BUSAN, dest_code: KRPUS, ais_eta: null, last_time: '2026-09-22T11:30:00+09:00'}
+  schedule: {planned_arrival: null, actual_arrival: null, final_arrival: '2026-09-22T08:00:00+09:00'}
+  history: []
+  v1: null
+  expect:
+    signals: {customs_hold: clear, anchor_wait: clear, dest_changed: clear, position_stale: clear, eta_conflict: unknown, navstat_mismatch: clear}
+    grade: null
+    confidence: unknown
+    schedule: null
+    eta_source: null
+    margin_days: null
+    notes: [other_voyage, no_eta]
 - id: V-X01
   layer: failure
   why: 배 위치도 해수부 일정도 받지 못했다. 도착 시각을 알 출처가 없어 등급과 일정을 내지 않는다(순항이라고 하지 않는다)
