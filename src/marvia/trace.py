@@ -16,6 +16,7 @@ tracer_callbacks: 그래프 실행 설정에 넣을 콜백. 서버·CLI·평가�
 
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import functools
 from typing import Any
@@ -28,10 +29,42 @@ from marvia.config import Settings
 from marvia.identify.parse import find_spans
 
 MASK = "[가림]"
+# 지금 가리는 값 안에서 모은, 값으로 가릴 글(배 이름·호출부호·배 번호). scrub 한 번이 끝나면 비운다.
+# [왜] 이 값들은 번호 모양(8자 이상 덩어리)이 아니라 find_spans에 걸리지 않는다. 상태를 두지 않는다:
+#      받은 값 안에서 찾고 그 호출 안에서만 쓴다 (계획 8b). 비어 있으면 가림은 전과 같다
+_HIDDEN: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar("trace_hidden", default=())
+_MIN_HIDDEN = 3  # 이보다 짧은 값은 모으지 않는다. 두 글자 값은 다른 글을 군데군데 지운다
+_SHIP_KEYS = ("name", "call_sign", "mmsi")
+
+
+def _ship_values(value: Any, found: set[str], depth: int = 0) -> None:
+    """값 안(공책의 vessels, 후보 candidates, 검색 결과 hits, MRN 호출부호)에서 배의 값을 모은다."""
+    if depth > 8:
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "mrn_call_sign" and isinstance(item, str) and len(item) >= _MIN_HIDDEN:
+                found.add(item)
+            if key in ("vessels", "candidates", "hits") and isinstance(item, list):
+                for ship in item:
+                    if isinstance(ship, dict):
+                        found.update(
+                            v
+                            for k in _SHIP_KEYS
+                            if isinstance(v := ship.get(k), str) and len(v) >= _MIN_HIDDEN
+                        )
+            _ship_values(item, found, depth + 1)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _ship_values(item, found, depth + 1)
 
 
 def scrub_text(text: str) -> str:
-    """글 속 번호 후보 덩어리(identify.parse.find_spans와 같은 규칙)를 모두 MASK로 바꾼다."""
+    """글 속 번호 후보 덩어리(identify.parse.find_spans와 같은 규칙)와 값으로 가릴 글을 MASK로 바꾼다."""
+    for hidden in sorted(
+        _HIDDEN.get(), key=len, reverse=True
+    ):  # [왜] 긴 값부터: 짧은 값이 앞부분만 가리지 않게
+        text = text.replace(hidden, MASK)
     pieces: list[str] = []
     last = 0
     for span in find_spans(text):
@@ -45,7 +78,13 @@ def scrub(data: Any, **_: Any) -> Any:
 
     [왜] 인자 이름이 data이고 나머지 키워드는 받아 버린다. Langfuse 클라이언트가 mask(data=...)로 부른다.
     """
-    return _walk(data, set())
+    found: set[str] = set()
+    _ship_values(data, found)
+    token = _HIDDEN.set(tuple(found))
+    try:
+        return _walk(data, set())
+    finally:
+        _HIDDEN.reset(token)
 
 
 def _key(key: Any, taken: dict) -> Any:

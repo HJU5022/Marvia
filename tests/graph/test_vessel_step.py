@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -545,3 +546,68 @@ def test_a_pick_is_checked_against_every_search_hit_not_only_the_ones_the_card_s
         "same_call_sign_many_mmsi",
         "partial",
     )
+
+
+class Recorder(BaseCallbackHandler):
+    """트레이서가 받는 값을 그대로 모은다: 노드마다의 입력과 출력, 따로따로."""
+
+    def __init__(self):
+        self.payloads: list = []
+
+    def on_chain_start(self, serialized, inputs, **kwargs):
+        self.payloads.append(inputs)
+
+    def on_chain_end(self, outputs, **kwargs):
+        self.payloads.append(outputs)
+
+
+def test_trace_scrub_hides_ships_the_step_met_inside_each_payload(agent_deps):
+    # [왜] Langfuse는 span마다 값을 따로 scrub에 넣는다. 한 덩어리로 넣으면 다른 값에서 찾은 배 이름
+    #      으로 가려져 실제보다 잘 가려진 것처럼 보인다. 값을 모으는 일도 받은 값 안에서만 한다
+    from marvia.trace import MASK, _ship_values, scrub
+
+    recorder = Recorder()
+    graph = graph_on(agent_deps)
+    config = {"configurable": {"thread_id": "tr"}, "callbacks": [recorder]}
+    graph.invoke({"text": "TESTVSL0002 어디쯤 왔어요?"}, config)  # 선택 카드에서 멈춘다
+    assert graph.get_state(config).interrupts
+    graph.invoke(Command(resume={"selected": 1}), config)  # 번호로 재개한다
+    graph.invoke({"text": "TESTVSL0001 어디쯤 왔어요?"}, {**config, "configurable": {"thread_id": "tr2"}})
+    raw = [json.dumps(p, ensure_ascii=False, default=str) for p in recorder.payloads]
+    ids = ("QQTST1", "QQTST3", "999000001", "999000002", "999000003")
+    assert any(s in text for text in raw for s in ids)  # 가리기 전에는 배의 값이 있다
+    for payload in recorder.payloads:
+        shown = json.dumps(scrub(payload), ensure_ascii=False, default=str)
+        for secret in (*ids, "26TEST0001I", "26TEST0009I", "TESTVSL0001", "TESTVSL0002"):
+            assert secret not in shown, (secret, shown[:200])
+        # 배 이름은 배 값(vessels, candidates)이 함께 든 값에서 가린다. 세관이 준 화물 사실의 vessel_name은
+        # 그 값 옆에 배 값이 없어 지금도 남는다(8b 전부터의 동작, 가림 규칙을 고치는 일은 이 계획 밖이다)
+        names: set[str] = set()
+        _ship_values(payload, names)
+        if names:
+            assert "TEST CARGO" not in json.dumps(scrub(payload), ensure_ascii=False, default=str)
+    assert any(MASK in json.dumps(scrub(p), ensure_ascii=False, default=str) for p in recorder.payloads)
+
+
+def test_scrub_is_stateless_and_only_hides_values_found_inside_what_it_is_given():
+    from marvia.trace import MASK, scrub
+
+    held = {
+        "vessels": [{"token": "[BL1]", "name": "TEST CARGO A", "call_sign": "QQTST1", "mmsi": "999000001"}]
+    }
+    assert scrub(held)["vessels"][0]["name"] == MASK and scrub(held)["vessels"][0]["call_sign"] == MASK
+    # 같은 글이라도 그 값 밖의 다른 값에서는 가리지 않는다(앞 호출의 기억이 남지 않는다)
+    other = {"note": "TEST CARGO A QQTST1"}
+    assert scrub(other) == other
+    # 후보 목록과 되묻는 값 안의 값도 모은다. 너무 짧은 값(세 글자 미만)은 다른 글을 지우므로 모으지 않는다
+    asked = {
+        "vessel_question": {"candidates": [{"name": "TEST CARGO C", "call_sign": "QQ", "mmsi": "999000004"}]}
+    }
+    out = scrub({**asked, "text": "TEST CARGO C QQ"})
+    assert out["text"] == f"{MASK} QQ"
+    # 검색 결과 전체(hits)와 MRN 호출부호(mrn_call_sign)도 모은다. 질문 값은 그 둘을 함께 든다
+    more = {
+        "vessel_question": {"hits": [{"mmsi": "999000020", "call_sign": "QQTWN"}], "mrn_call_sign": "QQMRN"}
+    }
+    out = scrub({**more, "text": "999000020 QQTWN QQMRN"})
+    assert out["text"] == f"{MASK} {MASK} {MASK}"
