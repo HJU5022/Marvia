@@ -106,7 +106,7 @@ test.describe("배 식별", () => {
     const cargo = card(page, "TESTVSL0006");
     await expect(cargo).toContainText("배에서 내린 화물이라 배 위치는 보지 않았어요");
     await expect(cargo.locator("dd[data-grade]")).toHaveText("순항");
-    await expect(cargo.locator("dt", { hasText: "도착 예정" }).locator("+ dd")).toHaveText("모름");
+    await expect(cargo).not.toContainText("도착 예정");
   });
 
   test("배를 찾지 못하면 '등급 없음'과 그 까닭을 보인다", async ({ page }) => {

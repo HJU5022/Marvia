@@ -30,8 +30,12 @@ function VesselCells({ c }: { c: Cargo }) {
           <dd>{v.schedule}</dd>
           <dt>확신</dt>
           <dd>{v.confidence}</dd>
-          <dt>도착 예정</dt>
-          <dd>{v.eta ? `${when(v.eta)} (${v.eta_source ?? "출처 모름"})` : "모름"}</dd>
+          {v.landed ? null : (
+            <>
+              <dt>도착 예정</dt>
+              <dd>{v.eta ? `${when(v.eta)} (${v.eta_source ?? "출처 모름"})` : "모름"}</dd>
+            </>
+          )}
           {why.length ? (
             <>
               <dt>까닭</dt>

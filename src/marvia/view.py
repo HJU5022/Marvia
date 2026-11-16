@@ -99,6 +99,8 @@ def _verdict(row: dict) -> dict:
         # 판정 함수의 이유는 verdict.yaml에, 배 식별 단계가 더한 이유(over_cap 등)는 vessel.yaml에 있다
         "notes": [texts["notes"].get(name) or reasons[name] for name in row["notes"]],
         "info": [texts["info"][name] for name in row["info"]],
+        # [왜] 내린 화물은 도착 예정을 보지 않은 것이다. 화면이 "도착 예정 모름"을 그리지 않게 알려 준다
+        "landed": "landed" in row["info"],
     }
 
 

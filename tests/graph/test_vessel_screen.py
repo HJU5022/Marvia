@@ -116,6 +116,11 @@ def test_cargo_off_the_ship_says_so_and_shows_customs_only(agent_deps):
     assert card["verdict"]["info"] == [
         "배에서 내린 화물이라 배 위치는 보지 않았어요. 통관 단계만으로 본 등급이에요"
     ]
+    # [왜] 11-16 R-148. 내린 화물은 도착 예정이 없는 것이 아니라 보지 않는 값이다. 화면이 그 칸을 그리지 않게
+    #      판정 칸이 알려 준다. 배를 본 화물은 거짓이다
+    assert card["verdict"]["landed"] is True
+    on_ship = cards(run(served(agent_deps), "s7b", "TESTVSL0001 어디쯤 왔어요?"))[0]
+    assert on_ship["verdict"]["landed"] is False
 
 
 def test_a_cargo_the_loop_looked_up_itself_says_the_ship_was_not_looked_at_this_turn(agent_deps):

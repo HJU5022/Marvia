@@ -40,6 +40,7 @@ export type Verdict = {
   signals: string[];
   notes: string[];
   info: string[];
+  landed: boolean; // 내린 화물이라 배를 보지 않았다. 도착 예정 칸을 그리지 않는다
 };
 export type EvidenceUnit = {
   unit_id: string;
