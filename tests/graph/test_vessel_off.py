@@ -23,6 +23,7 @@ from pydantic import Field
 from starlette.testclient import TestClient
 
 from marvia.graph.main import LOOPS, build_main_graph
+from marvia.graph.schemas import Plan, Step
 from marvia.server import build_app
 from marvia.trace import scrub
 from marvia.view import screen_view
@@ -36,7 +37,7 @@ STATE_SHA = "32b3a156446f45ec5f2be40b059ca30a46e744435c45e7888d971d5ec376aee7"
 # 길 셋의 한 차례씩: 화면 이벤트, 공책의 칸 이름, 그 둘을 트레이스 가림에 넣은 결과
 LOOPS_SHA = "99e5986c5e0f58cb7d17296aa97e89ce9923967e5f290a11b9b072f0fdd6b1b0"
 # 모델이 받는 것(묶은 도구 이름의 순서, 메시지 글, 계획자·품목·작성자 프롬프트)을 길 셋에서 적은 것
-MODEL_SHA = "15cbd316148f0e2ceb916811aa6ddf491ddf7f3fcc25c42417223efc4b35e37b"
+MODEL_SHA = "de8187c266cc314f21f529503c3ddd4b794eeb3c470e48d65e507ee332e13e27"
 # 번호가 애매한 화물의 선택 카드와 직접 적은 글로 재개한 차례: 이벤트와 재개 뒤 공책
 CARD_SHA = "d8dbe213efd5cb155faf0f82e34a229c12c58cbc19a1ddf266ff767012e190cd"
 # 모델이 부른 ask_user 카드와 직접 적은 글로 재개한 차례: 이벤트, 공책, 다음 모델 호출이 받은 메시지
@@ -219,9 +220,12 @@ def test_what_the_model_receives_is_unchanged_when_the_switch_is_off(agent_deps)
             )
         )
         base = agent_deps(model=model)
+        # [왜] 11-16 R-150. 계획자 길은 첫 계획에서 품목 사실 뽑기(extract_item)를 한 번 내게 해
+        #      품목 프롬프트도 적는다
+        first = iter([Plan(steps=[Step(action="extract_item", query="", reason="품목을 본다")])])
         deps = replace(
             base,
-            plan=record("plan", base.plan),
+            plan=record("plan", lambda p, sink=first, fn=base.plan: next(sink, None) or fn(p)),
             item=record("item", base.item),
             write=record("write", base.write),
         )
@@ -234,6 +238,7 @@ def test_what_the_model_receives_is_unchanged_when_the_switch_is_off(agent_deps)
         events = _post(_client(graph), "off", "DEMO0001 DEMO0002 고춧가루 수입 요건이 뭐예요?")
         assert events[-1]["type"] == "RUN_FINISHED"
         seen[loop] = {"bound": model.bound, "calls": _stable(model.calls), "prompts": _stable(prompts)}
+    assert seen["planner"]["prompts"]["item"]  # 품목 프롬프트가 실제로 불렸다
     assert _sha(seen) == MODEL_SHA
 
 
