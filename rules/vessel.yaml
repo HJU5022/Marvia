@@ -74,3 +74,9 @@ labels:
     position_stale: 배 위치가 한동안 들어오지 않았어요
     eta_conflict: 배 신호가 해수부 입항 예정과 어긋나요. 입항 신고가 있어도 새 배 신호가 이 항구로 오는 중인데 항구에 서 있지 않으면 어긋난 것으로 봐요
     navstat_mismatch: 배 신호의 항해 상태와 속도가 맞지 않아요
+
+# 사용자가 말한 날짜를 받는 규칙 (계획 8c, 결정 C5, C11, C12). 코드(src/marvia/tools/user_dates.py)가 읽는다
+dates:
+  max_days: 365 # 오늘 앞뒤로 이 일수 안의 날짜만 받는다
+  past_grace_days: 7 # 연도 없는 날짜가 오늘보다 이 일수를 넘게 지났으면 내년으로 읽는다
+  first_eta_hour: 12 # 날짜만 받은 처음 알던 도착 예정은 그날 이 시(한국 시각)로 본다
