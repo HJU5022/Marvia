@@ -142,7 +142,12 @@ test("선택지 카드에서 고르면 이어서 답한다", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "어느 항구 기준으로 볼까요?" })).toBeVisible();
   await expect(page.getByRole("button", { name: /부산 \(권장\)/ })).toBeVisible();
   await accessible(page);
-  await page.screenshot({ path: "e2e/screenshots/choice.png", fullPage: true });
+  // [왜] "권장안으로 진행 (N초 뒤 자동)"의 초는 찍을 때마다 달라 마스크한다 (R-151)
+  await page.screenshot({
+    path: "e2e/screenshots/choice.png",
+    fullPage: true,
+    mask: [page.getByRole("button", { name: /권장안으로 진행/ })],
+  });
   await page.getByRole("button", { name: /인천/ }).click();
   await expect(answers(page)).toContainText("확인한 내용을 정리했어요. 인천 기준이에요.");
 });
