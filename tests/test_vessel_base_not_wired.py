@@ -5,6 +5,12 @@
 graph/main.py, graph/state.py, server.py, view.py, trace.py. 그 다섯만 묶음에서 빼고
 "꺼져 있으면 동작이 같다"를 tests/graph/test_vessel_off.py가 본다. 나머지 묶음과 값은 그대로다.
 
+계획 8c는 모델이 배 판정을 읽는 길을 스위치 뒤에 더하며 graph/agent.py, graph/tools.py, graph/verify.py,
+rules/verify.yaml, eval/dataset.py, eval/metrics.py, eval/run.py, scripts/run_eval.py를 고친다. 그 파일들은
+묶음에서 이름으로 빼고 tests/graph/test_vessel_off_inputs.py(도구 인자 꼴, 도구 결과 글, 검증자,
+트레이스 가림)와 tests/eval/test_run_eval_cli.py(평가 지표 다시 세기)가 지킨다.
+새 prompts/vessel_*.md는 묶음에 없다.
+
 묶음마다 파일 이름과 내용을 이어 sha256 하나로 묶었다. 값은 측정 커밋의 것이다.
 연결하는 계획(도구 목록·지시문·화물 줄을 바꾸는 계획)은 바뀐 묶음의 값을 함께 바꾸고 그 까닭을 적는다.
 이 시험이 실패하면 값을 고치기 전에 어느 묶음의 무엇이 바뀌었는지부터 본다.
@@ -21,9 +27,10 @@ from marvia.graph.tools import make_tools
 
 ROOT = Path(__file__).resolve().parents[1]
 MEASURED_CARGOS = ("DEMO0001", "DEMO0002", "DEMO0003", "MOCK12345678", "TEST87654321")
+# [왜] agent, tools, verify는 계획 8c가 고친다(도구 셋, 지시문 조각을 잇는 자리, 검증자 새 규칙).
+#      그 셋은 묶음에서 빼고 tests/graph/test_vessel_off_inputs.py가 "꺼져 있으면 모델 입력이 같다"로 묶는다
 GRAPH_FILES = (
     "__init__",
-    "agent",
     "answer",
     "identify",
     "live",
@@ -31,20 +38,28 @@ GRAPH_FILES = (
     "resume",
     "schemas",
     "supervisor",
-    "tools",
-    "verify",
 )
+PROMPT_FILES = (
+    "agent agent_turn cli_transcript conversation_summary item_facts item_graph memory official plan "
+    "rag_analyze rag_context rag_grade rag_rewrite research research_turn sub_cargo sub_item sub_law "
+    "sub_turn summary supervisor todos_system todos_tool write"
+).split()
 # 묶음 이름 → (파일을 고르는 glob 목록, 측정 커밋의 sha256)
 GROUPS: dict[str, tuple[list[str], str]] = {
-    "지시문": (["prompts/*.md"], "56a43bb60bac04e7796db22cf85a2c10f31152eaccba730f36ccb61d584029d3"),
+    # [왜] prompts/*.md가 아니라 이름으로 적는다. 계획 8c의 새 조각(prompts/vessel_*.md)은 묶음에 없다
+    "지시문": (
+        [f"prompts/{name}.md" for name in PROMPT_FILES],
+        "56a43bb60bac04e7796db22cf85a2c10f31152eaccba730f36ccb61d584029d3",
+    ),
     "규칙(에이전트·검색·기한·재수입·식별·평가)": (
         [f"rules/{name}.yaml" for name in ("agent", "rag", "deadlines", "reimport", "identify", "eval")],
         "0725b7cd0f475d61a4ec72860ec42546672074bfa664121308bb78fa0725bb12",
     ),
-    # [왜] 폴더 전체가 아니라 이름으로 적는다. main.py와 state.py(계획 8b가 고침)와 새 파일 vessel.py는 뺀다
-    "그래프(main·state 제외)": (
+    # [왜] 폴더 전체가 아니라 이름으로 적는다. main.py와 state.py(계획 8b가 고침)와 새 파일 vessel.py,
+    #      계획 8c가 고치는 agent.py·tools.py·verify.py와 새 파일 vessel_text.py는 뺀다
+    "그래프(main·state·agent·tools·verify 제외)": (
         [f"src/marvia/graph/{name}.py" for name in GRAPH_FILES],
-        "fef3e2c948a43bb90c69e759d41cda1e53425f64876c5f099223a9ad36ed52eb",
+        "c1cf6860407d6e297b4d343b6f8807ce8f363fdbc8fa5483ba724876e8fb0eef",
     ),
     "검색": (["src/marvia/rag/*.py"], "fcab4969270619777247aeee8325aa3db33f4116350fd25ace3342214e355eac"),
     "가림과 번호 읽기": (
@@ -70,13 +85,11 @@ GROUPS: dict[str, tuple[list[str], str]] = {
     #        측정 커밋과 다르다. 여기에 넣지 않았고, 모델이 보는 쪽은 아래 화물 줄·도구 설명 시험이 본다
     "평가 실행기": (
         [
-            "src/marvia/eval/dataset.py",
-            "src/marvia/eval/metrics.py",
+            # [왜] dataset.py, metrics.py, run.py, scripts/run_eval.py는 계획 8c가 고친다. 평가 지표 계산은
+            #      tests/eval/test_run_eval_cli.py가 저장한 실행 열 개를 다시 세어 지킨다 (R-154)
             "src/marvia/eval/retrieval.py",
-            "src/marvia/eval/run.py",
-            "scripts/run_eval.py",
         ],
-        "1baf7cdf1e623fe659d2c596f6caa0d002127970c956722884d97308a28f22c2",
+        "0d11f51686d80987810e63464e3dd72c8c7fd6cfc6d9116feeabc3055e5bccc4",
     ),
     # server.py, view.py, trace.py는 계획 8b가 고쳐서 뺐다
     "감시·지시문 읽기·추적 연결·DB·로그인": (
@@ -93,15 +106,16 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         ["src/marvia/tools/unipass_replay.py", "src/marvia/tools/verdict.py", "src/marvia/tools/rules.py"],
         "373729b83e98295c364a460a5ae7a0433448b1d6d29038787b0387cbb9b454b8",
     ),
-    "규칙(그래프·검증·화물 조회·서버·값)": (
+    # [왜] rules/verify.yaml은 계획 8c가 고친다(검증자 새 규칙 낱말).
+    #      그 값은 test_vessel_off_inputs.py의 VERIFY_SHA가 지킨다
+    "규칙(그래프·화물 조회·서버·값)": (
         [
             "rules/graph.yaml",
-            "rules/verify.yaml",
             "rules/unipass.yaml",
             "rules/server.yaml",
             "rules/pricing.yaml",
         ],
-        "20052036ab791cdfe060cda7855e85ed8fb8da9fed3727788f37325f2dbecf54",
+        "f3a8e8f368cab8e1c01075c2e1ebef99751357dfac61880992c5cc34d97a27b5",
     ),
     "의존성과 DB 틀": (
         ["pyproject.toml", "uv.lock", "migrations/*.sql"],
