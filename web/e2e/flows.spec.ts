@@ -82,7 +82,7 @@ test.describe("배 식별", () => {
   test("호출부호가 같은 두 배는 자동 확정하지 않고, 고르면 확신이 부분이다", async ({ page }) => {
     await ask(page, "TESTVSL0007 어디쯤 왔어요?");
     await expect(page.getByRole("heading", { name: /TESTVSL0007 화물을 실은 배를 가리지 못했어요/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /배 번호 999000007/ })).toContainText("호출부호 QQTWN");
+    await expect(page.getByRole("button", { name: /배 번호 999000007/ })).toContainText("같은 호출부호의 배가 여럿이에요");
     await page.getByRole("button", { name: /배 번호 999000008/ }).click();
     await expect(answers(page)).toContainText("정리했어요");
     const cargo = card(page, "TESTVSL0007");

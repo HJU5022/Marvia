@@ -90,8 +90,10 @@ def test_ships_sharing_a_call_sign_are_asked_and_a_pick_among_them_is_capped():
     found = vessel.find_vessel(facts("TESTVSL0007"))
     assert (found["status"], found["reason"]) == ("ask", "same_call_sign_many_mmsi")
     assert [(c["mmsi"], c["check"]) for c in found["candidates"]] == [
-        ("999000007", "mrn_call_sign"),  # 그 후보 하나만 있다면 호출부호가 맞는다
-        ("999000008", "mrn_call_sign"),
+        # [왜] 11-16 R-147. 후보 하나만 보면 호출부호가 맞지만 같은 호출부호가 검색 결과에서 겹치면
+        #      그것이 묻는 까닭이다. 버튼에 그 까닭이 보여야 한다(check_candidate는 고른 뒤에 건다)
+        ("999000007", "same_call_sign_many_mmsi"),
+        ("999000008", "same_call_sign_many_mmsi"),
     ]
     assert (found["lookup"], found["mrn_call_sign"]) == ("found_signed", "QQTWN")
 

@@ -122,7 +122,10 @@ def find_vessel(facts: CargoFacts, *, near: dict | None = None) -> dict:
         shown = []
         for ship, cand in list(zip(ships, listed_hits, strict=True))[: cfg["max_candidates"]]:
             alone = match_vessel(facts, [cand], plans, mrn_sign, lookup)
-            shown.append({**ship, "check": alone.reason})
+            # [왜] 그 후보 하나만 보면 확정인데 같은 호출부호가 검색 결과에서 겹치면, 그것이 되묻는 까닭이다
+            twins = [h for h in listed_hits if _sign(h.call_sign) == _sign(ship["call_sign"])]
+            many = alone.status == "confirmed" and bool(_sign(ship["call_sign"])) and len(twins) > 1
+            shown.append({**ship, "check": "same_call_sign_many_mmsi" if many else alone.reason})
         # 고른 뒤의 검사가 쓸 것: MRN으로 입항 신고를 찾은 결과와 그 호출부호(공책에는 입항 신고를 두지
         #      않는다)
         return {
