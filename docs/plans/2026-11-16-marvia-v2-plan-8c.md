@@ -438,3 +438,26 @@ git commit -m "docs: 계획 8c 모델이 배 판정을 읽고 쓰게 함 (결정
 | 같은 차례에 되돌린 뒤 바로 다시 찾을지 | 안 한다(C7) | 그대로. 쓰임을 본 뒤 `agent`에서 `vessel`로 되돌아가는 화살표를 정한다 |
 | 수퍼바이저 길의 판정 블록 | 붙이지 않는다 | 서브에이전트 도구 설계와 함께 따로 |
 | 서류 길(MRN 신고에 호출부호 없음)에서 같은 호출부호 후보가 둘인 경우의 그래프 시험 | 지금 재생 자료에 없다(`TESTVSL0007`은 MRN에 호출부호가 있는 길). 8c는 새 재생 자료를 넣지 않고 N08도 `TESTVSL0007`을 쓴다 | **[결정 11-16]** 새 재생 자료 `TESTVSL0008`(MRN 신고에 호출부호 없음, 호출부호 `QQ…`가 같은 후보 둘, 배 번호 `999…`)을 그래프 시험 전용으로 T4에서 더한다. 평가 문항은 12개 그대로. 측정한 다섯 화물의 재생 묶음과 `TESTVSL0001`~`0007`은 건드리지 않는다. 시험은 고른 뒤 확신 상한이 부분인지와, R-147의 버튼 글(같은 호출부호의 배가 여럿이에요)이 이 길에서도 보이는지를 본다 |
+
+## 구현 기록 (11-16, 기준 `f208e59`)
+
+시험은 모두 DB 없이 돌린다(DB 시험 54건은 건너뜀). 기준 수: 계획 문서 커밋 뒤 1,235 통과, 54 건너뜀.
+
+| 단계 | 커밋 | 통과 / 건너뜀 | 적을 것 |
+|---|---|---|---|
+| T0 | `92f1513` | 1,235 / 54 | 계획 문서 |
+| T1 | `51f7ae9` | 1,241 / 54 | 새 시험 6개(`tests/graph/test_vessel_off_inputs.py`). 묶음에서 뺀 파일: `graph/agent.py`, `graph/tools.py`, `graph/verify.py`, `rules/verify.yaml`, `eval/dataset.py`, `eval/metrics.py`, `eval/run.py`, `scripts/run_eval.py`. `prompts/*.md`는 이름 24개로 바꿨다 |
+
+T1의 값(기대 값은 `f208e59`에서 냈고 프로세스를 세 번 따로 돌려 같았다 [실측]):
+
+| 이름 | 값 |
+|---|---|
+| `TOOLS_FULL_SHA` | `4bcb7110a0eec606059c65acf588c8b0b5b574590af8ec4b8a5b53fe97e91b46` |
+| `TOOL_RESULTS_SHA` | `cf59a0f8f221ecdf2961dc728cde6ac6cafa3cb241914c8e7b35cc3adfcee136` |
+| `VERIFY_SHA` | `75a3934de877e5c460dffead6999f667ca81eb800d077994206fc5df173e3cc8` |
+| `SCRUB_SHA` | `ad4582ba86cdb73a20ff5b89a84ae6f04d23a2477515a9fc58777639d505b985` |
+| 묶음 값 바뀐 셋 | 그래프 `c1cf6860…`, 평가 실행기 `0d11f516…`, 규칙(그래프·화물 조회·서버·값) `f3a8e8f3…` (파일이 줄었을 뿐 내용은 `48ca3c5`와 같다: `git diff 48ca3c5 f208e59`가 그 파일들에서 비었다) |
+
+`48ca3c5` 사본에서 같은 시험 파일을 돌린 결과(D10, D15) [실측]: 도구 인자 꼴, 도구 결과 글, 검증자 결과, 호출 자리, `**` 검사는 모두 통과했다(`f208e59`와 같다). **`SCRUB_SHA`만 다르다.** 8a가 화물 사실에 빈 칸 여섯을 더했고 8b가 `trace._ship_values`를 더해, 콜백이 받는 값이 `48ca3c5`와 같지 않다. 그래서 `SCRUB_SHA`는 `48ca3c5`의 값이 아니라 `f208e59`의 값이다. 이 시험이 지키는 것은 8c의 트레이스 고침 전후가 같다는 것이다(D17).
+
+D14의 평가 지표 다시 세기 시험은 `tests/eval/test_run_eval_cli.py::test_the_stored_comparison_runs_give_the_stored_verdict_again`에 이미 있어 새로 만들지 않았다. `metrics.py`의 행동 정확도 계산을 바꾸는 깨 보기(MC46)에서 그 파일의 시험이 깨졌다(처음 틀린 시험: `test_sheet_refuses_to_write_answer_text_inside_the_repo`, 실행 순서 때문이다).
