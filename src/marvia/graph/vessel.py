@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 
 from langgraph.types import interrupt
 
@@ -202,7 +202,8 @@ def find_vessels(state: MarviaState) -> dict:
     # [왜] 화물 칸은 이번 차례에 말한 화물만 담는다. 말하지 않은 화물의 확정과 답도 다음 차례를 위해 남긴다
     seen = {row["token"] for row in rows}
     rows += [row for token, row in kept.items() if token not in seen]
-    return {"vessels": rows, "vessel_question": question, "verdicts": []}
+    # [왜] 지난 차례의 카드 답은 이번 차례 날짜의 근거가 아니다. 화물이 없는 차례에도 비운다 (계획 8c, D21)
+    return {"vessels": rows, "vessel_question": question, "verdicts": [], "turn_answers": []}
 
 
 def check_pick(state: MarviaState, token: str, question: dict, picked: dict) -> Match:
@@ -270,6 +271,20 @@ def ask_vessel(state: MarviaState) -> dict:
     return update
 
 
+def _given_dates(cells: dict) -> dict:
+    """공책의 날짜 칸(ISO 글)을 judge가 받는 꼴로 바꾼다. 처음 알던 도착 예정은 그날 낮 시각이다."""
+    hour = load_rules("vessel")["dates"]["first_eta_hour"]
+    out: dict = {}
+    if cells.get("sale_date"):
+        out["sale_due"] = date.fromisoformat(cells["sale_date"])
+    if cells.get("forwarder_eta"):
+        out["forwarder_eta"] = date.fromisoformat(cells["forwarder_eta"])
+    if cells.get("first_eta"):
+        day = date.fromisoformat(cells["first_eta"])
+        out["first_eta"] = datetime(day.year, day.month, day.day, hour, tzinfo=KST)
+    return out
+
+
 # [주의] 돌려주는 타입을 Callable로 적지 않는다. 인자 이름(state)이 빠져 add_node 타입 검사가 거절한다
 def verdict_node(now: Callable[[], datetime]):
     """verdict 노드를 만든다. now는 판정의 기준 시각(시험이 고정한다)."""
@@ -308,7 +323,8 @@ def verdict_node(now: Callable[[], datetime]):
             #      사용자가 고른 배,
             #      같은 호출부호의 배가 여럿인 배는 확신이 부분을 넘지 못한다(11-15 판정). 상한은 judge가 건다
             cap = ship.get("cap") if sailing else None
-            found = judge(facts, position, plan, now=now(), cap=cap, cap_note="ship_unchecked")
+            given = _given_dates(state.get("cargo_dates", {}).get(cargo["token"], {}))
+            found = judge(facts, position, plan, now=now(), cap=cap, cap_note="ship_unchecked", **given)
             found = found.model_dump(mode="json")
             if capped:
                 found["notes"].append("over_cap")  # 글은 rules/vessel.yaml reasons에 있다

@@ -33,7 +33,7 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolCall, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
-from marvia.graph.state import LoopState
+from marvia.graph.state import LoopState, VesselLoopState
 from marvia.llm import CLIFailed
 from marvia.prompts import render
 from marvia.tools.rules import load_rules
@@ -182,7 +182,7 @@ def describe_approval(tool_call: ToolCall, state: Any, runtime: Any) -> str:
     return text
 
 
-def build_agent(model: BaseChatModel, tools: list, permission_mode: str):
+def build_agent(model: BaseChatModel, tools: list, permission_mode: str, vessel: bool = False):
     """에이전트 루프를 만든다. auto 모드만 ask 목록을 건너뛴다 (설계 6.3)."""
     cfg = load_rules("agent")
     approval = cfg["approval"]
@@ -212,7 +212,8 @@ def build_agent(model: BaseChatModel, tools: list, permission_mode: str):
         tools,
         system_prompt=render("agent"),
         middleware=middleware,
-        state_schema=LoopState,
+        # [왜] 켠 길만 날짜와 카드 답 칸이 있는 공책을 쓴다 (계획 8c). 꺼진 길의 공책 칸은 그대로다
+        state_schema=VesselLoopState if vessel else LoopState,
         name="agent",
     )
 

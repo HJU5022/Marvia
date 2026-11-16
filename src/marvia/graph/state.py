@@ -88,6 +88,13 @@ class MarviaState(IdentifyState, total=False):
     vessels: list[dict]
     verdicts: list[dict]  # 화물마다 판정 {"token", ...tools/judge.Verdict}
     vessel_question: dict | None  # 배를 가리지 못해 물을 선택 카드와 후보. 없으면 None
+    # 아래는 모델이 배 판정을 읽는 길의 칸 (계획 8c). 스위치가 켜졌을 때만 생긴다
+    # note_dates가 받은 날짜 {토큰: {"sale_date", "forwarder_eta", "first_eta"}} (ISO 글). 차례를 넘는다.
+    # [주의] 부모 공책은 덮어쓰기다. 합치는 함수는 루프 공책(VesselLoopState)에만 둔다
+    cargo_dates: dict[str, dict]
+    # 이번 차례에 ask_user 카드에 사용자가 직접 적은 답(가린 글). note_dates가 날짜의 근거로 읽는다.
+    # vessel 노드가 차례 처음에 비운다. 고른 선택지의 글(모델이 쓴 글)은 담지 않는다
+    turn_answers: list[str]
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
@@ -121,6 +128,14 @@ def merge_cargos(old: list[dict], new: list[dict]) -> list[dict]:
     return list(by_token.values())
 
 
+def merge_dates(old: dict[str, dict], new: dict[str, dict]) -> dict[str, dict]:
+    """받은 날짜 칸 합치기(reducer). 토큰마다 칸을 합치고 같은 칸을 다시 받으면 새 값으로 바꾼다."""
+    out = {token: dict(cells) for token, cells in old.items()}
+    for token, cells in new.items():
+        out[token] = {**out.get(token, {}), **cells}
+    return out
+
+
 # 에이전트 루프(create_agent)의 공책 (계획 3c). 메인 공책과 칸 이름이 같으면 값을 주고받는다
 # [왜] 도구는 병렬로 돌 수 있다. 여러 도구가 같은 칸에 쓰면 합치는 함수(reducer)가 있어야 한다
 #      (없으면 LangGraph가 InvalidUpdateError를 낸다). 메인 공책은 루프가 끝난 뒤의 전체 값을 받아 덮어쓴다
@@ -152,6 +167,15 @@ class LoopState(AgentState):
     # [주의] reducer가 없다. handoff를 혼자 부르게 하는 Guards 덕에 한 단계에 한 번만 쓴다 (계획 7b)
     route: NotRequired[str]
     task: NotRequired[str]
+
+
+# 배 판정을 읽는 길(계획 8c, 스위치 켜짐)의 루프 공책. 서브그래프 상태에 없는 칸은 Command로 써도 오류 없이
+# 버려지니 도구가 쓰는 칸을 여기 둔다. 합치는 함수는 이 공책에만 둔다(부모 공책은 덮어쓰기).
+# [왜] LoopState에 두지 않고 따로 만든다. 서브그래프는 칸의 처음 값(빈 dict·빈 목록)도 부모 공책으로
+#      돌려주어, 꺼진 길의 공책 칸 이름이 달라진다. 켜진 길만 이 공책을 쓴다
+class VesselLoopState(LoopState):
+    cargo_dates: NotRequired[Annotated[dict[str, dict], merge_dates]]
+    turn_answers: NotRequired[Annotated[list[str], operator.add]]
 
 
 # RAG 서브그래프의 공책 (설계 5.4). 메인 그래프와 칸을 나눠 쓰고, 계획 3에서 메인 그래프가 evidence를 받는다

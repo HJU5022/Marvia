@@ -61,6 +61,7 @@ from marvia.identify.parse import kind_of, read_numbers
 from marvia.llm import LLMFailed
 from marvia.prompts import render
 from marvia.rag.models import Evidence, SearchFailed
+from marvia.tools.deadlines import KST
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
 from marvia.watch import WatchDeps
@@ -263,6 +264,9 @@ def build_main_graph(
         raise ValueError(f"loop는 {', '.join(LOOPS)} 가운데 하나여야 합니다: {loop!r}")
     cfg = load_rules("agent")
     rag_graph = build_rag_graph(deps.rag)  # [왜] 한 번만 만들고 search_law가 부를 때마다 다시 쓴다
+    # [왜] 시계 하나 (계획 8c, C14, D20). 켠 길은 모델이 보는 Today, note_dates의 범위와 연도 해석, 검증자가
+    #      허용하는 오늘을 판정의 기준 시각(now)의 한국 날짜 한 곳에서 만든다. 꺼진 길은 deps.today 그대로다
+    clock_today = (lambda: deps.now().astimezone(KST).date()) if vessel else deps.today
 
     def plan(state: MarviaState) -> dict:
         """계획자: 지금까지 한 일과 모은 것을 보고 남은 할 일을 다시 정한다 (설계 6.1)."""
@@ -277,7 +281,7 @@ def build_main_graph(
         done = [step | {"status": "done"} for step in state.get("plan", []) if step["status"] != "pending"]
         prompt = render(
             "plan",
-            today=deps.today().isoformat(),
+            today=clock_today().isoformat(),
             question=state.get("masked_text", ""),
             cargos="\n".join(cargo_lines(state.get("cargos", []))),
             # [왜] 계획자에게는 근거 본문 대신 unit_id와 제목만 준다. 무엇을 이미 찾았는지만 알면 된다
@@ -373,7 +377,7 @@ def build_main_graph(
         """작성자: 가린 질문·화물 줄·계산·근거로 답 초안을 쓴다. 지난 위반이 있으면 함께 넘긴다."""
         prompt = render(
             "write",
-            today=deps.today().isoformat(),
+            today=clock_today().isoformat(),
             depth=depth(config),
             # [주의] 원문(text)이 아니라 가린 글만 넘긴다. 실제 번호는 LLM에 가지 않는다
             question=state.get("masked_text", ""),
@@ -408,7 +412,7 @@ def build_main_graph(
             state.get("calc", {}),
             state.get("cargos", []),
             state.get("mask_map", {}),
-            deps.today(),
+            clock_today(),
         )
         return {"verification": violations}
 
@@ -446,7 +450,7 @@ def build_main_graph(
                 update = {"messages": [removal, said, *kept], "llm_calls": state.get("llm_calls", 0) + 1}
         text = render(
             "agent_turn",
-            today=deps.today().isoformat(),
+            today=clock_today().isoformat(),
             cargos="\n".join(cargo_lines(state.get("cargos", []))),
             question=state.get("masked_text", ""),
             news="\n".join(state.get("watch_news", [])),
@@ -544,12 +548,14 @@ def build_main_graph(
         graph.add_edge("news", "brief")
         graph.add_node("decline", shown(decline))
         if loop == "agent":
-            tools = make_tools(agent_rag, deps.today, deps.provision, deps.model, deps.web, deps.watch)
+            tools = make_tools(
+                agent_rag, clock_today, deps.provision, deps.model, deps.web, deps.watch, vessel
+            )
             # [왜] create_agent가 만든 그래프도 서브그래프 노드다. 같은 이름 칸을 주고받는다
-            graph.add_node("agent", build_agent(deps.model, tools, permission_mode))
+            graph.add_node("agent", build_agent(deps.model, tools, permission_mode, vessel))
         else:
             # [왜] 수퍼바이저 길에는 조사 도구(research)가 없다. model을 넘기지 않으면 만들지 않는다
-            tools = make_tools(agent_rag, deps.today, deps.provision, None, deps.web, deps.watch)
+            tools = make_tools(agent_rag, clock_today, deps.provision, None, deps.web, deps.watch)
             graph.add_node("supervisor", build_supervisor(deps.model, tools))
             ends = ("write", "decline", "finish")
 

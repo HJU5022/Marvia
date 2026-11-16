@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated, Any, cast
 
 import httpx
@@ -36,6 +36,7 @@ from marvia.rag.models import Evidence, SearchFailed
 from marvia.tools.deadlines import import_deadlines, kst_date
 from marvia.tools.reimport import ItemFacts, reimport_check
 from marvia.tools.rules import load_rules
+from marvia.tools.user_dates import absolute_dates
 from marvia.watch import WatchDeps
 
 # 가린 토큰 모양: [BL1], [CARGO2], [CNTR1], [NUM3]. [왜] 이름표는 identify.mask의 것을 그대로 쓴다
@@ -141,6 +142,7 @@ def make_tools(
     model: BaseChatModel | None = None,
     web: httpx.Client | None = None,
     watch: WatchDeps | None = None,
+    vessel: bool = False,
 ) -> list:
     """에이전트 루프에 줄 도구 목록을 만든다. rag_graph는 계획 2의 RAG 서브그래프(컴파일한 것).
 
@@ -148,6 +150,8 @@ def make_tools(
     model을 주면 그 모델로 도는 조사 서브에이전트 도구 research가 생긴다 (계획 3d).
     web을 주면 공식 사이트에서 법령을 이름으로 찾는 official_lookup이 생긴다 (계획 3d).
     watch를 주면 화물을 감시 목록에 넣는 watch_cargo가 생긴다 (계획 3d).
+    vessel이 참이면 배 판정을 다루는 도구(note_dates)가 더해진다 (계획 8c). 거짓(기본)이면 도구 목록과
+    설명, 결과 글이 계획 8c 전과 같다.
     """
     max_llm_calls = load_rules("agent")["loop"]["max_llm_calls"]
     # [왜] 에이전트 길의 RAG는 고쳐 쓰기를 agent.yaml 값으로 줄여 만든다(main.py). 최악도 같은 값으로 센다
@@ -307,11 +311,16 @@ def make_tools(
         if custom:
             # [주의] 직접 쓴 답에 실제 번호가 있을 수 있다. 이번 차례 표에 이어 가린 뒤에만 모델에게 준다
             masked, mask_map = mask_text(custom, runtime.state.get("mask_map", {}))
+            # [왜] 직접 적은 답만 날짜의 근거가 된다(note_dates). 고른 선택지의 글은 모델이 쓴 글이라
+            #      담지 않는다.
+            #      꺼져 있으면 칸을 쓰지 않아 공책이 그대로다 (계획 8c, D21)
+            typed = {"turn_answers": [masked]} if vessel else {}
             return _reply(
                 runtime,
                 f"사용자 답(직접 입력): {masked}",
                 mask_map=mask_map,
                 clarifications=[f"{question} → {masked}"],
+                **typed,
             )
         selected = reply.get("selected")
         # [왜] 화면에서 온 값이라 범위를 확인한다. 범위 밖과 True(1이 아니다)는 답이 없는 것으로 본다
@@ -402,6 +411,7 @@ def make_tools(
     extra = [_research_tool(model, law_tools, today)] if model is not None else []
     extra += [_official_tool(web)] if web is not None else []
     extra += _watch_tools(watch) if watch is not None else []
+    extra += [_dates_tool(today)] if vessel else []
     tools = [
         search_law,
         calc_deadlines,
@@ -512,6 +522,71 @@ def _official_tool(web: httpx.Client):
         return _reply(runtime, text, official=[source])
 
     return official_lookup
+
+
+def _dates_tool(today: Callable[[], date]):
+    """사용자가 말한 날짜를 판정에 넘기는 도구 note_dates (계획 8c, 결정 C5). 날짜는 코드가 읽어 맞춘다."""
+
+    @tool
+    def note_dates(
+        token: str,
+        runtime: ToolRuntime,
+        sale_date: str | None = None,
+        forwarder_eta: str | None = None,
+        first_eta: str | None = None,
+    ) -> Command:
+        """Record a date the user wrote for a cargo token such as [BL1]: sale_date (the date the user plans
+        to sell), forwarder_eta (the arrival date the forwarder gave), first_eta (the arrival date first
+        known). Pass YYYY-MM-DD. A date is accepted only if the user wrote that exact date in this turn
+        (in the message or in a typed answer to a question); never compute or guess one. If the user said
+        "tomorrow" or "next Tuesday", do not call this tool: ask them for the date instead.
+        """
+        cfg = load_rules("vessel")["dates"]
+        if token not in runtime.state.get("mask_map", {}):
+            return _reply(runtime, cfg["unknown_token"].format(token=token))
+        day = today()
+        # [왜] 읽는 글은 이번 차례 사용자 글(가린 글)과 이번 차례 질문 카드에 직접 적은 답뿐이다.
+        #      앞 차례 글은 아니다
+        said = "\n".join([runtime.state.get("masked_text", ""), *runtime.state.get("turn_answers", [])])
+        written = absolute_dates(said, day)
+        relative = bool(re.search(cfg["relative_words"], said))
+        taken: dict[str, str] = {}
+        lines: list[str] = []
+        for field, value in (
+            ("sale_date", sale_date),
+            ("forwarder_eta", forwarder_eta),
+            ("first_eta", first_eta),
+        ):
+            if value is None:
+                continue
+            label = cfg["labels"][field]
+            refused = None
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                refused = "bad_format"
+            else:
+                try:
+                    found = date.fromisoformat(value)
+                except ValueError:
+                    found = None
+                if found is None:
+                    refused = "bad_format"
+                elif abs(found - day) > timedelta(days=cfg["max_days"]):
+                    refused = "out_of_range"
+                elif found not in written:
+                    refused = "relative" if relative else "not_in_text"
+            if refused:
+                lines.append(cfg["refused"][refused].format(label=label))
+                continue
+            taken[field] = value
+            line = cfg["accepted"].format(label=label, date=value)
+            if field == "first_eta":
+                line += ". " + cfg["first_eta_note"].format(hour=cfg["first_eta_hour"])
+            lines.append(line)
+        text = "\n".join(lines) or "받을 날짜가 없어요"
+        # [왜] 받은 칸이 없으면 공책을 쓰지 않는다
+        return _reply(runtime, text, **({"cargo_dates": {token: taken}} if taken else {}))
+
+    return note_dates
 
 
 def _watch_tools(watch: WatchDeps) -> list:

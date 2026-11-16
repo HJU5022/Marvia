@@ -80,3 +80,17 @@ dates:
   max_days: 365 # 오늘 앞뒤로 이 일수 안의 날짜만 받는다
   past_grace_days: 7 # 연도 없는 날짜가 오늘보다 이 일수를 넘게 지났으면 내년으로 읽는다
   first_eta_hour: 12 # 날짜만 받은 처음 알던 도착 예정은 그날 이 시(한국 시각)로 본다
+  labels:
+    sale_date: 판매 예정일
+    forwarder_eta: 포워더가 알려 준 도착 예정일
+    first_eta: 처음 알던 도착 예정일
+  accepted: "{label} {date}(말씀하신 날)로 받았어요"
+  first_eta_note: 날짜만 받아 낮 {hour}시(한국 시각)로 봤어요
+  # 사용자 글에 이 말이 있으면 상대 표현으로 본다 (거절 이유를 가르는 데만 쓴다)
+  relative_words: '오늘|내일|모레|글피|어제|다음\s*주|이번\s*주|다음\s*달|이번\s*달|[일주]\s*(뒤|후)|며칠'
+  refused:
+    not_in_text: "{label}: 사용자가 쓴 글에 없는 날짜라 받지 않았어요. 사용자에게 날짜(예: 11월 20일)로 말해 달라고 해 주세요"
+    relative: "{label}: 내일이나 다음 주 같은 말은 받지 않아요. 사용자에게 날짜(예: 11월 20일)로 다시 말해 달라고 해 주세요"
+    bad_format: "{label}: 날짜는 YYYY-MM-DD로 넘겨야 해요"
+    out_of_range: "{label}: 오늘에서 너무 먼 날짜라 받지 않았어요. 사용자에게 날짜를 다시 확인해 달라고 해 주세요"
+  unknown_token: "{token}: 모르는 토큰이에요"
