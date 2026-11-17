@@ -146,3 +146,47 @@ def test_a_papers_path_cargo_with_twin_call_signs_asks_and_the_pick_stays_partia
     assert cell["confidence"] == "partial"
     (line,) = vessel_lines(state.values["cargos"], state.values["vessels"], state.values["verdicts"])
     assert "같은 호출부호의 배가 여럿이에요" in line and "TEST TWIN B" not in line and "QQTWB" not in line
+
+
+def test_a_turn_without_a_cargo_gets_no_fragment_and_no_blank_lines_after_a_ship_was_confirmed(agent_deps):
+    # [왜] 11-17 R-183. 배를 확정한 뒤 화물을 말하지 않은 차례는 화물 칸과 판정이 비고 확정 행만 남는다.
+    #      블록이 없으면 쓰는 법 조각도, brief 끝의 빈 줄도 붙지 않는다
+    from marvia.prompts import render
+
+    prompts: list[str] = []
+    humans: list[str] = []
+
+    class Human(Spy):
+        def _generate(self, messages, *args, **kwargs):
+            humans.append(str([m.content for m in messages if m.type == "human"][-1]))
+            return super()._generate(messages, *args, **kwargs)
+
+    deps = agent_deps(
+        model=Human(messages=iter([AIMessage("")] * 6)),
+        now=lambda: NOW,
+        write=lambda p: (
+            prompts.append(p) or Draft(answer="x", citations=[], next_options=[], forwarder_message="")
+        ),
+    )
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore(), vessel=True)
+    config = {"configurable": {"thread_id": "hi"}}
+    graph.invoke({"text": "TESTVSL0001 어디쯤 왔어요?"}, config)
+    assert render("vessel_write") in prompts[0] and "<vessel_lines>" in humans[0]
+    graph.invoke({"text": "안녕하세요"}, config)
+    values = graph.get_state(config).values
+    assert values["vessels"] and not values["verdicts"]  # 확정 행만 남은 차례다
+    assert render("vessel_write") not in prompts[1] and "vessel_lines" not in prompts[1]
+    # brief 끝은 차례 글 틀의 끝(</question> 줄바꿈) 그대로다. 빈 줄이 더 붙지 않는다
+    assert "vessel_lines" not in humans[-1] and humans[-1].endswith("</question>\n")
+
+
+def test_a_cargo_without_a_verdict_is_never_filled_from_another_cargos_verdict():
+    # [왜] 11-17 R-180(가). 화물 둘 중 하나만 판정이 있을 때 줄은 토큰으로 짝지어진다
+    cargos = [{"token": "[BL1]", "facts": None, "error": {"message": "x"}}, {"token": "[BL2]"}]
+    ships = [{"token": "[BL2]", "status": "confirmed", "reason": "mrn_call_sign"}]
+    cell = {"token": "[BL2]", "grade": "act", "confidence": "sure", "schedule": None, "stage": None,
+            "signals": [], "trusted_eta": None, "eta_source": None, "margin_days": None, "notes": [],
+            "info": []}  # fmt: skip
+    first, second = vessel_lines(cargos, ships, [cell])
+    assert first.startswith("[BL1]: 배 판정이 없어요") and "긴급" not in first and "배 확인" not in first
+    assert second.startswith("[BL2]: 배 확인:") and "긴급" in second

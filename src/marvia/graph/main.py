@@ -398,8 +398,12 @@ def build_main_graph(
             violations="\n".join(state.get("verification", [])),
         )
         # [왜] 켠 길만 판정 블록과 쓰는 법을 작성자 입력 끝에 잇는다 (계획 8c, C3). 꺼지면 입력은 그대로다
-        if with_block and (state.get("verdicts") or state.get("vessels")):
-            block = vessel_block(state.get("cargos", []), state.get("vessels", []), state.get("verdicts", []))
+        block = (
+            vessel_block(state.get("cargos", []), state.get("vessels", []), state.get("verdicts", []))
+            if with_block
+            else ""
+        )
+        if block:  # [왜] 조각은 블록과 함께만 간다. 블록 없이 가면 없는 블록을 가리킨다 (R-183)
             prompt += render("vessel_write") + "\n" + block
         try:
             draft = deps.write(prompt)
@@ -473,10 +477,14 @@ def build_main_graph(
             news="\n".join(state.get("watch_news", [])),
         )
         # [왜] 켠 길만 코드가 쓴 판정 블록을 붙인다. 꺼져 있으면 차례 메시지는 계획 8c 전과 같다 (계획 8c, C3)
-        if with_block and (state.get("verdicts") or state.get("vessels")):
-            text += "\n\n" + vessel_block(
-                state.get("cargos", []), state.get("vessels", []), state.get("verdicts", [])
-            )
+        block = (
+            vessel_block(state.get("cargos", []), state.get("vessels", []), state.get("verdicts", []))
+            if with_block
+            else ""
+        )
+        # [왜] 블록이 비면(화물을 말하지 않은 차례) 아무것도 붙이지 않는다 (11-17 R-183)
+        if block:
+            text += "\n\n" + block
         return update | {"messages": update["messages"] + [HumanMessage(text)]}
 
     def news(state: MarviaState, config: RunnableConfig) -> dict:
