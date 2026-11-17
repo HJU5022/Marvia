@@ -289,3 +289,20 @@ def test_a_forwarder_date_from_the_users_text_reaches_the_judge(agent_deps, monk
     assert "포워더가 알려 준 도착 예정일 2026-09-26(말씀하신 날)" in results(state)[0]
     turn(graph, "TESTVSL0001 어디쯤 왔어요?", "g")
     assert seen[-1]["forwarder_eta"] == date(2026, 9, 26)
+
+
+def test_ask_user_writes_turn_answers_only_when_the_switch_is_on(monkeypatch):
+    # [왜] 11-17 R-177. 꺼진 길은 루프 공책에 그 칸이 없어 써도 버려지니 공책 시험으로는 못 본다.
+    #      도구가 돌려준 Command.update를 직접 본다 (MC34)
+    from types import SimpleNamespace
+
+    from marvia.graph import tools
+
+    monkeypatch.setattr(tools, "interrupt", lambda payload: {"custom": "11월 20일이요"})
+    options = [tools.Choice(label="가", description="가"), tools.Choice(label="나", description="나")]
+    runtime = SimpleNamespace(state={"mask_map": {}}, tool_call_id="x", config={})
+    for vessel_on in (False, True):
+        ask = next(t for t in make_tools(None, date.today, vessel=vessel_on) if t.name == "ask_user")
+        out = ask.func(question="날짜?", options=options, runtime=runtime)  # type: ignore[attr-defined]
+        assert ("turn_answers" in out.update) is vessel_on
+        assert out.update.get("turn_answers", ["11월 20일이요"]) == ["11월 20일이요"]
