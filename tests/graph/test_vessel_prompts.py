@@ -63,7 +63,7 @@ def test_the_fragments_have_no_ship_identifiers_or_numbers():
     for name in ("vessel_agent", "vessel_write"):
         text = (ROOT / "prompts" / f"{name}.md").read_text(encoding="utf-8")
         assert not re.search(r"QQ|999\d|TEST CARGO|TESTVSL|DEMO\d|[A-Z0-9]{8,}", text), name
-        assert "—" not in text, name
+        assert "\u2014" not in text, name
 
 
 def test_the_off_prompts_are_unchanged(agent_deps):

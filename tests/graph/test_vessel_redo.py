@@ -11,7 +11,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
-from langgraph.types import Command
+from langgraph.types import Command, Send
 
 from marvia.graph.main import build_main_graph
 from marvia.graph.schemas import Draft
@@ -328,12 +328,45 @@ def test_scrub_walks_dataclass_pydantic_command_and_artifact():
     class Box:
         row: dict
 
+    @dataclass(eq=False)  # [왜] eq=False면 객체 번호로 해시가 되어 집합에 담을 수 있다
+    class Loose:
+        vessels: list
+
     ship = {"vessels": [{"name": "SECRETSHIP", "call_sign": "QQSECRET", "mmsi": "999123456"}]}
     for value in (
         Box(row=ship),
+        Send("node", {"vessels": [ship]}),
+        frozenset({Loose(vessels=[ship])}),
         Command(update={"cargos": [ship]}),
         [ToolMessage("ok SECRETSHIP", tool_call_id="x", artifact=ship)],
         {"outer": Box(row=ship)},
     ):
         text = json.dumps(scrub([value, "SECRETSHIP QQSECRET 999123456"]), ensure_ascii=False, default=str)
         assert not [s for s in ("SECRETSHIP", "QQSECRET", "999123456") if s in text], text
+
+
+def test_a_turn_where_the_cargos_lookup_failed_neither_consumes_a_redo_nor_raises_the_refind_count(
+    agent_deps, searches, monkeypatch
+):
+    # [왜] 11-17 R-180(나). 화물 조회가 실패한 차례는 배를 찾지 않는다. 그때 요청을 소비하면 바깥 호출 없이
+    #      다시 찾기 횟수 하나를 잃는다
+    from marvia.graph import identify
+    from marvia.identify.models import ToolError
+
+    talk = Talk(agent_deps, [say(), redo(), say(), say(), say()])
+    text = "TESTVSL0001 어디쯤 왔어요?"
+    talk.say(text)
+    talk.say(text)  # 요청 1
+    real = identify.lookup_cargo
+    monkeypatch.setattr(
+        identify,
+        "lookup_cargo",
+        lambda number: ToolError(code="timeout", message="시간 초과", retryable=True),
+    )
+    failed = talk.say(text)
+    assert failed.values["vessel_redo"] == {"[BL1]": 1}
+    assert not failed.values.get("vessel_refound") and not failed.values.get("vessel_consumed")
+    assert searches.n == 1
+    monkeypatch.setattr(identify, "lookup_cargo", real)
+    ok = talk.say(text)  # 조회가 돌아오면 그때 소비하고 다시 찾는다
+    assert ok.values["vessel_refound"] == {"[BL1]": 1} and searches.n == 2

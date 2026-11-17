@@ -509,3 +509,12 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 화면: 판정 칸에 `given`(사용자가 말해 받은 날짜, 라벨, 날짜, 출처 글)을 더했다. 출처 글은 서버(`rules/vessel.yaml dates.card_source`, "말씀하신 날")가 정하고 처음 알던 도착 예정은 낮 시각 규칙이 함께 붙는다. 서버의 화면 갱신 목록(`LIVE_KEYS`)에 `cargo_dates`를 더했다(없으면 첫 차례 카드에 날짜가 안 보인다). 받은 날짜는 다음 차례 판정에 쓰이므로 첫 차례 카드는 날짜 줄이 먼저 보이고 등급은 다음 차례에 바뀐다(C6, C7의 설계). 시험: `test_the_card_shows_the_dates_the_user_gave_with_their_source`, 화면 시험 한 흐름. Docker 화면 시험: 켠 실행 7 통과·7 건너뜀(새 흐름 포함), 기본 실행 7 통과·7 건너뜀. 기본 실행 뒤 그림은 `choice.png` 한 장에서 한 픽셀(131,222)이 달랐다(안티앨리어싱 떨림으로 8b 때 `approval.png`에서 본 것과 같은 꼴. 원인은 확인하지 못했다). 되돌렸다. 가짜 API(`e2e/fake_api.py`)의 `today`는 고정하지 않았다: 기본 실행의 그림이 달라질 수 있어서다(켠 길은 `now`를 쓴다).
 
 문서(T11): README, 설계 6.5·10절과 변경 기록, 검증자 머리말을 고쳤다.
+
+### 검증 2차 검토 뒤 고침 (R-179~R-183, 11-17)
+
+| # | 고친 것 | 시험과 깨 보기 |
+|---|---|---|
+| R-183 | 블록을 먼저 만들고 그 글이 비지 않을 때만 brief와 작성자 입력에 붙인다(쓰는 법 조각도 블록과 함께만). 화물을 말하지 않은 차례에 조각도 빈 줄도 붙지 않는다. 조회에 실패한 화물의 "배 판정이 없어요" 줄은 그대로다 | `test_a_turn_without_a_cargo_gets_no_fragment_and_no_blank_lines_after_a_ship_was_confirmed`. W12(조건에서 `vessels`를 뺌 또는 되돌림)가 깨진다 |
+| R-180 | (가) 판정이 없는 화물의 줄을 다른 화물의 판정으로 채우지 않는다. (나) 화물 조회가 실패한 차례는 되돌리기 요청을 소비하지 않고 다시 찾은 횟수를 올리지 않는다 | `test_a_cargo_without_a_verdict_is_never_filled_from_another_cargos_verdict`(MC19의 다른 꼴), `test_a_turn_where_the_cargos_lookup_failed_neither_consumes_a_redo_nor_raises_the_refind_count`(W11) |
+| R-179 | `Send` 값과 집합 값을 트레이스 가림 시험에 더했다. 갈래는 그대로 둔다 | `test_scrub_walks_dataclass_pydantic_command_and_artifact`. W07(`Send` 갈래 뺌), W08(집합 갈래 뺌)이 깨진다 |
+| R-182 | `tests/graph/test_vessel_prompts.py`의 em dash 글자를 `\u2014` 이스케이프로 바꿨다. 추적하는 파일에서 U+2014를 찾으면 0이다 | 파일 훑기 [실측] |
