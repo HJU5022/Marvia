@@ -483,3 +483,13 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 | R-176 | 사용자 글의 포워더 날이 `judge`의 `forwarder_eta`에 닿는지 `judge` 인자를 엿보는 시험 | `TESTVSL0001`은 해수부 입항 예정이 있어 포워더 날이 판정 값을 바꾸지 않는다. V01(`_given_dates`에서 포워더 두 줄 삭제)이 이제 깨진다 [실측] |
 | R-177 | 계획의 MC34(꺼진 길에서도 `ask_user`가 `turn_answers`를 씀)는 "CC1이 잡는다"가 이룰 수 없다. 꺼진 루프 공책에 그 칸이 없어 쓴 값이 오류 없이 버려진다 [실측, 검증 P7]. MC34를 도구 시험으로 바꿨다: `make_tools(vessel=False)`의 `ask_user`가 돌려준 `Command.update`에 `turn_answers`가 없고 켠 쪽에는 있다 | `test_ask_user_writes_turn_answers_only_when_the_switch_is_on` (MC34의 잡는 시험) |
 | R-178 | 켠 길이면 계획자 길의 `search_law` 노드(`as_of`)와 `calc` 노드, 수퍼바이저 길의 `sub_node` 오늘도 `clock_today`를 쓴다. 꺼진 길은 `deps.today` 그대로다(`clock_today`가 `deps.today` 자체) | `test_the_on_planner_path_uses_the_one_clock_for_the_search_date_and_the_deadline_calc`. 두 곳을 `deps.today`로 되돌리는 깨 보기가 각각 깨진다. 수퍼바이저 서브에이전트 차례 글의 Today는 시험이 없다 [실측: 한 곳 코드 변경뿐] |
+| R-178 보태기 | 켠 수퍼바이저 길의 서브에이전트 차례 글의 Today가 `now`의 한국 날짜임을 보는 시험 | `test_the_on_supervisor_subagent_turn_gets_the_korean_date_of_now_as_today`. `sub_node`에 `deps.today`를 넘기는 깨 보기가 깨진다 |
+| 시험의 호출 id | 시험의 가짜 모델은 도구 호출 id를 대화 안에서 겹치지 않게 만든다 | 이미 결과가 있는 id의 호출은 루프가 다시 돌리지 않는다. 실제 모델의 호출 id는 겹치지 않는다 |
+
+### T4 보태기: `TESTVSL0008` (11-17)
+
+계획의 "정해 줄 것" 결정(11-16)대로 T4에서 더할 재생 자료인데 T4 커밋에 빠져 있어 따로 더했다. 서류로 가르는 길(MRN 신고에 호출부호 없음)에서 호출부호가 같은 후보 둘(`QQTWB`, 배 번호 `999000009`, `999000010`)이 있는 화물이다. 새 파일: `fixtures/unipass/TESTVSL0008.json`, `fixtures/shipfinder/VesselSearch/TEST_TWIN_B.json`, `fixtures/mof/VsslEtrynd5/020/QQTWB.xml`. 기존 `_ALL.xml`에는 그 화물의 MRN 신고 한 건을 더했다(`totalCount` 4에서 5). `TESTVSL0001`~`0007`의 파일은 건드리지 않았다. 시험: `test_a_papers_path_cargo_with_twin_call_signs_asks_and_the_pick_stays_partial`(버튼 글 "같은 호출부호의 배가 여럿이에요", 고른 뒤 확신 부분).
+
+### T7 (11-17)
+
+검증자 새 규칙 넷은 `rules/verify.yaml`의 `vessel_verdict`(이름 목록, 단정 어구, 위반 글)와 `graph/verify.py`에 있다. 주의할 곳 둘. (1) 확신 이름 패턴은 "확신을 부분으로 낮췄어요"(판정 글의 까닭)를 확신을 말한 것으로 세지 않는다. 블록 줄을 그대로 옮긴 초안이 통과해야 해서(D18) 시험으로 찾았다(`TESTVSL0005`, `0007`). (2) 여유 일수 `N일`은 그 문장이 가리키는 화물(토큰이 있으면 그 토큰)의 값만 허용한다. 깨 보기(시험이 처음 잡음): MC20, MC21, MC22, MC23, MC24, MC40, MC44, MC56, MC41(`test_the_verifier_is_called_without_verdicts_on_all_three_off_paths`).

@@ -411,6 +411,15 @@ def build_main_graph(
             "llm_calls": state.get("llm_calls", 0) + 1,
         }
 
+    def on_args(state: MarviaState) -> dict:
+        """켠 길(수퍼바이저 길 빼고)이면 검증자에 판정 값과 사용자가 말한 날짜를 준다. 꺼지면 인자가 없다."""
+        if not with_block:
+            return {}
+        ships = {v["token"]: v.get("status") for v in state.get("vessels", [])}
+        rows = [{**v, "ship_status": ships.get(v["token"])} for v in state.get("verdicts", [])]
+        dates = {d for cells in state.get("cargo_dates", {}).values() for d in cells.values()}
+        return {"verdicts": rows, "user_dates": dates}
+
     def check(state: MarviaState) -> dict:
         """검증자: 초안을 코드 규칙으로 검사한다."""
         violations = verify(
@@ -420,6 +429,7 @@ def build_main_graph(
             state.get("cargos", []),
             state.get("mask_map", {}),
             clock_today(),
+            **on_args(state),
         )
         return {"verification": violations}
 

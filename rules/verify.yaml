@@ -32,3 +32,19 @@ reimport_verdicts:
       - '정밀검사\s*대상\s*(이에요|입니다|이라|이므로|이고|이네요|으로\s*(나왔|판정|분류))'
     면제:
       - '면제\s*(받을\s*수\s*있|됩니다|돼요|되어요|예요|입니다)'
+
+# 코드가 낸 배 판정과 답의 말이 같은지 보는 규칙 (계획 8c, 결정 C4, D18, D24). 코드(src/marvia/graph/verify.py)가 읽는다.
+# 판정 값(verdicts)을 받은 호출에서만 돈다. 낱말이 아니라 "등급"·"확신" 옆의 이름만 본다:
+# "주의하세요", "경계를 넘어", "부분적으로" 같은 일상어에는 걸리지 않는다.
+# 하나 더할 때마다 tests/graph/test_verify_vessel.py에 걸리는 예와 걸리지 않는 예를 하나씩 더한다.
+vessel_verdict:
+  grade_names: [순항, 주의, 경계, 긴급] # tools/verdict.py GRADE_LABEL의 글과 같아야 한다(시험이 본다)
+  confidence_names: [확실, 부분, 불명] # CONFIDENCE_LABEL과 같아야 한다
+  # 확신이 확실이 아닌 화물의 문장에 있으면 위반인 단정 어구
+  assertive: ["확실히", "분명히", "틀림없이", "틀림없", "반드시", "100%", "믿으셔도", "의심할 여지"]
+  texts:
+    grade_differs: "{token}의 등급은 판정과 달라요. 판정은 {label}이에요"
+    confidence_differs: "{token}의 확신은 판정과 달라요. 판정은 {label}이에요"
+    need_token: "화물이 여럿이고 판정이 서로 달라요. 등급이나 확신을 말할 때는 어느 화물인지 토큰으로 쓰세요"
+    assertive: "{token}은 확신이 확실이 아니니 단정하는 말을 쓰지 마세요"
+    no_grade: "{token}은 등급이 없는 화물이에요. 등급 이름을 쓰지 마세요"

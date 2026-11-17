@@ -14,6 +14,7 @@ from datetime import date
 from marvia.graph.schemas import Draft
 from marvia.tools.deadlines import kst_date
 from marvia.tools.rules import load_rules
+from marvia.tools.verdict import CONFIDENCE_LABEL, GRADE_LABEL
 
 # 제241조, 241조, 제1조의4. [왜] "관세법 9조"처럼 "제"를 빼고 써도 같은 조문으로 본다
 _ARTICLE = re.compile(r"(?<!\d)제?\s*(\d+)\s*조(?:\s*의\s*(\d+))?")
@@ -32,6 +33,8 @@ _WON = re.compile(
     r"((?:\d[\d,]*\s*(?:억|천만|백만|만|천|백)?\s*)+)원(?!산|료|문|칙|래|인|본|단|형|하)|₩\s*(\d[\d,]*)"
 )
 # [왜] JSON 안에서 값 자리에 놓인 수만 고른다(날짜 글 속 숫자는 빼고). 음수는 부호를 떼고 센다
+_TOKEN = re.compile(r"\[[A-Z]+\d+\]")
+_SENTENCE_BREAK = re.compile(r"(?<=[.?!])\s+|\n")
 _JSON_NUM = re.compile(r":\s*-?(\d+(?:\.\d+)?)\s*[,}]")
 
 
@@ -73,11 +76,16 @@ def verify(
     cargos: list[dict],
     mask_map: dict[str, str],
     today: date,
+    verdicts: list[dict] | None = None,
+    user_dates: set[str] | None = None,
 ) -> list[str]:
     """초안이 어긴 규칙을 한 문장씩 돌려준다. 빈 목록이면 통과.
 
     입력: draft=작성자 초안(가린 토큰 그대로), evidence=근거 묶음, calc=계산 결과,
           cargos=화물별 조회 결과, mask_map=토큰 → 실제 번호, today=오늘.
+    verdicts: 켠 길의 화물별 배 판정(코드가 낸 값). 주면 등급·확신 이름, 도착 날짜, 단정 어구, 등급 없음의
+          등급을 본다(계획 8c). None(꺼진 길)이면 그 규칙은 아무것도 보지 않는다.
+          user_dates: 사용자가 말한 날짜(ISO 글).
     출력: 위반 문장 목록. 작성자 프롬프트에 그대로 들어가므로 실제 번호를 넣지 않는다.
     주의: 정규식으로 보는 안전망이다. 법령 이름까지 맞는지(관세법 제9조와 시행령 제9조)는 보지 않는다.
     """
@@ -113,6 +121,10 @@ def verify(
     }
     effective_days = {str(e["effective"]) for e in cited}
     allowed_dates = set(_ISO_DATE.findall(calc_json)) | stage_days | effective_days | {today.isoformat()}
+    # [왜] 판정 블록이 쓴 도착 예정(한국 날짜)과 사용자가 말한 날짜는 옮겨 써도 된다 (계획 8c, 결정 C4(2))
+    rows = {v["token"]: v for v in verdicts or []}
+    allowed_dates |= {kst_date(v["trusted_eta"]).isoformat() for v in rows.values() if v.get("trusted_eta")}
+    allowed_dates |= user_dates or set()
     violations += [
         f"계산 결과에 없는 날짜: {d}" for d in sorted(set(_ISO_DATE.findall(draft.answer)) - allowed_dates)
     ]
@@ -125,7 +137,9 @@ def verify(
     # [왜] 날짜 꼴은 위에서 이미 걸렸다. "11월 26일"의 26일을 일수로 한 번 더 세지 않게 지우고 본다
     plain = _OTHER_DATE.sub("", draft.answer)
     seen: set[str] = set()
-    for n, unit in _COUNT.findall(plain):
+    spans = _sentence_spans(plain)
+    for found in _COUNT.finditer(plain):
+        n, unit = found.groups()
         value = float(n)
         if unit == "년" and value >= 1900:
             continue  # 2026년 같은 연도는 수가 아니다
@@ -135,6 +149,8 @@ def verify(
         else:
             # [왜] 계산 결과의 숫자 값(남은 날·넘긴 날)은 날 수라 "일"에만 쓴다. 24개월로 옮기면 틀린 값이다
             ok = (unit == "일" and value in calc_numbers) or (value, unit) in allowed_pairs
+            # [왜] 판정 블록의 여유 일수는 N일로 옮겨 써도 된다. 그 문장이 가리키는 화물의 값만이다 (D18)
+            ok = ok or (unit == "일" and value in _margins(plain, found.start(), spans, rows))
         if not ok and n + unit not in seen:
             seen.add(n + unit)
             violations.append(f"계산 결과·인용 근거에 없는 수: {n}{unit}")
@@ -156,4 +172,80 @@ def verify(
     violations += [
         f"실제 번호가 들어 있다 ({token} 자리)" for token, value in mask_map.items() if value in shown
     ]
+    if verdicts is not None:
+        violations += _vessel_violations(shown, rows)
     return violations
+
+
+def _sentence_spans(text: str) -> list[tuple[int, int]]:
+    """글을 문장 구간(시작, 끝)으로 나눈다."""
+    spans, pos = [], 0
+    for cut in _SENTENCE_BREAK.finditer(text):
+        spans.append((pos, cut.start()))
+        pos = cut.end()
+    return [*spans, (pos, len(text))]
+
+
+def _attributed(sentence: str, rows: dict[str, dict]) -> tuple[list[dict], bool]:
+    """문장이 가리키는 화물들과, 토큰으로 가렸는지. 토큰이 없으면 모든 화물이다."""
+    tokens = [t for t in _TOKEN.findall(sentence) if t in rows]
+    return ([rows[t] for t in tokens], True) if tokens else (list(rows.values()), False)
+
+
+def _margins(text: str, at: int, spans: list[tuple[int, int]], rows: dict[str, dict]) -> set[float]:
+    """at 자리가 든 문장이 가리키는 화물들의 여유 일수."""
+    start, end = next((a, b) for a, b in spans if a <= at <= b)
+    cargos, _ = _attributed(text[start:end], rows)
+    return {float(c["margin_days"]) for c in cargos if c.get("margin_days") is not None}
+
+
+def _vessel_violations(shown: str, rows: dict[str, dict]) -> list[str]:
+    """등급·확신 이름, 단정 어구, 등급 없음의 등급을 코드 판정과 견준다 (계획 8c, 결정 C4)."""
+    if not rows:
+        return []
+    cfg = load_rules("verify")["vessel_verdict"]
+    texts = cfg["texts"]
+    grade_names, conf_names = "|".join(cfg["grade_names"]), "|".join(cfg["confidence_names"])
+    grade_say = re.compile(rf"등급\s*(?:은|이|을|도)?\s*({grade_names})|({grade_names})\s*등급")
+    # [왜] "확신을 부분으로 낮췄어요"는 낮춘 일을 적은 판정 글(까닭)이다. 지금 확신을 말한 것이 아니다
+    conf_say = re.compile(
+        rf"확신\s*(?:은|이|을|도)?\s*({conf_names})(?!\s*(?:으로|로)\s*낮)|({conf_names})\s*확신"
+    )
+    out: list[str] = []
+
+    def grade_of(row: dict) -> str | None:
+        return GRADE_LABEL.get(row["grade"])
+
+    def conf_of(row: dict) -> str:
+        return CONFIDENCE_LABEL[row["confidence"]]
+
+    for sentence in _SENTENCE_BREAK.split(shown):
+        cargos, by_token = _attributed(sentence, rows)
+        for found in grade_say.finditer(sentence):
+            said = found.group(1) or found.group(2)
+            if not by_token and len(cargos) > 1 and len({grade_of(c) for c in cargos}) > 1:
+                out.append(texts["need_token"])
+                continue
+            for row in cargos:
+                if grade_of(row) is None:
+                    out.append(texts["no_grade"].format(token=row["token"]))
+                elif grade_of(row) != said:
+                    out.append(texts["grade_differs"].format(token=row["token"], label=grade_of(row)))
+        for found in conf_say.finditer(sentence):
+            said = found.group(1) or found.group(2)
+            if not by_token and len(cargos) > 1 and len({conf_of(c) for c in cargos}) > 1:
+                out.append(texts["need_token"])
+                continue
+            out += [
+                texts["confidence_differs"].format(token=row["token"], label=conf_of(row))
+                for row in cargos
+                if conf_of(row) != said
+            ]
+        if any(word in sentence for word in cfg["assertive"]):
+            careful = [
+                c for c in cargos if c["confidence"] != "sure" or c.get("ship_status") == "user_choice"
+            ]
+            # [왜] 토큰 없는 문장이 화물 여럿을 가리키면 모두 조심할 화물일 때만 위반으로 본다
+            if by_token or len(careful) == len(cargos):
+                out += [texts["assertive"].format(token=c["token"]) for c in careful]
+    return list(dict.fromkeys(out))
