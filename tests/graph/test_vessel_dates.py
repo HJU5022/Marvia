@@ -245,3 +245,47 @@ def test_an_on_graph_built_like_the_server_reads_today_from_now_in_kst(agent_dep
     assert "Today is 2026-09-27" in seen[0]  # brief의 Today
     assert state.values["cargo_dates"] == {"[BL1]": {"sale_date": "2026-09-29"}}  # 연도 없는 날짜
     assert state.values["verification"] == []  # 검증자가 허용하는 오늘
+
+
+def server_like(agent_deps, script, written=None):
+    """서버처럼 today는 덮어쓰지 않고 now만 준 켠 그래프. now = 09-26 16:00 UTC(한국 09-27)."""
+
+    def write(prompt):
+        if written is not None:
+            written.append(prompt)
+        return Draft(answer="확인했어요", citations=[], next_options=[], forwarder_message="")
+
+    deps = agent_deps(
+        model=ToolModel(messages=iter(script)),
+        now=lambda: datetime(2026, 9, 26, 16, 0, tzinfo=UTC),
+        write=write,
+    )
+    return build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore(), vessel=True)
+
+
+def test_note_dates_reads_a_year_less_date_on_the_korean_date_not_the_utc_date(agent_deps):
+    # [왜] 11-17 R-175(P3). "9월 19일"은 한국 날짜(09-27)로 8일 지나 내년이고
+    #      UTC 날짜(09-26)로는 7일이라 올해다. 모델이 넘긴 2027-09-19는 한국 날짜로 읽을 때만 받는다
+    graph = server_like(agent_deps, [say(note(sale_date="2027-09-19")), say()])
+    state = turn(graph, "TESTVSL0001 9월 19일에 팔아요")
+    assert state.values["cargo_dates"] == {"[BL1]": {"sale_date": "2027-09-19"}}
+
+
+def test_the_writers_prompt_has_todays_korean_date_from_now(agent_deps):
+    # [왜] 11-17 R-175(P4). 작성자 프롬프트의 Today도 시계 하나(now의 한국 날짜)에서 와야 한다
+    written: list[str] = []
+    turn(server_like(agent_deps, [say()], written), "TESTVSL0001 언제 와요?")
+    assert "Today is 2026-09-27" in written[0]
+
+
+def test_a_forwarder_date_from_the_users_text_reaches_the_judge(agent_deps, monkeypatch):
+    # [왜] 11-17 R-176. TESTVSL0001은 해수부 입항 예정이 있어 포워더 날이 판정 값을 바꾸지 않는다.
+    #      그래서 first_eta 시험처럼 judge 인자를 엿본다
+    seen = []
+    real = vessel.judge
+    monkeypatch.setattr(vessel, "judge", lambda *a, **k: (seen.append(k), real(*a, **k))[1])
+    graph = graph_on(agent_deps, say(note(forwarder_eta="2026-09-26")), say(), say())
+    state = turn(graph, "TESTVSL0001 포워더는 9월 26일 도착이라고 했어요", "g")
+    assert "포워더가 알려 준 도착 예정일 2026-09-26(말씀하신 날)" in results(state)[0]
+    turn(graph, "TESTVSL0001 어디쯤 왔어요?", "g")
+    assert seen[-1]["forwarder_eta"] == date(2026, 9, 26)
