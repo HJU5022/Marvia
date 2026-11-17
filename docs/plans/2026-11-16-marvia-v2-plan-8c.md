@@ -503,3 +503,9 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 `eval/set_v4.yaml`(동결 해시 `62969fde2b4c8ccfa83c16bc28703d55e00be31e7a3354d5b5a1604ad34e53f3`)은 v3 30문항을 그대로 두고 N01~N12를 더했다. 새 칸은 `vessel_only`, `now`(문항의 기준 시각, 2026-09-22 03:00 UTC), `replies`(선택 카드에 줄 답, 0은 "모르겠어요"), `expect_verdict`(화물마다 기대 판정)다. 기대 판정은 코드가 낸 값이고 그래프 밖에서 직접 낸 값과 손 계산으로 맞대었다(`eval/gold_check_v4.md`). 계획 표의 기대 판정과 다른 곳이 있다: N08은 "부분"이 아니라 **등급 없음, 불명**이다(`TESTVSL0007`은 위치와 도착 시각이 없다 [실측]). N04도 등급 없음이다.
 
 새 지표(`metrics.py`, v3 판정 출력 칸은 늘리지 않았다): `verdict_detector`(문장 단위, 검증자와 따로, 센 문장 나열, 귀속 못 한 수는 따로), `assertive_violations`, `ship_value_hits`, `vessel_totals`, `compare_vessel`(사전 등록 기준은 `rules/vessel.yaml`의 `comparison`. `rules/eval.yaml`은 측정 커밋 묶음에 있어 건드리지 않았다). 줄의 새 칸(`detector`, `detector_unattributed`, `verifier_form`, `assertive`, `ship_leak`)은 켠 길 문항에만 생기고 센 문장은 raw에만 둔다. 화면에 나간 답은 토큰이 실제 번호로 되돌아가 있어, 탐지기에 넣기 전에 다시 토큰으로 바꾼다. 비교는 `scripts/run_eval.py verdict --set v4 --compare vessel --on 파일들 --off 파일들`이다. 깨 보기: MC27(replies를 안 씀), MC54, MC55.
+
+### T10, T11 (11-17)
+
+화면: 판정 칸에 `given`(사용자가 말해 받은 날짜, 라벨, 날짜, 출처 글)을 더했다. 출처 글은 서버(`rules/vessel.yaml dates.card_source`, "말씀하신 날")가 정하고 처음 알던 도착 예정은 낮 시각 규칙이 함께 붙는다. 서버의 화면 갱신 목록(`LIVE_KEYS`)에 `cargo_dates`를 더했다(없으면 첫 차례 카드에 날짜가 안 보인다). 받은 날짜는 다음 차례 판정에 쓰이므로 첫 차례 카드는 날짜 줄이 먼저 보이고 등급은 다음 차례에 바뀐다(C6, C7의 설계). 시험: `test_the_card_shows_the_dates_the_user_gave_with_their_source`, 화면 시험 한 흐름. Docker 화면 시험: 켠 실행 7 통과·7 건너뜀(새 흐름 포함), 기본 실행 7 통과·7 건너뜀. 기본 실행 뒤 그림은 `choice.png` 한 장에서 한 픽셀(131,222)이 달랐다(안티앨리어싱 떨림으로 8b 때 `approval.png`에서 본 것과 같은 꼴. 원인은 확인하지 못했다). 되돌렸다. 가짜 API(`e2e/fake_api.py`)의 `today`는 고정하지 않았다: 기본 실행의 그림이 달라질 수 있어서다(켠 길은 `now`를 쓴다).
+
+문서(T11): README, 설계 6.5·10절과 변경 기록, 검증자 머리말을 고쳤다.
