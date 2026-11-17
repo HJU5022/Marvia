@@ -313,7 +313,17 @@ if args.command == "verdict":
             "model": metas[0]["model"],
             "loop": metas[0]["loop"],
         }
-        print(json.dumps(head | compare_vessel(on, off, by_id), ensure_ascii=False, indent=1))
+        # [왜] 탐지기가 센 문장은 결과 파일 옆의 raw 파일에 있다. 센 문장은 모두 나열한다(사전 등록 D22)
+        hits: dict[str, list[str]] = {}
+        for name in args.on:
+            raw_path = Path(name).with_suffix(".raw.json")
+            if raw_path.exists():
+                for raw in json.loads(raw_path.read_text(encoding="utf-8")):
+                    if raw.get("detector_sentences"):
+                        hits.setdefault(f"{Path(name).stem}/{raw['id']}", []).extend(
+                            raw["detector_sentences"]
+                        )
+        print(json.dumps(head | compare_vessel(on, off, by_id, hits), ensure_ascii=False, indent=1))
         raise SystemExit(0)
     if not (args.agent and args.supervisor):
         raise SystemExit("--compare paths에는 --agent와 --supervisor가 모두 필요하다")

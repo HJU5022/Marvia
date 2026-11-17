@@ -405,3 +405,32 @@ def test_a_date_accepted_this_turn_changes_the_grade_in_the_same_turn_without_ne
     plain = graph_on(agent_deps, say())
     turn(plain, "TESTVSL0001 어디쯤 왔어요?")
     assert calls == ["pos", "plan"]
+
+
+def test_the_on_path_gives_the_verifier_the_verdicts_with_ship_status_and_the_dates_the_user_gave(
+    agent_deps, monkeypatch
+):
+    # [왜] 11-17 R-187. main.on_args가 검증자에 주는 값: 판정 줄마다 배 확인 상태(ship_status)와
+    #      사용자가 말해 받은 날짜(user_dates). 상태를 빼면 고른 배의 단정 어구 규칙이 확신 값에만 기대고,
+    #      날짜를 빼면 사용자가 말한
+    #      날짜를 옮겨 쓴 답이 위반이 된다
+    from langgraph.types import Command
+
+    from marvia.graph import main as graph_main
+
+    seen = []
+    real = graph_main.verify
+    monkeypatch.setattr(graph_main, "verify", lambda *a, **k: (seen.append(k), real(*a, **k))[1])
+    graph = graph_on(agent_deps, say(note(sale_date="2026-09-25")), say(), say())
+    turn(graph, "TESTVSL0001 판매는 2026년 9월 25일에 해요", "k")
+    (kwargs,) = seen
+    assert kwargs["user_dates"] == {"2026-09-25"}
+    assert [(v["token"], v["ship_status"]) for v in kwargs["verdicts"]] == [("[BL1]", "confirmed")]
+    # 사용자가 고른 배는 user_choice로 간다
+    seen.clear()
+    picked = graph_on(agent_deps, say(), say())
+    config = {"configurable": {"thread_id": "k2"}}
+    picked.invoke({"text": "TESTVSL0002 어디쯤 왔어요?"}, config)
+    picked.invoke(Command(resume={"selected": 1}), config)
+    assert [(v["token"], v["ship_status"]) for v in seen[-1]["verdicts"]] == [("[BL1]", "user_choice")]
+    assert seen[-1]["user_dates"] == set()

@@ -1053,7 +1053,9 @@ def vessel_totals(rows: list[dict]) -> dict:
     }
 
 
-def compare_vessel(on: list[dict], off: list[dict], items: dict[str, Item]) -> dict:
+def compare_vessel(
+    on: list[dict], off: list[dict], items: dict[str, Item], hits: dict[str, list[str]] | None = None
+) -> dict:
     """켠 길 실행들(rows와 meta) 대 끈 길 실행들의 사전 등록 기준 판정 (계획 8c 측정 (나)).
 
     on·off는 결과 파일을 읽은 dict(meta, rows) 목록이다. 앞의 두 지표는 v3 문항(vessel_only가 아닌 것)만 센다.
@@ -1121,8 +1123,18 @@ def compare_vessel(on: list[dict], off: list[dict], items: dict[str, Item]) -> d
         and fresh["ok"]
         and all(g["ok"] for g in gates.values())
     )
+    # (가) 끈 길 점검의 바닥값. 비교의 통과 기준이 아니라 끈 길이 그대로인지 보고만 한다
+    floor = rule["off_floor"]
+    off_runs = [behaviour_accuracy(v3(r), items)["value"] for r in off_rows]
     return {
         "runs": {"on": len(on), "off": len(off)},
+        "off_floor": {
+            "floor": floor,
+            "runs": off_runs,
+            "ok": all(v is not None and v >= floor for v in off_runs),
+        },
+        # 판정 이름 어긋남 탐지기가 센 문장 전부(raw 파일에서 읽은 것). 기준에서 빼지 않는다
+        "detector_hit_sentences": hits or {},
         "behaviour_accuracy": acc["behaviour_accuracy"],
         "correct_citation": acc["correct_citation"],
         "calls_median": calls,

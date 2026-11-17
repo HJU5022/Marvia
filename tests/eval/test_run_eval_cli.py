@@ -415,3 +415,36 @@ def test_the_vessel_comparison_command_prints_the_registered_criteria_and_refuse
     assert out["runs"] == {"on": 2, "off": 2} and out["detector"]["ok"] and out["commit"] == "abc1234"
     swapped = verdict("--set", "v4", "--compare", "vessel", "--on", *runs("off"), "--off", *runs("on"))
     assert swapped.returncode != 0 and "섞였다" in swapped.stderr
+
+
+def test_the_vessel_comparison_refuses_runs_of_different_commits_models_or_loops_and_lists_the_hits(tmp_path):
+    # [왜] 11-17 R-186. 같은 커밋·모델·길·평가셋의 실행끼리만 견준다. 탐지기가 센 문장은 raw 파일에서 나열한다
+    from marvia.eval.dataset import SET_V4_PATH, file_sha256
+
+    sha = file_sha256(SET_V4_PATH)
+
+    def one(name: str, vessel: str, **meta_more) -> str:
+        meta = {"set_sha256": sha, "commit": "abc1234", "model": "m", "loop": "agent", "vessel": vessel,
+                "llm_via": "cli", "problems": [], **meta_more}  # fmt: skip
+        row = {
+            "id": "R01",
+            "behaviour": "answer",
+            "cited": [],
+            "evidence": [],
+            "real_llm_calls": 3,
+            "leak": False,
+        }
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps({"meta": meta, "rows": [row]}), encoding="utf-8")
+        raw = [{"id": "N01", "detector_sentences": ["[BL1]의 판정은 경계예요."]}]
+        (tmp_path / f"{name}.raw.json").write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+        return str(path)
+
+    off = one("off", "off")
+    for field, value in (("commit", "zzz9999"), ("model", "other"), ("loop", "supervisor")):
+        done = verdict(
+            "--set", "v4", "--compare", "vessel", "--on", one("on", "on", **{field: value}), "--off", off
+        )
+        assert done.returncode != 0 and "실행 조건" in done.stderr, field
+    done = verdict("--set", "v4", "--compare", "vessel", "--on", one("on", "on"), "--off", off)
+    assert json.loads(done.stdout)["detector_hit_sentences"] == {"on/N01": ["[BL1]의 판정은 경계예요."]}
