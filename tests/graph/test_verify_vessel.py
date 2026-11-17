@@ -147,6 +147,14 @@ def test_no_reason_text_of_the_verdict_names_a_confidence_so_quoting_it_never_tr
     assert check("[BL1]의 확신을 부분이라고 봐요.", [row(confidence="unknown")]) != []
 
 
+def test_a_sentence_that_says_the_confidence_was_lowered_is_checked_like_any_other():
+    # [왜] 11-17 R-191. 예외를 지웠으니 "확신을 부분으로 낮췄어요"도 그 화물의 판정과 견준다. 예외를 다시
+    #      넓히면(낮 으로 로 같은 말을 건너뜀) 이 시험이 깨진다
+    (found,) = check("[BL1]은 확신을 부분으로 낮췄어요.", [row()])
+    assert "[BL1]" in found and "판정은 확실" in found
+    assert check("[BL1]은 확신이 부분으로 낮아졌어요.", [row(confidence="partial")]) == []
+
+
 def test_the_name_lists_in_the_rules_are_the_labels_the_code_writes():
     cfg = load_rules("verify")["vessel_verdict"]
     assert cfg["grade_names"] == list(GRADE_LABEL.values())

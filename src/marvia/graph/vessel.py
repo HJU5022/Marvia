@@ -311,16 +311,20 @@ def _given_dates(cells: dict) -> dict:
 
 
 # [주의] 돌려주는 타입을 Callable로 적지 않는다. 인자 이름(state)이 빠져 add_node 타입 검사가 거절한다
-def verdict_nodes(now: Callable[[], datetime]):
+def verdict_nodes(now: Callable[[], datetime], keep: bool = True):
     """(verdict 노드, rejudge 노드)를 만든다. now는 판정의 기준 시각(시험이 고정한다).
 
-    rejudge는 에이전트 루프 뒤에 돈다(켠 에이전트 길만). 이번 차례에 note_dates가 받은 날짜가 있는
-    화물만 같은 시계로 다시 판정한다. [왜] verdict는 루프보다 먼저 돌아 이번 차례에 받은 날짜를
-    모른다. 안 고치면 카드와 답이 "판매 예정일을 받지 않아"라고 말하고 등급은 다음 차례에야 바뀐다 (R-184).
-    위치·일정은 verdict가 이번 차례에 받은 것을 이 닫힌 함수에만 두고 다시 쓴다: 바깥 호출이 늘지 않고
-    공책, 모델 입력, 화면, 트레이스에 실리지 않는다.
+    rejudge는 에이전트 루프 뒤에 돈다(켠 에이전트 길만). 판정 줄이 판정할 때 쓴 날짜(dates)와 지금 공책의
+    cargo_dates가 다른 화물만 같은 시계로 다시 판정한다. [왜] verdict는 루프보다 먼저 돌아 이번 차례에 받은
+    날짜를 모른다. 안 고치면 카드와 답이 "판매 예정일을 받지 않아"라고 말하고 등급은 다음 차례에야 바뀐다
+    (11-17 R-184). 어느 날짜가 이번 차례에 받은 것인지는 닫힌 함수의 사전이 아니라 공책의 판정 줄이 알린다
+    (날짜는 배 값이 아니라 공책에 둔다): 다시 시작한 뒤의 재개에도 같다 (R-189).
+    위치·일정은 verdict가 이번 차례에 받은 것을 이 닫힌 함수의 사전에만 두고 rejudge가 한 번 쓰고 지운다.
+    바깥 호출이 늘지 않고 공책, 모델 입력, 화면, 트레이스에 실리지 않는다. 사전에 없으면(재시작 등) 다시
+    받되 한 차례의 화물 수 상한(max_cargos)을 넘지 않는다. keep이 거짓이면(rejudge 없는 길) 사전에 안 쓴다.
     """
-    # shortcut: 프로세스 안 사전이라 커진다. 512개를 넘으면 비운다(비어도 rejudge가 다시 받는다)
+    # shortcut: 프로세스 안 사전이다. rejudge가 쓴 항목은 지우고, 안 쓰는 길의 항목은 쓰지 않는다.
+    #           512개를 넘으면 비운다(비어도 rejudge가 다시 받는다)
     cache: dict[tuple[str, str], dict] = {}
 
     def thread_of(config: RunnableConfig) -> str:
@@ -355,7 +359,8 @@ def verdict_nodes(now: Callable[[], datetime]):
         ).model_dump(mode="json")
         if seen["capped"]:
             found["notes"].append("over_cap")  # 글은 rules/vessel.yaml reasons에 있다
-        return {"token": token, **found}
+        # dates: 이 판정이 쓴 날짜. rejudge가 지금 공책의 날짜와 견준다 (R-189)
+        return {"token": token, **found, "dates": dict(cells)}
 
     def verdict(state: MarviaState, config: RunnableConfig) -> dict:
         ships = {v["token"]: v for v in state.get("vessels", [])}
@@ -376,32 +381,33 @@ def verdict_nodes(now: Callable[[], datetime]):
             seen = fetch(facts, ship, looked < limit)
             looked += seen["sailing"] and not seen["capped"]
             cells = dict(state.get("cargo_dates", {}).get(cargo["token"], {}))
-            if len(cache) > 512:
-                cache.clear()
-            cache[(thread_of(config), cargo["token"])] = {**seen, "dates": cells}
+            if keep:
+                if len(cache) > 512:
+                    cache.clear()
+                cache[(thread_of(config), cargo["token"])] = seen
             out.append(judged(cargo["token"], facts, ship, seen, cells))
         return {"verdicts": out}
 
     def rejudge(state: MarviaState, config: RunnableConfig) -> dict:
         ships = {v["token"]: v for v in state.get("vessels", [])}
         rows = list(state.get("verdicts", []))
+        limit = load_rules("vessel")["max_cargos"]
+        refetched = 0
         for i, row in enumerate(rows):
             token = row["token"]
+            # [왜] 이 차례에 쓴 항목은 쓰든 안 쓰든 지운다. 사전이 차례마다 쌓이지 않는다
+            seen = cache.pop((thread_of(config), token), None)
             cargo = next((c for c in state.get("cargos", []) if c["token"] == token), None)
             ship = ships.get(token)
-            if cargo is None or ship is None or not cargo.get("facts"):
-                continue
             cells = dict(state.get("cargo_dates", {}).get(token, {}))
-            seen = cache.get((thread_of(config), token))
-            if (seen is None and not cells) or (seen is not None and seen["dates"] == cells):
+            if cargo is None or ship is None or not cargo.get("facts") or row.get("dates", {}) == cells:
                 continue  # 이번 차례에 받은 날짜가 없다
             facts = CargoFacts.model_validate(cargo["facts"])
-            if (
-                seen is None
-            ):  # 다시 시작한 뒤의 재개 같은 드문 경우다: 받아서 쓴다(상한은 이 화물 하나로 센다)
-                seen = fetch(facts, ship, True)
+            if seen is None:  # 다시 시작한 뒤의 재개 같은 경우: 다시 받되 한 차례의 화물 수 상한을 센다
+                allowed = refetched < limit and "over_cap" not in row["notes"]
+                seen = fetch(facts, ship, allowed)
+                refetched += seen["sailing"] and not seen["capped"]
             rows[i] = judged(token, facts, ship, seen, cells)
-            cache[(thread_of(config), token)] = {**seen, "dates": cells}
         return {"verdicts": rows}
 
     return verdict, rejudge

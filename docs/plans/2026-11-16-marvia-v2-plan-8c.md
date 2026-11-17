@@ -376,7 +376,7 @@ git commit -m "docs: 계획 8c 모델이 배 판정을 읽고 쓰게 함 (결정
 
 - [ ] **Step 1:** 8c 끝 커밋을 `git archive`로 뽑은 사본에 `ckpt/measure-8c` 태그를 달기 전에 모든 검사가 통과하고 B 검토의 고침이 들어간 상태인지 본다. 태그는 주인이 정한 뒤에 단다.
 - [ ] **Step 2:** 측정 DB의 단위 집합과 글 해시가 코퍼스와 같음을 확인한다.
-- [ ] **Step 3: (가)** `--vessel off --set v3` 한 번. 통과 기준은 위 표.
+- [ ] **Step 3: (가)** `--vessel off --set v3` 한 번. 판정: 그 실행의 v3 행동 정확도를 기존 보고 출력(`scripts/run_eval.py report`)에서 읽어 `rules/vessel.yaml comparison.off_floor`(0.8333) 이상이면 통과다. 이 한 번은 새 측정이 아니라 "끈 길이 그대로"를 확인하는 점검이다. 통과하지 못하면 Step 4(다섯 쌍)를 시작하지 않고 주인 쪽(`메인`)에 보고하고 멈춘다. 원인부터 본다.
 - [ ] **Step 4: (나)** 켠 길과 끈 길을 번갈아 다섯 쌍. 실행 전마다 `ccusage blocks --active --json`을 적는다.
 - [ ] **Step 5:** `scripts/run_eval.py verdict --set v4 --compare vessel`의 출력을 그대로 `.claude/run/research/`의 보고서에 붙인다. 기준을 보고서에서 고치지 않는다.
 
@@ -576,3 +576,12 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 | MC54, MC55 | `test_the_detector_on_two_cargos_counts_a_tokenless_sentence_only_when_it_differs_from_every_cargo`, `test_the_unattributed_count_is_reported_and_not_added_to_the_criterion` (MC55 비교 꼴은 `test_the_unattributed_count_is_reported_but_never_added_to_the_criterion`) |
 | MC56 | `test_a_day_count_that_is_not_that_cargos_margin_days_is_still_flagged` |
 | 검증의 변이 | V01, V03, V05(1차), W07, W08, W11, W12(2차), X04, X05, X10, X11(3차): 모두 위에 적은 시험으로 이제 깨진다 [실측: 내 사본에서 직접 돌린 것: V01, V03, V05, W07, W08, W11, W12, X04, X05, X10, X11] |
+
+### 검증 4차 검토 뒤 고침 (R-189~R-192, 11-17)
+
+| # | 고친 것 | 시험과 깨 보기 |
+|---|---|---|
+| R-189 | 판정 줄에 `dates`(그 판정이 쓴 날짜)를 적는다. 날짜는 배 값이 아니라 공책에 둔다. `rejudge`는 그 `dates`와 지금 `cargo_dates`가 다른 화물만 다시 판정하므로 다시 시작한 뒤의 재개와 사전 비움에서도 앞 차례 날짜 때문에 다시 받지 않는다. 사전이 없을 때의 다시 받기도 한 차례의 화물 수 상한(`max_cargos` 3, `over_cap` 유지)을 센다. `rejudge`는 쓴 항목을 지운다(512개 비움은 안전장치로 둔다). 계획자 길과 수퍼바이저 길은 사전에 쓰지 않는다(`keep=False`) | `test_a_restart_in_the_middle_of_the_turn_refetches_once_and_still_judges_the_new_date`(S2), `test_a_restart_resume_with_only_an_old_date_makes_no_new_outside_call`(S3), `test_a_refetch_after_a_restart_stays_within_the_per_turn_cargo_cap`, `test_the_planner_and_supervisor_paths_do_not_write_the_fetch_cache`(쓴 항목을 지움도 본다), `test_the_verdict_row_carries_the_dates_it_was_judged_with_and_the_cache_is_emptied_by_rejudge`. 깨 보기 K12(날짜 견주기를 뺌), K2(지우지 않음), 상한 우회가 깨진다 |
+| R-190 | 한 프로세스에서 두 대화가 섞여도 서로의 위치·일정을 읽지 않는다 | `test_two_conversations_in_one_process_never_read_each_others_fetched_data`(S4: B도 질문에서 멈춰 B의 사전 항목이 남은 채 A를 재개). K1(대화 번호를 키에서 뺌)이 깨진다 |
+| R-191 | 검증자의 "낮췄어요" 예외가 없음을 못박는다 | `test_a_sentence_that_says_the_confidence_was_lowered_is_checked_like_any_other`. 예외를 다시 넣는 변이(X02)가 깨진다 |
+| R-192 | 계획의 Task M Step 3에 (가)의 판정 방법과 멈춤 규칙을 적었다 | 문서만 |

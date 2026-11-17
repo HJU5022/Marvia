@@ -434,3 +434,160 @@ def test_the_on_path_gives_the_verifier_the_verdicts_with_ship_status_and_the_da
     picked.invoke(Command(resume={"selected": 1}), config)
     assert [(v["token"], v["ship_status"]) for v in seen[-1]["verdicts"]] == [("[BL1]", "user_choice")]
     assert seen[-1]["user_dates"] == set()
+
+
+# --- 다시 판정(rejudge)의 사전과 재시작 (11-17 R-189, R-190) ---
+
+ASK_MORE = (
+    "ask_user",
+    {"question": "더 알려 줄 것?", "options": [{"label": "없음", "description": "없음"}] * 2},
+)
+
+
+def counted(monkeypatch, fail=None):
+    from marvia.identify.models import ToolError
+    from marvia.tools import mof
+
+    calls: list[str] = []
+    real_pos, real_plan = shipfinder.vessel_position, mof.port_schedule
+
+    def broken():
+        return ToolError(code="unavailable", message="x", retryable=True)
+
+    def pos(*a, **k):
+        calls.append("pos")
+        return broken() if fail and fail["on"] else real_pos(*a, **k)
+
+    def plan(*a, **k):
+        calls.append("plan")
+        return broken() if fail and fail["on"] else real_plan(*a, **k)
+
+    monkeypatch.setattr(shipfinder, "vessel_position", pos)
+    monkeypatch.setattr(mof, "port_schedule", plan)
+    return calls
+
+
+def rebuilt(agent_deps, saver, store, script):
+    """같은 체크포인트로 새로 만든 그래프 = 다시 시작한 프로세스(빈 사전)."""
+    deps = agent_deps(
+        model=ToolModel(messages=iter(script)),
+        now=lambda: NOW,
+        write=lambda p: Draft(answer="x", citations=[], next_options=[], forwarder_message=""),
+    )
+    return build_main_graph(deps, saver, loop="agent", store=store, vessel=True)
+
+
+def test_a_restart_in_the_middle_of_the_turn_refetches_once_and_still_judges_the_new_date(
+    agent_deps, monkeypatch
+):
+    # [왜] 11-17 R-189(S2). 날짜를 받고 루프 안 질문에서 멈춘 뒤 새 프로세스로 재개하면 사전이 비었다.
+    #      판정 줄의 날짜와 공책의 날짜가 달라 다시 판정하고, 위치·일정은 한 번만 다시 받는다
+    calls = counted(monkeypatch)
+    saver, store = InMemorySaver(), InMemoryStore()
+    config = {"configurable": {"thread_id": "s2"}}
+    first = rebuilt(agent_deps, saver, store, [say(note(sale_date="2026-09-25")), say(ASK_MORE)])
+    first.invoke({"text": "TESTVSL0001 판매는 2026년 9월 25일에 해요"}, config)
+    before = list(calls)
+    second = rebuilt(agent_deps, saver, store, [say(), say()])
+    second.invoke(Command(resume={"custom": "없어요"}), config)
+    cell = second.get_state(config).values["verdicts"][0]
+    assert (cell["grade"], cell["margin_days"]) == ("alert", 1)
+    assert calls[len(before) :] == ["pos", "plan"]
+
+
+def test_a_restart_resume_with_only_an_old_date_makes_no_new_outside_call(agent_deps, monkeypatch):
+    # [왜] 11-17 R-189(S3). 날짜는 앞 차례에 받았고 이번 차례는 질문에서 멈췄다.
+    #      판정 줄이 쓴 날짜가 공책과 같으니
+    #      새 프로세스의 빈 사전에서도 다시 받지 않는다
+    calls = counted(monkeypatch)
+    saver, store = InMemorySaver(), InMemoryStore()
+    config = {"configurable": {"thread_id": "s3"}}
+    first = rebuilt(agent_deps, saver, store, [say(note(sale_date="2026-09-25")), say(), say(ASK_MORE)])
+    first.invoke({"text": "TESTVSL0001 판매는 2026년 9월 25일에 해요"}, config)
+    first.invoke({"text": "TESTVSL0001 지금은요?"}, config)
+    before = list(calls)
+    second = rebuilt(agent_deps, saver, store, [say(), say()])
+    second.invoke(Command(resume={"custom": "없어요"}), config)
+    assert calls == before
+    assert second.get_state(config).values["verdicts"][0]["grade"] == "alert"
+
+
+def test_two_conversations_in_one_process_never_read_each_others_fetched_data(agent_deps, monkeypatch):
+    # [왜] 11-17 R-190(S4). A가 날짜를 받고 루프 안 질문에서 멈춘 사이 B가 같은 토큰으로 바깥 호출이
+    #      모두 실패하는 차례를 돌고 B도 질문에서 멈춘다(B의 사전 항목이 남는다). A를 재개하면 A의
+    #      위치·일정으로 경계가 나와야 한다. 사전 키에 대화 번호가 있어야 한다
+    fail = {"on": False}
+    counted(monkeypatch, fail)
+    saver, store = InMemorySaver(), InMemoryStore()
+    script = [say(note(sale_date="2026-09-25")), say(ASK_MORE), say(ASK_MORE), say(), say(), say()]
+    graph = rebuilt(agent_deps, saver, store, script)
+    a, b = {"configurable": {"thread_id": "A"}}, {"configurable": {"thread_id": "B"}}
+    graph.invoke({"text": "TESTVSL0001 판매는 2026년 9월 25일에 해요"}, a)
+    fail["on"] = True
+    graph.invoke({"text": "TESTVSL0001 어디쯤 왔어요?"}, b)
+    fail["on"] = False
+    graph.invoke(Command(resume={"custom": "없어요"}), a)
+    assert graph.get_state(a).values["verdicts"][0]["grade"] == "alert"
+    assert graph.get_state(b).values["verdicts"][0]["grade"] is None
+
+
+def test_the_verdict_row_carries_the_dates_it_was_judged_with_and_the_cache_is_emptied_by_rejudge(agent_deps):
+    # [왜] 11-17 R-189. 판정 줄의 dates는 판정에 쓴 날짜다(배 값이 아니다). rejudge는 쓴 항목을 지운다
+    graph = graph_on(agent_deps, say(note(sale_date="2026-09-25")), say())
+    state = turn(graph, "TESTVSL0001 판매는 2026년 9월 25일에 해요")
+    assert state.values["verdicts"][0]["dates"] == {"sale_date": "2026-09-25"}
+    plain = turn(graph_on(agent_deps, say()), "TESTVSL0001 어디쯤 왔어요?", "p")
+    assert plain.values["verdicts"][0]["dates"] == {}
+
+
+def test_the_planner_and_supervisor_paths_do_not_write_the_fetch_cache(monkeypatch):
+    # [왜] 11-17 R-189. rejudge가 없는 켠 길은 위치·일정을 사전에 남기지 않는다(keep=False).
+    #      보이는 차이는 이것이다:
+    #      사전을 쓰는 쪽은 다시 판정할 때 바깥 호출이 늘지 않고, 안 쓰는 쪽은 다시 받는다
+    from marvia.graph.vessel import verdict_nodes
+    from marvia.tools.unipass_replay import lookup_cargo
+
+    calls = counted(monkeypatch)
+    cargo = {"token": "[BL1]", "facts": lookup_cargo("TESTVSL0001").model_dump(mode="json")}
+    ship = {"token": "[BL1]", "status": "confirmed", "reason": "mrn_call_sign", "mmsi": "999000001",
+            "call_sign": "QQTST1", "name": "TEST CARGO A", "basis": ["call_sign"], "cap": None}  # fmt: skip
+    config = {"configurable": {"thread_id": "keep"}}
+    extra = {}
+    for keep in (True, False):
+        verdict, rejudge = verdict_nodes(lambda: NOW, keep=keep)
+        state = {"cargos": [cargo], "vessels": [ship]}
+        state["verdicts"] = verdict(state, config)["verdicts"]  # type: ignore[arg-type,typeddict-item]
+        calls.clear()
+        state["cargo_dates"] = {"[BL1]": {"sale_date": "2026-09-25"}}  # type: ignore[typeddict-unknown-key]
+        rejudge(state, config)  # type: ignore[arg-type]
+        extra[keep] = list(calls)
+        if keep:  # 쓴 항목은 지워졌다: 같은 공책으로 한 번 더 다시 판정하면 이번에는 다시 받는다
+            calls.clear()
+            rejudge(state, config)  # type: ignore[arg-type]
+            extra["again"] = list(calls)
+    assert extra == {True: [], "again": ["pos", "plan"], False: ["pos", "plan"]}
+
+
+def test_a_refetch_after_a_restart_stays_within_the_per_turn_cargo_cap(monkeypatch):
+    # [왜] 11-17 R-189. 사전이 없을 때의 다시 받기도 한 차례의 화물 수 상한(max_cargos 3)을 센다. 넷째 화물은
+    #      받지 않고 over_cap으로 남는다
+    from marvia.graph.vessel import verdict_nodes
+    from marvia.tools.unipass_replay import lookup_cargo
+
+    calls = counted(monkeypatch)
+    facts = lookup_cargo("TESTVSL0001").model_dump(mode="json")
+    ship = {"status": "confirmed", "reason": "mrn_call_sign", "mmsi": "999000001", "call_sign": "QQTST1",
+            "name": "TEST CARGO A", "basis": ["call_sign"], "cap": None}  # fmt: skip
+    verdict, rejudge = verdict_nodes(lambda: NOW, keep=False)
+    config = {"configurable": {"thread_id": "cap"}}
+    tokens = ["[BL1]", "[BL2]", "[BL3]", "[BL4]"]
+    cargos = [{"token": t, "facts": facts} for t in tokens]
+    ships = [{**ship, "token": t} for t in tokens]
+    rows = []
+    for t in tokens:  # 따로 판정해 어느 줄에도 over_cap이 없다
+        rows += verdict({"cargos": [{"token": t, "facts": facts}], "vessels": ships}, config)["verdicts"]  # type: ignore[arg-type]
+    assert not any("over_cap" in r["notes"] for r in rows)
+    calls.clear()
+    dates = {t: {"sale_date": "2026-09-25"} for t in tokens}
+    out = rejudge({"cargos": cargos, "vessels": ships, "verdicts": rows, "cargo_dates": dates}, config)  # type: ignore[arg-type]
+    assert len(calls) == 6 and ["over_cap" in r["notes"] for r in out["verdicts"]] == [False] * 3 + [True]

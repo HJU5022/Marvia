@@ -559,7 +559,8 @@ def build_main_graph(
     if vessel:
         graph.add_node("vessel", find_vessels)
         graph.add_node("ask_vessel", ask_vessel)
-        verdict_step, rejudge_step = verdict_nodes(deps.now)
+        # [왜] rejudge는 켠 에이전트 길에만 있다. 다른 켠 길은 위치·일정을 사전에 남기지 않는다 (R-189)
+        verdict_step, rejudge_step = verdict_nodes(deps.now, keep=loop == "agent")
         graph.add_node("verdict", verdict_step)
         graph.add_conditional_edges(
             "vessel",
