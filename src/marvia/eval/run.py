@@ -172,6 +172,51 @@ def replay_sha256() -> str:
     return digest.hexdigest()
 
 
+def ship_values() -> list[str]:
+    """배 재생 자료의 배 이름, 호출부호, 배 번호, IMO와 세관 사실의 배 이름. 입력·답에 있으면 샌 값이다."""
+    root = Path(__file__).resolve().parents[3] / "fixtures"
+    found: set[str] = set()
+    for path in sorted((root / "shipfinder" / "VesselSearch").glob("*.json")):
+        for ship in json.loads(path.read_text(encoding="utf-8"))["data"]:
+            found |= {str(ship[k]) for k in ("mmsi", "imo", "call_sign", "ship_name") if ship.get(k)}
+    for path in sorted((root / "unipass").glob("TESTVSL*.json")):
+        name = json.loads(path.read_text(encoding="utf-8")).get("vessel_name")
+        found |= {name} if name else set()
+    return sorted(v for v in found if len(v) >= 3)
+
+
+def vessel_row(item: Item, values: dict, inputs: list[str]) -> tuple[dict, dict]:
+    """켠 길 문항의 새 지표 칸(줄)과 그 문장들(raw). 답 글은 줄에 두지 않고 센 값만 둔다 (계획 8c, D22)."""
+    from marvia.eval.metrics import assertive_violations, ship_value_hits, verdict_detector  # noqa: PLC0415
+
+    # [왜] 화면에 나갈 답은 토큰이 실제 번호로 되돌아가 있다. 기대 판정은 토큰으로 적으니 다시 바꿔 센다
+    answer = values.get("answer", "")
+    for token, number in (values.get("mask_map") or {}).items():
+        answer = answer.replace(number, token) if number else answer
+    found = verdict_detector(answer, item.expect_verdict)
+    assertive = assertive_violations(answer, item.expect_verdict)
+    texts = marks(load_rules("verify")["vessel_verdict"]["texts"])
+    leaked = ship_value_hits([*inputs, answer], ship_values())
+    row = {
+        "detector": found["count"],
+        "detector_unattributed": found["unattributed"],
+        # 검증자 꼴: 이 차례의 초안이 걸린 새 규칙의 수 (verification_hit는 걸린 위반 문장 전부다)
+        "verifier_form": sum(any(m in v for m in texts) for v in values.get("verification_hit", [])),
+        "assertive": len(assertive),
+        "ship_leak": bool(leaked),
+    }
+    return row, {
+        "detector_sentences": found["sentences"],
+        "assertive_sentences": assertive,
+        "ship_leaks": leaked,
+    }
+
+
+def marks(texts: dict[str, str]) -> list[str]:
+    """검증자 새 규칙의 위반 글에서 고정 글(빈칸 {..} 밖의 가장 긴 조각)만 뽑는다."""
+    return [max(re.split(r"\{[a-z]+\}", t), key=len).strip() for t in texts.values()]
+
+
 def vessel_meta(vessel: bool) -> dict:
     """결과 meta에 남길 켠 길 표시와 배 재생 자료 해시. [왜] 환경 변수가 아니라 실행 인자로만 켠다."""
     return {"vessel": "on" if vessel else "off", "vessel_replay_sha256": replay_sha256()}
@@ -291,6 +336,7 @@ def drive(graph, item: Item, thread: str, callbacks: list) -> tuple[dict, list[d
     config = {"configurable": {"thread_id": thread}, "callbacks": callbacks}
     out = graph.invoke({"text": item.question}, config)
     pauses = []
+    replies = iter(item.replies)  # [왜] 선택 카드가 뜬 차례대로 문항이 정한 답을 준다 (v4). 없으면 권장안이다
     while "__interrupt__" in out:
         value = out["__interrupt__"][0].value
         pauses.append(value)
@@ -299,7 +345,8 @@ def drive(graph, item: Item, thread: str, callbacks: list) -> tuple[dict, list[d
             reject = {"type": "reject", "message": "평가 실행은 저장하지 않는다"}
             reply = approval_reply({"decisions": [reject] * count}, count)
         else:
-            reply = {"timeout": True}
+            picked = next(replies, None)
+            reply = {"timeout": True} if picked is None else {"selected": picked}
         out = graph.invoke(Command(resume=reply), config)
     saved = {"configurable": {"thread_id": thread}}
     values = graph.get_state(saved).values
@@ -552,6 +599,10 @@ def evaluate_item(
         with get_usage_metadata_callback() as usage:
             values, pauses = drive(graph, item, f"eval-{loop}-{item.id}", [watch, *callbacks])
         row |= observe(values, pauses, watch, loop, log)
+        if vessel:
+            more, more_raw = vessel_row(item, values, watch.inputs)
+            row |= more
+            raw |= more_raw
         known = values.get("mask_map") or {}
         row["error"] = watch.cli_failures[0] if watch.cli_failures else None
         draft = values.get("draft") or {}

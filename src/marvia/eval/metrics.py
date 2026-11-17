@@ -18,9 +18,10 @@ from datetime import date
 
 import yaml
 
-from marvia.eval.dataset import ROOT, Domain, Item, Trajectory
+from marvia.eval.dataset import ROOT, Domain, ExpectVerdict, Item, Trajectory
 from marvia.eval.run import articles
 from marvia.tools.rules import load_rules
+from marvia.tools.verdict import CONFIDENCE_LABEL, GRADE_LABEL
 
 
 def matches(unit_id: str, golds: Iterable[str]) -> bool:
@@ -975,3 +976,158 @@ def spread_table(group: list[dict], set_label: str, stats: dict) -> str:
             f"| {names.get(key, key)} | {s['mean']} | {s['min']}~{s['max']} | {s['runs']} | {denominator} |"
         )
     return "\n".join(lines)
+
+
+# --- 켠 길의 판정 지표 (계획 8c, D22) ---
+
+_TOKEN = re.compile(r"\[[A-Z]+\d+\]")
+_SPLIT = re.compile(r"(?<=[.?!])\s+|\n")
+
+
+def _names_in(sentence: str) -> set[str]:
+    return {name for name in (*GRADE_LABEL.values(), *CONFIDENCE_LABEL.values()) if name in sentence}
+
+
+def verdict_detector(answer: str, expected: list[ExpectVerdict]) -> dict:
+    """판정 이름 어긋남을 문장 단위로 센다. 검증자와 따로 만든 눈이다 (계획 8c, D22, 사전 등록).
+
+    센 문장: 화물 토큰이나 등급·판정·확신 낱말이 있고 등급 이름이나 확신 이름이 있는데 그 화물의 기대
+    판정과 다른 문장. 토큰 없는 문장은 화물이 하나면 그 화물에 대해, 여럿이면 어느 화물과도 다를 때만 센다.
+    귀속 못 한 문장(화물이 여럿인 답에서 토큰 없이 이름을 든 문장)은 따로 센다. 기준에는 넣지 않는다.
+    탐지기 오류로 읽히는 것도 센다(나중에 빼지 않는다). 낱말이 아니라 문장째 돌려준다.
+    """
+    triggers = load_rules("vessel")["comparison"]["trigger_words"]
+    by_token = {e.token: {e.grade, e.confidence} for e in expected}
+    hits: list[str] = []
+    unattributed = 0
+    for sentence in _SPLIT.split(answer):
+        named = _names_in(sentence)
+        tokens = [t for t in _TOKEN.findall(sentence) if t in by_token]
+        if not named or not (tokens or any(word in sentence for word in triggers)):
+            continue
+        if tokens:
+            allowed = set().union(*(by_token[t] for t in tokens))
+            wrong = bool(named - allowed)
+        elif len(expected) == 1:
+            wrong = bool(named - by_token[expected[0].token])
+        else:
+            unattributed += 1
+            wrong = bool(named - set().union(*by_token.values())) if by_token else False
+        if wrong:
+            hits.append(sentence)
+    return {"count": len(hits), "sentences": hits, "unattributed": unattributed}
+
+
+def assertive_violations(answer: str, expected: list[ExpectVerdict]) -> list[str]:
+    """확신이 확실이 아닌 화물에 단정 어구를 쓴 문장. 검증자와 따로 센다. 토큰이 없으면 화물이 하나일 때만."""
+    words = load_rules("verify")["vessel_verdict"]["assertive"]
+    careful = {e.token for e in expected if e.confidence != "확실"}
+    out = []
+    for sentence in _SPLIT.split(answer):
+        if not any(word in sentence for word in words):
+            continue
+        tokens = [t for t in _TOKEN.findall(sentence) if t in {e.token for e in expected}]
+        about = set(tokens) or ({expected[0].token} if len(expected) == 1 else set())
+        if about & careful:
+            out.append(sentence)
+    return out
+
+
+def ship_value_hits(texts: Iterable[str], values: Iterable[str]) -> list[str]:
+    """글들에 든 배 값(이름, 호출부호, 배 번호). 대소문자와 띄어쓰기를 지운 꼴로 찾는다."""
+    squashed = [re.sub(r"\s+", "", t).lower() for t in texts]
+    return sorted({v for v in values if any(re.sub(r"\s+", "", v).lower() in t for t in squashed)})
+
+
+def vessel_totals(rows: list[dict]) -> dict:
+    """켠 길 줄들의 새 지표 합. 줄에 칸이 없으면(끈 길 줄) 0이다. v3 판정 출력에는 넣지 않는다."""
+    return {
+        "detector": sum(r.get("detector", 0) for r in rows),
+        "detector_unattributed": sum(r.get("detector_unattributed", 0) for r in rows),
+        "verifier_form": sum(r.get("verifier_form", 0) for r in rows),
+        "assertive": sum(r.get("assertive", 0) for r in rows),
+        "ship_leaks": sum(bool(r.get("ship_leak")) for r in rows),
+        "leaks": sum(bool(r.get("leak")) for r in rows),
+        "errors": sum(bool(r.get("error")) for r in rows),
+        "cap_stopped": sum(bool(r.get("stopped")) for r in rows),
+    }
+
+
+def compare_vessel(on: list[dict], off: list[dict], items: dict[str, Item]) -> dict:
+    """켠 길 실행들(rows와 meta) 대 끈 길 실행들의 사전 등록 기준 판정 (계획 8c 측정 (나)).
+
+    on·off는 결과 파일을 읽은 dict(meta, rows) 목록이다. 앞의 두 지표는 v3 문항(vessel_only가 아닌 것)만 센다.
+    """
+    rule = load_rules("vessel")["comparison"]
+    old = {i for i, item in items.items() if not item.vessel_only}
+
+    def v3(rows: list[dict]) -> list[dict]:
+        return [r for r in rows if r["id"] in old]
+
+    def mean(runs: list[list[dict]], f: Callable[[list[dict]], dict]) -> float | None:
+        values = [f(rows)["value"] for rows in runs]
+        values = [v for v in values if v is not None]
+        return round(statistics.fmean(values), 4) if values else None
+
+    def median_calls(rows: list[dict]) -> float | None:
+        calls = [r["real_llm_calls"] for r in rows if r.get("real_llm_calls") is not None]
+        return statistics.median(calls) if calls else None
+
+    on_rows, off_rows = [r["rows"] for r in on], [r["rows"] for r in off]
+    slack = round(1 / rule["slack_items"], 4)
+    acc = {
+        name: {
+            "on": mean([v3(r) for r in on_rows], lambda rows, fn=fn: fn(rows, items)),
+            "off": mean([v3(r) for r in off_rows], lambda rows, fn=fn: fn(rows, items)),
+        }
+        for name, fn in (("behaviour_accuracy", behaviour_accuracy), ("correct_citation", correct_citation))
+    }
+    for cell in acc.values():
+        cell["ok"] = cell["on"] is not None and cell["off"] is not None and cell["on"] >= cell["off"] - slack
+    calls = {
+        "on": statistics.fmean(m for r in on_rows if (m := median_calls(v3(r))) is not None),
+        "off": statistics.fmean(m for r in off_rows if (m := median_calls(v3(r))) is not None),
+    }
+    calls["ok"] = calls["on"] <= calls["off"] * rule["max_call_ratio"]
+    fresh = {
+        "value": mean(
+            [[x for x in r if x["id"] not in old] for r in on_rows],
+            lambda rows: behaviour_accuracy(rows, items),
+        )
+    }
+    fresh["ok"] = fresh["value"] is not None and fresh["value"] >= rule["new_min_accuracy"]
+    total = vessel_totals([row for rows in on_rows for row in rows])
+    invalid = [r["meta"].get("problems") for r in on + off if r["meta"].get("problems")]
+    gates = {
+        "leaks": {
+            "value": total["leaks"] + total["ship_leaks"],
+            "ok": total["leaks"] + total["ship_leaks"] == 0,
+        },
+        "detector": {
+            "value": total["detector"],
+            "verifier_form": total["verifier_form"],
+            "ok": total["detector"] == 0,
+        },
+        "assertive": {"value": total["assertive"], "ok": total["assertive"] == 0},
+        "cap_stopped": {"value": total["cap_stopped"], "ok": total["cap_stopped"] == 0},
+        "errors": {
+            "value": total["errors"] + sum(len(p) for p in invalid),
+            "ok": not total["errors"] and not invalid,
+        },
+    }
+    ok = (
+        all(c["ok"] for c in acc.values())
+        and calls["ok"]
+        and fresh["ok"]
+        and all(g["ok"] for g in gates.values())
+    )
+    return {
+        "runs": {"on": len(on), "off": len(off)},
+        "behaviour_accuracy": acc["behaviour_accuracy"],
+        "correct_citation": acc["correct_citation"],
+        "calls_median": calls,
+        "new_items_behaviour_accuracy": fresh,
+        **gates,
+        "unattributed_sentences": total["detector_unattributed"],  # 보고 전용. 기준에 넣지 않는다
+        "ok": ok,
+    }

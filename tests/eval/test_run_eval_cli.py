@@ -389,3 +389,29 @@ def test_the_stored_comparison_runs_give_the_stored_verdict_again():
     assert printed == json.loads(COMPARE_VERDICT.read_text(encoding="utf-8"))
     assert printed["verdict"] == "구분 못 함" and printed["invalid_runs"] == []
     assert printed["lines"]["correct_citation"] == {"agent": 0.8833, "supervisor": 0.7833, "ok": False}
+
+
+def test_the_vessel_comparison_command_prints_the_registered_criteria_and_refuses_mixed_runs(tmp_path):
+    # [왜] 계획 8c 측정 (나). 켠 길 대 끈 길은 같은 커밋·모델·평가셋의 실행끼리만 견준다
+    from marvia.eval.dataset import SET_V4_PATH, file_sha256
+
+    sha = file_sha256(SET_V4_PATH)
+
+    def runs(vessel: str, n: int = 2) -> list[str]:
+        files = []
+        for i in range(n):
+            meta = {"set_sha256": sha, "commit": "abc1234", "model": "m", "loop": "agent", "vessel": vessel,
+                    "llm_via": "cli", "problems": []}  # fmt: skip
+            row = {"id": "R01", "behaviour": "answer", "cited": [], "evidence": [], "real_llm_calls": 3,
+                   "leak": False}  # fmt: skip
+            path = tmp_path / f"{vessel}{i}.json"
+            path.write_text(json.dumps({"meta": meta, "rows": [row]}), encoding="utf-8")
+            files.append(str(path))
+        return files
+
+    done = verdict("--set", "v4", "--compare", "vessel", "--on", *runs("on"), "--off", *runs("off"))
+    assert done.returncode == 0, done.stderr
+    out = json.loads(done.stdout)
+    assert out["runs"] == {"on": 2, "off": 2} and out["detector"]["ok"] and out["commit"] == "abc1234"
+    swapped = verdict("--set", "v4", "--compare", "vessel", "--on", *runs("off"), "--off", *runs("on"))
+    assert swapped.returncode != 0 and "섞였다" in swapped.stderr

@@ -212,3 +212,39 @@ def test_v1_and_v2_file_hashes_are_untouched_by_v3():
     for name, path in (("set_v1", SET_PATH), ("set_v2", SET_V2_PATH)):
         recorded = (path.parent / f"{name}.sha256").read_text(encoding="utf-8").split()[0]
         assert file_sha256(path) == recorded, name
+
+
+# --- v4 (계획 8c): v3에 배 식별 문항 열둘 ---
+
+from marvia.eval.dataset import SET_V4_PATH  # noqa: E402
+
+
+def test_v4_keeps_the_v3_items_unchanged():
+    v3, v4 = load_set(SET_V3_PATH), load_set(SET_V4_PATH)
+    assert v4.version == "v4" and v4.as_of == v3.as_of
+    assert [i.id for i in v4.items[: len(v3.items)]] == [i.id for i in v3.items]
+    for old, new in zip(v3.items, v4.items, strict=False):
+        assert old.model_dump() == new.model_dump(), old.id  # 새 칸은 기본값이라 v3와 똑같다
+    assert not any(i.vessel_only or i.now or i.replies or i.expect_verdict for i in v3.items)
+
+
+def test_the_vessel_items_are_marked_and_skipped_when_off():
+    from marvia.eval.run import runnable
+
+    v4 = load_set(SET_V4_PATH)
+    new = [i for i in v4.items if i.vessel_only]
+    assert [i.id for i in new] == [f"N{n:02d}" for n in range(1, 13)]
+    assert len(runnable(v4.items, vessel=False)) == 30 and len(runnable(v4.items, vessel=True)) == 42
+    # 새 문항마다 기준 시각(재생 배에 맞춘 2026-09-22 쪽)과 화물마다 기대 판정이 있다
+    for item in new:
+        assert item.now is not None and item.now.date().isoformat() == "2026-09-22", item.id
+        tokens = {t for t in item.question.split() if t.startswith("TESTVSL")}
+        assert [e.token for e in item.expect_verdict] == [f"[BL{n}]" for n in range(1, len(tokens) + 1)], (
+            item.id
+        )
+
+
+def test_set_v4_is_frozen_by_its_sha256():
+    recorded = (SET_V4_PATH.parent / "set_v4.sha256").read_text(encoding="utf-8").split()[0]
+    assert file_sha256(SET_V4_PATH) == recorded
+    assert (SET_V4_PATH.parent / "gold_check_v4.md").exists()

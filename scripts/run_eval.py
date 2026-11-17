@@ -40,6 +40,7 @@ from marvia.eval.metrics import (
     cargo_count_lines,
     compare_paths,
     compare_tables,
+    compare_vessel,
     domain_table,
     floors,
     gate_block,
@@ -120,8 +121,16 @@ spread_cmd.add_argument(
 verdict_cmd = sub.add_parser(
     "verdict", help="에이전트 길과 수퍼바이저 길의 실행들을 사전 등록 기준으로 판정한다 (키 없음, 계획 7b)"
 )
-verdict_cmd.add_argument("--agent", nargs="+", required=True, help="에이전트 길 결과 파일들")
-verdict_cmd.add_argument("--supervisor", nargs="+", required=True, help="수퍼바이저 길 결과 파일들")
+verdict_cmd.add_argument("--agent", nargs="+", help="에이전트 길 결과 파일들")
+verdict_cmd.add_argument("--supervisor", nargs="+", help="수퍼바이저 길 결과 파일들")
+verdict_cmd.add_argument(
+    "--compare",
+    choices=["paths", "vessel"],
+    default="paths",
+    help="paths: 에이전트 길 대 수퍼바이저 길(--agent, --supervisor). vessel: 켠 길 대 끈 길(--on, --off)",
+)
+verdict_cmd.add_argument("--on", nargs="+", help="--compare vessel: 켠 길(--vessel on) 결과 파일들")
+verdict_cmd.add_argument("--off", nargs="+", help="--compare vessel: 끈 길(--vessel off) 결과 파일들")
 verdict_cmd.add_argument("--set", choices=list(SETS), default="v3", help="판정에 쓰는 평가셋 판")
 verdict_cmd.add_argument(
     "--invalid",
@@ -279,6 +288,35 @@ if args.command == "verdict":
     def load(files: list[str]) -> list[dict]:
         return [json.loads(Path(f).read_text(encoding="utf-8")) for f in files]
 
+    if args.compare == "vessel":
+        # [왜] 켠 길 대 끈 길은 같은 커밋·모델·평가셋·LLM 길의 실행끼리만 견준다. 기준은 rules/eval.yaml이다
+        if not (args.on and args.off):
+            raise SystemExit("--compare vessel에는 --on과 --off가 모두 필요하다")
+        on, off = load(args.on), load(args.off)
+        metas = [r["meta"] for r in (*on, *off)]
+        wrong = [
+            m["vessel"]
+            for r, want in ((on, "on"), (off, "off"))
+            for m in (x["meta"] for x in r)
+            if m.get("vessel") != want
+        ]
+        if wrong:
+            raise SystemExit(f"--on과 --off에 다른 쪽 실행이 섞였다: {wrong}")
+        if any(meta["set_sha256"] != file_sha256(set_path) for meta in metas):
+            raise SystemExit(f"평가셋 {args.set} 파일에서 돌린 결과가 아닌 것이 있다")
+        if len({(m["commit"], m["model"], m["loop"], m.get("llm_via", "api")) for m in metas}) != 1:
+            raise SystemExit("켠 길과 끈 길의 실행 조건(커밋, 모델, 길, LLM 길)이 다르다")
+        by_id = {i.id: i for i in load_set(set_path).items}
+        head = {
+            "set": args.set,
+            "commit": metas[0]["commit"],
+            "model": metas[0]["model"],
+            "loop": metas[0]["loop"],
+        }
+        print(json.dumps(head | compare_vessel(on, off, by_id), ensure_ascii=False, indent=1))
+        raise SystemExit(0)
+    if not (args.agent and args.supervisor):
+        raise SystemExit("--compare paths에는 --agent와 --supervisor가 모두 필요하다")
     loaded = {"agent": load(args.agent), "supervisor": load(args.supervisor)}
     # [왜] 무효 실행(meta.problems가 있다: CLI 실패, 문항을 다 덮지 못함 등)은 판정에 넣지 않고 다시 돈다.
     #      --invalid로 준 파일은 세지 않고 까닭만 옮겨 적는다. 무효는 meta.problems로만 정한다:

@@ -497,3 +497,9 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 ### T8 (11-17)
 
 `--vessel off|on`(기본 off)은 `evaluate_item(..., vessel)`만 켠다. 환경 변수는 읽지 않는다. 줄에 `vessel_graph`(실제로 만든 그래프에 배 단계가 있는가)와 `now`(그 문항의 기준 시각)를 남기고, `run_problems`는 인자와 `vessel_graph`가 다른 줄이 있으면 그 실행을 무효로 둔다. meta에 `vessel`과 `vessel_replay_sha256`(세관·해수부·ShipFinder 재생 폴더의 이름과 내용 해시)을 남긴다. 기준 시각은 `run.item_clock`: 문항의 `now`, 없으면 `as_of` 날짜 09:00 한국 시각이다. 켠 길은 이 시각 하나에서 모델의 Today, `note_dates`, 판정이 나온다. `Item`에 `vessel_only`와 `now`를 T8에서 먼저 더했다(T9는 나머지 칸). B의 `test_vessel_off.py`는 AST 시험의 허용 목록 한 줄(`("src/marvia/eval/run.py", "vessel")`)만 고쳤고 해시 상수는 그대로다(D13). 시험 파일은 `tests/graph/test_run_vessel.py`다(`tests/eval/`에는 `agent_deps` 준비물이 없다). 깨 보기(시험이 처음 잡음): MC25, MC26, MC27, MC28.
+
+### T9 (11-17)
+
+`eval/set_v4.yaml`(동결 해시 `62969fde2b4c8ccfa83c16bc28703d55e00be31e7a3354d5b5a1604ad34e53f3`)은 v3 30문항을 그대로 두고 N01~N12를 더했다. 새 칸은 `vessel_only`, `now`(문항의 기준 시각, 2026-09-22 03:00 UTC), `replies`(선택 카드에 줄 답, 0은 "모르겠어요"), `expect_verdict`(화물마다 기대 판정)다. 기대 판정은 코드가 낸 값이고 그래프 밖에서 직접 낸 값과 손 계산으로 맞대었다(`eval/gold_check_v4.md`). 계획 표의 기대 판정과 다른 곳이 있다: N08은 "부분"이 아니라 **등급 없음, 불명**이다(`TESTVSL0007`은 위치와 도착 시각이 없다 [실측]). N04도 등급 없음이다.
+
+새 지표(`metrics.py`, v3 판정 출력 칸은 늘리지 않았다): `verdict_detector`(문장 단위, 검증자와 따로, 센 문장 나열, 귀속 못 한 수는 따로), `assertive_violations`, `ship_value_hits`, `vessel_totals`, `compare_vessel`(사전 등록 기준은 `rules/vessel.yaml`의 `comparison`. `rules/eval.yaml`은 측정 커밋 묶음에 있어 건드리지 않았다). 줄의 새 칸(`detector`, `detector_unattributed`, `verifier_form`, `assertive`, `ship_leak`)은 켠 길 문항에만 생기고 센 문장은 raw에만 둔다. 화면에 나간 답은 토큰이 실제 번호로 되돌아가 있어, 탐지기에 넣기 전에 다시 토큰으로 바꾼다. 비교는 `scripts/run_eval.py verdict --set v4 --compare vessel --on 파일들 --off 파일들`이다. 깨 보기: MC27(replies를 안 씀), MC54, MC55.

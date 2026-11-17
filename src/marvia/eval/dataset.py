@@ -22,7 +22,9 @@ SET_PATH = ROOT / "eval" / "set_v1.yaml"
 SET_V2_PATH = ROOT / "eval" / "set_v2.yaml"  # v1에서 채점 기준만 고친 판 (동결: eval/set_v2.sha256)
 # v2에서 기대 서브에이전트를 더하고 R07·R08의 정답 근거와 R07의 궤적 조건을 고친 판 (계획 7b)
 SET_V3_PATH = ROOT / "eval" / "set_v3.yaml"
-SETS = {"v1": SET_PATH, "v2": SET_V2_PATH, "v3": SET_V3_PATH}  # run_eval.py --set 이름
+# v3에 배 식별 문항 열둘을 더한 판 (계획 8c). 켠 길 전용 문항(vessel_only)은 끈 길 실행에서 돌리지 않는다
+SET_V4_PATH = ROOT / "eval" / "set_v4.yaml"
+SETS = {"v1": SET_PATH, "v2": SET_V2_PATH, "v3": SET_V3_PATH, "v4": SET_V4_PATH}  # run_eval.py --set 이름
 CORPUS_UNITS = ROOT / "corpus" / "units"
 
 # 실행 결과의 행동 이름. 코드가 답 모양으로 정한다 (run.behaviour)
@@ -84,6 +86,15 @@ class Identify(BaseModel):
     stages: list[str]  # 찾아야 할 단계 이름. 순서는 상관없다
 
 
+class ExpectVerdict(BaseModel):
+    """한 화물의 기대 판정 (v4, 계획 8c). 코드가 낸 값이다. 답이 다른 말을 하면 판정 이름 어긋남이다."""
+
+    model_config = ConfigDict(extra="forbid")
+    token: str  # 질문에서 그 화물이 몇 번째로 읽히는지: [BL1], [BL2]
+    grade: Literal["순항", "주의", "경계", "긴급", "없음"]  # 없음 = 등급 없음
+    confidence: Literal["확실", "부분", "불명"]
+
+
 class Item(BaseModel):
     """평가 문항 하나."""
 
@@ -112,6 +123,10 @@ class Item(BaseModel):
     vessel_only: bool = False  # 배 판정을 모델이 읽는 켠 길 전용 문항. 끈 길 실행에서는 돌리지 않는다
     # 이 문항의 기준 시각(시간대 있음). 없으면 평가셋의 as_of 날짜 09:00 한국 시각이다 (run.item_clock)
     now: datetime | None = None
+    # 선택 카드에 줄 답, 뜬 차례대로. 0은 "배를 모르겠어요", n은 n번째 후보. 없으면 권장안(시간 초과)이다
+    replies: list[int] = []
+    # 이 문항의 화물마다 기대 판정. 판정 이름 어긋남을 이 값으로 센다 (metrics.verdict_detector)
+    expect_verdict: list[ExpectVerdict] = []
 
 
 class EvalSet(BaseModel):

@@ -118,3 +118,31 @@ def test_vessel_only_items_are_skipped_when_the_argument_is_off():
     plain, only = item(), item(id="N01", vessel_only=True)
     assert eval_run.runnable([plain, only], vessel=False) == [plain]
     assert eval_run.runnable([plain, only], vessel=True) == [plain, only]
+
+
+def test_an_on_run_gives_the_card_the_items_reply_and_records_the_new_metrics(agent_deps):
+    # N02 꼴: 같은 이름의 배에서 둘째 후보를 고른다. 모델의 답은 가짜 작성자가 쓴 글이다
+    from marvia.graph.schemas import Draft
+
+    asked = item(
+        question="TESTVSL0002 화물은 제때 들어와요?",
+        behaviour=["choice"],
+        replies=[1],
+        now=datetime(2026, 9, 22, 3, 0, tzinfo=UTC),
+        expect_verdict=[{"token": "[BL1]", "grade": "순항", "confidence": "부분"}],
+    )
+    # [왜] 검증자는 "등급" 옆의 이름만 본다. "판정은 경계예요"는 검증자를 지나 답에 남고 탐지기가 센다
+    wrong = Draft(answer="[BL1]의 판정은 경계예요.", citations=[], next_options=[], forwarder_message="")
+    prompts: list[str] = []
+    deps = agent_deps(
+        model=Spy(messages=iter([AIMessage("끝")] * 6)), write=lambda p: prompts.append(p) or wrong
+    )
+    row, raw = eval_run.evaluate_item(deps, asked, "agent", AS_OF, load_rules("pricing"), vessel=True)
+    assert row["behaviour"] == "choice" and row["vessel_graph"] is True
+    # 문항의 답(둘째 후보)이 카드에 갔다. 답이 없었다면 권장안(배 없이 진행)이다
+    assert "고르신 배로 봤어요" in prompts[0] and "배 없이 진행" not in prompts[0]
+    assert (row["detector"], row["assertive"], row["ship_leak"]) == (1, 0, False)
+    assert raw["detector_sentences"] == ["[BL1]의 판정은 경계예요."]
+    # 끈 길 줄에는 새 칸이 없다
+    off_row, _ = evaluate(agent_deps, item())
+    assert not {"detector", "assertive", "ship_leak"} & set(off_row)
