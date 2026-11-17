@@ -210,7 +210,8 @@ def build_agent(model: BaseChatModel, tools: list, permission_mode: str, vessel:
     return create_agent(
         model,
         tools,
-        system_prompt=render("agent"),
+        # [왜] 켠 길만 배 판정 도구를 쓰는 때를 적은 조각을 잇는다 (계획 8c). 꺼져 있으면 지시문은 그대로다
+        system_prompt=render("agent") + ("\n\n" + render("vessel_agent") if vessel else ""),
         middleware=middleware,
         # [왜] 켠 길만 날짜와 카드 답 칸이 있는 공책을 쓴다 (계획 8c). 꺼진 길의 공책 칸은 그대로다
         state_schema=VesselLoopState if vessel else LoopState,

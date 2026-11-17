@@ -268,6 +268,8 @@ def build_main_graph(
     # [왜] 시계 하나 (계획 8c, C14, D20). 켠 길은 모델이 보는 Today, note_dates의 범위와 연도 해석, 검증자가
     #      허용하는 오늘을 판정의 기준 시각(now)의 한국 날짜 한 곳에서 만든다. 꺼진 길은 deps.today 그대로다
     clock_today = (lambda: deps.now().astimezone(KST).date()) if vessel else deps.today
+    # [왜] 수퍼바이저 길에는 새 도구와 판정 블록을 주지 않는다 (계획 8c, C9). 서브에이전트 도구는 따로 정한다
+    with_block = vessel and loop != "supervisor"
 
     def plan(state: MarviaState) -> dict:
         """계획자: 지금까지 한 일과 모은 것을 보고 남은 할 일을 다시 정한다 (설계 6.1)."""
@@ -395,6 +397,10 @@ def build_main_graph(
             actions="\n".join(state.get("actions", [])),
             violations="\n".join(state.get("verification", [])),
         )
+        # [왜] 켠 길만 판정 블록과 쓰는 법을 작성자 입력 끝에 잇는다 (계획 8c, C3). 꺼지면 입력은 그대로다
+        if with_block and (state.get("verdicts") or state.get("vessels")):
+            block = vessel_block(state.get("cargos", []), state.get("vessels", []), state.get("verdicts", []))
+            prompt += render("vessel_write") + "\n" + block
         try:
             draft = deps.write(prompt)
         except LLMFailed as error:
@@ -457,7 +463,7 @@ def build_main_graph(
             news="\n".join(state.get("watch_news", [])),
         )
         # [왜] 켠 길만 코드가 쓴 판정 블록을 붙인다. 꺼져 있으면 차례 메시지는 계획 8c 전과 같다 (계획 8c, C3)
-        if vessel and (state.get("verdicts") or state.get("vessels")):
+        if with_block and (state.get("verdicts") or state.get("vessels")):
             text += "\n\n" + vessel_block(
                 state.get("cargos", []), state.get("vessels", []), state.get("verdicts", [])
             )
