@@ -175,6 +175,9 @@ class LoopState(AgentState):
 #      돌려주어, 꺼진 길의 공책 칸 이름이 달라진다. 켜진 길만 이 공책을 쓴다
 class VesselLoopState(LoopState):
     cargo_dates: NotRequired[Annotated[dict[str, dict], merge_dates]]
+    # 읽기 도구(read_vessel)가 읽기만 하는 칸. 도구가 쓰지 않아 합치는 함수가 없다
+    vessels: NotRequired[list[dict]]
+    verdicts: NotRequired[list[dict]]
     turn_answers: NotRequired[Annotated[list[str], operator.add]]
 
 

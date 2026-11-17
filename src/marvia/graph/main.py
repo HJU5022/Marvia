@@ -56,6 +56,7 @@ from marvia.graph.tools import (
 )
 from marvia.graph.verify import verify
 from marvia.graph.vessel import ask_vessel, find_vessels, verdict_node
+from marvia.graph.vessel_text import vessel_block
 from marvia.identify.mask import token_for, unmask
 from marvia.identify.parse import kind_of, read_numbers
 from marvia.llm import LLMFailed
@@ -455,6 +456,11 @@ def build_main_graph(
             question=state.get("masked_text", ""),
             news="\n".join(state.get("watch_news", [])),
         )
+        # [왜] 켠 길만 코드가 쓴 판정 블록을 붙인다. 꺼져 있으면 차례 메시지는 계획 8c 전과 같다 (계획 8c, C3)
+        if vessel and (state.get("verdicts") or state.get("vessels")):
+            text += "\n\n" + vessel_block(
+                state.get("cargos", []), state.get("vessels", []), state.get("verdicts", [])
+            )
         return update | {"messages": update["messages"] + [HumanMessage(text)]}
 
     def news(state: MarviaState, config: RunnableConfig) -> dict:

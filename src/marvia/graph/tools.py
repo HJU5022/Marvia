@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from marvia.graph.agent import build_researcher
 from marvia.graph.answer import cargo_lines
 from marvia.graph.identify import Watched, build_lookup_graph
+from marvia.graph.vessel_text import read_lines
 from marvia.identify.mask import LABELS, READ_LABELS, mask_text
 from marvia.identify.parse import read_numbers
 from marvia.llm import LLMFailed
@@ -411,7 +412,7 @@ def make_tools(
     extra = [_research_tool(model, law_tools, today)] if model is not None else []
     extra += [_official_tool(web)] if web is not None else []
     extra += _watch_tools(watch) if watch is not None else []
-    extra += [_dates_tool(today)] if vessel else []
+    extra += [_dates_tool(today), _read_tool()] if vessel else []
     tools = [
         search_law,
         calc_deadlines,
@@ -522,6 +523,21 @@ def _official_tool(web: httpx.Client):
         return _reply(runtime, text, official=[source])
 
     return official_lookup
+
+
+def _read_tool():
+    """배 판정을 다시 읽는 도구 read_vessel (계획 8c, 결정 C6). 공책을 바꾸지 않고 조회도 하지 않는다."""
+
+    @tool
+    def read_vessel(tokens: list[str], runtime: ToolRuntime) -> str:
+        """Read the code-computed ship verdict lines (grade, confidence, schedule, expected arrival, reasons)
+        of cargo tokens such as [BL1]. It looks nothing up: a cargo found for the first time in this turn has
+        no ship check yet, and the result says so. Ship names and numbers are never shown; point the user to
+        the cargo card for them.
+        """
+        return "\n".join(read_lines(tokens, dict(runtime.state)))
+
+    return read_vessel
 
 
 def _dates_tool(today: Callable[[], date]):

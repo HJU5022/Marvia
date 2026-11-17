@@ -447,6 +447,8 @@ git commit -m "docs: 계획 8c 모델이 배 판정을 읽고 쓰게 함 (결정
 |---|---|---|---|
 | T0 | `92f1513` | 1,235 / 54 | 계획 문서 |
 | T1 | `51f7ae9` | 1,241 / 54 | 새 시험 6개(`tests/graph/test_vessel_off_inputs.py`). 묶음에서 뺀 파일: `graph/agent.py`, `graph/tools.py`, `graph/verify.py`, `rules/verify.yaml`, `eval/dataset.py`, `eval/metrics.py`, `eval/run.py`, `scripts/run_eval.py`. `prompts/*.md`는 이름 24개로 바꿨다 |
+| T2 | `3feda39` | 1,252 / 54 | `absolute_dates`, 시험 11개 |
+| T3 | `6996693` | 1,271 / 54 | `note_dates`, 시계 하나, `turn_answers`, 시험 19개. DB 포함 전체(v2): 1,317 / 8 |
 
 T1의 값(기대 값은 `f208e59`에서 냈고 프로세스를 세 번 따로 돌려 같았다 [실측]):
 
@@ -461,3 +463,13 @@ T1의 값(기대 값은 `f208e59`에서 냈고 프로세스를 세 번 따로 �
 `48ca3c5` 사본에서 같은 시험 파일을 돌린 결과(D10, D15) [실측]: 도구 인자 꼴, 도구 결과 글, 검증자 결과, 호출 자리, `**` 검사는 모두 통과했다(`f208e59`와 같다). **`SCRUB_SHA`만 다르다.** 8a가 화물 사실에 빈 칸 여섯을 더했고 8b가 `trace._ship_values`를 더해, 콜백이 받는 값이 `48ca3c5`와 같지 않다. 그래서 `SCRUB_SHA`는 `48ca3c5`의 값이 아니라 `f208e59`의 값이다. 이 시험이 지키는 것은 8c의 트레이스 고침 전후가 같다는 것이다(D17).
 
 D14의 평가 지표 다시 세기 시험은 `tests/eval/test_run_eval_cli.py::test_the_stored_comparison_runs_give_the_stored_verdict_again`에 이미 있어 새로 만들지 않았다. `metrics.py`의 행동 정확도 계산을 바꾸는 깨 보기(MC46)에서 그 파일의 시험이 깨졌다(처음 틀린 시험: `test_sheet_refuses_to_write_answer_text_inside_the_repo`, 실행 순서 때문이다).
+
+### 계획과 다르게 한 곳 (T2~T3, 11-16, 주인 쪽이 받아들임)
+
+| # | 계획 | 한 것 | 까닭 |
+|---|---|---|---|
+| 1 | D16: `LoopState`에 `cargo_dates`, `turn_answers`(와 `vessel_redo`)를 더하고 합치는 함수를 둔다 | `VesselLoopState(LoopState)`를 따로 만들어 켠 길의 `build_agent`만 쓴다. 합치는 함수는 거기에만 있다(T5의 `vessel_redo`도 거기). 부모 공책은 루프가 끝난 뒤의 전체 값으로 덮어쓴다 | `LoopState`에 더하자 B의 `STATE_SHA`, `LOOPS_SHA`가 깨졌다. 서브그래프가 새 칸의 처음 값(빈 dict, 빈 목록)도 부모 공책으로 돌려줘 꺼진 길의 칸 이름이 달라졌다. 기대 값은 건드리지 않았다 |
+| 2 | D20이 시계를 T8에 둠 | T3에 넣었다. 켠 길만 `deps.now()`의 한국 날짜 하나를 brief의 Today, `make_tools`, 검증자, 작성자 프롬프트의 Today에 쓴다 | `note_dates`의 시험이 시계를 필요로 한다 |
+| 3 | CC14: `now` = 2026-09-21 16:00 UTC | 2026-09-26 16:00 UTC(한국 09-27) | 09-21 16:00 UTC는 한국 09-22이고 TESTVSL0001의 단계 날짜(09-22)와 같아 검증자 허용 날짜가 겹쳐 MC53이 살아남았다 |
+
+T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC30, MC31, MC32, MC37, MC38, MC42, MC45, MC53.
