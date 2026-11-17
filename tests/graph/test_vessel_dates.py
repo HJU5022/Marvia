@@ -306,3 +306,41 @@ def test_ask_user_writes_turn_answers_only_when_the_switch_is_on(monkeypatch):
         out = ask.func(question="날짜?", options=options, runtime=runtime)  # type: ignore[attr-defined]
         assert ("turn_answers" in out.update) is vessel_on
         assert out.update.get("turn_answers", ["11월 20일이요"]) == ["11월 20일이요"]
+
+
+def test_the_on_planner_path_uses_the_one_clock_for_the_search_date_and_the_deadline_calc(
+    agent_deps, fake_rag
+):
+    # [왜] 11-17 R-178. 켠 길은 계획자 길의 search_law as_of와 calc의 오늘도 now의 한국 날짜(09-27)다.
+    #      꺼진 길은 deps.today(fixture의 2026-11-02) 그대로다
+    from dataclasses import replace
+
+    from marvia.graph.schemas import Plan, Step
+
+    def run_planner(vessel: bool) -> tuple[list[date], dict]:
+        asked: list[date] = []
+        rag = fake_rag()
+        rag = replace(rag, search=lambda query, as_of: (asked.append(as_of), rag_search(query, as_of))[1])
+        rag_search = fake_rag().search
+        plans = iter(
+            [
+                Plan(steps=[Step(action="search_law", query="수입신고 기한", reason="찾는다")]),
+                Plan(steps=[Step(action="calc", query="", reason="계산한다")]),
+                Plan(steps=[Step(action="write", query="", reason="쓴다")]),
+            ]
+        )
+        deps = agent_deps(
+            rag=rag,
+            plan=lambda prompt: next(plans),
+            now=lambda: datetime(2026, 9, 26, 16, 0, tzinfo=UTC),
+        )
+        graph = build_main_graph(deps, InMemorySaver(), loop="planner", store=InMemoryStore(), vessel=vessel)
+        config = {"configurable": {"thread_id": f"p{vessel}"}}
+        graph.invoke({"text": "DEMO0001 수입신고 기한이 언제예요?"}, config)
+        return asked, graph.get_state(config).values["calc"]
+
+    for vessel_on, today in ((True, date(2026, 9, 27)), (False, date(2026, 11, 2))):
+        asked, calc = run_planner(vessel_on)
+        assert set(asked) == {today}
+        cell = calc["deadlines"][0]
+        assert cell["days_left"] == (date.fromisoformat(cell["due"]) - today).days

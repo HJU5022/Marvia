@@ -327,7 +327,7 @@ def build_main_graph(
         query = step.get("query") or state.get("masked_text", "")  # 질의가 비었으면 가린 질문 그대로
         # [왜] RAG 공책(RagState)은 메인 공책과 칸이 달라 노드 안에서 따로 부른다 (LangGraph 문서의 방식)
         try:
-            out = rag_graph.invoke({"question": query, "as_of": deps.today()})
+            out = rag_graph.invoke({"question": query, "as_of": clock_today()})
         except (httpx.HTTPError, psycopg.Error, LLMFailed, SearchFailed) as error:
             # [왜] 검색 실패(Voyage·DB·RAG 안의 LLM)는 차례 전체를 멈추지 않는다.
             #      기록만 하고 계획자가 다음 길을 고른다 (설계 결정 4의 ①)
@@ -361,7 +361,7 @@ def build_main_graph(
 
     def calc(state: MarviaState) -> dict:
         """계산: 화물 단계로 기한을, 품목 사실로 재수입 검사 판정을 낸다 (설계 7.1). LLM은 부르지 않는다."""
-        today = deps.today()
+        today = clock_today()
         result: dict = {"deadlines": cargo_deadlines(state.get("cargos", []), today)}
         item = state.get("item")
         if item:
@@ -587,7 +587,7 @@ def build_main_graph(
             for name in subagents():
                 # [왜] 한 단계에 서브에이전트 하나만 돈다. 부모 공책 칸이 덮어쓰기라 둘이 함께 쓰면 멈춘다
                 graph.add_node(
-                    name, sub_node(name, build_sub(deps.model, tools, name, permission_mode), deps.today)
+                    name, sub_node(name, build_sub(deps.model, tools, name, permission_mode), clock_today)
                 )
                 graph.add_edge(name, "supervisor")
         # [왜] 요약 LLM이 실패해 멈췄으면 루프를 돌리지 않고 부분 답으로 간다
