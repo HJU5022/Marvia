@@ -344,3 +344,25 @@ def test_the_on_planner_path_uses_the_one_clock_for_the_search_date_and_the_dead
         assert set(asked) == {today}
         cell = calc["deadlines"][0]
         assert cell["days_left"] == (date.fromisoformat(cell["due"]) - today).days
+
+
+def test_the_on_supervisor_subagent_turn_gets_the_korean_date_of_now_as_today(agent_deps):
+    # [왜] 11-17 R-178(수퍼바이저). 켠 길이면 서브에이전트 차례 글의 Today도 now의 한국 날짜(09-27)다.
+    #      fixture의 today(2026-11-02)가 아니다
+    seen: list[str] = []
+
+    class Spy(ToolModel):
+        def _generate(self, messages, *args, **kwargs):
+            seen.append("\n".join(str(m.content) for m in messages))
+            return super()._generate(messages, *args, **kwargs)
+
+    script = [say(("handoff", {"to": "law", "task": "조문 찾기"})), say(), say(), say()]
+    deps = agent_deps(
+        model=Spy(messages=iter(script)),
+        now=lambda: datetime(2026, 9, 26, 16, 0, tzinfo=UTC),
+        write=lambda p: Draft(answer="확인했어요", citations=[], next_options=[], forwarder_message=""),
+    )
+    graph = build_main_graph(deps, InMemorySaver(), loop="supervisor", store=InMemoryStore(), vessel=True)
+    graph.invoke({"text": "TESTVSL0001 조문을 찾아 줘"}, {"configurable": {"thread_id": "s"}})
+    sub_turns = [s for s in seen if "조문 찾기" in s and "Today is" in s]
+    assert sub_turns and all("Today is 2026-09-27" in s and "2026-11-02" not in s for s in sub_turns)
