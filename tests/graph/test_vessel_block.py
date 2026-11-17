@@ -110,3 +110,39 @@ def test_the_block_eta_is_a_kst_date_and_time():
     (line,) = vessel_lines([{"token": "[BL1]"}], [], [row])
     assert "2026-09-24 01:00(한국 시각" in line
     assert not re.search(r"2026-09-23", line)
+
+
+def test_a_papers_path_cargo_with_twin_call_signs_asks_and_the_pick_stays_partial(agent_deps):
+    # [왜] 11-16 결정. TESTVSL0008: MRN 신고에 호출부호가 없고 같은 호출부호(QQTWB)의 배가 둘이다.
+    #      서류로 가르는 길에서도 R-147의 버튼 글이 보이고 고른 뒤 확신이 부분을 넘지 못한다
+    from langgraph.types import Command
+
+    from marvia.view import ship_texts
+
+    SEEN.clear()
+    deps = agent_deps(
+        model=Spy(messages=iter([AIMessage("")] * 4)),
+        now=lambda: NOW,
+        write=lambda p: Draft(answer="확인했어요", citations=[], next_options=[], forwarder_message=""),
+    )
+    graph = build_main_graph(deps, InMemorySaver(), loop="agent", store=InMemoryStore(), vessel=True)
+    config = {"configurable": {"thread_id": "twin"}}
+    graph.invoke({"text": "TESTVSL0008 어디쯤 왔어요?"}, config)
+    asked = graph.get_state(config)
+    question = asked.values["vessel_question"]
+    assert question["token"] == "[BL1]" and (question["lookup"], question["mrn_call_sign"]) == (
+        "found_unsigned",
+        None,
+    )
+    assert all(
+        "같은 호출부호의 배가 여럿이에요" in v
+        for k, v in ship_texts(question["candidates"]).items()
+        if "info" in k
+    )
+    graph.invoke(Command(resume={"selected": 1}), config)
+    state = graph.get_state(config)
+    ship, cell = state.values["vessels"][0], state.values["verdicts"][0]
+    assert (ship["status"], ship["cap"]) == ("user_choice", "partial")
+    assert cell["confidence"] == "partial"
+    (line,) = vessel_lines(state.values["cargos"], state.values["vessels"], state.values["verdicts"])
+    assert "같은 호출부호의 배가 여럿이에요" in line and "TEST TWIN B" not in line and "QQTWB" not in line

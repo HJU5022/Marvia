@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 가공값. QQTWB: 호출부호가 같은 배 둘(999000009, 999000010)의 입항 신고. 세관 입항일(09-24)과 적재항(QINGDAO)이 맞는다. 배 위치 재생 파일은 없다 -->
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL_SERVICE</resultMsg></header><body><items>
+<item><prtAgCd>020</prtAgCd><clsgn>QQTWB</clsgn><vsslNm>TEST TWIN B</vsslNm>
+<vsslNltyCd>PA</vsslNltyCd><vsslKndNm>풀컨테이너선</vsslKndNm>
+<etryptPurpsNm>양하</etryptPurpsNm><prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm><nxlnptPrtNm>TEST NEXT</nxlnptPrtNm>
+<details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 5선석</laidupFcltyNm><mrNum>26TEST0008I</mrNum></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>1</totalCount></body></response>

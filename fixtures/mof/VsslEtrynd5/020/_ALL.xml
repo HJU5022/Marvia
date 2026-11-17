@@ -24,4 +24,9 @@
 <details>
 <detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 4선석</laidupFcltyNm><mrNum>26TEST0007I</mrNum></detail>
 </details></item>
-</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>4</totalCount></body></response>
+<item><prtAgCd>020</prtAgCd><clsgn></clsgn><vsslNm>TEST TWIN B</vsslNm><vsslNltyCd>PA</vsslNltyCd><vsslKndNm>풀컨테이너선</vsslKndNm>
+<prvsDpmprtPrtNm>QINGDAO</prvsDpmprtPrtNm>
+<details>
+<detail><reqstSeNm>변경</reqstSeNm><etryndNm>입항</etryndNm><etryptDt>2026-09-24T12:00:00+09:00</etryptDt><laidupFcltyNm>TEST부두 5선석</laidupFcltyNm><mrNum>26TEST0008I</mrNum></detail>
+</details></item>
+</items><numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>5</totalCount></body></response>
