@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # 길마다 묶은 도구의 이름, 설명, 인자 꼴(JSON 스키마)
 TOOLS_FULL_SHA = "4bcb7110a0eec606059c65acf588c8b0b5b574590af8ec4b8a5b53fe97e91b46"
 # 에이전트 길에서 꺼진 길의 도구를 하나씩 부른 차례들에서 모델이 받은 메시지 전체
-TOOL_RESULTS_SHA = "cf59a0f8f221ecdf2961dc728cde6ac6cafa3cb241914c8e7b35cc3adfcee136"
+TOOL_RESULTS_SHA = "e192e55eb4abbd3ff3412243fc04b1699986e8bd46380066915b50c92f378318"
 # 고정 초안 묶음에 verify를 돌린 결과 전체
 VERIFY_SHA = "75a3934de877e5c460dffead6999f667ca81eb800d077994206fc5df173e3cc8"
 # 꺼진 길 세 길의 한 차례 동안 콜백이 받은 값을 하나씩 scrub한 결과
@@ -206,14 +206,14 @@ def test_the_tools_bound_on_each_off_path_keep_their_names_descriptions_and_argu
 # --- 도구 결과 글 ---
 
 
-def _tool_turns(agent_deps) -> dict:
+def _tool_turns(agent_deps, fake_rag) -> dict:
     """꺼진 길의 도구를 하나씩 고정한 가공 인자로 부르는 차례들. 모델이 받은 메시지 전체를 모은다."""
     out = {}
     todos = {"todos": [{"content": "기한 계산", "status": "in_progress"}]}
 
-    def run(name, text, script, resumes=()):
+    def run(name, text, script, resumes=(), **changes):
         model = Rec(messages=iter(script))
-        graph = _agent(agent_deps, model)
+        graph = _agent(agent_deps, model, **changes)
         graph.invoke({"text": text}, _cfg(name))
         for resume in resumes:
             graph.invoke(resume, _cfg(name))
@@ -233,6 +233,13 @@ def _tool_turns(agent_deps) -> dict:
             _say(),
             _say(),
         ),
+    )
+    # [왜] 11-16 R-174. 근거가 모자란 갈래의 "빠진 근거:" 줄은 근거가 충분한 RAG로는 나오지 않는다
+    run(
+        "gap",
+        "수입신고 기한이 궁금해요",
+        (_say(("search_law", {"query": "수입신고 기한"})), _say(), _say()),
+        rag=fake_rag(sufficient=False),
     )
     run(
         "memory",
@@ -280,12 +287,13 @@ def _tool_turns(agent_deps) -> dict:
     return out
 
 
-def test_the_tool_results_the_model_receives_are_unchanged_when_the_switch_is_off(agent_deps):
+def test_the_tool_results_the_model_receives_are_unchanged_when_the_switch_is_off(agent_deps, fake_rag):
     # [왜] 11-16 R-155. 도구 결과 글(cargo_lines, 기한 목록, 검색 결과 줄, 거절 글 등)이 바뀌면 모델이 받는
     #      글이 달라진다. 대본이 부르지 않는 도구의 결과 글까지, 꺼진 길의 도구 전부를 한 번씩 부른다
-    turns = _tool_turns(agent_deps)
+    turns = _tool_turns(agent_deps, fake_rag)
     sent = " ".join(str(m[1]) for call in turns["basic"] for m in call)
     assert "[BL1]" in sent  # 대본이 실제로 화물 줄을 만들었다
+    assert "빠진 근거:" in str(turns["gap"])  # 근거가 모자란 갈래의 줄이 실제로 모델에 갔다
     assert _sha(turns) == TOOL_RESULTS_SHA
 
 
