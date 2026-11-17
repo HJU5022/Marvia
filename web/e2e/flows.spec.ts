@@ -57,6 +57,19 @@ test.describe("배 식별", () => {
     await page.screenshot({ path: "e2e/screenshots/vessel-confirmed.png", fullPage: true, mask: [page.locator(".cargo .meta")] });
   });
 
+  test("말한 판매 예정일은 날짜 줄에 출처와 함께 보이고 다음 차례 판정에 쓰인다", async ({ page }) => {
+    await ask(page, "TESTVSL0001 화물을 2026년 9월 25일에 판매할 예정이에요");
+    await expect(answers(page)).toHaveCount(1);
+    const cargo = card(page, "TESTVSL0001");
+    await expect(cargo).toContainText("판매 예정일");
+    await expect(cargo).toContainText("2026-09-25");
+    await expect(cargo).toContainText("말씀하신 날");
+    await ask(page, "TESTVSL0001 지금은 시간 여유가 어때요?");
+    await expect(answers(page)).toHaveCount(2);
+    await expect(cargo.locator("dd[data-grade]")).toHaveText("경계"); // 도착 예정과 판매 예정일의 여유가 하루다
+    await accessible(page);
+  });
+
   test("같은 이름의 배가 여럿이면 선택 카드로 묻고, 고른 배로 판정한다", async ({ page }) => {
     await ask(page, "TESTVSL0002 어디쯤 왔어요?");
     await expect(page.getByRole("heading", { name: /TESTVSL0002 화물을 실은 배를 가리지 못했어요/ })).toBeVisible();

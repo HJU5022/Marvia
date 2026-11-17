@@ -51,6 +51,8 @@ SCRIPTS: dict[str, list[tuple[str, dict]]] = {
     ],
     "장치기간": [("ask_user", {"question": "어느 항구 기준으로 볼까요?", "options": TWO})],
     "설명": [("save_preference", {"depth": "자세히"})],
+    # 배 판정을 읽는 길(계획 8c): 사용자가 말한 판매 예정일을 도구로 넘긴다
+    "판매할": [("note_dates", {"token": "[BL1]", "sale_date": "2026-09-25"})],
 }
 
 

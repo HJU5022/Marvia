@@ -60,7 +60,7 @@ from marvia.db import read_pool
 from marvia.graph.live import agent_deps, live_memory
 from marvia.graph.main import build_main_graph
 from marvia.graph.resume import approval_reply, remask_reply
-from marvia.graph.state import merge_cargos, merge_evidence
+from marvia.graph.state import merge_cargos, merge_dates, merge_evidence
 from marvia.graph.tools import SERVER_SURFACE
 from marvia.tools.rules import load_rules
 from marvia.trace import tracer_callbacks
@@ -76,7 +76,8 @@ THREAD_ID = re.compile(r"[A-Za-z0-9_-]+")
 # [왜] 프록시·압축이 이벤트를 모았다가 한꺼번에 보내면 "진행 중인 할 일"이 답과 함께 뜬다
 SSE_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 # 화면 보기를 바꾸는 공책 칸. vessels와 verdicts는 배 식별 스위치가 켜졌을 때만 흘러온다 (계획 8b)
-LIVE_KEYS = ("todos", "plan", "cargos", "evidence", "mask_map", "vessels", "verdicts")
+# cargo_dates는 note_dates가 받은 날짜로 카드의 날짜 줄을 바꾼다 (계획 8c)
+LIVE_KEYS = ("todos", "plan", "cargos", "evidence", "mask_map", "vessels", "verdicts", "cargo_dates")
 CHOICE_KEYS = ("selected", "custom", "timeout")  # 선택지 재개 값에서 받는 칸 (설계 6.3)
 
 
@@ -102,6 +103,8 @@ def _merge(live: dict, update: dict, inside: bool) -> bool:
             value = merge_evidence(live.get("evidence", []), value, limit)
         elif inside and key == "cargos":
             value = merge_cargos(live.get("cargos", []), value)
+        elif inside and key == "cargo_dates":
+            value = merge_dates(live.get("cargo_dates", {}), value)
         live[key] = value
         changed = True
     return changed

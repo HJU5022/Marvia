@@ -2,6 +2,7 @@
 // [왜] ETA·등급은 선박 위치 조회와 함께 2차로 미뤘다(계획 4b 결정 D3). 빈 칸 대신 그렇다고 적는다.
 // 서버의 배 식별 스위치가 켜져 있으면(verdict 칸이 오면) 그 자리에 배와 판정 칸을 보인다 (계획 8b).
 // [주의] 등급·일정·확신과 그 까닭은 서버가 보낸 글 그대로다. 화면이 등급을 정하거나 바꾸지 않는다.
+import { Fragment } from "react";
 import type { Cargo } from "@/lib/agui";
 
 function when(value: string | null): string {
@@ -36,6 +37,15 @@ function VesselCells({ c }: { c: Cargo }) {
               <dd>{v.eta ? `${when(v.eta)} (${v.eta_source ?? "출처 모름"})` : "모름"}</dd>
             </>
           )}
+          {v.given.map((g) => (
+            <Fragment key={g.label}>
+              <dt>{g.label}</dt>
+              <dd>
+                {g.date}
+                <span className="hint">{g.source}</span>
+              </dd>
+            </Fragment>
+          ))}
           {why.length ? (
             <>
               <dt>까닭</dt>

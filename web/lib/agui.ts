@@ -41,6 +41,8 @@ export type Verdict = {
   notes: string[];
   info: string[];
   landed: boolean; // 내린 화물이라 배를 보지 않았다. 도착 예정 칸을 그리지 않는다
+  // 사용자가 말해 받은 날짜. 출처 글("말씀하신 날")은 서버가 정한다 (계획 8c)
+  given: { label: string; date: string; source: string }[];
 };
 export type EvidenceUnit = {
   unit_id: string;

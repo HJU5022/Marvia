@@ -340,3 +340,33 @@ def test_an_injected_ask_user_card_with_ship_placeholders_is_not_treated_as_the_
     )
     resume = [{"interruptId": stopped["id"], "status": "resolved", "payload": {"custom": "qqtst1"}}]
     assert run(client, "s17", resume=resume)[-1]["outcome"] == {"type": "success"}
+
+
+def test_the_card_shows_the_dates_the_user_gave_with_their_source(agent_deps):
+    # [왜] 계획 8c C13. 카드의 날짜 줄 옆에 "말씀하신 날"이라는 출처를 적는다. 처음 알던 도착 예정은 낮 시각도
+    note = AIMessage(
+        "",
+        tool_calls=[
+            {"name": "note_dates", "args": {"token": "[BL1]", "sale_date": "2026-09-25"}, "id": "d1"},
+            {"name": "note_dates", "args": {"token": "[BL1]", "first_eta": "2026-09-23"}, "id": "d2"},
+        ],
+    )
+    client = served(agent_deps, first=[note])
+    text = "TESTVSL0001 판매는 2026년 9월 25일, 처음 도착은 2026년 9월 23일이라고 들었어요"
+    (cell,) = [c["verdict"] for c in cards(run(client, "g1", text))]
+    assert cell["given"] == [
+        {"label": "판매 예정일", "date": "2026-09-25", "source": "말씀하신 날"},
+        {
+            "label": "처음 알던 도착 예정일",
+            "date": "2026-09-23",
+            "source": "말씀하신 날, 날짜만 받아 낮 12시(한국 시각)로 봤어요",
+        },
+    ]
+    # 받은 날짜는 다음 차례의 판정에 쓰인다: 도착 예정(09-24 12:00)과 판매 예정일의 여유가 하루다
+    (later,) = [c["verdict"] for c in cards(run(client, "g1", "TESTVSL0001 지금은 어때요?"))]
+    assert later["margin_days"] == 1 and later["grade_label"] == "경계" and len(later["given"]) == 2
+
+
+def test_a_card_without_given_dates_has_an_empty_list(agent_deps):
+    (cell,) = [c["verdict"] for c in cards(run(served(agent_deps), "g2", "TESTVSL0001 어디쯤 왔어요?"))]
+    assert cell["given"] == []

@@ -84,6 +84,7 @@ dates:
     sale_date: 판매 예정일
     forwarder_eta: 포워더가 알려 준 도착 예정일
     first_eta: 처음 알던 도착 예정일
+  card_source: 말씀하신 날 # 화물 카드의 날짜 줄 옆에 적는 출처 (계획 8c, C13)
   accepted: "{label} {date}(말씀하신 날)로 받았어요"
   first_eta_note: 날짜만 받아 낮 {hour}시(한국 시각)로 봤어요
   # 사용자 글에 이 말이 있으면 상대 표현으로 본다 (거절 이유를 가르는 데만 쓴다)

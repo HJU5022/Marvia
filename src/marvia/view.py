@@ -84,7 +84,21 @@ def _ship(row: dict | None) -> dict:
     }
 
 
-def _verdict(row: dict) -> dict:
+def _given(cells: dict | None) -> list[dict]:
+    """사용자가 말해 받은 날짜(공책 cargo_dates)를 카드의 날짜 줄로. 출처는 "말씀하신 날" (계획 8c, C13)."""
+    cfg = load_rules("vessel")["dates"]
+    out = []
+    cells = cells or {}
+    for field in ("sale_date", "forwarder_eta", "first_eta"):
+        if cells.get(field):
+            source = cfg["card_source"]
+            if field == "first_eta":
+                source += ", " + cfg["first_eta_note"].format(hour=cfg["first_eta_hour"])
+            out.append({"label": cfg["labels"][field], "date": cells[field], "source": source})
+    return out
+
+
+def _verdict(row: dict, dates: dict | None = None) -> dict:
     """화물 카드의 판정 칸. 등급이 없으면 "등급 없음"과 그 까닭(notes)을 보인다."""
     labels, texts, reasons = (
         load_rules("vessel")["labels"],
@@ -105,6 +119,8 @@ def _verdict(row: dict) -> dict:
         "info": [texts["info"][name] for name in row["info"]],
         # [왜] 내린 화물은 도착 예정을 보지 않은 것이다. 화면이 "도착 예정 모름"을 그리지 않게 알려 준다
         "landed": "landed" in row["info"],
+        # 사용자가 말해 받은 날짜와 출처. 받은 것이 없으면 빈 목록이다
+        "given": _given(dates),
     }
 
 
@@ -136,7 +152,10 @@ def screen_view(values: dict, vessel: bool = False) -> dict:
         facts, error = cargo.get("facts") or {}, cargo.get("error") or {}
         cell = verdicts.get(cargo["token"])
         more = (
-            {"ship": _ship(ships.get(cargo["token"])), "verdict": cell and _verdict(cell)}
+            {
+                "ship": _ship(ships.get(cargo["token"])),
+                "verdict": cell and _verdict(cell, (values.get("cargo_dates") or {}).get(cargo["token"])),
+            }
             if vessel and facts
             else ({"ship": None, "verdict": None} if vessel else {})
         )
