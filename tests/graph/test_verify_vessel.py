@@ -136,11 +136,15 @@ def test_a_day_count_that_is_not_that_cargos_margin_days_is_still_flagged():
     assert check("[BL1]은 6일, [BL2]는 2일 남아요.", rows) == []
 
 
-def test_a_reason_that_says_the_confidence_was_lowered_is_not_a_statement_of_it():
-    # 판정 글(까닭)의 "확신을 부분으로 낮췄어요"는 불명 판정에서도 옮겨 쓸 수 있다
-    rows = [row(confidence="unknown")]
-    assert check("[BL1]은 호출부호를 맞춰 보지 못해 확신을 부분으로 낮췄어요.", rows) == []
-    assert check("[BL1]의 확신을 부분이라고 봐요.", rows) != []
+def test_no_reason_text_of_the_verdict_names_a_confidence_so_quoting_it_never_trips_the_rule():
+    # [왜] 11-17 R-185. 판정의 까닭 글에 확신 이름이 있으면 옮겨 쓸 때 걸린다. 이름을 뺐으니 예외가 필요 없다
+    import re
+
+    cfg = load_rules("verify")["vessel_verdict"]
+    texts = [*load_rules("verdict")["notes"].values(), *load_rules("verdict")["info"].values()]
+    pattern = re.compile(r"확신\s*(?:은|이|을|도)?\s*(" + "|".join(cfg["confidence_names"]) + ")")
+    assert [t for t in texts if pattern.search(t)] == []
+    assert check("[BL1]의 확신을 부분이라고 봐요.", [row(confidence="unknown")]) != []
 
 
 def test_the_name_lists_in_the_rules_are_the_labels_the_code_writes():

@@ -276,7 +276,10 @@ def test_a_picked_ship_at_a_ship_watching_stage_never_reads_as_sure(agent_deps):
     assert picked["ship"]["status"] == "user_choice" and picked["ship"]["reason"] == "고르신 배로 봤어요"
     assert picked["ship"]["check"] == "입항 신고 번호(MRN)로 찾은 입항 신고가 없어 서류로 확정하지 않았어요"
     assert picked["verdict"]["grade_label"] == "순항" and picked["verdict"]["confidence"] == "부분"
-    assert "호출부호를 맞춰 보지 못해 확신을 부분으로 낮췄어요" in picked["verdict"]["notes"]
+    assert (
+        "호출부호를 맞춰 보지 못해 이 배가 맞는지 다 확인하지 못했어요. 판정을 조심해서 읽어 주세요"
+        in picked["verdict"]["notes"]
+    )
     shown = json.dumps(picked, ensure_ascii=False)
     assert "확실" not in shown  # 고른 배의 카드 어디에도 "확실"이 없다
     card = run(client, "s15", "TESTVSL0007 어디쯤 왔어요?")[-1]["outcome"]["interrupts"][0]

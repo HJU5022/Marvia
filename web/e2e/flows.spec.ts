@@ -89,7 +89,7 @@ test.describe("배 식별", () => {
     await expect(answers(page)).toContainText("정리했어요");
     await expect(card(page, "TESTVSL0002")).toContainText("고르신 배로 봤어요");
     await expect(card(page, "TESTVSL0002").locator("dd[data-grade]")).toHaveText("순항");
-    await expect(card(page, "TESTVSL0002")).toContainText("호출부호를 맞춰 보지 못해 확신을 부분으로 낮췄어요");
+    await expect(card(page, "TESTVSL0002")).toContainText("호출부호를 맞춰 보지 못해 이 배가 맞는지 다 확인하지 못했어요");
   });
 
   test("호출부호가 같은 두 배는 자동 확정하지 않고, 고르면 확신이 부분이다", async ({ page }) => {

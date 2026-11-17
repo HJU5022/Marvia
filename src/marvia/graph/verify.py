@@ -210,10 +210,7 @@ def _vessel_violations(shown: str, rows: dict[str, dict]) -> list[str]:
     texts = cfg["texts"]
     grade_names, conf_names = "|".join(cfg["grade_names"]), "|".join(cfg["confidence_names"])
     grade_say = re.compile(rf"등급\s*(?:은|이|을|도)?\s*({grade_names})|({grade_names})\s*등급")
-    # [왜] "확신을 부분으로 낮췄어요"는 낮춘 일을 적은 판정 글(까닭)이다. 지금 확신을 말한 것이 아니다
-    conf_say = re.compile(
-        rf"확신\s*(?:은|이|을|도)?\s*({conf_names})(?!\s*(?:으로|로)\s*낮)|({conf_names})\s*확신"
-    )
+    conf_say = re.compile(rf"확신\s*(?:은|이|을|도)?\s*({conf_names})|({conf_names})\s*확신")
     out: list[str] = []
 
     def grade_of(row: dict) -> str | None:
