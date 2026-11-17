@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable
 from datetime import date, datetime
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
 from marvia.graph.state import MarviaState
@@ -310,10 +311,53 @@ def _given_dates(cells: dict) -> dict:
 
 
 # [주의] 돌려주는 타입을 Callable로 적지 않는다. 인자 이름(state)이 빠져 add_node 타입 검사가 거절한다
-def verdict_node(now: Callable[[], datetime]):
-    """verdict 노드를 만든다. now는 판정의 기준 시각(시험이 고정한다)."""
+def verdict_nodes(now: Callable[[], datetime]):
+    """(verdict 노드, rejudge 노드)를 만든다. now는 판정의 기준 시각(시험이 고정한다).
 
-    def verdict(state: MarviaState) -> dict:
+    rejudge는 에이전트 루프 뒤에 돈다(켠 에이전트 길만). 이번 차례에 note_dates가 받은 날짜가 있는
+    화물만 같은 시계로 다시 판정한다. [왜] verdict는 루프보다 먼저 돌아 이번 차례에 받은 날짜를
+    모른다. 안 고치면 카드와 답이 "판매 예정일을 받지 않아"라고 말하고 등급은 다음 차례에야 바뀐다 (R-184).
+    위치·일정은 verdict가 이번 차례에 받은 것을 이 닫힌 함수에만 두고 다시 쓴다: 바깥 호출이 늘지 않고
+    공책, 모델 입력, 화면, 트레이스에 실리지 않는다.
+    """
+    # shortcut: 프로세스 안 사전이라 커진다. 512개를 넘으면 비운다(비어도 rejudge가 다시 받는다)
+    cache: dict[tuple[str, str], dict] = {}
+
+    def thread_of(config: RunnableConfig) -> str:
+        return str((config.get("configurable") or {}).get("thread_id", ""))
+
+    def fetch(facts: CargoFacts, ship: dict, allowed: bool) -> dict:
+        """이 화물의 위치와 일정을 받는다(받을 수 없으면 비운다)."""
+        sailing = ship["status"] in ("confirmed", "user_choice") and watches_ship(facts.stage)
+        position = plan = None
+        if sailing and allowed:
+            got = shipfinder.vessel_position(int(ship["mmsi"]))
+            position = None if isinstance(got, ToolError) else got
+            row = port(facts.port_code) if facts.port_code else None
+            if row and ship.get("call_sign"):
+                today = now().astimezone(KST).date()  # 한국 날짜
+                schedule = mof.port_schedule(row, ship["call_sign"], today=today, entry_date=facts.entry_date)
+                plan = None if isinstance(schedule, ToolError) else schedule
+        return {"position": position, "plan": plan, "sailing": sailing, "capped": sailing and not allowed}
+
+    def judged(token: str, facts: CargoFacts, ship: dict, seen: dict, cells: dict) -> dict:
+        # [왜] 호출부호를 코드로 맞춘 배만 "확실"이 될 수 있다. 서류(입항일·적재항)로만 확정했거나
+        #      사용자가 고른 배, 같은 호출부호의 배가 여럿인 배는 확신이 부분을 넘지 못한다(11-15 판정)
+        cap = ship.get("cap") if seen["sailing"] else None
+        found = judge(
+            facts,
+            seen["position"],
+            seen["plan"],
+            now=now(),
+            cap=cap,
+            cap_note="ship_unchecked",
+            **_given_dates(cells),
+        ).model_dump(mode="json")
+        if seen["capped"]:
+            found["notes"].append("over_cap")  # 글은 rules/vessel.yaml reasons에 있다
+        return {"token": token, **found}
+
+    def verdict(state: MarviaState, config: RunnableConfig) -> dict:
         ships = {v["token"]: v for v in state.get("vessels", [])}
         limit = load_rules("vessel")["max_cargos"]
         out = []
@@ -324,35 +368,45 @@ def verdict_node(now: Callable[[], datetime]):
             if ship is None or not cargo.get("facts"):
                 continue
             facts = CargoFacts.model_validate(cargo["facts"])
-            position = plan = None
             # [왜] 배를 확정하지 못했거나 내린 화물이면 위치와 일정을 부르지 않는다.
             #      판정은 화물 사실만으로 낸다(tools/judge.py). 도착 시각을 모르니 등급이 비고
             #      확신이 내려간다. 값을 지어내지 않는다
             # [주의] 지난 차례에 배를 확정했어도 이번 차례 단계가 내린 뒤면 배를 보지 않는다
             #      (화물 수 상한 칸도 쓰지 않는다)
-            sailing = ship["status"] in ("confirmed", "user_choice") and watches_ship(facts.stage)
-            capped = sailing and looked >= limit
-            if sailing and not capped:
-                looked += 1
-                got = shipfinder.vessel_position(int(ship["mmsi"]))
-                position = None if isinstance(got, ToolError) else got
-                row = port(facts.port_code) if facts.port_code else None
-                if row and ship.get("call_sign"):
-                    today = now().astimezone(KST).date()  # 한국 날짜
-                    schedule = mof.port_schedule(
-                        row, ship["call_sign"], today=today, entry_date=facts.entry_date
-                    )
-                    plan = None if isinstance(schedule, ToolError) else schedule
-            # [왜] 호출부호를 코드로 맞춘 배만 "확실"이 될 수 있다. 서류(입항일·적재항)로만 확정했거나
-            #      사용자가 고른 배,
-            #      같은 호출부호의 배가 여럿인 배는 확신이 부분을 넘지 못한다(11-15 판정). 상한은 judge가 건다
-            cap = ship.get("cap") if sailing else None
-            given = _given_dates(state.get("cargo_dates", {}).get(cargo["token"], {}))
-            found = judge(facts, position, plan, now=now(), cap=cap, cap_note="ship_unchecked", **given)
-            found = found.model_dump(mode="json")
-            if capped:
-                found["notes"].append("over_cap")  # 글은 rules/vessel.yaml reasons에 있다
-            out.append({"token": cargo["token"], **found})
+            seen = fetch(facts, ship, looked < limit)
+            looked += seen["sailing"] and not seen["capped"]
+            cells = dict(state.get("cargo_dates", {}).get(cargo["token"], {}))
+            if len(cache) > 512:
+                cache.clear()
+            cache[(thread_of(config), cargo["token"])] = {**seen, "dates": cells}
+            out.append(judged(cargo["token"], facts, ship, seen, cells))
         return {"verdicts": out}
 
-    return verdict
+    def rejudge(state: MarviaState, config: RunnableConfig) -> dict:
+        ships = {v["token"]: v for v in state.get("vessels", [])}
+        rows = list(state.get("verdicts", []))
+        for i, row in enumerate(rows):
+            token = row["token"]
+            cargo = next((c for c in state.get("cargos", []) if c["token"] == token), None)
+            ship = ships.get(token)
+            if cargo is None or ship is None or not cargo.get("facts"):
+                continue
+            cells = dict(state.get("cargo_dates", {}).get(token, {}))
+            seen = cache.get((thread_of(config), token))
+            if (seen is None and not cells) or (seen is not None and seen["dates"] == cells):
+                continue  # 이번 차례에 받은 날짜가 없다
+            facts = CargoFacts.model_validate(cargo["facts"])
+            if (
+                seen is None
+            ):  # 다시 시작한 뒤의 재개 같은 드문 경우다: 받아서 쓴다(상한은 이 화물 하나로 센다)
+                seen = fetch(facts, ship, True)
+            rows[i] = judged(token, facts, ship, seen, cells)
+            cache[(thread_of(config), token)] = {**seen, "dates": cells}
+        return {"verdicts": rows}
+
+    return verdict, rejudge
+
+
+def verdict_node(now: Callable[[], datetime]):
+    """verdict 노드만 필요할 때(꺼진 길의 시험 같은)."""
+    return verdict_nodes(now)[0]

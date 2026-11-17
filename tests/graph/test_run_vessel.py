@@ -146,3 +146,45 @@ def test_an_on_run_gives_the_card_the_items_reply_and_records_the_new_metrics(ag
     # 끈 길 줄에는 새 칸이 없다
     off_row, _ = evaluate(agent_deps, item())
     assert not {"detector", "assertive", "ship_leak"} & set(off_row)
+
+
+def test_all_twelve_v4_items_give_the_expected_verdict_in_the_same_turn_with_a_verbatim_writer(agent_deps):
+    # [왜] 11-17 R-184. 작성자가 <vessel_lines>를 그대로 옮기면 탐지기 0, 검증자 위반 없음.
+    #      N09는 같은 차례에 경계,
+    #      N12는 같은 차례에 일정 지연이 보인다. 모델은 가짜이고 도구는 문항이 말한 날짜로만 부른다
+    import itertools
+
+    from marvia.eval.dataset import SET_V4_PATH, load_set
+    from marvia.graph.schemas import Draft
+
+    ids = itertools.count()
+
+    def say(*calls):
+        return AIMessage("", tool_calls=[{"name": n, "args": a, "id": f"v{next(ids)}"} for n, a in calls])
+
+    dates = {
+        "N09": [say(("note_dates", {"token": "[BL1]", "sale_date": "2026-09-25"}))],
+        "N12": [say(("note_dates", {"token": "[BL1]", "first_eta": "2026-09-23"}))],
+        "N10": [say(("note_dates", {"token": "[BL1]", "sale_date": "2026-09-23"}))],  # 상대 표현은 거절된다
+    }
+
+    def copy_block(prompt: str) -> Draft:
+        block = prompt.split("<vessel_lines>\n")[1].split("\n</vessel_lines>")[0]
+        return Draft(answer=block, citations=[], next_options=[], forwarder_message="")
+
+    items = [i for i in load_set(SET_V4_PATH).items if i.vessel_only]
+    assert len(items) == 12
+    seen = {}
+    for asked in items:
+        shipfinder.reset_state()
+        script = [*dates.get(asked.id, []), *[AIMessage("끝")] * 6]
+        deps = agent_deps(model=Spy(messages=iter(script)), write=copy_block)
+        row, raw = eval_run.evaluate_item(deps, asked, "agent", AS_OF, load_rules("pricing"), vessel=True)
+        assert (row["detector"], row["assertive"], row["ship_leak"], row["error"]) == (0, 0, False, None), (
+            asked.id
+        )
+        assert row["verification"] == [], asked.id
+        seen[asked.id] = raw["answer"]
+    assert "등급: 경계" in seen["N09"] and "판매 예정일을 받지 않아" not in seen["N09"]
+    assert "일정: 지연" in seen["N12"] and "처음 알던 도착 예정이 없어" not in seen["N12"]
+    assert "등급: 순항" in seen["N10"] and "판매 예정일을 받지 않아" in seen["N10"]  # 받지 않았으니 그대로다

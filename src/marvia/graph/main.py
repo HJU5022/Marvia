@@ -55,7 +55,7 @@ from marvia.graph.tools import (
     worst_search_calls,
 )
 from marvia.graph.verify import verify
-from marvia.graph.vessel import ask_vessel, find_vessels, verdict_node
+from marvia.graph.vessel import ask_vessel, find_vessels, verdict_nodes
 from marvia.graph.vessel_text import vessel_block
 from marvia.identify.mask import token_for, unmask
 from marvia.identify.parse import kind_of, read_numbers
@@ -550,6 +550,7 @@ def build_main_graph(
     first = "news" if loop in LOOP_PATHS else "plan"
     # [왜] 배 식별 단계는 화물 조회가 끝난 자리와 첫 일 사이에 끼운다. 꺼져 있으면 그 자리가 곧 첫 일이다
     after_cargo = "vessel" if vessel else first
+    rejudge_step = None  # 켠 길에서만 만든다 (verdict_nodes)
     graph.add_conditional_edges(
         "identify", lambda state: "ask" if state.get("question") else after_cargo, ["ask", after_cargo]
     )
@@ -558,7 +559,8 @@ def build_main_graph(
     if vessel:
         graph.add_node("vessel", find_vessels)
         graph.add_node("ask_vessel", ask_vessel)
-        graph.add_node("verdict", verdict_node(deps.now))
+        verdict_step, rejudge_step = verdict_nodes(deps.now)
+        graph.add_node("verdict", verdict_step)
         graph.add_conditional_edges(
             "vessel",
             lambda state: "ask_vessel" if state.get("vessel_question") else "verdict",
@@ -613,7 +615,13 @@ def build_main_graph(
             "brief", lambda state: "finish" if state.get("stopped") else loop, [loop, "finish"]
         )
         if loop == "agent":
-            graph.add_conditional_edges("agent", _after_agent, ["write", "decline", "finish"])
+            if vessel and rejudge_step is not None:
+                # [왜] 루프에서 받은 날짜로 그 화물의 판정을 다시 낸 뒤에 쓴다 (11-17 R-184)
+                graph.add_node("rejudge", rejudge_step)
+                graph.add_edge("agent", "rejudge")
+                graph.add_conditional_edges("rejudge", _after_agent, ["write", "decline", "finish"])
+            else:
+                graph.add_conditional_edges("agent", _after_agent, ["write", "decline", "finish"])
         graph.add_edge("decline", END)
     else:
         graph.add_node("plan", plan)

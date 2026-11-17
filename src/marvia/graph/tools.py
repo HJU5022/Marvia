@@ -626,6 +626,8 @@ def _dates_tool(today: Callable[[], date]):
             if field == "first_eta":
                 line += ". " + cfg["first_eta_note"].format(hour=cfg["first_eta_hour"])
             lines.append(line)
+        if taken:
+            lines.append(cfg["recomputed"])
         text = "\n".join(lines) or "받을 날짜가 없어요"
         # [왜] 받은 칸이 없으면 공책을 쓰지 않는다
         return _reply(runtime, text, **({"cargo_dates": {token: taken}} if taken else {}))

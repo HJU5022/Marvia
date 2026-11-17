@@ -63,7 +63,7 @@ def test_a_date_the_user_wrote_this_turn_is_accepted(agent_deps):
     state = turn(graph, "TESTVSL0001 판매는 9월 30일에 해요")
     assert state.values["cargo_dates"] == {"[BL1]": {"sale_date": "2026-09-30"}}
     # 받은 값을 되풀이해 사용자가 틀린 역할을 알아챌 수 있게 한다
-    assert results(state) == ["판매 예정일 2026-09-30(말씀하신 날)로 받았어요"]
+    assert results(state)[0].startswith("판매 예정일 2026-09-30(말씀하신 날)로 받았어요")
 
 
 def test_a_date_not_in_this_turns_text_is_refused(agent_deps):
@@ -366,3 +366,42 @@ def test_the_on_supervisor_subagent_turn_gets_the_korean_date_of_now_as_today(ag
     graph.invoke({"text": "TESTVSL0001 조문을 찾아 줘"}, {"configurable": {"thread_id": "s"}})
     sub_turns = [s for s in seen if "조문 찾기" in s and "Today is" in s]
     assert sub_turns and all("Today is 2026-09-27" in s and "2026-11-02" not in s for s in sub_turns)
+
+
+def test_a_date_accepted_this_turn_changes_the_grade_in_the_same_turn_without_new_outside_calls(
+    agent_deps, monkeypatch
+):
+    # [왜] 11-17 R-184. verdict 노드는 루프보다 먼저 돈다. 이번 차례에 받은 날짜는
+    #      루프 뒤 rejudge가 같은 시계로
+    #      다시 판정해, 카드와 작성자 블록이 새 값을 보인다. 위치·일정은 이번 차례에 받은 것을 다시 쓴다
+    from marvia.graph.vessel_text import vessel_lines
+    from marvia.tools import mof
+
+    calls = []
+    real_pos, real_plan = shipfinder.vessel_position, mof.port_schedule
+    monkeypatch.setattr(
+        shipfinder, "vessel_position", lambda *a, **k: (calls.append("pos"), real_pos(*a, **k))[1]
+    )
+    monkeypatch.setattr(mof, "port_schedule", lambda *a, **k: (calls.append("plan"), real_plan(*a, **k))[1])
+    written: list[str] = []
+    graph = graph_on(
+        agent_deps,
+        say(note(sale_date="2026-09-25")),
+        say(),
+        write=lambda p: (
+            written.append(p) or Draft(answer="x", citations=[], next_options=[], forwarder_message="")
+        ),
+    )
+    state = turn(graph, "TESTVSL0001 판매는 2026년 9월 25일에 해요")
+    cell = state.values["verdicts"][0]
+    assert (cell["grade"], cell["margin_days"]) == ("alert", 1) and "no_sale_date" not in cell["info"]
+    (line,) = vessel_lines(state.values["cargos"], state.values["vessels"], state.values["verdicts"])
+    assert "등급: 경계" in line and "여유 일수: 1일" in line and "판매 예정일을 받지 않아" not in line
+    assert "등급: 경계" in written[0] and "판매 예정일을 받지 않아" not in written[0]
+    assert calls == ["pos", "plan"]  # 판정 한 번의 위치 1, 일정 1. 다시 판정해도 늘지 않는다
+    assert "다시 계산해요" in results(state)[0]
+    # 받은 날짜가 없는 차례는 다시 판정하지 않는다
+    calls.clear()
+    plain = graph_on(agent_deps, say())
+    turn(plain, "TESTVSL0001 어디쯤 왔어요?")
+    assert calls == ["pos", "plan"]

@@ -518,3 +518,10 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 | R-180 | (가) 판정이 없는 화물의 줄을 다른 화물의 판정으로 채우지 않는다. (나) 화물 조회가 실패한 차례는 되돌리기 요청을 소비하지 않고 다시 찾은 횟수를 올리지 않는다 | `test_a_cargo_without_a_verdict_is_never_filled_from_another_cargos_verdict`(MC19의 다른 꼴), `test_a_turn_where_the_cargos_lookup_failed_neither_consumes_a_redo_nor_raises_the_refind_count`(W11) |
 | R-179 | `Send` 값과 집합 값을 트레이스 가림 시험에 더했다. 갈래는 그대로 둔다 | `test_scrub_walks_dataclass_pydantic_command_and_artifact`. W07(`Send` 갈래 뺌), W08(집합 갈래 뺌)이 깨진다 |
 | R-182 | `tests/graph/test_vessel_prompts.py`의 em dash 글자를 `\u2014` 이스케이프로 바꿨다. 추적하는 파일에서 U+2014를 찾으면 0이다 | 파일 훑기 [실측] |
+
+### 검증 3차 검토 뒤 고침 (R-184, R-185, 11-17)
+
+| # | 고친 것 | 시험과 깨 보기 |
+|---|---|---|
+| R-184 | 켠 에이전트 길에 루프 뒤 `rejudge` 노드를 더했다. verdict가 이번 차례에 받은 위치·일정을 닫힌 함수 안(프로세스 사전, 대화 번호와 토큰 키)에 두고, 이번 차례에 `note_dates`가 받은 날짜가 바뀐 화물만 같은 시계로 다시 판정한다. 그래서 바깥 호출은 늘지 않고(위치 1, 일정 1 그대로) 위치·일정은 공책, 모델 입력, 화면(LIVE_KEYS), 트레이스에 실리지 않는다. 사전이 비었으면(재시작 뒤 재개 같은 드문 경우) 그 화물 하나만 다시 받는다. 꺼진 길과 수퍼바이저 길에는 이 노드가 없다. 루프 안의 `read_vessel`은 날짜 전 판정을 보이고 `note_dates` 결과 글이 "판정은 이 차례의 답을 쓸 때 받은 날짜로 다시 계산해요"라고 말한다 | `test_a_date_accepted_this_turn_changes_the_grade_in_the_same_turn_without_new_outside_calls`, `test_all_twelve_v4_items_give_the_expected_verdict_in_the_same_turn_with_a_verbatim_writer`(N09 경계, N12 일정 지연, 탐지기 0, 검증자 위반 없음). 노드 연결을 빼거나 다시 판정을 건너뛰는 깨 보기가 깨진다. v4 동결 해시는 그대로다 |
+| R-185 | `rules/verdict.yaml notes.ship_unchecked`에서 확신 이름을 빼고 검증자의 "낮췄어요" 예외를 지웠다 | `test_no_reason_text_of_the_verdict_names_a_confidence_so_quoting_it_never_trips_the_rule`. 화면 그림: 이 글이 보이는 그림이 있으면 바이트가 바뀐다. e2e 뒤에 다시 만들어 보고 게이트에 적는다(아직 안 돌림) |
