@@ -69,9 +69,13 @@ def _ship(row: dict | None) -> dict:
     #      배로
     #      봤어요"에 그 검사의 reason 글(맞춘 칸이나 맞추지 못한 까닭)을 서류로 본 결과로 덧붙인다
     picked = row["status"] == "user_choice"
+    reason = reasons["user_choice"] if picked else reasons[row["reason"]]
+    if row.get("redo_capped"):  # 다시 찾기 횟수에 닿은 요청이 있었다 (계획 8c)
+        limit = load_rules("vessel")["redo_limit"]
+        reason += ". " + load_rules("vessel")["redo"]["capped_note"].format(limit=limit)
     return {
         "status": row["status"],
-        "reason": reasons["user_choice"] if picked else reasons[row["reason"]],
+        "reason": reason,
         "detail": row.get("detail"),  # 조회 클라이언트의 정한 오류 글. 한도 소진과 일시 실패가 갈린다
         "check": reasons[row["reason"]] if picked else None,
         "name": row.get("name"),

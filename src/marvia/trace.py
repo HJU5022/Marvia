@@ -22,7 +22,7 @@ import functools
 from typing import Any
 from urllib.parse import urlsplit
 
-from langgraph.types import Send
+from langgraph.types import Command, Send
 from pydantic import BaseModel
 
 from marvia.config import Settings
@@ -54,9 +54,21 @@ def _ship_values(value: Any, found: set[str], depth: int = 0) -> None:
                             if isinstance(v := ship.get(k), str) and len(v) >= _MIN_HIDDEN
                         )
             _ship_values(item, found, depth + 1)
-    elif isinstance(value, (list, tuple)):
+    elif isinstance(value, (list, tuple, set, frozenset)):
         for item in value:
             _ship_values(item, found, depth + 1)
+    # [왜] 도구가 돌려준 Command, 메시지(ToolMessage.artifact), 화물 결과(pydantic), dataclass 안에도 배 값이
+    #      들 수 있다. _walk가 걷는 것과 같은 것을 걷는다 (계획 8c, D17)
+    elif isinstance(value, Send):
+        _ship_values(value.arg, found, depth + 1)
+    elif isinstance(value, Command):
+        _ship_values(value.update, found, depth + 1)
+    elif isinstance(value, BaseModel):
+        _ship_values(dict(value), found, depth + 1)
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        _ship_values(
+            {f.name: getattr(value, f.name, None) for f in dataclasses.fields(value)}, found, depth + 1
+        )
 
 
 def scrub_text(text: str) -> str:

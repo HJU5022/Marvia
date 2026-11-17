@@ -412,7 +412,7 @@ def make_tools(
     extra = [_research_tool(model, law_tools, today)] if model is not None else []
     extra += [_official_tool(web)] if web is not None else []
     extra += _watch_tools(watch) if watch is not None else []
-    extra += [_dates_tool(today), _read_tool()] if vessel else []
+    extra += [_dates_tool(today), _read_tool(), _redo_tool()] if vessel else []
     tools = [
         search_law,
         calc_deadlines,
@@ -538,6 +538,34 @@ def _read_tool():
         return "\n".join(read_lines(tokens, dict(runtime.state)))
 
     return read_vessel
+
+
+def _redo_tool():
+    """배를 다시 찾아 달라는 요청 도구 redo_vessel (계획 8c, C7). 토큰과 횟수만 쓰고 행은 노드가 지운다."""
+
+    @tool
+    def redo_vessel(token: str, runtime: ToolRuntime) -> Command:
+        """Ask to look the ship of a cargo token such as [BL1] up again, when the user says the ship shown
+        for it is wrong or wants another try. It looks nothing up now: the ship is searched again in the
+        next turn in which the user mentions that cargo, at most twice per cargo in a conversation. It does
+        nothing for a cargo already off the ship.
+        """
+        cfg = load_rules("vessel")
+        text = cfg["redo"]
+        state = runtime.state
+        if token not in state.get("mask_map", {}):
+            return _reply(runtime, text["unknown_token"].format(token=token))
+        row = next((v for v in state.get("vessels", []) if v["token"] == token), None)
+        if row is None:
+            return _reply(runtime, text["not_looked"].format(token=token))
+        if row["reason"] == "landed":
+            return _reply(runtime, text["landed"].format(token=token))
+        # [왜] 이른 부드러운 답일 뿐이다. 세는 곳은 vessel 노드다(노드가 적은 다시 찾은 횟수를 읽는다)
+        if state.get("vessel_refound", {}).get(token, 0) >= cfg["redo_limit"]:
+            return _reply(runtime, text["over_cap"].format(token=token, limit=cfg["redo_limit"]))
+        return _reply(runtime, text["accepted"].format(token=token), vessel_redo={token: 1})
+
+    return redo_vessel
 
 
 def _dates_tool(today: Callable[[], date]):

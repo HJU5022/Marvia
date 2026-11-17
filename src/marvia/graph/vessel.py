@@ -144,11 +144,28 @@ def find_vessel(facts: CargoFacts, *, near: dict | None = None) -> dict:
 def find_vessels(state: MarviaState) -> dict:
     """vessel 노드: 조회에 성공한 화물마다 배를 찾는다. 한 차례에 max_cargos건까지 찾고 하나만 되묻는다."""
     cfg = load_rules("vessel")
+    # [왜] 되돌리기 요청(계획 8c, D17): 이번 차례에 말한 화물에 소비하지 않은 요청이 있으면 그 화물의 행을
+    #      지워 다시 찾는다. 한 차례에 한 번이고 한 대화에서 토큰마다 redo_limit번까지다. 세는 곳은 여기다.
+    #      상한에 닿은 요청은 바깥 호출 없이 소비하고 앞의 행에 그렇다고 적는다
+    redo, consumed = state.get("vessel_redo", {}), dict(state.get("vessel_consumed", {}))
+    refound = dict(state.get("vessel_refound", {}))
+    dropped: set[str] = set()
+    capped: set[str] = set()
+    for cargo in state.get("cargos", []):
+        token = cargo["token"]
+        if cargo.get("facts") and redo.get(token, 0) > consumed.get(token, 0):
+            if refound.get(token, 0) < cfg["redo_limit"]:
+                dropped.add(token)
+                refound[token] = refound.get(token, 0) + 1
+            else:
+                capped.add(token)
+            consumed[token] = redo[token]
     # [왜] 확정한 배와 "모르겠어요"라고 답한 화물은 같은 대화에서 다시 찾거나 다시 묻지 않는다
     kept = {
-        v["token"]: v
+        v["token"]: ({**v, "redo_capped": True} if v["token"] in capped else v)
         for v in state.get("vessels", [])
-        if v["status"] in ("confirmed", "user_choice") or v["reason"] == "user_skipped"
+        if (v["status"] in ("confirmed", "user_choice") or v["reason"] == "user_skipped")
+        and v["token"] not in dropped
     }
     rows: list[dict] = []
     question = None
@@ -203,7 +220,14 @@ def find_vessels(state: MarviaState) -> dict:
     seen = {row["token"] for row in rows}
     rows += [row for token, row in kept.items() if token not in seen]
     # [왜] 지난 차례의 카드 답은 이번 차례 날짜의 근거가 아니다. 화물이 없는 차례에도 비운다 (계획 8c, D21)
-    return {"vessels": rows, "vessel_question": question, "verdicts": [], "turn_answers": []}
+    return {
+        "vessels": rows,
+        "vessel_question": question,
+        "verdicts": [],
+        "turn_answers": [],
+        "vessel_refound": refound,
+        "vessel_consumed": consumed,
+    }
 
 
 def check_pick(state: MarviaState, token: str, question: dict, picked: dict) -> Match:

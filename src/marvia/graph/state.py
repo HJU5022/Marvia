@@ -95,6 +95,11 @@ class MarviaState(IdentifyState, total=False):
     # 이번 차례에 ask_user 카드에 사용자가 직접 적은 답(가린 글). note_dates가 날짜의 근거로 읽는다.
     # vessel 노드가 차례 처음에 비운다. 고른 선택지의 글(모델이 쓴 글)은 담지 않는다
     turn_answers: list[str]
+    # 되돌리기 (계획 8c, D16, D17). redo_vessel 도구는 요청 수(vessel_redo)만 올린다. vessel 노드가 다음에
+    # 그 화물의 행을 지우고 다시 찾은 횟수(vessel_refound)와 소비한 요청 수(vessel_consumed)를 센다
+    vessel_redo: dict[str, int]
+    vessel_refound: dict[str, int]
+    vessel_consumed: dict[str, int]
 
 
 def merge_evidence(old: list[dict], new: list[dict], limit: int) -> list[dict]:
@@ -133,6 +138,14 @@ def merge_dates(old: dict[str, dict], new: dict[str, dict]) -> dict[str, dict]:
     out = {token: dict(cells) for token, cells in old.items()}
     for token, cells in new.items():
         out[token] = {**out.get(token, {}), **cells}
+    return out
+
+
+def add_counts(old: dict[str, int], new: dict[str, int]) -> dict[str, int]:
+    """토큰별 횟수 합치기(reducer). 같은 메시지에서 같은 토큰을 두 번 부르면 2다."""
+    out = dict(old)
+    for token, n in new.items():
+        out[token] = out.get(token, 0) + n
     return out
 
 
@@ -178,6 +191,10 @@ class VesselLoopState(LoopState):
     # 읽기 도구(read_vessel)가 읽기만 하는 칸. 도구가 쓰지 않아 합치는 함수가 없다
     vessels: NotRequired[list[dict]]
     verdicts: NotRequired[list[dict]]
+    # 되돌리기: 도구는 요청 수만 올린다(더하기). 다시 찾은 횟수와 소비한 요청 수는 노드가 쓰고 도구는 읽는다
+    vessel_redo: NotRequired[Annotated[dict[str, int], add_counts]]
+    vessel_refound: NotRequired[dict[str, int]]
+    vessel_consumed: NotRequired[dict[str, int]]
     turn_answers: NotRequired[Annotated[list[str], operator.add]]
 
 

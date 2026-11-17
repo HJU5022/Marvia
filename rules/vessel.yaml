@@ -95,6 +95,16 @@ dates:
     out_of_range: "{label}: 오늘에서 너무 먼 날짜라 받지 않았어요. 사용자에게 날짜를 다시 확인해 달라고 해 주세요"
   unknown_token: "{token}: 모르는 토큰이에요"
 
+# 한 대화에서 토큰마다 배를 다시 찾는 횟수 상한 (계획 8c, 결정 C7, D17). 세는 곳은 vessel 노드다
+redo_limit: 2
+redo:
+  accepted: "{token}: 다시 찾기를 요청했어요. 사용자가 다음 차례에 그 화물을 말씀하시면 배를 다시 찾아요"
+  unknown_token: "{token}: 모르는 토큰이에요"
+  not_looked: "{token}: 아직 배를 찾지 않은 화물이라 되돌릴 것이 없어요"
+  landed: "{token}: 배에서 내린 화물이라 배를 다시 찾지 않아요. 통관 단계만 봐요"
+  over_cap: "{token}: 이 화물은 배를 다시 찾는 횟수({limit}번)에 닿아 더 찾지 않아요"
+  capped_note: 배를 다시 찾는 횟수({limit}번)에 닿아 앞의 결과를 그대로 두었어요
+
 # 모델에 주는 판정 블록과 읽기 도구의 글 (계획 8c, 결정 C2, C3, C6). 코드(src/marvia/graph/vessel_text.py)가 읽는다
 # [주의] 이 글에는 배 이름, 호출부호, 배 번호가 들어가지 않는다. 판정 글은 화물 카드와 같은 함수(view)에서 온다
 block:
