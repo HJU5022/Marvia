@@ -68,7 +68,9 @@ from marvia.eval.run import (
     preflight,
     result_name,
     run_problems,
+    runnable,
     save_result,
+    vessel_meta,
 )
 from marvia.tools.rules import load_rules
 
@@ -90,6 +92,12 @@ run.add_argument(
     choices=["off", "on"],
     required=True,
     help="이 실행이 재려는 그래프 설정. 실제 설정(MARVIA_GRAPH)과 다르면 돈을 쓰기 전에 멈춘다",
+)
+run.add_argument(
+    "--vessel",
+    choices=["off", "on"],
+    default="off",
+    help="배 판정을 모델이 읽는 길(계획 8c). 이 인자로만 켠다. 환경 변수(MARVIA_VESSEL)로는 켜지지 않는다",
 )
 run.add_argument("--tag", default="", help="결과 파일 이름 뒤에 붙일 말 (예: ctx는 맥락 문장 색인)")
 report = sub.add_parser("report", help="결과 파일들을 지금 코드로 다시 채점해 표로 (키 없음)")
@@ -427,6 +435,7 @@ set_path = SETS[args.set]
 data = load_set(set_path)
 items = [i for i in data.items if not args.ids or i.id in args.ids.split(",")]
 items = items[: args.limit] if args.limit else items
+items = runnable(items, args.vessel == "on")  # [왜] 켠 길 전용 문항은 끈 길 실행에서 돌리지 않는다
 loops, models = args.loops.split(","), args.models.split(",")
 prices = load_rules("pricing")
 # [왜] 설정을 읽는 데는 키가 필요 없다. LLM을 부르는 길에 따라 비용을 보일지 정한다
@@ -534,6 +543,7 @@ for model in models:
                 "unipass_mode": settings.unipass_mode,
                 "rag_via": settings.rag_via,
                 "tracing": "on" if tracing else "off",
+                **vessel_meta(args.vessel == "on"),
                 # [왜] cli로 잰 줄은 API로 잰 줄과 섞지 않는다. 어느 길, 어느 판의 CLI였는지 남긴다
                 **llm_meta(settings.llm_via),
             }
@@ -543,7 +553,14 @@ for model in models:
                     print(f"상한 ${args.max_cost}에 닿아 {item.id}부터 돌리지 않았다")
                     break
                 row, raw = evaluate_item(
-                    deps, item, loop, data.as_of, prices, callbacks=tracing, llm_via=settings.llm_via
+                    deps,
+                    item,
+                    loop,
+                    data.as_of,
+                    prices,
+                    callbacks=tracing,
+                    llm_via=settings.llm_via,
+                    vessel=args.vessel == "on",
                 )
                 row["model"] = model
                 rows.append(row)

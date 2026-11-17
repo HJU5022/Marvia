@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -108,6 +108,10 @@ class Item(BaseModel):
     # 수퍼바이저 길의 기대 서브에이전트 (v3부터). 없으면 라우팅 정확도에서 뺀다
     route: Route | None = None
     v3_change: str = ""  # v3에서 채점 칸을 고친 문항에만 쓰고 이유를 적는다
+    # 아래 둘은 v4(계획 8c)의 칸이다. 기본값이라 v1~v3 문항은 그대로다
+    vessel_only: bool = False  # 배 판정을 모델이 읽는 켠 길 전용 문항. 끈 길 실행에서는 돌리지 않는다
+    # 이 문항의 기준 시각(시간대 있음). 없으면 평가셋의 as_of 날짜 09:00 한국 시각이다 (run.item_clock)
+    now: datetime | None = None
 
 
 class EvalSet(BaseModel):

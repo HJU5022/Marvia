@@ -327,6 +327,7 @@ def test_the_eval_runner_builds_a_graph_without_the_vessel_step_even_when_the_en
                         passing.append((name, ast.unparse(keyword.value)))
     assert sorted(passing) == [
         ("e2e/fake_api.py", "settings.vessel == 'on'"),
+        ("src/marvia/eval/run.py", "vessel"),
         ("src/marvia/server.py", "settings.vessel == 'on'"),
     ]
 

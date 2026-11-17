@@ -493,3 +493,7 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 ### T7 (11-17)
 
 검증자 새 규칙 넷은 `rules/verify.yaml`의 `vessel_verdict`(이름 목록, 단정 어구, 위반 글)와 `graph/verify.py`에 있다. 주의할 곳 둘. (1) 확신 이름 패턴은 "확신을 부분으로 낮췄어요"(판정 글의 까닭)를 확신을 말한 것으로 세지 않는다. 블록 줄을 그대로 옮긴 초안이 통과해야 해서(D18) 시험으로 찾았다(`TESTVSL0005`, `0007`). (2) 여유 일수 `N일`은 그 문장이 가리키는 화물(토큰이 있으면 그 토큰)의 값만 허용한다. 깨 보기(시험이 처음 잡음): MC20, MC21, MC22, MC23, MC24, MC40, MC44, MC56, MC41(`test_the_verifier_is_called_without_verdicts_on_all_three_off_paths`).
+
+### T8 (11-17)
+
+`--vessel off|on`(기본 off)은 `evaluate_item(..., vessel)`만 켠다. 환경 변수는 읽지 않는다. 줄에 `vessel_graph`(실제로 만든 그래프에 배 단계가 있는가)와 `now`(그 문항의 기준 시각)를 남기고, `run_problems`는 인자와 `vessel_graph`가 다른 줄이 있으면 그 실행을 무효로 둔다. meta에 `vessel`과 `vessel_replay_sha256`(세관·해수부·ShipFinder 재생 폴더의 이름과 내용 해시)을 남긴다. 기준 시각은 `run.item_clock`: 문항의 `now`, 없으면 `as_of` 날짜 09:00 한국 시각이다. 켠 길은 이 시각 하나에서 모델의 Today, `note_dates`, 판정이 나온다. `Item`에 `vessel_only`와 `now`를 T8에서 먼저 더했다(T9는 나머지 칸). B의 `test_vessel_off.py`는 AST 시험의 허용 목록 한 줄(`("src/marvia/eval/run.py", "vessel")`)만 고쳤고 해시 상수는 그대로다(D13). 시험 파일은 `tests/graph/test_run_vessel.py`다(`tests/eval/`에는 `agent_deps` 준비물이 없다). 깨 보기(시험이 처음 잡음): MC25, MC26, MC27, MC28.

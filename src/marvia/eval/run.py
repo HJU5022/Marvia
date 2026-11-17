@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -17,7 +18,7 @@ import time
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
@@ -34,6 +35,7 @@ from marvia.graph.resume import approval_reply
 from marvia.identify.mask import mask_text
 from marvia.llm import CLIFailed, LLMFailed
 from marvia.rag.models import Evidence
+from marvia.tools.deadlines import KST
 from marvia.tools.rules import load_rules
 from marvia.watch import WatchDeps
 
@@ -145,6 +147,36 @@ def masked_queries(queries: list[str], mask_map: dict[str, str]) -> list[str]:
     return out
 
 
+def item_clock(item: Item, as_of: date) -> datetime:
+    """이 문항의 기준 시각 하나 (계획 8c, C14). 문항의 now가 있으면 그것, 없으면 as_of 09:00 한국 시각이다.
+
+    [왜] 모델이 보는 Today, note_dates의 범위, 판정의 기준 시각이 모두 이 시각에서 나온다. 실제 시계를 쓰면
+         날마다 값이 달라진다.
+    """
+    return item.now or datetime(as_of.year, as_of.month, as_of.day, 9, tzinfo=KST)
+
+
+def runnable(items: list[Item], vessel: bool) -> list[Item]:
+    """이 실행에서 돌릴 문항. 켠 길 전용 문항은 끈 길 실행에서 돌리지 않는다."""
+    return [i for i in items if vessel or not i.vessel_only]
+
+
+def replay_sha256() -> str:
+    """배 재생 자료(세관·해수부·ShipFinder 폴더)의 파일 이름과 내용을 이은 sha256. 어느 자료로 잰 실행인가."""
+    root = Path(__file__).resolve().parents[3] / "fixtures"
+    digest = hashlib.sha256()
+    for folder in ("unipass", "mof", "shipfinder"):
+        for path in sorted((root / folder).rglob("*")):
+            if path.is_file():
+                digest.update(f"{path.relative_to(root)}\n".encode() + path.read_bytes())
+    return digest.hexdigest()
+
+
+def vessel_meta(vessel: bool) -> dict:
+    """결과 meta에 남길 켠 길 표시와 배 재생 자료 해시. [왜] 환경 변수가 아니라 실행 인자로만 켠다."""
+    return {"vessel": "on" if vessel else "off", "vessel_replay_sha256": replay_sha256()}
+
+
 def eval_deps(
     deps: AgentDeps,
     item: Item,
@@ -153,6 +185,7 @@ def eval_deps(
     seen: dict[str, str] | None = None,
     queries: list[str] | None = None,
     contract: Contract | None = None,
+    now: datetime | None = None,
 ) -> AgentDeps:
     """평가 실행용 AgentDeps. 감시 목록은 DB 없는 가짜로 묶고, 날짜를 고정한다."""
 
@@ -244,6 +277,8 @@ def eval_deps(
         write=counted(deps.write),
         provision=provision if real_provision else None,
         today=lambda: today,
+        # [왜] 판정의 기준 시각도 고정한다. 안 하면 실제 시계가 들어간다 (꺼진 길은 읽지 않는다)
+        now=(lambda: now) if now is not None else deps.now,
         web=None,  # [왜] 평가 결과가 바깥 사이트에 기대면 안 된다. official_lookup은 묶이지 않는다
         watch=WatchDeps(
             add=lambda user, number, stage: None, news=lambda user: [], ack=lambda user, ids: None
@@ -354,6 +389,15 @@ def run_problems(
         if not sum(r.get("graph_added", 0) for r in rows):
             problems.append("그래프 켬인데 그래프가 더한 후보가 0이다")
     # [왜] 칸이 없는 결과도 무효다. 어떤 모드로 돌았는지 모르면 실제 API를 불렀는지 알 수 없다
+    # [왜] 11-16 C8. 인자(--vessel)와 실제 그래프가 다르면 켠 줄 알았는데 안 켜진 채 돈 것이다
+    if meta.get("vessel") is not None:
+        wrong = sorted(
+            r["id"] for r in rows if "vessel_graph" in r and r["vessel_graph"] != (meta["vessel"] == "on")
+        )
+        if wrong:
+            problems.append(
+                f"--vessel {meta['vessel']}인데 그래프의 배 단계가 인자와 다르다: {', '.join(wrong)}"
+            )
     if meta.get("unipass_mode") != "replay":
         problems.append("UNI-PASS 재생 모드가 아니다 (meta.unipass_mode)")
     for key in ("errors", "leaks", "cap_breaches"):
@@ -472,6 +516,7 @@ def evaluate_item(
     permission_mode: str = "ask",
     callbacks: Sequence[BaseCallbackHandler] = (),
     llm_via: str = "api",
+    vessel: bool = False,
 ) -> tuple[dict, dict]:
     """문항 하나를 새 대화로 돌려 (줄, raw)를 돌려준다. 예외가 나도 줄을 남긴다.
 
@@ -483,16 +528,24 @@ def evaluate_item(
     queries: list[str] = []
     known: dict[str, str] = {}  # 이 차례의 가림 표. raw에 쓰는 검색어를 가릴 때 쓴다
     contract = Contract()
+    clock = item_clock(item, today)
     graph = build_main_graph(
-        eval_deps(deps, item, today, log, seen, queries, contract),
+        eval_deps(deps, item, today, log, seen, queries, contract, clock),
         InMemorySaver(),
         loop=loop,
         store=InMemoryStore(),
         permission_mode=permission_mode,
+        vessel=vessel,
     )
     watch = LlmWatch(contract)
     started = time.monotonic()
-    row: dict = {"id": item.id, "loop": loop}
+    # [왜] 실제로 만든 그래프에 배 단계가 있는지 줄에 남긴다. 인자와 다르면 그 실행은 무효다 (run_problems)
+    row: dict = {
+        "id": item.id,
+        "loop": loop,
+        "vessel_graph": "vessel" in graph.nodes,
+        "now": clock.isoformat(),
+    }
     raw: dict = {"id": item.id, "loop": loop}
     usage = None
     try:
