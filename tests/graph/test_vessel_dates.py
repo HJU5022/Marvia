@@ -637,3 +637,35 @@ def test_a_date_accepted_for_the_cargo_that_was_over_the_cap_after_a_restart_mak
     assert "over_cap" in out["verdicts"][3]["notes"] and out["verdicts"][3]["dates"] == {
         "sale_date": "2026-09-25"
     }
+
+
+@pytest.mark.parametrize(("loop", "keeps"), [("planner", False), ("supervisor", False), ("agent", True)])
+def test_a_turn_on_each_on_path_leaves_the_position_and_schedule_cache_empty(
+    agent_deps, monkeypatch, loop, keeps
+):
+    # [왜] 11-17 R-195. rejudge가 없는 켠 길(계획자, 수퍼바이저)은 위치·일정을 사전에 쓰지 않는다.
+    #      켠 에이전트 길은 쓰되 rejudge가 지운다. main.py가 keep을 넘기지 않으면(KP)
+    #      계획자·수퍼바이저 길의 사전이 쌓인다
+    from marvia.graph import main as graph_main
+
+    made = []
+    real = graph_main.verdict_nodes
+
+    def spy(now, keep=True):
+        pair = real(now, keep)
+        made.append((keep, pair[0]))
+        return pair
+
+    monkeypatch.setattr(graph_main, "verdict_nodes", spy)
+    deps = agent_deps(
+        model=ToolModel(messages=iter([say()] * 6)),
+        now=lambda: NOW,
+        write=lambda p: Draft(answer="x", citations=[], next_options=[], forwarder_message=""),
+    )
+    graph = build_main_graph(deps, InMemorySaver(), loop=loop, store=InMemoryStore(), vessel=True)
+    graph.invoke({"text": "TESTVSL0001 어디쯤 왔어요?"}, {"configurable": {"thread_id": f"cache-{loop}"}})
+    assert graph.get_state({"configurable": {"thread_id": f"cache-{loop}"}}).values["verdicts"]
+    ((keep, verdict),) = made
+    assert keep is keeps
+    caches = [c.cell_contents for c in verdict.__closure__ or [] if isinstance(c.cell_contents, dict)]
+    assert caches == [{}]  # 사전이 하나이고 비어 있다

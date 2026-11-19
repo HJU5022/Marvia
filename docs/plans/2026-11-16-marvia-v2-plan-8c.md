@@ -592,3 +592,9 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 |---|---|---|
 | R-193 | S4 시험에 A의 재개가 바깥 호출 0번임을 더하고 B가 질문에서 멈추는 순서와 끝까지 도는 순서 둘 다 본다 | `test_two_conversations_in_one_process_never_read_each_others_fetched_data[True/False]`. 키에서 대화 번호를 뺀 변이(K1)가 두 순서 모두 깨진다 [실측] |
 | R-194 | 한 번의 판정에서 넷째 화물이 `over_cap`이 되고, 재시작 뒤 그 화물에만 날짜가 받아진 경우 바깥 호출 0번이고 `over_cap`이 줄에 남는다 | `test_a_date_accepted_for_the_cargo_that_was_over_the_cap_after_a_restart_makes_no_outside_call`. `"over_cap" not in row["notes"]`를 뺀 변이(C2)가 깨진다 [실측] |
+
+### R-195 (11-20)
+
+| # | 고친 것 | 시험과 깨 보기 |
+|---|---|---|
+| R-195 | 켠 계획자 길, 켠 수퍼바이저 길의 한 차례가 위치·일정 사전을 비워 둔다(`keep` 거짓). 켠 에이전트 길은 `keep` 참이고 한 차례 뒤 사전이 비어 있다(rejudge가 지움) | `test_a_turn_on_each_on_path_leaves_the_fetch_cache_empty`(세 길). main.py가 `verdict_nodes(deps.now)`로 돌아가 `keep`을 무시하는 변이(KP)가 계획자 길에서 깨진다 [실측] |
