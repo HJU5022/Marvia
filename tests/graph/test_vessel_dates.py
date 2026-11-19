@@ -512,21 +512,33 @@ def test_a_restart_resume_with_only_an_old_date_makes_no_new_outside_call(agent_
     assert second.get_state(config).values["verdicts"][0]["grade"] == "alert"
 
 
-def test_two_conversations_in_one_process_never_read_each_others_fetched_data(agent_deps, monkeypatch):
-    # [왜] 11-17 R-190(S4). A가 날짜를 받고 루프 안 질문에서 멈춘 사이 B가 같은 토큰으로 바깥 호출이
-    #      모두 실패하는 차례를 돌고 B도 질문에서 멈춘다(B의 사전 항목이 남는다). A를 재개하면 A의
-    #      위치·일정으로 경계가 나와야 한다. 사전 키에 대화 번호가 있어야 한다
+@pytest.mark.parametrize("b_pauses", [True, False])
+def test_two_conversations_in_one_process_never_read_each_others_fetched_data(
+    agent_deps, monkeypatch, b_pauses
+):
+    # [왜] 11-17 R-190(S4), R-193. A가 날짜를 받고 루프 안 질문에서 멈춘 사이 B가 같은 토큰으로 바깥 호출이
+    #      모두 실패하는 차례를 돈다. B가 멈추면 B의 사전 항목이 남고, 끝까지 돌면 B의 rejudge가 지운다.
+    #      어느 쪽이든 A를 재개하면 A는 자기 위치·일정으로 경계가 나오고 바깥 호출은 0번이다.
+    #      사전 키에 대화 번호가 있어야 한다
     fail = {"on": False}
-    counted(monkeypatch, fail)
+    calls = counted(monkeypatch, fail)
     saver, store = InMemorySaver(), InMemoryStore()
-    script = [say(note(sale_date="2026-09-25")), say(ASK_MORE), say(ASK_MORE), say(), say(), say()]
-    graph = rebuilt(agent_deps, saver, store, script)
+    script = [
+        say(note(sale_date="2026-09-25")),
+        say(ASK_MORE),
+        say(ASK_MORE) if b_pauses else say(),
+        say(),
+        say(),
+    ]
+    graph = rebuilt(agent_deps, saver, store, [m for m in script if m is not None])
     a, b = {"configurable": {"thread_id": "A"}}, {"configurable": {"thread_id": "B"}}
     graph.invoke({"text": "TESTVSL0001 판매는 2026년 9월 25일에 해요"}, a)
     fail["on"] = True
     graph.invoke({"text": "TESTVSL0001 어디쯤 왔어요?"}, b)
     fail["on"] = False
+    before = len(calls)
     graph.invoke(Command(resume={"custom": "없어요"}), a)
+    assert len(calls) == before  # A의 재개는 바깥 호출이 없다(자기 사전 항목을 쓴다)
     assert graph.get_state(a).values["verdicts"][0]["grade"] == "alert"
     assert graph.get_state(b).values["verdicts"][0]["grade"] is None
 
@@ -591,3 +603,37 @@ def test_a_refetch_after_a_restart_stays_within_the_per_turn_cargo_cap(monkeypat
     dates = {t: {"sale_date": "2026-09-25"} for t in tokens}
     out = rejudge({"cargos": cargos, "vessels": ships, "verdicts": rows, "cargo_dates": dates}, config)  # type: ignore[arg-type]
     assert len(calls) == 6 and ["over_cap" in r["notes"] for r in out["verdicts"]] == [False] * 3 + [True]
+
+
+def test_a_date_accepted_for_the_cargo_that_was_over_the_cap_after_a_restart_makes_no_outside_call(
+    monkeypatch,
+):
+    # [왜] 11-17 R-194. 한 번의 판정에서 넷째 화물이 over_cap이 되었다. 재시작(빈 사전) 뒤 그 화물에만 날짜가
+    #      받아졌다. 다시 판정해도 바깥 호출은 0번이고 over_cap 표시는 그 줄에 남는다
+    from marvia.graph.vessel import verdict_nodes
+    from marvia.tools.unipass_replay import lookup_cargo
+
+    calls = counted(monkeypatch)
+    facts = lookup_cargo("TESTVSL0001").model_dump(mode="json")
+    ship = {"status": "confirmed", "reason": "mrn_call_sign", "mmsi": "999000001", "call_sign": "QQTST1",
+            "name": "TEST CARGO A", "basis": ["call_sign"], "cap": None}  # fmt: skip
+    tokens = ["[BL1]", "[BL2]", "[BL3]", "[BL4]"]
+    cargos = [{"token": t, "facts": facts} for t in tokens]
+    ships = [{**ship, "token": t} for t in tokens]
+    config = {"configurable": {"thread_id": "cap4"}}
+    verdict, _ = verdict_nodes(lambda: NOW, keep=False)
+    rows = verdict({"cargos": cargos, "vessels": ships}, config)["verdicts"]  # type: ignore[arg-type]
+    assert ["over_cap" in r["notes"] for r in rows] == [False] * 3 + [True]
+    _, rejudge = verdict_nodes(lambda: NOW)  # 다시 시작한 프로세스: 사전이 비었다
+    calls.clear()
+    state = {
+        "cargos": cargos,
+        "vessels": ships,
+        "verdicts": rows,
+        "cargo_dates": {"[BL4]": {"sale_date": "2026-09-25"}},
+    }
+    out = rejudge(state, config)  # type: ignore[arg-type]
+    assert calls == []
+    assert "over_cap" in out["verdicts"][3]["notes"] and out["verdicts"][3]["dates"] == {
+        "sale_date": "2026-09-25"
+    }
