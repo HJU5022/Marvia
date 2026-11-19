@@ -289,11 +289,21 @@ if args.command == "verdict":
     def load(files: list[str]) -> list[dict]:
         return [json.loads(Path(f).read_text(encoding="utf-8")) for f in files]
 
+    def excluded_runs(files: list[str]) -> list[dict]:
+        """--invalid로 준 파일의 파일 이름과 meta.problems. 문제가 없는 실행은 뺄 수 없어 거절한다."""
+        out = []
+        for name, result in zip(files, load(files), strict=True):
+            if not result["meta"].get("problems"):
+                raise SystemExit(f"{name}: meta.problems가 비어 있다. 무효가 아닌 실행은 뺄 수 없다")
+            out.append({"file": Path(name).name, "problems": result["meta"]["problems"]})
+        return out
+
     if args.compare == "vessel":
         # [왜] 켠 길 대 끈 길은 같은 커밋·모델·평가셋·LLM 길의 실행끼리만 견준다. 기준은 rules/eval.yaml이다
         if not (args.on and args.off):
             raise SystemExit("--compare vessel에는 --on과 --off가 모두 필요하다")
         on, off = load(args.on), load(args.off)
+        excluded = excluded_runs(args.invalid)  # [왜] 거절은 판정 전에 한다. 점수를 보고 실행을 고르지 못하게
         metas = [r["meta"] for r in (*on, *off)]
         wrong = [
             m["vessel"]
@@ -324,7 +334,12 @@ if args.command == "verdict":
                         hits.setdefault(f"{Path(name).stem}/{raw['id']}", []).extend(
                             raw["detector_sentences"]
                         )
-        print(json.dumps(head | compare_vessel(on, off, by_id, hits), ensure_ascii=False, indent=1))
+        result = head | compare_vessel(on, off, by_id, hits)
+        # [왜] 저장한 판정(verdict-vessel-1f32f5f.json)이 --invalid 없이 바이트까지 같게 다시 나와야 하므로
+        #      invalid_runs 키는 --invalid를 줄 때만 붙인다. 무효 실행은 적기만 하고 세지 않는다
+        if args.invalid:
+            result["invalid_runs"] = excluded
+        print(json.dumps(result, ensure_ascii=False, indent=1))
         raise SystemExit(0)
     if not (args.agent and args.supervisor):
         raise SystemExit("--compare paths에는 --agent와 --supervisor가 모두 필요하다")
@@ -332,11 +347,7 @@ if args.command == "verdict":
     # [왜] 무효 실행(meta.problems가 있다: CLI 실패, 문항을 다 덮지 못함 등)은 판정에 넣지 않고 다시 돈다.
     #      --invalid로 준 파일은 세지 않고 까닭만 옮겨 적는다. 무효는 meta.problems로만 정한다:
     #      문제가 없는 실행을 --invalid로 빼려 하면 거절한다(점수를 보고 실행을 고르지 못하게)
-    excluded = []
-    for name, result in zip(args.invalid, load(args.invalid), strict=True):
-        if not result["meta"].get("problems"):
-            raise SystemExit(f"{name}: meta.problems가 비어 있다. 무효가 아닌 실행은 뺄 수 없다")
-        excluded.append({"file": Path(name).name, "problems": result["meta"]["problems"]})
+    excluded = excluded_runs(args.invalid)
     keys = {}
     for loop, results in loaded.items():
         wrong = sorted({r["meta"]["loop"] for r in results} - {loop})

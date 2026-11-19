@@ -471,6 +471,36 @@ def test_the_vessel_comparison_command_prints_the_registered_criteria_and_refuse
     assert swapped.returncode != 0 and "섞였다" in swapped.stderr
 
 
+def test_the_vessel_comparison_lists_invalid_runs_given_with_invalid_and_refuses_a_valid_one(tmp_path):
+    # [왜] R-202. paths 판정과 같은 규칙: 문제가 있는 파일만 적고 세지 않으며, 없는 파일은 거절한다
+    from marvia.eval.dataset import SET_V4_PATH, file_sha256
+
+    sha = file_sha256(SET_V4_PATH)
+
+    def one(name: str, vessel: str, problems: list[str]) -> str:
+        meta = {"set_sha256": sha, "commit": "abc1234", "model": "m", "loop": "agent", "vessel": vessel,
+                "llm_via": "cli", "problems": problems}  # fmt: skip
+        row = {"id": "R01", "behaviour": "answer", "cited": [], "evidence": [], "real_llm_calls": 3,
+               "leak": False}  # fmt: skip
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps({"meta": meta, "rows": [row]}), encoding="utf-8")
+        return str(path)
+
+    on, off = [one("on1", "on", []), one("on2", "on", [])], [one("off1", "off", []), one("off2", "off", [])]
+    bad = one("offbad", "off", ["errors 1"])
+    args = ("--set", "v4", "--compare", "vessel", "--on", *on, "--off", *off)
+    plain = verdict(*args)
+    assert plain.returncode == 0, plain.stderr
+    assert "invalid_runs" not in json.loads(plain.stdout)  # 저장한 판정과 같게 키를 붙이지 않는다
+    listed = verdict(*args, "--invalid", bad)
+    assert listed.returncode == 0, listed.stderr
+    out = json.loads(listed.stdout)
+    assert out["invalid_runs"] == [{"file": "offbad.json", "problems": ["errors 1"]}]
+    assert out["runs"] == {"on": 2, "off": 2}  # 적기만 하고 세지 않는다
+    refused = verdict(*args, "--invalid", off[0])
+    assert refused.returncode != 0 and "무효가 아닌 실행은 뺄 수 없다" in refused.stderr
+
+
 def test_the_vessel_comparison_refuses_runs_of_different_commits_models_or_loops_and_lists_the_hits(tmp_path):
     # [왜] 11-17 R-186. 같은 커밋·모델·길·평가셋의 실행끼리만 견준다. 탐지기가 센 문장은 raw 파일에서 나열한다
     from marvia.eval.dataset import SET_V4_PATH, file_sha256
