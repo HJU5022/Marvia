@@ -1,0 +1,64 @@
+{
+ "set": "v4",
+ "commit": "1f32f5f",
+ "model": "claude-haiku-5-5",
+ "loop": "agent",
+ "runs": {
+  "on": 5,
+  "off": 5
+ },
+ "off_floor": {
+  "floor": 0.8333,
+  "runs": [
+   0.9333,
+   0.9,
+   0.9667,
+   1.0,
+   0.8667
+  ],
+  "ok": true
+ },
+ "detector_hit_sentences": {},
+ "behaviour_accuracy": {
+  "on": 0.9333,
+  "off": 0.9333,
+  "ok": true
+ },
+ "correct_citation": {
+  "on": 0.8,
+  "off": 0.8333,
+  "ok": true
+ },
+ "calls_median": {
+  "on": 7.0,
+  "off": 7.9,
+  "ok": true
+ },
+ "new_items_behaviour_accuracy": {
+  "value": 0.9667,
+  "ok": true
+ },
+ "leaks": {
+  "value": 0,
+  "ok": true
+ },
+ "detector": {
+  "value": 0,
+  "verifier_form": 0,
+  "ok": true
+ },
+ "assertive": {
+  "value": 0,
+  "ok": true
+ },
+ "cap_stopped": {
+  "value": 3,
+  "ok": false
+ },
+ "errors": {
+  "value": 0,
+  "ok": true
+ },
+ "unattributed_sentences": 26,
+ "ok": false
+}

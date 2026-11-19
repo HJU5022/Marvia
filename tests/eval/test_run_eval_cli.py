@@ -391,6 +391,60 @@ def test_the_stored_comparison_runs_give_the_stored_verdict_again():
     assert printed["lines"]["correct_citation"] == {"agent": 0.8833, "supervisor": 0.7833, "ok": False}
 
 
+# 8c 측정(커밋 1f32f5f, 11-20): 켠 길 다섯, 끈 길 다섯(무효였던 둘은 다시 돌린 것), 끈 길 점검(v3) 하나
+M8 = "eval/results/agent-claude-haiku-5-5-"
+M8_ON = [f"{M8}p{n}on.json" for n in range(1, 6)]
+M8_OFF = [f"{M8}{name}.json" for name in ("p1off", "p2offr3", "p3off", "p4off", "p5offr3")]
+M8_CHK = f"{M8}chk.json"
+M8_VERDICT = ROOT / "eval/results/verdict-vessel-1f32f5f.json"
+
+
+def test_the_8c_measurement_runs_are_valid_runs_of_one_condition():
+    from marvia.eval.dataset import SET_V3_PATH, SET_V4_PATH, file_sha256, load_set
+    from marvia.eval.metrics import summarize
+
+    for name, path, vessel, count in [
+        *[(n, SET_V4_PATH, "on", 42) for n in M8_ON],
+        *[(n, SET_V4_PATH, "off", 30) for n in M8_OFF],
+        (M8_CHK, SET_V3_PATH, "off", 30),
+    ]:
+        items = {item.id: item for item in load_set(path).items}
+        result = json.loads((ROOT / name).read_text(encoding="utf-8"))
+        meta, rows = result["meta"], result["rows"]
+        picked = {
+            k: meta[k] for k in ("commit", "llm_via", "set", "problems", "graph", "unipass_mode", "vessel")
+        }
+        assert picked == {
+            "commit": "1f32f5f",
+            "llm_via": "cli",
+            "set": "v4" if path == SET_V4_PATH else "v3",
+            "problems": [],
+            "graph": "off",
+            "unipass_mode": "replay",
+            "vessel": vessel,
+        }, name
+        assert meta["set_sha256"] == file_sha256(path), name
+        assert meta["index_units"] == meta["file_units"], name
+        assert len(rows) == count and not any(row["error"] or row["leak"] for row in rows), name
+        # [왜] 끈 길 파일에는 켠 길 전용 문항 줄이 없다 (끈 길은 그 문항을 돌리지 않는다)
+        assert not any(items[row["id"]].vessel_only for row in rows if vessel == "off"), name
+        assert not {"answer", "text", "question"} & {key for row in rows for key in row}, name
+        again = summarize(rows, items, meta["k"])
+        assert {k: again[k] for k in result["summary"]} == result["summary"], name
+
+
+def test_the_8c_measurement_runs_give_the_stored_vessel_verdict_again():
+    done = subprocess.run(
+        [sys.executable, "scripts/run_eval.py", "verdict", "--set", "v4", "--compare", "vessel"]
+        + ["--on", *M8_ON, "--off", *M8_OFF],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == json.loads(M8_VERDICT.read_text(encoding="utf-8"))
+
+
 def test_the_vessel_comparison_command_prints_the_registered_criteria_and_refuses_mixed_runs(tmp_path):
     # [왜] 계획 8c 측정 (나). 켠 길 대 끈 길은 같은 커밋·모델·평가셋의 실행끼리만 견준다
     from marvia.eval.dataset import SET_V4_PATH, file_sha256

@@ -374,11 +374,11 @@ git commit -m "docs: 계획 8c 모델이 배 판정을 읽고 쓰게 함 (결정
 
 ### Task M: 측정 (코드 커밋이 아니다)
 
-- [ ] **Step 1:** 8c 끝 커밋을 `git archive`로 뽑은 사본에 `ckpt/measure-8c` 태그를 달기 전에 모든 검사가 통과하고 B 검토의 고침이 들어간 상태인지 본다. 태그는 주인이 정한 뒤에 단다.
-- [ ] **Step 2:** 측정 DB의 단위 집합과 글 해시가 코퍼스와 같음을 확인한다.
-- [ ] **Step 3: (가)** `--vessel off --set v3` 한 번. 판정: 그 실행의 v3 행동 정확도를 기존 보고 출력(`scripts/run_eval.py report`)에서 읽어 `rules/vessel.yaml comparison.off_floor`(0.8333) 이상이면 통과다. 이 한 번은 새 측정이 아니라 "끈 길이 그대로"를 확인하는 점검이다. 통과하지 못하면 Step 4(다섯 쌍)를 시작하지 않고 주인 쪽(`메인`)에 보고하고 멈춘다. 원인부터 본다.
-- [ ] **Step 4: (나)** 켠 길과 끈 길을 번갈아 다섯 쌍. 실행 전마다 `ccusage blocks --active --json`을 적는다.
-- [ ] **Step 5:** `scripts/run_eval.py verdict --set v4 --compare vessel`의 출력을 그대로 `.claude/run/research/`의 보고서에 붙인다. 기준을 보고서에서 고치지 않는다.
+- [x] **Step 1:** 8c 끝 커밋을 `git archive`로 뽑은 사본에 `ckpt/measure-8c` 태그를 달기 전에 모든 검사가 통과하고 B 검토의 고침이 들어간 상태인지 본다. 태그는 주인이 정한 뒤에 단다.
+- [x] **Step 2:** 측정 DB의 단위 집합과 글 해시가 코퍼스와 같음을 확인한다.
+- [x] **Step 3: (가)** `--vessel off --set v3` 한 번. 판정: 그 실행의 v3 행동 정확도를 기존 보고 출력(`scripts/run_eval.py report`)에서 읽어 `rules/vessel.yaml comparison.off_floor`(0.8333) 이상이면 통과다. 이 한 번은 새 측정이 아니라 "끈 길이 그대로"를 확인하는 점검이다. 통과하지 못하면 Step 4(다섯 쌍)를 시작하지 않고 주인 쪽(`메인`)에 보고하고 멈춘다. 원인부터 본다.
+- [x] **Step 4: (나)** 켠 길과 끈 길을 번갈아 다섯 쌍. 실행 전마다 `ccusage blocks --active --json`을 적는다.
+- [x] **Step 5:** `scripts/run_eval.py verdict --set v4 --compare vessel`의 출력을 그대로 `.claude/run/research/`의 보고서에 붙인다. 기준을 보고서에서 고치지 않는다.
 
 ## B 고침이 8c 계획에 미친 영향 (11-16, 기준 `f208e59`)
 
@@ -602,3 +602,7 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 ### R-196 (11-20)
 
 v4 끈 길 덮음 검사 오류를 첫 끈 길 실행에서 찾아 이 커밋에서 고쳤다(`run_eval.py`가 전체 문항으로 덮음을 봐 N01~N12가 "빠짐"이 됨). 기대 집합은 `expected_items`(전체에서 runnable만). 측정은 새 커밋에서 다시 시작한다.
+
+### 측정 결과 (11-20)
+
+커밋 `1f32f5f`로 쟀다(11-20). 결과 파일 11개(끈 길 점검 `chk`, 켠 길 `p1on`~`p5on`, 끈 길 `p1off`, `p2offr3`, `p3off`, `p4off`, `p5offr3`)와 판정 `verdict-vessel-1f32f5f.json`을 `eval/results/`에 두었다. 무효였던 `p2off`, `p2offr2`, `p5off`, `p5offr2`는 파일을 두지 않고 보고서에 적었다. `overall ok`는 거짓이고 걸린 곳은 호출 상한 줄 하나다(켠 길 3, 끈 길 3, 모두 v3 문항 U05/U06/R01, N 문항은 0). 기본값은 끈 채로 둔다.
