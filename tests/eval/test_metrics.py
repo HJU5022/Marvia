@@ -561,6 +561,18 @@ def test_spread_gives_mean_min_max_and_denominators_for_each_shared_metric():
     assert "only_here" not in out and "behaviours" not in out  # 모든 실행에 있고 숫자인 지표만
 
 
+def test_spread_groups_keep_vessel_on_and_off_runs_apart_and_leave_old_files_alone():
+    # [왜] R-201. meta.vessel이 있으면 열쇠에 넣는다. 없는 옛 파일의 열쇠는 그대로다
+    on, off, old = _result("a", "aa"), _result("b", "aa"), _result("c", "aa")
+    on["meta"]["vessel"], off["meta"]["vessel"] = "on", "off"
+    groups = spread_groups([on, off, old])
+    assert sorted(groups) == [
+        ("agent", "m", "c1", "off", "direct"),
+        ("agent", "m", "c1", "off", "direct", "off"),
+        ("agent", "m", "c1", "off", "direct", "on"),
+    ]
+
+
 def test_spread_groups_by_loop_model_commit_and_graph_and_refuses_mixed_set_files():
     a = [_result("v2r1", "aa"), _result("v2r2", "aa"), _result("x", "aa", loop="planner")]
     groups = spread_groups(a)

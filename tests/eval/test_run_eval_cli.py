@@ -445,6 +445,19 @@ def test_the_8c_measurement_runs_give_the_stored_vessel_verdict_again():
     assert json.loads(done.stdout) == json.loads(M8_VERDICT.read_text(encoding="utf-8"))
 
 
+def full_rows(vessel: str, extra: list[str] | None = None, drop: int = 0) -> list[dict]:
+    """평가셋 v4에서 이 길이 덮어야 할 문항마다 줄 하나(R-201). extra는 더할 번호, drop은 뒤에서 뺄 줄 수."""
+    from marvia.eval.dataset import SET_V4_PATH, load_set
+    from marvia.eval.run import expected_items
+
+    ids = [*expected_items(load_set(SET_V4_PATH).items, vessel == "on"), *(extra or [])]
+    ids = ids[: len(ids) - drop]
+    return [
+        {"id": i, "behaviour": "answer", "cited": [], "evidence": [], "real_llm_calls": 3, "leak": False}
+        for i in ids
+    ]
+
+
 def test_the_vessel_comparison_command_prints_the_registered_criteria_and_refuses_mixed_runs(tmp_path):
     # [왜] 계획 8c 측정 (나). 켠 길 대 끈 길은 같은 커밋·모델·평가셋의 실행끼리만 견준다
     from marvia.eval.dataset import SET_V4_PATH, file_sha256
@@ -456,10 +469,8 @@ def test_the_vessel_comparison_command_prints_the_registered_criteria_and_refuse
         for i in range(n):
             meta = {"set_sha256": sha, "commit": "abc1234", "model": "m", "loop": "agent", "vessel": vessel,
                     "llm_via": "cli", "problems": []}  # fmt: skip
-            row = {"id": "R01", "behaviour": "answer", "cited": [], "evidence": [], "real_llm_calls": 3,
-                   "leak": False}  # fmt: skip
             path = tmp_path / f"{vessel}{i}.json"
-            path.write_text(json.dumps({"meta": meta, "rows": [row]}), encoding="utf-8")
+            path.write_text(json.dumps({"meta": meta, "rows": full_rows(vessel)}), encoding="utf-8")
             files.append(str(path))
         return files
 
@@ -480,10 +491,8 @@ def test_the_vessel_comparison_lists_invalid_runs_given_with_invalid_and_refuses
     def one(name: str, vessel: str, problems: list[str]) -> str:
         meta = {"set_sha256": sha, "commit": "abc1234", "model": "m", "loop": "agent", "vessel": vessel,
                 "llm_via": "cli", "problems": problems}  # fmt: skip
-        row = {"id": "R01", "behaviour": "answer", "cited": [], "evidence": [], "real_llm_calls": 3,
-               "leak": False}  # fmt: skip
         path = tmp_path / f"{name}.json"
-        path.write_text(json.dumps({"meta": meta, "rows": [row]}), encoding="utf-8")
+        path.write_text(json.dumps({"meta": meta, "rows": full_rows(vessel)}), encoding="utf-8")
         return str(path)
 
     on, off = [one("on1", "on", []), one("on2", "on", [])], [one("off1", "off", []), one("off2", "off", [])]
@@ -501,6 +510,47 @@ def test_the_vessel_comparison_lists_invalid_runs_given_with_invalid_and_refuses
     assert refused.returncode != 0 and "무효가 아닌 실행은 뺄 수 없다" in refused.stderr
 
 
+def vessel_file(tmp_path: Path, name: str, vessel: str, rows: list[dict], tag: str | None = None) -> str:
+    from marvia.eval.dataset import SET_V4_PATH, file_sha256
+
+    meta = {"set_sha256": file_sha256(SET_V4_PATH), "commit": "abc1234", "model": "m", "loop": "agent",
+            "vessel": vessel, "llm_via": "cli", "problems": []}  # fmt: skip
+    if tag:
+        meta["tag"] = tag
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps({"meta": meta, "rows": rows}), encoding="utf-8")
+    return str(path)
+
+
+def test_the_vessel_comparison_refuses_a_file_given_twice_and_a_file_that_misses_its_expected_items(tmp_path):
+    # [왜] R-208, R-201. 같은 파일을 두 번 세거나 problems에 없는 덮음 구멍을 판정에 넣지 않는다
+    on = [vessel_file(tmp_path, f"on{i}", "on", full_rows("on"), tag=f"on{i}") for i in range(2)]
+    off = [vessel_file(tmp_path, f"off{i}", "off", full_rows("off"), tag=f"off{i}") for i in range(2)]
+    args = ("--set", "v4", "--compare", "vessel")
+    assert verdict(*args, "--on", *on, "--off", *off).returncode == 0
+    twice = verdict(*args, "--on", on[0], on[0], "--off", *off)  # 같은 경로
+    assert twice.returncode != 0 and "두 번 들어왔다" in twice.stderr
+    again = vessel_file(tmp_path, "copy", "on", full_rows("on"), tag="on0")  # 다른 경로, 같은 tag
+    assert "두 번 들어왔다" in verdict(*args, "--on", on[0], again, "--off", *off).stderr
+    partial = vessel_file(tmp_path, "partial", "on", full_rows("on", drop=1), tag="p")
+    done = verdict(*args, "--on", on[0], partial, "--off", *off)
+    assert done.returncode != 0 and "다 덮지 못했다" in done.stderr and "빠짐: N12" in done.stderr
+    leaky = vessel_file(tmp_path, "leaky", "off", full_rows("off", extra=["N01"]), tag="l")
+    done = verdict(*args, "--on", *on, "--off", off[0], leaky)  # 끈 길 파일에 켠 길 전용 문항 줄
+    assert done.returncode != 0 and "셋에 없음: N01" in done.stderr
+
+
+def test_the_agent_supervisor_verdict_refuses_a_file_given_twice(tmp_path):
+    from marvia.eval.dataset import SET_V3_PATH, file_sha256
+
+    sha = file_sha256(SET_V3_PATH)
+    agent = verdict_files(tmp_path, "agent", "abc1234", sha)
+    supervisor = verdict_files(tmp_path, "supervisor", "abc1234", sha)
+    assert verdict("--agent", *agent, "--supervisor", *supervisor).returncode == 0
+    done = verdict("--agent", *agent[:4], agent[0], "--supervisor", *supervisor)
+    assert done.returncode != 0 and "두 번 들어왔다" in done.stderr
+
+
 def test_the_vessel_comparison_refuses_runs_of_different_commits_models_or_loops_and_lists_the_hits(tmp_path):
     # [왜] 11-17 R-186. 같은 커밋·모델·길·평가셋의 실행끼리만 견준다. 탐지기가 센 문장은 raw 파일에서 나열한다
     from marvia.eval.dataset import SET_V4_PATH, file_sha256
@@ -510,16 +560,8 @@ def test_the_vessel_comparison_refuses_runs_of_different_commits_models_or_loops
     def one(name: str, vessel: str, **meta_more) -> str:
         meta = {"set_sha256": sha, "commit": "abc1234", "model": "m", "loop": "agent", "vessel": vessel,
                 "llm_via": "cli", "problems": [], **meta_more}  # fmt: skip
-        row = {
-            "id": "R01",
-            "behaviour": "answer",
-            "cited": [],
-            "evidence": [],
-            "real_llm_calls": 3,
-            "leak": False,
-        }
         path = tmp_path / f"{name}.json"
-        path.write_text(json.dumps({"meta": meta, "rows": [row]}), encoding="utf-8")
+        path.write_text(json.dumps({"meta": meta, "rows": full_rows(vessel)}), encoding="utf-8")
         raw = [{"id": "N01", "detector_sentences": ["[BL1]의 판정은 경계예요."]}]
         (tmp_path / f"{name}.raw.json").write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
         return str(path)

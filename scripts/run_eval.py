@@ -289,6 +289,13 @@ if args.command == "verdict":
     def load(files: list[str]) -> list[dict]:
         return [json.loads(Path(f).read_text(encoding="utf-8")) for f in files]
 
+    def refuse_duplicates(side: str, files: list[str], results: list[dict]) -> None:
+        """한 쪽에 같은 결과 파일이 두 번 들어오면(같은 경로, 같은 meta.tag) 거절한다. 두 번 세지 않게."""
+        paths = [str(Path(f).resolve()) for f in files]
+        tags = [r["meta"]["tag"] for r in results if r["meta"].get("tag")]
+        if len(set(paths)) != len(paths) or len(set(tags)) != len(tags):
+            raise SystemExit(f"--{side}에 같은 결과 파일이 두 번 들어왔다: {', '.join(files)}")
+
     def excluded_runs(files: list[str]) -> list[dict]:
         """--invalid로 준 파일의 파일 이름과 meta.problems. 문제가 없는 실행은 뺄 수 없어 거절한다."""
         out = []
@@ -303,7 +310,8 @@ if args.command == "verdict":
         if not (args.on and args.off):
             raise SystemExit("--compare vessel에는 --on과 --off가 모두 필요하다")
         on, off = load(args.on), load(args.off)
-        excluded = excluded_runs(args.invalid)  # [왜] 거절은 판정 전에 한다. 점수를 보고 실행을 고르지 못하게
+        refuse_duplicates("on", args.on, on)
+        refuse_duplicates("off", args.off, off)
         metas = [r["meta"] for r in (*on, *off)]
         wrong = [
             m["vessel"]
@@ -313,6 +321,14 @@ if args.command == "verdict":
         ]
         if wrong:
             raise SystemExit(f"--on과 --off에 다른 쪽 실행이 섞였다: {wrong}")
+        # [왜] 줄이 기대 문항(끈 길은 켠 길 전용을 뺀 것)을 빠짐없이 한 번씩 덮는지 파일마다 다시 센다.
+        #      실행기가 meta.problems에 적은 값만 믿지 않는다 (11-20 R-201)
+        for side, runs_, names in (("on", on, args.on), ("off", off, args.off)):
+            expected = expected_items(load_set(set_path).items, side == "on")
+            for name, run_ in zip(names, runs_, strict=True):
+                if gap := gate_uncovered(run_["rows"], expected):
+                    raise SystemExit(f"{name}: --{side} 실행이 문항을 다 덮지 못했다: {', '.join(gap)}")
+        excluded = excluded_runs(args.invalid)  # [왜] 거절은 판정 전에 한다. 점수를 보고 실행을 고르지 못하게
         if any(meta["set_sha256"] != file_sha256(set_path) for meta in metas):
             raise SystemExit(f"평가셋 {args.set} 파일에서 돌린 결과가 아닌 것이 있다")
         if len({(m["commit"], m["model"], m["loop"], m.get("llm_via", "api")) for m in metas}) != 1:
@@ -344,6 +360,8 @@ if args.command == "verdict":
     if not (args.agent and args.supervisor):
         raise SystemExit("--compare paths에는 --agent와 --supervisor가 모두 필요하다")
     loaded = {"agent": load(args.agent), "supervisor": load(args.supervisor)}
+    refuse_duplicates("agent", args.agent, loaded["agent"])
+    refuse_duplicates("supervisor", args.supervisor, loaded["supervisor"])
     # [왜] 무효 실행(meta.problems가 있다: CLI 실패, 문항을 다 덮지 못함 등)은 판정에 넣지 않고 다시 돈다.
     #      --invalid로 준 파일은 세지 않고 까닭만 옮겨 적는다. 무효는 meta.problems로만 정한다:
     #      문제가 없는 실행을 --invalid로 빼려 하면 거절한다(점수를 보고 실행을 고르지 못하게)
@@ -386,7 +404,7 @@ if args.command == "verdict":
     rule = load_rules("eval")["comparison"]["precheck"]
     # [왜] 저장 값은 rule["set"](v2) 기준으로 잰 것이라 에이전트 길 줄을 그 판으로 세어 견준다
     stored = {i.id: i for i in load_set(SETS[rule["set"]]).items}
-    model, commit, graph, rag_via = keys["agent"]
+    model, commit, graph, rag_via = keys["agent"][:4]
     head = {"set": args.set, "commit": commit, "model": model, "graph": graph, "rag_via": rag_via}
     head |= {"llm_via": vias[0], "invalid_runs": excluded}
     head["precheck"] = precheck([r["rows"] for r in loaded["agent"]], stored, rule)
