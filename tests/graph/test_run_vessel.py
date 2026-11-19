@@ -1,6 +1,7 @@
 """평가 실행기의 --vessel 인자와 기준 시각 시험 (계획 8c T8, CC10, CC14, 결정 C8). 키 없이 돈다."""
 
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -118,6 +119,33 @@ def test_vessel_only_items_are_skipped_when_the_argument_is_off():
     plain, only = item(), item(id="N01", vessel_only=True)
     assert eval_run.runnable([plain, only], vessel=False) == [plain]
     assert eval_run.runnable([plain, only], vessel=True) == [plain, only]
+
+
+def v4_rows(ids):
+    return [{"id": i} for i in ids]
+
+
+def test_coverage_expects_the_runnable_set_of_the_whole_v4_set():
+    from marvia.eval.dataset import SET_V4_PATH, load_set
+    from marvia.eval.metrics import gate_uncovered
+
+    items = load_set(SET_V4_PATH).items
+    plain = [i.id for i in items if not i.vessel_only]
+    only = [i.id for i in items if i.vessel_only]
+    off, on = (eval_run.expected_items(items, v) for v in (False, True))
+    assert len(plain) == 30 and len(only) == 12
+    assert gate_uncovered(v4_rows(plain), off) == []  # (1)
+    assert gate_uncovered(v4_rows(plain + only[:-1]), on) == [f"빠짐: {only[-1]}"]  # (2)
+    assert gate_uncovered(v4_rows(plain[:-1]), off) == [f"빠짐: {plain[-1]}"]  # (3) 부분 실행
+    assert gate_uncovered(v4_rows(plain + only[:1]), off) == [f"셋에 없음: {only[0]}"]  # (4)
+
+
+def test_run_eval_script_checks_coverage_against_the_expected_set_not_the_loaded_items():
+    # [왜] 합성이 빠졌던 곳: 스크립트가 data.items 전체나 줄인 목록을 넘기면 끈 길 v4 실행이 전부 무효가 된다
+    src = (Path(__file__).resolve().parents[2] / "scripts" / "run_eval.py").read_text(encoding="utf-8")
+    src = "".join(src.split())  # 서식이 줄을 바꿔도 같다
+    assert 'gate_uncovered(rows,expected_items(data.items,args.vessel=="on"))' in src
+    assert "gate_uncovered(rows,by_id)" not in src
 
 
 def test_an_on_run_gives_the_card_the_items_reply_and_records_the_new_metrics(agent_deps):

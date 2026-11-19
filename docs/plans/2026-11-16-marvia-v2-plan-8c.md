@@ -598,3 +598,7 @@ T2~T3 깨 보기(시험이 처음 잡은 것): MC07, MC10, MC12, MC13, MC29, MC3
 | # | 고친 것 | 시험과 깨 보기 |
 |---|---|---|
 | R-195 | 켠 계획자 길, 켠 수퍼바이저 길의 한 차례가 위치·일정 사전을 비워 둔다(`keep` 거짓). 켠 에이전트 길은 `keep` 참이고 한 차례 뒤 사전이 비어 있다(rejudge가 지움) | `test_a_turn_on_each_on_path_leaves_the_fetch_cache_empty`(세 길). main.py가 `verdict_nodes(deps.now)`로 돌아가 `keep`을 무시하는 변이(KP)가 계획자 길에서 깨진다 [실측] |
+
+### R-196 (11-20)
+
+v4 끈 길 덮음 검사 오류를 첫 끈 길 실행에서 찾아 이 커밋에서 고쳤다(`run_eval.py`가 전체 문항으로 덮음을 봐 N01~N12가 "빠짐"이 됨). 기대 집합은 `expected_items`(전체에서 runnable만). 측정은 새 커밋에서 다시 시작한다.

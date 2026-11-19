@@ -62,6 +62,7 @@ from marvia.eval.run import (
     estimate,
     evaluate_item,
     existing_results,
+    expected_items,
     graph_setting_problem,
     halt_reason,
     inside_repo,
@@ -630,7 +631,13 @@ for model in models:
                     print(f"[멈춤] {item.id}: {halt}")
                     break
             summary = summarize(rows, by_id, k)
-            meta["problems"] = run_problems(meta, rows, summary, faults, gate_uncovered(rows, by_id))
+            meta["problems"] = run_problems(
+                meta,
+                rows,
+                summary,
+                faults,
+                gate_uncovered(rows, expected_items(data.items, args.vessel == "on")),
+            )
             save_result(out, name, meta, summary, rows, raws)  # 문항이 하나도 없어도 빈 파일을 남긴다
             print(json.dumps(summary, ensure_ascii=False))
             for problem in meta["problems"]:

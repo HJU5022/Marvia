@@ -161,6 +161,15 @@ def runnable(items: list[Item], vessel: bool) -> list[Item]:
     return [i for i in items if vessel or not i.vessel_only]
 
 
+def expected_items(items: list[Item], vessel: bool) -> dict[str, Item]:
+    """이 실행이 덮어야 할 문항 전부(번호 -> 문항). 줄인 목록이 아니라 전체에서 runnable만 남긴다.
+
+    [왜] 끈 길 실행은 켠 길 전용 문항을 돌리지 않으므로, 덮음 검사의 기대 집합도 같은 규칙이어야 한다.
+         부분 실행은 여전히 "빠짐"으로 무효가 된다.
+    """
+    return {i.id: i for i in runnable(items, vessel)}
+
+
 def replay_sha256() -> str:
     """배 재생 자료(세관·해수부·ShipFinder 폴더)의 파일 이름과 내용을 이은 sha256. 어느 자료로 잰 실행인가."""
     root = Path(__file__).resolve().parents[3] / "fixtures"
