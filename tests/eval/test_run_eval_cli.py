@@ -540,6 +540,43 @@ def test_the_vessel_comparison_refuses_a_file_given_twice_and_a_file_that_misses
     assert done.returncode != 0 and "셋에 없음: N01" in done.stderr
 
 
+def test_the_vessel_comparison_refuses_a_tagless_file_given_twice_by_any_spelling_of_its_path(tmp_path):
+    # [왜] R-211. 태그가 없는 파일은 경로로만 같음을 안다. 같은 파일을 심볼릭 링크나 ./ 로 불러도 거절한다
+    off = [vessel_file(tmp_path, f"off{i}", "off", full_rows("off"), tag=f"off{i}") for i in range(2)]
+    one = vessel_file(tmp_path, "tagless", "on", full_rows("on"))
+    other = vessel_file(tmp_path, "other", "on", full_rows("on"))
+    link = tmp_path / "link.json"
+    link.symlink_to(one)
+    args = ("--set", "v4", "--compare", "vessel")
+    for twin in (one, str(link), str(tmp_path / "." / "tagless.json")):
+        done = verdict(*args, "--on", one, twin, "--off", *off)
+        assert done.returncode != 0 and "두 번 들어왔다" in done.stderr, twin
+    assert verdict(*args, "--on", one, other, "--off", *off).returncode == 0  # 다른 파일이면 지난다
+
+
+def test_the_vessel_comparison_names_the_wrong_set_before_it_checks_coverage(tmp_path):
+    # [왜] R-213. --set이 틀리면 "셋에 없음"이 쏟아진다. 진짜 까닭인 평가셋 불일치를 먼저 말한다
+    on = [vessel_file(tmp_path, f"on{i}", "on", full_rows("on"), tag=f"on{i}") for i in range(2)]
+    off = [vessel_file(tmp_path, f"off{i}", "off", full_rows("off"), tag=f"off{i}") for i in range(2)]
+    done = verdict("--set", "v3", "--compare", "vessel", "--on", *on, "--off", *off)
+    assert done.returncode != 0 and "평가셋 v3 파일에서 돌린 결과가 아닌 것이 있다" in done.stderr
+    assert "셋에 없음" not in done.stderr
+
+
+def test_spread_and_floors_name_the_vessel_side_only_when_the_files_have_one():
+    # [왜] R-212. 켠 길과 끈 길 표의 머리가 같으면 구분이 안 된다. 옛 파일(meta.vessel 없음)의 글은 그대로다
+    def run(*cmd: str):
+        argv = [sys.executable, "scripts/run_eval.py", *cmd]
+        return subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)
+
+    table = run("spread", "--set", "v4", M8_ON[0], M8_OFF[0]).stdout
+    assert "배 판정 on," in table and "배 판정 off," in table
+    mixed = run("floors", M8_ON[0], M8_OFF[0], "--set", "v4")
+    assert mixed.returncode != 0 and "배 판정 켬 여부" in mixed.stderr
+    old = run("spread", "--set", "v3", *COMPARE_AGENT).stdout
+    assert old and "배 판정" not in old
+
+
 def test_the_agent_supervisor_verdict_refuses_a_file_given_twice(tmp_path):
     from marvia.eval.dataset import SET_V3_PATH, file_sha256
 

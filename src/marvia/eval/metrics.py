@@ -968,7 +968,11 @@ def spread_table(group: list[dict], set_label: str, stats: dict) -> str:
     lines = [
         f"### {meta['loop']} {meta['model']} "
         f"(커밋 {meta.get('commit', '?')}, 그래프 {meta.get('graph', 'off')}, "
-        f"검색 {meta.get('rag_via', 'direct')}, LLM {meta.get('llm_via', 'api')}, {set_label})",
+        f"검색 {meta.get('rag_via', 'direct')}, LLM {meta.get('llm_via', 'api')}, "
+        + (
+            f"배 판정 {meta['vessel']}, " if "vessel" in meta else ""
+        )  # [왜] 켠 길과 끈 길 표를 구분한다 (R-212)
+        + f"{set_label})",
         "",
         "평균 낸 실행: " + ", ".join(r["meta"].get("tag") or "(태그 없음)" for r in group),
         "",

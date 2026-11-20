@@ -210,7 +210,11 @@ if args.command == "floors":
     try:
         # [왜] 길·모델·커밋·그래프·검색 길·LLM 길이 같은 실행끼리만 한 문으로 묶는다. 무효 실행도 거절한다
         if len(spread_groups(runs)) != 1:
-            raise ValueError("같은 설정(길, 모델, 커밋, 그래프, 검색 길)의 실행만 함께 넘긴다")
+            # [왜] 옛 파일(meta.vessel 없음)의 글은 그대로 두고, 있을 때만 켠 길 여부를 말한다 (R-212)
+            what = "길, 모델, 커밋, 그래프, 검색 길" + (
+                ", 배 판정 켬 여부" if any("vessel" in r["meta"] for r in runs) else ""
+            )
+            raise ValueError(f"같은 설정({what})의 실행만 함께 넘긴다")
     except ValueError as error:
         raise SystemExit(str(error)) from None
     k = result["meta"]["k"]
@@ -321,6 +325,9 @@ if args.command == "verdict":
         ]
         if wrong:
             raise SystemExit(f"--on과 --off에 다른 쪽 실행이 섞였다: {wrong}")
+        # [왜] 평가셋 파일이 다르면 기대 문항도 다르다. 덮음 검사보다 먼저 봐서 진짜 까닭을 말하게 한다
+        if any(meta["set_sha256"] != file_sha256(set_path) for meta in metas):
+            raise SystemExit(f"평가셋 {args.set} 파일에서 돌린 결과가 아닌 것이 있다")
         # [왜] 줄이 기대 문항(끈 길은 켠 길 전용을 뺀 것)을 빠짐없이 한 번씩 덮는지 파일마다 다시 센다.
         #      실행기가 meta.problems에 적은 값만 믿지 않는다 (11-20 R-201)
         for side, runs_, names in (("on", on, args.on), ("off", off, args.off)):
@@ -329,8 +336,6 @@ if args.command == "verdict":
                 if gap := gate_uncovered(run_["rows"], expected):
                     raise SystemExit(f"{name}: --{side} 실행이 문항을 다 덮지 못했다: {', '.join(gap)}")
         excluded = excluded_runs(args.invalid)  # [왜] 거절은 판정 전에 한다. 점수를 보고 실행을 고르지 못하게
-        if any(meta["set_sha256"] != file_sha256(set_path) for meta in metas):
-            raise SystemExit(f"평가셋 {args.set} 파일에서 돌린 결과가 아닌 것이 있다")
         if len({(m["commit"], m["model"], m["loop"], m.get("llm_via", "api")) for m in metas}) != 1:
             raise SystemExit("켠 길과 끈 길의 실행 조건(커밋, 모델, 길, LLM 길)이 다르다")
         by_id = {i.id: i for i in load_set(set_path).items}
