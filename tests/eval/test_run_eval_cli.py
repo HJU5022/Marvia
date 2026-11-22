@@ -718,3 +718,68 @@ def test_the_graph_verdict_refuses_a_file_without_problems_a_short_file_and_anot
     short_off = shorten(graph_files(tmp_path, "off", n=1, name="t"))
     done = verdict("--compare", "graph", "--set", "v3", "--off", *off[:4], *short_off, "--on", *on)
     assert done.returncode != 0 and "--off 실행이 문항을 다 덮지 못했다" in done.stderr
+
+
+# 그래프 측정(커밋 df7dd48, 11-22): 켠 길 다섯(g4onr3은 g4on·g4onr2가 무효라 다시 돈 것), 끈 길 다섯, v3
+G = "eval/results/agent-claude-haiku-5-5-"
+G_ON = [f"{G}{n}.json" for n in ("g1on", "g2on", "g3on", "g4onr3", "g5on")]
+G_OFF = [f"{G}g{n}off.json" for n in range(1, 6)]
+G_VERDICT = ROOT / "eval/results/verdict-graph-df7dd48.json"
+# [왜] 이름이 retrieval-*.json이면 test_retrieval.py의 공식 묶음 시험이 이 파일을 공식 값으로 읽는다
+G_OFFLINE = [
+    f"eval/results/offline-graph-{name}-{side}-{n}.json"
+    for name in ("v3", "rset_v1")
+    for side in ("off", "on")
+    for n in (1, 2)
+]
+
+
+def test_the_graph_measurement_runs_are_valid_runs_of_one_condition():
+    from marvia.eval.dataset import SET_V3_PATH, file_sha256, load_set
+    from marvia.eval.metrics import summarize
+
+    items = {item.id: item for item in load_set(SET_V3_PATH).items}
+    for name, graph in [*[(n, "on") for n in G_ON], *[(n, "off") for n in G_OFF]]:
+        result = json.loads((ROOT / name).read_text(encoding="utf-8"))
+        meta, rows = result["meta"], result["rows"]
+        picked = {k: meta[k] for k in ("commit", "llm_via", "set", "problems", "graph", "rag_via", "vessel")}
+        assert picked == {
+            "commit": "df7dd48",
+            "llm_via": "cli",
+            "set": "v3",
+            "problems": [],
+            "graph": graph,
+            "rag_via": "direct",
+            "vessel": "off",
+        }, name
+        assert meta["set_sha256"] == file_sha256(SET_V3_PATH), name
+        assert len(rows) == 30 and not any(row["error"] or row["leak"] for row in rows), name
+        # [왜] 답 본문은 결과 파일에 두지 않는다. 줄에는 행동, 인용한 근거 번호, 센 값만 있다
+        assert not {"answer", "text", "question"} & {key for row in rows for key in row}, name
+        again = summarize(rows, items, meta["k"])
+        assert {k: again[k] for k in result["summary"]} == result["summary"], name
+
+
+def test_the_graph_offline_files_hold_unit_ids_and_counts_only():
+    for name in G_OFFLINE:
+        result = json.loads((ROOT / name).read_text(encoding="utf-8"))
+        assert result["meta"]["commit"] == "df7dd48", name
+        for row in result["rows"]:
+            # [왜] 질문 글이나 단위 본문은 없다. 번호와 숫자와 불리언뿐이다 (importer_question은 불리언 표시)
+            texts = [v for v in row.values() if isinstance(v, str)]
+            assert all(len(v) < 60 for v in texts), name
+            assert not {"question", "text", "answer", "content"} & set(row), name
+
+
+def test_the_graph_measurement_runs_give_the_stored_graph_verdict_again():
+    # [왜] 저장한 판정에는 무효로 다시 돈 g4on·g4onr2를 적은 invalid_runs가 있다. 그 두 파일은 저장소 밖이라
+    #      이 시험은 --invalid 없이 다시 돌려, invalid_runs 키만 뺀 나머지가 저장한 판정과 같은지 본다
+    done = verdict("--compare", "graph", "--set", "v3", "--off", *G_OFF, "--on", *G_ON)
+    assert done.returncode == 0, done.stderr
+    stored = json.loads(G_VERDICT.read_text(encoding="utf-8"))
+    assert [r["file"] for r in stored.pop("invalid_runs")] == [
+        "agent-claude-haiku-5-5-g4on.json",
+        "agent-claude-haiku-5-5-g4onr2.json",
+    ]
+    printed = json.loads(done.stdout)
+    assert printed == stored and printed["verdict"] == "구분 못 함"

@@ -1,0 +1,85 @@
+{
+ "compare": "graph",
+ "set": "v3",
+ "commit": "df7dd48",
+ "model": "claude-haiku-5-5",
+ "loop": "agent",
+ "llm_via": "cli",
+ "rag_via": "direct",
+ "vessel": "off",
+ "invalid_runs": [
+  {
+   "file": "agent-claude-haiku-5-5-g4on.json",
+   "problems": [
+    "검색 길이 실패한 문항: R15"
+   ]
+  },
+  {
+   "file": "agent-claude-haiku-5-5-g4onr2.json",
+   "problems": [
+    "평가셋 문항을 다 덮지 못했다: 빠짐: R15, 빠짐: U01, 빠짐: U02, 빠짐: U03, 빠짐: U04, 빠짐: U05, 빠짐: U06, 빠짐: U07, 빠짐: U08, 빠짐: U09, 빠짐: U10, 빠짐: B01, 빠짐: B02, 빠짐: B03, 빠짐: B04, 빠짐: B05",
+    "errors 1",
+    "검색 길이 실패한 문항: R14"
+   ]
+  }
+ ],
+ "precheck": {
+  "behaviour_accuracy": {
+   "mean": 0.94,
+   "low": 0.8667,
+   "high": 0.9333,
+   "ok": false
+  },
+  "correct_citation": {
+   "mean": 0.7167,
+   "low": 0.5834,
+   "high": 0.9166,
+   "ok": true
+  },
+  "ok": false
+ },
+ "gates": {
+  "errors": 0,
+  "leaks": 0,
+  "ok": true
+ },
+ "lines": {
+  "cap_stops": {
+   "off": 3,
+   "on": 3,
+   "ok": true
+  },
+  "behaviour_accuracy": {
+   "off": 0.94,
+   "on": 0.9267,
+   "ok": true
+  },
+  "correct_citation": {
+   "off": 0.8167,
+   "on": 0.85,
+   "ok": true
+  },
+  "unsupported": {
+   "off": 0.0,
+   "on": 0.0,
+   "ok": true
+  }
+ },
+ "calls": {
+  "off": 9.0,
+  "on": 8.0,
+  "ratio": 0.89,
+  "ok": true
+ },
+ "right_items": {
+  "behaviour": {
+   "off": 29,
+   "on": 29
+  },
+  "citation": {
+   "off": 10,
+   "on": 11
+  }
+ },
+ "verdict": "구분 못 함"
+}
