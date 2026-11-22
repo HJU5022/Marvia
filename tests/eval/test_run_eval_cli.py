@@ -613,13 +613,15 @@ def test_the_vessel_comparison_refuses_runs_of_different_commits_models_or_loops
     assert json.loads(done.stdout)["detector_hit_sentences"] == {"on/N01": ["[BL1]의 판정은 경계예요."]}
 
 
-def graph_files(tmp_path: Path, graph: str, n: int = 5, name: str = "g", **meta_more) -> list[str]:
+def graph_files(
+    tmp_path: Path, graph: str, n: int = 5, name: str = "g", row_more=None, drop=(), **meta_more
+) -> list[str]:
     """그래프 비교용 결과 파일 n개. 줄은 평가셋 v3의 모든 문항마다 하나(답했고 인용은 없다)."""
     from marvia.eval.dataset import SET_V3_PATH, file_sha256, load_set
 
     rows = [
         {"id": i.id, "loop": "agent", "behaviour": "answer", "cited": [], "evidence": [], "retrieved": [],
-         "calc": {}, "llm_calls": 5, "failed": [], "leak": False, "error": None}
+         "calc": {}, "llm_calls": 5, "failed": [], "leak": False, "error": None} | (row_more or {})
         for i in load_set(SET_V3_PATH).items
     ]  # fmt: skip
     meta = {"loop": "agent", "commit": "abc1234", "set": "v3", "set_sha256": file_sha256(SET_V3_PATH),
@@ -627,7 +629,7 @@ def graph_files(tmp_path: Path, graph: str, n: int = 5, name: str = "g", **meta_
     paths = []
     for i in range(n):
         path = tmp_path / f"{name}{graph}{i}.json"
-        meta_i = meta | {"tag": f"{name}{graph}{i}"} | meta_more
+        meta_i = {k: v for k, v in meta.items() if k not in drop} | {"tag": f"{name}{graph}{i}"} | meta_more
         path.write_text(json.dumps({"meta": meta_i, "rows": rows}), encoding="utf-8")
         paths.append(str(path))
     return paths
@@ -664,3 +666,55 @@ def test_the_graph_verdict_refuses_mixed_sides_wrong_conditions_and_invalid_runs
     # 무효 실행은 --invalid로 적기만 한다. 다시 돈 실행으로 판정한다
     done = verdict(*args, "--off", *off, "--on", *on, "--invalid", broken[0])
     assert json.loads(done.stdout)["invalid_runs"][0]["problems"] == ["errors 1"]
+
+
+def test_the_graph_verdict_reads_off_as_the_baseline_and_on_as_the_candidate(tmp_path):
+    # [왜] R-215. 두 쪽 줄이 같으면 자리를 바꿔도 출력이 같다. 켠 길에만 오류 줄, 호출 두 배, 다른 행동을 두어
+    #      자리, 이름, 사전 검사 쪽(끈 길)이 하나라도 뒤집히면 이 시험이 깨지게 한다
+    from marvia.eval.dataset import SET_V2_PATH, load_set
+    from marvia.eval.metrics import precheck
+    from marvia.tools.rules import load_rules
+
+    off = graph_files(tmp_path, "off")
+    on = graph_files(tmp_path, "on", row_more={"behaviour": "not_found", "llm_calls": 10})
+    on_err = graph_files(tmp_path, "on", n=1, name="e", row_more={"error": "boom", "llm_calls": 10})
+    out = json.loads(
+        verdict("--compare", "graph", "--set", "v3", "--off", *off, "--on", *on[:4], *on_err).stdout
+    )
+    assert out["gates"]["errors"] == 30  # 켠 길(후보) 쪽 오류만 문에 센다
+    assert out["verdict"] == "짐"
+    assert out["calls"] == {"off": 5, "on": 10, "ratio": 2.0, "ok": False}  # 끈 길 5, 켠 길 10
+    assert out["lines"]["behaviour_accuracy"]["off"] > out["lines"]["behaviour_accuracy"]["on"]
+    # 사전 검사는 끈 길 줄을 v2 정답으로 센 값이다. 켠 길 줄로 세면 값이 다르다
+    items = {i.id: i for i in load_set(SET_V2_PATH).items}
+    rule = load_rules("eval")["comparison"]["precheck"]
+    rows = lambda files: json.loads(Path(files[0]).read_text(encoding="utf-8"))["rows"]  # noqa: E731
+    want = precheck([rows(off)] * 5, items, rule)
+    wrong = precheck([rows(on)] * 5, items, rule)
+    assert want != wrong and out["precheck"] == want
+
+
+def test_the_graph_verdict_refuses_a_file_without_problems_a_short_file_and_another_set(tmp_path):
+    # [왜] R-215. 세 거절을 하나씩 따로 걸어, 하나를 지워도 다른 거절이 대신 잡지 못하게 한다
+    off, on = graph_files(tmp_path, "off"), graph_files(tmp_path, "on")
+    args = ("--compare", "graph", "--set", "v3", "--off", *off)
+    nokey = graph_files(tmp_path, "on", n=1, name="n", drop=("problems",))  # 끝난 적 없는 실행
+    done = verdict(*args, "--on", *on[:4], *nokey)
+    assert done.returncode != 0 and "무효이거나 끝나지 않은" in done.stderr
+
+    def shorten(files: list[str]) -> list[str]:
+        data = json.loads(Path(files[0]).read_text(encoding="utf-8"))
+        data["rows"] = data["rows"][:-1]  # problems는 비었는데 줄이 하나 빠진 파일
+        Path(files[0]).write_text(json.dumps(data), encoding="utf-8")
+        return files
+
+    short = shorten(graph_files(tmp_path, "on", n=1, name="s"))
+    done = verdict(*args, "--on", *on[:4], *short)
+    assert done.returncode != 0 and "다 덮지 못했다" in done.stderr
+    other = graph_files(tmp_path, "on", n=1, name="o", set_sha256="0" * 64)
+    done = verdict(*args, "--on", *on[:4], *other)
+    assert done.returncode != 0 and "파일에서 돌린 결과가 아닌" in done.stderr
+    # 같은 이유로 끈 길 쪽 파일도 본다
+    short_off = shorten(graph_files(tmp_path, "off", n=1, name="t"))
+    done = verdict("--compare", "graph", "--set", "v3", "--off", *off[:4], *short_off, "--on", *on)
+    assert done.returncode != 0 and "--off 실행이 문항을 다 덮지 못했다" in done.stderr
