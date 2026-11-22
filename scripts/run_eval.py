@@ -126,12 +126,13 @@ verdict_cmd.add_argument("--agent", nargs="+", help="에이전트 길 결과 파
 verdict_cmd.add_argument("--supervisor", nargs="+", help="수퍼바이저 길 결과 파일들")
 verdict_cmd.add_argument(
     "--compare",
-    choices=["paths", "vessel"],
+    choices=["paths", "vessel", "graph"],
     default="paths",
-    help="paths: 에이전트 길 대 수퍼바이저 길(--agent, --supervisor). vessel: 켠 길 대 끈 길(--on, --off)",
+    help="paths: 에이전트 길 대 수퍼바이저 길(--agent, --supervisor). "
+    "vessel: 배 판정 켠 길 대 끈 길(--on, --off). graph: 그래프 켠 길 대 끈 길(--on, --off)",
 )
-verdict_cmd.add_argument("--on", nargs="+", help="--compare vessel: 켠 길(--vessel on) 결과 파일들")
-verdict_cmd.add_argument("--off", nargs="+", help="--compare vessel: 끈 길(--vessel off) 결과 파일들")
+verdict_cmd.add_argument("--on", nargs="+", help="--compare vessel·graph: 켠 길 결과 파일들")
+verdict_cmd.add_argument("--off", nargs="+", help="--compare vessel·graph: 끈 길 결과 파일들")
 verdict_cmd.add_argument("--set", choices=list(SETS), default="v3", help="판정에 쓰는 평가셋 판")
 verdict_cmd.add_argument(
     "--invalid",
@@ -361,6 +362,61 @@ if args.command == "verdict":
         if args.invalid:
             result["invalid_runs"] = excluded
         print(json.dumps(result, ensure_ascii=False, indent=1))
+        raise SystemExit(0)
+    if args.compare == "graph":
+        # [왜] 계획 3b 사전 등록 고침 2. 끈 길(A)을 기준선 자리, 켠 길(B)을 후보 자리에 두고
+        #      7b 비교 규칙(rules/eval.yaml comparison)으로 판정한다. 파일 검사는 배 판정 비교와 같다
+        if not (args.on and args.off):
+            raise SystemExit("--compare graph에는 --on과 --off가 모두 필요하다")
+        on, off = load(args.on), load(args.off)
+        refuse_duplicates("on", args.on, on)
+        refuse_duplicates("off", args.off, off)
+        metas = [r["meta"] for r in (*on, *off)]
+        # [왜] 무효(meta.problems가 있거나 그 칸이 없는 끝난 적 없는 실행)는 세지 않고 다시 돈다.
+        #      --invalid로 적는다
+        bad = [r["meta"].get("tag") or "(태그 없음)" for r in (*on, *off) if r["meta"].get("problems") != []]
+        if bad:
+            raise SystemExit(
+                f"무효이거나 끝나지 않은 실행은 판정에 넣지 않는다 (meta.problems): {', '.join(bad)}"
+            )
+        wrong = [
+            m.get("graph")
+            for r, want in ((on, "on"), (off, "off"))
+            for m in (x["meta"] for x in r)
+            if m.get("graph") != want
+        ]
+        if wrong:
+            raise SystemExit(f"--on과 --off에 meta.graph가 맞지 않는 실행이 섞였다: {wrong}")
+        if any(meta["set_sha256"] != file_sha256(set_path) for meta in metas):
+            raise SystemExit(f"평가셋 {args.set} 파일에서 돌린 결과가 아닌 것이 있다")
+        # [왜] 그래프 비교는 배 판정을 끈 길이라 두 쪽 모두 켠 길 전용을 뺀 문항을 덮어야 한다
+        #      (R-201과 같은 재계산)
+        expected = expected_items(load_set(set_path).items, False)
+        for side, runs_, names in (("on", on, args.on), ("off", off, args.off)):
+            for name, run_ in zip(names, runs_, strict=True):
+                if gap := gate_uncovered(run_["rows"], expected):
+                    raise SystemExit(f"{name}: --{side} 실행이 문항을 다 덮지 못했다: {', '.join(gap)}")
+        excluded = excluded_runs(args.invalid)  # [왜] 거절은 판정 전에 한다. 점수를 보고 실행을 고르지 못하게
+        fields = ("commit", "model", "loop", "llm_via", "rag_via", "vessel")
+        defaults = {"llm_via": "api", "rag_via": "direct"}
+        if len({tuple(m.get(k, defaults.get(k)) for k in fields) for m in metas}) != 1:
+            raise SystemExit("켠 길과 끈 길의 실행 조건(커밋, 모델, 길, LLM 길, 검색 길, 배 판정)이 다르다")
+        try:
+            result = compare_paths(
+                [r["rows"] for r in off],
+                [r["rows"] for r in on],
+                {i.id: i for i in load_set(set_path).items},
+                load_rules("eval")["comparison"],
+                labels=("off", "on"),
+            )
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
+        rule = load_rules("eval")["comparison"]["precheck"]
+        stored = {i.id: i for i in load_set(SETS[rule["set"]]).items}
+        head = {"compare": "graph", "set": args.set} | {k: metas[0].get(k, defaults.get(k)) for k in fields}
+        head |= {"invalid_runs": excluded} if args.invalid else {}
+        head["precheck"] = precheck([r["rows"] for r in off], stored, rule)
+        print(json.dumps(head | result, ensure_ascii=False, indent=1))
         raise SystemExit(0)
     if not (args.agent and args.supervisor):
         raise SystemExit("--compare paths에는 --agent와 --supervisor가 모두 필요하다")

@@ -611,3 +611,56 @@ def test_the_vessel_comparison_refuses_runs_of_different_commits_models_or_loops
         assert done.returncode != 0 and "실행 조건" in done.stderr, field
     done = verdict("--set", "v4", "--compare", "vessel", "--on", one("on", "on"), "--off", off)
     assert json.loads(done.stdout)["detector_hit_sentences"] == {"on/N01": ["[BL1]의 판정은 경계예요."]}
+
+
+def graph_files(tmp_path: Path, graph: str, n: int = 5, name: str = "g", **meta_more) -> list[str]:
+    """그래프 비교용 결과 파일 n개. 줄은 평가셋 v3의 모든 문항마다 하나(답했고 인용은 없다)."""
+    from marvia.eval.dataset import SET_V3_PATH, file_sha256, load_set
+
+    rows = [
+        {"id": i.id, "loop": "agent", "behaviour": "answer", "cited": [], "evidence": [], "retrieved": [],
+         "calc": {}, "llm_calls": 5, "failed": [], "leak": False, "error": None}
+        for i in load_set(SET_V3_PATH).items
+    ]  # fmt: skip
+    meta = {"loop": "agent", "commit": "abc1234", "set": "v3", "set_sha256": file_sha256(SET_V3_PATH),
+            "model": "m", "llm_via": "cli", "graph": graph, "vessel": "off", "problems": []}  # fmt: skip
+    paths = []
+    for i in range(n):
+        path = tmp_path / f"{name}{graph}{i}.json"
+        meta_i = meta | {"tag": f"{name}{graph}{i}"} | meta_more
+        path.write_text(json.dumps({"meta": meta_i, "rows": rows}), encoding="utf-8")
+        paths.append(str(path))
+    return paths
+
+
+def test_the_graph_verdict_puts_off_in_the_baseline_slot_and_labels_the_sides_off_and_on(tmp_path):
+    # [왜] 계획 3b 사전 등록 고침 2. 끈 길이 기준선 자리, 켠 길이 후보 자리. 출력에 agent/supervisor는 없다
+    off, on = graph_files(tmp_path, "off"), graph_files(tmp_path, "on")
+    done = verdict("--compare", "graph", "--set", "v3", "--off", *off, "--on", *on)
+    assert done.returncode == 0, done.stderr
+    out = json.loads(done.stdout)
+    assert out["verdict"] == "구분 못 함" and out["compare"] == "graph" and "precheck" in out
+    assert set(out["calls"]) == {"off", "on", "ratio", "ok"} and "invalid_runs" not in out
+    assert set(out["right_items"]["behaviour"]) == {"off", "on"}
+    assert set(out["lines"]["behaviour_accuracy"]) == {"off", "on", "ok"}
+    assert '"agent":' not in done.stdout and '"supervisor":' not in done.stdout
+
+
+def test_the_graph_verdict_refuses_mixed_sides_wrong_conditions_and_invalid_runs(tmp_path):
+    off, on = graph_files(tmp_path, "off"), graph_files(tmp_path, "on")
+    args = ("--compare", "graph", "--set", "v3")
+    swapped = verdict(*args, "--off", *on, "--on", *off)  # 켠 길 파일이 --off로
+    assert swapped.returncode != 0 and "meta.graph가 맞지 않는" in swapped.stderr
+    mixed = verdict(*args, "--off", *off[:4], on[0], "--on", *on)
+    assert mixed.returncode != 0 and "meta.graph가 맞지 않는" in mixed.stderr
+    other = graph_files(tmp_path, "on", name="x", commit="zzz9999")
+    done = verdict(*args, "--off", *off, "--on", *other)
+    assert done.returncode != 0 and "실행 조건" in done.stderr
+    twice = verdict(*args, "--off", *off[:4], off[0], "--on", *on)
+    assert twice.returncode != 0 and "두 번 들어왔다" in twice.stderr
+    broken = graph_files(tmp_path, "on", name="y", problems=["errors 1"])
+    done = verdict(*args, "--off", *off, "--on", *on[:4], broken[0])
+    assert done.returncode != 0 and "무효이거나 끝나지 않은" in done.stderr
+    # 무효 실행은 --invalid로 적기만 한다. 다시 돈 실행으로 판정한다
+    done = verdict(*args, "--off", *off, "--on", *on, "--invalid", broken[0])
+    assert json.loads(done.stdout)["invalid_runs"][0]["problems"] == ["errors 1"]

@@ -766,7 +766,11 @@ def _right_items(runs: list[list[dict]], right: Callable[[dict], bool], majority
 
 
 def compare_paths(
-    agent: list[list[dict]], supervisor: list[list[dict]], items: dict[str, Item], rule: dict
+    agent: list[list[dict]],
+    supervisor: list[list[dict]],
+    items: dict[str, Item],
+    rule: dict,
+    labels: tuple[str, str] = ("agent", "supervisor"),
 ) -> dict:
     """에이전트 길과 수퍼바이저 길의 실행 줄들을 미리 정한 기준으로 견줘 판정한다 (계획 7b 사전 등록).
 
@@ -775,7 +779,11 @@ def compare_paths(
           calls(호출 수 줄), right_items(여러 번 맞은 문항 수),
           verdict("이김" | "구분 못 함" | "짐"). 이김일 때만 기본 길을 바꾼다.
     주의: 잘못된 근거, R@k, 궤적, 라우팅은 판정에 넣지 않는다. 보고만 한다.
+    labels: 출력에서 기준선 쪽과 후보 쪽을 부르는 이름. [왜] 그래프 켠 길 대 끈 길(--compare graph)은
+            기준선 자리에 끈 길, 후보 자리에 켠 길을 두므로 agent/supervisor가 보이면 길로 오해한다.
+            기본값이면 출력이 그대로다(저장한 판정이 바이트까지 같게 다시 나온다)
     """
+    base_name, cand_name = labels
     if len(agent) != rule["runs"] or len(supervisor) != rule["runs"]:
         raise ValueError(f"길마다 실행 {rule['runs']}개가 있어야 한다: {len(agent)}개, {len(supervisor)}개")
 
@@ -789,7 +797,7 @@ def compare_paths(
     #      문이 아니라 낮지 않음 줄이다: 폭을 넘으면 이김이 아닐 뿐 짐은 아니다 (11-13 고침)
     ours, theirs = sum(cap_stops(rows) for rows in supervisor), sum(cap_stops(rows) for rows in agent)
     lines: dict = {
-        "cap_stops": {"agent": theirs, "supervisor": ours, "ok": ours <= theirs + rule["cap_stop_slack"]}
+        "cap_stops": {base_name: theirs, cand_name: ours, "ok": ours <= theirs + rule["cap_stop_slack"]}
     }
     for name, metric, higher in (
         ("behaviour_accuracy", behaviour_accuracy, True),
@@ -802,7 +810,7 @@ def compare_paths(
         slack = rule["slack_items"] / theirs[0]["n"]
         mine, base = statistics.fmean(m["value"] for m in ours), statistics.fmean(m["value"] for m in theirs)
         ok = mine >= base - slack if higher else mine <= base + slack
-        lines[name] = {"agent": round(base, 4), "supervisor": round(mine, 4), "ok": ok}
+        lines[name] = {base_name: round(base, 4), cand_name: round(mine, 4), "ok": ok}
 
     def median(runs: list[list[dict]]) -> float:
         return statistics.median(
@@ -811,7 +819,7 @@ def compare_paths(
 
     ratio = median(supervisor) / median(agent)
     # [주의] 기준과는 반올림하지 않은 값으로 견준다(사전 등록: "1.5배 이하"). 보이는 값만 둘째 자리까지다
-    calls = {"agent": median(agent), "supervisor": median(supervisor), "ratio": round(ratio, 2)}
+    calls = {base_name: median(agent), cand_name: median(supervisor), "ratio": round(ratio, 2)}
     calls["ok"] = ratio <= rule["max_call_ratio"]
 
     def cited(r: dict) -> bool:
@@ -822,15 +830,15 @@ def compare_paths(
 
     right_items = {
         "behaviour": {
-            "agent": _right_items(agent, behaved, rule["majority"]),
-            "supervisor": _right_items(supervisor, behaved, rule["majority"]),
+            base_name: _right_items(agent, behaved, rule["majority"]),
+            cand_name: _right_items(supervisor, behaved, rule["majority"]),
         },
         "citation": {
-            "agent": _right_items(agent, cited, rule["majority"]),
-            "supervisor": _right_items(supervisor, cited, rule["majority"]),
+            base_name: _right_items(agent, cited, rule["majority"]),
+            cand_name: _right_items(supervisor, cited, rule["majority"]),
         },
     }
-    gaps = [pair["supervisor"] - pair["agent"] for pair in right_items.values()]
+    gaps = [pair[cand_name] - pair[base_name] for pair in right_items.values()]
     held = gates["ok"] and all(line["ok"] for line in lines.values()) and calls["ok"]
     if not gates["ok"] or min(gaps) <= -rule["margin_items"]:
         verdict = "짐"
