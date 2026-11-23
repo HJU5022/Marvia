@@ -145,9 +145,48 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# [왜] 임시 CLI 배포(11-24)가 rules/agent.yaml의 llm.cli_env에 이름 둘(로그인 토큰, 자동 갱신 끄기)만 더했다.
+#      CLI 길의 자식 프로세스에 넘기는 환경 변수 이름이라 그 변수가 없으면(측정 때처럼) 달라지는 것이 없다.
+#      이 두 줄만 측정 때의 한 줄로 되돌려 해시를 보면, 파일의 나머지가 측정 커밋과 같음을 계속 지킨다
+CLI_ENV_NOW = (
+    "  # 토큰은 이름만 적는다(값은 배포 비밀). 둘째는 서버 CLI의 자동 갱신을 끈다. 없으면 넘기지 않는다\n"
+    "  cli_env: [PATH, HOME, USER, CLAUDE_CODE_OAUTH_TOKEN, DISABLE_AUTOUPDATER]\n"
+)
+CLI_ENV_MEASURED = "  cli_env: [PATH, HOME, USER]\n"
+# [왜] 서버 시작의 `claude --version`이 환경 전체를 받지 않게 cli_version()이 env를 넘긴다(11-24).
+#      이 호출 하나만 되돌린다
+CLI_VERSION_NOW = (
+    "    # [왜] 서버 시작에서도 부른다. 환경 전체(DB 주소, 키)를 넘기지 않고 호출 때와 같은 이름만 넘긴다\n"
+    "    done = subprocess.run(  # noqa: S603\n"
+    '        ["claude", "--version"],  # noqa: S607\n'
+    "        capture_output=True,\n"
+    "        text=True,\n"
+    "        timeout=30,\n"
+    "        env=ClaudeCLIChat._env(),\n"
+    "    )\n"
+)
+CLI_VERSION_MEASURED = (
+    '    done = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=30)'
+    "  # noqa: S603, S607\n"
+)
+
+
 def _group_sha(patterns: list[str]) -> tuple[str, int]:
     files = sorted({p for pattern in patterns for p in ROOT.glob(pattern)})
-    return _sha("".join(f"{p.relative_to(ROOT)}\n{p.read_text(encoding='utf-8')}" for p in files)), len(files)
+    texts = [
+        p.read_text(encoding="utf-8")
+        .replace(CLI_ENV_NOW, CLI_ENV_MEASURED)
+        .replace(CLI_VERSION_NOW, CLI_VERSION_MEASURED)
+        for p in files
+    ]
+    return _sha("".join(f"{p.relative_to(ROOT)}\n{t}" for p, t in zip(files, texts, strict=True))), len(files)
+
+
+def test_the_cli_env_change_is_exactly_the_two_added_names():
+    # [왜] 위 되돌리기(더한 두 이름: 로그인 토큰, 자동 갱신 끄기)가 실제로 걸리는지,
+    #      문장이 어긋나 조용히 아무것도 안 바꾸는 일을 막는다
+    assert CLI_ENV_NOW in (ROOT / "rules/agent.yaml").read_text(encoding="utf-8")
+    assert CLI_VERSION_NOW in (ROOT / "src/marvia/cli_model.py").read_text(encoding="utf-8")
 
 
 def test_every_measured_file_group_is_that_of_the_measurement_commit():

@@ -99,7 +99,14 @@ def _workdir() -> Iterator[tuple[Path, Path]]:
 
 def cli_version() -> str:
     """설치된 CLI의 판 번호 글(`claude --version`). 평가 결과의 meta에 남긴다."""
-    done = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=30)  # noqa: S603, S607
+    # [왜] 서버 시작에서도 부른다. 환경 전체(DB 주소, 키)를 넘기지 않고 호출 때와 같은 이름만 넘긴다
+    done = subprocess.run(  # noqa: S603
+        ["claude", "--version"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=ClaudeCLIChat._env(),
+    )
     return done.stdout.strip()
 
 

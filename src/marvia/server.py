@@ -18,6 +18,7 @@ import logging
 import os
 import queue
 import re
+import subprocess
 import threading
 import traceback
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
@@ -406,10 +407,24 @@ def main() -> None:
     """운영 진입점: python -m marvia.server. 로그인 설정이 틀리면 뜨지 않는다. 포트는 PORT(Cloud Run)."""
     settings = Settings()
     verify = verifier(settings)  # [왜] 로그인 설정 검사를 DB에 붙기 전에 한다(fail-closed)
-    for key in ("anthropic_api_key", "voyage_api_key", "data_key"):
+    # [왜] cli 길(임시 배포, MARVIA_LLM_VIA=cli)은 Anthropic 키 대신 `claude`가 돌아야 한다
+    for key in ("anthropic_api_key" if settings.llm_via == "api" else "", "voyage_api_key", "data_key"):
         # [왜] 키 없이 뜨면 차례마다 실패한다. 배포 확인(dry-run)에서 바로 보이게 시작을 거절한다
-        if not getattr(settings, key).get_secret_value():
+        if key and not getattr(settings, key).get_secret_value():
             raise RuntimeError(f"MARVIA_{key.upper()}가 비어 있어 서버를 띄우지 않습니다")
+    if settings.llm_via == "cli":
+        from marvia.cli_model import cli_version
+
+        # [왜] Cloud Run에는 CLI 로그인 정보가 없다. 토큰이 비면 차례마다 실패해 시작을 거절한다(이름만 말함)
+        if os.environ.get("K_SERVICE") and not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+            raise RuntimeError("CLAUDE_CODE_OAUTH_TOKEN이 비어 있어 서버를 띄우지 않습니다")
+
+        try:
+            version = cli_version()
+        except (OSError, subprocess.SubprocessError):
+            version = ""
+        if not version:
+            raise RuntimeError("MARVIA_LLM_VIA=cli인데 `claude --version`이 돌지 않아 서버를 띄우지 않습니다")
     url = settings.database_url
     with (
         live_memory(url, settings.data_key.get_secret_value()) as (saver, store),

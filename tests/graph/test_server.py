@@ -247,6 +247,97 @@ def test_the_server_refuses_to_start_without_model_and_data_keys(monkeypatch, tm
         server.main()
 
 
+def cli_start_env(monkeypatch, tmp_path):
+    """CLI 길로 서버를 시작하는 환경: Anthropic 키는 없고 Voyage 키와 데이터 키는 있다."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MARVIA_ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    for name, value in {
+        "MARVIA_AUTH": "dev",
+        "MARVIA_DEV_TOKEN": "local-dev-token",
+        "MARVIA_LLM_VIA": "cli",
+        "MARVIA_VOYAGE_API_KEY": "k",
+        "MARVIA_DATA_KEY": "k",
+    }.items():
+        monkeypatch.setenv(name, value)
+    for name in TRACING_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_the_cli_route_starts_without_an_anthropic_key_but_only_if_claude_runs(monkeypatch, tmp_path):
+    # [왜] cli 길은 API 키 대신 `claude --version`이 도는지 본다. 안 돌면 차례마다 실패하니 시작을 거절한다
+    from marvia import cli_model, server
+
+    cli_start_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli_model, "cli_version", lambda: "")
+    with pytest.raises(RuntimeError, match="claude"):
+        server.main()
+
+    def missing():
+        raise FileNotFoundError("claude")
+
+    monkeypatch.setattr(cli_model, "cli_version", missing)
+    with pytest.raises(RuntimeError, match="claude"):
+        server.main()
+
+    # 도는 경우: 키 검사를 지나 DB 쪽(live_memory)까지 간다. 거기서 멈추게 가짜로 바꾼다
+    class Reached(Exception):
+        pass
+
+    def reached(*args, **kwargs):
+        raise Reached
+
+    monkeypatch.setattr(cli_model, "cli_version", lambda: "2.1.328 (Claude Code)")
+    monkeypatch.setattr(server, "live_memory", reached)
+    with pytest.raises(Reached):
+        server.main()
+
+
+def test_the_cli_route_on_cloud_run_needs_the_login_token_and_never_prints_it(monkeypatch, tmp_path):
+    # [왜] Cloud Run에는 CLI 로그인 정보가 없다. 토큰이 비면 차례마다 실패하니 시작에서 거절한다
+    from marvia import cli_model, server
+
+    cli_start_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli_model, "cli_version", lambda: "2.1.328 (Claude Code)")
+    monkeypatch.setattr(
+        server, "verifier", lambda settings: None
+    )  # [왜] 개발 로그인은 Cloud Run에서 거절된다
+    monkeypatch.setenv("K_SERVICE", "marvia-api")
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    with pytest.raises(RuntimeError, match="CLAUDE_CODE_OAUTH_TOKEN"):
+        server.main()
+
+    class Reached(Exception):
+        pass
+
+    def reached(*args, **kwargs):
+        raise Reached
+
+    monkeypatch.setattr(server, "live_memory", reached)
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-not-real-token")
+    with pytest.raises(Reached):
+        server.main()
+    # Cloud Run이 아니면(내 컴퓨터) 토큰이 없어도 된다. 내 로그인을 쓴다
+    monkeypatch.delenv("K_SERVICE")
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
+    with pytest.raises(Reached):
+        server.main()
+
+
+def test_the_cli_route_still_needs_the_voyage_and_data_keys(monkeypatch, tmp_path):
+    from marvia import cli_model, server
+
+    cli_start_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli_model, "cli_version", lambda: "2.1.328 (Claude Code)")
+    monkeypatch.delenv("MARVIA_VOYAGE_API_KEY")
+    with pytest.raises(RuntimeError, match="MARVIA_VOYAGE_API_KEY"):
+        server.main()
+    monkeypatch.setenv("MARVIA_VOYAGE_API_KEY", "k")
+    monkeypatch.delenv("MARVIA_DATA_KEY")
+    with pytest.raises(RuntimeError, match="MARVIA_DATA_KEY"):
+        server.main()
+
+
 def test_the_view_links_only_to_the_official_site_over_https(evidence):
     # [왜] 근거 패널의 링크는 국가법령정보센터(rules agent.yaml official.allowed_hosts)만 연다.
     #      javascript: 링크를 막는다

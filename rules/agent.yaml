@@ -9,7 +9,8 @@ llm:
   cli_timeout_s: 180
   # `claude -p` 프로세스(와 그 아래 도구 스텁)에 넘기는 환경 변수 이름. 나머지는 물려주지 않는다(키, DB 주소).
   # [왜] 11-13 실측: 이 셋이면 돈다. USER가 없으면 로그인 정보를 읽지 못해 "Not logged in"으로 끝난다
-  cli_env: [PATH, HOME, USER]
+  # 토큰은 이름만 적는다(값은 배포 비밀). 둘째는 서버 CLI의 자동 갱신을 끈다. 없으면 넘기지 않는다
+  cli_env: [PATH, HOME, USER, CLAUDE_CODE_OAUTH_TOKEN, DISABLE_AUTOUPDATER]
 
 loop:
   # 한 차례 LLM 호출 상한 (설계 6.4). 계획자 길: 계획자 다음 갈림길에서 닿았으면 finish.

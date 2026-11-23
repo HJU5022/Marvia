@@ -278,6 +278,40 @@ def test_the_cli_and_the_tool_stub_inherit_only_the_variables_the_cli_needs(pope
     assert set(run_seen["env"]) <= set(allowed)
 
 
+def test_the_version_check_at_server_start_also_gets_only_the_allowed_variables(monkeypatch):
+    # [왜] 서버 시작의 `claude --version`이 Cloud Run 환경 전체(DB 주소, 키)를 받지 않게 한다
+    for name in (
+        "MARVIA_DATABASE_URL",
+        "MARVIA_DATA_KEY",
+        "MARVIA_VOYAGE_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+    ):
+        monkeypatch.setenv(name, "not-real")
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen.update(command=command, env=kwargs["env"])
+        return type("Done", (), {"stdout": "2.1.328 (Claude Code)\n"})()
+
+    monkeypatch.setattr(cli_model.subprocess, "run", fake_run)
+    assert cli_model.cli_version() == "2.1.328 (Claude Code)"
+    assert seen["command"] == ["claude", "--version"]
+    assert set(seen["env"]) <= set(load_rules("agent")["llm"]["cli_env"])
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in seen["env"] and "MARVIA_DATABASE_URL" not in seen["env"]
+
+
+def test_the_deploy_variables_reach_the_cli_only_when_set(monkeypatch):
+    # [왜] 임시 CLI 배포(11-24): 로그인 토큰과 자동 갱신 끄기 변수는 있을 때만 자식 프로세스에 넘어간다
+    names = ("CLAUDE_CODE_OAUTH_TOKEN", "DISABLE_AUTOUPDATER")
+    assert set(names) <= set(load_rules("agent")["llm"]["cli_env"])
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    assert not set(names) & set(ClaudeCLIChat._env())
+    for name in names:
+        monkeypatch.setenv(name, "not-real")
+    assert set(names) <= set(ClaudeCLIChat._env())
+
+
 def test_the_cli_log_folder_must_be_outside_the_repo(tmp_path):
     # [왜] CLI 원본 출력에는 모델이 쓴 글이 있다. 저장소 안에 쌓이면 커밋에 섞일 수 있다
     with pytest.raises(RuntimeError, match="MARVIA_CLI_LOG"):
