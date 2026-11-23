@@ -132,6 +132,30 @@ Actions 탭에서 `deploy` 워크플로를 손으로 돌린다(`workflow_dispatc
 
 `MARVIA_GRAPH=on`으로 바꿀 때만 필요하다. 무료판 한도와 쉬는 조건은 확인하지 못했다 [미확인]. 그래프는 단위 7,412개, `REFERS_TO` 18,099개다(계획 3b). 켜면 `MARVIA_NEO4J_URL`·`MARVIA_NEO4J_PASSWORD`를 비밀로 더하고 `scripts/build_graph.py`로 적재한다.
 
+## API 잔액이 없을 때: CLI 경유 임시 배포
+
+Anthropic API 잔액이 없는 동안은 배포 서버도 내 Claude 계정의 Claude Code CLI로 모델을 부른다. 충전하면 되돌린다. 코드는 `MARVIA_LLM_VIA=cli`(기본값 `api`)로 가르고, 배포는 저장소 변수 `MARVIA_LLM_VIA`로 가른다. 변수가 비었거나 `api`면 위의 배포와 똑같이 돈다.
+
+1. 토큰은 내 터미널에서 `claude setup-token`으로 만든다. 화면에 나온 값을 복사해 둔다. 아래 2단계에서 붙여 넣은 뒤 곧바로 `pbcopy < /dev/null`로 클립보드를 비우고 `clear`로 화면을 지운다.
+2. 비밀에는 화면, 기록, 셸 히스토리에 남지 않게 넣는다:
+
+```bash
+read -rs T   # 붙여 넣고 엔터. 화면에 찍히지 않는다
+gcloud secrets create marvia-claude-token --replication-policy=automatic --project "$PROJECT_ID"
+printf %s "$T" | gcloud secrets versions add marvia-claude-token --data-file=- --project "$PROJECT_ID"
+unset T
+gcloud secrets add-iam-policy-binding marvia-claude-token --project "$PROJECT_ID" \
+  --member="serviceAccount:marvia-run@${PROJECT_ID}.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"
+```
+
+3. GitHub 저장소 변수 `MARVIA_LLM_VIA=cli`로 두고 `deploy`를 돌린다. 달라지는 것: 이미지는 `runtime-cli` 단계(Claude Code 2.1.328 바이너리가 더 들어 있다), 비밀은 `marvia-anthropic-key` 대신 `CLAUDE_CODE_OAUTH_TOKEN=marvia-claude-token`, 메모리 2Gi, 요청 시간 제한 900초. 근거는 형태소 분석기가 1GiB를 거의 다 쓰는데 CLI와 도구 프로세스가 더해지고, 한 차례에 CLI 호출이 약 8번이라는 것이다 [추정, 아직 재지 않음].
+   이미지에는 `DISABLE_AUTOUPDATER=1`을 넣어 CLI 자동 갱신을 끈다. Cloud Run의 쓰기 가능한 파일시스템이 메모리라, 새 판(약 373MB)을 받으면 인스턴스 메모리가 줄기 때문이다.
+4. 이 길은 내 Claude 계정의 개인 사용 한도로 돈다. 그래서 로그인은 나 한 사람(`MARVIA_OWNER_IDS`, 가입 끔)으로 둔다. 다른 사람에게 열지 않는다.
+5. 충전한 뒤에는 변수를 `api`로 바꾸거나 지우고 다시 배포한다. `marvia-claude-token`은 쓰지 않으면 지운다. 비밀을 지워도 토큰은 살아 있으니 Claude 계정 설정에서 취소한다. 취소하는 자리는 공식 문서(https://code.claude.com/docs/en/authentication)에 없어 확인하지 못했다.
+6. 이 길로 낸 답은 API로 잰 값과 섞어 견주지 않는다. 조건이 다르다(`meta.llm_via`).
+7. 배포 뒤 화면에서 질문을 한 번 해서 확인한다(유료 호출은 아니고 내 사용 한도를 쓴다). 서버는 `claude --version`이 돌고 토큰 값이 비어 있지 않은지만 시작에서 본다. 토큰이 맞는지는 보지 않는다.
+8. 토큰은 한 해짜리다(공식 문서 https://code.claude.com/docs/en/authentication, "one-year OAuth token"). 만료되거나 취소되면 차례마다 실패한다. 그때는 `claude setup-token`으로 새로 만들어 위 2단계처럼 `marvia-claude-token`에 새 버전을 넣고 다시 배포한다.
+
 ## 열지 않는 것
 
 - 규정 검색 MCP HTTP(`scripts/serve_mcp.py`)는 배포에서 열지 않는다. 에이전트는 같은 프로세스 안의 메모리 통로로 부른다(설계 9절, 14절 "MCP 공개 → 내부 도구로만"). 연다면 배포 주소의 Host 검사를 먼저 본다.

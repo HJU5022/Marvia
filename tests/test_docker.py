@@ -77,6 +77,8 @@ def test_the_e2e_network_cannot_reach_outside_and_the_runtime_image_has_no_fake_
     runtime = dockerfile.split("FROM base AS runtime")[1]
     assert "fake_api" not in runtime  # 가짜 API는 e2e 단계에만 복사한다
     assert dockerfile.rstrip().endswith('CMD ["python", "-m", "marvia.server"]')  # 기본(마지막) 단계가 운영
+    last_from = [line for line in dockerfile.splitlines() if line.startswith("FROM ")][-1]
+    assert last_from == "FROM runtime"  # [왜] CMD 글자만 보면 runtime-cli가 마지막이어도 지나간다
 
 
 def test_the_playwright_image_matches_the_test_package_version():

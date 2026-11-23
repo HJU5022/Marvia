@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 30
     env:
       IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/marvia/api:${{ github.sha }}
+      # 비었거나 api면 지금까지와 같다. cli면 임시 CLI 배포(docs/deploy.md "API 잔액이 없을 때")
+      LLM_VIA: ${{ vars.MARVIA_LLM_VIA }}
     steps:
       # [주의] 바깥 액션은 커밋 해시로 고정한다. 태그는 옮겨질 수 있다
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,7 +39,8 @@ jobs:
       - name: 이미지 빌드·올리기 (Cloud Run은 amd64)
         run: |
           gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
-          docker build --platform linux/amd64 --target runtime -t "$IMAGE" .
+          case "$LLM_VIA" in ""|api) TARGET=runtime ;; cli) TARGET=runtime-cli ;; *) echo "MARVIA_LLM_VIA는 api나 cli여야 합니다" >&2; exit 1 ;; esac
+          docker build --platform linux/amd64 --target "$TARGET" -t "$IMAGE" .
           docker push "$IMAGE"
       - name: 표 준비 (Cloud Run job, 여러 번 돌려도 같다)
         run: |
@@ -48,8 +51,17 @@ jobs:
           gcloud run jobs execute marvia-prepare --region "${{ vars.GCP_REGION }}" --wait
       - name: API 배포
         run: |
-          gcloud run deploy marvia-api --image "$IMAGE" --region "${{ vars.GCP_REGION }}" \
-            --service-account "${{ vars.GCP_RUN_SA }}" \
-            --allow-unauthenticated --port 8080 --memory 1Gi --timeout 300 --max-instances 1 \
-            --set-env-vars "MARVIA_AUTH=supabase,MARVIA_SUPABASE_URL=${{ vars.MARVIA_SUPABASE_URL }},MARVIA_WEB_ORIGIN=${{ vars.MARVIA_WEB_ORIGIN }},MARVIA_GRAPH=off" \
-            --set-secrets "MARVIA_DATABASE_URL=marvia-database-url:latest,MARVIA_DATA_KEY=marvia-data-key:latest,MARVIA_ANTHROPIC_API_KEY=marvia-anthropic-key:latest,MARVIA_VOYAGE_API_KEY=marvia-voyage-key:latest,MARVIA_OWNER_IDS=marvia-owner-ids:latest"
+          # [왜] cli는 임시다. 1GiB에서 형태소 분석기가 거의 다 쓰는데 CLI와 도구 스텁 프로세스가 더해지고, 한 차례에 CLI 호출이 약 8번이다 [추정]
+          if [ "$LLM_VIA" = cli ]; then
+            gcloud run deploy marvia-api --image "$IMAGE" --region "${{ vars.GCP_REGION }}" \
+              --service-account "${{ vars.GCP_RUN_SA }}" \
+              --allow-unauthenticated --port 8080 --memory 2Gi --timeout 900 --max-instances 1 \
+              --set-env-vars "MARVIA_AUTH=supabase,MARVIA_SUPABASE_URL=${{ vars.MARVIA_SUPABASE_URL }},MARVIA_WEB_ORIGIN=${{ vars.MARVIA_WEB_ORIGIN }},MARVIA_GRAPH=off,MARVIA_LLM_VIA=cli" \
+              --set-secrets "MARVIA_DATABASE_URL=marvia-database-url:latest,MARVIA_DATA_KEY=marvia-data-key:latest,CLAUDE_CODE_OAUTH_TOKEN=marvia-claude-token:latest,MARVIA_VOYAGE_API_KEY=marvia-voyage-key:latest,MARVIA_OWNER_IDS=marvia-owner-ids:latest"
+          else
+            gcloud run deploy marvia-api --image "$IMAGE" --region "${{ vars.GCP_REGION }}" \
+              --service-account "${{ vars.GCP_RUN_SA }}" \
+              --allow-unauthenticated --port 8080 --memory 1Gi --timeout 300 --max-instances 1 \
+              --set-env-vars "MARVIA_AUTH=supabase,MARVIA_SUPABASE_URL=${{ vars.MARVIA_SUPABASE_URL }},MARVIA_WEB_ORIGIN=${{ vars.MARVIA_WEB_ORIGIN }},MARVIA_GRAPH=off" \
+              --set-secrets "MARVIA_DATABASE_URL=marvia-database-url:latest,MARVIA_DATA_KEY=marvia-data-key:latest,MARVIA_ANTHROPIC_API_KEY=marvia-anthropic-key:latest,MARVIA_VOYAGE_API_KEY=marvia-voyage-key:latest,MARVIA_OWNER_IDS=marvia-owner-ids:latest"
+          fi
