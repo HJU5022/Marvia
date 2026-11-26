@@ -56,6 +56,7 @@ def main() -> None:
                 law_id, seq, effective = info
                 doc_id, url = f"L{law_id}", fetch.law_body_url(seq, effective)
                 body = get(url)
+                url = fetch.law_view_url(seq, effective)  # [왜] 저장하는 출처는 사람이 여는 틀 있는 주소
             else:
                 seq = fetch.rule_seq(get(fetch.rule_search_url(doc["name"])))
                 if seq is None:
@@ -63,6 +64,7 @@ def main() -> None:
                     continue
                 url = fetch.rule_body_url(seq)
                 body = get(url)
+                url = fetch.rule_view_url(seq)
                 info = fetch.rule_info(body)
                 if info is None:
                     print("MISS", doc["name"])

@@ -18,4 +18,4 @@
   number: "1" # 수입신고수리물품 반출의무 및 신고지연 가산세 적용대상 보세구역. 사이트는 .hwp로 주지만 실제로는 HWPX(zip)다
   format: hwpx
   flseq: 164115845
-  view_url: https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000275032
+  view_url: https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=2100000275032

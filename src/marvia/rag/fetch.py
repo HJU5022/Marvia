@@ -22,11 +22,26 @@ def law_search_url(name: str) -> str:
 
 
 def law_body_url(seq: str, effective: date) -> str:
-    """판 번호(lsiSeq)와 시행일로 조문 본문 페이지 주소를 만든다. ancYnChk=0은 시행일 기준."""
+    """판 번호(lsiSeq)와 시행일로 본문 조각 주소(내려받아 자르는 데만 쓴다). ancYnChk=0은 시행일 기준."""
     return (
         f"{SITE}/LSW/lsInfoR.do?lsiSeq={seq}&chrClsCd=010202&urlMode=lsInfoP"
         f"&efYd={effective:%Y%m%d}&ancYnChk=0"
     )
+
+
+def law_view_url(seq: str, effective: date) -> str:
+    """사람이 여는 법령 주소: 사이트 틀이 있는 페이지(lsInfoP). 같은 판(lsiSeq)과 시행일(efYd)이다.
+
+    [왜] law_body_url의 lsInfoR은 본문 조각만 준다(사이트 틀 없음, 11-26 실측). 근거 링크는 이 주소를 쓴다.
+    [주의] 조문으로 바로 가는 주소는 만들지 않는다. 이름 주소(/법령/이름/제N조)는 최신판만 가리켜
+           판이 어긋나고, lsInfoP의 #J241:0은 본문을 나중에 불러와 열릴 때 움직이지 않는다 (11-26 실측)
+    """
+    return f"{SITE}/LSW/lsInfoP.do?lsiSeq={seq}&efYd={effective:%Y%m%d}&ancYnChk=0"
+
+
+def rule_view_url(seq: str) -> str:
+    """사람이 여는 행정규칙 주소: 사이트 틀이 있는 페이지. [왜] admRulInfoR은 본문 조각만 준다."""
+    return f"{SITE}/LSW/admRulInfoP.do?admRulSeq={seq}"
 
 
 def rule_search_url(name: str) -> str:
@@ -35,7 +50,7 @@ def rule_search_url(name: str) -> str:
 
 
 def rule_body_url(seq: str) -> str:
-    """행정규칙 판 번호(admRulSeq)로 본문 페이지 주소를 만든다."""
+    """행정규칙 판 번호(admRulSeq)로 본문 조각 주소를 만든다(내려받아 자르는 데만 쓴다)."""
     return f"{SITE}/LSW/admRulInfoR.do?admRulSeq={seq}"
 
 

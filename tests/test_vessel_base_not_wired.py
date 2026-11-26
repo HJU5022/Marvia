@@ -17,6 +17,7 @@ rules/verify.yaml, eval/dataset.py, eval/metrics.py, eval/run.py, scripts/run_ev
 """
 
 import hashlib
+import re
 from datetime import date
 from pathlib import Path
 
@@ -171,14 +172,36 @@ CLI_VERSION_MEASURED = (
 )
 
 
+# [왜] 근거 링크 고침(11-26)이 rag/fetch.py에 사람이 여는 주소 함수 둘을 더하고 내려받는 주소 함수 둘의
+#      설명 글을 고쳤다. 내려받는 주소(본문 조각)와 검색 길은 그대로다.
+#      더한 것만 측정 때 모양으로 되돌려 해시를 본다
+FETCH_VIEW_BLOCK = re.compile(r"def law_view_url.*?(?=def rule_search_url)", re.S)
+FETCH_DOCSTRINGS = [
+    (
+        '"""판 번호(lsiSeq)와 시행일로 본문 조각 주소(내려받아 자르는 데만 쓴다).'
+        ' ancYnChk=0은 시행일 기준."""',
+        '"""판 번호(lsiSeq)와 시행일로 조문 본문 페이지 주소를 만든다. ancYnChk=0은 시행일 기준."""',
+    ),
+    (
+        '"""행정규칙 판 번호(admRulSeq)로 본문 조각 주소를 만든다(내려받아 자르는 데만 쓴다)."""',
+        '"""행정규칙 판 번호(admRulSeq)로 본문 페이지 주소를 만든다."""',
+    ),
+]
+
+
+def _measured_text(path: Path) -> str:
+    text = path.read_text(encoding="utf-8").replace(CLI_ENV_NOW, CLI_ENV_MEASURED)
+    text = text.replace(CLI_VERSION_NOW, CLI_VERSION_MEASURED)
+    if path.name == "fetch.py":
+        text = FETCH_VIEW_BLOCK.sub("", text)
+        for now, measured in FETCH_DOCSTRINGS:
+            text = text.replace(now, measured)
+    return text
+
+
 def _group_sha(patterns: list[str]) -> tuple[str, int]:
     files = sorted({p for pattern in patterns for p in ROOT.glob(pattern)})
-    texts = [
-        p.read_text(encoding="utf-8")
-        .replace(CLI_ENV_NOW, CLI_ENV_MEASURED)
-        .replace(CLI_VERSION_NOW, CLI_VERSION_MEASURED)
-        for p in files
-    ]
+    texts = [_measured_text(p) for p in files]
     return _sha("".join(f"{p.relative_to(ROOT)}\n{t}" for p, t in zip(files, texts, strict=True))), len(files)
 
 
