@@ -5,7 +5,8 @@
 - **Manrope** (`@fontsource-variable/manrope` 5.3.0): SIL Open Font License 1.1. 영문과 숫자. https://fontsource.org
 - **Noto Sans KR** (`@fontsource-variable/noto-sans-kr` 5.3.1): SIL Open Font License 1.1. 한글. https://fontsource.org
 - **IBM Plex Mono** (`@fontsource/ibm-plex-mono` 5.3.0): SIL Open Font License 1.1. B/L과 컨테이너 번호에만. https://fontsource.org
-- **Lucide** (`lucide-react` 1.71.0): ISC. 선 아이콘. https://lucide.dev/license
+- **Lucide** (`lucide-react` 1.71.0): ISC. 선 아이콘. Feather에서 온 아이콘(chevron-up, log-out, trash-2, external-link 등)은 MIT이다. https://lucide.dev/license
+  - Feather Icons: MIT License, Copyright (c) 2013-2017 Cole Bemis. https://github.com/feathericons/feather/blob/main/LICENSE
 - **Next.js, React**: MIT. https://nextjs.org / https://react.dev
 - **Supabase JS** (`@supabase/supabase-js`): MIT. 로그인. https://github.com/supabase/supabase-js
 
