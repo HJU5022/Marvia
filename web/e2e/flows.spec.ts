@@ -16,6 +16,9 @@ test.beforeEach(async ({ page }, testInfo) => {
     outside.push(route.request().url());
     return route.abort();
   });
+  // [왜] 나타나는 움직임(m-rise, 불투명도 0에서 1)이 도는 중에 axe가 글자 대비를 재면 옅게 보여 가끔 실패했다.
+  //      globals.css는 움직임 줄이기를 켜면 animation을 모두 끈다. 검사 규칙은 그대로 둔다
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
   await page.getByLabel("개발 로그인 토큰").fill(TOKEN);
   await page.getByRole("button", { name: "들어가기" }).click();
