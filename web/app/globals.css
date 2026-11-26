@@ -185,7 +185,8 @@ select {
   transition: border-color var(--t-fast) var(--ease);
 }
 
-input:focus,
+/* [주의] 라디오와 체크박스는 윤곽선을 지우지 않는다. 키보드 초점이 보여야 한다 (R-246) */
+input:not([type="radio"], [type="checkbox"]):focus,
 textarea:focus,
 select:focus {
   outline: none;
@@ -844,7 +845,7 @@ dd[data-grade="act"] {
     right: 0;
     bottom: 0;
     z-index: 5;
-    max-height: 72dvh;
+    max-height: min(62dvh, 560px); /* v1 시트 높이 */
     border-top: 1px solid var(--text);
     animation: m-sheet-up var(--t-panel) var(--ease);
   }

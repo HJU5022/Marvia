@@ -108,6 +108,7 @@ export default function Home() {
     if (!text || busy || sending.current) return;
     setLines((old) => [...old, { role: "user", text }]);
     setDraft("");
+    setSheetOpen(false); // 엔터로 보내면 초점이 그대로라 onFocus가 다시 접어 주지 않는다
     turn({ text });
   }
 
@@ -138,14 +139,20 @@ export default function Home() {
 
   const reply = useCallback(
     (payload: unknown) => {
-      if (card) turn({ resume: { interruptId: card.id, payload } });
+      if (card) {
+        setSheetOpen(false);
+        turn({ resume: { interruptId: card.id, payload } });
+      }
     },
     [card, turn],
   );
 
   const hasDetail = view.plan.length + view.reading.length + view.cargos.length + view.evidence.length > 0;
-  // 결과가 처음 생기면 좁은 화면에서도 시트를 펼쳐 보인다. 입력창을 누르면 접힌다(키보드가 가리지 않게)
-  useEffect(() => setSheetOpen(hasDetail), [hasDetail]);
+  // [왜] 시트(900px 이하)는 손잡이를 눌러야만 펼친다. 저절로 펼치면 새로 온 선택지·승인 카드, 오류 안내, 입력창을
+  //      가린다. 선택지 카드는 몇 초 뒤 권장안으로 저절로 넘어가므로 가려지면 안 된다 (R-245)
+  useEffect(() => {
+    if (card || error) setSheetOpen(false);
+  }, [card, error]);
   // 새 줄이나 카드가 생기면 대화 칸을 맨 아래로 내린다
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
