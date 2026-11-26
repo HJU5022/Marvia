@@ -1,6 +1,7 @@
 "use client";
 // 승인 카드 (설계 6.3 승인 통로): 할 일마다 승인·거절·고치기. 고치기는 도구별 칸만 연다.
 // [왜] 자유 JSON 편집을 열면 모르는 인자가 그대로 도구에 간다. 서버가 고친 값을 다시 가리고 도구가 같은 검사를 한다
+import { SendHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction, ApprovalCard } from "@/lib/agui";
@@ -95,6 +96,7 @@ export function ApprovalCardView({
         );
       })}
       <button type="button" onClick={send}>
+        <SendHorizontal size={16} aria-hidden="true" />
         보내기
       </button>
     </section>

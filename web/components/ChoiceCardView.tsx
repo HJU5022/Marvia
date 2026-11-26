@@ -1,5 +1,6 @@
 "use client";
 // 선택지 카드 (설계 6.3 질문 통로): 선택지, "기타" 직접 입력, 권장안으로 진행, 시간이 지나면 권장안으로 진행.
+import { SendHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { ChoiceCard } from "@/lib/agui";
@@ -52,6 +53,7 @@ export function ChoiceCardView({ card, onReply }: { card: ChoiceCard; onReply: (
           onBlur={() => setFocused(false)}
         />
         <button type="button" disabled={!custom.trim()} onClick={() => onReply({ custom: custom.trim() })}>
+          <SendHorizontal size={16} aria-hidden="true" />
           보내기
         </button>
       </div>

@@ -1,21 +1,28 @@
 "use client";
-// Marvia 화면 한 쪽 (설계 10절): 채팅, 계획 진행, 이렇게 읽었어요, 선택지·승인 카드, 답과 근거, 화물 카드.
+// Marvia 화면 한 쪽 (설계 10절, 계획 9): v1의 틀(위 줄, 대화 왼쪽, 상세 오른쪽 40:60, 좁으면 시트) 안에
+// 채팅, 계획 진행, 이렇게 읽었어요, 선택지·승인 카드, 답과 근거, 화물 카드를 둔다.
 // 상태는 서버가 보낸 STATE_SNAPSHOT(허용 목록)과 답 글뿐이다. 서버에 state를 보내지 않는다.
+import { ChevronUp, CircleAlert, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApprovalCardView } from "@/components/ApprovalCardView";
 import { CargoCards } from "@/components/CargoCards";
 import { ChoiceCardView } from "@/components/ChoiceCardView";
+import { Composer } from "@/components/Composer";
+import { LoginScreen } from "@/components/LoginScreen";
 import { EvidencePanel, PlanList, ReadingList } from "@/components/Panels";
+import { TopBar } from "@/components/TopBar";
 import { type AgUiEvent, type Card, deleteAccount, EMPTY_VIEW, HttpError, newId, runTurn, type View } from "@/lib/agui";
-import { AUTH_MODE, currentToken, signIn, signOut } from "@/lib/auth";
+import { currentToken, signOut } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 type Line = { role: "user" | "assistant"; text: string; id?: string };
 
+// 입력창을 채우기만 한다(보내기는 사용자가 한다, v1 규칙). 번호는 넣지 않는다
+const EXAMPLES = ["수입신고는 언제까지 해야 해요?", "장치기간이 궁금해요", "화물관리번호로 상태를 보고 싶어요"];
+
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
-  const [devToken, setDevToken] = useState("");
   const [threadId, setThreadId] = useState(newId);
   const [lines, setLines] = useState<Line[]>([]);
   const [view, setView] = useState<View>(EMPTY_VIEW);
@@ -24,15 +31,11 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false); // 900px 이하에서 상세 시트가 펼쳐졌는지
 
   const running = useRef<AbortController | null>(null);
   const sending = useRef(false); // [왜] busy는 상태라 빠른 두 번 입력 사이에 아직 안 바뀐다
-  const confirmBox = useRef<HTMLDivElement>(null);
-
-  // 계정 삭제 확인이 뜨면 초점을 옮긴다. 누른 버튼이 사라져 초점이 문서 처음으로 가지 않게 한다
-  useEffect(() => {
-    if (confirmingDelete) confirmBox.current?.focus();
-  }, [confirmingDelete]);
+  const scroller = useRef<HTMLDivElement>(null);
 
   // 화면을 떠나면 진행 중인 차례를 멈춘다
   useEffect(() => () => running.current?.abort(), []);
@@ -140,112 +143,106 @@ export default function Home() {
     [card, turn],
   );
 
-  if (!token) {
-    return (
-      <main>
-        <h1>Marvia</h1>
-        {error ? <p role="alert">{error}</p> : null}
-        {AUTH_MODE === "dev" ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              signIn(devToken)
-                .then(() => currentToken().then(setToken))
-                .catch((failure: Error) => setError(failure.message));
-            }}
-          >
-            <label htmlFor="dev-token">개발 로그인 토큰</label>
-            <div className="row">
-              <input id="dev-token" type="password" value={devToken} onChange={(e) => setDevToken(e.target.value)} />
-              <button type="submit">들어가기</button>
-            </div>
-          </form>
-        ) : (
-          <button type="button" onClick={() => signIn().catch((failure: Error) => setError(failure.message))}>
-            구글로 로그인
-          </button>
-        )}
-      </main>
-    );
-  }
+  const hasDetail = view.plan.length + view.reading.length + view.cargos.length + view.evidence.length > 0;
+  // 결과가 처음 생기면 좁은 화면에서도 시트를 펼쳐 보인다. 입력창을 누르면 접힌다(키보드가 가리지 않게)
+  useEffect(() => setSheetOpen(hasDetail), [hasDetail]);
+  // 새 줄이나 카드가 생기면 대화 칸을 맨 아래로 내린다
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+  }, [lines, card, busy, error]);
+
+  if (!token) return <LoginScreen error={error} onError={setError} onToken={setToken} />;
 
   return (
-    <main>
-      <header className="row">
-        <h1>Marvia</h1>
-        <button type="button" className="secondary" onClick={() => {
-            running.current?.abort();
-            signOut().then(() => setToken(null));
-          }}>
-          로그아웃
-        </button>
-      </header>
-      <section aria-labelledby="chat-title" className="panel">
-        <h2 id="chat-title">대화</h2>
-        <ol className="chat" aria-live="polite">
-          {lines.map((line, i) => (
-            <li key={i} data-role={line.role}>
-              <span className="who">{line.role === "user" ? "나" : "Marvia"}</span>
-              <p className="text">{line.text}</p>
-            </li>
-          ))}
-        </ol>
-        <p role="status" aria-live="polite" className="meta">
-          {busy ? "답하는 중이에요" : ""}
-        </p>
-        {error ? <p role="alert">{error}</p> : null}
-      </section>
-      {card?.kind === "choice" ? <ChoiceCardView key={card.id} card={card} onReply={reply} /> : null}
-      {card?.kind === "approval" ? <ApprovalCardView key={card.id} card={card} onReply={reply} /> : null}
-      <PlanList plan={view.plan} />
-      <ReadingList reading={view.reading} />
-      <CargoCards cargos={view.cargos} />
-      <EvidencePanel evidence={view.evidence} />
-      <section aria-labelledby="account-title" className="panel">
-        <h2 id="account-title">계정</h2>
-        {confirmingDelete ? (
-          <div ref={confirmBox} tabIndex={-1} role="group" aria-label="계정 삭제 확인" aria-describedby="delete-warning">
-            <p id="delete-warning">계정을 지우면 대화 기록, 저장한 값, 감시 목록이 모두 지워지고 되돌릴 수 없어요. 지울까요?</p>
-            <div className="row">
-              <button type="button" onClick={removeAccount}>
-                지우기
-              </button>
-              <button type="button" className="secondary" onClick={() => setConfirmingDelete(false)}>
-                그만두기
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button type="button" className="secondary" onClick={() => setConfirmingDelete(true)}>
-            계정 삭제
-          </button>
-        )}
-      </section>
-      <form
-        className="ask"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
+    <div className="app">
+      <TopBar
+        confirming={confirmingDelete}
+        onSignOut={() => {
+          running.current?.abort();
+          signOut().then(() => setToken(null));
         }}
-      >
-        <label htmlFor="question">질문이나 화물 단서 (B/L·화물관리번호)</label>
-        <textarea
-          id="question"
-          rows={3}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // [주의] 한글 조합 중 Enter는 글자를 확정하는 키다. 그때 보내면 마지막 글자가 남거나 두 번 간다
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <button type="submit" disabled={busy || !draft.trim()}>
-          보내기
-        </button>
-      </form>
-    </main>
+        onAskDelete={() => setConfirmingDelete(true)}
+        onDelete={removeAccount}
+        onCancelDelete={() => setConfirmingDelete(false)}
+      />
+      <main className={`chat-app${hasDetail ? " split" : ""}`}>
+        <section className="chat-pane" aria-labelledby="chat-title">
+          <h2 id="chat-title" className="sr-only">
+            대화
+          </h2>
+          <div className="chat-scroll" ref={scroller}>
+            {lines.length === 0 && !card && !busy ? (
+              <div className="empty">
+                <h2>어떤 화물이 궁금하세요?</h2>
+                <p className="lead">B/L이나 화물관리번호를 적거나, 수입 통관 법령을 물어보세요. 답마다 근거를 함께 보여 드려요.</p>
+                <ul className="examples">
+                  {EXAMPLES.map((example) => (
+                    <li key={example}>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          setDraft(example);
+                          document.getElementById("question")?.focus();
+                        }}
+                      >
+                        {example}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <ol className="chat" aria-live="polite">
+              {lines.map((line, i) => (
+                <li key={i} data-role={line.role}>
+                  <span className="who">{line.role === "user" ? "나" : "Marvia"}</span>
+                  <p className="text">{line.text}</p>
+                </li>
+              ))}
+            </ol>
+            <p role="status" aria-live="polite" className="status">
+              {busy ? (
+                <>
+                  <LoaderCircle size={16} className="spin" aria-hidden="true" />
+                  답하는 중이에요
+                </>
+              ) : (
+                ""
+              )}
+            </p>
+            {error ? (
+              <p role="alert" className="notice">
+                <CircleAlert size={16} aria-hidden="true" />
+                {error}
+              </p>
+            ) : null}
+            {card?.kind === "choice" ? <ChoiceCardView key={card.id} card={card} onReply={reply} /> : null}
+            {card?.kind === "approval" ? <ApprovalCardView key={card.id} card={card} onReply={reply} /> : null}
+          </div>
+          <Composer draft={draft} busy={busy} onDraft={setDraft} onSend={send} onFocus={() => setSheetOpen(false)} />
+        </section>
+        {hasDetail ? (
+          <aside className="detail-pane" aria-label="상세" data-open={sheetOpen}>
+            <button
+              type="button"
+              className="sheet-handle"
+              aria-expanded={sheetOpen}
+              aria-controls="detail-body"
+              onClick={() => setSheetOpen((open) => !open)}
+            >
+              <span>{sheetOpen ? "상세 접기" : "상세 보기"}</span>
+              <ChevronUp size={16} aria-hidden="true" style={{ transform: sheetOpen ? "rotate(180deg)" : "none" }} />
+            </button>
+            <div id="detail-body" className="detail-body">
+              <PlanList plan={view.plan} />
+              <ReadingList reading={view.reading} />
+              <CargoCards cargos={view.cargos} />
+              <EvidencePanel evidence={view.evidence} />
+            </div>
+          </aside>
+        ) : null}
+      </main>
+    </div>
   );
 }

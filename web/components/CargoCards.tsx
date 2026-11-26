@@ -2,7 +2,9 @@
 // [왜] ETA·등급은 선박 위치 조회와 함께 2차로 미뤘다(계획 4b 결정 D3). 빈 칸 대신 그렇다고 적는다.
 // 서버의 배 식별 스위치가 켜져 있으면(verdict 칸이 오면) 그 자리에 배와 판정 칸을 보인다 (계획 8b).
 // [주의] 등급·일정·확신과 그 까닭은 서버가 보낸 글 그대로다. 화면이 등급을 정하거나 바꾸지 않는다.
+import { Package } from "lucide-react";
 import { Fragment } from "react";
+
 import type { Cargo } from "@/lib/agui";
 
 function when(value: string | null): string {
@@ -72,8 +74,11 @@ function VesselCells({ c }: { c: Cargo }) {
 export function CargoCards({ cargos }: { cargos: Cargo[] }) {
   if (!cargos.length) return null;
   return (
-    <section aria-labelledby="cargo-title" className="panel">
-      <h2 id="cargo-title">화물</h2>
+    <section aria-labelledby="cargo-title">
+      <h2 id="cargo-title" className="section-title">
+        <Package size={16} aria-hidden="true" />
+        화물
+      </h2>
       {cargos.map((c) => (
         <article key={c.number} className="cargo">
           <h3>{c.number}</h3>

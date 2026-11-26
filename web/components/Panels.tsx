@@ -1,4 +1,6 @@
 // 계획 진행, "이렇게 읽었어요", 근거 패널 (설계 10절). 값은 글자로만 그린다(dangerouslySetInnerHTML 쓰지 않음).
+import { BookOpen, ExternalLink, ListChecks, ScanText } from "lucide-react";
+
 import type { EvidenceUnit, PlanItem, Reading } from "@/lib/agui";
 
 const STATUS: Record<PlanItem["status"], string> = { pending: "대기", in_progress: "진행 중", completed: "끝" };
@@ -6,8 +8,11 @@ const STATUS: Record<PlanItem["status"], string> = { pending: "대기", in_progr
 export function PlanList({ plan }: { plan: PlanItem[] }) {
   if (!plan.length) return null;
   return (
-    <section aria-labelledby="plan-title" className="panel">
-      <h2 id="plan-title">계획</h2>
+    <section aria-labelledby="plan-title">
+      <h2 id="plan-title" className="section-title">
+        <ListChecks size={16} aria-hidden="true" />
+        계획
+      </h2>
       <ol className="plan">
         {plan.map((item, i) => (
           <li key={i} data-status={item.status}>
@@ -22,12 +27,15 @@ export function PlanList({ plan }: { plan: PlanItem[] }) {
 export function ReadingList({ reading }: { reading: Reading[] }) {
   if (!reading.length) return null;
   return (
-    <section aria-labelledby="reading-title" className="panel">
-      <h2 id="reading-title">이렇게 읽었어요</h2>
-      <ul>
+    <section aria-labelledby="reading-title">
+      <h2 id="reading-title" className="section-title">
+        <ScanText size={16} aria-hidden="true" />
+        이렇게 읽었어요
+      </h2>
+      <ul className="reading">
         {reading.map((r) => (
           <li key={r.token}>
-            {r.kind} <strong>{r.number}</strong>
+            <span className="kind">{r.kind}</span> <strong>{r.number}</strong>
           </li>
         ))}
       </ul>
@@ -43,8 +51,11 @@ function safeLink(url: string | null): string | null {
 export function EvidencePanel({ evidence }: { evidence: EvidenceUnit[] }) {
   if (!evidence.length) return null;
   return (
-    <section aria-labelledby="evidence-title" className="panel">
-      <h2 id="evidence-title">근거</h2>
+    <section aria-labelledby="evidence-title">
+      <h2 id="evidence-title" className="section-title">
+        <BookOpen size={16} aria-hidden="true" />
+        근거
+      </h2>
       {evidence.map((e) => {
         const link = safeLink(e.source_url);
         return (
@@ -57,6 +68,7 @@ export function EvidencePanel({ evidence }: { evidence: EvidenceUnit[] }) {
             {link ? (
               <a href={link} target="_blank" rel="noopener noreferrer">
                 원문 보기 (국가법령정보센터)
+                <ExternalLink size={14} aria-hidden="true" />
               </a>
             ) : null}
           </article>
