@@ -1,5 +1,9 @@
-// 화면 틀 (설계 10절). 한글 글꼴은 패키지에서 직접 싣는다(빌드·e2e가 바깥 글꼴 서버에 기대지 않는다).
+// 화면 틀 (설계 10절, 계획 9). 글꼴은 패키지에서 직접 싣는다(빌드·e2e가 바깥 글꼴 서버에 기대지 않는다).
+// 영문·숫자는 Manrope, 한글은 Noto Sans KR, 고정폭 IBM Plex Mono는 B/L·컨테이너 번호에만 쓴다.
+import "@fontsource-variable/manrope";
 import "@fontsource-variable/noto-sans-kr";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 
 import type { Metadata } from "next";
